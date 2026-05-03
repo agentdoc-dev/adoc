@@ -54,10 +54,7 @@ fn check_unclosed_fence_diagnostic_surfaces_all_six_fields() {
 
     // Issue #3 acceptance: the diagnostic must carry file, line, column,
     // severity, code, and a fix-oriented message.
-    let prefix = format!(
-        "{}:5:1:",
-        source.to_str().expect("source path is utf-8")
-    );
+    let prefix = format!("{}:5:1:", source.to_str().expect("source path is utf-8"));
     assert!(
         stdout.contains(&prefix),
         "expected diagnostic to start with `path:line:column:` prefix `{prefix}`, got:\n{stdout}"
@@ -164,8 +161,8 @@ fn build_renders_v0_1_prose_fixture_to_golden_html() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let actual = fs::read_to_string(output_directory.join("docs.html"))
-        .expect("docs.html is written");
+    let actual =
+        fs::read_to_string(output_directory.join("docs.html")).expect("docs.html is written");
     let golden = fs::read_to_string(fixture_path("v0_1/prose_page.golden.html"))
         .expect("golden HTML fixture is readable");
 
