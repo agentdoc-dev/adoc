@@ -1,6 +1,6 @@
 use crate::ast::{BlockAst, CodeBlockAst, HeadingAst, ListAst, ListKind, PageAst, ParagraphAst};
 use crate::diagnostic::{Diagnostic, SourceSpan};
-use crate::inline::{self, InlineSegment};
+use crate::inline::{self, InlineOrigin, InlineSegment};
 use crate::source::{SourceFile, derive_page_id};
 
 pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
@@ -86,7 +86,15 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 );
             }
 
-            let (inlines, heading_diagnostics) = inline::parse_inlines(&heading.text);
+            let heading_text_column = leading_indent_columns + heading.level as u32 + 2;
+            let (inlines, heading_diagnostics) = inline::parse_inlines(
+                &heading.text,
+                InlineOrigin {
+                    source,
+                    line: line_number,
+                    column_offset: heading_text_column,
+                },
+            );
             diagnostics.extend(heading_diagnostics);
 
             let is_first_page_heading = heading.level == 1 && !has_seen_page_heading;
@@ -158,7 +166,15 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_end_line,
             );
             let item_text = item.trim();
-            let (item_inlines, item_diagnostics) = inline::parse_inlines(item_text);
+            let item_column = leading_indent_columns + 3;
+            let (item_inlines, item_diagnostics) = inline::parse_inlines(
+                item_text,
+                InlineOrigin {
+                    source,
+                    line: line_number,
+                    column_offset: item_column,
+                },
+            );
             diagnostics.extend(item_diagnostics);
             push_list_item(
                 source,
@@ -172,7 +188,9 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             continue;
         }
 
-        if let Some(item_text) = parse_ordered_list_item(trimmed) {
+        if let Some((item_text, item_column)) =
+            parse_ordered_list_item(trimmed, leading_indent_columns)
+        {
             flush_paragraph(
                 source,
                 &mut page.blocks,
@@ -180,7 +198,14 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_start_line,
                 &mut paragraph_end_line,
             );
-            let (item_inlines, item_diagnostics) = inline::parse_inlines(item_text);
+            let (item_inlines, item_diagnostics) = inline::parse_inlines(
+                item_text,
+                InlineOrigin {
+                    source,
+                    line: line_number,
+                    column_offset: item_column,
+                },
+            );
             diagnostics.extend(item_diagnostics);
             push_list_item(
                 source,
@@ -195,7 +220,15 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         }
 
         flush_list(&mut page.blocks, &mut pending_list);
-        let (line_inlines, line_diagnostics) = inline::parse_inlines(trimmed);
+        let column_offset = leading_indent_columns + 1;
+        let (line_inlines, line_diagnostics) = inline::parse_inlines(
+            trimmed,
+            InlineOrigin {
+                source,
+                line: line_number,
+                column_offset,
+            },
+        );
         diagnostics.extend(line_diagnostics);
         paragraph_start_line.get_or_insert(line_number);
         paragraph_end_line = Some(line_number);
@@ -353,7 +386,7 @@ fn annotation_span(
     }
 }
 
-fn parse_ordered_list_item(line: &str) -> Option<&str> {
+fn parse_ordered_list_item(line: &str, leading_indent_columns: u32) -> Option<(&str, u32)> {
     let dot_index = line.find(". ")?;
     if dot_index == 0 {
         return None;
@@ -362,7 +395,11 @@ fn parse_ordered_list_item(line: &str) -> Option<&str> {
     line[..dot_index]
         .chars()
         .all(|character| character.is_ascii_digit())
-        .then_some(line[dot_index + 2..].trim())
+        .then(|| {
+            let item_text = line[dot_index + 2..].trim();
+            let item_column = leading_indent_columns + dot_index as u32 + 3;
+            (item_text, item_column)
+        })
 }
 
 fn find_raw_html(line: &str) -> Option<RawHtmlMatch> {
