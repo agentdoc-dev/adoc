@@ -1,18 +1,11 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::artifact::agent_json::AgentJsonDocument;
 use crate::ast::WorkspaceAst;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::parser::parse_page;
 use crate::render::html::render_html;
-use crate::source::SourceFile;
-
-#[derive(Debug, Clone)]
-struct SourcePath {
-    path: PathBuf,
-    identity_path: PathBuf,
-}
+use crate::source_provider::{FsSourceProvider, SourceProvider};
 
 #[derive(Debug, Clone)]
 pub struct CompileInput {
@@ -40,26 +33,27 @@ pub struct BuildArtifacts {
 }
 
 pub fn compile_workspace(input: CompileInput) -> CompileResult {
+    let provider = FsSourceProvider::new(input.root);
+    compile_with_provider(&provider)
+}
+
+pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
     let mut diagnostics = Vec::new();
     let mut pages = Vec::new();
 
-    for source_path in source_paths(&input.root) {
-        match fs::read_to_string(&source_path.path) {
-            Ok(text) => {
-                let source = SourceFile::new_with_identity_path(
-                    source_path.path,
-                    text,
-                    source_path.identity_path,
-                );
+    for result in provider.load_sources() {
+        match result {
+            Ok(source) => {
                 let (page, page_diagnostics) = parse_page(&source);
                 diagnostics.extend(page_diagnostics);
                 pages.push(page);
             }
-            Err(error) => diagnostics.push(Diagnostic::error(
+            Err(load_error) => diagnostics.push(Diagnostic::error(
                 DiagnosticCode::IoUnreadableFile,
                 format!(
-                    "could not read AgentDoc Source {}: {error}",
-                    source_path.path.display()
+                    "could not read AgentDoc Source {}: {}",
+                    load_error.path.display(),
+                    load_error.message,
                 ),
             )),
         }
@@ -83,51 +77,77 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
     }
 }
 
-fn source_paths(root: &Path) -> Vec<SourcePath> {
-    if root.is_file() {
-        return vec![SourcePath {
-            path: root.to_path_buf(),
-            identity_path: root
-                .file_name()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| root.into()),
-        }];
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::source::SourceFile;
+    use crate::source_provider::InMemorySourceProvider;
+
+    fn source_file(identity: &str, text: &str) -> SourceFile {
+        SourceFile::new_with_identity_path(
+            PathBuf::from(format!("/work/{identity}")),
+            text.to_string(),
+            PathBuf::from(identity),
+        )
     }
 
-    let mut paths = Vec::new();
-    collect_adoc_files(root, root, &mut paths);
-    paths.sort_by(|left, right| left.path.cmp(&right.path));
-    paths
-}
+    #[test]
+    fn compile_with_provider_emits_artifacts_for_clean_source() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\nHello.\n",
+        ));
 
-fn collect_adoc_files(root: &Path, directory: &Path, paths: &mut Vec<SourcePath>) {
-    let Ok(entries) = fs::read_dir(directory) else {
-        paths.push(SourcePath {
-            path: directory.to_path_buf(),
-            identity_path: directory
-                .strip_prefix(root)
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| directory.into()),
-        });
-        return;
-    };
+        let result = compile_with_provider(&provider);
 
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_adoc_files(root, &path, paths);
-        } else if path
-            .extension()
-            .is_some_and(|extension| extension == "adoc")
-        {
-            let identity_path = path
-                .strip_prefix(root)
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| path.clone());
-            paths.push(SourcePath {
-                path,
-                identity_path,
-            });
-        }
+        assert!(!result.has_errors());
+        assert!(result.artifacts.is_some(), "expected artifacts to be built");
+    }
+
+    #[test]
+    fn compile_with_provider_blocks_artifacts_when_source_has_errors() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\n<div>x</div>\n",
+        ));
+
+        let result = compile_with_provider(&provider);
+
+        assert!(result.has_errors(), "raw HTML should produce an error");
+        assert!(
+            result.artifacts.is_none(),
+            "artifacts must not be produced when errors are present"
+        );
+    }
+
+    #[test]
+    fn compile_with_provider_translates_load_error_into_io_diagnostic() {
+        let provider = InMemorySourceProvider::new()
+            .with_error(PathBuf::from("/work/missing.adoc"), "permission denied");
+
+        let result = compile_with_provider(&provider);
+
+        assert_eq!(result.diagnostics.len(), 1);
+        let diagnostic = &result.diagnostics[0];
+        assert_eq!(diagnostic.code, "io.unreadable_file");
+        assert_eq!(diagnostic.severity, Severity::Error);
+        assert!(
+            diagnostic
+                .message
+                .contains("could not read AgentDoc Source /work/missing.adoc")
+        );
+        assert!(diagnostic.message.contains("permission denied"));
+        assert!(result.artifacts.is_none());
+    }
+
+    #[test]
+    fn compile_with_provider_emits_empty_artifacts_for_empty_workspace() {
+        let provider = InMemorySourceProvider::new();
+
+        let result = compile_with_provider(&provider);
+
+        assert!(!result.has_errors());
+        let artifacts = result.artifacts.expect("empty workspace still builds");
+        assert!(artifacts.agent_json.pages.is_empty());
     }
 }

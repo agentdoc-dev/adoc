@@ -7,6 +7,7 @@ mod inline;
 mod parser;
 mod render;
 mod source;
+mod source_provider;
 
 pub use artifact::agent_json::AgentJsonDocument;
 pub use compile::{BuildArtifacts, CompileInput, CompileResult, compile_workspace};
