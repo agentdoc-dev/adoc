@@ -62,13 +62,17 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_start_line,
             );
             flush_list(&mut page.blocks, &mut pending_list);
-            if heading.has_malformed_page_annotation {
+            if let Some(malformed_annotation) = heading.malformed_page_annotation {
                 diagnostics.push(
                     Diagnostic::error(
                         "parse.malformed_page_annotation",
                         "Page annotation must use @doc(id) with a non-empty id and closing ')'",
                     )
-                    .with_span(span.clone()),
+                    .with_span(source.span_for_line_columns(
+                        line_number,
+                        malformed_annotation.start_column,
+                        malformed_annotation.end_column,
+                    )),
                 );
             }
 
@@ -188,7 +192,7 @@ struct ParsedHeading {
     level: u8,
     text: String,
     doc_id: Option<String>,
-    has_malformed_page_annotation: bool,
+    malformed_page_annotation: Option<PageAnnotationSpan>,
 }
 
 struct PendingList {
@@ -202,6 +206,12 @@ struct RawHtmlMatch {
     end_column: u32,
 }
 
+#[derive(Clone, Copy)]
+struct PageAnnotationSpan {
+    start_column: u32,
+    end_column: u32,
+}
+
 fn parse_heading(line: &str) -> Option<ParsedHeading> {
     let marker_count = line
         .chars()
@@ -211,53 +221,79 @@ fn parse_heading(line: &str) -> Option<ParsedHeading> {
         return None;
     }
 
+    let raw_text_start_column = marker_count as u32 + 2;
     let raw_text = line[marker_count + 1..].trim();
-    let annotation = parse_page_annotation(raw_text);
+    let annotation = parse_page_annotation(raw_text, raw_text_start_column);
     Some(ParsedHeading {
         level: marker_count as u8,
         text: annotation.text,
         doc_id: annotation.doc_id,
-        has_malformed_page_annotation: annotation.is_malformed,
+        malformed_page_annotation: annotation.malformed_span,
     })
 }
 
 struct ParsedPageAnnotation {
     text: String,
     doc_id: Option<String>,
-    is_malformed: bool,
+    malformed_span: Option<PageAnnotationSpan>,
 }
 
-fn parse_page_annotation(raw_text: &str) -> ParsedPageAnnotation {
-    let Some(annotation_start) = raw_text.rfind(" @doc(") else {
+fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPageAnnotation {
+    let Some(annotation_start) = raw_text.rfind("@doc") else {
         return ParsedPageAnnotation {
             text: raw_text.to_string(),
             doc_id: None,
-            is_malformed: false,
+            malformed_span: None,
         };
     };
 
-    if !raw_text.ends_with(')') {
+    let is_separated = annotation_start > 0
+        && raw_text[..annotation_start]
+            .chars()
+            .last()
+            .is_some_and(|character| character.is_whitespace());
+    let has_opening_parenthesis = raw_text[annotation_start..].starts_with("@doc(");
+    if !is_separated || !has_opening_parenthesis || !raw_text.ends_with(')') {
         return ParsedPageAnnotation {
             text: raw_text.to_string(),
             doc_id: None,
-            is_malformed: true,
+            malformed_span: Some(annotation_span(
+                raw_text_start_column,
+                annotation_start,
+                raw_text.len(),
+            )),
         };
     }
 
-    let id_start = annotation_start + " @doc(".len();
+    let id_start = annotation_start + "@doc(".len();
     let id = raw_text[id_start..raw_text.len() - 1].trim();
     if id.is_empty() {
         return ParsedPageAnnotation {
             text: raw_text.to_string(),
             doc_id: None,
-            is_malformed: true,
+            malformed_span: Some(annotation_span(
+                raw_text_start_column,
+                annotation_start,
+                raw_text.len(),
+            )),
         };
     }
 
     ParsedPageAnnotation {
         text: raw_text[..annotation_start].trim().to_string(),
         doc_id: Some(id.to_string()),
-        is_malformed: false,
+        malformed_span: None,
+    }
+}
+
+fn annotation_span(
+    raw_text_start_column: u32,
+    annotation_start: usize,
+    raw_text_end: usize,
+) -> PageAnnotationSpan {
+    PageAnnotationSpan {
+        start_column: raw_text_start_column + annotation_start as u32,
+        end_column: raw_text_start_column + raw_text_end as u32,
     }
 }
 
