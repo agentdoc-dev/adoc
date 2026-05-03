@@ -31,7 +31,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             continue;
         }
 
-        if looks_like_raw_html(trimmed) {
+        if let Some(raw_html) = find_raw_html(line) {
             flush_paragraph(
                 source,
                 &mut page.blocks,
@@ -44,7 +44,11 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                     "parse.raw_html",
                     "Raw HTML is not allowed in strict mode; write AgentDoc Source prose instead",
                 )
-                .with_span(source.span_for_line(line_number, line)),
+                .with_span(source.span_for_line_columns(
+                    line_number,
+                    raw_html.start_column,
+                    raw_html.end_column,
+                )),
             );
             continue;
         }
@@ -192,6 +196,11 @@ struct PendingList {
     span: SourceSpan,
 }
 
+struct RawHtmlMatch {
+    start_column: u32,
+    end_column: u32,
+}
+
 fn parse_heading(line: &str) -> Option<ParsedHeading> {
     let marker_count = line
         .chars()
@@ -263,15 +272,48 @@ fn parse_ordered_list_item(line: &str) -> Option<&str> {
         .then_some(line[dot_index + 2..].trim())
 }
 
-fn looks_like_raw_html(line: &str) -> bool {
-    let Some(after_opening_bracket) = line.strip_prefix('<') else {
-        return false;
-    };
-    let Some(first_character) = after_opening_bracket.chars().next() else {
+fn find_raw_html(line: &str) -> Option<RawHtmlMatch> {
+    for (start_index, character) in line.char_indices() {
+        if character != '<' {
+            continue;
+        }
+
+        let after_opening_bracket = &line[start_index + character.len_utf8()..];
+        if !starts_html_tag(after_opening_bracket) {
+            continue;
+        }
+
+        let end_index = line[start_index..]
+            .find('>')
+            .map(|relative_index| start_index + relative_index + 1)
+            .unwrap_or_else(|| line.len());
+
+        return Some(RawHtmlMatch {
+            start_column: column_for_byte_index(line, start_index),
+            end_column: column_for_byte_index(line, end_index),
+        });
+    }
+
+    None
+}
+
+fn starts_html_tag(value: &str) -> bool {
+    let mut characters = value.chars();
+    let Some(first_character) = characters.next() else {
         return false;
     };
 
-    first_character == '/' || first_character.is_ascii_alphabetic()
+    if first_character == '/' {
+        return characters
+            .next()
+            .is_some_and(|character| character.is_ascii_alphabetic());
+    }
+
+    first_character.is_ascii_alphabetic()
+}
+
+fn column_for_byte_index(line: &str, byte_index: usize) -> u32 {
+    line[..byte_index].chars().count() as u32 + 1
 }
 
 fn push_list_item(
