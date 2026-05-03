@@ -6,7 +6,7 @@ use crate::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::parser::parse_page;
 use crate::render::{HtmlRenderer, Renderer};
 use crate::source_provider::{FsSourceProvider, SourceProvider};
-use crate::validate::validate_page;
+use crate::validate::{validate_page, validate_workspace};
 
 #[derive(Debug, Clone)]
 pub struct CompileInput {
@@ -61,16 +61,15 @@ pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileR
         }
     }
 
-    let _workspace = WorkspaceAst {
-        pages: pages.clone(),
-    };
+    let workspace = WorkspaceAst { pages };
+    diagnostics.extend(validate_workspace(&workspace));
 
     let artifacts = diagnostics
         .iter()
         .all(|diagnostic| diagnostic.severity != Severity::Error)
         .then(|| BuildArtifacts {
-            html: HtmlRenderer.render(&pages),
-            agent_json: AgentJsonArtifact.write(&pages, &diagnostics),
+            html: HtmlRenderer.render(&workspace.pages),
+            agent_json: AgentJsonArtifact.write(&workspace.pages, &diagnostics),
         });
 
     CompileResult {

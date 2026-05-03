@@ -9,13 +9,32 @@
 //! streaming context (you only know a fence is unclosed once EOF is reached),
 //! so that diagnostic remains in the parser. See ADR-0007 for the decision.
 
-use crate::ast::{BlockAst, PageAst};
+use crate::ast::{BlockAst, PageAst, WorkspaceAst};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::inline::InlineSegment;
 use crate::source::{SourceFile, column_offset};
 
 pub(crate) trait ValidationRule {
     fn check(&self, page: &PageAst, source: &SourceFile, sink: &mut Vec<Diagnostic>);
+}
+
+/// Validation rule that operates on the whole `WorkspaceAst` aggregate rather
+/// than a single page — for invariants that require cross-page context (page
+/// ID uniqueness, link-target resolution, hierarchy checks). Mirrors
+/// [`ValidationRule`] so adding a workspace-level rule is a new adapter, not
+/// a branch inside the orchestrator.
+///
+/// The trait has no production impls today; the first one will trip the
+/// `expect(dead_code)` (in non-test builds) and signal to remove the attribute.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Port awaiting its first concrete adapter; tests exercise the trait shape."
+    )
+)]
+pub(crate) trait WorkspaceRule {
+    fn check(&self, workspace: &WorkspaceAst, sink: &mut Vec<Diagnostic>);
 }
 
 /// Run every strict-mode rule against `page`, appending diagnostics in source
@@ -28,6 +47,16 @@ pub(crate) fn validate_page(page: &PageAst, source: &SourceFile) -> Vec<Diagnost
     RawHtmlForbidden.check(page, source, &mut diagnostics);
     UnsafeLinkForbidden.check(page, source, &mut diagnostics);
     diagnostics
+}
+
+/// Run every workspace-level rule against `workspace`, appending diagnostics
+/// in registration order. The production registry is empty today: this is the
+/// seam through which future cross-page invariants (e.g. duplicate Object IDs
+/// across pages, broken `[link](id)` references) will land. Workspace rules
+/// run after per-page validation, so per-page errors are already in the sink
+/// by the time the orchestrator calls into here.
+pub(crate) fn validate_workspace(_workspace: &WorkspaceAst) -> Vec<Diagnostic> {
+    Vec::new()
 }
 
 /// Rejects raw HTML in the source: any line that contains a recognizable HTML
@@ -333,9 +362,8 @@ mod tests {
 
     #[test]
     fn raw_html_rule_skips_fenced_code_block() {
-        let diagnostics = validate_text(
-            "# Fenced HTML @doc(team.fenced)\n\n```html\n<div>example</div>\n```\n",
-        );
+        let diagnostics =
+            validate_text("# Fenced HTML @doc(team.fenced)\n\n```html\n<div>example</div>\n```\n");
         assert!(
             diagnostics.is_empty(),
             "expected raw HTML inside a fenced code block to be skipped, got {diagnostics:?}"
@@ -435,6 +463,59 @@ mod tests {
             diagnostics.is_empty(),
             "relative URL should be safe: {diagnostics:?}"
         );
+    }
+
+    // --- workspace-rule port ---
+
+    fn workspace_with_titles(titles: &[&str]) -> WorkspaceAst {
+        let pages = titles
+            .iter()
+            .map(|title| {
+                let source = SourceFile::new_with_identity_path(
+                    PathBuf::from(format!("{}.adoc", title)),
+                    format!("# {title}\n"),
+                    PathBuf::from(format!("{title}.adoc")),
+                );
+                let (page, _) = parse_page(&source);
+                page
+            })
+            .collect();
+        WorkspaceAst { pages }
+    }
+
+    struct SentinelWorkspaceRule;
+
+    impl WorkspaceRule for SentinelWorkspaceRule {
+        fn check(&self, workspace: &WorkspaceAst, sink: &mut Vec<Diagnostic>) {
+            // Synthesise a diagnostic that proves the rule was invoked and
+            // could see the workspace's contents.
+            sink.push(Diagnostic::error(
+                DiagnosticCode::ParseRawHtml,
+                format!("workspace observed {} page(s)", workspace.pages.len()),
+            ));
+        }
+    }
+
+    #[test]
+    fn workspace_rule_can_observe_workspace_pages_and_emit_diagnostic() {
+        let workspace = workspace_with_titles(&["one", "two"]);
+        let mut sink = Vec::new();
+
+        SentinelWorkspaceRule.check(&workspace, &mut sink);
+
+        assert_eq!(sink.len(), 1);
+        assert_eq!(sink[0].message, "workspace observed 2 page(s)");
+    }
+
+    #[test]
+    fn validate_workspace_returns_empty_for_production_registry() {
+        let workspace = workspace_with_titles(&["alpha"]);
+
+        let diagnostics = validate_workspace(&workspace);
+
+        // No workspace-level rules ship today; landing one will replace the
+        // empty assertion with an actual rule's expected behaviour.
+        assert!(diagnostics.is_empty());
     }
 
     #[test]

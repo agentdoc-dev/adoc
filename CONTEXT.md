@@ -153,6 +153,7 @@ _Avoid_: manual pre-created output directory
 - **Object ID** values are validated in v0 and form the citation target for humans and agents.
 - **Diagnostic Code** values are semantic in v0; numeric aliases are deferred.
 - **Validation Rule** runs after parsing; the parser emits only structural diagnostics, while semantic checks (raw HTML, unsafe link schemes) are validation rules.
+- **Workspace Rule** is a validation rule that operates on the whole **WorkspaceAst** aggregate rather than a single page; future cross-page invariants (e.g. duplicate **Object IDs**, broken link targets) land as workspace rules without changing the orchestrator.
 - An **Internal Port** stays `pub(crate)` until a concrete external consumer (LSP, web preview, semantic diff) needs it.
 - **Build Output Directory** is created by the CLI when missing.
 
