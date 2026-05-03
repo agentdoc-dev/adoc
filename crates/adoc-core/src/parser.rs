@@ -2,7 +2,7 @@ use crate::ast::{BlockAst, CodeBlockAst, HeadingAst, ListAst, ListKind, PageAst,
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::identity::{ObjectId, PageId};
 use crate::inline::{self, InlineOrigin, InlineSegment};
-use crate::source::{LineCursor, SourceFile, derive_page_id};
+use crate::source::{SourceFile, derive_page_id};
 
 pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     let mut page = PageAst {
@@ -66,10 +66,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
 
             let (inlines, heading_diagnostics) = inline::parse_inlines(
                 &heading.text,
-                InlineOrigin {
-                    source,
-                    cursor: LineCursor::at(line_number, heading.text_column),
-                },
+                InlineOrigin::at(source, line_number, heading.text_column),
             );
             diagnostics.extend(heading_diagnostics);
 
@@ -140,10 +137,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             let item_column = leading_indent_columns + 3;
             let (item_inlines, item_diagnostics) = inline::parse_inlines(
                 item_text,
-                InlineOrigin {
-                    source,
-                    cursor: LineCursor::at(line_number, item_column),
-                },
+                InlineOrigin::at(source, line_number, item_column),
             );
             diagnostics.extend(item_diagnostics);
             push_list_item(
@@ -170,10 +164,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             );
             let (item_inlines, item_diagnostics) = inline::parse_inlines(
                 item_text,
-                InlineOrigin {
-                    source,
-                    cursor: LineCursor::at(line_number, item_column),
-                },
+                InlineOrigin::at(source, line_number, item_column),
             );
             diagnostics.extend(item_diagnostics);
             push_list_item(
@@ -192,10 +183,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         let column_offset = leading_indent_columns + 1;
         let (line_inlines, line_diagnostics) = inline::parse_inlines(
             trimmed,
-            InlineOrigin {
-                source,
-                cursor: LineCursor::at(line_number, column_offset),
-            },
+            InlineOrigin::at(source, line_number, column_offset),
         );
         diagnostics.extend(line_diagnostics);
         paragraph_start_line.get_or_insert(line_number);

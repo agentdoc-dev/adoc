@@ -14,10 +14,41 @@ pub enum InlineSegment {
     },
 }
 
+/// Where an inline scan starts in the source file. Owns its `LineCursor` so
+/// callers (parser, recursive inline scans) reason about columns and spans
+/// without touching cursor arithmetic directly.
 #[derive(Debug, Clone, Copy)]
 pub struct InlineOrigin<'a> {
-    pub source: &'a SourceFile,
-    pub cursor: LineCursor,
+    source: &'a SourceFile,
+    cursor: LineCursor,
+}
+
+impl<'a> InlineOrigin<'a> {
+    pub fn at(source: &'a SourceFile, line: u32, column: u32) -> Self {
+        Self {
+            source,
+            cursor: LineCursor::at(line, column),
+        }
+    }
+
+    /// 1-indexed column reached after consuming `prefix` from this origin.
+    pub fn column_after(&self, prefix: &str) -> u32 {
+        self.cursor.column_after_chars(prefix)
+    }
+
+    /// New origin with the cursor advanced past `prefix` on the same line.
+    pub fn advance_past(&self, prefix: &str) -> Self {
+        Self {
+            source: self.source,
+            cursor: self.cursor.advance_past(prefix),
+        }
+    }
+
+    /// Span on this origin's line between `start_column` and `end_column`.
+    pub fn span(&self, start_column: u32, end_column: u32) -> SourceSpan {
+        self.source
+            .span_for_line_columns(self.cursor.line(), start_column, end_column)
+    }
 }
 
 pub fn parse_inlines(
@@ -118,18 +149,11 @@ fn scan_link(
     let url = after_open_paren[..close_paren_offset].to_string();
     let total_consumed = 1 + close_bracket_offset + 1 + 1 + close_paren_offset + 1;
 
-    let start_column = origin.cursor.column_after_chars(&text[..cursor]);
-    let end_column = origin
-        .cursor
-        .column_after_chars(&text[..cursor + total_consumed]);
-    let span = origin
-        .source
-        .span_for_line_columns(origin.cursor.line(), start_column, end_column);
+    let start_column = origin.column_after(&text[..cursor]);
+    let end_column = origin.column_after(&text[..cursor + total_consumed]);
+    let span = origin.span(start_column, end_column);
 
-    let label_origin = InlineOrigin {
-        cursor: origin.cursor.advance_past(&text[..cursor + 1]),
-        ..origin
-    };
+    let label_origin = origin.advance_past(&text[..cursor + 1]);
     let (label_segments, label_diagnostics) = parse_inlines(label_text, label_origin);
     output.diagnostics.extend(label_diagnostics);
     output.push_segment(InlineSegment::Link {
@@ -184,10 +208,7 @@ fn scan_paired_marker(
         return None;
     }
     let inner = &after_open[..close_offset];
-    let inner_origin = InlineOrigin {
-        cursor: origin.cursor.advance_past(&text[..cursor + marker.len()]),
-        ..origin
-    };
+    let inner_origin = origin.advance_past(&text[..cursor + marker.len()]);
     let (inner_segments, inner_diagnostics) = parse_inlines(inner, inner_origin);
     output.diagnostics.extend(inner_diagnostics);
     output.push_segment(wrap(inner_segments));
@@ -208,11 +229,8 @@ mod tests {
         )
     }
 
-    fn origin_for<'a>(source: &'a SourceFile, line: u32, column_offset: u32) -> InlineOrigin<'a> {
-        InlineOrigin {
-            source,
-            cursor: LineCursor::at(line, column_offset),
-        }
+    fn origin_for<'a>(source: &'a SourceFile, line: u32, column: u32) -> InlineOrigin<'a> {
+        InlineOrigin::at(source, line, column)
     }
 
     fn parse(text: &str) -> (Vec<InlineSegment>, Vec<Diagnostic>) {
