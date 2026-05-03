@@ -74,12 +74,23 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_start_line,
             );
             let mut code = String::new();
+            let mut is_closed = false;
             for (_, code_line) in lines.by_ref() {
                 if code_line.trim() == "```" {
+                    is_closed = true;
                     break;
                 }
                 code.push_str(code_line);
                 code.push('\n');
+            }
+            if !is_closed {
+                diagnostics.push(
+                    Diagnostic::error(
+                        "parse.unclosed_fence",
+                        "Fenced code block is missing a closing ``` fence",
+                    )
+                    .with_span(source.span_for_line(line_number, line)),
+                );
             }
             page.blocks.push(BlockAst::CodeBlock(CodeBlockAst {
                 language: language
