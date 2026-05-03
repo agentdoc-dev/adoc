@@ -209,6 +209,9 @@ fn column_at(origin: InlineOrigin<'_>, prefix: &str) -> u32 {
 }
 
 fn is_url_safe(url: &str) -> bool {
+    if url.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        return false;
+    }
     let Some(colon) = url.find(':') else {
         return true;
     };
@@ -503,6 +506,44 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn parse_inlines_rejects_whitespace_prefixed_javascript_url() {
+        let line_text = "see [click]( javascript:alert) here";
+        let source = source_file(line_text);
+        let origin = origin_for(&source, 1, 1);
+
+        let (segments, diagnostics) = parse_inlines(line_text, origin);
+
+        assert_eq!(
+            segments,
+            vec![InlineSegment::Text(
+                "see [click]( javascript:alert) here".to_string()
+            )],
+            "leading-whitespace url must fall back to literal text"
+        );
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
+    }
+
+    #[test]
+    fn parse_inlines_rejects_internal_tab_in_javascript_url() {
+        let line_text = "see [click](j\tavascript:alert) here";
+        let source = source_file(line_text);
+        let origin = origin_for(&source, 1, 1);
+
+        let (segments, diagnostics) = parse_inlines(line_text, origin);
+
+        assert_eq!(
+            segments,
+            vec![InlineSegment::Text(
+                "see [click](j\tavascript:alert) here".to_string()
+            )],
+            "internal-tab url must fall back to literal text"
+        );
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
     }
 
     #[test]
