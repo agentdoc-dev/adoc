@@ -35,6 +35,43 @@ fn check_accepts_v0_1_prose_fixture_with_all_inline_syntax() {
 }
 
 #[test]
+fn build_renders_v0_1_prose_fixture_to_golden_html() {
+    let workspace = TestWorkspace::new("build-renders-prose-golden-html");
+    let fixture = fixture_path("v0_1/prose_page.adoc");
+    let output_directory = workspace.root.join("dist");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            fixture.to_str().expect("fixture path is utf-8"),
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(output_directory.join("docs.html"))
+        .expect("docs.html is written");
+    let golden = fs::read_to_string(fixture_path("v0_1/prose_page.golden.html"))
+        .expect("golden HTML fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "rendered HTML diverged from prose_page.golden.html; \
+         re-run `adoc build` against prose_page.adoc and review before updating the snapshot"
+    );
+}
+
+#[test]
 fn check_accepts_minimal_prose_page() {
     let workspace = TestWorkspace::new("check-accepts-minimal-prose-page");
     let source = workspace.write(

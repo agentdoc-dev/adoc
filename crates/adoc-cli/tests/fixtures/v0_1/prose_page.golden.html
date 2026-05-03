@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentDoc</title>
+</head>
+<body>
+<article data-page-id="v0-1.prose">
+<h1>AgentDoc V0.1 Prose Reference</h1>
+<p>AgentDoc keeps <strong>knowledge</strong> readable for both humans and <em>agents</em>. Run <code>adoc check</code> to validate the source, then <code>adoc build</code> to emit human and agent artifacts.</p>
+<h2>Block coverage</h2>
+<p>The V0.1 compiler covers these block types end to end:</p>
+<ul>
+<li>Headings, levels 1 through 6</li>
+<li>Ordered and unordered lists</li>
+<li>Fenced code blocks</li>
+<li>Plain prose paragraphs</li>
+</ul>
+<p>It also enforces strict mode for the cases below:</p>
+<ol>
+<li>Raw HTML is rejected with a <code>parse.raw_html</code> diagnostic.</li>
+<li>Unclosed fenced code blocks are rejected with <code>parse.unclosed_fence</code>.</li>
+<li>Link URLs outside <code>http</code>, <code>https</code>, and <code>mailto</code> are rejected with <code>parse.unsafe_link</code>.</li>
+</ol>
+<h2>Code samples</h2>
+<p>Use a fenced block for multi-line code:</p>
+<pre><code class="language-rust">fn main() {
+    println!(&quot;hello agentdoc&quot;);
+}
+</code></pre>
+<p>Or <code>inline code</code> for shorter callouts inside prose.</p>
+<h2>Links</h2>
+<p>Read the <a href="https://example.test/adoc">project overview</a> or email the <a href="mailto:dev@example.test">maintainer team</a> with feedback.</p>
+</article>
+</body>
+</html>
