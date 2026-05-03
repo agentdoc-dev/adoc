@@ -1,0 +1,12 @@
+{
+  "schema_version": "adoc.agent.v0",
+  "pages": [
+    {
+      "id": "v0-1.prose",
+      "title": "AgentDoc V0.1 Prose Reference",
+      "source_path": "prose_page.adoc"
+    }
+  ],
+  "objects": [],
+  "diagnostics": []
+}

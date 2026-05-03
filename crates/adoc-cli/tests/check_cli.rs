@@ -35,6 +35,40 @@ fn check_accepts_v0_1_prose_fixture_with_all_inline_syntax() {
 }
 
 #[test]
+fn build_renders_v0_1_prose_fixture_to_golden_agent_json() {
+    let workspace = TestWorkspace::new("build-renders-prose-golden-json");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_1/prose_page.adoc"))
+        .expect("prose fixture is readable");
+    workspace.write("prose_page.adoc", &fixture_contents);
+
+    // Run with cwd=workspace so the recorded source_path is "prose_page.adoc"
+    // rather than a host-specific absolute path.
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "prose_page.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
+        .expect("docs.agent.json is written");
+    let golden = fs::read_to_string(fixture_path("v0_1/prose_page.golden.agent.json"))
+        .expect("golden agent JSON fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "agent JSON diverged from prose_page.golden.agent.json; \
+         re-run `adoc build` against prose_page.adoc and review before updating the snapshot"
+    );
+}
+
+#[test]
 fn build_renders_v0_1_prose_fixture_to_golden_html() {
     let workspace = TestWorkspace::new("build-renders-prose-golden-html");
     let fixture = fixture_path("v0_1/prose_page.adoc");
