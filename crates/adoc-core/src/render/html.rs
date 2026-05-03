@@ -98,7 +98,7 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
             render_inlines(inner, html);
             html.push_str("</strong>");
         }
-        InlineSegment::Link { text, url } => {
+        InlineSegment::Link { text, url, .. } => {
             html.push_str("<a href=\"");
             html.push_str(&escape_html(url));
             html.push_str("\">");
@@ -119,12 +119,31 @@ fn escape_html(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
+    use crate::diagnostic::{SourcePosition, SourceSpan};
 
     fn render(segments: &[InlineSegment]) -> String {
         let mut html = String::new();
         render_inlines(segments, &mut html);
         html
+    }
+
+    fn dummy_span() -> SourceSpan {
+        SourceSpan {
+            file: PathBuf::from("guide.adoc"),
+            start: SourcePosition {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
+            end: SourcePosition {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
+        }
     }
 
     #[test]
@@ -160,6 +179,7 @@ mod tests {
         let html = render(&[InlineSegment::Link {
             text: vec![InlineSegment::Text("docs".to_string())],
             url: "https://example.test/?q=\"a&b\"".to_string(),
+            span: dummy_span(),
         }]);
         assert_eq!(
             html,
@@ -170,25 +190,9 @@ mod tests {
     #[test]
     fn render_html_flows_inlines_through_heading_paragraph_and_list_item() {
         use crate::ast::{HeadingAst, ListAst, ListKind, ParagraphAst};
-        use crate::diagnostic::{SourcePosition, SourceSpan};
         use crate::identity::PageId;
-        use std::path::PathBuf;
 
-        fn span() -> SourceSpan {
-            SourceSpan {
-                file: PathBuf::from("guide.adoc"),
-                start: SourcePosition {
-                    line: 1,
-                    column: 1,
-                    offset: 0,
-                },
-                end: SourcePosition {
-                    line: 1,
-                    column: 1,
-                    offset: 0,
-                },
-            }
-        }
+        let span = dummy_span;
 
         let page = PageAst {
             id: PageId::from_string("guide"),
@@ -239,6 +243,7 @@ mod tests {
                 InlineSegment::Code("adoc".to_string()),
             ],
             url: "https://example.test".to_string(),
+            span: dummy_span(),
         }]);
         assert_eq!(
             html,

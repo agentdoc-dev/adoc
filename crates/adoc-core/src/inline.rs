@@ -1,4 +1,4 @@
-use crate::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::diagnostic::{Diagnostic, SourceSpan};
 use crate::source::{LineCursor, SourceFile};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,6 +10,7 @@ pub enum InlineSegment {
     Link {
         text: Vec<InlineSegment>,
         url: String,
+        span: SourceSpan,
     },
 }
 
@@ -68,17 +69,9 @@ impl ScannerOutput {
             .push(InlineSegment::Text(std::mem::take(&mut self.buffer)));
     }
 
-    fn push_text(&mut self, text: &str) {
-        self.buffer.push_str(text);
-    }
-
     fn push_segment(&mut self, segment: InlineSegment) {
         self.flush_text();
         self.segments.push(segment);
-    }
-
-    fn push_diagnostic(&mut self, diagnostic: Diagnostic) {
-        self.diagnostics.push(diagnostic);
     }
 }
 
@@ -125,27 +118,13 @@ fn scan_link(
     let url = after_open_paren[..close_paren_offset].to_string();
     let total_consumed = 1 + close_bracket_offset + 1 + 1 + close_paren_offset + 1;
 
-    if !is_url_safe(&url) {
-        let start_column = origin.cursor.column_after_chars(&text[..cursor]);
-        let end_column = origin
-            .cursor
-            .column_after_chars(&text[..cursor + total_consumed]);
-        let span =
-            origin
-                .source
-                .span_for_line_columns(origin.cursor.line(), start_column, end_column);
-        output.push_diagnostic(
-            Diagnostic::error(
-                DiagnosticCode::ParseUnsafeLink,
-                format!(
-                    "Link URL scheme is not allowed in strict mode: {url}; use http, https, or mailto",
-                ),
-            )
-            .with_span(span),
-        );
-        output.push_text(&text[cursor..cursor + total_consumed]);
-        return Some(total_consumed);
-    }
+    let start_column = origin.cursor.column_after_chars(&text[..cursor]);
+    let end_column = origin
+        .cursor
+        .column_after_chars(&text[..cursor + total_consumed]);
+    let span = origin
+        .source
+        .span_for_line_columns(origin.cursor.line(), start_column, end_column);
 
     let label_origin = InlineOrigin {
         cursor: origin.cursor.advance_past(&text[..cursor + 1]),
@@ -156,6 +135,7 @@ fn scan_link(
     output.push_segment(InlineSegment::Link {
         text: label_segments,
         url,
+        span,
     });
     Some(total_consumed)
 }
@@ -212,34 +192,6 @@ fn scan_paired_marker(
     output.diagnostics.extend(inner_diagnostics);
     output.push_segment(wrap(inner_segments));
     Some(marker.len() + close_offset + marker.len())
-}
-
-fn is_url_safe(url: &str) -> bool {
-    if url.bytes().any(|byte| byte.is_ascii_whitespace()) {
-        return false;
-    }
-    let Some(colon) = url.find(':') else {
-        return true;
-    };
-    let scheme = &url[..colon];
-    if scheme.is_empty() {
-        return true;
-    }
-    if !scheme.starts_with(|character: char| character.is_ascii_alphabetic()) {
-        return true;
-    }
-    if !scheme.chars().all(|character| {
-        character.is_ascii_alphanumeric()
-            || character == '+'
-            || character == '-'
-            || character == '.'
-    }) {
-        return true;
-    }
-    matches!(
-        scheme.to_ascii_lowercase().as_str(),
-        "http" | "https" | "mailto"
-    )
 }
 
 #[cfg(test)]
@@ -344,26 +296,36 @@ mod tests {
         assert!(diagnostics.is_empty());
     }
 
+    fn assert_link(segment: &InlineSegment, expected_text: Vec<InlineSegment>, expected_url: &str) {
+        match segment {
+            InlineSegment::Link { text, url, .. } => {
+                assert_eq!(url.as_str(), expected_url, "link URL mismatch");
+                assert_eq!(text, &expected_text, "link label mismatch");
+            }
+            other => panic!("expected Link segment, got {other:?}"),
+        }
+    }
+
     #[test]
     fn parse_inlines_handles_mixed_text_emphasis_code_link_chain() {
         let (segments, diagnostics) =
             parse("Try *foo* and `bar` then [docs](https://example.test) end.");
 
+        assert_eq!(segments.len(), 7);
+        assert_eq!(segments[0], InlineSegment::Text("Try ".to_string()));
         assert_eq!(
-            segments,
-            vec![
-                InlineSegment::Text("Try ".to_string()),
-                InlineSegment::Emphasis(vec![InlineSegment::Text("foo".to_string())]),
-                InlineSegment::Text(" and ".to_string()),
-                InlineSegment::Code("bar".to_string()),
-                InlineSegment::Text(" then ".to_string()),
-                InlineSegment::Link {
-                    text: vec![InlineSegment::Text("docs".to_string())],
-                    url: "https://example.test".to_string(),
-                },
-                InlineSegment::Text(" end.".to_string()),
-            ]
+            segments[1],
+            InlineSegment::Emphasis(vec![InlineSegment::Text("foo".to_string())])
         );
+        assert_eq!(segments[2], InlineSegment::Text(" and ".to_string()));
+        assert_eq!(segments[3], InlineSegment::Code("bar".to_string()));
+        assert_eq!(segments[4], InlineSegment::Text(" then ".to_string()));
+        assert_link(
+            &segments[5],
+            vec![InlineSegment::Text("docs".to_string())],
+            "https://example.test",
+        );
+        assert_eq!(segments[6], InlineSegment::Text(" end.".to_string()));
         assert!(diagnostics.is_empty());
     }
 
@@ -371,12 +333,11 @@ mod tests {
     fn parse_inlines_recognizes_link_with_https_url() {
         let (segments, diagnostics) = parse("[label](https://example.test)");
 
-        assert_eq!(
-            segments,
-            vec![InlineSegment::Link {
-                text: vec![InlineSegment::Text("label".to_string())],
-                url: "https://example.test".to_string(),
-            }]
+        assert_eq!(segments.len(), 1);
+        assert_link(
+            &segments[0],
+            vec![InlineSegment::Text("label".to_string())],
+            "https://example.test",
         );
         assert!(diagnostics.is_empty());
     }
@@ -385,17 +346,14 @@ mod tests {
     fn parse_inlines_link_inside_paragraph() {
         let (segments, _) = parse("see [docs](https://example.test) for details");
 
-        assert_eq!(
-            segments,
-            vec![
-                InlineSegment::Text("see ".to_string()),
-                InlineSegment::Link {
-                    text: vec![InlineSegment::Text("docs".to_string())],
-                    url: "https://example.test".to_string(),
-                },
-                InlineSegment::Text(" for details".to_string()),
-            ]
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0], InlineSegment::Text("see ".to_string()));
+        assert_link(
+            &segments[1],
+            vec![InlineSegment::Text("docs".to_string())],
+            "https://example.test",
         );
+        assert_eq!(segments[2], InlineSegment::Text(" for details".to_string()));
     }
 
     #[test]
@@ -461,139 +419,31 @@ mod tests {
     }
 
     #[test]
-    fn parse_inlines_emits_unsafe_link_diagnostic_for_javascript_url() {
-        let line_text = "see [click](javascript:alert) here";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
+    fn parse_inlines_emits_link_with_unsafe_url_intact_for_validator() {
+        let (segments, diagnostics) = parse("see [click](javascript:alert) here");
 
-        let (segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert_eq!(
-            segments,
-            vec![InlineSegment::Text(
-                "see [click](javascript:alert) here".to_string()
-            )],
-            "unsafe link must fall back to literal text"
+        // Diagnostic emission for unsafe URLs is the validator's job; the
+        // inline scanner emits the Link verbatim regardless of scheme.
+        assert!(diagnostics.is_empty());
+        assert_eq!(segments.len(), 3);
+        assert_link(
+            &segments[1],
+            vec![InlineSegment::Text("click".to_string())],
+            "javascript:alert",
         );
-        assert_eq!(diagnostics.len(), 1, "expected one unsafe-link diagnostic");
-        let diagnostic = &diagnostics[0];
-        assert_eq!(diagnostic.code, "parse.unsafe_link");
-        assert!(
-            diagnostic.message.contains("javascript:alert"),
-            "diagnostic message should quote the offending URL: {}",
-            diagnostic.message
-        );
-        let span = diagnostic.span.as_ref().expect("diagnostic has span");
-        assert_eq!(span.start.line, 1);
-        assert_eq!(span.start.column, 5);
-        assert_eq!(span.end.column, 30);
     }
 
     #[test]
     fn parse_inlines_accepts_mailto_link() {
-        let line_text = "send to [team](mailto:dev@example.test)";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
+        let (segments, diagnostics) = parse("send to [team](mailto:dev@example.test)");
 
-        let (segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert!(
-            diagnostics.is_empty(),
-            "mailto: must be on the safe allowlist: {diagnostics:?}"
-        );
-        assert_eq!(
-            segments,
-            vec![
-                InlineSegment::Text("send to ".to_string()),
-                InlineSegment::Link {
-                    text: vec![InlineSegment::Text("team".to_string())],
-                    url: "mailto:dev@example.test".to_string(),
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn parse_inlines_rejects_whitespace_prefixed_javascript_url() {
-        let line_text = "see [click]( javascript:alert) here";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
-
-        let (segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert_eq!(
-            segments,
-            vec![InlineSegment::Text(
-                "see [click]( javascript:alert) here".to_string()
-            )],
-            "leading-whitespace url must fall back to literal text"
-        );
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
-    }
-
-    #[test]
-    fn parse_inlines_rejects_internal_tab_in_javascript_url() {
-        let line_text = "see [click](j\tavascript:alert) here";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
-
-        let (segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert_eq!(
-            segments,
-            vec![InlineSegment::Text(
-                "see [click](j\tavascript:alert) here".to_string()
-            )],
-            "internal-tab url must fall back to literal text"
-        );
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
-    }
-
-    #[test]
-    fn parse_inlines_reports_correct_column_for_unsafe_link_inside_emphasis() {
-        let line_text = "*[click](javascript:bad)*";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
-
-        let (_segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
-        let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
-        assert_eq!(
-            span.start.column, 2,
-            "link inside emphasis must report inner column"
-        );
-        assert_eq!(span.end.column, 25);
-    }
-
-    #[test]
-    fn parse_inlines_reports_correct_column_for_unsafe_link_inside_strong() {
-        let line_text = "**[click](javascript:bad)**";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
-
-        let (_segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
-        let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
-        assert_eq!(
-            span.start.column, 3,
-            "link inside strong must report inner column past two-char marker"
-        );
-        assert_eq!(span.end.column, 26);
-    }
-
-    #[test]
-    fn parse_inlines_does_not_flag_relative_link_url() {
-        let (_segments, diagnostics) = parse("see [docs](./guide.html) for context");
-
-        assert!(
-            diagnostics.is_empty(),
-            "relative URL should be safe: {diagnostics:?}"
+        assert!(diagnostics.is_empty());
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0], InlineSegment::Text("send to ".to_string()));
+        assert_link(
+            &segments[1],
+            vec![InlineSegment::Text("team".to_string())],
+            "mailto:dev@example.test",
         );
     }
 

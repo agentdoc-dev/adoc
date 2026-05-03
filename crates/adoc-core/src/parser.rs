@@ -35,29 +35,6 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             continue;
         }
 
-        if let Some(raw_html) = find_raw_html(line) {
-            flush_paragraph(
-                source,
-                &mut page.blocks,
-                &mut paragraph_lines,
-                &mut paragraph_start_line,
-                &mut paragraph_end_line,
-            );
-            flush_list(&mut page.blocks, &mut pending_list);
-            diagnostics.push(
-                Diagnostic::error(
-                    DiagnosticCode::ParseRawHtml,
-                    "Raw HTML is not allowed in strict mode; write AgentDoc Source prose instead",
-                )
-                .with_span(source.span_for_line_columns(
-                    line_number,
-                    raw_html.start_column,
-                    raw_html.end_column,
-                )),
-            );
-            continue;
-        }
-
         let leading_indent_columns = line
             .chars()
             .take_while(|character| character.is_whitespace())
@@ -251,11 +228,6 @@ struct PendingList {
     span: SourceSpan,
 }
 
-struct RawHtmlMatch {
-    start_column: u32,
-    end_column: u32,
-}
-
 #[derive(Clone, Copy)]
 struct PageAnnotationSpan {
     start_column: u32,
@@ -398,69 +370,6 @@ fn parse_ordered_list_item(line: &str, leading_indent_columns: u32) -> Option<(&
         })
 }
 
-fn find_raw_html(line: &str) -> Option<RawHtmlMatch> {
-    for (start_index, character) in line.char_indices() {
-        if character != '<' {
-            continue;
-        }
-
-        let is_tag_boundary = start_index == 0
-            || line[..start_index]
-                .chars()
-                .last()
-                .is_some_and(|character| character.is_whitespace());
-        if !is_tag_boundary {
-            continue;
-        }
-
-        let after_opening_bracket = &line[start_index + character.len_utf8()..];
-        let Some(tag_end) = raw_html_tag_end(after_opening_bracket) else {
-            continue;
-        };
-        let end_index = start_index + character.len_utf8() + tag_end;
-
-        let line_start = LineCursor::at_line_start(0);
-        return Some(RawHtmlMatch {
-            start_column: line_start.column_after_chars(&line[..start_index]),
-            end_column: line_start.column_after_chars(&line[..end_index]),
-        });
-    }
-
-    None
-}
-
-fn raw_html_tag_end(value: &str) -> Option<usize> {
-    let mut name_start = 0;
-    if value.starts_with('/') {
-        name_start = 1;
-    }
-
-    let first_character = value[name_start..].chars().next()?;
-    if !first_character.is_ascii_alphabetic() {
-        return None;
-    }
-
-    let mut name_end = name_start + first_character.len_utf8();
-    for character in value[name_end..].chars() {
-        if !character.is_ascii_alphanumeric() && character != '-' {
-            break;
-        }
-        name_end += character.len_utf8();
-    }
-
-    let next_character = value[name_end..].chars().next()?;
-    match next_character {
-        '>' => Some(name_end + 1),
-        '/' => value[name_end + 1..]
-            .starts_with('>')
-            .then_some(name_end + 2),
-        character if character.is_whitespace() => value[name_end..]
-            .find('>')
-            .map(|relative_index| name_end + relative_index + 1),
-        _ => None,
-    }
-}
-
 fn push_list_item(
     source: &SourceFile,
     blocks: &mut Vec<BlockAst>,
@@ -575,19 +484,6 @@ mod tests {
     }
 
     #[test]
-    fn heading_with_extra_marker_padding_reports_correct_inline_column() {
-        let (_page, diagnostics) = parse_source("##   [click](javascript:bad)\n");
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
-        let span = diagnostics[0].span.as_ref().unwrap();
-        assert_eq!(
-            span.start.column, 6,
-            "extra spaces after # markers must shift the inline column accordingly"
-        );
-    }
-
-    #[test]
     fn parse_page_reports_annotation_column_after_utf8_heading_text() {
         let (_page, diagnostics) = parse_source("# Café @doc(\n\nContent.\n");
 
@@ -595,45 +491,6 @@ mod tests {
         let span = diagnostics[0].span.as_ref().unwrap();
         assert_eq!(span.start.column, 8);
         assert_eq!(span.start.offset, 8);
-    }
-
-    #[test]
-    fn parse_page_allows_angle_bracket_prose() {
-        let (_page, diagnostics) = parse_source(
-            "# Technical Prose\n\nVec<String>, Map<K, V>, Result<T, E>, and compare a<b.\n",
-        );
-
-        assert!(
-            diagnostics.is_empty(),
-            "expected angle-bracket prose to parse cleanly, got {diagnostics:?}"
-        );
-    }
-
-    #[test]
-    fn parse_page_rejects_inline_raw_html_tag() {
-        let (_page, diagnostics) = parse_source("# Unsafe\n\nKeep <span>raw html</span> out.\n");
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.raw_html");
-        assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 6);
-    }
-
-    #[test]
-    fn parse_page_rejects_unknown_raw_html_tag() {
-        let (_page, diagnostics) = parse_source("# Unsafe\n\n<foo>bar</foo>\n");
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.raw_html");
-        assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 1);
-    }
-
-    #[test]
-    fn parse_page_rejects_custom_element_raw_html_tag() {
-        let (_page, diagnostics) = parse_source("# Unsafe\n\n<my-component>x</my-component>\n");
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.raw_html");
-        assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 1);
     }
 
     #[test]

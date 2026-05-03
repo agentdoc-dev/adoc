@@ -6,6 +6,7 @@ use crate::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::parser::parse_page;
 use crate::render::{HtmlRenderer, Renderer};
 use crate::source_provider::{FsSourceProvider, SourceProvider};
+use crate::validate::validate_page;
 
 #[derive(Debug, Clone)]
 pub struct CompileInput {
@@ -46,6 +47,7 @@ pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileR
             Ok(source) => {
                 let (page, page_diagnostics) = parse_page(&source);
                 diagnostics.extend(page_diagnostics);
+                diagnostics.extend(validate_page(&page, &source));
                 pages.push(page);
             }
             Err(load_error) => diagnostics.push(Diagnostic::error(
