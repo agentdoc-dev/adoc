@@ -35,6 +35,45 @@ fn check_accepts_v0_1_prose_fixture_with_all_inline_syntax() {
 }
 
 #[test]
+fn check_unclosed_fence_diagnostic_surfaces_all_six_fields() {
+    let workspace = TestWorkspace::new("check-unclosed-fence-shape");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_1/unclosed_fence.adoc"))
+        .expect("unclosed_fence fixture is readable");
+    let source = workspace.write("unclosed_fence.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected unclosed fence to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Issue #3 acceptance: the diagnostic must carry file, line, column,
+    // severity, code, and a fix-oriented message.
+    let prefix = format!(
+        "{}:5:1:",
+        source.to_str().expect("source path is utf-8")
+    );
+    assert!(
+        stdout.contains(&prefix),
+        "expected diagnostic to start with `path:line:column:` prefix `{prefix}`, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("error[parse.unclosed_fence]"),
+        "expected severity + code `error[parse.unclosed_fence]` in stdout:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("Fenced code block is missing a closing"),
+        "expected fix-oriented message about the missing closing fence:\n{stdout}"
+    );
+    assert!(stdout.contains("1 errors"));
+}
+
+#[test]
 fn check_rejects_unsafe_link_with_source_location() {
     let workspace = TestWorkspace::new("check-rejects-unsafe-link");
     let fixture_contents = fs::read_to_string(fixture_path("v0_1/unsafe_link.adoc"))

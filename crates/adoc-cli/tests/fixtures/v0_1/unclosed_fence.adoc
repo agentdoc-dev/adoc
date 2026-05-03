@@ -1,0 +1,6 @@
+# Broken Code @doc(broken-code)
+
+Use this code sample:
+
+```rust
+fn main() {}
