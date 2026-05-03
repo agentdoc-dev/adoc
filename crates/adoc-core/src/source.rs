@@ -5,15 +5,17 @@ use crate::diagnostic::{SourcePosition, SourceSpan};
 #[derive(Debug, Clone)]
 pub struct SourceFile {
     pub path: PathBuf,
+    pub identity_path: PathBuf,
     pub text: String,
     pub line_index: LineIndex,
 }
 
 impl SourceFile {
-    pub fn new(path: PathBuf, text: String) -> Self {
+    pub fn new_with_identity_path(path: PathBuf, text: String, identity_path: PathBuf) -> Self {
         let line_index = LineIndex::new(&text);
         Self {
             path,
+            identity_path,
             text,
             line_index,
         }
@@ -62,11 +64,34 @@ impl LineIndex {
 }
 
 pub fn derive_page_id(path: &Path) -> String {
-    path.file_stem()
-        .and_then(|stem| stem.to_str())
-        .map(normalize_id_segment)
-        .filter(|id| !id.is_empty())
-        .unwrap_or_else(|| "untitled".to_string())
+    let path_segments: Vec<_> = path
+        .components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .collect();
+    let last_index = path_segments.len().saturating_sub(1);
+
+    let id_segments: Vec<_> = path_segments
+        .iter()
+        .enumerate()
+        .filter_map(|(index, segment)| {
+            let value = if index == last_index {
+                Path::new(segment)
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or(*segment)
+            } else {
+                segment
+            };
+            let normalized = normalize_id_segment(value);
+            (!normalized.is_empty()).then_some(normalized)
+        })
+        .collect();
+
+    if id_segments.is_empty() {
+        "untitled".to_string()
+    } else {
+        id_segments.join(".")
+    }
 }
 
 fn normalize_id_segment(value: &str) -> String {

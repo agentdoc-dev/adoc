@@ -4,7 +4,7 @@ use crate::source::{SourceFile, derive_page_id};
 
 pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     let mut page = PageAst {
-        id: derive_page_id(&source.path),
+        id: derive_page_id(&source.identity_path),
         title: None,
         source_path: source.path.clone(),
         blocks: Vec::new(),
