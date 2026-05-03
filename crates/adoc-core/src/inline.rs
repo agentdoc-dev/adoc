@@ -482,6 +482,30 @@ mod tests {
     }
 
     #[test]
+    fn parse_inlines_accepts_mailto_link() {
+        let line_text = "send to [team](mailto:dev@example.test)";
+        let source = source_file(line_text);
+        let origin = origin_for(&source, 1, 1);
+
+        let (segments, diagnostics) = parse_inlines(line_text, origin);
+
+        assert!(
+            diagnostics.is_empty(),
+            "mailto: must be on the safe allowlist: {diagnostics:?}"
+        );
+        assert_eq!(
+            segments,
+            vec![
+                InlineSegment::Text("send to ".to_string()),
+                InlineSegment::Link {
+                    text: vec![InlineSegment::Text("team".to_string())],
+                    url: "mailto:dev@example.test".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn parse_inlines_does_not_flag_relative_link_url() {
         let (_segments, diagnostics) = parse("see [docs](./guide.html) for context");
 
