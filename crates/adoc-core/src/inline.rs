@@ -145,7 +145,11 @@ fn scan_link(
         return Some(total_consumed);
     }
 
-    let (label_segments, label_diagnostics) = parse_inlines(label_text, origin);
+    let label_origin = InlineOrigin {
+        column_offset: column_at(origin, &text[..cursor + 1]),
+        ..origin
+    };
+    let (label_segments, label_diagnostics) = parse_inlines(label_text, label_origin);
     output.diagnostics.extend(label_diagnostics);
     output.push_segment(InlineSegment::Link {
         text: label_segments,
@@ -198,7 +202,11 @@ fn scan_paired_marker(
         return None;
     }
     let inner = &after_open[..close_offset];
-    let (inner_segments, inner_diagnostics) = parse_inlines(inner, origin);
+    let inner_origin = InlineOrigin {
+        column_offset: column_at(origin, &text[..cursor + marker.len()]),
+        ..origin
+    };
+    let (inner_segments, inner_diagnostics) = parse_inlines(inner, inner_origin);
     output.diagnostics.extend(inner_diagnostics);
     output.push_segment(wrap(inner_segments));
     Some(marker.len() + close_offset + marker.len())
@@ -544,6 +552,42 @@ mod tests {
         );
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, "parse.unsafe_link");
+    }
+
+    #[test]
+    fn parse_inlines_reports_correct_column_for_unsafe_link_inside_emphasis() {
+        let line_text = "*[click](javascript:bad)*";
+        let source = source_file(line_text);
+        let origin = origin_for(&source, 1, 1);
+
+        let (_segments, diagnostics) = parse_inlines(line_text, origin);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
+        let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
+        assert_eq!(
+            span.start.column, 2,
+            "link inside emphasis must report inner column"
+        );
+        assert_eq!(span.end.column, 25);
+    }
+
+    #[test]
+    fn parse_inlines_reports_correct_column_for_unsafe_link_inside_strong() {
+        let line_text = "**[click](javascript:bad)**";
+        let source = source_file(line_text);
+        let origin = origin_for(&source, 1, 1);
+
+        let (_segments, diagnostics) = parse_inlines(line_text, origin);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
+        let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
+        assert_eq!(
+            span.start.column, 3,
+            "link inside strong must report inner column past two-char marker"
+        );
+        assert_eq!(span.end.column, 26);
     }
 
     #[test]
