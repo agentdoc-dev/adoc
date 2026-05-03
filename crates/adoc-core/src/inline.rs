@@ -516,6 +516,34 @@ mod tests {
     }
 
     #[test]
+    fn parse_inlines_preserves_html_special_chars_verbatim() {
+        let (segments, diagnostics) = parse("AT&T uses < and > with \"quotes\".");
+
+        assert_eq!(
+            segments,
+            vec![InlineSegment::Text(
+                "AT&T uses < and > with \"quotes\".".to_string()
+            )],
+            "scanner must not pre-escape; renderer owns HTML escaping"
+        );
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_inlines_preserves_html_special_chars_inside_inline_code() {
+        let (segments, _) = parse("Run `<adoc>` with caution.");
+
+        assert_eq!(
+            segments,
+            vec![
+                InlineSegment::Text("Run ".to_string()),
+                InlineSegment::Code("<adoc>".to_string()),
+                InlineSegment::Text(" with caution.".to_string()),
+            ]
+        );
+    }
+
+    #[test]
     fn plain_text_concatenates_text_segments() {
         let segments = vec![
             InlineSegment::Text("hello ".to_string()),
