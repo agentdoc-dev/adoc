@@ -77,6 +77,11 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
         InlineSegment::Text(text) => {
             html.push_str(&escape_html(text));
         }
+        InlineSegment::Code(code) => {
+            html.push_str("<code>");
+            html.push_str(&escape_html(code));
+            html.push_str("</code>");
+        }
         InlineSegment::Emphasis(inner) => {
             html.push_str("<em>");
             render_inlines(inner, html);

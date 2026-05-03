@@ -3,6 +3,7 @@ use crate::diagnostic::Diagnostic;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InlineSegment {
     Text(String),
+    Code(String),
     Emphasis(Vec<InlineSegment>),
     Strong(Vec<InlineSegment>),
 }
@@ -14,6 +15,10 @@ pub fn parse_inlines(text: &str) -> (Vec<InlineSegment>, Vec<Diagnostic>) {
     let mut cursor = 0;
 
     while cursor < text.len() {
+        if let Some(consumed) = scan_code(text, cursor, &mut segments, &mut buffer) {
+            cursor += consumed;
+            continue;
+        }
         if let Some(consumed) = scan_emphasis_or_strong(
             text,
             cursor,
@@ -46,12 +51,32 @@ pub fn plain_text(segments: &[InlineSegment]) -> String {
 fn append_plain_text(segments: &[InlineSegment], buffer: &mut String) {
     for segment in segments {
         match segment {
-            InlineSegment::Text(text) => buffer.push_str(text),
+            InlineSegment::Text(text) | InlineSegment::Code(text) => buffer.push_str(text),
             InlineSegment::Emphasis(inner) | InlineSegment::Strong(inner) => {
                 append_plain_text(inner, buffer)
             }
         }
     }
+}
+
+fn scan_code(
+    text: &str,
+    cursor: usize,
+    segments: &mut Vec<InlineSegment>,
+    buffer: &mut String,
+) -> Option<usize> {
+    if !text[cursor..].starts_with('`') {
+        return None;
+    }
+    let after_open = &text[cursor + 1..];
+    let close_offset = after_open.find('`')?;
+    if close_offset == 0 {
+        return None;
+    }
+    let inner = after_open[..close_offset].to_string();
+    flush_text(segments, buffer);
+    segments.push(InlineSegment::Code(inner));
+    Some(1 + close_offset + 1)
 }
 
 fn scan_emphasis_or_strong(
@@ -138,6 +163,27 @@ mod tests {
             )])]
         );
         assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_inlines_recognizes_inline_code() {
+        let (segments, diagnostics) = parse_inlines("`adoc check`");
+
+        assert_eq!(
+            segments,
+            vec![InlineSegment::Code("adoc check".to_string())]
+        );
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_inlines_does_not_format_inside_inline_code() {
+        let (segments, _) = parse_inlines("`*not emphasis*`");
+
+        assert_eq!(
+            segments,
+            vec![InlineSegment::Code("*not emphasis*".to_string())]
+        );
     }
 
     #[test]
