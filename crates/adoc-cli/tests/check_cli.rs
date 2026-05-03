@@ -142,6 +142,44 @@ fn build_derives_distinct_page_ids_from_directory_relative_paths() {
 }
 
 #[test]
+fn build_keeps_page_identity_from_first_heading_annotation() {
+    let workspace = TestWorkspace::new("build-keeps-first-heading-page-id");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Guide @doc(primary-guide)\n\n## Details @doc(details-section)\n\nMore context.\n",
+    );
+    let output_directory = workspace.root.join("dist");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            source.to_str().expect("source path is utf-8"),
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(output_directory.join("docs.html")).expect("HTML is written");
+    assert!(html.contains("data-page-id=\"primary-guide\""));
+    assert!(!html.contains("data-page-id=\"details-section\""));
+
+    let agent_json = fs::read_to_string(output_directory.join("docs.agent.json"))
+        .expect("agent JSON is written");
+    assert!(agent_json.contains("\"id\": \"primary-guide\""));
+    assert!(!agent_json.contains("\"id\": \"details-section\""));
+}
+
+#[test]
 fn build_fails_clearly_when_output_path_is_a_file() {
     let workspace = TestWorkspace::new("build-output-path-is-file");
     let source = workspace.write(
