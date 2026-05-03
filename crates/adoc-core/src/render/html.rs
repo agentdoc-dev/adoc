@@ -1,25 +1,31 @@
 use crate::ast::{BlockAst, ListKind, PageAst};
 use crate::inline::InlineSegment;
+use crate::render::Renderer;
 
-pub fn render_html(pages: &[PageAst]) -> String {
-    let mut html = String::from(
-        "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>AgentDoc</title>\n</head>\n<body>\n",
-    );
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct HtmlRenderer;
 
-    for page in pages {
-        html.push_str("<article data-page-id=\"");
-        html.push_str(&escape_html(page.id.as_str()));
-        html.push_str("\">\n");
+impl Renderer for HtmlRenderer {
+    fn render(&self, pages: &[PageAst]) -> String {
+        let mut html = String::from(
+            "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>AgentDoc</title>\n</head>\n<body>\n",
+        );
 
-        for block in &page.blocks {
-            render_block(block, &mut html);
+        for page in pages {
+            html.push_str("<article data-page-id=\"");
+            html.push_str(&escape_html(page.id.as_str()));
+            html.push_str("\">\n");
+
+            for block in &page.blocks {
+                render_block(block, &mut html);
+            }
+
+            html.push_str("</article>\n");
         }
 
-        html.push_str("</article>\n");
+        html.push_str("</body>\n</html>\n");
+        html
     }
-
-    html.push_str("</body>\n</html>\n");
-    html
 }
 
 fn render_block(block: &BlockAst, html: &mut String) {
@@ -218,7 +224,7 @@ mod tests {
             ],
         };
 
-        let html = render_html(&[page]);
+        let html = HtmlRenderer.render(&[page]);
 
         assert!(html.contains("<h1>Title with <strong>bold</strong></h1>"));
         assert!(html.contains("<p>First <em>emphasis</em> then <code>ident</code>.</p>"));

@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use crate::artifact::agent_json::AgentJsonDocument;
+use crate::artifact::{AgentJsonArtifact, AgentJsonDocument, ArtifactWriter};
 use crate::ast::WorkspaceAst;
 use crate::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::parser::parse_page;
-use crate::render::html::render_html;
+use crate::render::{HtmlRenderer, Renderer};
 use crate::source_provider::{FsSourceProvider, SourceProvider};
 
 #[derive(Debug, Clone)]
@@ -67,8 +67,8 @@ pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileR
         .iter()
         .all(|diagnostic| diagnostic.severity != Severity::Error)
         .then(|| BuildArtifacts {
-            html: render_html(&pages),
-            agent_json: AgentJsonDocument::from_pages_and_diagnostics(&pages, &diagnostics),
+            html: HtmlRenderer.render(&pages),
+            agent_json: AgentJsonArtifact.write(&pages, &diagnostics),
         });
 
     CompileResult {
