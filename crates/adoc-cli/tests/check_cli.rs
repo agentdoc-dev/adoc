@@ -536,6 +536,68 @@ fn build_rejects_inline_raw_html_and_writes_no_artifacts() {
 }
 
 #[test]
+fn check_allows_raw_html_inside_closed_fenced_code_block() {
+    let workspace = TestWorkspace::new("check-allows-raw-html-in-fence");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Fenced HTML Sample @doc(fenced-html)\n\n```html\n<div>example</div>\n<script>alert(1)</script>\n```\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        output.status.success(),
+        "expected fenced HTML sample to pass check\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("parse.raw_html"),
+        "expected no parse.raw_html diagnostic for HTML inside a fenced code block:\n{stdout}"
+    );
+    assert!(stdout.contains("0 errors"));
+}
+
+#[test]
+fn build_writes_artifacts_for_raw_html_inside_fenced_code_block() {
+    let workspace = TestWorkspace::new("build-allows-raw-html-in-fence");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Fenced HTML Sample @doc(fenced-html)\n\n```html\n<div>example</div>\n```\n",
+    );
+    let output_directory = workspace.root.join("dist");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            source.to_str().expect("source path is utf-8"),
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to succeed when HTML is inside a fenced block\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let html = fs::read_to_string(output_directory.join("docs.html")).expect("HTML is written");
+    assert!(
+        html.contains("&lt;div&gt;example&lt;/div&gt;"),
+        "fenced HTML sample must be HTML-escaped inside <pre><code>:\n{html}"
+    );
+    assert!(output_directory.join("docs.agent.json").exists());
+}
+
+#[test]
 fn check_rejects_unclosed_fenced_code_with_source_location() {
     let workspace = TestWorkspace::new("check-rejects-unclosed-fence");
     let source = workspace.write(

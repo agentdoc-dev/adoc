@@ -10,7 +10,7 @@
 //! so that diagnostic remains in the parser. See ADR-0007 for the decision.
 
 use crate::ast::{BlockAst, PageAst};
-use crate::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::inline::InlineSegment;
 use crate::source::{LineCursor, SourceFile};
 
@@ -37,23 +37,47 @@ pub(crate) fn validate_page(page: &PageAst, source: &SourceFile) -> Vec<Diagnost
 pub(crate) struct RawHtmlForbidden;
 
 impl ValidationRule for RawHtmlForbidden {
-    fn check(&self, _page: &PageAst, source: &SourceFile, sink: &mut Vec<Diagnostic>) {
-        for (line_index, line) in source.text.lines().enumerate() {
-            if let Some(matched) = find_raw_html(line) {
-                let line_number = line_index as u32 + 1;
-                sink.push(
-                    Diagnostic::error(
-                        DiagnosticCode::ParseRawHtml,
-                        "Raw HTML is not allowed in strict mode; write AgentDoc Source prose instead",
-                    )
-                    .with_span(source.span_for_line_columns(
-                        line_number,
-                        matched.start_column,
-                        matched.end_column,
-                    )),
-                );
+    fn check(&self, page: &PageAst, source: &SourceFile, sink: &mut Vec<Diagnostic>) {
+        let lines: Vec<&str> = source.text.lines().collect();
+        for block in &page.blocks {
+            match block {
+                BlockAst::CodeBlock(_) => continue,
+                BlockAst::Heading(heading) => {
+                    flag_raw_html_in_span(&lines, source, &heading.span, sink)
+                }
+                BlockAst::Paragraph(paragraph) => {
+                    flag_raw_html_in_span(&lines, source, &paragraph.span, sink)
+                }
+                BlockAst::List(list) => flag_raw_html_in_span(&lines, source, &list.span, sink),
             }
         }
+    }
+}
+
+fn flag_raw_html_in_span(
+    lines: &[&str],
+    source: &SourceFile,
+    span: &SourceSpan,
+    sink: &mut Vec<Diagnostic>,
+) {
+    for line_number in span.start.line..=span.end.line {
+        let Some(line) = lines.get(line_number.saturating_sub(1) as usize) else {
+            continue;
+        };
+        let Some(matched) = find_raw_html(line) else {
+            continue;
+        };
+        sink.push(
+            Diagnostic::error(
+                DiagnosticCode::ParseRawHtml,
+                "Raw HTML is not allowed in strict mode; write AgentDoc Source prose instead",
+            )
+            .with_span(source.span_for_line_columns(
+                line_number,
+                matched.start_column,
+                matched.end_column,
+            )),
+        );
     }
 }
 
@@ -306,6 +330,34 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, "parse.raw_html");
         assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 1);
+    }
+
+    #[test]
+    fn raw_html_rule_skips_fenced_code_block() {
+        let diagnostics = validate_text(
+            "# Fenced HTML @doc(team.fenced)\n\n```html\n<div>example</div>\n```\n",
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "expected raw HTML inside a fenced code block to be skipped, got {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn raw_html_rule_flags_prose_when_fence_is_present_elsewhere() {
+        let diagnostics = validate_text(
+            "# Mixed @doc(team.mixed)\n\n```html\n<div>fenced</div>\n```\n\n<span>prose</span>\n",
+        );
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "exactly one diagnostic for the prose-level <span>, got {diagnostics:?}"
+        );
+        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        let span = diagnostics[0].span.as_ref().unwrap();
+        assert_eq!(span.start.line, 7);
+        assert_eq!(span.start.column, 1);
     }
 
     // --- unsafe link rule (migrated from inline.rs / parser.rs) ---
