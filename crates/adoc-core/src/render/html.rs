@@ -110,3 +110,69 @@ fn escape_html(value: &str) -> String {
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn render(segments: &[InlineSegment]) -> String {
+        let mut html = String::new();
+        render_inlines(segments, &mut html);
+        html
+    }
+
+    #[test]
+    fn render_inlines_emits_text_with_html_escaping() {
+        let html = render(&[InlineSegment::Text("AT&T <ok>".to_string())]);
+        assert_eq!(html, "AT&amp;T &lt;ok&gt;");
+    }
+
+    #[test]
+    fn render_inlines_emits_code_tag_with_escaped_body() {
+        let html = render(&[InlineSegment::Code("Vec<String>".to_string())]);
+        assert_eq!(html, "<code>Vec&lt;String&gt;</code>");
+    }
+
+    #[test]
+    fn render_inlines_emits_em_tag_around_inner_segments() {
+        let html = render(&[InlineSegment::Emphasis(vec![InlineSegment::Text(
+            "italic".to_string(),
+        )])]);
+        assert_eq!(html, "<em>italic</em>");
+    }
+
+    #[test]
+    fn render_inlines_emits_strong_tag_around_inner_segments() {
+        let html = render(&[InlineSegment::Strong(vec![InlineSegment::Text(
+            "bold".to_string(),
+        )])]);
+        assert_eq!(html, "<strong>bold</strong>");
+    }
+
+    #[test]
+    fn render_inlines_emits_anchor_with_escaped_href_attribute() {
+        let html = render(&[InlineSegment::Link {
+            text: vec![InlineSegment::Text("docs".to_string())],
+            url: "https://example.test/?q=\"a&b\"".to_string(),
+        }]);
+        assert_eq!(
+            html,
+            "<a href=\"https://example.test/?q=&quot;a&amp;b&quot;\">docs</a>"
+        );
+    }
+
+    #[test]
+    fn render_inlines_recursively_renders_link_label() {
+        let html = render(&[InlineSegment::Link {
+            text: vec![
+                InlineSegment::Text("see ".to_string()),
+                InlineSegment::Code("adoc".to_string()),
+            ],
+            url: "https://example.test".to_string(),
+        }]);
+        assert_eq!(
+            html,
+            "<a href=\"https://example.test\">see <code>adoc</code></a>"
+        );
+    }
+}
