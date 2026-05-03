@@ -13,10 +13,37 @@ pub struct Diagnostic {
     pub help: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DiagnosticCode {
+    ParseRawHtml,
+    ParseUnsafeLink,
+    ParseUnclosedFence,
+    ParseMalformedPageAnnotation,
+    IoUnreadableFile,
+}
+
+impl DiagnosticCode {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            DiagnosticCode::ParseRawHtml => "parse.raw_html",
+            DiagnosticCode::ParseUnsafeLink => "parse.unsafe_link",
+            DiagnosticCode::ParseUnclosedFence => "parse.unclosed_fence",
+            DiagnosticCode::ParseMalformedPageAnnotation => "parse.malformed_page_annotation",
+            DiagnosticCode::IoUnreadableFile => "io.unreadable_file",
+        }
+    }
+}
+
+impl fmt::Display for DiagnosticCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 impl Diagnostic {
-    pub fn error(code: impl Into<String>, message: impl Into<String>) -> Self {
+    pub(crate) fn error(code: DiagnosticCode, message: impl Into<String>) -> Self {
         Self {
-            code: code.into(),
+            code: code.as_str().to_string(),
             severity: Severity::Error,
             message: message.into(),
             span: None,

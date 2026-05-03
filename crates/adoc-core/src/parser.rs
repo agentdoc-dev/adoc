@@ -1,5 +1,5 @@
 use crate::ast::{BlockAst, CodeBlockAst, HeadingAst, ListAst, ListKind, PageAst, ParagraphAst};
-use crate::diagnostic::{Diagnostic, SourceSpan};
+use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::inline::{self, InlineOrigin, InlineSegment};
 use crate::source::{SourceFile, derive_page_id};
 
@@ -45,7 +45,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             flush_list(&mut page.blocks, &mut pending_list);
             diagnostics.push(
                 Diagnostic::error(
-                    "parse.raw_html",
+                    DiagnosticCode::ParseRawHtml,
                     "Raw HTML is not allowed in strict mode; write AgentDoc Source prose instead",
                 )
                 .with_span(source.span_for_line_columns(
@@ -75,7 +75,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             if let Some(malformed_annotation) = heading.malformed_page_annotation {
                 diagnostics.push(
                     Diagnostic::error(
-                        "parse.malformed_page_annotation",
+                        DiagnosticCode::ParseMalformedPageAnnotation,
                         "Page annotation must use @doc(id) with a non-empty id and closing ')'",
                     )
                     .with_span(source.span_for_line_columns(
@@ -135,7 +135,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             if !is_closed {
                 diagnostics.push(
                     Diagnostic::error(
-                        "parse.unclosed_fence",
+                        DiagnosticCode::ParseUnclosedFence,
                         "Fenced code block is missing a closing ``` fence",
                     )
                     .with_span(source.span_for_line(line_number, line)),

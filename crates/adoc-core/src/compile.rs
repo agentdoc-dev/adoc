@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::artifact::agent_json::AgentJsonDocument;
 use crate::ast::WorkspaceAst;
-use crate::diagnostic::{Diagnostic, Severity};
+use crate::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::parser::parse_page;
 use crate::render::html::render_html;
 use crate::source::SourceFile;
@@ -56,7 +56,7 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
                 pages.push(page);
             }
             Err(error) => diagnostics.push(Diagnostic::error(
-                "io.unreadable_file",
+                DiagnosticCode::IoUnreadableFile,
                 format!(
                     "could not read AgentDoc Source {}: {error}",
                     source_path.path.display()

@@ -1,4 +1,4 @@
-use crate::diagnostic::Diagnostic;
+use crate::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::source::SourceFile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,7 +134,7 @@ fn scan_link(
             .span_for_line_columns(origin.line, start_column, end_column);
         output.push_diagnostic(
             Diagnostic::error(
-                "parse.unsafe_link",
+                DiagnosticCode::ParseUnsafeLink,
                 format!(
                     "Link URL scheme is not allowed in strict mode: {url}; use http, https, or mailto",
                 ),
