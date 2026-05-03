@@ -28,8 +28,48 @@ fn check_accepts_minimal_prose_page() {
     );
 }
 
+#[test]
+fn build_creates_missing_output_directory_and_writes_artifacts() {
+    let workspace = TestWorkspace::new("build-writes-artifacts");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Getting Started @doc(getting-started)\n\nAgentDoc keeps knowledge readable.\n",
+    );
+    let output_directory = workspace.root.join("dist");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            source.to_str().expect("source path is utf-8"),
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(output_directory.join("docs.html")).expect("HTML is written");
+    assert!(html.contains("<h1>Getting Started</h1>"));
+    assert!(html.contains("<p>AgentDoc keeps knowledge readable.</p>"));
+
+    let agent_json = fs::read_to_string(output_directory.join("docs.agent.json"))
+        .expect("agent JSON is written");
+    assert!(agent_json.contains("\"schema_version\": \"adoc.agent.v0\""));
+    assert!(agent_json.contains("\"pages\""));
+    assert!(agent_json.contains("\"objects\": []"));
+    assert!(agent_json.contains("\"diagnostics\": []"));
+}
+
 struct TestWorkspace {
-    root: PathBuf,
+    pub root: PathBuf,
 }
 
 impl TestWorkspace {

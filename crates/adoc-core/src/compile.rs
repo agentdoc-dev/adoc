@@ -1,9 +1,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::ast::{PageAst, WorkspaceAst};
+use crate::artifact::agent_json::AgentJsonDocument;
+use crate::ast::WorkspaceAst;
 use crate::diagnostic::{Diagnostic, Severity};
 use crate::parser::parse_page;
+use crate::render::html::render_html;
 use crate::source::SourceFile;
 
 #[derive(Debug, Clone)]
@@ -27,7 +29,8 @@ impl CompileResult {
 
 #[derive(Debug, Clone)]
 pub struct BuildArtifacts {
-    pub pages: Vec<PageAst>,
+    pub html: String,
+    pub agent_json: AgentJsonDocument,
 }
 
 pub fn compile_workspace(input: CompileInput) -> CompileResult {
@@ -49,17 +52,17 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
         }
     }
 
+    let _workspace = WorkspaceAst {
+        pages: pages.clone(),
+    };
+
     let artifacts = diagnostics
         .iter()
         .all(|diagnostic| diagnostic.severity != Severity::Error)
-        .then_some(BuildArtifacts { pages });
-
-    let _workspace = WorkspaceAst {
-        pages: artifacts
-            .as_ref()
-            .map(|artifacts| artifacts.pages.clone())
-            .unwrap_or_default(),
-    };
+        .then(|| BuildArtifacts {
+            html: render_html(&pages),
+            agent_json: AgentJsonDocument::from_pages_and_diagnostics(&pages, &diagnostics),
+        });
 
     CompileResult {
         diagnostics,
