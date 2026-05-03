@@ -69,6 +69,41 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
 }
 
 #[test]
+fn build_groups_contiguous_list_items_by_list_kind() {
+    let workspace = TestWorkspace::new("build-groups-contiguous-lists");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Lists @doc(lists)\n\n- Write source\n- Run check\n\n1. Build artifacts\n2. Inspect output\n",
+    );
+    let output_directory = workspace.root.join("dist");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            source.to_str().expect("source path is utf-8"),
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(output_directory.join("docs.html")).expect("HTML is written");
+    assert!(html.contains("<ul>\n<li>Write source</li>\n<li>Run check</li>\n</ul>"));
+    assert!(html.contains("<ol>\n<li>Build artifacts</li>\n<li>Inspect output</li>\n</ol>"));
+    assert_eq!(html.matches("<ul>").count(), 1);
+    assert_eq!(html.matches("<ol>").count(), 1);
+}
+
+#[test]
 fn build_fails_clearly_when_output_path_is_a_file() {
     let workspace = TestWorkspace::new("build-output-path-is-file");
     let source = workspace.write(

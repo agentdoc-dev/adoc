@@ -1,5 +1,5 @@
 use crate::ast::{BlockAst, CodeBlockAst, HeadingAst, ListAst, ListKind, PageAst, ParagraphAst};
-use crate::diagnostic::Diagnostic;
+use crate::diagnostic::{Diagnostic, SourceSpan};
 use crate::source::{SourceFile, derive_page_id};
 
 pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
@@ -12,6 +12,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     let mut diagnostics = Vec::new();
     let mut paragraph_lines = Vec::new();
     let mut paragraph_start_line = None;
+    let mut pending_list = None;
     let mut lines = source.text.lines().enumerate().peekable();
 
     while let Some((line_index, line)) = lines.next() {
@@ -25,6 +26,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
             );
+            flush_list(&mut page.blocks, &mut pending_list);
             continue;
         }
 
@@ -35,6 +37,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
             );
+            flush_list(&mut page.blocks, &mut pending_list);
             diagnostics.push(
                 Diagnostic::error(
                     "parse.raw_html",
@@ -52,6 +55,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
             );
+            flush_list(&mut page.blocks, &mut pending_list);
             if page.title.is_none() && level == 1 {
                 page.title = Some(heading_text.clone());
             }
@@ -73,6 +77,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
             );
+            flush_list(&mut page.blocks, &mut pending_list);
             let mut code = String::new();
             let mut is_closed = false;
             for (_, code_line) in lines.by_ref() {
@@ -115,11 +120,15 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
             );
-            page.blocks.push(BlockAst::List(ListAst {
-                kind: ListKind::Unordered,
-                items: vec![item.trim().to_string()],
-                span: source.span_for_line(line_number, line),
-            }));
+            push_list_item(
+                source,
+                &mut page.blocks,
+                &mut pending_list,
+                ListKind::Unordered,
+                item.trim().to_string(),
+                line_number,
+                line,
+            );
             continue;
         }
 
@@ -130,14 +139,19 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
             );
-            page.blocks.push(BlockAst::List(ListAst {
-                kind: ListKind::Ordered,
-                items: vec![item.to_string()],
-                span: source.span_for_line(line_number, line),
-            }));
+            push_list_item(
+                source,
+                &mut page.blocks,
+                &mut pending_list,
+                ListKind::Ordered,
+                item.to_string(),
+                line_number,
+                line,
+            );
             continue;
         }
 
+        flush_list(&mut page.blocks, &mut pending_list);
         paragraph_start_line.get_or_insert(line_number);
         paragraph_lines.push(trimmed.to_string());
     }
@@ -148,7 +162,14 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         &mut paragraph_lines,
         &mut paragraph_start_line,
     );
+    flush_list(&mut page.blocks, &mut pending_list);
     (page, diagnostics)
+}
+
+struct PendingList {
+    kind: ListKind,
+    items: Vec<String>,
+    span: SourceSpan,
 }
 
 fn parse_heading(line: &str) -> Option<(u8, String, Option<String>)> {
@@ -207,6 +228,42 @@ fn looks_like_raw_html(line: &str) -> bool {
     };
 
     first_character == '/' || first_character.is_ascii_alphabetic()
+}
+
+fn push_list_item(
+    source: &SourceFile,
+    blocks: &mut Vec<BlockAst>,
+    pending_list: &mut Option<PendingList>,
+    kind: ListKind,
+    item: String,
+    line_number: u32,
+    line: &str,
+) {
+    if let Some(list) = pending_list.as_mut()
+        && list.kind == kind
+    {
+        list.items.push(item);
+        return;
+    }
+
+    flush_list(blocks, pending_list);
+    *pending_list = Some(PendingList {
+        kind,
+        items: vec![item],
+        span: source.span_for_line(line_number, line),
+    });
+}
+
+fn flush_list(blocks: &mut Vec<BlockAst>, pending_list: &mut Option<PendingList>) {
+    let Some(list) = pending_list.take() else {
+        return;
+    };
+
+    blocks.push(BlockAst::List(ListAst {
+        kind: list.kind,
+        items: list.items,
+        span: list.span,
+    }));
 }
 
 fn flush_paragraph(
