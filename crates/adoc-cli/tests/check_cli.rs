@@ -1,4 +1,6 @@
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -211,6 +213,41 @@ fn check_rejects_unclosed_fenced_code_with_source_location() {
     assert!(stdout.contains("guide.adoc:3:1"));
     assert!(stdout.contains("error[parse.unclosed_fence]"));
     assert!(stdout.contains("Fenced code block is missing a closing"));
+    assert!(stdout.contains("1 errors"));
+}
+
+#[cfg(unix)]
+#[test]
+fn check_reports_unreadable_source_path() {
+    let workspace = TestWorkspace::new("check-reports-unreadable-source-path");
+    let source = workspace.write("private/guide.adoc", "# Private Guide\n\nHidden.\n");
+    let mut permissions = fs::metadata(&source)
+        .expect("source metadata can be read")
+        .permissions();
+    permissions.set_mode(0o000);
+    fs::set_permissions(&source, permissions).expect("source can be made unreadable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "check",
+            workspace.root.to_str().expect("root path is utf-8"),
+        ])
+        .output()
+        .expect("adoc check runs");
+
+    let mut permissions = fs::metadata(&source)
+        .expect("source metadata can be read")
+        .permissions();
+    permissions.set_mode(0o644);
+    fs::set_permissions(&source, permissions).expect("source permissions can be restored");
+
+    assert!(
+        !output.status.success(),
+        "expected unreadable source to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("error[io.unreadable_file]"));
+    assert!(stdout.contains(source.to_str().expect("source path is utf-8")));
     assert!(stdout.contains("1 errors"));
 }
 
