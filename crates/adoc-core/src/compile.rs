@@ -57,7 +57,10 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
             }
             Err(error) => diagnostics.push(Diagnostic::error(
                 "io.unreadable_file",
-                format!("could not read AgentDoc Source: {error}"),
+                format!(
+                    "could not read AgentDoc Source {}: {error}",
+                    source_path.path.display()
+                ),
             )),
         }
     }
