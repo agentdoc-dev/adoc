@@ -82,6 +82,11 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
             render_inlines(inner, html);
             html.push_str("</em>");
         }
+        InlineSegment::Strong(inner) => {
+            html.push_str("<strong>");
+            render_inlines(inner, html);
+            html.push_str("</strong>");
+        }
     }
 }
 
