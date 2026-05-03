@@ -1,5 +1,6 @@
 use crate::ast::{BlockAst, CodeBlockAst, HeadingAst, ListAst, ListKind, PageAst, ParagraphAst};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
+use crate::identity::{ObjectId, PageId};
 use crate::inline::{self, InlineOrigin, InlineSegment};
 use crate::source::{SourceFile, derive_page_id};
 
@@ -102,7 +103,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 has_seen_page_heading = true;
                 page.title = Some(inline::plain_text(&inlines));
                 if let Some(doc_id) = heading.doc_id.clone() {
-                    page.id = doc_id;
+                    page.id = PageId::new(doc_id);
                 }
             }
             page.blocks.push(BlockAst::Heading(HeadingAst {
@@ -245,7 +246,7 @@ struct ParsedHeading {
     level: u8,
     text: String,
     text_column: u32,
-    doc_id: Option<String>,
+    doc_id: Option<ObjectId>,
     malformed_page_annotation: Option<PageAnnotationSpan>,
 }
 
@@ -292,7 +293,7 @@ fn parse_heading(line: &str, leading_indent_columns: u32) -> Option<ParsedHeadin
 
 struct ParsedPageAnnotation {
     text: String,
-    doc_id: Option<String>,
+    doc_id: Option<ObjectId>,
     malformed_span: Option<PageAnnotationSpan>,
 }
 
@@ -367,7 +368,7 @@ fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPa
 
     ParsedPageAnnotation {
         text: raw_text[..annotation_start].trim().to_string(),
-        doc_id: Some(id.to_string()),
+        doc_id: Some(ObjectId::new(id)),
         malformed_span: None,
     }
 }

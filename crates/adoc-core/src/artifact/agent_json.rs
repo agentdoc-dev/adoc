@@ -12,7 +12,10 @@ pub struct AgentJsonDocument {
 }
 
 impl AgentJsonDocument {
-    pub fn from_pages_and_diagnostics(pages: &[PageAst], diagnostics: &[Diagnostic]) -> Self {
+    pub(crate) fn from_pages_and_diagnostics(
+        pages: &[PageAst],
+        diagnostics: &[Diagnostic],
+    ) -> Self {
         Self {
             schema_version: "adoc.agent.v0".to_string(),
             pages: pages.iter().map(AgentJsonPage::from).collect(),
@@ -36,7 +39,7 @@ pub struct AgentJsonPage {
 impl From<&PageAst> for AgentJsonPage {
     fn from(page: &PageAst) -> Self {
         Self {
-            id: page.id.clone(),
+            id: page.id.as_str().to_string(),
             title: page.title.clone(),
             source_path: page.source_path.display().to_string(),
         }

@@ -8,7 +8,7 @@ pub fn render_html(pages: &[PageAst]) -> String {
 
     for page in pages {
         html.push_str("<article data-page-id=\"");
-        html.push_str(&escape_html(&page.id));
+        html.push_str(&escape_html(page.id.as_str()));
         html.push_str("\">\n");
 
         for block in &page.blocks {
@@ -165,6 +165,7 @@ mod tests {
     fn render_html_flows_inlines_through_heading_paragraph_and_list_item() {
         use crate::ast::{HeadingAst, ListAst, ListKind, ParagraphAst};
         use crate::diagnostic::{SourcePosition, SourceSpan};
+        use crate::identity::PageId;
         use std::path::PathBuf;
 
         fn span() -> SourceSpan {
@@ -184,7 +185,7 @@ mod tests {
         }
 
         let page = PageAst {
-            id: "guide".to_string(),
+            id: PageId::from_string("guide"),
             title: Some("Title".to_string()),
             source_path: PathBuf::from("guide.adoc"),
             blocks: vec![

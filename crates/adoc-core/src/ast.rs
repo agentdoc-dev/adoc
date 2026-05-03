@@ -1,19 +1,20 @@
 use std::path::PathBuf;
 
 use crate::diagnostic::SourceSpan;
+use crate::identity::PageId;
 use crate::inline::InlineSegment;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkspaceAst {
-    pub pages: Vec<PageAst>,
+pub(crate) struct WorkspaceAst {
+    pub(crate) pages: Vec<PageAst>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PageAst {
-    pub id: String,
-    pub title: Option<String>,
-    pub source_path: PathBuf,
-    pub blocks: Vec<BlockAst>,
+pub(crate) struct PageAst {
+    pub(crate) id: PageId,
+    pub(crate) title: Option<String>,
+    pub(crate) source_path: PathBuf,
+    pub(crate) blocks: Vec<BlockAst>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

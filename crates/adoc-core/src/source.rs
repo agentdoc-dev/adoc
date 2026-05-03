@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::diagnostic::{SourcePosition, SourceSpan};
+use crate::identity::PageId;
 
 #[derive(Debug, Clone)]
 pub struct SourceFile {
@@ -144,7 +145,7 @@ impl LineIndex {
     }
 }
 
-pub fn derive_page_id(path: &Path) -> String {
+pub fn derive_page_id(path: &Path) -> PageId {
     let path_segments: Vec<_> = path
         .components()
         .filter_map(|component| component.as_os_str().to_str())
@@ -169,9 +170,9 @@ pub fn derive_page_id(path: &Path) -> String {
         .collect();
 
     if id_segments.is_empty() {
-        "untitled".to_string()
+        PageId::untitled_fallback()
     } else {
-        id_segments.join(".")
+        PageId::from_string(id_segments.join("."))
     }
 }
 
