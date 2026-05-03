@@ -1,22 +1,26 @@
+mod error;
+
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
 use adoc_core::{AgentJsonDocument, CompileInput, Diagnostic, Severity, compile_workspace};
 
-fn main() {
-    let exit_code = run(std::env::args().skip(1).collect());
-    std::process::exit(exit_code);
+use crate::error::CliError;
+
+fn main() -> ExitCode {
+    ExitCode::from(run(std::env::args().skip(1).collect()) as u8)
 }
 
 fn run(arguments: Vec<String>) -> i32 {
     match parse_command(arguments) {
         Ok(Command::Check { path }) => check(path),
         Ok(Command::Build { path, out }) => build(path, out),
-        Err(message) => {
-            eprintln!("{message}");
+        Err(error) => {
+            eprintln!("{error}");
             eprintln!("usage: adoc check <path>");
             eprintln!("       adoc build <path> --out <directory>");
-            2
+            error.exit_code()
         }
     }
 }
@@ -38,49 +42,47 @@ fn build(path: PathBuf, out: PathBuf) -> i32 {
         return 1;
     }
 
-    let Some(artifacts) = result.artifacts else {
-        eprintln!("build did not produce artifacts");
-        return 1;
+    let artifacts = match result.artifacts {
+        Some(artifacts) => artifacts,
+        None => return report(CliError::BuildMissingArtifacts),
     };
 
-    if let Err(error) = write_artifacts(&out, &artifacts.html, &artifacts.agent_json) {
-        eprintln!("{error}");
-        return 1;
+    match write_artifacts(&out, &artifacts.html, &artifacts.agent_json) {
+        Ok(()) => 0,
+        Err(error) => report(error),
     }
-
-    0
 }
 
-fn write_artifacts(out: &Path, html: &str, agent_json: &AgentJsonDocument) -> Result<(), String> {
+fn report(error: CliError) -> i32 {
+    eprintln!("{error}");
+    error.exit_code()
+}
+
+fn write_artifacts(out: &Path, html: &str, agent_json: &AgentJsonDocument) -> Result<(), CliError> {
     if out.exists() && !out.is_dir() {
-        return Err(format!(
-            "error[io.output_not_directory] output path exists as a file: {}",
-            out.display()
-        ));
+        return Err(CliError::OutputPathIsFile {
+            path: out.to_path_buf(),
+        });
     }
 
-    fs::create_dir_all(out).map_err(|error| {
-        format!(
-            "error[io.output_not_directory] could not create output directory {}: {error}",
-            out.display()
-        )
+    fs::create_dir_all(out).map_err(|source| CliError::CreateOutputDirectory {
+        path: out.to_path_buf(),
+        source,
     })?;
 
-    fs::write(out.join("docs.html"), html).map_err(|error| {
-        format!(
-            "error[io.write_failed] could not write {}: {error}",
-            out.join("docs.html").display()
-        )
+    let html_path = out.join("docs.html");
+    fs::write(&html_path, html).map_err(|source| CliError::WriteFailed {
+        path: html_path,
+        source,
     })?;
 
-    let agent_json = agent_json.to_pretty_json().map_err(|error| {
-        format!("error[artifact.agent_json] could not serialize agent JSON: {error}")
-    })?;
-    fs::write(out.join("docs.agent.json"), agent_json).map_err(|error| {
-        format!(
-            "error[io.write_failed] could not write {}: {error}",
-            out.join("docs.agent.json").display()
-        )
+    let agent_json_text = agent_json
+        .to_pretty_json()
+        .map_err(|source| CliError::AgentJsonSerialize { source })?;
+    let agent_json_path = out.join("docs.agent.json");
+    fs::write(&agent_json_path, agent_json_text).map_err(|source| CliError::WriteFailed {
+        path: agent_json_path,
+        source,
     })?;
 
     Ok(())
@@ -125,7 +127,7 @@ enum Command {
     Build { path: PathBuf, out: PathBuf },
 }
 
-fn parse_command(arguments: Vec<String>) -> Result<Command, String> {
+fn parse_command(arguments: Vec<String>) -> Result<Command, CliError> {
     match arguments.as_slice() {
         [command, path] if command == "check" => Ok(Command::Check {
             path: PathBuf::from(path),
@@ -136,7 +138,9 @@ fn parse_command(arguments: Vec<String>) -> Result<Command, String> {
                 out: PathBuf::from(out),
             })
         }
-        [] => Err("missing command".to_string()),
-        [command, ..] => Err(format!("unknown or invalid command: {command}")),
+        [] => Err(CliError::MissingCommand),
+        [command, ..] => Err(CliError::UnknownCommand {
+            command: command.clone(),
+        }),
     }
 }

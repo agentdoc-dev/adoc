@@ -11,3 +11,5 @@ path = "src/main.rs"
 
 [dependencies]
 adoc-core = { path = "../adoc-core" }
+serde_json = "1"
+thiserror = "1"
