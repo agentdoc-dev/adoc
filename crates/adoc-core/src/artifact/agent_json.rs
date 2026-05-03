@@ -22,7 +22,8 @@ impl AgentJsonDocument {
 pub(crate) struct AgentJsonArtifact;
 
 impl ArtifactWriter for AgentJsonArtifact {
-    fn write(&self, pages: &[PageAst], diagnostics: &[Diagnostic]) -> AgentJsonDocument {
+    type Output = AgentJsonDocument;
+    fn build(&self, pages: &[PageAst], diagnostics: &[Diagnostic]) -> AgentJsonDocument {
         AgentJsonDocument {
             schema_version: "adoc.agent.v0".to_string(),
             pages: pages.iter().map(AgentJsonPage::from).collect(),

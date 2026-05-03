@@ -69,7 +69,7 @@ pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileR
         .all(|diagnostic| diagnostic.severity != Severity::Error)
         .then(|| BuildArtifacts {
             html: HtmlRenderer.render(&workspace.pages),
-            agent_json: AgentJsonArtifact.write(&workspace.pages, &diagnostics),
+            agent_json: AgentJsonArtifact.build(&workspace.pages, &diagnostics),
         });
 
     CompileResult {
