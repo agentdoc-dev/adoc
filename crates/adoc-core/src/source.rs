@@ -25,7 +25,7 @@ impl SourceFile {
         let start = self.line_index.position_for_line(line_number);
         let end = SourcePosition {
             line: line_number,
-            column: start.column + text.len() as u32,
+            column: start.column + text.chars().count() as u32,
             offset: start.offset + text.len() as u32,
         };
         SourceSpan {
@@ -41,9 +41,12 @@ impl SourceFile {
         start_column: u32,
         end_column: u32,
     ) -> SourceSpan {
-        let line_start = self.line_index.position_for_line(line_number);
-        let start_offset = line_start.offset + start_column.saturating_sub(1);
-        let end_offset = line_start.offset + end_column.saturating_sub(1);
+        let start_offset =
+            self.line_index
+                .offset_for_line_column(&self.text, line_number, start_column);
+        let end_offset =
+            self.line_index
+                .offset_for_line_column(&self.text, line_number, end_column);
         SourceSpan {
             file: self.path.clone(),
             start: SourcePosition {
@@ -53,6 +56,23 @@ impl SourceFile {
             },
             end: SourcePosition {
                 line: line_number,
+                column: end_column,
+                offset: end_offset,
+            },
+        }
+    }
+
+    pub fn span_for_line_range(&self, start_line: u32, end_line: u32) -> SourceSpan {
+        let start = self.line_index.position_for_line(start_line);
+        let end_column = self.line_index.line_column_count(&self.text, end_line) + 1;
+        let end_offset = self
+            .line_index
+            .offset_for_line_column(&self.text, end_line, end_column);
+        SourceSpan {
+            file: self.path.clone(),
+            start,
+            end: SourcePosition {
+                line: end_line,
                 column: end_column,
                 offset: end_offset,
             },
@@ -84,6 +104,43 @@ impl LineIndex {
             column: 1,
             offset: offset as u32,
         }
+    }
+
+    fn offset_for_line_column(&self, text: &str, line_number: u32, column: u32) -> u32 {
+        let line_index = line_number.saturating_sub(1) as usize;
+        let line_start = self.line_starts.get(line_index).copied().unwrap_or(0);
+        let line_end = self.line_end_offset(text, line_index);
+        let line = &text[line_start..line_end];
+        let column_index = column.saturating_sub(1) as usize;
+        let column_offset = line
+            .char_indices()
+            .map(|(offset, _)| offset)
+            .nth(column_index)
+            .unwrap_or(line.len());
+        (line_start + column_offset) as u32
+    }
+
+    fn line_end_offset(&self, text: &str, line_index: usize) -> usize {
+        let mut end = self
+            .line_starts
+            .get(line_index + 1)
+            .copied()
+            .unwrap_or(text.len());
+        let bytes = text.as_bytes();
+        if end > 0 && bytes[end - 1] == b'\n' {
+            end -= 1;
+            if end > 0 && bytes[end - 1] == b'\r' {
+                end -= 1;
+            }
+        }
+        end
+    }
+
+    fn line_column_count(&self, text: &str, line_number: u32) -> u32 {
+        let line_index = line_number.saturating_sub(1) as usize;
+        let line_start = self.line_starts.get(line_index).copied().unwrap_or(0);
+        let line_end = self.line_end_offset(text, line_index);
+        text[line_start..line_end].chars().count() as u32
     }
 }
 
@@ -133,4 +190,27 @@ fn normalize_id_segment(value: &str) -> String {
     }
 
     id.trim_matches('-').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    #[test]
+    fn span_for_line_columns_uses_utf8_byte_offsets() {
+        let source = SourceFile::new_with_identity_path(
+            PathBuf::from("guide.adoc"),
+            "éé <span>\n".to_string(),
+            PathBuf::from("guide.adoc"),
+        );
+
+        let span = source.span_for_line_columns(1, 4, 10);
+
+        assert_eq!(span.start.column, 4);
+        assert_eq!(span.start.offset, 5);
+        assert_eq!(span.end.column, 10);
+        assert_eq!(span.end.offset, 11);
+    }
 }

@@ -12,6 +12,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     let mut diagnostics = Vec::new();
     let mut paragraph_lines = Vec::new();
     let mut paragraph_start_line = None;
+    let mut paragraph_end_line = None;
     let mut pending_list = None;
     let mut has_seen_page_heading = false;
     let mut lines = source.text.lines().enumerate().peekable();
@@ -26,6 +27,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut page.blocks,
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
+                &mut paragraph_end_line,
             );
             flush_list(&mut page.blocks, &mut pending_list);
             continue;
@@ -37,6 +39,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut page.blocks,
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
+                &mut paragraph_end_line,
             );
             flush_list(&mut page.blocks, &mut pending_list);
             diagnostics.push(
@@ -60,6 +63,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut page.blocks,
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
+                &mut paragraph_end_line,
             );
             flush_list(&mut page.blocks, &mut pending_list);
             if let Some(malformed_annotation) = heading.malformed_page_annotation {
@@ -98,6 +102,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut page.blocks,
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
+                &mut paragraph_end_line,
             );
             flush_list(&mut page.blocks, &mut pending_list);
             let mut code = String::new();
@@ -141,6 +146,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut page.blocks,
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
+                &mut paragraph_end_line,
             );
             push_list_item(
                 source,
@@ -160,6 +166,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut page.blocks,
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
+                &mut paragraph_end_line,
             );
             push_list_item(
                 source,
@@ -175,6 +182,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
 
         flush_list(&mut page.blocks, &mut pending_list);
         paragraph_start_line.get_or_insert(line_number);
+        paragraph_end_line = Some(line_number);
         paragraph_lines.push(trimmed.to_string());
     }
 
@@ -183,6 +191,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         &mut page.blocks,
         &mut paragraph_lines,
         &mut paragraph_start_line,
+        &mut paragraph_end_line,
     );
     flush_list(&mut page.blocks, &mut pending_list);
     (page, diagnostics)
@@ -239,7 +248,7 @@ struct ParsedPageAnnotation {
 }
 
 fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPageAnnotation {
-    let Some(annotation_start) = raw_text.rfind("@doc") else {
+    let Some(annotation_start) = raw_text.rfind("@doc(") else {
         return ParsedPageAnnotation {
             text: raw_text.to_string(),
             doc_id: None,
@@ -247,32 +256,60 @@ fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPa
         };
     };
 
-    let is_separated = annotation_start > 0
-        && raw_text[..annotation_start]
-            .chars()
-            .last()
-            .is_some_and(|character| character.is_whitespace());
-    let has_opening_parenthesis = raw_text[annotation_start..].starts_with("@doc(");
-    if !is_separated || !has_opening_parenthesis || !raw_text.ends_with(')') {
+    let is_separated = annotation_start == 0
+        || annotation_start > 0
+            && raw_text[..annotation_start]
+                .chars()
+                .last()
+                .is_some_and(|character| character.is_whitespace());
+    if !is_separated {
+        return ParsedPageAnnotation {
+            text: raw_text.to_string(),
+            doc_id: None,
+            malformed_span: None,
+        };
+    }
+
+    let id_start = annotation_start + "@doc(".len();
+    let Some(closing_parenthesis) = raw_text[id_start..].find(')') else {
         return ParsedPageAnnotation {
             text: raw_text.to_string(),
             doc_id: None,
             malformed_span: Some(annotation_span(
                 raw_text_start_column,
+                raw_text,
                 annotation_start,
                 raw_text.len(),
             )),
         };
+    };
+    let id_end = id_start + closing_parenthesis;
+    let trailing_text = raw_text[id_end + 1..].trim();
+    if !trailing_text.is_empty() {
+        return ParsedPageAnnotation {
+            text: raw_text.to_string(),
+            doc_id: None,
+            malformed_span: if raw_text.ends_with(')') {
+                Some(annotation_span(
+                    raw_text_start_column,
+                    raw_text,
+                    annotation_start,
+                    raw_text.len(),
+                ))
+            } else {
+                None
+            },
+        };
     }
 
-    let id_start = annotation_start + "@doc(".len();
-    let id = raw_text[id_start..raw_text.len() - 1].trim();
+    let id = raw_text[id_start..id_end].trim();
     if id.is_empty() {
         return ParsedPageAnnotation {
             text: raw_text.to_string(),
             doc_id: None,
             malformed_span: Some(annotation_span(
                 raw_text_start_column,
+                raw_text,
                 annotation_start,
                 raw_text.len(),
             )),
@@ -288,12 +325,15 @@ fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPa
 
 fn annotation_span(
     raw_text_start_column: u32,
+    raw_text: &str,
     annotation_start: usize,
     raw_text_end: usize,
 ) -> PageAnnotationSpan {
+    let start_column_offset = raw_text[..annotation_start].chars().count() as u32;
+    let end_column_offset = raw_text[..raw_text_end].chars().count() as u32;
     PageAnnotationSpan {
-        start_column: raw_text_start_column + annotation_start as u32,
-        end_column: raw_text_start_column + raw_text_end as u32,
+        start_column: raw_text_start_column + start_column_offset,
+        end_column: raw_text_start_column + end_column_offset,
     }
 }
 
@@ -315,15 +355,20 @@ fn find_raw_html(line: &str) -> Option<RawHtmlMatch> {
             continue;
         }
 
-        let after_opening_bracket = &line[start_index + character.len_utf8()..];
-        if !starts_html_tag(after_opening_bracket) {
+        let is_tag_boundary = start_index == 0
+            || line[..start_index]
+                .chars()
+                .last()
+                .is_some_and(|character| character.is_whitespace());
+        if !is_tag_boundary {
             continue;
         }
 
-        let end_index = line[start_index..]
-            .find('>')
-            .map(|relative_index| start_index + relative_index + 1)
-            .unwrap_or_else(|| line.len());
+        let after_opening_bracket = &line[start_index + character.len_utf8()..];
+        let Some(tag_end) = raw_html_tag_end(after_opening_bracket) else {
+            continue;
+        };
+        let end_index = start_index + character.len_utf8() + tag_end;
 
         return Some(RawHtmlMatch {
             start_column: column_for_byte_index(line, start_index),
@@ -334,19 +379,159 @@ fn find_raw_html(line: &str) -> Option<RawHtmlMatch> {
     None
 }
 
-fn starts_html_tag(value: &str) -> bool {
-    let mut characters = value.chars();
-    let Some(first_character) = characters.next() else {
-        return false;
-    };
-
-    if first_character == '/' {
-        return characters
-            .next()
-            .is_some_and(|character| character.is_ascii_alphabetic());
+fn raw_html_tag_end(value: &str) -> Option<usize> {
+    let mut name_start = 0;
+    if value.starts_with('/') {
+        name_start = 1;
     }
 
-    first_character.is_ascii_alphabetic()
+    let first_character = value[name_start..].chars().next()?;
+    if !first_character.is_ascii_alphabetic() {
+        return None;
+    }
+
+    let mut name_end = name_start + first_character.len_utf8();
+    for character in value[name_end..].chars() {
+        if !character.is_ascii_alphanumeric() && character != '-' {
+            break;
+        }
+        name_end += character.len_utf8();
+    }
+
+    let tag_name = &value[name_start..name_end];
+    if !is_raw_html_tag_name(tag_name) {
+        return None;
+    }
+
+    let next_character = value[name_end..].chars().next()?;
+    match next_character {
+        '>' => Some(name_end + 1),
+        '/' => value[name_end + 1..]
+            .starts_with('>')
+            .then_some(name_end + 2),
+        character if character.is_whitespace() => value[name_end..]
+            .find('>')
+            .map(|relative_index| name_end + relative_index + 1),
+        _ => None,
+    }
+}
+
+fn is_raw_html_tag_name(tag_name: &str) -> bool {
+    let normalized = tag_name.to_ascii_lowercase();
+    matches!(
+        normalized.as_str(),
+        "a" | "abbr"
+            | "address"
+            | "area"
+            | "article"
+            | "aside"
+            | "audio"
+            | "b"
+            | "base"
+            | "bdi"
+            | "bdo"
+            | "blockquote"
+            | "body"
+            | "br"
+            | "button"
+            | "canvas"
+            | "caption"
+            | "cite"
+            | "code"
+            | "col"
+            | "colgroup"
+            | "data"
+            | "datalist"
+            | "dd"
+            | "del"
+            | "details"
+            | "dfn"
+            | "dialog"
+            | "div"
+            | "dl"
+            | "dt"
+            | "em"
+            | "embed"
+            | "fieldset"
+            | "figcaption"
+            | "figure"
+            | "footer"
+            | "form"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "head"
+            | "header"
+            | "hr"
+            | "html"
+            | "i"
+            | "iframe"
+            | "img"
+            | "input"
+            | "ins"
+            | "kbd"
+            | "label"
+            | "legend"
+            | "li"
+            | "link"
+            | "main"
+            | "map"
+            | "mark"
+            | "menu"
+            | "meta"
+            | "meter"
+            | "nav"
+            | "noscript"
+            | "object"
+            | "ol"
+            | "optgroup"
+            | "option"
+            | "output"
+            | "p"
+            | "picture"
+            | "pre"
+            | "progress"
+            | "q"
+            | "rp"
+            | "rt"
+            | "ruby"
+            | "s"
+            | "samp"
+            | "script"
+            | "search"
+            | "section"
+            | "select"
+            | "slot"
+            | "small"
+            | "source"
+            | "span"
+            | "strong"
+            | "style"
+            | "sub"
+            | "summary"
+            | "sup"
+            | "svg"
+            | "table"
+            | "tbody"
+            | "td"
+            | "template"
+            | "textarea"
+            | "tfoot"
+            | "th"
+            | "thead"
+            | "time"
+            | "title"
+            | "tr"
+            | "track"
+            | "u"
+            | "ul"
+            | "var"
+            | "video"
+            | "wbr"
+    ) || tag_name.contains('-')
 }
 
 fn column_for_byte_index(line: &str, byte_index: usize) -> u32 {
@@ -394,16 +579,115 @@ fn flush_paragraph(
     blocks: &mut Vec<BlockAst>,
     paragraph_lines: &mut Vec<String>,
     paragraph_start_line: &mut Option<u32>,
+    paragraph_end_line: &mut Option<u32>,
 ) {
     if paragraph_lines.is_empty() {
         return;
     }
 
     let text = paragraph_lines.join(" ");
+    let start_line = paragraph_start_line.unwrap_or(1);
+    let end_line = paragraph_end_line.unwrap_or(start_line);
     blocks.push(BlockAst::Paragraph(ParagraphAst {
-        span: source.span_for_line(paragraph_start_line.unwrap_or(1), &text),
+        span: source.span_for_line_range(start_line, end_line),
         text,
     }));
     paragraph_lines.clear();
     *paragraph_start_line = None;
+    *paragraph_end_line = None;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn parse_source(text: &str) -> (PageAst, Vec<Diagnostic>) {
+        let source = SourceFile::new_with_identity_path(
+            PathBuf::from("guide.adoc"),
+            text.to_string(),
+            PathBuf::from("guide.adoc"),
+        );
+        parse_page(&source)
+    }
+
+    #[test]
+    fn parse_page_keeps_at_doc_mentions_in_heading_text() {
+        for text in [
+            "# Contact support@docs.example\n\nContent.\n",
+            "# Use the @doc(id) annotation in headings\n\nContent.\n",
+            "# Broken Annotation @doc product.area\n\nContent.\n",
+        ] {
+            let (_page, diagnostics) = parse_source(text);
+
+            assert!(
+                diagnostics.is_empty(),
+                "expected ordinary @doc prose to parse cleanly, got {diagnostics:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_page_rejects_annotation_with_trailing_text_after_closing_parenthesis() {
+        let (_page, diagnostics) = parse_source("# Notes (per @doc(thing) sidebar)\n\nContent.\n");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "parse.malformed_page_annotation");
+    }
+
+    #[test]
+    fn parse_page_reports_annotation_column_after_utf8_heading_text() {
+        let (_page, diagnostics) = parse_source("# Café @doc(\n\nContent.\n");
+
+        assert_eq!(diagnostics.len(), 1);
+        let span = diagnostics[0].span.as_ref().unwrap();
+        assert_eq!(span.start.column, 8);
+        assert_eq!(span.start.offset, 8);
+    }
+
+    #[test]
+    fn parse_page_allows_angle_bracket_prose() {
+        let (_page, diagnostics) = parse_source(
+            "# Technical Prose\n\nVec<String>, Map<K, V>, Result<T, E>, and compare a<b.\n",
+        );
+
+        assert!(
+            diagnostics.is_empty(),
+            "expected angle-bracket prose to parse cleanly, got {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn parse_page_rejects_inline_raw_html_tag() {
+        let (_page, diagnostics) = parse_source("# Unsafe\n\nKeep <span>raw html</span> out.\n");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 6);
+    }
+
+    #[test]
+    fn parse_page_spans_multiline_paragraph_source_range() {
+        let (page, diagnostics) = parse_source("# Guide\n\nCafé first\nsecond line\n");
+
+        assert!(
+            diagnostics.is_empty(),
+            "expected paragraph to parse cleanly, got {diagnostics:?}"
+        );
+        let paragraph = page
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::Paragraph(paragraph) => Some(paragraph),
+                _ => None,
+            })
+            .expect("paragraph block exists");
+
+        assert_eq!(paragraph.text, "Café first second line");
+        assert_eq!(paragraph.span.start.line, 3);
+        assert_eq!(paragraph.span.start.column, 1);
+        assert_eq!(paragraph.span.end.line, 4);
+        assert_eq!(paragraph.span.end.column, 12);
+    }
 }
