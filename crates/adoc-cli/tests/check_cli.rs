@@ -119,6 +119,30 @@ fn check_rejects_raw_html_with_source_location() {
     assert!(stdout.contains("1 errors"));
 }
 
+#[test]
+fn check_rejects_unclosed_fenced_code_with_source_location() {
+    let workspace = TestWorkspace::new("check-rejects-unclosed-fence");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Broken Code @doc(broken-code)\n\n```rust\nfn main() {}\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected unclosed fenced code to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("guide.adoc:3:1"));
+    assert!(stdout.contains("error[parse.unclosed_fence]"));
+    assert!(stdout.contains("Fenced code block is missing a closing"));
+    assert!(stdout.contains("1 errors"));
+}
+
 struct TestWorkspace {
     pub root: PathBuf,
 }
