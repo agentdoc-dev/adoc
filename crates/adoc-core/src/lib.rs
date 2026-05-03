@@ -2,6 +2,7 @@ mod artifact;
 mod ast;
 mod compile;
 mod diagnostic;
+mod inline;
 mod parser;
 mod render;
 mod source;

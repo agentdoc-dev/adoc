@@ -1,5 +1,6 @@
 use crate::ast::{BlockAst, CodeBlockAst, HeadingAst, ListAst, ListKind, PageAst, ParagraphAst};
 use crate::diagnostic::{Diagnostic, SourceSpan};
+use crate::inline::{self, InlineSegment};
 use crate::source::{SourceFile, derive_page_id};
 
 pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
@@ -10,7 +11,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         blocks: Vec::new(),
     };
     let mut diagnostics = Vec::new();
-    let mut paragraph_lines = Vec::new();
+    let mut paragraph_lines: Vec<Vec<InlineSegment>> = Vec::new();
     let mut paragraph_start_line = None;
     let mut paragraph_end_line = None;
     let mut pending_list = None;
@@ -85,17 +86,20 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 );
             }
 
+            let (inlines, heading_diagnostics) = inline::parse_inlines(&heading.text);
+            diagnostics.extend(heading_diagnostics);
+
             let is_first_page_heading = heading.level == 1 && !has_seen_page_heading;
             if is_first_page_heading {
                 has_seen_page_heading = true;
-                page.title = Some(heading.text.clone());
+                page.title = Some(inline::plain_text(&inlines));
                 if let Some(doc_id) = heading.doc_id.clone() {
                     page.id = doc_id;
                 }
             }
             page.blocks.push(BlockAst::Heading(HeadingAst {
                 level: heading.level,
-                text: heading.text,
+                inlines,
                 span,
             }));
             continue;
@@ -153,19 +157,22 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_start_line,
                 &mut paragraph_end_line,
             );
+            let item_text = item.trim();
+            let (item_inlines, item_diagnostics) = inline::parse_inlines(item_text);
+            diagnostics.extend(item_diagnostics);
             push_list_item(
                 source,
                 &mut page.blocks,
                 &mut pending_list,
                 ListKind::Unordered,
-                item.trim().to_string(),
+                item_inlines,
                 line_number,
                 line,
             );
             continue;
         }
 
-        if let Some(item) = parse_ordered_list_item(trimmed) {
+        if let Some(item_text) = parse_ordered_list_item(trimmed) {
             flush_paragraph(
                 source,
                 &mut page.blocks,
@@ -173,12 +180,14 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_start_line,
                 &mut paragraph_end_line,
             );
+            let (item_inlines, item_diagnostics) = inline::parse_inlines(item_text);
+            diagnostics.extend(item_diagnostics);
             push_list_item(
                 source,
                 &mut page.blocks,
                 &mut pending_list,
                 ListKind::Ordered,
-                item.to_string(),
+                item_inlines,
                 line_number,
                 line,
             );
@@ -186,9 +195,11 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         }
 
         flush_list(&mut page.blocks, &mut pending_list);
+        let (line_inlines, line_diagnostics) = inline::parse_inlines(trimmed);
+        diagnostics.extend(line_diagnostics);
         paragraph_start_line.get_or_insert(line_number);
         paragraph_end_line = Some(line_number);
-        paragraph_lines.push(trimmed.to_string());
+        paragraph_lines.push(line_inlines);
     }
 
     flush_paragraph(
@@ -211,7 +222,7 @@ struct ParsedHeading {
 
 struct PendingList {
     kind: ListKind,
-    items: Vec<String>,
+    items: Vec<Vec<InlineSegment>>,
     span: SourceSpan,
 }
 
@@ -425,7 +436,7 @@ fn push_list_item(
     blocks: &mut Vec<BlockAst>,
     pending_list: &mut Option<PendingList>,
     kind: ListKind,
-    item: String,
+    item: Vec<InlineSegment>,
     line_number: u32,
     line: &str,
 ) {
@@ -459,7 +470,7 @@ fn flush_list(blocks: &mut Vec<BlockAst>, pending_list: &mut Option<PendingList>
 fn flush_paragraph(
     source: &SourceFile,
     blocks: &mut Vec<BlockAst>,
-    paragraph_lines: &mut Vec<String>,
+    paragraph_lines: &mut Vec<Vec<InlineSegment>>,
     paragraph_start_line: &mut Option<u32>,
     paragraph_end_line: &mut Option<u32>,
 ) {
@@ -467,14 +478,19 @@ fn flush_paragraph(
         return;
     }
 
-    let text = paragraph_lines.join(" ");
+    let mut inlines: Vec<InlineSegment> = Vec::new();
+    for (index, line_inlines) in paragraph_lines.drain(..).enumerate() {
+        if index > 0 {
+            inlines.push(InlineSegment::Text(" ".to_string()));
+        }
+        inlines.extend(line_inlines);
+    }
     let start_line = paragraph_start_line.unwrap_or(1);
     let end_line = paragraph_end_line.unwrap_or(start_line);
     blocks.push(BlockAst::Paragraph(ParagraphAst {
         span: source.span_for_line_range(start_line, end_line),
-        text,
+        inlines,
     }));
-    paragraph_lines.clear();
     *paragraph_start_line = None;
     *paragraph_end_line = None;
 }
@@ -594,7 +610,10 @@ mod tests {
             })
             .expect("paragraph block exists");
 
-        assert_eq!(paragraph.text, "Café first second line");
+        assert_eq!(
+            inline::plain_text(&paragraph.inlines),
+            "Café first second line"
+        );
         assert_eq!(paragraph.span.start.line, 3);
         assert_eq!(paragraph.span.start.column, 1);
         assert_eq!(paragraph.span.end.line, 4);
