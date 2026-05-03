@@ -1,153 +1,348 @@
 # AgentDoc
 
+[![CI](https://github.com/alex-bako/adoc/actions/workflows/ci.yml/badge.svg)](https://github.com/alex-bako/adoc/actions/workflows/ci.yml)
+
 AgentDoc is a human-readable documentation system for teams that need documentation to behave like maintained, agent-safe knowledge.
 
-Traditional docs are mostly formatted text. AgentDoc treats durable documentation as typed, versioned, evidence-backed knowledge objects that humans can read and AI agents can safely retrieve, cite, validate, and update through reviewable workflows.
+The current implementation is an early Rust CLI named `adoc`. It compiles native AgentDoc Source (`.adoc`) into:
 
-This repository is currently in the product-definition stage. The source of truth for the initial scope is [docs/PRD.md](docs/PRD.md).
-The implementation sequence is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
-The initial Rust implementation contract is tracked in [docs/V0-DESIGN.md](docs/V0-DESIGN.md).
+- `docs.html` for humans
+- `docs.agent.json` for agents and tooling
+- source-located diagnostics for invalid input
 
-## Product Thesis
+AgentDoc is not AsciiDoc, even though the source extension is `.adoc`.
 
-Modern documentation needs to answer questions that Markdown cannot represent on its own:
+## Status
 
-- Is this statement current?
-- Who owns it?
-- What evidence supports it?
-- Where does it apply?
-- Is it verified, draft, stale, deprecated, or contradicted?
-- Can an AI agent safely use it?
-- What code, tests, tickets, commits, or reviewers support it?
+AgentDoc is pre-release compiler infrastructure. The V0.1 implementation supports a prose page slice:
 
-AgentDoc's goal is to let humans keep writing readable notes while turning durable knowledge into a validated graph that agents can use safely instead of guessing from prose.
+- `adoc check <path>`
+- `adoc build <path> --out <directory>`
+- one file or a directory of `.adoc` files as input
+- page headings with optional `@doc(id)` page identity
+- path-derived page identity when no annotation exists
+- headings, paragraphs, unordered lists, ordered lists, and fenced code blocks
+- strict diagnostics for raw HTML and unclosed fenced code blocks
+- HTML and agent JSON artifact emission when no error diagnostics exist
 
-## Core Ideas
+Typed Knowledge Objects such as `claim`, `decision`, `warning`, and `glossary` are planned for later V0 slices. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
-- **Readable source format:** prose by default, structure when knowledge becomes durable.
-- **Typed knowledge objects:** claims, decisions, constraints, procedures, examples, warnings, policies, glossary terms, agent instructions, contradictions, and related objects.
-- **Stable object IDs:** references target durable object IDs instead of fragile headings or line numbers.
-- **Readable ID grammar:** object IDs use lowercase dot-separated kebab segments such as `billing.credits.decrement-after-success`.
-- **Evidence-backed knowledge:** verified objects link to source code, tests, commits, tickets, reviewers, data, or external sources.
-- **Lifecycle-aware docs:** objects can be draft, proposed, accepted, verified, stale, deprecated, superseded, contradicted, revoked, or archived.
-- **Agent-safe retrieval:** agents retrieve status-aware, scope-aware, permission-aware objects with citations.
-- **Semantic review:** changes can be reviewed as knowledge-object changes instead of only text diffs.
-- **Governance and trust:** ownership, approval, permissions, audit trails, and trust boundaries are first-class product concerns.
+## Quick Start
 
-## Example Source
+### Prerequisites
 
-AgentDoc source is intended to stay readable while carrying machine-parseable structure:
+- Rust `1.95.0`
+- Cargo, rustfmt, and Clippy
 
-```adoc
-# Billing Credits @doc(billing.credits)
-
-Users spend credits when generating content.
-
-::claim billing.credits.decrement-after-success
-status: verified
-owner: backend-platform
-source: apps/backend/src/features/credits/consume.use-case.ts
-test: apps/backend/src/features/credits/consume.test.ts
-verified_at: 2026-05-02
-expires_at: 2026-08-02
---
-Credits are decremented only after generation completes successfully.
-::
-```
-
-Compiled output should support human docs, agent JSON, search indexes, graph data, CI diagnostics, and future compliance or review views.
-
-## Planned CLI
-
-The PRD defines `adoc` as the primary developer interface. Planned commands include:
+The repository pins the toolchain in [rust-toolchain.toml](rust-toolchain.toml), so Rustup will select the correct version automatically.
 
 ```bash
-adoc init
-adoc check
-adoc build
-adoc search
-adoc explain
-adoc impacted-by
-adoc patch
-adoc migrate
+rustup toolchain install --no-self-update
 ```
 
-The initial CLI will be implemented in Rust as a two-crate Cargo workspace: `adoc-cli` for command-line behavior and `adoc-core` for parser, validation, diagnostics, HTML, and agent JSON. The V0 parser will be structured and hand-written around source spans and diagnostics rather than generated from a grammar. The CLI should validate source files, compile human and agent-facing outputs, detect broken references, reject raw HTML in strict mode, and keep later commands like search behind the roadmap.
+### Run From Source
 
-`adoc-core` should initially expose one high-level `compile_workspace()` API for the CLI. Lower-level parser, validator, renderer, and artifact APIs can be exposed later when another consumer needs them.
+Create a small AgentDoc Source file:
 
-## MVP Scope
+````bash
+mkdir -p /tmp/adoc-example
 
-The first usable version is expected to focus on:
+cat > /tmp/adoc-example/guide.adoc <<'EOF'
+# Getting Started @doc(getting-started)
 
-- AgentDoc source syntax
-- typed blocks with stable IDs
-- core schema validation
-- lifecycle, owner, and evidence fields
-- references by object ID
-- strict mode and compatibility mode
-- HTML rendering
-- JSON output for agent retrieval
-- basic search
-- stale-by-expiration diagnostics
-- Markdown migration reports
-- read-only agent retrieval
-- documentation and examples
+AgentDoc keeps knowledge readable.
 
-The MVP explicitly does not include the full SaaS web app, enterprise RBAC, full compliance suite, schema marketplace, autonomous agent approval, or complex AI contradiction reasoning.
+- Write source
+- Run check
+- Build artifacts
 
-## Intended Architecture
+```rust
+fn main() {
+    println!("hello from AgentDoc");
+}
+```
+EOF
+````
 
-AgentDoc is designed as a pipeline:
+Check the source:
+
+```bash
+cargo run -p adoc-cli --bin adoc -- check /tmp/adoc-example/guide.adoc
+```
+
+Expected output:
 
 ```text
-Authoring sources
-  -> parser and compiler
-  -> schema validator
-  -> knowledge object store
-  -> knowledge graph
-  -> lifecycle and evidence engines
-  -> permission and trust engine
-  -> agent API
-  -> renderers and lenses
+0 errors, 0 warnings
 ```
 
-The same source should be usable through multiple lenses:
+Build artifacts:
 
-- docs website
-- agent view
-- search index
-- knowledge graph
-- IDE view
-- semantic diff
-- CI diagnostics
-- compliance report
+```bash
+cargo run -p adoc-cli --bin adoc -- build /tmp/adoc-example/guide.adoc --out /tmp/adoc-example/dist
+```
 
-## Agent Safety Model
+Inspect the generated files:
 
-AgentDoc separates content from instructions. Agents may read prose, but they should only follow explicit, typed, trusted `agent` instruction objects with scoped permissions.
+```bash
+ls -la /tmp/adoc-example/dist
+cat /tmp/adoc-example/dist/docs.html
+cat /tmp/adoc-example/dist/docs.agent.json
+```
 
-Agent-facing responses should prefer verified and accepted objects, include citations, surface stale or contradictory knowledge, and refuse to answer definitively when unresolved contradictions make the answer unsafe.
-
-## Development Status
-
-Current repository contents:
-
-- `docs/PRD.md` - full draft product requirements document
-- `docs/ROADMAP.md` - tracer-bullet implementation roadmap
-- `docs/V0-DESIGN.md` - initial Rust design contract
-- `README.md` - initial project overview
-
-No implementation is present yet. The next practical step is to scaffold the Rust workspace and build the first tracer-bullet slice: parser, strict diagnostics, `docs.html`, and `docs.agent.json`.
-
-## North Star
-
-AgentDoc succeeds when teams stop asking only "Where is the doc?" and can instead ask:
+Expected files:
 
 ```text
-What do we currently believe?
-What proves it?
-Who owns it?
-Where does it apply?
-Can an agent safely use it?
+docs.html
+docs.agent.json
 ```
+
+### Install Locally
+
+To install the `adoc` binary from this checkout:
+
+```bash
+cargo install --path crates/adoc-cli --locked
+```
+
+Then run:
+
+```bash
+adoc check /tmp/adoc-example/guide.adoc
+adoc build /tmp/adoc-example/guide.adoc --out /tmp/adoc-example/dist
+```
+
+## CLI Usage
+
+```bash
+adoc check <path>
+adoc build <path> --out <directory>
+```
+
+`<path>` can be:
+
+- a single `.adoc` file
+- a directory, scanned recursively for `.adoc` files
+
+`adoc check`:
+
+- compiles the input in strict mode
+- prints diagnostics and a summary
+- exits `0` when there are no errors
+- exits `1` when any error diagnostic exists
+
+`adoc build`:
+
+- runs the same compile path as `check`
+- creates the output directory when it does not exist
+- fails if the output path exists as a file
+- writes `docs.html` and `docs.agent.json` only when there are no errors
+
+## AgentDoc Source
+
+The V0.1 source grammar is intentionally small.
+
+````adoc
+# Page Title @doc(product.area)
+
+Paragraph text is plain prose.
+
+- Unordered item
+- Another unordered item
+
+1. Ordered item
+2. Another ordered item
+
+```text
+Fenced code is preserved and escaped in HTML.
+```
+````
+
+Page annotations are optional. If the first heading does not include `@doc(id)`, the compiler derives the page identity from the file path.
+
+Raw HTML is rejected in strict mode:
+
+```adoc
+<div>not allowed</div>
+```
+
+Unclosed fenced code blocks are rejected:
+
+````adoc
+```rust
+fn main() {}
+````
+
+Current limitations:
+
+- inline code, emphasis, and links are not rendered as rich inline HTML yet
+- typed Knowledge Objects are not implemented yet
+- custom schemas, includes, config files, search, and migrations are deferred
+
+## Smoke Tests
+
+Run the happy path:
+
+```bash
+rm -rf /tmp/adoc-smoke
+mkdir -p /tmp/adoc-smoke
+
+cat > /tmp/adoc-smoke/guide.adoc <<'EOF'
+# Getting Started @doc(getting-started)
+
+AgentDoc keeps knowledge readable.
+
+- Write source
+- Run check
+- Build artifacts
+EOF
+
+cargo run -p adoc-cli --bin adoc -- check /tmp/adoc-smoke/guide.adoc
+cargo run -p adoc-cli --bin adoc -- build /tmp/adoc-smoke/guide.adoc --out /tmp/adoc-smoke/dist
+
+ls -la /tmp/adoc-smoke/dist
+cat /tmp/adoc-smoke/dist/docs.html
+cat /tmp/adoc-smoke/dist/docs.agent.json
+```
+
+Expected:
+
+- `check` exits `0`
+- `build` exits `0`
+- `docs.html` exists
+- `docs.agent.json` exists
+- agent JSON includes `schema_version`, `pages`, `"objects": []`, and `"diagnostics": []`
+
+Run strict-mode failure checks:
+
+```bash
+cat > /tmp/adoc-smoke/raw-html.adoc <<'EOF'
+# Unsafe @doc(unsafe)
+
+<div>raw html</div>
+EOF
+
+cargo run -p adoc-cli --bin adoc -- check /tmp/adoc-smoke/raw-html.adoc
+```
+
+Expected: non-zero exit with `error[parse.raw_html]`.
+
+````bash
+cat > /tmp/adoc-smoke/unclosed-fence.adoc <<'EOF'
+# Broken @doc(broken)
+
+```rust
+fn main() {}
+EOF
+
+cargo run -p adoc-cli --bin adoc -- check /tmp/adoc-smoke/unclosed-fence.adoc
+````
+
+Expected: non-zero exit with `error[parse.unclosed_fence]`.
+
+```bash
+echo "not a directory" > /tmp/adoc-smoke/out-file
+cargo run -p adoc-cli --bin adoc -- build /tmp/adoc-smoke/guide.adoc --out /tmp/adoc-smoke/out-file
+```
+
+Expected: non-zero exit with `error[io.output_not_directory]`.
+
+## Development
+
+This is a Cargo workspace:
+
+```text
+crates/
+  adoc-cli/   # command-line adapter, file output, exit codes
+  adoc-core/  # compile API, parser, diagnostics, renderers, artifacts
+```
+
+The architectural contract is documented in [docs/V0-DESIGN.md](docs/V0-DESIGN.md).
+
+### Quality Gates
+
+Run the same checks as CI:
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+cargo build --workspace --locked
+RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+```
+
+Useful focused commands:
+
+```bash
+cargo test -p adoc-cli
+cargo test -p adoc-core
+cargo run -p adoc-cli --bin adoc -- check <path>
+cargo run -p adoc-cli --bin adoc -- build <path> --out dist
+```
+
+Format code before committing:
+
+```bash
+cargo fmt --all
+```
+
+## Continuous Integration
+
+CI runs on pushes and pull requests to `main` using [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
+The workflow checks:
+
+- formatting
+- Clippy with warnings denied
+- workspace tests
+- workspace build
+- documentation build with rustdoc warnings denied
+
+Dependabot is configured in [.github/dependabot.yml](.github/dependabot.yml) for Cargo and GitHub Actions updates.
+
+## Project Documents
+
+- [CONTEXT.md](CONTEXT.md): project language and domain decisions
+- [docs/PRD.md](docs/PRD.md): product requirements
+- [docs/ROADMAP.md](docs/ROADMAP.md): V0 tracer-bullet roadmap
+- [docs/V0-DESIGN.md](docs/V0-DESIGN.md): Rust implementation contract
+- [docs/adr/](docs/adr): architecture decision records
+
+## Architecture
+
+AgentDoc V0 is intentionally shaped as a compiler pipeline:
+
+```text
+AgentDoc Source
+  -> adoc-core compile_workspace()
+  -> parser and diagnostics
+  -> HTML renderer
+  -> agent JSON artifact
+  -> adoc-cli exit codes and file output
+```
+
+The public Rust API is deliberately small:
+
+```rust
+pub fn compile_workspace(input: CompileInput) -> CompileResult;
+```
+
+Parser, validation, renderer, and artifact internals stay private until another real consumer needs lower-level APIs.
+
+## Roadmap
+
+The next V0 milestones add:
+
+- richer page identity and source diagnostics
+- common prose rendering for inline code, emphasis, and links
+- first `claim` Knowledge Object
+- verified claim evidence fields
+- `decision`, `warning`, and `glossary`
+- object references and relations
+- multi-file project behavior
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full sequence.
+
+## License
+
+This project declares the MIT license in Cargo package metadata.
