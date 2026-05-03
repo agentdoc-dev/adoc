@@ -212,6 +212,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_inlines_handles_mixed_text_emphasis_code_link_chain() {
+        let (segments, diagnostics) =
+            parse_inlines("Try *foo* and `bar` then [docs](https://example.test) end.");
+
+        assert_eq!(
+            segments,
+            vec![
+                InlineSegment::Text("Try ".to_string()),
+                InlineSegment::Emphasis(vec![InlineSegment::Text("foo".to_string())]),
+                InlineSegment::Text(" and ".to_string()),
+                InlineSegment::Code("bar".to_string()),
+                InlineSegment::Text(" then ".to_string()),
+                InlineSegment::Link {
+                    text: vec![InlineSegment::Text("docs".to_string())],
+                    url: "https://example.test".to_string(),
+                },
+                InlineSegment::Text(" end.".to_string()),
+            ]
+        );
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
     fn parse_inlines_recognizes_link_with_https_url() {
         let (segments, diagnostics) = parse_inlines("[label](https://example.test)");
 
