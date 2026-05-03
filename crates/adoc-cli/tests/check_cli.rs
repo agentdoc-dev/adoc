@@ -254,6 +254,30 @@ fn check_rejects_unclosed_fenced_code_with_source_location() {
     assert!(stdout.contains("1 errors"));
 }
 
+#[test]
+fn check_rejects_malformed_page_annotation_with_source_location() {
+    let workspace = TestWorkspace::new("check-rejects-malformed-page-annotation");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Broken Annotation @doc(broken-page\n\nContent.\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected malformed page annotation to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("guide.adoc:1:1"));
+    assert!(stdout.contains("error[parse.malformed_page_annotation]"));
+    assert!(stdout.contains("Page annotation must use @doc(id)"));
+    assert!(stdout.contains("1 errors"));
+}
+
 #[cfg(unix)]
 #[test]
 fn check_reports_unreadable_source_path() {

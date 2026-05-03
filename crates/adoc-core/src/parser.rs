@@ -49,9 +49,10 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             continue;
         }
 
-        if let Some((level, heading_text, doc_id)) = parse_heading(trimmed) {
+        if let Some(heading) = parse_heading(trimmed) {
             let is_first_heading = !has_seen_heading;
             has_seen_heading = true;
+            let span = source.span_for_line(line_number, line);
             flush_paragraph(
                 source,
                 &mut page.blocks,
@@ -59,16 +60,25 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_start_line,
             );
             flush_list(&mut page.blocks, &mut pending_list);
-            if page.title.is_none() && level == 1 {
-                page.title = Some(heading_text.clone());
+            if heading.has_malformed_page_annotation {
+                diagnostics.push(
+                    Diagnostic::error(
+                        "parse.malformed_page_annotation",
+                        "Page annotation must use @doc(id) with a non-empty id and closing ')'",
+                    )
+                    .with_span(span.clone()),
+                );
             }
-            if is_first_heading && let Some(doc_id) = doc_id {
+            if page.title.is_none() && heading.level == 1 {
+                page.title = Some(heading.text.clone());
+            }
+            if is_first_heading && let Some(doc_id) = heading.doc_id {
                 page.id = doc_id;
             }
             page.blocks.push(BlockAst::Heading(HeadingAst {
-                level,
-                text: heading_text,
-                span: source.span_for_line(line_number, line),
+                level: heading.level,
+                text: heading.text,
+                span,
             }));
             continue;
         }
@@ -169,13 +179,20 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     (page, diagnostics)
 }
 
+struct ParsedHeading {
+    level: u8,
+    text: String,
+    doc_id: Option<String>,
+    has_malformed_page_annotation: bool,
+}
+
 struct PendingList {
     kind: ListKind,
     items: Vec<String>,
     span: SourceSpan,
 }
 
-fn parse_heading(line: &str) -> Option<(u8, String, Option<String>)> {
+fn parse_heading(line: &str) -> Option<ParsedHeading> {
     let marker_count = line
         .chars()
         .take_while(|character| *character == '#')
@@ -185,29 +202,53 @@ fn parse_heading(line: &str) -> Option<(u8, String, Option<String>)> {
     }
 
     let raw_text = line[marker_count + 1..].trim();
-    let (text, doc_id) = parse_page_annotation(raw_text);
-    Some((marker_count as u8, text, doc_id))
+    let annotation = parse_page_annotation(raw_text);
+    Some(ParsedHeading {
+        level: marker_count as u8,
+        text: annotation.text,
+        doc_id: annotation.doc_id,
+        has_malformed_page_annotation: annotation.is_malformed,
+    })
 }
 
-fn parse_page_annotation(raw_text: &str) -> (String, Option<String>) {
+struct ParsedPageAnnotation {
+    text: String,
+    doc_id: Option<String>,
+    is_malformed: bool,
+}
+
+fn parse_page_annotation(raw_text: &str) -> ParsedPageAnnotation {
     let Some(annotation_start) = raw_text.rfind(" @doc(") else {
-        return (raw_text.to_string(), None);
+        return ParsedPageAnnotation {
+            text: raw_text.to_string(),
+            doc_id: None,
+            is_malformed: false,
+        };
     };
 
     if !raw_text.ends_with(')') {
-        return (raw_text.to_string(), None);
+        return ParsedPageAnnotation {
+            text: raw_text.to_string(),
+            doc_id: None,
+            is_malformed: true,
+        };
     }
 
     let id_start = annotation_start + " @doc(".len();
     let id = raw_text[id_start..raw_text.len() - 1].trim();
     if id.is_empty() {
-        return (raw_text.to_string(), None);
+        return ParsedPageAnnotation {
+            text: raw_text.to_string(),
+            doc_id: None,
+            is_malformed: true,
+        };
     }
 
-    (
-        raw_text[..annotation_start].trim().to_string(),
-        Some(id.to_string()),
-    )
+    ParsedPageAnnotation {
+        text: raw_text[..annotation_start].trim().to_string(),
+        doc_id: Some(id.to_string()),
+        is_malformed: false,
+    }
 }
 
 fn parse_ordered_list_item(line: &str) -> Option<&str> {
