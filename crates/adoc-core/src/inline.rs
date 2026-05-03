@@ -6,6 +6,10 @@ pub enum InlineSegment {
     Code(String),
     Emphasis(Vec<InlineSegment>),
     Strong(Vec<InlineSegment>),
+    Link {
+        text: Vec<InlineSegment>,
+        url: String,
+    },
 }
 
 pub fn parse_inlines(text: &str) -> (Vec<InlineSegment>, Vec<Diagnostic>) {
@@ -16,6 +20,12 @@ pub fn parse_inlines(text: &str) -> (Vec<InlineSegment>, Vec<Diagnostic>) {
 
     while cursor < text.len() {
         if let Some(consumed) = scan_code(text, cursor, &mut segments, &mut buffer) {
+            cursor += consumed;
+            continue;
+        }
+        if let Some(consumed) =
+            scan_link(text, cursor, &mut segments, &mut diagnostics, &mut buffer)
+        {
             cursor += consumed;
             continue;
         }
@@ -55,8 +65,44 @@ fn append_plain_text(segments: &[InlineSegment], buffer: &mut String) {
             InlineSegment::Emphasis(inner) | InlineSegment::Strong(inner) => {
                 append_plain_text(inner, buffer)
             }
+            InlineSegment::Link { text, .. } => append_plain_text(text, buffer),
         }
     }
+}
+
+fn scan_link(
+    text: &str,
+    cursor: usize,
+    segments: &mut Vec<InlineSegment>,
+    diagnostics: &mut Vec<Diagnostic>,
+    buffer: &mut String,
+) -> Option<usize> {
+    if !text[cursor..].starts_with('[') {
+        return None;
+    }
+    let after_open_bracket = &text[cursor + 1..];
+    let close_bracket_offset = after_open_bracket.find(']')?;
+    if close_bracket_offset == 0 {
+        return None;
+    }
+    let label_text = &after_open_bracket[..close_bracket_offset];
+
+    let after_close_bracket = &after_open_bracket[close_bracket_offset + 1..];
+    if !after_close_bracket.starts_with('(') {
+        return None;
+    }
+    let after_open_paren = &after_close_bracket[1..];
+    let close_paren_offset = after_open_paren.find(')')?;
+    let url = after_open_paren[..close_paren_offset].to_string();
+
+    flush_text(segments, buffer);
+    let (label_segments, label_diagnostics) = parse_inlines(label_text);
+    diagnostics.extend(label_diagnostics);
+    segments.push(InlineSegment::Link {
+        text: label_segments,
+        url,
+    });
+    Some(1 + close_bracket_offset + 1 + 1 + close_paren_offset + 1)
 }
 
 fn scan_code(
@@ -163,6 +209,37 @@ mod tests {
             )])]
         );
         assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_inlines_recognizes_link_with_https_url() {
+        let (segments, diagnostics) = parse_inlines("[label](https://example.test)");
+
+        assert_eq!(
+            segments,
+            vec![InlineSegment::Link {
+                text: vec![InlineSegment::Text("label".to_string())],
+                url: "https://example.test".to_string(),
+            }]
+        );
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_inlines_link_inside_paragraph() {
+        let (segments, _) = parse_inlines("see [docs](https://example.test) for details");
+
+        assert_eq!(
+            segments,
+            vec![
+                InlineSegment::Text("see ".to_string()),
+                InlineSegment::Link {
+                    text: vec![InlineSegment::Text("docs".to_string())],
+                    url: "https://example.test".to_string(),
+                },
+                InlineSegment::Text(" for details".to_string()),
+            ]
+        );
     }
 
     #[test]
