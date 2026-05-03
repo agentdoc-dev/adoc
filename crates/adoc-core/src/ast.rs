@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::diagnostic::SourceSpan;
+use crate::inline::InlineSegment;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceAst {
@@ -26,20 +27,20 @@ pub enum BlockAst {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeadingAst {
     pub level: u8,
-    pub text: String,
+    pub inlines: Vec<InlineSegment>,
     pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParagraphAst {
-    pub text: String,
+    pub inlines: Vec<InlineSegment>,
     pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListAst {
     pub kind: ListKind,
-    pub items: Vec<String>,
+    pub items: Vec<Vec<InlineSegment>>,
     pub span: SourceSpan,
 }
 
