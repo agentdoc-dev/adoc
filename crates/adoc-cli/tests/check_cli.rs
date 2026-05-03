@@ -180,6 +180,44 @@ fn build_keeps_page_identity_from_first_heading_annotation() {
 }
 
 #[test]
+fn build_uses_first_top_level_heading_annotation_for_page_identity() {
+    let workspace = TestWorkspace::new("build-uses-top-level-page-heading-id");
+    let source = workspace.write(
+        "guide.adoc",
+        "## Draft Notes @doc(draft.notes)\n\n# Guide @doc(product.area)\n\nMore context.\n",
+    );
+    let output_directory = workspace.root.join("dist");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            source.to_str().expect("source path is utf-8"),
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(output_directory.join("docs.html")).expect("HTML is written");
+    assert!(html.contains("data-page-id=\"product.area\""));
+    assert!(!html.contains("data-page-id=\"draft.notes\""));
+
+    let agent_json = fs::read_to_string(output_directory.join("docs.agent.json"))
+        .expect("agent JSON is written");
+    assert!(agent_json.contains("\"id\": \"product.area\""));
+    assert!(!agent_json.contains("\"id\": \"draft.notes\""));
+}
+
+#[test]
 fn build_fails_clearly_when_output_path_is_a_file() {
     let workspace = TestWorkspace::new("build-output-path-is-file");
     let source = workspace.write(

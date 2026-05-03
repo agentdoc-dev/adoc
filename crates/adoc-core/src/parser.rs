@@ -13,7 +13,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     let mut paragraph_lines = Vec::new();
     let mut paragraph_start_line = None;
     let mut pending_list = None;
-    let mut has_seen_heading = false;
+    let mut has_seen_page_heading = false;
     let mut lines = source.text.lines().enumerate().peekable();
 
     while let Some((line_index, line)) = lines.next() {
@@ -54,8 +54,6 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         }
 
         if let Some(heading) = parse_heading(trimmed) {
-            let is_first_heading = !has_seen_heading;
-            has_seen_heading = true;
             let span = source.span_for_line(line_number, line);
             flush_paragraph(
                 source,
@@ -73,11 +71,14 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                     .with_span(span.clone()),
                 );
             }
-            if page.title.is_none() && heading.level == 1 {
+
+            let is_first_page_heading = heading.level == 1 && !has_seen_page_heading;
+            if is_first_page_heading {
+                has_seen_page_heading = true;
                 page.title = Some(heading.text.clone());
-            }
-            if is_first_heading && let Some(doc_id) = heading.doc_id {
-                page.id = doc_id;
+                if let Some(doc_id) = heading.doc_id.clone() {
+                    page.id = doc_id;
+                }
             }
             page.blocks.push(BlockAst::Heading(HeadingAst {
                 level: heading.level,
