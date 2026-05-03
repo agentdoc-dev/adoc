@@ -212,6 +212,49 @@ mod tests {
     }
 
     #[test]
+    fn parse_inlines_treats_unclosed_emphasis_as_literal() {
+        let (segments, diagnostics) = parse_inlines("*lone marker");
+
+        assert_eq!(
+            segments,
+            vec![InlineSegment::Text("*lone marker".to_string())]
+        );
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_inlines_treats_unclosed_code_as_literal() {
+        let (segments, diagnostics) = parse_inlines("`lone backtick");
+
+        assert_eq!(
+            segments,
+            vec![InlineSegment::Text("`lone backtick".to_string())]
+        );
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_inlines_treats_link_without_paren_as_literal() {
+        let (segments, diagnostics) = parse_inlines("[label]");
+
+        assert_eq!(segments, vec![InlineSegment::Text("[label]".to_string())]);
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_inlines_treats_link_with_unclosed_url_as_literal() {
+        let (segments, diagnostics) = parse_inlines("[label](https://example.test");
+
+        assert_eq!(
+            segments,
+            vec![InlineSegment::Text(
+                "[label](https://example.test".to_string()
+            )]
+        );
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
     fn parse_inlines_handles_mixed_text_emphasis_code_link_chain() {
         let (segments, diagnostics) =
             parse_inlines("Try *foo* and `bar` then [docs](https://example.test) end.");
