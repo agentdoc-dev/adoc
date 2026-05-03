@@ -162,6 +162,69 @@ mod tests {
     }
 
     #[test]
+    fn render_html_flows_inlines_through_heading_paragraph_and_list_item() {
+        use crate::ast::{HeadingAst, ListAst, ListKind, ParagraphAst};
+        use crate::diagnostic::{SourcePosition, SourceSpan};
+        use std::path::PathBuf;
+
+        fn span() -> SourceSpan {
+            SourceSpan {
+                file: PathBuf::from("guide.adoc"),
+                start: SourcePosition {
+                    line: 1,
+                    column: 1,
+                    offset: 0,
+                },
+                end: SourcePosition {
+                    line: 1,
+                    column: 1,
+                    offset: 0,
+                },
+            }
+        }
+
+        let page = PageAst {
+            id: "guide".to_string(),
+            title: Some("Title".to_string()),
+            source_path: PathBuf::from("guide.adoc"),
+            blocks: vec![
+                BlockAst::Heading(HeadingAst {
+                    level: 1,
+                    inlines: vec![
+                        InlineSegment::Text("Title with ".to_string()),
+                        InlineSegment::Strong(vec![InlineSegment::Text("bold".to_string())]),
+                    ],
+                    span: span(),
+                }),
+                BlockAst::Paragraph(ParagraphAst {
+                    inlines: vec![
+                        InlineSegment::Text("First ".to_string()),
+                        InlineSegment::Emphasis(vec![InlineSegment::Text("emphasis".to_string())]),
+                        InlineSegment::Text(" then ".to_string()),
+                        InlineSegment::Code("ident".to_string()),
+                        InlineSegment::Text(".".to_string()),
+                    ],
+                    span: span(),
+                }),
+                BlockAst::List(ListAst {
+                    kind: ListKind::Unordered,
+                    items: vec![vec![
+                        InlineSegment::Text("Run ".to_string()),
+                        InlineSegment::Code("adoc check".to_string()),
+                    ]],
+                    span: span(),
+                }),
+            ],
+        };
+
+        let html = render_html(&[page]);
+
+        assert!(html.contains("<h1>Title with <strong>bold</strong></h1>"));
+        assert!(html.contains("<p>First <em>emphasis</em> then <code>ident</code>.</p>"));
+        assert!(html.contains("<li>Run <code>adoc check</code></li>"));
+    }
+
+    #[test]
     fn render_inlines_recursively_renders_link_label() {
         let html = render(&[InlineSegment::Link {
             text: vec![
