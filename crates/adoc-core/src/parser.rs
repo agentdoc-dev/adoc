@@ -398,11 +398,6 @@ fn raw_html_tag_end(value: &str) -> Option<usize> {
         name_end += character.len_utf8();
     }
 
-    let tag_name = &value[name_start..name_end];
-    if !is_raw_html_tag_name(tag_name) {
-        return None;
-    }
-
     let next_character = value[name_end..].chars().next()?;
     match next_character {
         '>' => Some(name_end + 1),
@@ -414,124 +409,6 @@ fn raw_html_tag_end(value: &str) -> Option<usize> {
             .map(|relative_index| name_end + relative_index + 1),
         _ => None,
     }
-}
-
-fn is_raw_html_tag_name(tag_name: &str) -> bool {
-    let normalized = tag_name.to_ascii_lowercase();
-    matches!(
-        normalized.as_str(),
-        "a" | "abbr"
-            | "address"
-            | "area"
-            | "article"
-            | "aside"
-            | "audio"
-            | "b"
-            | "base"
-            | "bdi"
-            | "bdo"
-            | "blockquote"
-            | "body"
-            | "br"
-            | "button"
-            | "canvas"
-            | "caption"
-            | "cite"
-            | "code"
-            | "col"
-            | "colgroup"
-            | "data"
-            | "datalist"
-            | "dd"
-            | "del"
-            | "details"
-            | "dfn"
-            | "dialog"
-            | "div"
-            | "dl"
-            | "dt"
-            | "em"
-            | "embed"
-            | "fieldset"
-            | "figcaption"
-            | "figure"
-            | "footer"
-            | "form"
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-            | "h5"
-            | "h6"
-            | "head"
-            | "header"
-            | "hr"
-            | "html"
-            | "i"
-            | "iframe"
-            | "img"
-            | "input"
-            | "ins"
-            | "kbd"
-            | "label"
-            | "legend"
-            | "li"
-            | "link"
-            | "main"
-            | "map"
-            | "mark"
-            | "menu"
-            | "meta"
-            | "meter"
-            | "nav"
-            | "noscript"
-            | "object"
-            | "ol"
-            | "optgroup"
-            | "option"
-            | "output"
-            | "p"
-            | "picture"
-            | "pre"
-            | "progress"
-            | "q"
-            | "rp"
-            | "rt"
-            | "ruby"
-            | "s"
-            | "samp"
-            | "script"
-            | "search"
-            | "section"
-            | "select"
-            | "slot"
-            | "small"
-            | "source"
-            | "span"
-            | "strong"
-            | "style"
-            | "sub"
-            | "summary"
-            | "sup"
-            | "svg"
-            | "table"
-            | "tbody"
-            | "td"
-            | "template"
-            | "textarea"
-            | "tfoot"
-            | "th"
-            | "thead"
-            | "time"
-            | "title"
-            | "tr"
-            | "track"
-            | "u"
-            | "ul"
-            | "var"
-            | "video"
-            | "wbr"
-    ) || tag_name.contains('-')
 }
 
 fn column_for_byte_index(line: &str, byte_index: usize) -> u32 {
@@ -665,6 +542,24 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, "parse.raw_html");
         assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 6);
+    }
+
+    #[test]
+    fn parse_page_rejects_unknown_raw_html_tag() {
+        let (_page, diagnostics) = parse_source("# Unsafe\n\n<foo>bar</foo>\n");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 1);
+    }
+
+    #[test]
+    fn parse_page_rejects_custom_element_raw_html_tag() {
+        let (_page, diagnostics) = parse_source("# Unsafe\n\n<my-component>x</my-component>\n");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 1);
     }
 
     #[test]
