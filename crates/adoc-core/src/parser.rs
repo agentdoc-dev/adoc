@@ -86,7 +86,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 );
             }
 
-            let heading_text_column = leading_indent_columns + heading.level as u32 + 2;
+            let heading_text_column = heading.text_column;
             let (inlines, heading_diagnostics) = inline::parse_inlines(
                 &heading.text,
                 InlineOrigin {
@@ -249,6 +249,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
 struct ParsedHeading {
     level: u8,
     text: String,
+    text_column: u32,
     doc_id: Option<String>,
     malformed_page_annotation: Option<PageAnnotationSpan>,
 }
@@ -279,12 +280,16 @@ fn parse_heading(line: &str, leading_indent_columns: u32) -> Option<ParsedHeadin
         return None;
     }
 
-    let raw_text_start_column = leading_indent_columns + marker_count as u32 + 2;
-    let raw_text = line[marker_count + 1..].trim();
-    let annotation = parse_page_annotation(raw_text, raw_text_start_column);
+    let after_markers = &line[marker_count..];
+    let leading_ws = after_markers.chars().take_while(|c| *c == ' ').count();
+    let text_start_byte = marker_count + leading_ws;
+    let text_column = leading_indent_columns + marker_count as u32 + leading_ws as u32 + 1;
+    let raw_text = line[text_start_byte..].trim_end();
+    let annotation = parse_page_annotation(raw_text, text_column);
     Some(ParsedHeading {
         level: marker_count as u8,
         text: annotation.text,
+        text_column,
         doc_id: annotation.doc_id,
         malformed_page_annotation: annotation.malformed_span,
     })
@@ -579,6 +584,19 @@ mod tests {
         assert_eq!(diagnostics[0].code, "parse.malformed_page_annotation");
         let span = diagnostics[0].span.as_ref().unwrap();
         assert_eq!(span.start.column, 12);
+    }
+
+    #[test]
+    fn heading_with_extra_marker_padding_reports_correct_inline_column() {
+        let (_page, diagnostics) = parse_source("##   [click](javascript:bad)\n");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
+        let span = diagnostics[0].span.as_ref().unwrap();
+        assert_eq!(
+            span.start.column, 6,
+            "extra spaces after # markers must shift the inline column accordingly"
+        );
     }
 
     #[test]
