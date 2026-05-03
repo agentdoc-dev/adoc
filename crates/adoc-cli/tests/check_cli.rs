@@ -348,8 +348,8 @@ fn check_rejects_malformed_page_annotation_with_source_location() {
 }
 
 #[test]
-fn check_rejects_page_annotation_without_parentheses() {
-    let workspace = TestWorkspace::new("check-rejects-page-annotation-without-parentheses");
+fn check_accepts_at_doc_without_parentheses_as_heading_text() {
+    let workspace = TestWorkspace::new("check-accepts-at-doc-without-parentheses");
     let source = workspace.write(
         "guide.adoc",
         "# Broken Annotation @doc product.area\n\nContent.\n",
@@ -361,14 +361,13 @@ fn check_rejects_page_annotation_without_parentheses() {
         .expect("adoc check runs");
 
     assert!(
-        !output.status.success(),
-        "expected malformed page annotation to fail check"
+        output.status.success(),
+        "expected @doc without parentheses to parse as heading text\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("guide.adoc:1:21"));
-    assert!(stdout.contains("error[parse.malformed_page_annotation]"));
-    assert!(stdout.contains("Page annotation must use @doc(id)"));
-    assert!(stdout.contains("1 errors"));
+    assert!(stdout.contains("0 errors"));
 }
 
 #[cfg(unix)]
