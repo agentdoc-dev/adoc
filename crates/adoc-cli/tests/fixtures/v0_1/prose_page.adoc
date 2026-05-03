@@ -1,0 +1,34 @@
+# AgentDoc V0.1 Prose Reference @doc(v0-1.prose)
+
+AgentDoc keeps **knowledge** readable for both humans and *agents*. Run `adoc check` to validate the source, then `adoc build` to emit human and agent artifacts.
+
+## Block coverage
+
+The V0.1 compiler covers these block types end to end:
+
+- Headings, levels 1 through 6
+- Ordered and unordered lists
+- Fenced code blocks
+- Plain prose paragraphs
+
+It also enforces strict mode for the cases below:
+
+1. Raw HTML is rejected with a `parse.raw_html` diagnostic.
+2. Unclosed fenced code blocks are rejected with `parse.unclosed_fence`.
+3. Link URLs outside `http`, `https`, and `mailto` are rejected with `parse.unsafe_link`.
+
+## Code samples
+
+Use a fenced block for multi-line code:
+
+```rust
+fn main() {
+    println!("hello agentdoc");
+}
+```
+
+Or `inline code` for shorter callouts inside prose.
+
+## Links
+
+Read the [project overview](https://example.test/adoc) or email the [maintainer team](mailto:dev@example.test) with feedback.

@@ -5,6 +5,35 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+fn fixture_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join(relative)
+}
+
+#[test]
+fn check_accepts_v0_1_prose_fixture_with_all_inline_syntax() {
+    let fixture = fixture_path("v0_1/prose_page.adoc");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", fixture.to_str().expect("fixture path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        output.status.success(),
+        "expected v0.1 prose fixture to check cleanly\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("0 errors"),
+        "expected zero errors in summary, got:\n{stdout}"
+    );
+}
+
 #[test]
 fn check_accepts_minimal_prose_page() {
     let workspace = TestWorkspace::new("check-accepts-minimal-prose-page");
