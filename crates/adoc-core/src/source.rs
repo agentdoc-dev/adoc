@@ -5,10 +5,9 @@ use crate::identity::PageId;
 
 /// Position on a single line, expressed in 1-indexed character columns.
 ///
-/// The cursor owns the UTF-8 column arithmetic that parser, inline scanner,
-/// and validator passes used to duplicate independently. Construct one with
-/// [`LineCursor::at_line_start`] for absolute positions, or [`LineCursor::at`]
-/// when you already know the column (e.g. inside a heading after a marker).
+/// Owns the UTF-8 column arithmetic that parser and inline scanner used to
+/// duplicate. Construct with [`LineCursor::at`] when you already know the
+/// column (e.g. inside a heading after a marker).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LineCursor {
     line: u32,
@@ -16,10 +15,6 @@ pub(crate) struct LineCursor {
 }
 
 impl LineCursor {
-    pub(crate) fn at_line_start(line: u32) -> Self {
-        Self { line, column: 1 }
-    }
-
     pub(crate) fn at(line: u32, column: u32) -> Self {
         Self { line, column }
     }
@@ -40,6 +35,15 @@ impl LineCursor {
             column: self.column_after_chars(prefix),
         }
     }
+}
+
+/// 1-indexed column reached after consuming `prefix` on a fresh line.
+///
+/// For callers that need only the column at a known-fresh line origin (e.g.
+/// raw-HTML span construction in the validator) and would otherwise have to
+/// manufacture a `LineCursor` purely as a column-arithmetic wrapper.
+pub(crate) fn column_offset(prefix: &str) -> u32 {
+    prefix.chars().count() as u32 + 1
 }
 
 #[derive(Debug, Clone)]
@@ -237,6 +241,28 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+
+    #[test]
+    fn column_offset_returns_one_for_empty_prefix() {
+        assert_eq!(column_offset(""), 1);
+    }
+
+    #[test]
+    fn column_offset_counts_ascii_characters() {
+        assert_eq!(column_offset("hello"), 6);
+    }
+
+    #[test]
+    fn column_offset_counts_multi_byte_characters_as_one_each() {
+        assert_eq!(column_offset("café"), 5);
+    }
+
+    #[test]
+    fn column_offset_counts_emoji_as_one_grapheme_each() {
+        // Crab emoji is two UTF-16 code units but a single Unicode scalar; the
+        // 1-indexed column after it is 2.
+        assert_eq!(column_offset("🦀"), 2);
+    }
 
     #[test]
     fn span_for_line_columns_uses_utf8_byte_offsets() {

@@ -12,7 +12,7 @@
 use crate::ast::{BlockAst, PageAst};
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::inline::InlineSegment;
-use crate::source::{LineCursor, SourceFile};
+use crate::source::{SourceFile, column_offset};
 
 pub(crate) trait ValidationRule {
     fn check(&self, page: &PageAst, source: &SourceFile, sink: &mut Vec<Diagnostic>);
@@ -159,10 +159,9 @@ fn find_raw_html(line: &str) -> Option<RawHtmlMatch> {
         };
         let end_index = start_index + character.len_utf8() + tag_end;
 
-        let line_start = LineCursor::at_line_start(0);
         return Some(RawHtmlMatch {
-            start_column: line_start.column_after_chars(&line[..start_index]),
-            end_column: line_start.column_after_chars(&line[..end_index]),
+            start_column: column_offset(&line[..start_index]),
+            end_column: column_offset(&line[..end_index]),
         });
     }
 
