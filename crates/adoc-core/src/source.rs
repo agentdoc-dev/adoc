@@ -47,15 +47,19 @@ pub(crate) fn column_offset(prefix: &str) -> u32 {
 }
 
 #[derive(Debug, Clone)]
-pub struct SourceFile {
-    pub path: PathBuf,
-    pub identity_path: PathBuf,
-    pub text: String,
-    pub line_index: LineIndex,
+pub(crate) struct SourceFile {
+    pub(crate) path: PathBuf,
+    pub(crate) identity_path: PathBuf,
+    pub(crate) text: String,
+    pub(crate) line_index: LineIndex,
 }
 
 impl SourceFile {
-    pub fn new_with_identity_path(path: PathBuf, text: String, identity_path: PathBuf) -> Self {
+    pub(crate) fn new_with_identity_path(
+        path: PathBuf,
+        text: String,
+        identity_path: PathBuf,
+    ) -> Self {
         let line_index = LineIndex::new(&text);
         Self {
             path,
@@ -65,7 +69,7 @@ impl SourceFile {
         }
     }
 
-    pub fn span_for_line(&self, line_number: u32, text: &str) -> SourceSpan {
+    pub(crate) fn span_for_line(&self, line_number: u32, text: &str) -> SourceSpan {
         let start = self.line_index.position_for_line(line_number);
         let end = SourcePosition {
             line: line_number,
@@ -79,7 +83,7 @@ impl SourceFile {
         }
     }
 
-    pub fn span_for_line_columns(
+    pub(crate) fn span_for_line_columns(
         &self,
         line_number: u32,
         start_column: u32,
@@ -106,7 +110,7 @@ impl SourceFile {
         }
     }
 
-    pub fn span_for_line_range(&self, start_line: u32, end_line: u32) -> SourceSpan {
+    pub(crate) fn span_for_line_range(&self, start_line: u32, end_line: u32) -> SourceSpan {
         let start = self.line_index.position_for_line(start_line);
         let end_column = self.line_index.line_column_count(&self.text, end_line) + 1;
         let end_offset = self
@@ -125,12 +129,12 @@ impl SourceFile {
 }
 
 #[derive(Debug, Clone)]
-pub struct LineIndex {
+pub(crate) struct LineIndex {
     line_starts: Vec<usize>,
 }
 
 impl LineIndex {
-    pub fn new(text: &str) -> Self {
+    pub(crate) fn new(text: &str) -> Self {
         let mut line_starts = vec![0];
         for (offset, byte) in text.bytes().enumerate() {
             if byte == b'\n' {
@@ -140,7 +144,7 @@ impl LineIndex {
         Self { line_starts }
     }
 
-    pub fn position_for_line(&self, line_number: u32) -> SourcePosition {
+    pub(crate) fn position_for_line(&self, line_number: u32) -> SourcePosition {
         let line_index = line_number.saturating_sub(1) as usize;
         let offset = self.line_starts.get(line_index).copied().unwrap_or(0);
         SourcePosition {
@@ -188,7 +192,7 @@ impl LineIndex {
     }
 }
 
-pub fn derive_page_id(path: &Path) -> PageId {
+pub(crate) fn derive_page_id(path: &Path) -> PageId {
     let path_segments: Vec<_> = path
         .components()
         .filter_map(|component| component.as_os_str().to_str())

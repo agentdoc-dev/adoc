@@ -2,7 +2,7 @@ use crate::diagnostic::{Diagnostic, SourceSpan};
 use crate::source::{LineCursor, SourceFile};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InlineSegment {
+pub(crate) enum InlineSegment {
     Text(String),
     Code(String),
     Emphasis(Vec<InlineSegment>),
@@ -18,13 +18,13 @@ pub enum InlineSegment {
 /// callers (parser, recursive inline scans) reason about columns and spans
 /// without touching cursor arithmetic directly.
 #[derive(Debug, Clone, Copy)]
-pub struct InlineOrigin<'a> {
+pub(crate) struct InlineOrigin<'a> {
     source: &'a SourceFile,
     cursor: LineCursor,
 }
 
 impl<'a> InlineOrigin<'a> {
-    pub fn at(source: &'a SourceFile, line: u32, column: u32) -> Self {
+    pub(crate) fn at(source: &'a SourceFile, line: u32, column: u32) -> Self {
         Self {
             source,
             cursor: LineCursor::at(line, column),
@@ -32,12 +32,12 @@ impl<'a> InlineOrigin<'a> {
     }
 
     /// 1-indexed column reached after consuming `prefix` from this origin.
-    pub fn column_after(&self, prefix: &str) -> u32 {
+    pub(crate) fn column_after(&self, prefix: &str) -> u32 {
         self.cursor.column_after_chars(prefix)
     }
 
     /// New origin with the cursor advanced past `prefix` on the same line.
-    pub fn advance_past(&self, prefix: &str) -> Self {
+    pub(crate) fn advance_past(&self, prefix: &str) -> Self {
         Self {
             source: self.source,
             cursor: self.cursor.advance_past(prefix),
@@ -45,13 +45,13 @@ impl<'a> InlineOrigin<'a> {
     }
 
     /// Span on this origin's line between `start_column` and `end_column`.
-    pub fn span(&self, start_column: u32, end_column: u32) -> SourceSpan {
+    pub(crate) fn span(&self, start_column: u32, end_column: u32) -> SourceSpan {
         self.source
             .span_for_line_columns(self.cursor.line(), start_column, end_column)
     }
 }
 
-pub fn parse_inlines(
+pub(crate) fn parse_inlines(
     text: &str,
     origin: InlineOrigin<'_>,
 ) -> (Vec<InlineSegment>, Vec<Diagnostic>) {
@@ -106,7 +106,7 @@ impl ScannerOutput {
     }
 }
 
-pub fn plain_text(segments: &[InlineSegment]) -> String {
+pub(crate) fn plain_text(segments: &[InlineSegment]) -> String {
     let mut buffer = String::new();
     append_plain_text(segments, &mut buffer);
     buffer

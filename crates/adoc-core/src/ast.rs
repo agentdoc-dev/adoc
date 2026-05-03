@@ -18,7 +18,7 @@ pub(crate) struct PageAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BlockAst {
+pub(crate) enum BlockAst {
     Heading(HeadingAst),
     Paragraph(ParagraphAst),
     List(ListAst),
@@ -26,34 +26,34 @@ pub enum BlockAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HeadingAst {
-    pub level: u8,
-    pub inlines: Vec<InlineSegment>,
-    pub span: SourceSpan,
+pub(crate) struct HeadingAst {
+    pub(crate) level: u8,
+    pub(crate) inlines: Vec<InlineSegment>,
+    pub(crate) span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParagraphAst {
-    pub inlines: Vec<InlineSegment>,
-    pub span: SourceSpan,
+pub(crate) struct ParagraphAst {
+    pub(crate) inlines: Vec<InlineSegment>,
+    pub(crate) span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ListAst {
-    pub kind: ListKind,
-    pub items: Vec<Vec<InlineSegment>>,
-    pub span: SourceSpan,
+pub(crate) struct ListAst {
+    pub(crate) kind: ListKind,
+    pub(crate) items: Vec<Vec<InlineSegment>>,
+    pub(crate) span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ListKind {
+pub(crate) enum ListKind {
     Ordered,
     Unordered,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CodeBlockAst {
-    pub language: Option<String>,
-    pub code: String,
-    pub span: SourceSpan,
+pub(crate) struct CodeBlockAst {
+    pub(crate) language: Option<String>,
+    pub(crate) code: String,
+    pub(crate) span: SourceSpan,
 }

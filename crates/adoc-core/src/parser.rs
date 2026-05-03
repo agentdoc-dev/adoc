@@ -4,7 +4,7 @@ use crate::identity::{ObjectId, PageId};
 use crate::inline::{self, InlineOrigin, InlineSegment};
 use crate::source::{SourceFile, derive_page_id};
 
-pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
+pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     let mut page = PageAst {
         id: derive_page_id(&source.identity_path),
         title: None,
