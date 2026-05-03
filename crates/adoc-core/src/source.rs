@@ -3,6 +3,45 @@ use std::path::{Path, PathBuf};
 use crate::diagnostic::{SourcePosition, SourceSpan};
 use crate::identity::PageId;
 
+/// Position on a single line, expressed in 1-indexed character columns.
+///
+/// The cursor owns the UTF-8 column arithmetic that parser, inline scanner,
+/// and validator passes used to duplicate independently. Construct one with
+/// [`LineCursor::at_line_start`] for absolute positions, or [`LineCursor::at`]
+/// when you already know the column (e.g. inside a heading after a marker).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LineCursor {
+    line: u32,
+    column: u32,
+}
+
+impl LineCursor {
+    pub(crate) fn at_line_start(line: u32) -> Self {
+        Self { line, column: 1 }
+    }
+
+    pub(crate) fn at(line: u32, column: u32) -> Self {
+        Self { line, column }
+    }
+
+    pub(crate) fn line(&self) -> u32 {
+        self.line
+    }
+
+    /// Column reached after consuming `prefix` (counted in Unicode characters).
+    pub(crate) fn column_after_chars(&self, prefix: &str) -> u32 {
+        self.column + prefix.chars().count() as u32
+    }
+
+    /// Cursor advanced past `prefix` on the same line.
+    pub(crate) fn advance_past(&self, prefix: &str) -> Self {
+        Self {
+            line: self.line,
+            column: self.column_after_chars(prefix),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SourceFile {
     pub path: PathBuf,

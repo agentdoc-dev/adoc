@@ -1,5 +1,5 @@
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::source::SourceFile;
+use crate::source::{LineCursor, SourceFile};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InlineSegment {
@@ -16,8 +16,7 @@ pub enum InlineSegment {
 #[derive(Debug, Clone, Copy)]
 pub struct InlineOrigin<'a> {
     pub source: &'a SourceFile,
-    pub line: u32,
-    pub column_offset: u32,
+    pub cursor: LineCursor,
 }
 
 pub fn parse_inlines(
@@ -127,11 +126,14 @@ fn scan_link(
     let total_consumed = 1 + close_bracket_offset + 1 + 1 + close_paren_offset + 1;
 
     if !is_url_safe(&url) {
-        let start_column = column_at(origin, &text[..cursor]);
-        let end_column = column_at(origin, &text[..cursor + total_consumed]);
-        let span = origin
-            .source
-            .span_for_line_columns(origin.line, start_column, end_column);
+        let start_column = origin.cursor.column_after_chars(&text[..cursor]);
+        let end_column = origin
+            .cursor
+            .column_after_chars(&text[..cursor + total_consumed]);
+        let span =
+            origin
+                .source
+                .span_for_line_columns(origin.cursor.line(), start_column, end_column);
         output.push_diagnostic(
             Diagnostic::error(
                 DiagnosticCode::ParseUnsafeLink,
@@ -146,7 +148,7 @@ fn scan_link(
     }
 
     let label_origin = InlineOrigin {
-        column_offset: column_at(origin, &text[..cursor + 1]),
+        cursor: origin.cursor.advance_past(&text[..cursor + 1]),
         ..origin
     };
     let (label_segments, label_diagnostics) = parse_inlines(label_text, label_origin);
@@ -203,17 +205,13 @@ fn scan_paired_marker(
     }
     let inner = &after_open[..close_offset];
     let inner_origin = InlineOrigin {
-        column_offset: column_at(origin, &text[..cursor + marker.len()]),
+        cursor: origin.cursor.advance_past(&text[..cursor + marker.len()]),
         ..origin
     };
     let (inner_segments, inner_diagnostics) = parse_inlines(inner, inner_origin);
     output.diagnostics.extend(inner_diagnostics);
     output.push_segment(wrap(inner_segments));
     Some(marker.len() + close_offset + marker.len())
-}
-
-fn column_at(origin: InlineOrigin<'_>, prefix: &str) -> u32 {
-    origin.column_offset + prefix.chars().count() as u32
 }
 
 fn is_url_safe(url: &str) -> bool {
@@ -261,8 +259,7 @@ mod tests {
     fn origin_for<'a>(source: &'a SourceFile, line: u32, column_offset: u32) -> InlineOrigin<'a> {
         InlineOrigin {
             source,
-            line,
-            column_offset,
+            cursor: LineCursor::at(line, column_offset),
         }
     }
 

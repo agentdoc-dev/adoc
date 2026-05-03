@@ -2,7 +2,7 @@ use crate::ast::{BlockAst, CodeBlockAst, HeadingAst, ListAst, ListKind, PageAst,
 use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::identity::{ObjectId, PageId};
 use crate::inline::{self, InlineOrigin, InlineSegment};
-use crate::source::{SourceFile, derive_page_id};
+use crate::source::{LineCursor, SourceFile, derive_page_id};
 
 pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     let mut page = PageAst {
@@ -87,13 +87,11 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 );
             }
 
-            let heading_text_column = heading.text_column;
             let (inlines, heading_diagnostics) = inline::parse_inlines(
                 &heading.text,
                 InlineOrigin {
                     source,
-                    line: line_number,
-                    column_offset: heading_text_column,
+                    cursor: LineCursor::at(line_number, heading.text_column),
                 },
             );
             diagnostics.extend(heading_diagnostics);
@@ -167,8 +165,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 item_text,
                 InlineOrigin {
                     source,
-                    line: line_number,
-                    column_offset: item_column,
+                    cursor: LineCursor::at(line_number, item_column),
                 },
             );
             diagnostics.extend(item_diagnostics);
@@ -198,8 +195,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 item_text,
                 InlineOrigin {
                     source,
-                    line: line_number,
-                    column_offset: item_column,
+                    cursor: LineCursor::at(line_number, item_column),
                 },
             );
             diagnostics.extend(item_diagnostics);
@@ -221,8 +217,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             trimmed,
             InlineOrigin {
                 source,
-                line: line_number,
-                column_offset,
+                cursor: LineCursor::at(line_number, column_offset),
             },
         );
         diagnostics.extend(line_diagnostics);
@@ -424,9 +419,10 @@ fn find_raw_html(line: &str) -> Option<RawHtmlMatch> {
         };
         let end_index = start_index + character.len_utf8() + tag_end;
 
+        let line_start = LineCursor::at_line_start(0);
         return Some(RawHtmlMatch {
-            start_column: column_for_byte_index(line, start_index),
-            end_column: column_for_byte_index(line, end_index),
+            start_column: line_start.column_after_chars(&line[..start_index]),
+            end_column: line_start.column_after_chars(&line[..end_index]),
         });
     }
 
@@ -463,10 +459,6 @@ fn raw_html_tag_end(value: &str) -> Option<usize> {
             .map(|relative_index| name_end + relative_index + 1),
         _ => None,
     }
-}
-
-fn column_for_byte_index(line: &str, byte_index: usize) -> u32 {
-    line[..byte_index].chars().count() as u32 + 1
 }
 
 fn push_list_item(
