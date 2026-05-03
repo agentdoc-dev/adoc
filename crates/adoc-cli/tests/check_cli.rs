@@ -35,6 +35,38 @@ fn check_accepts_v0_1_prose_fixture_with_all_inline_syntax() {
 }
 
 #[test]
+fn check_rejects_unsafe_link_with_source_location() {
+    let workspace = TestWorkspace::new("check-rejects-unsafe-link");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_1/unsafe_link.adoc"))
+        .expect("unsafe_link fixture is readable");
+    let source = workspace.write("unsafe_link.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected unsafe link to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("unsafe_link.adoc:3:10"),
+        "expected diagnostic at line 3 column 10 (where the link starts), got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("error[parse.unsafe_link]"),
+        "expected parse.unsafe_link code in stdout:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("javascript:alert"),
+        "expected diagnostic message to quote the rejected URL:\n{stdout}"
+    );
+    assert!(stdout.contains("1 errors"));
+}
+
+#[test]
 fn build_renders_v0_1_prose_fixture_to_golden_agent_json() {
     let workspace = TestWorkspace::new("build-renders-prose-golden-json");
     let fixture_contents = fs::read_to_string(fixture_path("v0_1/prose_page.adoc"))
