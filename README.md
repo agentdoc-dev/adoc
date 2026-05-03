@@ -5,6 +5,8 @@ AgentDoc is a human-readable documentation system for teams that need documentat
 Traditional docs are mostly formatted text. AgentDoc treats durable documentation as typed, versioned, evidence-backed knowledge objects that humans can read and AI agents can safely retrieve, cite, validate, and update through reviewable workflows.
 
 This repository is currently in the product-definition stage. The source of truth for the initial scope is [docs/PRD.md](docs/PRD.md).
+The implementation sequence is tracked in [docs/ROADMAP.md](docs/ROADMAP.md).
+The initial Rust implementation contract is tracked in [docs/V0-DESIGN.md](docs/V0-DESIGN.md).
 
 ## Product Thesis
 
@@ -25,6 +27,7 @@ AgentDoc's goal is to let humans keep writing readable notes while turning durab
 - **Readable source format:** prose by default, structure when knowledge becomes durable.
 - **Typed knowledge objects:** claims, decisions, constraints, procedures, examples, warnings, policies, glossary terms, agent instructions, contradictions, and related objects.
 - **Stable object IDs:** references target durable object IDs instead of fragile headings or line numbers.
+- **Readable ID grammar:** object IDs use lowercase dot-separated kebab segments such as `billing.credits.decrement-after-success`.
 - **Evidence-backed knowledge:** verified objects link to source code, tests, commits, tickets, reviewers, data, or external sources.
 - **Lifecycle-aware docs:** objects can be draft, proposed, accepted, verified, stale, deprecated, superseded, contradicted, revoked, or archived.
 - **Agent-safe retrieval:** agents retrieve status-aware, scope-aware, permission-aware objects with citations.
@@ -56,20 +59,22 @@ Compiled output should support human docs, agent JSON, search indexes, graph dat
 
 ## Planned CLI
 
-The PRD defines `agentdoc` as the primary developer interface. Planned commands include:
+The PRD defines `adoc` as the primary developer interface. Planned commands include:
 
 ```bash
-agentdoc init
-agentdoc check
-agentdoc build
-agentdoc search
-agentdoc explain
-agentdoc impacted-by
-agentdoc patch
-agentdoc migrate
+adoc init
+adoc check
+adoc build
+adoc search
+adoc explain
+adoc impacted-by
+adoc patch
+adoc migrate
 ```
 
-The MVP CLI should validate source files, compile human and agent-facing outputs, detect broken references, reject raw HTML in strict mode, report stale objects by expiration date, and expose basic search.
+The initial CLI will be implemented in Rust as a two-crate Cargo workspace: `adoc-cli` for command-line behavior and `adoc-core` for parser, validation, diagnostics, HTML, and agent JSON. The V0 parser will be structured and hand-written around source spans and diagnostics rather than generated from a grammar. The CLI should validate source files, compile human and agent-facing outputs, detect broken references, reject raw HTML in strict mode, and keep later commands like search behind the roadmap.
+
+`adoc-core` should initially expose one high-level `compile_workspace()` API for the CLI. Lower-level parser, validator, renderer, and artifact APIs can be exposed later when another consumer needs them.
 
 ## MVP Scope
 
@@ -129,9 +134,11 @@ Agent-facing responses should prefer verified and accepted objects, include cita
 Current repository contents:
 
 - `docs/PRD.md` - full draft product requirements document
-- `README.me` - initial project overview
+- `docs/ROADMAP.md` - tracer-bullet implementation roadmap
+- `docs/V0-DESIGN.md` - initial Rust design contract
+- `README.md` - initial project overview
 
-No implementation is present yet. The next practical step is to choose the prototype implementation stack and build the Phase 0 parser, schema validator, compiler, basic diagnostics, JSON output, HTML output, and simple CLI.
+No implementation is present yet. The next practical step is to scaffold the Rust workspace and build the first tracer-bullet slice: parser, strict diagnostics, `docs.html`, and `docs.agent.json`.
 
 ## North Star
 
