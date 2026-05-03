@@ -9,7 +9,7 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         source_path: source.path.clone(),
         blocks: Vec::new(),
     };
-    let diagnostics = Vec::new();
+    let mut diagnostics = Vec::new();
     let mut paragraph_lines = Vec::new();
     let mut paragraph_start_line = None;
     let mut lines = source.text.lines().enumerate().peekable();
@@ -24,6 +24,23 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut page.blocks,
                 &mut paragraph_lines,
                 &mut paragraph_start_line,
+            );
+            continue;
+        }
+
+        if looks_like_raw_html(trimmed) {
+            flush_paragraph(
+                source,
+                &mut page.blocks,
+                &mut paragraph_lines,
+                &mut paragraph_start_line,
+            );
+            diagnostics.push(
+                Diagnostic::error(
+                    "parse.raw_html",
+                    "Raw HTML is not allowed in strict mode; write AgentDoc Source prose instead",
+                )
+                .with_span(source.span_for_line(line_number, line)),
             );
             continue;
         }
@@ -168,6 +185,17 @@ fn parse_ordered_list_item(line: &str) -> Option<&str> {
         .chars()
         .all(|character| character.is_ascii_digit())
         .then_some(line[dot_index + 2..].trim())
+}
+
+fn looks_like_raw_html(line: &str) -> bool {
+    let Some(after_opening_bracket) = line.strip_prefix('<') else {
+        return false;
+    };
+    let Some(first_character) = after_opening_bracket.chars().next() else {
+        return false;
+    };
+
+    first_character == '/' || first_character.is_ascii_alphabetic()
 }
 
 fn flush_paragraph(

@@ -98,6 +98,27 @@ fn build_fails_clearly_when_output_path_is_a_file() {
     assert!(!output_path.join("docs.agent.json").exists());
 }
 
+#[test]
+fn check_rejects_raw_html_with_source_location() {
+    let workspace = TestWorkspace::new("check-rejects-raw-html");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Unsafe Input @doc(unsafe-input)\n\n<div>raw html</div>\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(!output.status.success(), "expected raw HTML to fail check");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("guide.adoc:3:1"));
+    assert!(stdout.contains("error[parse.raw_html]"));
+    assert!(stdout.contains("Raw HTML is not allowed in strict mode"));
+    assert!(stdout.contains("1 errors"));
+}
+
 struct TestWorkspace {
     pub root: PathBuf,
 }
