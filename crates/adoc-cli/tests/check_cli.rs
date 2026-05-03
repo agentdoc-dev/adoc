@@ -416,6 +416,54 @@ fn check_rejects_malformed_page_annotation_with_source_location() {
 }
 
 #[test]
+fn check_reports_malformed_annotation_with_indented_heading() {
+    let workspace = TestWorkspace::new("check-reports-malformed-annotation-indented");
+    let source = workspace.write("guide.adoc", "  # Broken @doc(\n\nContent.\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected indented malformed page annotation to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("guide.adoc:1:12"),
+        "expected diagnostic at column 12 (the `@`), got:\n{stdout}"
+    );
+    assert!(stdout.contains("error[parse.malformed_page_annotation]"));
+    assert!(stdout.contains("1 errors"));
+}
+
+#[test]
+fn check_reports_trailing_content_malformed_with_indent() {
+    let workspace = TestWorkspace::new("check-reports-trailing-content-indent");
+    let source = workspace.write(
+        "guide.adoc",
+        "   # Notes (per @doc(thing) sidebar)\n\nContent.\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected trailing-content annotation with indent to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("guide.adoc:1:17"),
+        "expected diagnostic at column 17 (the `@`), got:\n{stdout}"
+    );
+    assert!(stdout.contains("error[parse.malformed_page_annotation]"));
+}
+
+#[test]
 fn check_accepts_at_doc_without_parentheses_as_heading_text() {
     let workspace = TestWorkspace::new("check-accepts-at-doc-without-parentheses");
     let source = workspace.write(

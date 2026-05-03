@@ -56,7 +56,12 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             continue;
         }
 
-        if let Some(heading) = parse_heading(trimmed) {
+        let leading_indent_columns = line
+            .chars()
+            .take_while(|character| character.is_whitespace())
+            .count() as u32;
+
+        if let Some(heading) = parse_heading(trimmed, leading_indent_columns) {
             let span = source.span_for_line(line_number, line);
             flush_paragraph(
                 source,
@@ -221,7 +226,7 @@ struct PageAnnotationSpan {
     end_column: u32,
 }
 
-fn parse_heading(line: &str) -> Option<ParsedHeading> {
+fn parse_heading(line: &str, leading_indent_columns: u32) -> Option<ParsedHeading> {
     let marker_count = line
         .chars()
         .take_while(|character| *character == '#')
@@ -230,7 +235,7 @@ fn parse_heading(line: &str) -> Option<ParsedHeading> {
         return None;
     }
 
-    let raw_text_start_column = marker_count as u32 + 2;
+    let raw_text_start_column = leading_indent_columns + marker_count as u32 + 2;
     let raw_text = line[marker_count + 1..].trim();
     let annotation = parse_page_annotation(raw_text, raw_text_start_column);
     Some(ParsedHeading {
@@ -511,6 +516,16 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, "parse.malformed_page_annotation");
+    }
+
+    #[test]
+    fn parse_page_reports_annotation_column_with_indented_heading() {
+        let (_page, diagnostics) = parse_source("  # Broken @doc(\n\nContent.\n");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, "parse.malformed_page_annotation");
+        let span = diagnostics[0].span.as_ref().unwrap();
+        assert_eq!(span.start.column, 12);
     }
 
     #[test]
