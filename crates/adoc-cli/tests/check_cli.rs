@@ -231,6 +231,37 @@ fn check_rejects_raw_html_with_source_location() {
 }
 
 #[test]
+fn build_rejects_inline_raw_html_and_writes_no_artifacts() {
+    let workspace = TestWorkspace::new("build-rejects-inline-raw-html");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Unsafe Input @doc(unsafe-input)\n\nKeep <span>raw html</span> out.\n",
+    );
+    let output_directory = workspace.root.join("dist");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            source.to_str().expect("source path is utf-8"),
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(!output.status.success(), "expected raw HTML to fail build");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("guide.adoc:3:6"));
+    assert!(stdout.contains("error[parse.raw_html]"));
+    assert!(stdout.contains("Raw HTML is not allowed in strict mode"));
+    assert!(stdout.contains("1 errors"));
+    assert!(!output_directory.join("docs.html").exists());
+    assert!(!output_directory.join("docs.agent.json").exists());
+}
+
+#[test]
 fn check_rejects_unclosed_fenced_code_with_source_location() {
     let workspace = TestWorkspace::new("check-rejects-unclosed-fence");
     let source = workspace.write(

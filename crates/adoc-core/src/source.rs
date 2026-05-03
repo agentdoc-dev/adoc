@@ -34,6 +34,30 @@ impl SourceFile {
             end,
         }
     }
+
+    pub fn span_for_line_columns(
+        &self,
+        line_number: u32,
+        start_column: u32,
+        end_column: u32,
+    ) -> SourceSpan {
+        let line_start = self.line_index.position_for_line(line_number);
+        let start_offset = line_start.offset + start_column.saturating_sub(1);
+        let end_offset = line_start.offset + end_column.saturating_sub(1);
+        SourceSpan {
+            file: self.path.clone(),
+            start: SourcePosition {
+                line: line_number,
+                column: start_column,
+                offset: start_offset,
+            },
+            end: SourcePosition {
+                line: line_number,
+                column: end_column,
+                offset: end_offset,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
