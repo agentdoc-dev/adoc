@@ -92,6 +92,13 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
             render_inlines(inner, html);
             html.push_str("</strong>");
         }
+        InlineSegment::Link { text, url } => {
+            html.push_str("<a href=\"");
+            html.push_str(&escape_html(url));
+            html.push_str("\">");
+            render_inlines(text, html);
+            html.push_str("</a>");
+        }
     }
 }
 
