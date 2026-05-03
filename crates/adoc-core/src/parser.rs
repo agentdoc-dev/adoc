@@ -142,15 +142,10 @@ pub fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 );
             }
             page.blocks.push(BlockAst::CodeBlock(CodeBlockAst {
-                language: language
-                    .trim()
-                    .is_empty()
-                    .then_some(None)
-                    .flatten()
-                    .or_else(|| {
-                        let language = language.trim().to_string();
-                        (!language.is_empty()).then_some(language)
-                    }),
+                language: {
+                    let language = language.trim();
+                    (!language.is_empty()).then(|| language.to_string())
+                },
                 code,
                 span: source.span_for_line(line_number, line),
             }));
