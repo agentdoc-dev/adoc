@@ -9,6 +9,12 @@ use crate::render::html::render_html;
 use crate::source::SourceFile;
 
 #[derive(Debug, Clone)]
+struct SourcePath {
+    path: PathBuf,
+    identity_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
 pub struct CompileInput {
     pub root: PathBuf,
 }
@@ -37,10 +43,14 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
     let mut diagnostics = Vec::new();
     let mut pages = Vec::new();
 
-    for path in source_paths(&input.root) {
-        match fs::read_to_string(&path) {
+    for source_path in source_paths(&input.root) {
+        match fs::read_to_string(&source_path.path) {
             Ok(text) => {
-                let source = SourceFile::new(path, text);
+                let source = SourceFile::new_with_identity_path(
+                    source_path.path,
+                    text,
+                    source_path.identity_path,
+                );
                 let (page, page_diagnostics) = parse_page(&source);
                 diagnostics.extend(page_diagnostics);
                 pages.push(page);
@@ -70,32 +80,51 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
     }
 }
 
-fn source_paths(root: &Path) -> Vec<PathBuf> {
+fn source_paths(root: &Path) -> Vec<SourcePath> {
     if root.is_file() {
-        return vec![root.to_path_buf()];
+        return vec![SourcePath {
+            path: root.to_path_buf(),
+            identity_path: root
+                .file_name()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| root.into()),
+        }];
     }
 
     let mut paths = Vec::new();
-    collect_adoc_files(root, &mut paths);
-    paths.sort();
+    collect_adoc_files(root, root, &mut paths);
+    paths.sort_by(|left, right| left.path.cmp(&right.path));
     paths
 }
 
-fn collect_adoc_files(directory: &Path, paths: &mut Vec<PathBuf>) {
+fn collect_adoc_files(root: &Path, directory: &Path, paths: &mut Vec<SourcePath>) {
     let Ok(entries) = fs::read_dir(directory) else {
-        paths.push(directory.to_path_buf());
+        paths.push(SourcePath {
+            path: directory.to_path_buf(),
+            identity_path: directory
+                .strip_prefix(root)
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| directory.into()),
+        });
         return;
     };
 
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_adoc_files(&path, paths);
+            collect_adoc_files(root, &path, paths);
         } else if path
             .extension()
             .is_some_and(|extension| extension == "adoc")
         {
-            paths.push(path);
+            let identity_path = path
+                .strip_prefix(root)
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| path.clone());
+            paths.push(SourcePath {
+                path,
+                identity_path,
+            });
         }
     }
 }

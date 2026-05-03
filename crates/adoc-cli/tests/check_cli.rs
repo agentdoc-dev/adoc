@@ -104,6 +104,42 @@ fn build_groups_contiguous_list_items_by_list_kind() {
 }
 
 #[test]
+fn build_derives_distinct_page_ids_from_directory_relative_paths() {
+    let workspace = TestWorkspace::new("build-derives-distinct-page-ids");
+    workspace.write("a/guide.adoc", "# Alpha Guide\n\nAlpha content.\n");
+    workspace.write("b/guide.adoc", "# Beta Guide\n\nBeta content.\n");
+    let output_directory = workspace.root.join("dist");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            workspace.root.to_str().expect("workspace path is utf-8"),
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let html = fs::read_to_string(output_directory.join("docs.html")).expect("HTML is written");
+    assert!(html.contains("data-page-id=\"a.guide\""));
+    assert!(html.contains("data-page-id=\"b.guide\""));
+
+    let agent_json = fs::read_to_string(output_directory.join("docs.agent.json"))
+        .expect("agent JSON is written");
+    assert!(agent_json.contains("\"id\": \"a.guide\""));
+    assert!(agent_json.contains("\"id\": \"b.guide\""));
+}
+
+#[test]
 fn build_fails_clearly_when_output_path_is_a_file() {
     let workspace = TestWorkspace::new("build-output-path-is-file");
     let source = workspace.write(
