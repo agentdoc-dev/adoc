@@ -68,6 +68,36 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
     assert!(agent_json.contains("\"diagnostics\": []"));
 }
 
+#[test]
+fn build_fails_clearly_when_output_path_is_a_file() {
+    let workspace = TestWorkspace::new("build-output-path-is-file");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Getting Started @doc(getting-started)\n\nAgentDoc keeps knowledge readable.\n",
+    );
+    let output_path = workspace.write("dist", "not a directory");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            source.to_str().expect("source path is utf-8"),
+            "--out",
+            output_path.to_str().expect("output path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        !output.status.success(),
+        "expected build to fail when --out is a file"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("io.output_not_directory"));
+    assert!(stderr.contains("exists as a file"));
+    assert!(!output_path.join("docs.html").exists());
+    assert!(!output_path.join("docs.agent.json").exists());
+}
+
 struct TestWorkspace {
     pub root: PathBuf,
 }

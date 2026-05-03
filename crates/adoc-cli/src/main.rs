@@ -52,6 +52,13 @@ fn build(path: PathBuf, out: PathBuf) -> i32 {
 }
 
 fn write_artifacts(out: &Path, html: &str, agent_json: &AgentJsonDocument) -> Result<(), String> {
+    if out.exists() && !out.is_dir() {
+        return Err(format!(
+            "error[io.output_not_directory] output path exists as a file: {}",
+            out.display()
+        ));
+    }
+
     fs::create_dir_all(out).map_err(|error| {
         format!(
             "error[io.output_not_directory] could not create output directory {}: {error}",
