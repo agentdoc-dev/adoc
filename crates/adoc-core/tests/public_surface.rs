@@ -67,6 +67,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::ParseMalformedOpenFence;
     let _ = DiagnosticCode::SchemaMissingField;
     let _ = DiagnosticCode::SchemaDuplicateField;
+    let _ = DiagnosticCode::IdDuplicate;
     let _ = DiagnosticCode::IdInvalid;
     let _ = DiagnosticCode::IoUnreadableFile;
     // The wire string remains available for hosts that serialize manually.
@@ -79,6 +80,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         DiagnosticCode::SchemaDuplicateField.as_str(),
         "schema.duplicate_field"
     );
+    assert_eq!(DiagnosticCode::IdDuplicate.as_str(), "id.duplicate");
     assert_eq!(
         DiagnosticCode::ParseUnknownBlockType.as_str(),
         "parse.unknown_block_type"

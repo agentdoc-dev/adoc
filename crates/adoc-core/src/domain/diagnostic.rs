@@ -31,6 +31,7 @@ pub enum DiagnosticCode {
     ParseMalformedOpenFence,
     SchemaMissingField,
     SchemaDuplicateField,
+    IdDuplicate,
     IdInvalid,
     IoUnreadableFile,
 }
@@ -47,6 +48,7 @@ impl DiagnosticCode {
             DiagnosticCode::ParseMalformedOpenFence => "parse.malformed_open_fence",
             DiagnosticCode::SchemaMissingField => "schema.missing_field",
             DiagnosticCode::SchemaDuplicateField => "schema.duplicate_field",
+            DiagnosticCode::IdDuplicate => "id.duplicate",
             DiagnosticCode::IdInvalid => "id.invalid",
             DiagnosticCode::IoUnreadableFile => "io.unreadable_file",
         }

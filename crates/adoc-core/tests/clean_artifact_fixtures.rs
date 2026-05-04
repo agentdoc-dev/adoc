@@ -75,6 +75,7 @@ fn clean_claim_fixtures() -> Vec<CleanFixture> {
         })
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().is_ok_and(|file_type| file_type.is_dir()))
+        .filter(|entry| entry.path().join("input.adoc").is_file())
         .map(|entry| {
             let directory = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();

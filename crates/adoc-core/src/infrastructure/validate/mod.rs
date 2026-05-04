@@ -9,8 +9,11 @@
 //! streaming context (you only know a fence is unclosed once EOF is reached),
 //! so that diagnostic remains in the parser. See ADR-0007 for the decision.
 
+mod claim_unique_ids;
 pub(crate) mod resolve_claims;
 pub(crate) use resolve_claims::resolve_knowledge_objects;
+
+use claim_unique_ids::ClaimUniqueIds;
 
 use crate::domain::ast::{BlockAst, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
@@ -27,11 +30,9 @@ const SOURCE_PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLi
 /// into typed aggregates. Empty until a rule needs typed `Claim` data.
 const RESOLVED_PAGE_RULES: &[&dyn ValidationRule] = &[];
 
-/// Workspace-level rules, applied in registration order. Empty in v0.1 — the
-/// seam exists so future cross-page invariants (duplicate Object IDs across
-/// pages, broken `[link](id)` references) land as a new adapter plus a new
-/// entry here, not as a branch inside `compile_with_provider`.
-const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[];
+/// Workspace-level rules, applied in registration order after claim
+/// resolution and workspace assembly.
+const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[&ClaimUniqueIds];
 
 /// Run every source-page rule against `page`. The orchestrator performs the
 /// final source-position diagnostic sort before returning `CompileResult`.
@@ -57,9 +58,9 @@ fn validate_page_with_rules(
     diagnostics
 }
 
-/// Run every workspace-level rule against `workspace`. Empty registry in v0.1.
-/// Workspace rules run after per-page validation, so per-page errors are
-/// already in the sink by the time the orchestrator calls into here.
+/// Run every workspace-level rule against `workspace`. Workspace rules run
+/// after per-page validation, so per-page errors are already in the sink by
+/// the time the orchestrator calls into here.
 pub(crate) fn validate_workspace(workspace: &WorkspaceAst) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for rule in WORKSPACE_RULES {
@@ -483,13 +484,11 @@ mod tests {
     }
 
     #[test]
-    fn validate_workspace_returns_empty_for_production_registry() {
+    fn validate_workspace_emits_no_diagnostics_for_workspace_without_claim_duplicates() {
         let workspace = workspace_with_titles(&["alpha"]);
 
         let diagnostics = validate_workspace(&workspace);
 
-        // No workspace-level rules ship today; landing one will replace the
-        // empty assertion with an actual rule's expected behaviour.
         assert!(diagnostics.is_empty());
     }
 
