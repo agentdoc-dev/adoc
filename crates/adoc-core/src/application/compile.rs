@@ -1,14 +1,17 @@
 use std::cmp::Ordering;
 use std::path::PathBuf;
 
-use crate::artifact::{AgentJsonArtifact, AgentJsonDocument, ArtifactWriter};
-use crate::ast::{PageAst, WorkspaceAst};
-use crate::diagnostic::{Diagnostic, DiagnosticCode, Severity};
-use crate::parser::parse_page;
-use crate::render::{HtmlRenderer, Renderer};
-use crate::source::SourceFile;
-use crate::source_provider::{FsSourceProvider, SourceProvider};
-use crate::validate::{validate_page, validate_workspace};
+use crate::domain::artifact::AgentJsonDocument;
+use crate::domain::ast::{PageAst, WorkspaceAst};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
+use crate::domain::ports::artifact_writer::ArtifactWriter;
+use crate::domain::ports::renderer::Renderer;
+use crate::domain::ports::source_provider::SourceProvider;
+use crate::domain::source::SourceFile;
+use crate::infrastructure::artifact::AgentJsonArtifact;
+use crate::infrastructure::parser::parse_page;
+use crate::infrastructure::render::HtmlRenderer;
+use crate::infrastructure::validate::{validate_page, validate_workspace};
 
 #[derive(Debug, Clone)]
 pub struct CompileInput {
@@ -35,11 +38,6 @@ impl CompileResult {
 pub struct BuildArtifacts {
     pub html: String,
     pub agent_json: AgentJsonDocument,
-}
-
-pub fn compile_workspace(input: CompileInput) -> CompileResult {
-    let provider = FsSourceProvider::new(input.root);
-    compile_with_provider(&provider)
 }
 
 pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
@@ -134,8 +132,8 @@ fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::source::SourceFile;
-    use crate::source_provider::InMemorySourceProvider;
+    use crate::domain::source::SourceFile;
+    use crate::infrastructure::source::in_memory::InMemorySourceProvider;
 
     fn source_file(identity: &str, text: &str) -> SourceFile {
         SourceFile::new_with_identity_path(

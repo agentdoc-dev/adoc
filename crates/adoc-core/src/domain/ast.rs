@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use crate::diagnostic::SourceSpan;
-use crate::identity::PageId;
-use crate::inline::InlineSegment;
+use crate::domain::diagnostic::SourceSpan;
+use crate::domain::identity::PageId;
+use crate::domain::inline::InlineSegment;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WorkspaceAst {

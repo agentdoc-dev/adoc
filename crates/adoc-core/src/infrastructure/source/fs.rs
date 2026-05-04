@@ -1,28 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::source::SourceFile;
-
-/// Adapter trait for the input side of the compiler.
-///
-/// `compile_workspace` defers all filesystem walking and reading to a
-/// [`SourceProvider`]. The default adapter is [`FsSourceProvider`]; tests can
-/// substitute [`InMemorySourceProvider`] to exercise the orchestration logic
-/// without touching disk.
-pub(crate) trait SourceProvider {
-    fn load_sources(&self) -> Vec<Result<SourceFile, SourceLoadError>>;
-}
-
-/// Reported by a [`SourceProvider`] when a single source cannot be loaded.
-///
-/// `compile_workspace` translates each error into an `io.unreadable_file`
-/// diagnostic; the original I/O message is preserved verbatim so the CLI
-/// surface stays unchanged.
-#[derive(Debug, Clone)]
-pub(crate) struct SourceLoadError {
-    pub path: PathBuf,
-    pub message: String,
-}
+use crate::domain::ports::source_provider::{SourceLoadError, SourceProvider};
+use crate::domain::source::SourceFile;
 
 /// Reads `.adoc` files from a directory tree (or a single file) on disk.
 ///
@@ -111,39 +91,5 @@ fn collect_adoc_files(root: &Path, directory: &Path, paths: &mut Vec<SourcePath>
                 identity_path,
             });
         }
-    }
-}
-
-/// In-memory adapter for unit tests. Yields the supplied results verbatim.
-#[cfg(test)]
-#[derive(Debug, Default, Clone)]
-pub(crate) struct InMemorySourceProvider {
-    results: Vec<Result<SourceFile, SourceLoadError>>,
-}
-
-#[cfg(test)]
-impl InMemorySourceProvider {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
-    pub(crate) fn with_source(mut self, source: SourceFile) -> Self {
-        self.results.push(Ok(source));
-        self
-    }
-
-    pub(crate) fn with_error(mut self, path: PathBuf, message: impl Into<String>) -> Self {
-        self.results.push(Err(SourceLoadError {
-            path,
-            message: message.into(),
-        }));
-        self
-    }
-}
-
-#[cfg(test)]
-impl SourceProvider for InMemorySourceProvider {
-    fn load_sources(&self) -> Vec<Result<SourceFile, SourceLoadError>> {
-        self.results.clone()
     }
 }

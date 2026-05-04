@@ -105,15 +105,15 @@ A short implementation design document that fixes the initial Rust module bounda
 _Avoid_: second PRD, implementation without a contract
 
 **Object ID**:
-A stable lowercase dot-separated identifier with at least two kebab-case segments, used to cite and relate Knowledge Objects. Lives in code as the `ObjectId` newtype in `crates/adoc-core/src/identity.rs`; a page-level Object ID is the `PageId` wrapper.
+A stable lowercase dot-separated identifier with at least two kebab-case segments, used to cite and relate Knowledge Objects. Lives in code as the `ObjectId` newtype in `adoc-core`; a page-level Object ID is the `PageId` wrapper.
 _Avoid_: UUID-only ID, heading slug, arbitrary string
 
 **Diagnostic Code**:
-A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`. Lives in code as the `DiagnosticCode` enum in `crates/adoc-core/src/diagnostic.rs`; emission sites accept the typed value rather than a free-form string.
+A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`. Lives in code as the `DiagnosticCode` enum in `adoc-core`; emission sites accept the typed value rather than a free-form string.
 _Avoid_: numeric-only code, unstable message matching
 
 **Validation Rule**:
-One strict-mode check that produces diagnostics from a parsed page (e.g. `RawHtmlForbidden`, `UnsafeLinkForbidden`). Implemented via the `ValidationRule` trait in `crates/adoc-core/src/validate.rs` and run after parsing by `compile_with_provider`. See ADR-0007.
+One strict-mode check that produces diagnostics from a parsed page (e.g. `RawHtmlForbidden`, `UnsafeLinkForbidden`). Implemented via the `ValidationRule` trait in `adoc-core`, run after parsing as a separate pass per ADR-0007.
 _Avoid_: parser-side check, schema linter
 
 **Internal Port**:

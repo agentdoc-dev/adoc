@@ -5,10 +5,10 @@
 //! self and returns an immutable [`BlockAst`]. Builders are bound to
 //! [`super::state::ParseState`] variants — see ADR-0007 addendum.
 
-use crate::ast::{BlockAst, CodeBlockAst, ListAst, ListItem, ListKind, ParagraphAst};
-use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::inline::InlineSegment;
-use crate::source::SourceFile;
+use crate::domain::ast::{BlockAst, CodeBlockAst, ListAst, ListItem, ListKind, ParagraphAst};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
+use crate::domain::inline::InlineSegment;
+use crate::domain::source::SourceFile;
 
 /// Accumulates a multi-line paragraph until a block-boundary line forces
 /// commit. Each consumed line contributes inline segments; lines are joined

@@ -1,16 +1,12 @@
-mod artifact;
-mod ast;
-mod compile;
-mod diagnostic;
-mod identity;
-mod inline;
-mod parser;
-mod render;
-mod scan;
-mod source;
-mod source_provider;
-mod validate;
+mod application;
+mod domain;
+mod infrastructure;
 
-pub use artifact::agent_json::AgentJsonDocument;
-pub use compile::{BuildArtifacts, CompileInput, CompileResult, compile_workspace};
-pub use diagnostic::{Diagnostic, DiagnosticCode, Severity};
+pub use application::compile::{BuildArtifacts, CompileInput, CompileResult};
+pub use domain::artifact::AgentJsonDocument;
+pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
+
+pub fn compile_workspace(input: CompileInput) -> CompileResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
+    application::compile::compile_with_provider(&provider)
+}
