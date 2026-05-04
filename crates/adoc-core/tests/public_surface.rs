@@ -8,8 +8,8 @@
 use std::path::PathBuf;
 
 use adoc_core::{
-    AgentJsonDocument, BuildArtifacts, CompileInput, CompileResult, Diagnostic, DiagnosticCode,
-    Severity, compile_workspace,
+    AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, BuildArtifacts,
+    CompileInput, CompileResult, Diagnostic, DiagnosticCode, Severity, compile_workspace,
 };
 
 #[test]
@@ -29,6 +29,28 @@ fn public_surface_compiles_with_only_documented_imports() {
         let _: String = artifacts.html;
         let _: AgentJsonDocument = artifacts.agent_json;
     }
+
+    // AgentJsonObject and its sub-types are part of the public surface.
+    let _: AgentJsonObject = AgentJsonObject {
+        id: String::new(),
+        kind: String::new(),
+        status: String::new(),
+        body: String::new(),
+        page_id: String::new(),
+        source_span: AgentJsonSourceSpan {
+            path: PathBuf::new(),
+            line: 0,
+            column: 0,
+        },
+        fields: std::collections::BTreeMap::new(),
+        relations: AgentJsonRelations::default(),
+    };
+    let _: AgentJsonRelations = AgentJsonRelations::default();
+    let _: AgentJsonSourceSpan = AgentJsonSourceSpan {
+        path: PathBuf::new(),
+        line: 0,
+        column: 0,
+    };
 
     // Severity discriminants are reachable as documented.
     let _ = Severity::Error;

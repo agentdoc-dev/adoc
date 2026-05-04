@@ -1,7 +1,3 @@
-// Items in this module will be consumed by later commits; suppress dead_code
-// until the aggregate is wired into the application layer.
-#![allow(dead_code)]
-
 use std::collections::BTreeMap;
 
 use crate::domain::diagnostic::SourceSpan;
@@ -111,6 +107,10 @@ impl ClaimFields {
         self.0.iter()
     }
 
+    #[allow(
+        dead_code,
+        reason = "used in unit tests; not yet needed by production callers"
+    )]
     pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
