@@ -178,7 +178,7 @@ fn check_accepts_minimal_prose_page() {
     let workspace = TestWorkspace::new("check-accepts-minimal-prose-page");
     let source = workspace.write(
         "guide.adoc",
-        "# Getting Started @doc(getting-started)\n\nAgentDoc keeps knowledge readable.\n",
+        "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
@@ -203,7 +203,7 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
     let workspace = TestWorkspace::new("build-writes-artifacts");
     let source = workspace.write(
         "guide.adoc",
-        "# Getting Started @doc(getting-started)\n\nAgentDoc keeps knowledge readable.\n",
+        "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
     );
     let output_directory = workspace.root.join("dist");
 
@@ -243,7 +243,7 @@ fn build_groups_contiguous_list_items_by_list_kind() {
     let workspace = TestWorkspace::new("build-groups-contiguous-lists");
     let source = workspace.write(
         "guide.adoc",
-        "# Lists @doc(lists)\n\n- Write source\n- Run check\n\n1. Build artifacts\n2. Inspect output\n",
+        "# Lists @doc(docs.lists)\n\n- Write source\n- Run check\n\n1. Build artifacts\n2. Inspect output\n",
     );
     let output_directory = workspace.root.join("dist");
 
@@ -314,7 +314,7 @@ fn build_keeps_page_identity_from_first_heading_annotation() {
     let workspace = TestWorkspace::new("build-keeps-first-heading-page-id");
     let source = workspace.write(
         "guide.adoc",
-        "# Guide @doc(primary-guide)\n\n## Details @doc(details-section)\n\nMore context.\n",
+        "# Guide @doc(docs.primary-guide)\n\n## Details @doc(docs.details-section)\n\nMore context.\n",
     );
     let output_directory = workspace.root.join("dist");
 
@@ -338,13 +338,13 @@ fn build_keeps_page_identity_from_first_heading_annotation() {
     );
 
     let html = fs::read_to_string(output_directory.join("docs.html")).expect("HTML is written");
-    assert!(html.contains("data-page-id=\"primary-guide\""));
-    assert!(!html.contains("data-page-id=\"details-section\""));
+    assert!(html.contains("data-page-id=\"docs.primary-guide\""));
+    assert!(!html.contains("data-page-id=\"docs.details-section\""));
 
     let agent_json = fs::read_to_string(output_directory.join("docs.agent.json"))
         .expect("agent JSON is written");
-    assert!(agent_json.contains("\"id\": \"primary-guide\""));
-    assert!(!agent_json.contains("\"id\": \"details-section\""));
+    assert!(agent_json.contains("\"id\": \"docs.primary-guide\""));
+    assert!(!agent_json.contains("\"id\": \"docs.details-section\""));
 }
 
 #[test]
@@ -390,7 +390,7 @@ fn build_fails_clearly_when_output_path_is_a_file() {
     let workspace = TestWorkspace::new("build-output-path-is-file");
     let source = workspace.write(
         "guide.adoc",
-        "# Getting Started @doc(getting-started)\n\nAgentDoc keeps knowledge readable.\n",
+        "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
     );
     let output_path = workspace.write("dist", "not a directory");
 
@@ -420,7 +420,7 @@ fn check_rejects_raw_html_with_source_location() {
     let workspace = TestWorkspace::new("check-rejects-raw-html");
     let source = workspace.write(
         "guide.adoc",
-        "# Unsafe Input @doc(unsafe-input)\n\n<div>raw html</div>\n",
+        "# Unsafe Input @doc(docs.unsafe-input)\n\n<div>raw html</div>\n",
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
@@ -441,7 +441,7 @@ fn check_rejects_unknown_raw_html_tag() {
     let workspace = TestWorkspace::new("check-rejects-unknown-raw-html-tag");
     let source = workspace.write(
         "guide.adoc",
-        "# Unsafe Input @doc(unsafe-input)\n\n<foo>bar</foo>\n",
+        "# Unsafe Input @doc(docs.unsafe-input)\n\n<foo>bar</foo>\n",
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
@@ -464,7 +464,7 @@ fn check_rejects_custom_element_tag() {
     let workspace = TestWorkspace::new("check-rejects-custom-element-tag");
     let source = workspace.write(
         "guide.adoc",
-        "# Unsafe Input @doc(unsafe-input)\n\n<my-component>x</my-component>\n",
+        "# Unsafe Input @doc(docs.unsafe-input)\n\n<my-component>x</my-component>\n",
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
@@ -486,7 +486,7 @@ fn check_does_not_flag_angle_brackets_in_prose() {
     let workspace = TestWorkspace::new("check-does-not-flag-angle-brackets-in-prose");
     let source = workspace.write(
         "guide.adoc",
-        "# Technical Prose @doc(technical-prose)\n\nUse Vec<String> for a list.\n\nSet x < 5 here.\n",
+        "# Technical Prose @doc(docs.technical-prose)\n\nUse Vec<String> for a list.\n\nSet x < 5 here.\n",
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
@@ -509,7 +509,7 @@ fn build_rejects_inline_raw_html_and_writes_no_artifacts() {
     let workspace = TestWorkspace::new("build-rejects-inline-raw-html");
     let source = workspace.write(
         "guide.adoc",
-        "# Unsafe Input @doc(unsafe-input)\n\nKeep <span>raw html</span> out.\n",
+        "# Unsafe Input @doc(docs.unsafe-input)\n\nKeep <span>raw html</span> out.\n",
     );
     let output_directory = workspace.root.join("dist");
 
@@ -536,11 +536,73 @@ fn build_rejects_inline_raw_html_and_writes_no_artifacts() {
 }
 
 #[test]
+fn check_allows_raw_html_inside_closed_fenced_code_block() {
+    let workspace = TestWorkspace::new("check-allows-raw-html-in-fence");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Fenced HTML Sample @doc(docs.fenced-html)\n\n```html\n<div>example</div>\n<script>alert(1)</script>\n```\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        output.status.success(),
+        "expected fenced HTML sample to pass check\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("parse.raw_html"),
+        "expected no parse.raw_html diagnostic for HTML inside a fenced code block:\n{stdout}"
+    );
+    assert!(stdout.contains("0 errors"));
+}
+
+#[test]
+fn build_writes_artifacts_for_raw_html_inside_fenced_code_block() {
+    let workspace = TestWorkspace::new("build-allows-raw-html-in-fence");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Fenced HTML Sample @doc(docs.fenced-html)\n\n```html\n<div>example</div>\n```\n",
+    );
+    let output_directory = workspace.root.join("dist");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            source.to_str().expect("source path is utf-8"),
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to succeed when HTML is inside a fenced block\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let html = fs::read_to_string(output_directory.join("docs.html")).expect("HTML is written");
+    assert!(
+        html.contains("&lt;div&gt;example&lt;/div&gt;"),
+        "fenced HTML sample must be HTML-escaped inside <pre><code>:\n{html}"
+    );
+    assert!(output_directory.join("docs.agent.json").exists());
+}
+
+#[test]
 fn check_rejects_unclosed_fenced_code_with_source_location() {
     let workspace = TestWorkspace::new("check-rejects-unclosed-fence");
     let source = workspace.write(
         "guide.adoc",
-        "# Broken Code @doc(broken-code)\n\n```rust\nfn main() {}\n",
+        "# Broken Code @doc(docs.broken-code)\n\n```rust\nfn main() {}\n",
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
@@ -634,13 +696,16 @@ fn check_reports_trailing_content_malformed_with_indent() {
 #[test]
 fn check_accepts_at_doc_without_parentheses_as_heading_text() {
     let workspace = TestWorkspace::new("check-accepts-at-doc-without-parentheses");
-    let source = workspace.write(
-        "guide.adoc",
+    workspace.write(
+        "team/guide.adoc",
         "# Broken Annotation @doc product.area\n\nContent.\n",
     );
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
-        .args(["check", source.to_str().expect("source path is utf-8")])
+        .args([
+            "check",
+            workspace.root.to_str().expect("workspace path is utf-8"),
+        ])
         .output()
         .expect("adoc check runs");
 

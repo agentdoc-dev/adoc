@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use crate::artifact::ArtifactWriter;
 use crate::ast::PageAst;
 use crate::diagnostic::Diagnostic;
 
@@ -12,17 +13,23 @@ pub struct AgentJsonDocument {
 }
 
 impl AgentJsonDocument {
-    pub fn from_pages_and_diagnostics(pages: &[PageAst], diagnostics: &[Diagnostic]) -> Self {
-        Self {
+    pub fn to_pretty_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct AgentJsonArtifact;
+
+impl ArtifactWriter for AgentJsonArtifact {
+    type Output = AgentJsonDocument;
+    fn build(&self, pages: &[PageAst], diagnostics: &[Diagnostic]) -> AgentJsonDocument {
+        AgentJsonDocument {
             schema_version: "adoc.agent.v0".to_string(),
             pages: pages.iter().map(AgentJsonPage::from).collect(),
             objects: Vec::new(),
             diagnostics: diagnostics.to_vec(),
         }
-    }
-
-    pub fn to_pretty_json(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string_pretty(self)
     }
 }
 
@@ -36,7 +43,7 @@ pub struct AgentJsonPage {
 impl From<&PageAst> for AgentJsonPage {
     fn from(page: &PageAst) -> Self {
         Self {
-            id: page.id.clone(),
+            id: page.id.as_str().to_string(),
             title: page.title.clone(),
             source_path: page.source_path.display().to_string(),
         }

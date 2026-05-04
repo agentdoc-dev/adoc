@@ -65,6 +65,7 @@ Initial API sketch:
 pub fn compile_workspace(input: CompileInput) -> CompileResult;
 
 pub struct CompileInput {
+    /// One `.adoc` file or a directory scanned recursively for `.adoc` files.
     pub root: std::path::PathBuf,
 }
 
@@ -151,7 +152,7 @@ Diagnostic shape:
 
 ```rust
 pub struct Diagnostic {
-    pub code: String,
+    pub code: DiagnosticCode,
     pub severity: Severity,
     pub message: String,
     pub span: Option<SourceSpan>,
@@ -164,6 +165,15 @@ pub enum Severity {
     Warning,
     Info,
 }
+
+pub enum DiagnosticCode {
+    ParseRawHtml,
+    ParseUnsafeLink,
+    ParseUnclosedFence,
+    ParseMalformedPageAnnotation,
+    IdInvalid,
+    IoUnreadableFile,
+}
 ```
 
 Diagnostic guidance:
@@ -172,12 +182,13 @@ Diagnostic guidance:
 - Use grouped semantic diagnostic codes, not numeric codes, in V0.
 - Prefer fix-oriented messages.
 - Include `object_id` when a diagnostic belongs to a Knowledge Object.
-- V0.1 should include diagnostics for raw HTML, unreadable files, malformed fences, and malformed page annotations.
+- V0.1 should include diagnostics for raw HTML, unsafe links, unreadable files, malformed fences, malformed page annotations, and invalid Object IDs.
 - Later V0 slices add duplicate IDs, missing fields, invalid verified claims, unknown object types, and broken references.
 
 Initial diagnostic code examples:
 
 - `parse.raw_html`
+- `parse.unsafe_link`
 - `parse.unclosed_fence`
 - `parse.malformed_page_annotation`
 - `schema.unknown_kind`

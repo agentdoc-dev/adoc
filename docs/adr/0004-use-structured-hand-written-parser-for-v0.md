@@ -1,3 +1,7 @@
 # Use a structured hand-written parser for V0
 
 AgentDoc V0 will use a structured hand-written, line-oriented parser instead of starting with a parser generator or combinator framework. The grammar is intentionally block-oriented in V0, and the product needs tailored diagnostics, source spans, and error recovery; the parser should still expose clean AST and diagnostic boundaries so internals can be replaced later if nested blocks, richer inline syntax, or complex recovery justify it.
+
+## Addendum: typed `ParseState` state machine
+
+Block-in-progress state inside `parse_page` lives in a typed `ParseState` enum (`crates/adoc-core/src/parser/state.rs`) — `Idle`, `Paragraph(ParagraphBuilder)`, `List(ListBuilder)`, `CodeBlock(CodeBlockBuilder)`. Each variant owns its in-progress builder; `flush_in_place` rotates the state through `Idle` and emits the completed block plus any structural diagnostic (e.g. `parse.unclosed_fence` from a code block that hits EOF without a closing fence). The previous tuple of mutable variables (`paragraph_lines`, `paragraph_start_line`, `paragraph_end_line`, `pending_list`, plus an inline code-fence sub-loop) collapses into one state object whose transitions are explicit. This preserves ADR-0004's "small parse functions" intent — heading/fence/list-item recognition still lives in stateless helpers — while making the block-machine state legible at a glance. The parser module is split into `parser/{mod,state,builders}.rs` so each file stays focused.

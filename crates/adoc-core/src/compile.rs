@@ -1,21 +1,19 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::cmp::Ordering;
+use std::path::PathBuf;
 
-use crate::artifact::agent_json::AgentJsonDocument;
-use crate::ast::WorkspaceAst;
-use crate::diagnostic::{Diagnostic, Severity};
+use crate::artifact::{AgentJsonArtifact, AgentJsonDocument, ArtifactWriter};
+use crate::ast::{PageAst, WorkspaceAst};
+use crate::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::parser::parse_page;
-use crate::render::html::render_html;
+use crate::render::{HtmlRenderer, Renderer};
 use crate::source::SourceFile;
-
-#[derive(Debug, Clone)]
-struct SourcePath {
-    path: PathBuf,
-    identity_path: PathBuf,
-}
+use crate::source_provider::{FsSourceProvider, SourceProvider};
+use crate::validate::{validate_page, validate_workspace};
 
 #[derive(Debug, Clone)]
 pub struct CompileInput {
+    /// Input path for compilation: either one `.adoc` file or a directory that
+    /// will be scanned recursively for `.adoc` files.
     pub root: PathBuf,
 }
 
@@ -40,94 +38,249 @@ pub struct BuildArtifacts {
 }
 
 pub fn compile_workspace(input: CompileInput) -> CompileResult {
-    let mut diagnostics = Vec::new();
-    let mut pages = Vec::new();
+    let provider = FsSourceProvider::new(input.root);
+    compile_with_provider(&provider)
+}
 
-    for source_path in source_paths(&input.root) {
-        match fs::read_to_string(&source_path.path) {
-            Ok(text) => {
-                let source = SourceFile::new_with_identity_path(
-                    source_path.path,
-                    text,
-                    source_path.identity_path,
-                );
-                let (page, page_diagnostics) = parse_page(&source);
-                diagnostics.extend(page_diagnostics);
-                pages.push(page);
-            }
-            Err(error) => diagnostics.push(Diagnostic::error(
-                "io.unreadable_file",
-                format!(
-                    "could not read AgentDoc Source {}: {error}",
-                    source_path.path.display()
-                ),
-            )),
-        }
-    }
-
-    let _workspace = WorkspaceAst {
-        pages: pages.clone(),
-    };
-
-    let artifacts = diagnostics
-        .iter()
-        .all(|diagnostic| diagnostic.severity != Severity::Error)
-        .then(|| BuildArtifacts {
-            html: render_html(&pages),
-            agent_json: AgentJsonDocument::from_pages_and_diagnostics(&pages, &diagnostics),
-        });
-
+pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
+    // Pipeline stages: load → validate-pages → assemble → validate-workspace
+    // → build. Each stage is a separate function below so it can be
+    // unit-tested in isolation and the orchestrator reads as a sequence of
+    // named domain operations rather than one walls-of-text loop. Pages move
+    // through the pipeline without cloning. See ADR-0006 addendum.
+    let (parsed, mut diagnostics) = load_pages(provider);
+    diagnostics.extend(validate_pages(&parsed));
+    let workspace = assemble_workspace(parsed);
+    diagnostics.extend(validate_workspace(&workspace));
+    sort_diagnostics_by_source(&mut diagnostics);
+    let artifacts = build_artifacts(&workspace, &diagnostics);
     CompileResult {
         diagnostics,
         artifacts,
     }
 }
 
-fn source_paths(root: &Path) -> Vec<SourcePath> {
-    if root.is_file() {
-        return vec![SourcePath {
-            path: root.to_path_buf(),
-            identity_path: root
-                .file_name()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| root.into()),
-        }];
+/// Load every source the provider yields, parse each successfully-loaded one
+/// into a `PageAst`, and translate load failures into `io.unreadable_file`
+/// diagnostics. Returns the (source, page) pairs for downstream validation
+/// plus the parse-time and load-time diagnostics in source order.
+fn load_pages<P: SourceProvider>(provider: &P) -> (Vec<(SourceFile, PageAst)>, Vec<Diagnostic>) {
+    let mut parsed = Vec::new();
+    let mut diagnostics = Vec::new();
+    for result in provider.load_sources() {
+        match result {
+            Ok(source) => {
+                let (page, parse_diagnostics) = parse_page(&source);
+                diagnostics.extend(parse_diagnostics);
+                parsed.push((source, page));
+            }
+            Err(load_error) => diagnostics.push(Diagnostic::error(
+                DiagnosticCode::IoUnreadableFile,
+                format!(
+                    "could not read AgentDoc Source {}: {}",
+                    load_error.path.display(),
+                    load_error.message,
+                ),
+            )),
+        }
     }
-
-    let mut paths = Vec::new();
-    collect_adoc_files(root, root, &mut paths);
-    paths.sort_by(|left, right| left.path.cmp(&right.path));
-    paths
+    (parsed, diagnostics)
 }
 
-fn collect_adoc_files(root: &Path, directory: &Path, paths: &mut Vec<SourcePath>) {
-    let Ok(entries) = fs::read_dir(directory) else {
-        paths.push(SourcePath {
-            path: directory.to_path_buf(),
-            identity_path: directory
-                .strip_prefix(root)
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| directory.into()),
-        });
-        return;
-    };
+/// Run every per-page rule against the (source, page) pairs in order.
+/// Workspace-level rules run later, after the aggregate is assembled.
+fn validate_pages(parsed: &[(SourceFile, PageAst)]) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    for (source, page) in parsed {
+        diagnostics.extend(validate_page(page, source));
+    }
+    diagnostics
+}
 
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_adoc_files(root, &path, paths);
-        } else if path
-            .extension()
-            .is_some_and(|extension| extension == "adoc")
-        {
-            let identity_path = path
-                .strip_prefix(root)
-                .map(PathBuf::from)
-                .unwrap_or_else(|_| path.clone());
-            paths.push(SourcePath {
-                path,
-                identity_path,
-            });
-        }
+/// Consume the (source, page) pairs into the final aggregate. Sources are
+/// dropped here — they're no longer needed once per-page rules have run.
+fn assemble_workspace(parsed: Vec<(SourceFile, PageAst)>) -> WorkspaceAst {
+    WorkspaceAst {
+        pages: parsed.into_iter().map(|(_, page)| page).collect(),
+    }
+}
+
+/// Gate artifacts on diagnostic severity: produce an HTML + agent JSON pair
+/// only when no diagnostic has `Severity::Error`. Renderer and ArtifactWriter
+/// ports are statically dispatched per ADR-0006.
+fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Option<BuildArtifacts> {
+    diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.severity != Severity::Error)
+        .then(|| BuildArtifacts {
+            html: HtmlRenderer.render(&workspace.pages),
+            agent_json: AgentJsonArtifact.build(&workspace.pages, diagnostics),
+        })
+}
+
+fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
+    diagnostics.sort_by(|left, right| match (&left.span, &right.span) {
+        (Some(left_span), Some(right_span)) => left_span
+            .file
+            .cmp(&right_span.file)
+            .then_with(|| left_span.start.line.cmp(&right_span.start.line))
+            .then_with(|| left_span.start.column.cmp(&right_span.start.column)),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::source::SourceFile;
+    use crate::source_provider::InMemorySourceProvider;
+
+    fn source_file(identity: &str, text: &str) -> SourceFile {
+        SourceFile::new_with_identity_path(
+            PathBuf::from(format!("/work/{identity}")),
+            text.to_string(),
+            PathBuf::from(identity),
+        )
+    }
+
+    #[test]
+    fn compile_with_provider_emits_artifacts_for_clean_source() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\nHello.\n",
+        ));
+
+        let result = compile_with_provider(&provider);
+
+        assert!(!result.has_errors());
+        assert!(result.artifacts.is_some(), "expected artifacts to be built");
+    }
+
+    #[test]
+    fn compile_with_provider_blocks_artifacts_when_source_has_errors() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\n<div>x</div>\n",
+        ));
+
+        let result = compile_with_provider(&provider);
+
+        assert!(result.has_errors(), "raw HTML should produce an error");
+        assert!(
+            result.artifacts.is_none(),
+            "artifacts must not be produced when errors are present"
+        );
+    }
+
+    #[test]
+    fn compile_with_provider_translates_load_error_into_io_diagnostic() {
+        let provider = InMemorySourceProvider::new()
+            .with_error(PathBuf::from("/work/missing.adoc"), "permission denied");
+
+        let result = compile_with_provider(&provider);
+
+        assert_eq!(result.diagnostics.len(), 1);
+        let diagnostic = &result.diagnostics[0];
+        assert_eq!(diagnostic.code, DiagnosticCode::IoUnreadableFile);
+        assert_eq!(diagnostic.severity, Severity::Error);
+        assert!(
+            diagnostic
+                .message
+                .contains("could not read AgentDoc Source /work/missing.adoc")
+        );
+        assert!(diagnostic.message.contains("permission denied"));
+        assert!(result.artifacts.is_none());
+    }
+
+    #[test]
+    fn compile_with_provider_emits_empty_artifacts_for_empty_workspace() {
+        let provider = InMemorySourceProvider::new();
+
+        let result = compile_with_provider(&provider);
+
+        assert!(!result.has_errors());
+        let artifacts = result.artifacts.expect("empty workspace still builds");
+        assert!(artifacts.agent_json.pages.is_empty());
+    }
+
+    // --- stage-level pipeline tests (TB-7) ---
+
+    #[test]
+    fn load_pages_returns_parsed_pairs_in_provider_order() {
+        let provider = InMemorySourceProvider::new()
+            .with_source(source_file("team/alpha.adoc", "# Alpha\n"))
+            .with_source(source_file("team/beta.adoc", "# Beta\n"));
+
+        let (parsed, diagnostics) = load_pages(&provider);
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].1.title.as_deref(), Some("Alpha"));
+        assert_eq!(parsed[1].1.title.as_deref(), Some("Beta"));
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn load_pages_translates_load_error_into_io_diagnostic() {
+        let provider = InMemorySourceProvider::new()
+            .with_error(PathBuf::from("/work/missing.adoc"), "permission denied");
+
+        let (parsed, diagnostics) = load_pages(&provider);
+
+        assert!(parsed.is_empty());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IoUnreadableFile);
+    }
+
+    #[test]
+    fn validate_pages_emits_per_page_diagnostics_in_source_order() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\n<div>x</div>\n",
+        ));
+
+        let (parsed, _) = load_pages(&provider);
+        let diagnostics = validate_pages(&parsed);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
+    }
+
+    #[test]
+    fn assemble_workspace_drops_sources_and_keeps_pages_in_order() {
+        let provider = InMemorySourceProvider::new()
+            .with_source(source_file("a.adoc", "# A\n"))
+            .with_source(source_file("b.adoc", "# B\n"));
+
+        let (parsed, _) = load_pages(&provider);
+        let workspace = assemble_workspace(parsed);
+
+        assert_eq!(workspace.pages.len(), 2);
+        assert_eq!(workspace.pages[0].title.as_deref(), Some("A"));
+        assert_eq!(workspace.pages[1].title.as_deref(), Some("B"));
+    }
+
+    #[test]
+    fn build_artifacts_returns_some_when_no_errors() {
+        let provider =
+            InMemorySourceProvider::new().with_source(source_file("guide.adoc", "# Guide\n"));
+        let (parsed, _) = load_pages(&provider);
+        let workspace = assemble_workspace(parsed);
+
+        let artifacts = build_artifacts(&workspace, &[]);
+
+        let artifacts = artifacts.expect("clean workspace yields artifacts");
+        assert!(artifacts.html.contains("<h1>Guide</h1>"));
+    }
+
+    #[test]
+    fn build_artifacts_returns_none_when_any_diagnostic_is_error() {
+        let workspace = WorkspaceAst { pages: Vec::new() };
+        let error_diagnostic = Diagnostic::error(DiagnosticCode::ParseRawHtml, "x");
+
+        let artifacts = build_artifacts(&workspace, &[error_diagnostic]);
+
+        assert!(artifacts.is_none());
     }
 }
