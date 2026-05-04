@@ -1,7 +1,11 @@
 // see ADR-0009
+pub(crate) mod artifact;
 pub(crate) mod ast;
 pub(crate) mod diagnostic;
 pub(crate) mod identity;
 pub(crate) mod inline;
+pub(crate) mod knowledge_object;
+pub(crate) mod ports;
+pub(crate) mod rules;
 pub(crate) mod scan;
 pub(crate) mod source;
