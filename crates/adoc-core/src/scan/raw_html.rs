@@ -75,11 +75,24 @@ fn raw_html_tag_end(value: &str) -> Option<usize> {
         '/' => value[name_end + 1..]
             .starts_with('>')
             .then_some(name_end + 2),
-        character if character.is_whitespace() => value[name_end..]
-            .find('>')
+        character if character.is_whitespace() => tag_close_after_attributes(&value[name_end..])
             .map(|relative_index| name_end + relative_index + 1),
         _ => None,
     }
+}
+
+fn tag_close_after_attributes(value: &str) -> Option<usize> {
+    let mut quote = None;
+    for (index, character) in value.char_indices() {
+        match quote {
+            Some(active_quote) if character == active_quote => quote = None,
+            Some(_) => {}
+            None if character == '"' || character == '\'' => quote = Some(character),
+            None if character == '>' => return Some(index),
+            None => {}
+        }
+    }
+    None
 }
 
 #[cfg(test)]
