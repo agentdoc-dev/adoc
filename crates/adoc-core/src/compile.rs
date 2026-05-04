@@ -10,7 +10,7 @@ use crate::infrastructure::render::{HtmlRenderer, Renderer};
 use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::source::SourceFile;
 use crate::infrastructure::source::fs::FsSourceProvider;
-use crate::validate::{validate_page, validate_workspace};
+use crate::infrastructure::validate::{validate_page, validate_workspace};
 
 #[derive(Debug, Clone)]
 pub struct CompileInput {

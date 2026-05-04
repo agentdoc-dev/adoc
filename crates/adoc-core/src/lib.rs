@@ -2,7 +2,6 @@ mod application;
 mod compile;
 mod domain;
 mod infrastructure;
-mod validate;
 
 pub use domain::artifact::AgentJsonDocument;
 pub use compile::{BuildArtifacts, CompileInput, CompileResult, compile_workspace};
