@@ -1,8 +1,11 @@
+mod application;
 mod artifact;
 mod ast;
 mod compile;
 mod diagnostic;
+mod domain;
 mod identity;
+mod infrastructure;
 mod inline;
 mod parser;
 mod render;
