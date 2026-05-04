@@ -12,4 +12,4 @@ mod validate;
 
 pub use artifact::agent_json::AgentJsonDocument;
 pub use compile::{BuildArtifacts, CompileInput, CompileResult, compile_workspace};
-pub use diagnostic::{Diagnostic, Severity};
+pub use diagnostic::{Diagnostic, DiagnosticCode, Severity};

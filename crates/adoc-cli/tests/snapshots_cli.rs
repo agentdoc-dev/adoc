@@ -33,7 +33,10 @@ fn run_check_in_workspace(name: &str, fixture_relative: &str, source_file: &str)
         .expect("adoc check runs");
 
     let mut combined = String::new();
-    combined.push_str(&format!("exit-success: {}\n---stdout---\n", output.status.success()));
+    combined.push_str(&format!(
+        "exit-success: {}\n---stdout---\n",
+        output.status.success()
+    ));
     combined.push_str(&String::from_utf8_lossy(&output.stdout));
     combined.push_str("---stderr---\n");
     combined.push_str(&String::from_utf8_lossy(&output.stderr));

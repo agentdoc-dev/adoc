@@ -130,7 +130,7 @@ mod tests {
 
         assert_eq!(result.diagnostics.len(), 1);
         let diagnostic = &result.diagnostics[0];
-        assert_eq!(diagnostic.code, "io.unreadable_file");
+        assert_eq!(diagnostic.code, DiagnosticCode::IoUnreadableFile);
         assert_eq!(diagnostic.severity, Severity::Error);
         assert!(
             diagnostic

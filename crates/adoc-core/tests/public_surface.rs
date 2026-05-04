@@ -8,8 +8,8 @@
 use std::path::PathBuf;
 
 use adoc_core::{
-    AgentJsonDocument, BuildArtifacts, CompileInput, CompileResult, Diagnostic, Severity,
-    compile_workspace,
+    AgentJsonDocument, BuildArtifacts, CompileInput, CompileResult, Diagnostic, DiagnosticCode,
+    Severity, compile_workspace,
 };
 
 #[test]
@@ -34,4 +34,13 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = Severity::Error;
     let _ = Severity::Warning;
     let _ = Severity::Info;
+
+    // DiagnosticCode discriminants are reachable as documented (ADR-0005 v0.x).
+    let _ = DiagnosticCode::ParseRawHtml;
+    let _ = DiagnosticCode::ParseUnsafeLink;
+    let _ = DiagnosticCode::ParseUnclosedFence;
+    let _ = DiagnosticCode::ParseMalformedPageAnnotation;
+    let _ = DiagnosticCode::IoUnreadableFile;
+    // The wire string remains available for hosts that serialize manually.
+    let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
 }

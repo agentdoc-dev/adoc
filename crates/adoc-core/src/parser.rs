@@ -462,7 +462,10 @@ mod tests {
         let (_page, diagnostics) = parse_source("# Notes (per @doc(thing) sidebar)\n\nContent.\n");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.malformed_page_annotation");
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::ParseMalformedPageAnnotation
+        );
     }
 
     #[test]
@@ -470,7 +473,10 @@ mod tests {
         let (_page, diagnostics) = parse_source("  # Broken @doc(\n\nContent.\n");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.malformed_page_annotation");
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::ParseMalformedPageAnnotation
+        );
         let span = diagnostics[0].span.as_ref().unwrap();
         assert_eq!(span.start.column, 12);
     }
@@ -493,10 +499,12 @@ mod tests {
         // tracer that accidentally fixes the span will surface as a test
         // failure rather than a silent shift. TB-9 deletes (or inverts) this
         // assertion as part of the visible bug-fix diff.
-        let (page, diagnostics) = parse_source(
-            "# Lists @doc(team.lists)\n\n- one\n- two\n- three\n",
+        let (page, diagnostics) =
+            parse_source("# Lists @doc(team.lists)\n\n- one\n- two\n- three\n");
+        assert!(
+            diagnostics.is_empty(),
+            "fixture should parse cleanly: {diagnostics:?}"
         );
-        assert!(diagnostics.is_empty(), "fixture should parse cleanly: {diagnostics:?}");
 
         let list = page
             .blocks

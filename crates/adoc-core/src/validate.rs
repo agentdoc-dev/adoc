@@ -331,7 +331,7 @@ mod tests {
             validate_text("# Unsafe @doc(team.unsafe)\n\nKeep <span>raw html</span> out.\n");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
         assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 6);
     }
 
@@ -340,7 +340,7 @@ mod tests {
         let diagnostics = validate_text("# Unsafe @doc(team.unsafe)\n\n<foo>bar</foo>\n");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
         assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 1);
     }
 
@@ -350,7 +350,7 @@ mod tests {
             validate_text("# Unsafe @doc(team.unsafe)\n\n<my-component>x</my-component>\n");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
         assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 1);
     }
 
@@ -375,7 +375,7 @@ mod tests {
             1,
             "exactly one diagnostic for the prose-level <span>, got {diagnostics:?}"
         );
-        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
         let span = diagnostics[0].span.as_ref().unwrap();
         assert_eq!(span.start.line, 7);
         assert_eq!(span.start.column, 1);
@@ -390,7 +390,7 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1, "expected one unsafe-link diagnostic");
         let diagnostic = &diagnostics[0];
-        assert_eq!(diagnostic.code, "parse.unsafe_link");
+        assert_eq!(diagnostic.code, DiagnosticCode::ParseUnsafeLink);
         assert!(
             diagnostic.message.contains("javascript:alert"),
             "diagnostic message should quote the offending URL: {}",
@@ -408,7 +408,7 @@ mod tests {
             validate_text("# Page @doc(team.page)\n\nsee [click]( javascript:alert) here\n");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseUnsafeLink);
     }
 
     #[test]
@@ -417,7 +417,7 @@ mod tests {
             validate_text("# Page @doc(team.page)\n\nsee [click](j\tavascript:alert) here\n");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseUnsafeLink);
     }
 
     #[test]
@@ -425,7 +425,7 @@ mod tests {
         let diagnostics = validate_text("# Page @doc(team.page)\n\n*[click](javascript:bad)*\n");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseUnsafeLink);
         let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
         assert_eq!(
             span.start.column, 2,
@@ -439,7 +439,7 @@ mod tests {
         let diagnostics = validate_text("# Page @doc(team.page)\n\n**[click](javascript:bad)**\n");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseUnsafeLink);
         let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
         assert_eq!(
             span.start.column, 3,
@@ -525,18 +525,20 @@ mod tests {
     #[test]
     #[ignore = "P1: un-ignored in TB-9 (PR #20 review)"]
     fn raw_html_in_second_unordered_list_item_flags() {
-        let diagnostics = validate_text(
-            "# Bug @doc(team.bug)\n\n- first item\n- second has <span>raw</span>\n",
-        );
+        let diagnostics =
+            validate_text("# Bug @doc(team.bug)\n\n- first item\n- second has <span>raw</span>\n");
 
         assert_eq!(
             diagnostics.len(),
             1,
             "expected one parse.raw_html for the 2nd item, got {diagnostics:?}"
         );
-        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
         let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
-        assert_eq!(span.start.line, 4, "diagnostic must point at the 2nd item's line");
+        assert_eq!(
+            span.start.line, 4,
+            "diagnostic must point at the 2nd item's line"
+        );
     }
 
     #[test]
@@ -551,9 +553,12 @@ mod tests {
             1,
             "expected one parse.raw_html for the 2nd item, got {diagnostics:?}"
         );
-        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
         let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
-        assert_eq!(span.start.line, 4, "diagnostic must point at the 2nd item's line");
+        assert_eq!(
+            span.start.line, 4,
+            "diagnostic must point at the 2nd item's line"
+        );
     }
 
     #[test]
@@ -561,7 +566,7 @@ mod tests {
         let diagnostics = validate_text("##   [click](javascript:bad)\n");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseUnsafeLink);
         let span = diagnostics[0].span.as_ref().unwrap();
         assert_eq!(
             span.start.column, 6,
