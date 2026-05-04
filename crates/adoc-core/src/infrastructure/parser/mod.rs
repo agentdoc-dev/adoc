@@ -7,6 +7,7 @@
 //! rules run in the validation pass per ADR-0007.
 
 mod builders;
+mod claim;
 mod state;
 
 use builders::{CodeBlockBuilder, ListBuilder, ParagraphBuilder};
@@ -50,6 +51,21 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             continue;
         }
 
+        // Inside a claim block every line is consumed by the claim handler
+        // until the closing `::` fence. Blank lines, headings, etc. are body
+        // content (or field lines) — not structural.
+        if state.is_in_claim_block() {
+            consume_claim_block_line(
+                &mut state,
+                source,
+                line,
+                line_number,
+                &mut page.blocks,
+                &mut diagnostics,
+            );
+            continue;
+        }
+
         let trimmed = line.trim();
         if trimmed.is_empty() {
             commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
@@ -66,6 +82,27 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             line_number,
             leading_indent_columns,
         };
+
+        // Top-level typed-block opener: raw line starts with `::` at column 1.
+        // Indented lines (leading spaces) fail `starts_with("::")` and fall
+        // through to prose — the column-1 invariant is preserved automatically.
+        if line.starts_with("::") {
+            match claim::try_open_typed_block(line, line_number, source) {
+                claim::TypedBlockOpen::None => {
+                    // Fall through to normal prose dispatch below.
+                }
+                claim::TypedBlockOpen::OpenedClaim(claim_state) => {
+                    commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
+                    state = ParseState::ClaimBlock(claim_state);
+                    continue;
+                }
+                claim::TypedBlockOpen::Diagnostic(d) => {
+                    commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
+                    diagnostics.push(d);
+                    continue;
+                }
+            }
+        }
 
         if let Some(heading) = parse_heading(trimmed, leading_indent_columns) {
             commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
@@ -127,6 +164,11 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         );
     }
 
+    // Handle unclosed claim blocks at EOF before the general commit.
+    if let ParseState::ClaimBlock(claim_state) = state {
+        claim::finalize_unclosed_claim(claim_state, &mut diagnostics);
+        state = ParseState::Idle;
+    }
     commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
     if !has_explicit_page_identity {
         match derived_page_id {
@@ -167,6 +209,26 @@ fn consume_code_block_line(
         commit_in_progress(state, source, blocks, diagnostics);
     } else {
         builder.push_code_line(line);
+    }
+}
+
+fn consume_claim_block_line(
+    state: &mut ParseState,
+    source: &SourceFile,
+    line: &str,
+    line_number: u32,
+    blocks: &mut Vec<BlockAst>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let ParseState::ClaimBlock(claim_state) = state else {
+        unreachable!("guarded by ParseState::is_in_claim_block");
+    };
+    match claim::consume_claim_line(claim_state, line, line_number, source, diagnostics) {
+        claim::ClaimLineOutcome::Continue => {}
+        claim::ClaimLineOutcome::Closed(parsed) => {
+            blocks.push(BlockAst::KnowledgeObjectPending(Box::new(parsed)));
+            *state = ParseState::Idle;
+        }
     }
 }
 

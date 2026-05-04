@@ -8,8 +8,10 @@
 //! optional structural diagnostic that goes with it (e.g. an unclosed code
 //! fence at EOF).
 
+use std::collections::BTreeMap;
+
 use crate::domain::ast::BlockAst;
-use crate::domain::diagnostic::Diagnostic;
+use crate::domain::diagnostic::{Diagnostic, SourceSpan};
 use crate::domain::source::SourceFile;
 
 use super::builders::{CodeBlockBuilder, ListBuilder, ParagraphBuilder};
@@ -19,11 +21,33 @@ pub(super) enum ParseState {
     Paragraph(ParagraphBuilder),
     List(ListBuilder),
     CodeBlock(CodeBlockBuilder),
+    ClaimBlock(ClaimBuildingState),
+}
+
+/// Transient accumulator for a `::claim` block while lines are being read.
+/// Consumed by `claim::consume_claim_line` when the closing `::` is found.
+pub(super) struct ClaimBuildingState {
+    pub(super) id_text: String,
+    pub(super) open_fence_span: SourceSpan,
+    pub(super) phase: ClaimPhase,
+    pub(super) raw_fields: BTreeMap<String, String>,
+    pub(super) duplicate_keys: Vec<String>,
+    pub(super) body_lines: Vec<String>,
+}
+
+/// Phase of a claim block currently being parsed.
+pub(super) enum ClaimPhase {
+    ReadingFields,
+    ReadingBody,
 }
 
 impl ParseState {
     pub(super) fn is_in_code_block(&self) -> bool {
         matches!(self, Self::CodeBlock(_))
+    }
+
+    pub(super) fn is_in_claim_block(&self) -> bool {
+        matches!(self, Self::ClaimBlock(_))
     }
 
     /// Flush the in-progress block, leaving `Idle` in place.
@@ -52,6 +76,12 @@ impl ParseState {
                     diagnostic,
                 }
             }
+            // A ClaimBlock that gets flushed via `commit_in_progress` mid-parse
+            // (e.g. when a heading line forces a commit) is not a valid claim
+            // closer — the caller uses `finalize_unclosed_claim` at EOF instead.
+            // Flushing here silently drops the in-progress state; the EOF path
+            // handles diagnostics.
+            Self::ClaimBlock(_) => FlushOutcome::default(),
         }
     }
 }

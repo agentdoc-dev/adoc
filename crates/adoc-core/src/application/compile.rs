@@ -11,7 +11,9 @@ use crate::domain::source::SourceFile;
 use crate::infrastructure::artifact::AgentJsonArtifact;
 use crate::infrastructure::parser::parse_page;
 use crate::infrastructure::render::HtmlRenderer;
-use crate::infrastructure::validate::{validate_page, validate_workspace};
+use crate::infrastructure::validate::{
+    resolve_knowledge_objects, validate_page, validate_workspace,
+};
 
 #[derive(Debug, Clone)]
 pub struct CompileInput {
@@ -46,8 +48,9 @@ pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileR
     // unit-tested in isolation and the orchestrator reads as a sequence of
     // named domain operations rather than one walls-of-text loop. Pages move
     // through the pipeline without cloning. See ADR-0006 addendum.
-    let (parsed, mut diagnostics) = load_pages(provider);
+    let (mut parsed, mut diagnostics) = load_pages(provider);
     diagnostics.extend(validate_pages(&parsed));
+    diagnostics.extend(resolve_knowledge_objects(&mut parsed));
     let workspace = assemble_workspace(parsed);
     diagnostics.extend(validate_workspace(&workspace));
     sort_diagnostics_by_source(&mut diagnostics);
@@ -132,6 +135,7 @@ fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::ast::BlockAst;
     use crate::domain::source::SourceFile;
     use crate::infrastructure::source::in_memory::InMemorySourceProvider;
 
@@ -280,5 +284,90 @@ mod tests {
         let artifacts = build_artifacts(&workspace, &[error_diagnostic]);
 
         assert!(artifacts.is_none());
+    }
+
+    #[test]
+    fn compile_with_provider_resolves_a_top_level_claim_into_kos() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            concat!(
+                "# Guide @doc(team.guide)\n\n",
+                "Some prose.\n\n",
+                "::claim billing.credits\n",
+                "status: verified\n",
+                "--\n",
+                "The system credits users automatically.\n",
+                "::\n",
+            ),
+        ));
+
+        let result = compile_with_provider(&provider);
+
+        assert!(
+            !result.has_errors(),
+            "expected no errors, got: {:?}",
+            result.diagnostics
+        );
+        assert!(result.artifacts.is_some(), "artifacts must be produced");
+
+        // Walk the parsed page to verify the KnowledgeObject block is present.
+        // We re-parse to inspect blocks (compile only exposes artifacts).
+        let source = source_file(
+            "guide.adoc",
+            concat!(
+                "# Guide @doc(team.guide)\n\n",
+                "Some prose.\n\n",
+                "::claim billing.credits\n",
+                "status: verified\n",
+                "--\n",
+                "The system credits users automatically.\n",
+                "::\n",
+            ),
+        );
+        let provider2 = InMemorySourceProvider::new().with_source(source);
+        let (mut parsed, _) = load_pages(&provider2);
+        resolve_knowledge_objects(&mut parsed);
+
+        let page = &parsed[0].1;
+        let ko_count = page
+            .blocks
+            .iter()
+            .filter(|b| matches!(b, BlockAst::KnowledgeObject(_)))
+            .count();
+        assert_eq!(ko_count, 1, "exactly one KnowledgeObject block expected");
+    }
+
+    #[test]
+    fn compile_with_provider_drops_invalid_claim_and_blocks_artifacts() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            concat!(
+                "# Guide @doc(team.guide)\n\n",
+                "::claim billing.credits\n",
+                // no status field
+                "--\n",
+                "The system credits users automatically.\n",
+                "::\n",
+            ),
+        ));
+
+        let result = compile_with_provider(&provider);
+
+        assert!(result.has_errors(), "missing status must produce an error");
+        assert!(
+            result.artifacts.is_none(),
+            "artifacts must be blocked on error"
+        );
+        assert_eq!(
+            result.diagnostics.len(),
+            1,
+            "exactly one diagnostic expected, got: {:?}",
+            result.diagnostics
+        );
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::SchemaMissingField,
+            "expected SchemaMissingField"
+        );
     }
 }
