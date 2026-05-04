@@ -135,29 +135,27 @@ pub(super) fn consume_claim_line(
     source: &SourceFile,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ClaimLineOutcome {
-    let trimmed = line.trim();
-
     match state.phase {
         ClaimPhase::ReadingFields => {
-            if trimmed == "::" {
+            if line == "::" {
                 // Close fence in fields region — no body.
                 return ClaimLineOutcome::Closed(build_parsed_claim(state));
             }
 
-            if trimmed == "--" {
+            if line == "--" {
                 // Separator: transition to reading the body.
                 state.phase = ClaimPhase::ReadingBody;
                 return ClaimLineOutcome::Continue;
             }
 
-            if trimmed.is_empty() {
+            if line.trim().is_empty() {
                 // Blank lines between fields are silently skipped.
                 return ClaimLineOutcome::Continue;
             }
 
             // Try to parse as `key: value` where key starts with lowercase
             // and consists of [a-z][a-z0-9_]*.
-            if let Some((key, value)) = try_parse_field(trimmed) {
+            if let Some((key, value)) = try_parse_field(line.trim_end()) {
                 if state.raw_fields.contains_key(&key) {
                     state.duplicate_keys.push(key.clone());
                 }
@@ -177,7 +175,7 @@ pub(super) fn consume_claim_line(
         }
 
         ClaimPhase::ReadingBody => {
-            if trimmed == "::" {
+            if line == "::" {
                 // Close fence.
                 return ClaimLineOutcome::Closed(build_parsed_claim(state));
             }
@@ -504,6 +502,49 @@ mod tests {
     }
 
     #[test]
+    fn consume_claim_line_requires_separator_at_exact_column_one() {
+        let source = make_source("  --\n");
+        let mut state = fresh_state("billing.credits");
+        let mut diagnostics = Vec::new();
+
+        let outcome = consume_claim_line(&mut state, "  --", 1, &source, &mut diagnostics);
+
+        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert!(matches!(state.phase, ClaimPhase::ReadingFields));
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseMalformedField);
+    }
+
+    #[test]
+    fn consume_claim_line_requires_separator_without_trailing_whitespace() {
+        let source = make_source("-- \n");
+        let mut state = fresh_state("billing.credits");
+        let mut diagnostics = Vec::new();
+
+        let outcome = consume_claim_line(&mut state, "-- ", 1, &source, &mut diagnostics);
+
+        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert!(matches!(state.phase, ClaimPhase::ReadingFields));
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseMalformedField);
+    }
+
+    #[test]
+    fn consume_claim_line_requires_field_key_at_column_one() {
+        let source = make_source("  status: verified\n");
+        let mut state = fresh_state("billing.credits");
+        let mut diagnostics = Vec::new();
+
+        let outcome =
+            consume_claim_line(&mut state, "  status: verified", 1, &source, &mut diagnostics);
+
+        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert!(state.raw_fields.is_empty());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseMalformedField);
+    }
+
+    #[test]
     fn consume_claim_line_emits_malformed_field_for_capitalized_key() {
         let source = make_source("Status: x\n");
         let mut state = fresh_state("billing.credits");
@@ -560,6 +601,34 @@ mod tests {
             }
             ClaimLineOutcome::Continue => panic!("expected Closed"),
         }
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn consume_claim_line_keeps_indented_double_colon_in_body() {
+        let source = make_source("  ::\n");
+        let mut state = fresh_state("billing.credits");
+        state.phase = ClaimPhase::ReadingBody;
+        let mut diagnostics = Vec::new();
+
+        let outcome = consume_claim_line(&mut state, "  ::", 1, &source, &mut diagnostics);
+
+        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert_eq!(state.body_lines, vec!["  ::"]);
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn consume_claim_line_keeps_trailing_space_double_colon_in_body() {
+        let source = make_source(":: \n");
+        let mut state = fresh_state("billing.credits");
+        state.phase = ClaimPhase::ReadingBody;
+        let mut diagnostics = Vec::new();
+
+        let outcome = consume_claim_line(&mut state, ":: ", 1, &source, &mut diagnostics);
+
+        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert_eq!(state.body_lines, vec![":: "]);
         assert!(diagnostics.is_empty());
     }
 

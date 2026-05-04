@@ -76,12 +76,9 @@ impl ParseState {
                     diagnostic,
                 }
             }
-            // A ClaimBlock that gets flushed via `commit_in_progress` mid-parse
-            // (e.g. when a heading line forces a commit) is not a valid claim
-            // closer — the caller uses `finalize_unclosed_claim` at EOF instead.
-            // Flushing here silently drops the in-progress state; the EOF path
-            // handles diagnostics.
-            Self::ClaimBlock(_) => FlushOutcome::default(),
+            Self::ClaimBlock(_) => {
+                unreachable!("ClaimBlock must be finalized by the claim parser, not flushed")
+            }
         }
     }
 }
