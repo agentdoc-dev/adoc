@@ -70,6 +70,9 @@ impl ValidationRule for RawHtmlForbidden {
                         flag_raw_html_in_span(source, &item.span, sink);
                     }
                 }
+                // Knowledge Object blocks contain no raw-text HTML spans to
+                // scan; the typed domain value has already been validated.
+                BlockAst::KnowledgeObject(_) | BlockAst::KnowledgeObjectPending(_) => {}
             }
         }
     }
@@ -120,6 +123,8 @@ fn check_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
             }
         }
         BlockAst::CodeBlock(_) => {}
+        // Knowledge Object blocks carry no inlines to check for unsafe links.
+        BlockAst::KnowledgeObject(_) | BlockAst::KnowledgeObjectPending(_) => {}
     }
 }
 

@@ -69,6 +69,12 @@ fn render_block(block: &BlockAst, html: &mut String) {
             html.push_str(&escape_html(&code_block.code));
             html.push_str("</code></pre>\n");
         }
+        BlockAst::KnowledgeObject(_) => {
+            unreachable!("Knowledge Object render is wired in a later commit of this slice")
+        }
+        BlockAst::KnowledgeObjectPending(_) => {
+            unreachable!("validator must replace pending knowledge objects before rendering")
+        }
     }
 }
 
