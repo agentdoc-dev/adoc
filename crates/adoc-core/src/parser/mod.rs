@@ -16,7 +16,7 @@ use crate::ast::{BlockAst, HeadingAst, ListKind, PageAst};
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::identity::{ObjectId, PageId};
 use crate::inline::{self, InlineOrigin};
-use crate::source::{SourceFile, derive_page_id};
+use crate::source::{DerivedPageIdError, SourceFile, derive_page_id};
 
 /// Per-line context handed to each block-kind consumer.
 struct LineContext<'a> {
@@ -27,8 +27,9 @@ struct LineContext<'a> {
 }
 
 pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
+    let derived_page_id = derive_page_id(&source.identity_path);
     let mut page = PageAst {
-        id: derive_page_id(&source.identity_path),
+        id: PageId::untitled_fallback(),
         title: None,
         source_path: source.path.clone(),
         blocks: Vec::new(),
@@ -36,6 +37,7 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     let mut diagnostics = Vec::new();
     let mut state = ParseState::Idle;
     let mut has_seen_page_heading = false;
+    let mut has_explicit_page_identity = false;
 
     for (line_index, line) in source.text.lines().enumerate() {
         let line_number = line_index as u32 + 1;
@@ -73,6 +75,7 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut page,
                 &mut diagnostics,
                 &mut has_seen_page_heading,
+                &mut has_explicit_page_identity,
             );
             continue;
         }
@@ -125,6 +128,12 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     }
 
     commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
+    if !has_explicit_page_identity {
+        match derived_page_id {
+            Ok(id) => page.id = id,
+            Err(error) => diagnostics.push(invalid_derived_page_id_diagnostic(source, error)),
+        }
+    }
     (page, diagnostics)
 }
 
@@ -167,6 +176,7 @@ fn consume_heading(
     page: &mut PageAst,
     diagnostics: &mut Vec<Diagnostic>,
     has_seen_page_heading: &mut bool,
+    has_explicit_page_identity: &mut bool,
 ) {
     let span = ctx.source.span_for_line(ctx.line_number, ctx.line);
 
@@ -209,6 +219,9 @@ fn consume_heading(
         page.title = Some(inline::plain_text(&inlines));
         if let Some(doc_id) = heading.doc_id.clone() {
             page.id = PageId::new(doc_id);
+            *has_explicit_page_identity = true;
+        } else if heading.invalid_page_id.is_some() {
+            *has_explicit_page_identity = true;
         }
     }
     page.blocks.push(BlockAst::Heading(HeadingAst {
@@ -216,6 +229,20 @@ fn consume_heading(
         inlines,
         span,
     }));
+}
+
+fn invalid_derived_page_id_diagnostic(
+    source: &SourceFile,
+    error: DerivedPageIdError,
+) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::IdInvalid,
+        format!(
+            "Path-derived page ID `{}` is invalid; add a valid @doc(id) annotation or rename the source path",
+            error.value
+        ),
+    )
+    .with_span(source.span_for_line_columns(1, 1, 1))
 }
 
 fn consume_list_item(
@@ -484,7 +511,7 @@ mod tests {
         let source = SourceFile::new_with_identity_path(
             PathBuf::from("guide.adoc"),
             text.to_string(),
-            PathBuf::from("guide.adoc"),
+            PathBuf::from("team/guide.adoc"),
         );
         parse_page(&source)
     }

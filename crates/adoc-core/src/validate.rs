@@ -202,7 +202,7 @@ mod tests {
         let source = SourceFile::new_with_identity_path(
             PathBuf::from("guide.adoc"),
             text.to_string(),
-            PathBuf::from("guide.adoc"),
+            PathBuf::from("team/guide.adoc"),
         );
         let (page, mut diagnostics) = parse_page(&source);
         diagnostics.extend(validate_page(&page, &source));

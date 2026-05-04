@@ -208,8 +208,8 @@ mod tests {
     #[test]
     fn load_pages_returns_parsed_pairs_in_provider_order() {
         let provider = InMemorySourceProvider::new()
-            .with_source(source_file("alpha.adoc", "# Alpha\n"))
-            .with_source(source_file("beta.adoc", "# Beta\n"));
+            .with_source(source_file("team/alpha.adoc", "# Alpha\n"))
+            .with_source(source_file("team/beta.adoc", "# Beta\n"));
 
         let (parsed, diagnostics) = load_pages(&provider);
 

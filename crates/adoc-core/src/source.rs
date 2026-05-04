@@ -208,7 +208,12 @@ impl LineIndex {
     }
 }
 
-pub(crate) fn derive_page_id(path: &Path) -> PageId {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DerivedPageIdError {
+    pub(crate) value: String,
+}
+
+pub(crate) fn derive_page_id(path: &Path) -> Result<PageId, DerivedPageIdError> {
     let path_segments: Vec<_> = path
         .components()
         .filter_map(|component| component.as_os_str().to_str())
@@ -233,9 +238,10 @@ pub(crate) fn derive_page_id(path: &Path) -> PageId {
         .collect();
 
     if id_segments.is_empty() {
-        PageId::untitled_fallback()
+        Ok(PageId::untitled_fallback())
     } else {
-        PageId::from_string(id_segments.join(".")).unwrap_or_else(|_| PageId::untitled_fallback())
+        let value = id_segments.join(".");
+        PageId::from_string(value.clone()).map_err(|_| DerivedPageIdError { value })
     }
 }
 
