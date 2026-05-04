@@ -9,6 +9,9 @@
 //! streaming context (you only know a fence is unclosed once EOF is reached),
 //! so that diagnostic remains in the parser. See ADR-0007 for the decision.
 
+pub(crate) mod resolve_claims;
+pub(crate) use resolve_claims::resolve_knowledge_objects;
+
 use crate::domain::ast::{BlockAst, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::inline::InlineSegment;
@@ -16,9 +19,13 @@ use crate::domain::rules::{ValidationRule, WorkspaceRule};
 use crate::domain::scan::raw_html::find_raw_html;
 use crate::domain::source::SourceFile;
 
-/// Strict-mode page rules, applied in registration order. Adding a new rule is
-/// a new adapter plus a new entry here — no edit to `validate_page`.
-const PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLinkForbidden];
+/// Source-page rules run over the parsed page before pending Knowledge
+/// Objects are resolved. They are allowed to inspect parser-owned source spans.
+const SOURCE_PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLinkForbidden];
+
+/// Resolved-page rules run after pending Knowledge Objects have been converted
+/// into typed aggregates. Empty until a rule needs typed `Claim` data.
+const RESOLVED_PAGE_RULES: &[&dyn ValidationRule] = &[];
 
 /// Workspace-level rules, applied in registration order. Empty in v0.1 — the
 /// seam exists so future cross-page invariants (duplicate Object IDs across
@@ -26,11 +33,25 @@ const PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLinkForbi
 /// entry here, not as a branch inside `compile_with_provider`.
 const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[];
 
-/// Run every strict-mode rule against `page`. The orchestrator performs the
+/// Run every source-page rule against `page`. The orchestrator performs the
 /// final source-position diagnostic sort before returning `CompileResult`.
-pub(crate) fn validate_page(page: &PageAst, source: &SourceFile) -> Vec<Diagnostic> {
+pub(crate) fn validate_source_page(page: &PageAst, source: &SourceFile) -> Vec<Diagnostic> {
+    validate_page_with_rules(page, source, SOURCE_PAGE_RULES)
+}
+
+/// Run every resolved-page rule against `page` after Knowledge Object
+/// resolution. The registry is intentionally empty in the first claim slice.
+pub(crate) fn validate_resolved_page(page: &PageAst, source: &SourceFile) -> Vec<Diagnostic> {
+    validate_page_with_rules(page, source, RESOLVED_PAGE_RULES)
+}
+
+fn validate_page_with_rules(
+    page: &PageAst,
+    source: &SourceFile,
+    rules: &[&dyn ValidationRule],
+) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    for rule in PAGE_RULES {
+    for rule in rules {
         rule.check(page, source, &mut diagnostics);
     }
     diagnostics
@@ -70,6 +91,17 @@ impl ValidationRule for RawHtmlForbidden {
                         flag_raw_html_in_span(source, &item.span, sink);
                     }
                 }
+                // Resolved Knowledge Objects contain typed domain values.
+                // Pending objects still carry parser-owned source spans that
+                // source-page validators can scan before resolution.
+                BlockAst::KnowledgeObject(_) => {}
+                BlockAst::KnowledgeObjectPending(pending) => match pending.as_ref() {
+                    crate::domain::ast::PendingKnowledgeObject::Claim(claim) => {
+                        for span in &claim.content_spans {
+                            flag_raw_html_in_span(source, span, sink);
+                        }
+                    }
+                },
             }
         }
     }
@@ -120,6 +152,9 @@ fn check_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
             }
         }
         BlockAst::CodeBlock(_) => {}
+        // Knowledge Object text is plain body/field text in v0.2. Inline
+        // parsing for claim bodies lands in a later slice.
+        BlockAst::KnowledgeObject(_) | BlockAst::KnowledgeObjectPending(_) => {}
     }
 }
 
@@ -190,7 +225,7 @@ mod tests {
             PathBuf::from("team/guide.adoc"),
         );
         let (page, mut diagnostics) = parse_page(&source);
-        diagnostics.extend(validate_page(&page, &source));
+        diagnostics.extend(validate_source_page(&page, &source));
         diagnostics
     }
 
@@ -289,6 +324,42 @@ mod tests {
         let span = diagnostics[0].span.as_ref().unwrap();
         assert_eq!(span.start.line, 7);
         assert_eq!(span.start.column, 1);
+    }
+
+    #[test]
+    fn raw_html_rule_rejects_raw_html_in_claim_field_value() {
+        let diagnostics = validate_text(concat!(
+            "# Claim @doc(team.claim)\n\n",
+            "::claim billing.credits\n",
+            "status: <span>verified</span>\n",
+            "--\n",
+            "The system credits users automatically.\n",
+            "::\n",
+        ));
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
+        let span = diagnostics[0].span.as_ref().unwrap();
+        assert_eq!(span.start.line, 4);
+        assert_eq!(span.start.column, 9);
+    }
+
+    #[test]
+    fn raw_html_rule_rejects_raw_html_in_claim_body() {
+        let diagnostics = validate_text(concat!(
+            "# Claim @doc(team.claim)\n\n",
+            "::claim billing.credits\n",
+            "status: verified\n",
+            "--\n",
+            "Body <span>raw</span> text.\n",
+            "::\n",
+        ));
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
+        let span = diagnostics[0].span.as_ref().unwrap();
+        assert_eq!(span.start.line, 6);
+        assert_eq!(span.start.column, 6);
     }
 
     // --- unsafe link rule (migrated from inline.rs / parser.rs) ---

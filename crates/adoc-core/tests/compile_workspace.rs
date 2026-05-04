@@ -1,6 +1,6 @@
 mod support;
 
-use adoc_core::{CompileInput, DiagnosticCode, compile_workspace};
+use adoc_core::{AgentJsonObject, CompileInput, DiagnosticCode, compile_workspace};
 use support::TestWorkspace;
 
 #[test]
@@ -90,5 +90,163 @@ fn compile_workspace_rejects_invalid_path_derived_page_id() {
             .map(|span| (span.start.line, span.start.column)),
         Some((1, 1)),
         "path-derived identity diagnostics should point at the file start"
+    );
+}
+
+#[test]
+fn compile_workspace_resolves_claim_into_artifact_record() {
+    // A well-formed claim block must produce exactly one AgentJsonObject record
+    // with the correct id, kind, status, body, page_id, source span, and empty
+    // relation arrays.
+    let workspace = TestWorkspace::new("resolve-claim-into-record");
+    let source = workspace.write(
+        "billing.adoc",
+        concat!(
+            "# Billing Guide @doc(team.billing)\n",
+            "\n",
+            "The billing system credits users automatically.\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: verified\n",
+            "owner: team-billing\n",
+            "--\n",
+            "The system credits users automatically when a payment fails.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected no errors, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    assert_eq!(
+        artifacts.agent_json.objects.len(),
+        1,
+        "expected exactly one object record"
+    );
+
+    let record: &AgentJsonObject = &artifacts.agent_json.objects[0];
+    assert_eq!(record.id, "billing.credits");
+    assert_eq!(record.kind, "claim");
+    assert_eq!(record.status, "verified");
+    assert_eq!(
+        record.body,
+        "The system credits users automatically when a payment fails."
+    );
+    assert_eq!(record.page_id, "team.billing");
+    assert!(
+        record.relations.depends_on.is_empty(),
+        "depends_on must be empty"
+    );
+    assert!(
+        record.relations.supersedes.is_empty(),
+        "supersedes must be empty"
+    );
+    assert!(
+        record.relations.related_to.is_empty(),
+        "related_to must be empty"
+    );
+    // The ::claim open-fence is on line 5 of the source.
+    assert_eq!(
+        record.source_span.line, 5,
+        "source_span.line must point at the ::claim open-fence line"
+    );
+    assert_eq!(record.source_span.column, 1);
+}
+
+#[test]
+fn compile_workspace_blocks_artifacts_for_invalid_claim() {
+    // A claim that omits the required `status` field must produce exactly one
+    // SchemaMissingField diagnostic, block artifact emission, and report no
+    // artifacts in the result.
+    let workspace = TestWorkspace::new("block-artifacts-invalid-claim");
+    let source = workspace.write(
+        "billing.adoc",
+        concat!(
+            "# Billing Guide @doc(team.billing)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "owner: team-billing\n",
+            "--\n",
+            "The system credits users automatically.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        result.has_errors(),
+        "missing status must produce at least one error"
+    );
+    assert!(
+        result.artifacts.is_none(),
+        "artifacts must be blocked when errors are present"
+    );
+    assert_eq!(
+        result.diagnostics.len(),
+        1,
+        "expected exactly one diagnostic, got: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaMissingField,
+        "diagnostic must carry SchemaMissingField code"
+    );
+    // Span points at the ::claim open-fence line (line 3 in this source).
+    assert_eq!(
+        result.diagnostics[0]
+            .span
+            .as_ref()
+            .map(|s| (s.start.line, s.start.column)),
+        Some((3, 1)),
+        "span must point at the ::claim open-fence line"
+    );
+}
+
+#[test]
+fn compile_workspace_blocks_artifacts_for_raw_html_in_claim_body() {
+    let workspace = TestWorkspace::new("block-artifacts-raw-html-claim-body");
+    let source = workspace.write(
+        "billing.adoc",
+        concat!(
+            "# Billing Guide @doc(team.billing)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: verified\n",
+            "--\n",
+            "Body <span>raw</span> text.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        result.has_errors(),
+        "raw HTML in claim body must produce an error"
+    );
+    assert!(
+        result.artifacts.is_none(),
+        "artifacts must be blocked when errors are present"
+    );
+    assert_eq!(
+        result.diagnostics.len(),
+        1,
+        "expected exactly one diagnostic, got: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(result.diagnostics[0].code, DiagnosticCode::ParseRawHtml);
+    assert_eq!(
+        result.diagnostics[0]
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((6, 6))
     );
 }

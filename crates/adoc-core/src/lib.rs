@@ -3,7 +3,9 @@ mod domain;
 mod infrastructure;
 
 pub use application::compile::{BuildArtifacts, CompileInput, CompileResult};
-pub use domain::artifact::AgentJsonDocument;
+pub use domain::artifact::{
+    AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan,
+};
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 
 pub fn compile_workspace(input: CompileInput) -> CompileResult {

@@ -64,3 +64,29 @@ fn snapshot_check_flags_raw_html_in_second_list_item() {
 
     insta::assert_snapshot!("check_list_html_in_second_item_flags", combined);
 }
+
+#[test]
+fn snapshot_check_passes_for_v0_2_claim_fixture() {
+    // Pins the clean-path baseline for the v0.2 claim fixture: a valid claim
+    // with all required fields must produce zero errors end-to-end.
+    let combined = run_check_in_workspace(
+        "snap-check-claim-clean",
+        "v0_2/claim_basic.adoc",
+        "claim_basic.adoc",
+    );
+
+    insta::assert_snapshot!("check_claim_basic_clean", combined);
+}
+
+#[test]
+fn snapshot_check_flags_claim_missing_status() {
+    // Pins the error shape for a claim that omits the required `status` field.
+    // The diagnostic must carry the open-fence line as its span.
+    let combined = run_check_in_workspace(
+        "snap-check-claim-missing-status",
+        "v0_2/claim_missing_status.adoc",
+        "claim_missing_status.adoc",
+    );
+
+    insta::assert_snapshot!("check_claim_missing_status_flags", combined);
+}
