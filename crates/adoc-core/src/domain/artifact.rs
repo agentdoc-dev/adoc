@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use serde::Serialize;
 
@@ -51,7 +50,7 @@ pub struct AgentJsonObject {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AgentJsonSourceSpan {
-    pub path: PathBuf,
+    pub path: String,
     pub line: u32,
     pub column: u32,
 }
@@ -66,7 +65,6 @@ pub struct AgentJsonRelations {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
-    use std::path::PathBuf;
 
     use super::*;
 
@@ -79,7 +77,7 @@ mod tests {
             body: "The system credits users automatically.".to_string(),
             page_id: "team.guide".to_string(),
             source_span: AgentJsonSourceSpan {
-                path: PathBuf::from("sample.adoc"),
+                path: "sample.adoc".to_string(),
                 line: 5,
                 column: 1,
             },
@@ -94,6 +92,7 @@ mod tests {
         assert_eq!(value["status"], "verified");
         assert_eq!(value["body"], "The system credits users automatically.");
         assert_eq!(value["page_id"], "team.guide");
+        assert_eq!(value["source_span"]["path"], "sample.adoc");
         assert_eq!(value["source_span"]["line"], 5);
         assert_eq!(value["source_span"]["column"], 1);
         assert_eq!(value["fields"]["owner"], "team-a");

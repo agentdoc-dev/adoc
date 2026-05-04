@@ -52,7 +52,7 @@ fn claim_to_agent_object(claim: &Claim, page_id: &str) -> AgentJsonObject {
         body: claim.body().as_str().to_string(),
         page_id: page_id.to_string(),
         source_span: AgentJsonSourceSpan {
-            path: span.file.clone(),
+            path: span.file.display().to_string(),
             line: span.start.line,
             column: span.start.column,
         },

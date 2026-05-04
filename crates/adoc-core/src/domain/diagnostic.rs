@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use serde::{Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeStruct};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Diagnostic {
@@ -101,11 +101,21 @@ impl fmt::Display for Severity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceSpan {
     pub file: PathBuf,
     pub start: SourcePosition,
     pub end: SourcePosition,
+}
+
+impl Serialize for SourceSpan {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_struct("SourceSpan", 3)?;
+        state.serialize_field("file", &self.file.display().to_string())?;
+        state.serialize_field("start", &self.start)?;
+        state.serialize_field("end", &self.end)?;
+        state.end()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -113,4 +123,50 @@ pub struct SourcePosition {
     pub line: u32,
     pub column: u32,
     pub offset: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn span_with_file(file: PathBuf) -> SourceSpan {
+        SourceSpan {
+            file,
+            start: SourcePosition {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
+            end: SourcePosition {
+                line: 1,
+                column: 5,
+                offset: 4,
+            },
+        }
+    }
+
+    #[test]
+    fn source_span_serializes_file_as_display_string() {
+        let value =
+            serde_json::to_value(span_with_file(PathBuf::from("docs/sample.adoc"))).unwrap();
+
+        assert_eq!(value["file"], "docs/sample.adoc");
+        assert_eq!(value["start"]["line"], 1);
+        assert_eq!(value["end"]["column"], 5);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn source_span_serializes_non_utf8_file_as_display_string() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let file = PathBuf::from(OsString::from_vec(vec![b'd', b'o', b'c', b's', b'/', 0xff]));
+        let value = serde_json::to_value(span_with_file(file)).unwrap();
+
+        assert!(
+            value["file"].is_string(),
+            "display-based serialization must not fail for non-UTF-8 paths"
+        );
+    }
 }

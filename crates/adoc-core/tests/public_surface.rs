@@ -38,7 +38,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         body: String::new(),
         page_id: String::new(),
         source_span: AgentJsonSourceSpan {
-            path: PathBuf::new(),
+            path: String::new(),
             line: 0,
             column: 0,
         },
@@ -47,7 +47,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     };
     let _: AgentJsonRelations = AgentJsonRelations::default();
     let _: AgentJsonSourceSpan = AgentJsonSourceSpan {
-        path: PathBuf::new(),
+        path: String::new(),
         line: 0,
         column: 0,
     };
