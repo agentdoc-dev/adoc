@@ -31,6 +31,23 @@ impl<'a> InlineOrigin<'a> {
         }
     }
 
+    /// Origin for inline scanning that starts immediately after a block's
+    /// leading whitespace and structural prefix (e.g. `"- "` for a list item,
+    /// `"3. "` for an ordered list item, or `""` for a plain paragraph line).
+    ///
+    /// Both counts are in Unicode scalars; the resulting column is 1-indexed.
+    /// Callers pass character counts rather than a literal prefix string so
+    /// the helper composes with structural prefixes that vary in length
+    /// (ordered list markers).
+    pub(crate) fn after_prose_prefix(
+        source: &'a SourceFile,
+        line: u32,
+        indent_chars: u32,
+        prefix_chars: u32,
+    ) -> Self {
+        Self::at(source, line, indent_chars + prefix_chars + 1)
+    }
+
     /// 1-indexed column reached after consuming `prefix` from this origin.
     pub(crate) fn column_after(&self, prefix: &str) -> u32 {
         self.cursor.column_after_chars(prefix)
@@ -237,6 +254,23 @@ mod tests {
         let source = source_file(text);
         let origin = origin_for(&source, 1, 1);
         parse_inlines(text, origin)
+    }
+
+    #[test]
+    fn after_prose_prefix_combines_indent_and_prefix_into_one_indexed_column() {
+        let source = source_file("");
+
+        // Plain prose with no indent and no structural prefix lands on column 1.
+        let plain = InlineOrigin::after_prose_prefix(&source, 1, 0, 0);
+        assert_eq!(plain.column_after(""), 1);
+
+        // Two-space indent + "- " (2 chars) lands on column 5.
+        let item = InlineOrigin::after_prose_prefix(&source, 1, 2, 2);
+        assert_eq!(item.column_after(""), 5);
+
+        // Indent + "<digits>. " of 3 chars (e.g. "12. ") lands accordingly.
+        let ordered = InlineOrigin::after_prose_prefix(&source, 1, 0, 4);
+        assert_eq!(ordered.column_after(""), 5);
     }
 
     #[test]

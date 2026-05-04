@@ -134,10 +134,10 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 &mut paragraph_end_line,
             );
             let item_text = item.trim();
-            let item_column = leading_indent_columns + 3;
+            // "- " is two characters of structural prefix.
             let (item_inlines, item_diagnostics) = inline::parse_inlines(
                 item_text,
-                InlineOrigin::at(source, line_number, item_column),
+                InlineOrigin::after_prose_prefix(source, line_number, leading_indent_columns, 2),
             );
             diagnostics.extend(item_diagnostics);
             push_list_item(
@@ -152,9 +152,7 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             continue;
         }
 
-        if let Some((item_text, item_column)) =
-            parse_ordered_list_item(trimmed, leading_indent_columns)
-        {
+        if let Some((item_text, prefix_chars)) = parse_ordered_list_item(trimmed) {
             flush_paragraph(
                 source,
                 &mut page.blocks,
@@ -164,7 +162,12 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             );
             let (item_inlines, item_diagnostics) = inline::parse_inlines(
                 item_text,
-                InlineOrigin::at(source, line_number, item_column),
+                InlineOrigin::after_prose_prefix(
+                    source,
+                    line_number,
+                    leading_indent_columns,
+                    prefix_chars,
+                ),
             );
             diagnostics.extend(item_diagnostics);
             push_list_item(
@@ -180,10 +183,10 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         }
 
         flush_list(&mut page.blocks, &mut pending_list);
-        let column_offset = leading_indent_columns + 1;
+        // Plain prose: no structural prefix beyond the leading indent.
         let (line_inlines, line_diagnostics) = inline::parse_inlines(
             trimmed,
-            InlineOrigin::at(source, line_number, column_offset),
+            InlineOrigin::after_prose_prefix(source, line_number, leading_indent_columns, 0),
         );
         diagnostics.extend(line_diagnostics);
         paragraph_start_line.get_or_insert(line_number);
@@ -342,7 +345,7 @@ fn annotation_span(
     }
 }
 
-fn parse_ordered_list_item(line: &str, leading_indent_columns: u32) -> Option<(&str, u32)> {
+fn parse_ordered_list_item(line: &str) -> Option<(&str, u32)> {
     let dot_index = line.find(". ")?;
     if dot_index == 0 {
         return None;
@@ -353,8 +356,9 @@ fn parse_ordered_list_item(line: &str, leading_indent_columns: u32) -> Option<(&
         .all(|character| character.is_ascii_digit())
         .then(|| {
             let item_text = line[dot_index + 2..].trim();
-            let item_column = leading_indent_columns + dot_index as u32 + 3;
-            (item_text, item_column)
+            // Prefix is "<digits>. " — dot_index digits plus the dot+space.
+            let prefix_chars = dot_index as u32 + 2;
+            (item_text, prefix_chars)
         })
 }
 
