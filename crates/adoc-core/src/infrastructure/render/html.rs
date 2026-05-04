@@ -1,6 +1,6 @@
 use crate::domain::ast::{BlockAst, ListKind, PageAst};
 use crate::domain::inline::InlineSegment;
-use crate::render::Renderer;
+use crate::domain::ports::renderer::Renderer;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct HtmlRenderer;
