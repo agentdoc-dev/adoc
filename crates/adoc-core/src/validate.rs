@@ -181,7 +181,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::parser::parse_page;
+    use crate::infrastructure::parser::parse_page;
 
     fn validate_text(text: &str) -> Vec<Diagnostic> {
         let source = SourceFile::new_with_identity_path(

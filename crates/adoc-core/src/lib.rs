@@ -2,7 +2,6 @@ mod application;
 mod compile;
 mod domain;
 mod infrastructure;
-mod parser;
 mod validate;
 
 pub use domain::artifact::AgentJsonDocument;

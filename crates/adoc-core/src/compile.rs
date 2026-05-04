@@ -5,7 +5,7 @@ use crate::domain::artifact::AgentJsonDocument;
 use crate::infrastructure::artifact::{AgentJsonArtifact, ArtifactWriter};
 use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
-use crate::parser::parse_page;
+use crate::infrastructure::parser::parse_page;
 use crate::infrastructure::render::{HtmlRenderer, Renderer};
 use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::source::SourceFile;
