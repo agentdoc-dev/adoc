@@ -1,0 +1,11 @@
+# Billing Guide @doc(team.billing)
+
+The billing system records clean claim metadata.
+
+::claim billing.optional-fields
+status: verified
+source: payments & "ledger"
+owner: team-billing's auditors
+--
+The billing system credits users automatically when a payment fails.
+::
