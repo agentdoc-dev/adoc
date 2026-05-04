@@ -219,8 +219,11 @@ fn consume_heading(
         page.title = Some(inline::plain_text(&inlines));
         if let Some(doc_id) = heading.doc_id.clone() {
             page.id = PageId::new(doc_id);
-            *has_explicit_page_identity = true;
-        } else if heading.invalid_page_id.is_some() {
+        }
+        if heading.doc_id.is_some()
+            || heading.invalid_page_id.is_some()
+            || heading.malformed_page_annotation.is_some()
+        {
             *has_explicit_page_identity = true;
         }
     }

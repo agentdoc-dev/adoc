@@ -1,9 +1,7 @@
 //! Snapshot pins for `adoc` CLI output.
 //!
-//! These snapshots are the safety net for the refactor sequence (TB-2..TB-8):
-//! every refactor commit must keep them green. The only commit allowed to
-//! accept a snapshot delta is TB-9, which fixes the P1 list-span bug surfaced
-//! by PR #20 review.
+//! These snapshots are the safety net for CLI-visible behavior: every refactor
+//! should keep them green unless the CLI contract intentionally changes.
 //!
 //! Snapshots live in `tests/snapshots/`. To accept an intentional change, run
 //! `cargo insta review`.
@@ -59,12 +57,10 @@ fn snapshot_check_passes_for_comprehensive_prose_fixture() {
 
 #[test]
 fn snapshot_check_flags_raw_html_in_second_list_item() {
-    // Post-TB-9: `RawHtmlForbidden` walks per-item list spans, so raw HTML
-    // in any item — not just the first — produces `parse.raw_html`. This
-    // snapshot pins the diagnostic shape end-to-end (path, line, column,
-    // severity, code, message, summary). Pre-TB-9 this fixture silently
-    // passed; the TB-9 commit accepted exactly one snapshot delta here
-    // (PR #20 review, P1).
+    // `RawHtmlForbidden` walks per-item list spans, so raw HTML in any item —
+    // not just the first — produces `parse.raw_html`. This snapshot pins the
+    // diagnostic shape end-to-end (path, line, column, severity, code, message,
+    // summary).
     let combined = run_check_in_workspace(
         "snap-check-list-html-2nd-item",
         "v0_1/list_with_html_in_second_item.adoc",

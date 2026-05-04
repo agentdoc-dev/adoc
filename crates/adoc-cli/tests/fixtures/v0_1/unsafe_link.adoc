@@ -1,3 +1,3 @@
-# Unsafe Link Test @doc(unsafe-link)
+# Unsafe Link Test @doc(fixtures.unsafe-link)
 
 The link [click](javascript:alert) should be rejected in strict mode.

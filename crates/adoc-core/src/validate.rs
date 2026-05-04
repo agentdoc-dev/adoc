@@ -29,10 +29,7 @@ pub(crate) trait WorkspaceRule {
 }
 
 /// Strict-mode page rules, applied in registration order. Adding a new rule is
-/// a new adapter plus a new entry here — no edit to `validate_page`. The order
-/// is load-bearing: per line, raw HTML reports before the line's inline
-/// content so that a line containing both a raw tag and an unsafe link reports
-/// the raw tag first.
+/// a new adapter plus a new entry here — no edit to `validate_page`.
 const PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLinkForbidden];
 
 /// Workspace-level rules, applied in registration order. Empty in v0.1 — the
@@ -41,8 +38,8 @@ const PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLinkForbi
 /// entry here, not as a branch inside `compile_with_provider`.
 const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[];
 
-/// Run every strict-mode rule against `page`, appending diagnostics in source
-/// order.
+/// Run every strict-mode rule against `page`. The orchestrator performs the
+/// final source-position diagnostic sort before returning `CompileResult`.
 pub(crate) fn validate_page(page: &PageAst, source: &SourceFile) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for rule in PAGE_RULES {

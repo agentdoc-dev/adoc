@@ -73,7 +73,7 @@ The first source grammar supports only top-level typed blocks.
 _Avoid_: nested typed blocks, child object parsing
 
 **Page Annotation**:
-Optional metadata on a top-level heading, written as `@doc(id)`, used for page identity and grouping but not as a Knowledge Object.
+Optional metadata on a top-level heading, written as `@doc(id)` with a valid **Object ID**, used for page identity and grouping but not as a Knowledge Object.
 _Avoid_: page object, source of truth
 
 **V0 Relation Set**:

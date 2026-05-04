@@ -12,6 +12,8 @@ use crate::validate::{validate_page, validate_workspace};
 
 #[derive(Debug, Clone)]
 pub struct CompileInput {
+    /// Input path for compilation: either one `.adoc` file or a directory that
+    /// will be scanned recursively for `.adoc` files.
     pub root: PathBuf,
 }
 
