@@ -567,13 +567,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_page_list_span_covers_only_first_item_line() {
-        // Documents `ListBuilder.list_span` semantics: it is set once at the
-        // first item's line and never extended on push. Validators walk
-        // `ListItem.span` per item (see `RawHtmlForbidden`), so `list.span`
-        // is only the start anchor. This test guards against a future
-        // accidental "extend list_span on push" change that would silently
-        // drift list-level span semantics.
+    fn parse_page_list_span_covers_full_list_range() {
         let (page, diagnostics) =
             parse_source("# Lists @doc(team.lists)\n\n- one\n- two\n- three\n");
         assert!(
@@ -596,8 +590,8 @@ mod tests {
             "list span starts at the first item's line"
         );
         assert_eq!(
-            list.span.end.line, 3,
-            "BUG (P1): list span end-line equals start-line, not the last item's line"
+            list.span.end.line, 5,
+            "list span ends at the last item's line"
         );
     }
 

@@ -48,11 +48,9 @@ impl ParagraphBuilder {
     }
 }
 
-/// Accumulates list items of a single kind. `list_span` is set once at first
-/// item and deliberately NOT extended on subsequent `push` — this preserves
-/// the v0.1 bug-as-state where `RawHtmlForbidden` only sees the first item's
-/// line range. TB-9 will switch the validator to walk per-item spans
-/// (`ListItem.span`) instead.
+/// Accumulates list items of a single kind. The aggregate `list_span` covers
+/// the full contiguous list, while each [`ListItem`] keeps its own line span
+/// for item-local validation and diagnostics.
 pub(super) struct ListBuilder {
     kind: ListKind,
     items: Vec<ListItem>,
@@ -92,9 +90,9 @@ impl ListBuilder {
         let item_span = source.span_for_line(line_number, line);
         self.items.push(ListItem {
             inlines: item_inlines,
-            span: item_span,
+            span: item_span.clone(),
         });
-        // Intentionally NOT extending list_span — see struct doc-comment.
+        self.list_span.end = item_span.end;
     }
 
     pub(super) fn finish(self) -> ListAst {
