@@ -3,8 +3,8 @@
 //! Block dispatch is a typed state machine: [`state::ParseState`] owns the
 //! in-progress block (paragraph, list, code block) and is rotated through
 //! `ParseState::Idle` on every block boundary. Per ADR-0004 the parser stays
-//! tokenizer-shaped and emits only structural diagnostics; semantic rules
-//! live in `validate.rs` per ADR-0007.
+//! tokenizer-shaped and emits only structural diagnostics; semantic
+//! rules run in the validation pass per ADR-0007.
 
 mod builders;
 mod state;
