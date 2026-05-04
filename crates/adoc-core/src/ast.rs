@@ -1,23 +1,24 @@
 use std::path::PathBuf;
 
 use crate::diagnostic::SourceSpan;
+use crate::identity::PageId;
 use crate::inline::InlineSegment;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkspaceAst {
-    pub pages: Vec<PageAst>,
+pub(crate) struct WorkspaceAst {
+    pub(crate) pages: Vec<PageAst>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PageAst {
-    pub id: String,
-    pub title: Option<String>,
-    pub source_path: PathBuf,
-    pub blocks: Vec<BlockAst>,
+pub(crate) struct PageAst {
+    pub(crate) id: PageId,
+    pub(crate) title: Option<String>,
+    pub(crate) source_path: PathBuf,
+    pub(crate) blocks: Vec<BlockAst>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BlockAst {
+pub(crate) enum BlockAst {
     Heading(HeadingAst),
     Paragraph(ParagraphAst),
     List(ListAst),
@@ -25,34 +26,44 @@ pub enum BlockAst {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HeadingAst {
-    pub level: u8,
-    pub inlines: Vec<InlineSegment>,
-    pub span: SourceSpan,
+pub(crate) struct HeadingAst {
+    pub(crate) level: u8,
+    pub(crate) inlines: Vec<InlineSegment>,
+    pub(crate) span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParagraphAst {
-    pub inlines: Vec<InlineSegment>,
-    pub span: SourceSpan,
+pub(crate) struct ParagraphAst {
+    pub(crate) inlines: Vec<InlineSegment>,
+    pub(crate) span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ListAst {
-    pub kind: ListKind,
-    pub items: Vec<Vec<InlineSegment>>,
-    pub span: SourceSpan,
+pub(crate) struct ListAst {
+    pub(crate) kind: ListKind,
+    pub(crate) items: Vec<ListItem>,
+    pub(crate) span: SourceSpan,
+}
+
+/// One item in a list — its inline content plus the source span of the line
+/// it occupies. Reified per ADR-0007/-0006 so each item carries its own
+/// position; future per-item rules walk `item.span` directly instead of
+/// re-deriving offsets from the enclosing list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ListItem {
+    pub(crate) inlines: Vec<InlineSegment>,
+    pub(crate) span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ListKind {
+pub(crate) enum ListKind {
     Ordered,
     Unordered,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CodeBlockAst {
-    pub language: Option<String>,
-    pub code: String,
-    pub span: SourceSpan,
+pub(crate) struct CodeBlockAst {
+    pub(crate) language: Option<String>,
+    pub(crate) code: String,
+    pub(crate) span: SourceSpan,
 }

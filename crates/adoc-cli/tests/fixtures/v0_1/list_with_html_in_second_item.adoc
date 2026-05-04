@@ -1,0 +1,10 @@
+# List Bug Fixture @doc(tour.list-html-bug)
+
+Strict-mode forbids raw HTML in prose, but a list whose 2nd item contains a tag
+must also flag — see PR #20 review (P1). The validator now walks per-item
+spans, so `adoc check` against this fixture reports `error[parse.raw_html]`
+on the second list item.
+
+- First item is plain prose
+- Second item has <span>raw html</span> that should be flagged
+- Third item is plain prose

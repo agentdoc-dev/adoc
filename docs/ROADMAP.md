@@ -38,9 +38,9 @@ Scope:
 - Introduce core parser primitives: `SourceFile`, `LineIndex`, `Span`, `Diagnostic`, and block-level AST nodes.
 - Read one or more `.adoc` files from a path.
 - Parse headings, paragraphs, unordered lists, ordered lists, fenced code blocks, inline code, emphasis, and links.
-- Support optional page annotation with `@doc(id)`.
-- Derive page identity from file path when no page annotation exists.
-- Reject raw HTML in strict mode.
+- Support optional page annotation with grammar-validated `@doc(id)`.
+- Derive page identity from file path when no page annotation exists, using the same Object ID grammar.
+- Reject raw HTML and unsafe links in strict mode.
 - Implement `adoc check <path>`.
 - Implement `adoc build <path> --out dist`.
 - Emit `dist/docs.html`.
@@ -56,7 +56,7 @@ Acceptance:
 Deferred:
 
 - Typed blocks.
-- Object IDs.
+- Knowledge Object IDs beyond page identity.
 - Relations.
 - Search.
 

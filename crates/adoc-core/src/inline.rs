@@ -1,8 +1,8 @@
-use crate::diagnostic::Diagnostic;
-use crate::source::SourceFile;
+use crate::diagnostic::{Diagnostic, SourceSpan};
+use crate::source::{LineCursor, SourceFile};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InlineSegment {
+pub(crate) enum InlineSegment {
     Text(String),
     Code(String),
     Emphasis(Vec<InlineSegment>),
@@ -10,17 +10,65 @@ pub enum InlineSegment {
     Link {
         text: Vec<InlineSegment>,
         url: String,
+        span: SourceSpan,
     },
 }
 
+/// Where an inline scan starts in the source file. Owns its `LineCursor` so
+/// callers (parser, recursive inline scans) reason about columns and spans
+/// without touching cursor arithmetic directly.
 #[derive(Debug, Clone, Copy)]
-pub struct InlineOrigin<'a> {
-    pub source: &'a SourceFile,
-    pub line: u32,
-    pub column_offset: u32,
+pub(crate) struct InlineOrigin<'a> {
+    source: &'a SourceFile,
+    cursor: LineCursor,
 }
 
-pub fn parse_inlines(
+impl<'a> InlineOrigin<'a> {
+    pub(crate) fn at(source: &'a SourceFile, line: u32, column: u32) -> Self {
+        Self {
+            source,
+            cursor: LineCursor::at(line, column),
+        }
+    }
+
+    /// Origin for inline scanning that starts immediately after a block's
+    /// leading whitespace and structural prefix (e.g. `"- "` for a list item,
+    /// `"3. "` for an ordered list item, or `""` for a plain paragraph line).
+    ///
+    /// Both counts are in Unicode scalars; the resulting column is 1-indexed.
+    /// Callers pass character counts rather than a literal prefix string so
+    /// the helper composes with structural prefixes that vary in length
+    /// (ordered list markers).
+    pub(crate) fn after_prose_prefix(
+        source: &'a SourceFile,
+        line: u32,
+        indent_chars: u32,
+        prefix_chars: u32,
+    ) -> Self {
+        Self::at(source, line, indent_chars + prefix_chars + 1)
+    }
+
+    /// 1-indexed column reached after consuming `prefix` from this origin.
+    pub(crate) fn column_after(&self, prefix: &str) -> u32 {
+        self.cursor.column_after_chars(prefix)
+    }
+
+    /// New origin with the cursor advanced past `prefix` on the same line.
+    pub(crate) fn advance_past(&self, prefix: &str) -> Self {
+        Self {
+            source: self.source,
+            cursor: self.cursor.advance_past(prefix),
+        }
+    }
+
+    /// Span on this origin's line between `start_column` and `end_column`.
+    pub(crate) fn span(&self, start_column: u32, end_column: u32) -> SourceSpan {
+        self.source
+            .span_for_line_columns(self.cursor.line(), start_column, end_column)
+    }
+}
+
+pub(crate) fn parse_inlines(
     text: &str,
     origin: InlineOrigin<'_>,
 ) -> (Vec<InlineSegment>, Vec<Diagnostic>) {
@@ -69,21 +117,13 @@ impl ScannerOutput {
             .push(InlineSegment::Text(std::mem::take(&mut self.buffer)));
     }
 
-    fn push_text(&mut self, text: &str) {
-        self.buffer.push_str(text);
-    }
-
     fn push_segment(&mut self, segment: InlineSegment) {
         self.flush_text();
         self.segments.push(segment);
     }
-
-    fn push_diagnostic(&mut self, diagnostic: Diagnostic) {
-        self.diagnostics.push(diagnostic);
-    }
 }
 
-pub fn plain_text(segments: &[InlineSegment]) -> String {
+pub(crate) fn plain_text(segments: &[InlineSegment]) -> String {
     let mut buffer = String::new();
     append_plain_text(segments, &mut buffer);
     buffer
@@ -126,34 +166,17 @@ fn scan_link(
     let url = after_open_paren[..close_paren_offset].to_string();
     let total_consumed = 1 + close_bracket_offset + 1 + 1 + close_paren_offset + 1;
 
-    if !is_url_safe(&url) {
-        let start_column = column_at(origin, &text[..cursor]);
-        let end_column = column_at(origin, &text[..cursor + total_consumed]);
-        let span = origin
-            .source
-            .span_for_line_columns(origin.line, start_column, end_column);
-        output.push_diagnostic(
-            Diagnostic::error(
-                "parse.unsafe_link",
-                format!(
-                    "Link URL scheme is not allowed in strict mode: {url}; use http, https, or mailto",
-                ),
-            )
-            .with_span(span),
-        );
-        output.push_text(&text[cursor..cursor + total_consumed]);
-        return Some(total_consumed);
-    }
+    let start_column = origin.column_after(&text[..cursor]);
+    let end_column = origin.column_after(&text[..cursor + total_consumed]);
+    let span = origin.span(start_column, end_column);
 
-    let label_origin = InlineOrigin {
-        column_offset: column_at(origin, &text[..cursor + 1]),
-        ..origin
-    };
+    let label_origin = origin.advance_past(&text[..cursor + 1]);
     let (label_segments, label_diagnostics) = parse_inlines(label_text, label_origin);
     output.diagnostics.extend(label_diagnostics);
     output.push_segment(InlineSegment::Link {
         text: label_segments,
         url,
+        span,
     });
     Some(total_consumed)
 }
@@ -202,46 +225,11 @@ fn scan_paired_marker(
         return None;
     }
     let inner = &after_open[..close_offset];
-    let inner_origin = InlineOrigin {
-        column_offset: column_at(origin, &text[..cursor + marker.len()]),
-        ..origin
-    };
+    let inner_origin = origin.advance_past(&text[..cursor + marker.len()]);
     let (inner_segments, inner_diagnostics) = parse_inlines(inner, inner_origin);
     output.diagnostics.extend(inner_diagnostics);
     output.push_segment(wrap(inner_segments));
     Some(marker.len() + close_offset + marker.len())
-}
-
-fn column_at(origin: InlineOrigin<'_>, prefix: &str) -> u32 {
-    origin.column_offset + prefix.chars().count() as u32
-}
-
-fn is_url_safe(url: &str) -> bool {
-    if url.bytes().any(|byte| byte.is_ascii_whitespace()) {
-        return false;
-    }
-    let Some(colon) = url.find(':') else {
-        return true;
-    };
-    let scheme = &url[..colon];
-    if scheme.is_empty() {
-        return true;
-    }
-    if !scheme.starts_with(|character: char| character.is_ascii_alphabetic()) {
-        return true;
-    }
-    if !scheme.chars().all(|character| {
-        character.is_ascii_alphanumeric()
-            || character == '+'
-            || character == '-'
-            || character == '.'
-    }) {
-        return true;
-    }
-    matches!(
-        scheme.to_ascii_lowercase().as_str(),
-        "http" | "https" | "mailto"
-    )
 }
 
 #[cfg(test)]
@@ -258,18 +246,31 @@ mod tests {
         )
     }
 
-    fn origin_for<'a>(source: &'a SourceFile, line: u32, column_offset: u32) -> InlineOrigin<'a> {
-        InlineOrigin {
-            source,
-            line,
-            column_offset,
-        }
+    fn origin_for<'a>(source: &'a SourceFile, line: u32, column: u32) -> InlineOrigin<'a> {
+        InlineOrigin::at(source, line, column)
     }
 
     fn parse(text: &str) -> (Vec<InlineSegment>, Vec<Diagnostic>) {
         let source = source_file(text);
         let origin = origin_for(&source, 1, 1);
         parse_inlines(text, origin)
+    }
+
+    #[test]
+    fn after_prose_prefix_combines_indent_and_prefix_into_one_indexed_column() {
+        let source = source_file("");
+
+        // Plain prose with no indent and no structural prefix lands on column 1.
+        let plain = InlineOrigin::after_prose_prefix(&source, 1, 0, 0);
+        assert_eq!(plain.column_after(""), 1);
+
+        // Two-space indent + "- " (2 chars) lands on column 5.
+        let item = InlineOrigin::after_prose_prefix(&source, 1, 2, 2);
+        assert_eq!(item.column_after(""), 5);
+
+        // Indent + "<digits>. " of 3 chars (e.g. "12. ") lands accordingly.
+        let ordered = InlineOrigin::after_prose_prefix(&source, 1, 0, 4);
+        assert_eq!(ordered.column_after(""), 5);
     }
 
     #[test]
@@ -347,26 +348,36 @@ mod tests {
         assert!(diagnostics.is_empty());
     }
 
+    fn assert_link(segment: &InlineSegment, expected_text: Vec<InlineSegment>, expected_url: &str) {
+        match segment {
+            InlineSegment::Link { text, url, .. } => {
+                assert_eq!(url.as_str(), expected_url, "link URL mismatch");
+                assert_eq!(text, &expected_text, "link label mismatch");
+            }
+            other => panic!("expected Link segment, got {other:?}"),
+        }
+    }
+
     #[test]
     fn parse_inlines_handles_mixed_text_emphasis_code_link_chain() {
         let (segments, diagnostics) =
             parse("Try *foo* and `bar` then [docs](https://example.test) end.");
 
+        assert_eq!(segments.len(), 7);
+        assert_eq!(segments[0], InlineSegment::Text("Try ".to_string()));
         assert_eq!(
-            segments,
-            vec![
-                InlineSegment::Text("Try ".to_string()),
-                InlineSegment::Emphasis(vec![InlineSegment::Text("foo".to_string())]),
-                InlineSegment::Text(" and ".to_string()),
-                InlineSegment::Code("bar".to_string()),
-                InlineSegment::Text(" then ".to_string()),
-                InlineSegment::Link {
-                    text: vec![InlineSegment::Text("docs".to_string())],
-                    url: "https://example.test".to_string(),
-                },
-                InlineSegment::Text(" end.".to_string()),
-            ]
+            segments[1],
+            InlineSegment::Emphasis(vec![InlineSegment::Text("foo".to_string())])
         );
+        assert_eq!(segments[2], InlineSegment::Text(" and ".to_string()));
+        assert_eq!(segments[3], InlineSegment::Code("bar".to_string()));
+        assert_eq!(segments[4], InlineSegment::Text(" then ".to_string()));
+        assert_link(
+            &segments[5],
+            vec![InlineSegment::Text("docs".to_string())],
+            "https://example.test",
+        );
+        assert_eq!(segments[6], InlineSegment::Text(" end.".to_string()));
         assert!(diagnostics.is_empty());
     }
 
@@ -374,12 +385,11 @@ mod tests {
     fn parse_inlines_recognizes_link_with_https_url() {
         let (segments, diagnostics) = parse("[label](https://example.test)");
 
-        assert_eq!(
-            segments,
-            vec![InlineSegment::Link {
-                text: vec![InlineSegment::Text("label".to_string())],
-                url: "https://example.test".to_string(),
-            }]
+        assert_eq!(segments.len(), 1);
+        assert_link(
+            &segments[0],
+            vec![InlineSegment::Text("label".to_string())],
+            "https://example.test",
         );
         assert!(diagnostics.is_empty());
     }
@@ -388,17 +398,14 @@ mod tests {
     fn parse_inlines_link_inside_paragraph() {
         let (segments, _) = parse("see [docs](https://example.test) for details");
 
-        assert_eq!(
-            segments,
-            vec![
-                InlineSegment::Text("see ".to_string()),
-                InlineSegment::Link {
-                    text: vec![InlineSegment::Text("docs".to_string())],
-                    url: "https://example.test".to_string(),
-                },
-                InlineSegment::Text(" for details".to_string()),
-            ]
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0], InlineSegment::Text("see ".to_string()));
+        assert_link(
+            &segments[1],
+            vec![InlineSegment::Text("docs".to_string())],
+            "https://example.test",
         );
+        assert_eq!(segments[2], InlineSegment::Text(" for details".to_string()));
     }
 
     #[test]
@@ -464,139 +471,31 @@ mod tests {
     }
 
     #[test]
-    fn parse_inlines_emits_unsafe_link_diagnostic_for_javascript_url() {
-        let line_text = "see [click](javascript:alert) here";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
+    fn parse_inlines_emits_link_with_unsafe_url_intact_for_validator() {
+        let (segments, diagnostics) = parse("see [click](javascript:alert) here");
 
-        let (segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert_eq!(
-            segments,
-            vec![InlineSegment::Text(
-                "see [click](javascript:alert) here".to_string()
-            )],
-            "unsafe link must fall back to literal text"
+        // Diagnostic emission for unsafe URLs is the validator's job; the
+        // inline scanner emits the Link verbatim regardless of scheme.
+        assert!(diagnostics.is_empty());
+        assert_eq!(segments.len(), 3);
+        assert_link(
+            &segments[1],
+            vec![InlineSegment::Text("click".to_string())],
+            "javascript:alert",
         );
-        assert_eq!(diagnostics.len(), 1, "expected one unsafe-link diagnostic");
-        let diagnostic = &diagnostics[0];
-        assert_eq!(diagnostic.code, "parse.unsafe_link");
-        assert!(
-            diagnostic.message.contains("javascript:alert"),
-            "diagnostic message should quote the offending URL: {}",
-            diagnostic.message
-        );
-        let span = diagnostic.span.as_ref().expect("diagnostic has span");
-        assert_eq!(span.start.line, 1);
-        assert_eq!(span.start.column, 5);
-        assert_eq!(span.end.column, 30);
     }
 
     #[test]
     fn parse_inlines_accepts_mailto_link() {
-        let line_text = "send to [team](mailto:dev@example.test)";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
+        let (segments, diagnostics) = parse("send to [team](mailto:dev@example.test)");
 
-        let (segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert!(
-            diagnostics.is_empty(),
-            "mailto: must be on the safe allowlist: {diagnostics:?}"
-        );
-        assert_eq!(
-            segments,
-            vec![
-                InlineSegment::Text("send to ".to_string()),
-                InlineSegment::Link {
-                    text: vec![InlineSegment::Text("team".to_string())],
-                    url: "mailto:dev@example.test".to_string(),
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn parse_inlines_rejects_whitespace_prefixed_javascript_url() {
-        let line_text = "see [click]( javascript:alert) here";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
-
-        let (segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert_eq!(
-            segments,
-            vec![InlineSegment::Text(
-                "see [click]( javascript:alert) here".to_string()
-            )],
-            "leading-whitespace url must fall back to literal text"
-        );
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
-    }
-
-    #[test]
-    fn parse_inlines_rejects_internal_tab_in_javascript_url() {
-        let line_text = "see [click](j\tavascript:alert) here";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
-
-        let (segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert_eq!(
-            segments,
-            vec![InlineSegment::Text(
-                "see [click](j\tavascript:alert) here".to_string()
-            )],
-            "internal-tab url must fall back to literal text"
-        );
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
-    }
-
-    #[test]
-    fn parse_inlines_reports_correct_column_for_unsafe_link_inside_emphasis() {
-        let line_text = "*[click](javascript:bad)*";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
-
-        let (_segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
-        let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
-        assert_eq!(
-            span.start.column, 2,
-            "link inside emphasis must report inner column"
-        );
-        assert_eq!(span.end.column, 25);
-    }
-
-    #[test]
-    fn parse_inlines_reports_correct_column_for_unsafe_link_inside_strong() {
-        let line_text = "**[click](javascript:bad)**";
-        let source = source_file(line_text);
-        let origin = origin_for(&source, 1, 1);
-
-        let (_segments, diagnostics) = parse_inlines(line_text, origin);
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, "parse.unsafe_link");
-        let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
-        assert_eq!(
-            span.start.column, 3,
-            "link inside strong must report inner column past two-char marker"
-        );
-        assert_eq!(span.end.column, 26);
-    }
-
-    #[test]
-    fn parse_inlines_does_not_flag_relative_link_url() {
-        let (_segments, diagnostics) = parse("see [docs](./guide.html) for context");
-
-        assert!(
-            diagnostics.is_empty(),
-            "relative URL should be safe: {diagnostics:?}"
+        assert!(diagnostics.is_empty());
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0], InlineSegment::Text("send to ".to_string()));
+        assert_link(
+            &segments[1],
+            vec![InlineSegment::Text("team".to_string())],
+            "mailto:dev@example.test",
         );
     }
 

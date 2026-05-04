@@ -1,25 +1,31 @@
 use crate::ast::{BlockAst, ListKind, PageAst};
 use crate::inline::InlineSegment;
+use crate::render::Renderer;
 
-pub fn render_html(pages: &[PageAst]) -> String {
-    let mut html = String::from(
-        "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>AgentDoc</title>\n</head>\n<body>\n",
-    );
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct HtmlRenderer;
 
-    for page in pages {
-        html.push_str("<article data-page-id=\"");
-        html.push_str(&escape_html(&page.id));
-        html.push_str("\">\n");
+impl Renderer for HtmlRenderer {
+    fn render(&self, pages: &[PageAst]) -> String {
+        let mut html = String::from(
+            "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>AgentDoc</title>\n</head>\n<body>\n",
+        );
 
-        for block in &page.blocks {
-            render_block(block, &mut html);
+        for page in pages {
+            html.push_str("<article data-page-id=\"");
+            html.push_str(&escape_html(page.id.as_str()));
+            html.push_str("\">\n");
+
+            for block in &page.blocks {
+                render_block(block, &mut html);
+            }
+
+            html.push_str("</article>\n");
         }
 
-        html.push_str("</article>\n");
+        html.push_str("</body>\n</html>\n");
+        html
     }
-
-    html.push_str("</body>\n</html>\n");
-    html
 }
 
 fn render_block(block: &BlockAst, html: &mut String) {
@@ -45,7 +51,7 @@ fn render_block(block: &BlockAst, html: &mut String) {
             html.push_str(">\n");
             for item in &list.items {
                 html.push_str("<li>");
-                render_inlines(item, html);
+                render_inlines(&item.inlines, html);
                 html.push_str("</li>\n");
             }
             html.push_str("</");
@@ -92,7 +98,7 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
             render_inlines(inner, html);
             html.push_str("</strong>");
         }
-        InlineSegment::Link { text, url } => {
+        InlineSegment::Link { text, url, .. } => {
             html.push_str("<a href=\"");
             html.push_str(&escape_html(url));
             html.push_str("\">");
@@ -113,12 +119,31 @@ fn escape_html(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
+    use crate::diagnostic::{SourcePosition, SourceSpan};
 
     fn render(segments: &[InlineSegment]) -> String {
         let mut html = String::new();
         render_inlines(segments, &mut html);
         html
+    }
+
+    fn dummy_span() -> SourceSpan {
+        SourceSpan {
+            file: PathBuf::from("guide.adoc"),
+            start: SourcePosition {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
+            end: SourcePosition {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
+        }
     }
 
     #[test]
@@ -154,6 +179,7 @@ mod tests {
         let html = render(&[InlineSegment::Link {
             text: vec![InlineSegment::Text("docs".to_string())],
             url: "https://example.test/?q=\"a&b\"".to_string(),
+            span: dummy_span(),
         }]);
         assert_eq!(
             html,
@@ -163,28 +189,13 @@ mod tests {
 
     #[test]
     fn render_html_flows_inlines_through_heading_paragraph_and_list_item() {
-        use crate::ast::{HeadingAst, ListAst, ListKind, ParagraphAst};
-        use crate::diagnostic::{SourcePosition, SourceSpan};
-        use std::path::PathBuf;
+        use crate::ast::{HeadingAst, ListAst, ListItem, ListKind, ParagraphAst};
+        use crate::identity::PageId;
 
-        fn span() -> SourceSpan {
-            SourceSpan {
-                file: PathBuf::from("guide.adoc"),
-                start: SourcePosition {
-                    line: 1,
-                    column: 1,
-                    offset: 0,
-                },
-                end: SourcePosition {
-                    line: 1,
-                    column: 1,
-                    offset: 0,
-                },
-            }
-        }
+        let span = dummy_span;
 
         let page = PageAst {
-            id: "guide".to_string(),
+            id: PageId::from_string("team.guide").expect("test page id is valid"),
             title: Some("Title".to_string()),
             source_path: PathBuf::from("guide.adoc"),
             blocks: vec![
@@ -208,16 +219,19 @@ mod tests {
                 }),
                 BlockAst::List(ListAst {
                     kind: ListKind::Unordered,
-                    items: vec![vec![
-                        InlineSegment::Text("Run ".to_string()),
-                        InlineSegment::Code("adoc check".to_string()),
-                    ]],
+                    items: vec![ListItem {
+                        inlines: vec![
+                            InlineSegment::Text("Run ".to_string()),
+                            InlineSegment::Code("adoc check".to_string()),
+                        ],
+                        span: span(),
+                    }],
                     span: span(),
                 }),
             ],
         };
 
-        let html = render_html(&[page]);
+        let html = HtmlRenderer.render(&[page]);
 
         assert!(html.contains("<h1>Title with <strong>bold</strong></h1>"));
         assert!(html.contains("<p>First <em>emphasis</em> then <code>ident</code>.</p>"));
@@ -232,6 +246,7 @@ mod tests {
                 InlineSegment::Code("adoc".to_string()),
             ],
             url: "https://example.test".to_string(),
+            span: dummy_span(),
         }]);
         assert_eq!(
             html,

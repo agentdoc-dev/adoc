@@ -73,7 +73,7 @@ The first source grammar supports only top-level typed blocks.
 _Avoid_: nested typed blocks, child object parsing
 
 **Page Annotation**:
-Optional metadata on a top-level heading, written as `@doc(id)`, used for page identity and grouping but not as a Knowledge Object.
+Optional metadata on a top-level heading, written as `@doc(id)` with a valid **Object ID**, used for page identity and grouping but not as a Knowledge Object.
 _Avoid_: page object, source of truth
 
 **V0 Relation Set**:
@@ -105,12 +105,20 @@ A short implementation design document that fixes the initial Rust module bounda
 _Avoid_: second PRD, implementation without a contract
 
 **Object ID**:
-A stable lowercase dot-separated identifier with at least two kebab-case segments, used to cite and relate Knowledge Objects.
+A stable lowercase dot-separated identifier with at least two kebab-case segments, used to cite and relate Knowledge Objects. Lives in code as the `ObjectId` newtype in `crates/adoc-core/src/identity.rs`; a page-level Object ID is the `PageId` wrapper.
 _Avoid_: UUID-only ID, heading slug, arbitrary string
 
 **Diagnostic Code**:
-A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`.
+A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`. Lives in code as the `DiagnosticCode` enum in `crates/adoc-core/src/diagnostic.rs`; emission sites accept the typed value rather than a free-form string.
 _Avoid_: numeric-only code, unstable message matching
+
+**Validation Rule**:
+One strict-mode check that produces diagnostics from a parsed page (e.g. `RawHtmlForbidden`, `UnsafeLinkForbidden`). Implemented via the `ValidationRule` trait in `crates/adoc-core/src/validate.rs` and run after parsing by `compile_with_provider`. See ADR-0007.
+_Avoid_: parser-side check, schema linter
+
+**Internal Port**:
+A `pub(crate)` trait in `adoc-core` that decouples `compile_workspace`'s orchestration from a specific adapter — today `SourceProvider`, `Renderer`, and `ArtifactWriter`. Internal-only per ADR-0005; promoted to `pub` only when a concrete external consumer needs it. See ADR-0006.
+_Avoid_: public plug-in API, dynamic adapter registry
 
 **Build Output Directory**:
 The directory passed to `adoc build --out`; the CLI creates it when missing and fails if the path exists as a file.
@@ -144,6 +152,9 @@ _Avoid_: manual pre-created output directory
 - **V0 Design Contract** guides scaffolding without replacing the roadmap or PRD.
 - **Object ID** values are validated in v0 and form the citation target for humans and agents.
 - **Diagnostic Code** values are semantic in v0; numeric aliases are deferred.
+- **Validation Rule** runs after parsing; the parser emits only structural diagnostics, while semantic checks (raw HTML, unsafe link schemes) are validation rules.
+- **Workspace Rule** is a validation rule that operates on the whole **WorkspaceAst** aggregate rather than a single page; future cross-page invariants (e.g. duplicate **Object IDs**, broken link targets) land as workspace rules without changing the orchestrator.
+- An **Internal Port** stays `pub(crate)` until a concrete external consumer (LSP, web preview, semantic diff) needs it.
 - **Build Output Directory** is created by the CLI when missing.
 
 ## Example dialogue

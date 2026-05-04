@@ -22,7 +22,8 @@ AgentDoc is pre-release compiler infrastructure. The V0.1 implementation support
 - page headings with optional `@doc(id)` page identity
 - path-derived page identity when no annotation exists
 - headings, paragraphs, unordered lists, ordered lists, and fenced code blocks
-- strict diagnostics for raw HTML and unclosed fenced code blocks
+- rich inline rendering for inline code, emphasis, strong text, and links
+- strict diagnostics for raw HTML, unsafe links, unclosed fenced code blocks, malformed page annotations, and invalid Object IDs
 - HTML and agent JSON artifact emission when no error diagnostics exist
 
 Typed Knowledge Objects such as `claim`, `decision`, `warning`, and `glossary` are planned for later V0 slices. See [docs/ROADMAP.md](docs/ROADMAP.md).
@@ -48,7 +49,7 @@ Create a small AgentDoc Source file:
 mkdir -p /tmp/adoc-example
 
 cat > /tmp/adoc-example/guide.adoc <<'EOF'
-# Getting Started @doc(getting-started)
+# Getting Started @doc(docs.getting-started)
 
 AgentDoc keeps knowledge readable.
 
@@ -158,7 +159,7 @@ Fenced code is preserved and escaped in HTML.
 ```
 ````
 
-Page annotations are optional. If the first heading does not include `@doc(id)`, the compiler derives the page identity from the file path.
+Page annotations are optional. IDs must be lowercase dot-separated kebab-case values with at least two segments, such as `product.area`. If the first heading does not include `@doc(id)`, the compiler derives the page identity from the file path and applies the same ID grammar.
 
 Raw HTML is rejected in strict mode:
 
@@ -175,7 +176,6 @@ fn main() {}
 
 Current limitations:
 
-- inline code, emphasis, and links are not rendered as rich inline HTML yet
 - typed Knowledge Objects are not implemented yet
 - custom schemas, includes, config files, search, and migrations are deferred
 
@@ -188,7 +188,7 @@ rm -rf /tmp/adoc-smoke
 mkdir -p /tmp/adoc-smoke
 
 cat > /tmp/adoc-smoke/guide.adoc <<'EOF'
-# Getting Started @doc(getting-started)
+# Getting Started @doc(docs.getting-started)
 
 AgentDoc keeps knowledge readable.
 
@@ -217,7 +217,7 @@ Run strict-mode failure checks:
 
 ```bash
 cat > /tmp/adoc-smoke/raw-html.adoc <<'EOF'
-# Unsafe @doc(unsafe)
+# Unsafe @doc(docs.unsafe)
 
 <div>raw html</div>
 EOF
@@ -229,7 +229,7 @@ Expected: non-zero exit with `error[parse.raw_html]`.
 
 ````bash
 cat > /tmp/adoc-smoke/unclosed-fence.adoc <<'EOF'
-# Broken @doc(broken)
+# Broken @doc(docs.broken)
 
 ```rust
 fn main() {}

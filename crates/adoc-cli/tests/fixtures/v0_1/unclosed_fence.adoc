@@ -1,4 +1,4 @@
-# Broken Code @doc(broken-code)
+# Broken Code @doc(fixtures.broken-code)
 
 Use this code sample:
 
