@@ -12,7 +12,7 @@
 use crate::domain::ast::{BlockAst, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::inline::InlineSegment;
-use crate::scan::raw_html::find_raw_html;
+use crate::domain::scan::raw_html::find_raw_html;
 use crate::domain::source::SourceFile;
 
 pub(crate) trait ValidationRule {

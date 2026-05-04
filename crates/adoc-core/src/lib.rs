@@ -5,7 +5,6 @@ mod domain;
 mod infrastructure;
 mod parser;
 mod render;
-mod scan;
 mod source_provider;
 mod validate;
 
