@@ -54,6 +54,16 @@ fn is_valid_segment(segment: &str) -> bool {
         })
 }
 
+impl fmt::Display for ObjectIdError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(
+            "Object ID must be at least two lowercase kebab-case segments separated by '.'",
+        )
+    }
+}
+
+impl std::error::Error for ObjectIdError {}
+
 impl fmt::Display for ObjectId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.0)
@@ -130,6 +140,14 @@ mod tests {
     #[test]
     fn new_rejects_single_segment_value() {
         assert!(ObjectId::new("untitled").is_err());
+    }
+
+    #[test]
+    fn object_id_error_display_message() {
+        assert_eq!(
+            format!("{}", ObjectIdError),
+            "Object ID must be at least two lowercase kebab-case segments separated by '.'"
+        );
     }
 
     #[test]

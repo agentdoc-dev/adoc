@@ -714,6 +714,128 @@ fn check_accepts_at_doc_without_parentheses_as_heading_text() {
     assert!(stdout.contains("0 errors"));
 }
 
+#[test]
+fn check_accepts_v0_2_claim_fixture() {
+    let workspace = TestWorkspace::new("check-accepts-v0-2-claim");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_2/claim_basic.adoc"))
+        .expect("claim_basic fixture is readable");
+    workspace.write("claim_basic.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "claim_basic.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        output.status.success(),
+        "expected v0.2 claim fixture to check cleanly\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("0 errors"),
+        "expected zero errors in summary, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn check_rejects_claim_with_missing_status() {
+    let workspace = TestWorkspace::new("check-rejects-claim-missing-status");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_2/claim_missing_status.adoc"))
+        .expect("claim_missing_status fixture is readable");
+    workspace.write("claim_missing_status.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "claim_missing_status.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected missing-status claim to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.missing_field]"),
+        "expected schema.missing_field diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("claim_missing_status.adoc:3:1"),
+        "expected diagnostic at line 3 column 1 (open-fence line), got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("status"),
+        "expected message to mention `status`, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn build_renders_v0_2_claim_fixture_to_golden_html() {
+    let workspace = TestWorkspace::new("build-renders-claim-golden-html");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_2/claim_basic.adoc"))
+        .expect("claim_basic fixture is readable");
+    workspace.write("claim_basic.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "claim_basic.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.html"))
+        .expect("docs.html is written");
+    let golden = fs::read_to_string(fixture_path("v0_2/claim_basic.golden.html"))
+        .expect("golden HTML fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "rendered HTML diverged from claim_basic.golden.html; \
+         re-run `adoc build` against claim_basic.adoc and review before updating the snapshot"
+    );
+}
+
+#[test]
+fn build_renders_v0_2_claim_fixture_to_golden_agent_json() {
+    let workspace = TestWorkspace::new("build-renders-claim-golden-json");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_2/claim_basic.adoc"))
+        .expect("claim_basic fixture is readable");
+    workspace.write("claim_basic.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "claim_basic.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
+        .expect("docs.agent.json is written");
+    let golden = fs::read_to_string(fixture_path("v0_2/claim_basic.golden.agent.json"))
+        .expect("golden agent JSON fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "agent JSON diverged from claim_basic.golden.agent.json; \
+         re-run `adoc build` against claim_basic.adoc and review before updating the snapshot"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn check_reports_unreadable_source_path() {

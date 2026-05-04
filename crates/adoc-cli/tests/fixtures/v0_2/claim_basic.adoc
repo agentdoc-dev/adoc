@@ -1,0 +1,10 @@
+# Billing Guide @doc(team.billing)
+
+The billing system credits users automatically.
+
+::claim billing.credits
+status: verified
+owner: team-billing
+--
+The system credits users automatically when a payment fails.
+::

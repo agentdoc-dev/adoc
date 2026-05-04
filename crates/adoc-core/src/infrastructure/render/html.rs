@@ -1,5 +1,6 @@
 use crate::domain::ast::{BlockAst, ListKind, PageAst};
 use crate::domain::inline::InlineSegment;
+use crate::domain::knowledge_object::KnowledgeObject;
 use crate::domain::ports::renderer::Renderer;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -68,6 +69,29 @@ fn render_block(block: &BlockAst, html: &mut String) {
             html.push('>');
             html.push_str(&escape_html(&code_block.code));
             html.push_str("</code></pre>\n");
+        }
+        BlockAst::KnowledgeObject(ko) => match ko.as_ref() {
+            KnowledgeObject::Claim(claim) => {
+                html.push_str("<section class=\"claim\" id=\"");
+                html.push_str(&escape_html(claim.id().as_str()));
+                html.push_str("\">\n");
+                html.push_str("<header class=\"claim__header\">");
+                html.push_str("<span class=\"claim__kind\">claim</span>");
+                html.push_str("<code class=\"claim__id\">");
+                html.push_str(&escape_html(claim.id().as_str()));
+                html.push_str("</code>");
+                html.push_str("<span class=\"claim__status\">");
+                html.push_str(&escape_html(claim.status().as_str()));
+                html.push_str("</span>");
+                html.push_str("</header>\n");
+                html.push_str("<div class=\"claim__body\"><p>");
+                html.push_str(&escape_html(claim.body().as_str()));
+                html.push_str("</p></div>\n");
+                html.push_str("</section>\n");
+            }
+        },
+        BlockAst::KnowledgeObjectPending(_) => {
+            unreachable!("resolver must replace pending knowledge objects before rendering")
         }
     }
 }
@@ -251,6 +275,83 @@ mod tests {
         assert_eq!(
             html,
             "<a href=\"https://example.test\">see <code>adoc</code></a>"
+        );
+    }
+
+    fn make_claim(
+        id: &str,
+        status: &str,
+        body: &str,
+        fields: std::collections::BTreeMap<String, String>,
+        span: SourceSpan,
+    ) -> BlockAst {
+        use crate::domain::knowledge_object::{KnowledgeObject, claim::Claim};
+        let claim =
+            Claim::try_new(id, Some(status), body, fields, span).expect("test claim must be valid");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim)))
+    }
+
+    #[test]
+    fn claim_renders_to_section_with_kind_id_status_body() {
+        let block = make_claim(
+            "billing.credits",
+            "verified",
+            "body content",
+            std::collections::BTreeMap::new(),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            html.contains("<section class=\"claim\" id=\"billing.credits\">"),
+            "missing section open tag: {html}"
+        );
+        assert!(
+            html.contains("<span class=\"claim__kind\">claim</span>"),
+            "missing kind span: {html}"
+        );
+        assert!(
+            html.contains("<code class=\"claim__id\">billing.credits</code>"),
+            "missing id code: {html}"
+        );
+        assert!(
+            html.contains("<span class=\"claim__status\">verified</span>"),
+            "missing status span: {html}"
+        );
+        assert!(
+            html.contains("<p>body content</p>"),
+            "missing body paragraph: {html}"
+        );
+    }
+
+    #[test]
+    fn claim_html_escapes_id_status_and_body() {
+        // Valid id; dangerous chars in status and body
+        let block = make_claim(
+            "team.guide",
+            "<script>alert(1)</script>",
+            "a < b && b > c",
+            std::collections::BTreeMap::new(),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        // Status tag content must be escaped
+        assert!(
+            html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"),
+            "status not escaped: {html}"
+        );
+        // Body must be escaped
+        assert!(
+            html.contains("a &lt; b &amp;&amp; b &gt; c"),
+            "body not escaped: {html}"
+        );
+        // No raw angle brackets in output
+        assert!(
+            !html.contains("<script>"),
+            "raw script tag leaked into output: {html}"
         );
     }
 }

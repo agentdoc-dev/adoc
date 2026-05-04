@@ -1,0 +1,7 @@
+# Billing Guide @doc(team.billing)
+
+::claim billing.credits
+owner: team-billing
+--
+The system credits users automatically.
+::
