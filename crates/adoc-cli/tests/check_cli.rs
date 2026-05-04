@@ -531,6 +531,63 @@ fn build_rejects_inline_raw_html_and_writes_no_artifacts() {
 }
 
 #[test]
+fn duplicate_claim_ids_fail_check_and_block_build_artifacts() {
+    let workspace = TestWorkspace::new("duplicate-claim-ids");
+    workspace.write(
+        "01-billing.adoc",
+        "# Billing Credits @doc(billing.credits-page)\n\n::claim billing.credits.foo\nstatus: verified\n--\nCredits are granted after payment succeeds.\n::\n",
+    );
+    workspace.write(
+        "02-billing-extra.adoc",
+        "# Billing Extra @doc(billing.extra-page)\n\n::claim billing.credits.foo\nstatus: draft\n--\nCredits are also described here.\n::\n",
+    );
+
+    let check_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "check",
+            workspace.root.to_str().expect("root path is utf-8"),
+        ])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !check_output.status.success(),
+        "expected duplicate claim ids to fail check"
+    );
+    let check_stdout = String::from_utf8_lossy(&check_output.stdout);
+    assert!(
+        check_stdout.contains("error[id.duplicate]"),
+        "expected id.duplicate diagnostic in stdout:\n{check_stdout}"
+    );
+    assert!(check_stdout.contains("1 errors"));
+
+    let output_directory = workspace.root.join("dist");
+    let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            workspace.root.to_str().expect("root path is utf-8"),
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        !build_output.status.success(),
+        "expected duplicate claim ids to fail build"
+    );
+    let build_stdout = String::from_utf8_lossy(&build_output.stdout);
+    assert!(
+        build_stdout.contains("error[id.duplicate]"),
+        "expected id.duplicate diagnostic in build stdout:\n{build_stdout}"
+    );
+    assert!(!output_directory.join("docs.html").exists());
+    assert!(!output_directory.join("docs.agent.json").exists());
+}
+
+#[test]
 fn check_allows_raw_html_inside_closed_fenced_code_block() {
     let workspace = TestWorkspace::new("check-allows-raw-html-in-fence");
     let source = workspace.write(

@@ -1,0 +1,9 @@
+# Billing Extra @doc(billing.extra-page)
+
+The extra billing page accidentally repeats an id.
+
+::claim billing.credits.foo
+status: draft
+--
+Credits are also described here.
+::
