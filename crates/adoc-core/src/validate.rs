@@ -9,11 +9,11 @@
 //! streaming context (you only know a fence is unclosed once EOF is reached),
 //! so that diagnostic remains in the parser. See ADR-0007 for the decision.
 
-use crate::ast::{BlockAst, PageAst, WorkspaceAst};
-use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::inline::InlineSegment;
+use crate::domain::ast::{BlockAst, PageAst, WorkspaceAst};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
+use crate::domain::inline::InlineSegment;
 use crate::scan::raw_html::find_raw_html;
-use crate::source::SourceFile;
+use crate::domain::source::SourceFile;
 
 pub(crate) trait ValidationRule {
     fn check(&self, page: &PageAst, source: &SourceFile, sink: &mut Vec<Diagnostic>);

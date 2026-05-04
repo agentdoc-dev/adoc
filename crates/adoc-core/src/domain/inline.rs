@@ -1,5 +1,5 @@
-use crate::diagnostic::{Diagnostic, SourceSpan};
-use crate::source::{LineCursor, SourceFile};
+use crate::domain::diagnostic::{Diagnostic, SourceSpan};
+use crate::domain::source::{LineCursor, SourceFile};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum InlineSegment {

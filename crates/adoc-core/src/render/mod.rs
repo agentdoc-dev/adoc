@@ -1,6 +1,6 @@
 pub(crate) mod html;
 
-use crate::ast::PageAst;
+use crate::domain::ast::PageAst;
 
 /// Output port for compiled pages. compile_with_provider drives the renderer
 /// through this trait so that adding a new format (e.g. Markdown export, plain

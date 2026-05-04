@@ -1,5 +1,5 @@
-use crate::ast::{BlockAst, ListKind, PageAst};
-use crate::inline::InlineSegment;
+use crate::domain::ast::{BlockAst, ListKind, PageAst};
+use crate::domain::inline::InlineSegment;
 use crate::render::Renderer;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -122,7 +122,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::diagnostic::{SourcePosition, SourceSpan};
+    use crate::domain::diagnostic::{SourcePosition, SourceSpan};
 
     fn render(segments: &[InlineSegment]) -> String {
         let mut html = String::new();
@@ -189,8 +189,8 @@ mod tests {
 
     #[test]
     fn render_html_flows_inlines_through_heading_paragraph_and_list_item() {
-        use crate::ast::{HeadingAst, ListAst, ListItem, ListKind, ParagraphAst};
-        use crate::identity::PageId;
+        use crate::domain::ast::{HeadingAst, ListAst, ListItem, ListKind, ParagraphAst};
+        use crate::domain::identity::PageId;
 
         let span = dummy_span;
 

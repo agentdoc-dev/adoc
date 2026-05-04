@@ -2,11 +2,11 @@ use std::cmp::Ordering;
 use std::path::PathBuf;
 
 use crate::artifact::{AgentJsonArtifact, AgentJsonDocument, ArtifactWriter};
-use crate::ast::{PageAst, WorkspaceAst};
-use crate::diagnostic::{Diagnostic, DiagnosticCode, Severity};
+use crate::domain::ast::{PageAst, WorkspaceAst};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::parser::parse_page;
 use crate::render::{HtmlRenderer, Renderer};
-use crate::source::SourceFile;
+use crate::domain::source::SourceFile;
 use crate::source_provider::{FsSourceProvider, SourceProvider};
 use crate::validate::{validate_page, validate_workspace};
 
@@ -134,7 +134,7 @@ fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::source::SourceFile;
+    use crate::domain::source::SourceFile;
     use crate::source_provider::InMemorySourceProvider;
 
     fn source_file(identity: &str, text: &str) -> SourceFile {

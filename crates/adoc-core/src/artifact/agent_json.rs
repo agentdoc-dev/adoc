@@ -1,8 +1,8 @@
 use serde::Serialize;
 
 use crate::artifact::ArtifactWriter;
-use crate::ast::PageAst;
-use crate::diagnostic::Diagnostic;
+use crate::domain::ast::PageAst;
+use crate::domain::diagnostic::Diagnostic;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AgentJsonDocument {

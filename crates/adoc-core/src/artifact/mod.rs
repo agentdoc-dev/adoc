@@ -1,7 +1,7 @@
 pub(crate) mod agent_json;
 
-use crate::ast::PageAst;
-use crate::diagnostic::Diagnostic;
+use crate::domain::ast::PageAst;
+use crate::domain::diagnostic::Diagnostic;
 
 pub(crate) use agent_json::AgentJsonArtifact;
 pub use agent_json::AgentJsonDocument;
@@ -23,8 +23,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::ast::PageAst;
-    use crate::identity::PageId;
+    use crate::domain::ast::PageAst;
+    use crate::domain::identity::PageId;
 
     /// Stub adapter declaring a non-`AgentJsonDocument` Output. Compiling and
     /// running this proves the trait is genuinely format-agnostic.

@@ -8,9 +8,9 @@
 //! optional structural diagnostic that goes with it (e.g. an unclosed code
 //! fence at EOF).
 
-use crate::ast::BlockAst;
-use crate::diagnostic::Diagnostic;
-use crate::source::SourceFile;
+use crate::domain::ast::BlockAst;
+use crate::domain::diagnostic::Diagnostic;
+use crate::domain::source::SourceFile;
 
 use super::builders::{CodeBlockBuilder, ListBuilder, ParagraphBuilder};
 

@@ -12,7 +12,7 @@
 //! the match into a `parse.raw_html` `Diagnostic` and supply the source
 //! span. See ADR-0007 for the AST-walk + scanner-callout contract.
 
-use crate::source::column_offset;
+use crate::domain::source::column_offset;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RawHtmlMatch {

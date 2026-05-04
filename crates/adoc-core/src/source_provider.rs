@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::source::SourceFile;
+use crate::domain::source::SourceFile;
 
 /// Adapter trait for the input side of the compiler.
 ///
