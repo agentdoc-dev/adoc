@@ -87,6 +87,19 @@ fn render_block(block: &BlockAst, html: &mut String) {
                 html.push_str("<div class=\"claim__body\"><p>");
                 html.push_str(&escape_html(claim.body().as_str()));
                 html.push_str("</p></div>\n");
+                if !claim.fields().is_empty() {
+                    html.push_str("<footer class=\"claim__metadata\">\n");
+                    html.push_str("<dl>\n");
+                    for (key, value) in claim.fields().iter() {
+                        html.push_str("<dt>");
+                        html.push_str(&escape_html(key));
+                        html.push_str("</dt><dd>");
+                        html.push_str(&escape_html(value));
+                        html.push_str("</dd>\n");
+                    }
+                    html.push_str("</dl>\n");
+                    html.push_str("</footer>\n");
+                }
                 html.push_str("</section>\n");
             }
         },
@@ -322,6 +335,104 @@ mod tests {
         assert!(
             html.contains("<p>body content</p>"),
             "missing body paragraph: {html}"
+        );
+    }
+
+    #[test]
+    fn claim_omits_metadata_footer_when_fields_are_empty() {
+        let block = make_claim(
+            "billing.credits",
+            "verified",
+            "body content",
+            std::collections::BTreeMap::new(),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            !html.contains("<footer class=\"claim__metadata\">"),
+            "unexpected metadata footer: {html}"
+        );
+    }
+
+    #[test]
+    fn claim_renders_metadata_footer_when_fields_are_present() {
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert("source".to_string(), "ledger".to_string());
+        fields.insert("owner".to_string(), "".to_string());
+        let block = make_claim(
+            "billing.credits",
+            "verified",
+            "body content",
+            fields,
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            html.contains("<footer class=\"claim__metadata\">\n<dl>\n"),
+            "missing metadata footer: {html}"
+        );
+        assert!(
+            html.contains("<dt>source</dt><dd>ledger</dd>"),
+            "missing populated field: {html}"
+        );
+        assert!(
+            html.contains("<dt>owner</dt><dd></dd>"),
+            "missing empty value field: {html}"
+        );
+    }
+
+    #[test]
+    fn claim_renders_metadata_fields_in_sorted_key_order() {
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert("zeta".to_string(), "last".to_string());
+        fields.insert("alpha".to_string(), "first".to_string());
+        fields.insert("middle".to_string(), "second".to_string());
+        let block = make_claim(
+            "billing.credits",
+            "verified",
+            "body content",
+            fields,
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        let alpha = html.find("<dt>alpha</dt>").expect("missing alpha field");
+        let middle = html.find("<dt>middle</dt>").expect("missing middle field");
+        let zeta = html.find("<dt>zeta</dt>").expect("missing zeta field");
+
+        assert!(
+            alpha < middle && middle < zeta,
+            "fields not sorted by key: {html}"
+        );
+    }
+
+    #[test]
+    fn claim_html_escapes_metadata_keys_and_values() {
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert(
+            "a <key> & \"id\"".to_string(),
+            "value 'x' & <y>".to_string(),
+        );
+        let block = make_claim(
+            "billing.credits",
+            "verified",
+            "body content",
+            fields,
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            html.contains(
+                "<dt>a &lt;key&gt; &amp; &quot;id&quot;</dt><dd>value &#39;x&#39; &amp; &lt;y&gt;</dd>"
+            ),
+            "metadata key or value not escaped: {html}"
         );
     }
 
