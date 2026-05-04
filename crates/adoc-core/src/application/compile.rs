@@ -4,11 +4,13 @@ use std::path::PathBuf;
 use crate::domain::artifact::AgentJsonDocument;
 use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
+use crate::domain::ports::artifact_writer::ArtifactWriter;
+use crate::domain::ports::renderer::Renderer;
 use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::source::SourceFile;
-use crate::infrastructure::artifact::{AgentJsonArtifact, ArtifactWriter};
+use crate::infrastructure::artifact::AgentJsonArtifact;
 use crate::infrastructure::parser::parse_page;
-use crate::infrastructure::render::{HtmlRenderer, Renderer};
+use crate::infrastructure::render::HtmlRenderer;
 use crate::infrastructure::validate::{validate_page, validate_workspace};
 
 #[derive(Debug, Clone)]
