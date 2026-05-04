@@ -113,6 +113,7 @@ pub(super) fn try_open_typed_block(
                 raw_fields: std::collections::BTreeMap::new(),
                 duplicate_keys: Vec::new(),
                 body_lines: Vec::new(),
+                content_spans: Vec::new(),
             })
         }
         unknown => TypedBlockOpen::Diagnostic(
@@ -155,6 +156,9 @@ pub(super) fn consume_claim_line(
 
             // Try to parse as `key: value` where key starts with lowercase
             // and consists of [a-z][a-z0-9_]*.
+            state
+                .content_spans
+                .push(source.span_for_line(line_number, line));
             if let Some((key, value)) = try_parse_field(line.trim_end()) {
                 if state.raw_fields.contains_key(&key) {
                     state.duplicate_keys.push(key.clone());
@@ -181,6 +185,9 @@ pub(super) fn consume_claim_line(
             }
             // Append raw line (preserve all internal whitespace).
             state.body_lines.push(line.to_string());
+            state
+                .content_spans
+                .push(source.span_for_line(line_number, line));
             ClaimLineOutcome::Continue
         }
     }
@@ -247,6 +254,7 @@ fn build_parsed_claim(state: &ClaimBuildingState) -> ParsedClaim {
         raw_fields: state.raw_fields.clone(),
         duplicate_keys: state.duplicate_keys.clone(),
         body_text,
+        content_spans: state.content_spans.clone(),
         span: state.open_fence_span.clone(),
     }
 }
@@ -313,6 +321,7 @@ mod tests {
             raw_fields: std::collections::BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_lines: Vec::new(),
+            content_spans: Vec::new(),
         }
     }
 
@@ -535,8 +544,13 @@ mod tests {
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        let outcome =
-            consume_claim_line(&mut state, "  status: verified", 1, &source, &mut diagnostics);
+        let outcome = consume_claim_line(
+            &mut state,
+            "  status: verified",
+            1,
+            &source,
+            &mut diagnostics,
+        );
 
         assert!(matches!(outcome, ClaimLineOutcome::Continue));
         assert!(state.raw_fields.is_empty());
@@ -598,6 +612,12 @@ mod tests {
                     parsed.raw_fields.get("status").map(String::as_str),
                     Some("verified")
                 );
+                let content_lines: Vec<u32> = parsed
+                    .content_spans
+                    .iter()
+                    .map(|span| span.start.line)
+                    .collect();
+                assert_eq!(content_lines, vec![1, 3]);
             }
             ClaimLineOutcome::Continue => panic!("expected Closed"),
         }

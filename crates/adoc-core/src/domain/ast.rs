@@ -30,13 +30,17 @@ pub(crate) enum BlockAst {
     /// the enum's stack footprint for the common prose blocks above.
     #[allow(dead_code)]
     KnowledgeObject(Box<KnowledgeObject>),
-    /// Transient parser output: a `::claim …` block that has been read but
-    /// not yet validated into a `Claim` aggregate. The page-validator stage
+    /// Transient parser output: a typed Knowledge Object block that has been
+    /// read but not yet validated into an aggregate. The resolver stage
     /// replaces every Pending with either `KnowledgeObject(...)` (success) or
     /// drops it after emitting `schema.*`/`id.invalid` diagnostics. By the
     /// time the renderer or artifact emitter sees the AST, no Pending exists.
-    #[allow(dead_code)]
-    KnowledgeObjectPending(Box<ParsedClaim>),
+    KnowledgeObjectPending(Box<PendingKnowledgeObject>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PendingKnowledgeObject {
+    Claim(ParsedClaim),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +97,7 @@ pub(crate) struct ParsedClaim {
     pub(crate) raw_fields: BTreeMap<String, String>,
     pub(crate) duplicate_keys: Vec<String>,
     pub(crate) body_text: String,
+    pub(crate) content_spans: Vec<SourceSpan>,
     pub(crate) span: SourceSpan,
 }
 
@@ -128,9 +133,11 @@ mod tests {
             raw_fields: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "x".to_string(),
+            content_spans: Vec::new(),
             span: span(),
         };
-        let pending_block = BlockAst::KnowledgeObjectPending(Box::new(parsed.clone()));
+        let pending_block =
+            BlockAst::KnowledgeObjectPending(Box::new(PendingKnowledgeObject::Claim(parsed)));
         assert_eq!(pending_block, pending_block.clone());
 
         let claim = Claim::try_new(

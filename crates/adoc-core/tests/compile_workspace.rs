@@ -208,3 +208,45 @@ fn compile_workspace_blocks_artifacts_for_invalid_claim() {
         "span must point at the ::claim open-fence line"
     );
 }
+
+#[test]
+fn compile_workspace_blocks_artifacts_for_raw_html_in_claim_body() {
+    let workspace = TestWorkspace::new("block-artifacts-raw-html-claim-body");
+    let source = workspace.write(
+        "billing.adoc",
+        concat!(
+            "# Billing Guide @doc(team.billing)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: verified\n",
+            "--\n",
+            "Body <span>raw</span> text.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        result.has_errors(),
+        "raw HTML in claim body must produce an error"
+    );
+    assert!(
+        result.artifacts.is_none(),
+        "artifacts must be blocked when errors are present"
+    );
+    assert_eq!(
+        result.diagnostics.len(),
+        1,
+        "expected exactly one diagnostic, got: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(result.diagnostics[0].code, DiagnosticCode::ParseRawHtml);
+    assert_eq!(
+        result.diagnostics[0]
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((6, 6))
+    );
+}

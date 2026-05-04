@@ -12,7 +12,7 @@ use crate::infrastructure::artifact::AgentJsonArtifact;
 use crate::infrastructure::parser::parse_page;
 use crate::infrastructure::render::HtmlRenderer;
 use crate::infrastructure::validate::{
-    resolve_knowledge_objects, validate_page, validate_workspace,
+    resolve_knowledge_objects, validate_resolved_page, validate_source_page, validate_workspace,
 };
 
 #[derive(Debug, Clone)]
@@ -43,14 +43,16 @@ pub struct BuildArtifacts {
 }
 
 pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
-    // Pipeline stages: load → validate-pages → assemble → validate-workspace
-    // → build. Each stage is a separate function below so it can be
-    // unit-tested in isolation and the orchestrator reads as a sequence of
-    // named domain operations rather than one walls-of-text loop. Pages move
-    // through the pipeline without cloning. See ADR-0006 addendum.
+    // Pipeline stages: load → validate-source-pages → resolve-KOs →
+    // validate-resolved-pages → assemble → validate-workspace → build. Each
+    // stage is a separate function below so it can be unit-tested in
+    // isolation and the orchestrator reads as a sequence of named domain
+    // operations rather than one walls-of-text loop. Pages move through the
+    // pipeline without cloning. See ADR-0006 addendum.
     let (mut parsed, mut diagnostics) = load_pages(provider);
-    diagnostics.extend(validate_pages(&parsed));
+    diagnostics.extend(validate_source_pages(&parsed));
     diagnostics.extend(resolve_knowledge_objects(&mut parsed));
+    diagnostics.extend(validate_resolved_pages(&parsed));
     let workspace = assemble_workspace(parsed);
     diagnostics.extend(validate_workspace(&workspace));
     sort_diagnostics_by_source(&mut diagnostics);
@@ -88,12 +90,23 @@ fn load_pages<P: SourceProvider>(provider: &P) -> (Vec<(SourceFile, PageAst)>, V
     (parsed, diagnostics)
 }
 
-/// Run every per-page rule against the (source, page) pairs in order.
-/// Workspace-level rules run later, after the aggregate is assembled.
-fn validate_pages(parsed: &[(SourceFile, PageAst)]) -> Vec<Diagnostic> {
+/// Run every source-page rule against the (source, page) pairs in order.
+/// These rules see parser output, including pending Knowledge Objects.
+fn validate_source_pages(parsed: &[(SourceFile, PageAst)]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for (source, page) in parsed {
-        diagnostics.extend(validate_page(page, source));
+        diagnostics.extend(validate_source_page(page, source));
+    }
+    diagnostics
+}
+
+/// Run every resolved-page rule after Knowledge Object resolution. Empty in
+/// v0.2 until a rule needs typed aggregate data but kept explicit to make the
+/// pipeline contract obvious.
+fn validate_resolved_pages(parsed: &[(SourceFile, PageAst)]) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    for (source, page) in parsed {
+        diagnostics.extend(validate_resolved_page(page, source));
     }
     diagnostics
 }
@@ -236,17 +249,30 @@ mod tests {
     }
 
     #[test]
-    fn validate_pages_emits_per_page_diagnostics_in_source_order() {
+    fn validate_source_pages_emits_per_page_diagnostics_in_source_order() {
         let provider = InMemorySourceProvider::new().with_source(source_file(
             "guide.adoc",
             "# Guide @doc(team.guide)\n\n<div>x</div>\n",
         ));
 
         let (parsed, _) = load_pages(&provider);
-        let diagnostics = validate_pages(&parsed);
+        let diagnostics = validate_source_pages(&parsed);
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
+    }
+
+    #[test]
+    fn validate_resolved_pages_returns_empty_for_empty_registry() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\nHello.\n",
+        ));
+
+        let (parsed, _) = load_pages(&provider);
+        let diagnostics = validate_resolved_pages(&parsed);
+
+        assert!(diagnostics.is_empty());
     }
 
     #[test]

@@ -13,7 +13,7 @@ mod state;
 use builders::{CodeBlockBuilder, ListBuilder, ParagraphBuilder};
 use state::ParseState;
 
-use crate::domain::ast::{BlockAst, HeadingAst, ListKind, PageAst};
+use crate::domain::ast::{BlockAst, HeadingAst, ListKind, PageAst, PendingKnowledgeObject};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::{ObjectId, PageId};
 use crate::domain::inline::{self, InlineOrigin};
@@ -226,7 +226,9 @@ fn consume_claim_block_line(
     match claim::consume_claim_line(claim_state, line, line_number, source, diagnostics) {
         claim::ClaimLineOutcome::Continue => {}
         claim::ClaimLineOutcome::Closed(parsed) => {
-            blocks.push(BlockAst::KnowledgeObjectPending(Box::new(parsed)));
+            blocks.push(BlockAst::KnowledgeObjectPending(Box::new(
+                PendingKnowledgeObject::Claim(parsed),
+            )));
             *state = ParseState::Idle;
         }
     }

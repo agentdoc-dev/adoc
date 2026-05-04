@@ -6,9 +6,9 @@
 //! assembly so the orchestrator remains a linear sequence of named domain
 //! operations.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::domain::ast::{BlockAst, PageAst, ParsedClaim};
+use crate::domain::ast::{BlockAst, PageAst, ParsedClaim, PendingKnowledgeObject};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::knowledge_object::{KnowledgeObject, claim::Claim, claim::ClaimError};
 use crate::domain::source::SourceFile;
@@ -29,14 +29,16 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
     let mut new_blocks = Vec::with_capacity(original.len());
     for block in original {
         match block {
-            BlockAst::KnowledgeObjectPending(parsed) => {
-                if let Some(claim) = build_claim(&parsed, diagnostics) {
-                    new_blocks.push(BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
-                        claim,
-                    ))));
+            BlockAst::KnowledgeObjectPending(pending) => match *pending {
+                PendingKnowledgeObject::Claim(parsed) => {
+                    if let Some(claim) = build_claim(&parsed, diagnostics) {
+                        new_blocks.push(BlockAst::KnowledgeObject(Box::new(
+                            KnowledgeObject::Claim(claim),
+                        )));
+                    }
+                    // failure → block dropped; diagnostics already emitted above
                 }
-                // failure → block dropped; diagnostics already emitted above
-            }
+            },
             other => new_blocks.push(other),
         }
     }
@@ -45,15 +47,20 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
 
 fn build_claim(parsed: &ParsedClaim, diagnostics: &mut Vec<Diagnostic>) -> Option<Claim> {
     if !parsed.duplicate_keys.is_empty() {
+        let mut emitted_keys = BTreeSet::new();
         for key in &parsed.duplicate_keys {
-            diagnostics.push(
-                Diagnostic::error(
-                    DiagnosticCode::SchemaDuplicateField,
-                    format!("duplicate field `{key}` in claim"),
-                )
-                .with_span(parsed.span.clone()),
-            );
+            if emitted_keys.insert(key.as_str()) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::SchemaDuplicateField,
+                        format!("duplicate field `{key}` in claim"),
+                    )
+                    .with_span(parsed.span.clone()),
+                );
+            }
         }
+        // Duplicate fields poison the raw field map: last-value-wins storage
+        // makes missing-field validation ambiguous until the duplicates are fixed.
         return None;
     }
 
@@ -112,7 +119,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::domain::ast::{BlockAst, HeadingAst, PageAst, ParsedClaim};
+    use crate::domain::ast::{BlockAst, HeadingAst, PageAst, ParsedClaim, PendingKnowledgeObject};
     use crate::domain::diagnostic::{DiagnosticCode, SourcePosition, SourceSpan};
     use crate::domain::identity::PageId;
     use crate::domain::inline::InlineSegment;
@@ -147,7 +154,9 @@ mod tests {
             id: PageId::untitled_fallback(),
             title: None,
             source_path: PathBuf::from("test.adoc"),
-            blocks: vec![BlockAst::KnowledgeObjectPending(Box::new(pending))],
+            blocks: vec![BlockAst::KnowledgeObjectPending(Box::new(
+                PendingKnowledgeObject::Claim(pending),
+            ))],
         }
     }
 
@@ -159,6 +168,7 @@ mod tests {
             raw_fields: fields,
             duplicate_keys: Vec::new(),
             body_text: "This is a valid claim body.".to_string(),
+            content_spans: Vec::new(),
             span: span(),
         }
     }
@@ -191,8 +201,9 @@ mod tests {
                 m.insert("status".to_string(), "verified".to_string());
                 m
             },
-            duplicate_keys: vec!["status".to_string()],
+            duplicate_keys: vec!["status".to_string(), "status".to_string()],
             body_text: "some body".to_string(),
+            content_spans: Vec::new(),
             span: span(),
         };
         let page = page_with_pending(pending);
@@ -219,6 +230,7 @@ mod tests {
             },
             duplicate_keys: Vec::new(),
             body_text: "some body".to_string(),
+            content_spans: Vec::new(),
             span: span(),
         };
         let page = page_with_pending(pending);
@@ -238,6 +250,7 @@ mod tests {
             raw_fields: BTreeMap::new(), // no status
             duplicate_keys: Vec::new(),
             body_text: "some body".to_string(),
+            content_spans: Vec::new(),
             span: span(),
         };
         let page = page_with_pending(pending);
@@ -265,6 +278,7 @@ mod tests {
             },
             duplicate_keys: Vec::new(),
             body_text: String::new(), // empty body
+            content_spans: Vec::new(),
             span: span(),
         };
         let page = page_with_pending(pending);
@@ -293,7 +307,10 @@ mod tests {
             id: PageId::untitled_fallback(),
             title: None,
             source_path: PathBuf::from("test.adoc"),
-            blocks: vec![heading, BlockAst::KnowledgeObjectPending(Box::new(pending))],
+            blocks: vec![
+                heading,
+                BlockAst::KnowledgeObjectPending(Box::new(PendingKnowledgeObject::Claim(pending))),
+            ],
         };
         let mut pairs = vec![(source(), page)];
 
@@ -320,6 +337,7 @@ mod tests {
             },
             duplicate_keys: Vec::new(),
             body_text: "some body".to_string(),
+            content_spans: Vec::new(),
             span: span(),
         };
         let page = page_with_pending(pending);

@@ -33,6 +33,7 @@ pub(super) struct ClaimBuildingState {
     pub(super) raw_fields: BTreeMap<String, String>,
     pub(super) duplicate_keys: Vec<String>,
     pub(super) body_lines: Vec<String>,
+    pub(super) content_spans: Vec<SourceSpan>,
 }
 
 /// Phase of a claim block currently being parsed.
