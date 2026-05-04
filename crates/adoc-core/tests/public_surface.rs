@@ -40,8 +40,33 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::ParseUnsafeLink;
     let _ = DiagnosticCode::ParseUnclosedFence;
     let _ = DiagnosticCode::ParseMalformedPageAnnotation;
+    let _ = DiagnosticCode::ParseUnknownBlockType;
+    let _ = DiagnosticCode::ParseMalformedField;
+    let _ = DiagnosticCode::ParseMalformedOpenFence;
+    let _ = DiagnosticCode::SchemaMissingField;
+    let _ = DiagnosticCode::SchemaDuplicateField;
     let _ = DiagnosticCode::IdInvalid;
     let _ = DiagnosticCode::IoUnreadableFile;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
+    assert_eq!(
+        DiagnosticCode::SchemaMissingField.as_str(),
+        "schema.missing_field"
+    );
+    assert_eq!(
+        DiagnosticCode::SchemaDuplicateField.as_str(),
+        "schema.duplicate_field"
+    );
+    assert_eq!(
+        DiagnosticCode::ParseUnknownBlockType.as_str(),
+        "parse.unknown_block_type"
+    );
+    assert_eq!(
+        DiagnosticCode::ParseMalformedField.as_str(),
+        "parse.malformed_field"
+    );
+    assert_eq!(
+        DiagnosticCode::ParseMalformedOpenFence.as_str(),
+        "parse.malformed_open_fence"
+    );
 }

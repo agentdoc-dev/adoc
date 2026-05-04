@@ -26,6 +26,11 @@ pub enum DiagnosticCode {
     ParseUnsafeLink,
     ParseUnclosedFence,
     ParseMalformedPageAnnotation,
+    ParseUnknownBlockType,
+    ParseMalformedField,
+    ParseMalformedOpenFence,
+    SchemaMissingField,
+    SchemaDuplicateField,
     IdInvalid,
     IoUnreadableFile,
 }
@@ -37,6 +42,11 @@ impl DiagnosticCode {
             DiagnosticCode::ParseUnsafeLink => "parse.unsafe_link",
             DiagnosticCode::ParseUnclosedFence => "parse.unclosed_fence",
             DiagnosticCode::ParseMalformedPageAnnotation => "parse.malformed_page_annotation",
+            DiagnosticCode::ParseUnknownBlockType => "parse.unknown_block_type",
+            DiagnosticCode::ParseMalformedField => "parse.malformed_field",
+            DiagnosticCode::ParseMalformedOpenFence => "parse.malformed_open_fence",
+            DiagnosticCode::SchemaMissingField => "schema.missing_field",
+            DiagnosticCode::SchemaDuplicateField => "schema.duplicate_field",
             DiagnosticCode::IdInvalid => "id.invalid",
             DiagnosticCode::IoUnreadableFile => "io.unreadable_file",
         }
