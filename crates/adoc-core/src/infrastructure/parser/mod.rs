@@ -3,8 +3,8 @@
 //! Block dispatch is a typed state machine: [`state::ParseState`] owns the
 //! in-progress block (paragraph, list, code block) and is rotated through
 //! `ParseState::Idle` on every block boundary. Per ADR-0004 the parser stays
-//! tokenizer-shaped and emits only structural diagnostics; semantic rules
-//! live in `validate.rs` per ADR-0007.
+//! tokenizer-shaped and emits only structural diagnostics; semantic
+//! rules run in the validation pass per ADR-0007.
 
 mod builders;
 mod state;
@@ -12,11 +12,11 @@ mod state;
 use builders::{CodeBlockBuilder, ListBuilder, ParagraphBuilder};
 use state::ParseState;
 
-use crate::ast::{BlockAst, HeadingAst, ListKind, PageAst};
-use crate::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::identity::{ObjectId, PageId};
-use crate::inline::{self, InlineOrigin};
-use crate::source::{DerivedPageIdError, SourceFile, derive_page_id};
+use crate::domain::ast::{BlockAst, HeadingAst, ListKind, PageAst};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::identity::{ObjectId, PageId};
+use crate::domain::inline::{self, InlineOrigin};
+use crate::domain::source::{DerivedPageIdError, SourceFile, derive_page_id};
 
 /// Per-line context handed to each block-kind consumer.
 struct LineContext<'a> {
@@ -511,7 +511,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::ast::BlockAst;
+    use crate::domain::ast::BlockAst;
 
     fn parse_source(text: &str) -> (PageAst, Vec<Diagnostic>) {
         let source = SourceFile::new_with_identity_path(

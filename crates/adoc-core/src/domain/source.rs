@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use crate::diagnostic::{SourcePosition, SourceSpan};
-use crate::identity::PageId;
+use crate::domain::diagnostic::{SourcePosition, SourceSpan};
+use crate::domain::identity::PageId;
 
 /// Position on a single line, expressed in 1-indexed character columns.
 ///
