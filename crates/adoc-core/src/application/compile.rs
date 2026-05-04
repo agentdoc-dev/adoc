@@ -2,14 +2,13 @@ use std::cmp::Ordering;
 use std::path::PathBuf;
 
 use crate::domain::artifact::AgentJsonDocument;
-use crate::infrastructure::artifact::{AgentJsonArtifact, ArtifactWriter};
 use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
-use crate::infrastructure::parser::parse_page;
-use crate::infrastructure::render::{HtmlRenderer, Renderer};
 use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::source::SourceFile;
-use crate::infrastructure::source::fs::FsSourceProvider;
+use crate::infrastructure::artifact::{AgentJsonArtifact, ArtifactWriter};
+use crate::infrastructure::parser::parse_page;
+use crate::infrastructure::render::{HtmlRenderer, Renderer};
 use crate::infrastructure::validate::{validate_page, validate_workspace};
 
 #[derive(Debug, Clone)]
@@ -37,11 +36,6 @@ impl CompileResult {
 pub struct BuildArtifacts {
     pub html: String,
     pub agent_json: AgentJsonDocument,
-}
-
-pub fn compile_workspace(input: CompileInput) -> CompileResult {
-    let provider = FsSourceProvider::new(input.root);
-    compile_with_provider(&provider)
 }
 
 pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {

@@ -1,4 +1,4 @@
-use crate::domain::artifact::{AgentJsonDocument, AgentJsonObject, AgentJsonPage};
+use crate::domain::artifact::{AgentJsonDocument, AgentJsonPage};
 use crate::domain::ast::PageAst;
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::ports::artifact_writer::ArtifactWriter;
