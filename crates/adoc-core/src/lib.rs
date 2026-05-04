@@ -5,7 +5,6 @@ mod domain;
 mod infrastructure;
 mod parser;
 mod render;
-mod source_provider;
 mod validate;
 
 pub use artifact::agent_json::AgentJsonDocument;

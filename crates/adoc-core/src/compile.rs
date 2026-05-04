@@ -6,8 +6,9 @@ use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::parser::parse_page;
 use crate::render::{HtmlRenderer, Renderer};
+use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::source::SourceFile;
-use crate::source_provider::{FsSourceProvider, SourceProvider};
+use crate::infrastructure::source::fs::FsSourceProvider;
 use crate::validate::{validate_page, validate_workspace};
 
 #[derive(Debug, Clone)]
@@ -135,7 +136,7 @@ fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
 mod tests {
     use super::*;
     use crate::domain::source::SourceFile;
-    use crate::source_provider::InMemorySourceProvider;
+    use crate::infrastructure::source::in_memory::InMemorySourceProvider;
 
     fn source_file(identity: &str, text: &str) -> SourceFile {
         SourceFile::new_with_identity_path(
