@@ -6,6 +6,7 @@ mod identity;
 mod inline;
 mod parser;
 mod render;
+mod scan;
 mod source;
 mod source_provider;
 mod validate;
