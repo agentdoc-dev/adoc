@@ -3,17 +3,18 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct ObjectId(String);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ObjectIdError;
+
 impl ObjectId {
-    /// Construct an Object ID from arbitrary text.
-    ///
-    /// In v0.1 this accepts any string. CONTEXT.md specifies that Object IDs
-    /// are "lowercase dot-separated identifiers with at least two kebab-case
-    /// segments"; v0.x will tighten `new` to enforce that grammar. When that
-    /// happens, callers that legitimately need to bypass validation (today:
-    /// `PageId::untitled_fallback`) must move to [`ObjectId::new_unchecked`]
-    /// rather than fight the validator.
-    pub(crate) fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
+    /// Construct an Object ID that satisfies the AgentDoc grammar.
+    pub(crate) fn new(value: impl Into<String>) -> Result<Self, ObjectIdError> {
+        let value = value.into();
+        if is_valid_object_id(&value) {
+            Ok(Self(value))
+        } else {
+            Err(ObjectIdError)
+        }
     }
 
     /// Construct an Object ID without enforcing the segment-grammar invariant.
@@ -31,6 +32,26 @@ impl ObjectId {
     pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+fn is_valid_object_id(value: &str) -> bool {
+    let mut segment_count = 0;
+    for segment in value.split('.') {
+        segment_count += 1;
+        if !is_valid_segment(segment) {
+            return false;
+        }
+    }
+    segment_count >= 2
+}
+
+fn is_valid_segment(segment: &str) -> bool {
+    !segment.is_empty()
+        && !segment.starts_with('-')
+        && !segment.ends_with('-')
+        && segment.chars().all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+        })
 }
 
 impl fmt::Display for ObjectId {
@@ -59,8 +80,8 @@ impl PageId {
         Self(id)
     }
 
-    pub(crate) fn from_string(value: impl Into<String>) -> Self {
-        Self(ObjectId::new(value))
+    pub(crate) fn from_string(value: impl Into<String>) -> Result<Self, ObjectIdError> {
+        ObjectId::new(value).map(Self)
     }
 
     pub(crate) fn untitled_fallback() -> Self {
@@ -101,10 +122,26 @@ mod tests {
     }
 
     #[test]
-    fn new_currently_accepts_arbitrary_input() {
-        // Document the v0.1 status quo. When v0.x adds grammar validation,
-        // this test should be updated (and a separate ADR should land first).
-        let id = ObjectId::new("anything goes here");
-        assert_eq!(id.as_str(), "anything goes here");
+    fn new_accepts_lowercase_dot_separated_kebab_segments() {
+        let id = ObjectId::new("billing.credits.decrement-after-success").expect("valid Object ID");
+        assert_eq!(id.as_str(), "billing.credits.decrement-after-success");
+    }
+
+    #[test]
+    fn new_rejects_single_segment_value() {
+        assert!(ObjectId::new("untitled").is_err());
+    }
+
+    #[test]
+    fn new_rejects_uppercase_underscores_spaces_and_edge_hyphens() {
+        for value in [
+            "Billing.credits",
+            "billing_credit.limit",
+            "billing.credits limit",
+            "billing.-credits",
+            "billing.credits-",
+        ] {
+            assert!(ObjectId::new(value).is_err(), "{value} should be invalid");
+        }
     }
 }

@@ -183,6 +183,19 @@ fn consume_heading(
             )),
         );
     }
+    if let Some(invalid_id) = heading.invalid_page_id {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                "Object ID must use lowercase dot-separated kebab-case segments with at least two segments",
+            )
+            .with_span(ctx.source.span_for_line_columns(
+                ctx.line_number,
+                invalid_id.start_column,
+                invalid_id.end_column,
+            )),
+        );
+    }
 
     let (inlines, heading_diagnostics) = inline::parse_inlines(
         &heading.text,
@@ -293,6 +306,7 @@ struct ParsedHeading {
     text_column: u32,
     doc_id: Option<ObjectId>,
     malformed_page_annotation: Option<PageAnnotationSpan>,
+    invalid_page_id: Option<PageAnnotationSpan>,
 }
 
 #[derive(Clone, Copy)]
@@ -322,6 +336,7 @@ fn parse_heading(line: &str, leading_indent_columns: u32) -> Option<ParsedHeadin
         text_column,
         doc_id: annotation.doc_id,
         malformed_page_annotation: annotation.malformed_span,
+        invalid_page_id: annotation.invalid_id_span,
     })
 }
 
@@ -329,6 +344,7 @@ struct ParsedPageAnnotation {
     text: String,
     doc_id: Option<ObjectId>,
     malformed_span: Option<PageAnnotationSpan>,
+    invalid_id_span: Option<PageAnnotationSpan>,
 }
 
 fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPageAnnotation {
@@ -337,6 +353,7 @@ fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPa
             text: raw_text.to_string(),
             doc_id: None,
             malformed_span: None,
+            invalid_id_span: None,
         };
     };
 
@@ -351,6 +368,7 @@ fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPa
             text: raw_text.to_string(),
             doc_id: None,
             malformed_span: None,
+            invalid_id_span: None,
         };
     }
 
@@ -365,6 +383,7 @@ fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPa
                 annotation_start,
                 raw_text.len(),
             )),
+            invalid_id_span: None,
         };
     };
     let id_end = id_start + closing_parenthesis;
@@ -383,6 +402,7 @@ fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPa
             } else {
                 None
             },
+            invalid_id_span: None,
         };
     }
 
@@ -397,13 +417,28 @@ fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPa
                 annotation_start,
                 raw_text.len(),
             )),
+            invalid_id_span: None,
         };
     }
 
-    ParsedPageAnnotation {
-        text: raw_text[..annotation_start].trim().to_string(),
-        doc_id: Some(ObjectId::new(id)),
-        malformed_span: None,
+    match ObjectId::new(id) {
+        Ok(id) => ParsedPageAnnotation {
+            text: raw_text[..annotation_start].trim().to_string(),
+            doc_id: Some(id),
+            malformed_span: None,
+            invalid_id_span: None,
+        },
+        Err(_) => ParsedPageAnnotation {
+            text: raw_text.to_string(),
+            doc_id: None,
+            malformed_span: None,
+            invalid_id_span: Some(annotation_span(
+                raw_text_start_column,
+                raw_text,
+                id_start,
+                id_end,
+            )),
+        },
     }
 }
 

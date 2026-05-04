@@ -26,6 +26,7 @@ pub enum DiagnosticCode {
     ParseUnsafeLink,
     ParseUnclosedFence,
     ParseMalformedPageAnnotation,
+    IdInvalid,
     IoUnreadableFile,
 }
 
@@ -36,6 +37,7 @@ impl DiagnosticCode {
             DiagnosticCode::ParseUnsafeLink => "parse.unsafe_link",
             DiagnosticCode::ParseUnclosedFence => "parse.unclosed_fence",
             DiagnosticCode::ParseMalformedPageAnnotation => "parse.malformed_page_annotation",
+            DiagnosticCode::IdInvalid => "id.invalid",
             DiagnosticCode::IoUnreadableFile => "io.unreadable_file",
         }
     }

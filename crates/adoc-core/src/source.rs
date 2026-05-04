@@ -235,7 +235,7 @@ pub(crate) fn derive_page_id(path: &Path) -> PageId {
     if id_segments.is_empty() {
         PageId::untitled_fallback()
     } else {
-        PageId::from_string(id_segments.join("."))
+        PageId::from_string(id_segments.join(".")).unwrap_or_else(|_| PageId::untitled_fallback())
     }
 }
 

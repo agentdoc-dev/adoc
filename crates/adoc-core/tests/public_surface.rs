@@ -40,6 +40,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::ParseUnsafeLink;
     let _ = DiagnosticCode::ParseUnclosedFence;
     let _ = DiagnosticCode::ParseMalformedPageAnnotation;
+    let _ = DiagnosticCode::IdInvalid;
     let _ = DiagnosticCode::IoUnreadableFile;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();

@@ -195,7 +195,7 @@ mod tests {
         let span = dummy_span;
 
         let page = PageAst {
-            id: PageId::from_string("guide"),
+            id: PageId::from_string("team.guide").expect("test page id is valid"),
             title: Some("Title".to_string()),
             source_path: PathBuf::from("guide.adoc"),
             blocks: vec![

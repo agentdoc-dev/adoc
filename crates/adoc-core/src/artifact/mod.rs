@@ -43,7 +43,7 @@ mod tests {
 
     fn page(id: &str) -> PageAst {
         PageAst {
-            id: PageId::from_string(id),
+            id: PageId::from_string(id).expect("test page id is valid"),
             title: None,
             source_path: PathBuf::from(format!("{id}.adoc")),
             blocks: Vec::new(),
@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn artifact_writer_supports_distinct_output_types() {
-        let pages = vec![page("a"), page("b")];
+        let pages = vec![page("team.a"), page("team.b")];
         let diagnostics: Vec<Diagnostic> = Vec::new();
 
         let summary = CountingArtifact.build(&pages, &diagnostics);
