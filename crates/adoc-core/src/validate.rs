@@ -77,7 +77,14 @@ impl ValidationRule for RawHtmlForbidden {
                 BlockAst::Paragraph(paragraph) => {
                     flag_raw_html_in_span(source, &paragraph.span, sink)
                 }
-                BlockAst::List(list) => flag_raw_html_in_span(source, &list.span, sink),
+                // Walk per-item spans, not `list.span`. `list.span` covers
+                // only the first item's line; raw HTML in the 2nd+ items
+                // would slip past if we used it. PR #20 review (P1).
+                BlockAst::List(list) => {
+                    for item in &list.items {
+                        flag_raw_html_in_span(source, &item.span, sink);
+                    }
+                }
             }
         }
     }
@@ -430,18 +437,9 @@ mod tests {
         assert!(diagnostics.is_empty());
     }
 
-    // --- P1 spec tests pinned for TB-9 (PR #20 review) ---
-    //
-    // These two tests assert the post-fix behavior of `RawHtmlForbidden`:
-    // raw HTML in any list item — not just the first — must produce a
-    // `parse.raw_html` diagnostic. They are `#[ignore]`-d through TB-1..TB-8
-    // because the validator consults `list.span` (which only covers the first
-    // item line) and the parser never extends that span when more items are
-    // appended (parser.rs `push_list_item`). TB-9 un-ignores them and adds
-    // the validator change that makes them pass.
+    // --- P1 fix tests (PR #20 review): raw HTML in any list item flags ---
 
     #[test]
-    #[ignore = "P1: un-ignored in TB-9 (PR #20 review)"]
     fn raw_html_in_second_unordered_list_item_flags() {
         let diagnostics =
             validate_text("# Bug @doc(team.bug)\n\n- first item\n- second has <span>raw</span>\n");
@@ -460,7 +458,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "P1: un-ignored in TB-9 (PR #20 review)"]
     fn raw_html_in_second_ordered_list_item_flags() {
         let diagnostics = validate_text(
             "# Bug @doc(team.bug)\n\n1. first item\n2. second has <span>raw</span>\n",
@@ -476,6 +473,49 @@ mod tests {
         assert_eq!(
             span.start.line, 4,
             "diagnostic must point at the 2nd item's line"
+        );
+    }
+
+    #[test]
+    fn raw_html_in_first_list_item_still_flags() {
+        let diagnostics =
+            validate_text("# Bug @doc(team.bug)\n\n- first has <span>raw</span>\n- second item\n");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
+        assert_eq!(diagnostics[0].span.as_ref().unwrap().start.line, 3);
+    }
+
+    #[test]
+    fn raw_html_in_third_list_item_flags() {
+        let diagnostics = validate_text(
+            "# Bug @doc(team.bug)\n\n- one\n- two\n- three has <span>raw</span>\n- four\n",
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
+        assert_eq!(
+            diagnostics[0].span.as_ref().unwrap().start.line,
+            5,
+            "diagnostic must point at the 3rd item's line"
+        );
+    }
+
+    #[test]
+    fn raw_html_in_multiple_list_items_emits_one_diagnostic_per_offender() {
+        let diagnostics = validate_text(
+            "# Bug @doc(team.bug)\n\n- first <a>raw</a>\n- second <span>raw</span>\n",
+        );
+
+        assert_eq!(
+            diagnostics.len(),
+            2,
+            "one diagnostic per offending item, got {diagnostics:?}"
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .all(|d| d.code == DiagnosticCode::ParseRawHtml)
         );
     }
 

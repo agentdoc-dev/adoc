@@ -58,20 +58,20 @@ fn snapshot_check_passes_for_comprehensive_prose_fixture() {
 }
 
 #[test]
-fn snapshot_check_silently_passes_list_with_html_in_second_item() {
-    // Pins the P1 bug as observed behavior: today this fixture silently passes
-    // because `RawHtmlForbidden` consults `list.span` (which only covers the
-    // first item line) instead of per-item spans. TB-9 flips the validator;
-    // when it lands, this snapshot becomes "exit-success: false" with a
-    // `parse.raw_html` diagnostic at line 7. Accept the delta intentionally
-    // via `cargo insta review` in the TB-9 commit — and ONLY then.
+fn snapshot_check_flags_raw_html_in_second_list_item() {
+    // Post-TB-9: `RawHtmlForbidden` walks per-item list spans, so raw HTML
+    // in any item — not just the first — produces `parse.raw_html`. This
+    // snapshot pins the diagnostic shape end-to-end (path, line, column,
+    // severity, code, message, summary). Pre-TB-9 this fixture silently
+    // passed; the TB-9 commit accepted exactly one snapshot delta here
+    // (PR #20 review, P1).
     let combined = run_check_in_workspace(
         "snap-check-list-html-2nd-item",
         "v0_1/list_with_html_in_second_item.adoc",
         "list_with_html_in_second_item.adoc",
     );
 
-    insta::assert_snapshot!("check_list_html_in_second_item_bug_state", combined);
+    insta::assert_snapshot!("check_list_html_in_second_item_flags", combined);
 }
 
 struct TestWorkspace {

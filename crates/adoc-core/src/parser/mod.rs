@@ -505,13 +505,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_page_list_span_currently_covers_only_first_item_line() {
-        // Locks current bug-as-state per PR #20 review (P1): the list builder
-        // sets `list_span` once at first-item construction and never extends
-        // it when more items are appended. This test pins that behavior so
-        // any TB-2..TB-8 tracer that accidentally fixes the span will surface
-        // as a test failure rather than a silent shift. TB-9 deletes (or
-        // inverts) this assertion as part of the visible bug-fix diff.
+    fn parse_page_list_span_covers_only_first_item_line() {
+        // Documents `ListBuilder.list_span` semantics: it is set once at the
+        // first item's line and never extended on push. Validators walk
+        // `ListItem.span` per item (see `RawHtmlForbidden`), so `list.span`
+        // is only the start anchor. This test guards against a future
+        // accidental "extend list_span on push" change that would silently
+        // drift list-level span semantics.
         let (page, diagnostics) =
             parse_source("# Lists @doc(team.lists)\n\n- one\n- two\n- three\n");
         assert!(
