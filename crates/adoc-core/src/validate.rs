@@ -23,40 +23,42 @@ pub(crate) trait ValidationRule {
 /// ID uniqueness, link-target resolution, hierarchy checks). Mirrors
 /// [`ValidationRule`] so adding a workspace-level rule is a new adapter, not
 /// a branch inside the orchestrator.
-///
-/// The trait has no production impls today; the first one will trip the
-/// `expect(dead_code)` (in non-test builds) and signal to remove the attribute.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Port awaiting its first concrete adapter; tests exercise the trait shape."
-    )
-)]
 pub(crate) trait WorkspaceRule {
     fn check(&self, workspace: &WorkspaceAst, sink: &mut Vec<Diagnostic>);
 }
 
+/// Strict-mode page rules, applied in registration order. Adding a new rule is
+/// a new adapter plus a new entry here — no edit to `validate_page`. The order
+/// is load-bearing: per line, raw HTML reports before the line's inline
+/// content so that a line containing both a raw tag and an unsafe link reports
+/// the raw tag first.
+const PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLinkForbidden];
+
+/// Workspace-level rules, applied in registration order. Empty in v0.1 — the
+/// seam exists so future cross-page invariants (duplicate Object IDs across
+/// pages, broken `[link](id)` references) land as a new adapter plus a new
+/// entry here, not as a branch inside `compile_with_provider`.
+const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[];
+
 /// Run every strict-mode rule against `page`, appending diagnostics in source
-/// order. The order of rules is chosen so that diagnostic emission matches
-/// the order the parser used to produce: per line, raw HTML before the line's
-/// inline content (so that a line containing both a raw tag and an unsafe
-/// link reports the raw tag first).
+/// order.
 pub(crate) fn validate_page(page: &PageAst, source: &SourceFile) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    RawHtmlForbidden.check(page, source, &mut diagnostics);
-    UnsafeLinkForbidden.check(page, source, &mut diagnostics);
+    for rule in PAGE_RULES {
+        rule.check(page, source, &mut diagnostics);
+    }
     diagnostics
 }
 
-/// Run every workspace-level rule against `workspace`, appending diagnostics
-/// in registration order. The production registry is empty today: this is the
-/// seam through which future cross-page invariants (e.g. duplicate Object IDs
-/// across pages, broken `[link](id)` references) will land. Workspace rules
-/// run after per-page validation, so per-page errors are already in the sink
-/// by the time the orchestrator calls into here.
-pub(crate) fn validate_workspace(_workspace: &WorkspaceAst) -> Vec<Diagnostic> {
-    Vec::new()
+/// Run every workspace-level rule against `workspace`. Empty registry in v0.1.
+/// Workspace rules run after per-page validation, so per-page errors are
+/// already in the sink by the time the orchestrator calls into here.
+pub(crate) fn validate_workspace(workspace: &WorkspaceAst) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    for rule in WORKSPACE_RULES {
+        rule.check(workspace, &mut diagnostics);
+    }
+    diagnostics
 }
 
 /// Rejects raw HTML in the source: any line that contains a recognizable HTML
