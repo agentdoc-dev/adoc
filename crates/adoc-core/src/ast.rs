@@ -41,7 +41,17 @@ pub(crate) struct ParagraphAst {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ListAst {
     pub(crate) kind: ListKind,
-    pub(crate) items: Vec<Vec<InlineSegment>>,
+    pub(crate) items: Vec<ListItem>,
+    pub(crate) span: SourceSpan,
+}
+
+/// One item in a list — its inline content plus the source span of the line
+/// it occupies. Reified per ADR-0007/-0006 so each item carries its own
+/// position; future per-item rules walk `item.span` directly instead of
+/// re-deriving offsets from the enclosing list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ListItem {
+    pub(crate) inlines: Vec<InlineSegment>,
     pub(crate) span: SourceSpan,
 }
 

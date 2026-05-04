@@ -123,7 +123,7 @@ fn check_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
         BlockAst::Paragraph(paragraph) => check_inlines(&paragraph.inlines, sink),
         BlockAst::List(list) => {
             for item in &list.items {
-                check_inlines(item, sink);
+                check_inlines(&item.inlines, sink);
             }
         }
         BlockAst::CodeBlock(_) => {}

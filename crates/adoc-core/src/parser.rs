@@ -1,5 +1,7 @@
-use crate::ast::{BlockAst, CodeBlockAst, HeadingAst, ListAst, ListKind, PageAst, ParagraphAst};
-use crate::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
+use crate::ast::{
+    BlockAst, CodeBlockAst, HeadingAst, ListAst, ListItem, ListKind, PageAst, ParagraphAst,
+};
+use crate::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::identity::{ObjectId, PageId};
 use crate::inline::{self, InlineOrigin, InlineSegment};
 use crate::source::{SourceFile, derive_page_id};
@@ -213,10 +215,67 @@ struct ParsedHeading {
     malformed_page_annotation: Option<PageAnnotationSpan>,
 }
 
-struct PendingList {
+/// In-progress builder for a list block, replacing the previous `PendingList`
+/// state record. Owns the lifecycle: `start` opens with the first item,
+/// `push` appends, `finish` consumes self and returns the immutable
+/// [`ListAst`]. Callers see a single state object instead of a mutable tuple
+/// of fields.
+///
+/// `list_span` is set once at first-item construction and deliberately NOT
+/// extended on `push`. This preserves the v0.1 bug-as-state where
+/// `RawHtmlForbidden` only sees the first item's line range; TB-9 will switch
+/// the validator to walk per-item spans (`ListItem.span`) instead.
+struct ListBuilder {
     kind: ListKind,
-    items: Vec<Vec<InlineSegment>>,
-    span: SourceSpan,
+    items: Vec<ListItem>,
+    list_span: crate::diagnostic::SourceSpan,
+}
+
+impl ListBuilder {
+    fn start(
+        source: &SourceFile,
+        kind: ListKind,
+        item_inlines: Vec<InlineSegment>,
+        line_number: u32,
+        line: &str,
+    ) -> Self {
+        let item_span = source.span_for_line(line_number, line);
+        Self {
+            kind,
+            items: vec![ListItem {
+                inlines: item_inlines,
+                span: item_span.clone(),
+            }],
+            list_span: item_span,
+        }
+    }
+
+    fn kind(&self) -> &ListKind {
+        &self.kind
+    }
+
+    fn push(
+        &mut self,
+        source: &SourceFile,
+        item_inlines: Vec<InlineSegment>,
+        line_number: u32,
+        line: &str,
+    ) {
+        let item_span = source.span_for_line(line_number, line);
+        self.items.push(ListItem {
+            inlines: item_inlines,
+            span: item_span,
+        });
+        // Intentionally NOT extending list_span — see ListBuilder doc-comment.
+    }
+
+    fn finish(self) -> ListAst {
+        ListAst {
+            kind: self.kind,
+            items: self.items,
+            span: self.list_span,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -365,37 +424,33 @@ fn parse_ordered_list_item(line: &str) -> Option<(&str, u32)> {
 fn push_list_item(
     source: &SourceFile,
     blocks: &mut Vec<BlockAst>,
-    pending_list: &mut Option<PendingList>,
+    pending_list: &mut Option<ListBuilder>,
     kind: ListKind,
-    item: Vec<InlineSegment>,
+    item_inlines: Vec<InlineSegment>,
     line_number: u32,
     line: &str,
 ) {
-    if let Some(list) = pending_list.as_mut()
-        && list.kind == kind
+    if let Some(builder) = pending_list.as_mut()
+        && builder.kind() == &kind
     {
-        list.items.push(item);
+        builder.push(source, item_inlines, line_number, line);
         return;
     }
 
     flush_list(blocks, pending_list);
-    *pending_list = Some(PendingList {
+    *pending_list = Some(ListBuilder::start(
+        source,
         kind,
-        items: vec![item],
-        span: source.span_for_line(line_number, line),
-    });
+        item_inlines,
+        line_number,
+        line,
+    ));
 }
 
-fn flush_list(blocks: &mut Vec<BlockAst>, pending_list: &mut Option<PendingList>) {
-    let Some(list) = pending_list.take() else {
-        return;
-    };
-
-    blocks.push(BlockAst::List(ListAst {
-        kind: list.kind,
-        items: list.items,
-        span: list.span,
-    }));
+fn flush_list(blocks: &mut Vec<BlockAst>, pending_list: &mut Option<ListBuilder>) {
+    if let Some(builder) = pending_list.take() {
+        blocks.push(BlockAst::List(builder.finish()));
+    }
 }
 
 fn flush_paragraph(

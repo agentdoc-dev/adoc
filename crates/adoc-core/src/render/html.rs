@@ -51,7 +51,7 @@ fn render_block(block: &BlockAst, html: &mut String) {
             html.push_str(">\n");
             for item in &list.items {
                 html.push_str("<li>");
-                render_inlines(item, html);
+                render_inlines(&item.inlines, html);
                 html.push_str("</li>\n");
             }
             html.push_str("</");
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn render_html_flows_inlines_through_heading_paragraph_and_list_item() {
-        use crate::ast::{HeadingAst, ListAst, ListKind, ParagraphAst};
+        use crate::ast::{HeadingAst, ListAst, ListItem, ListKind, ParagraphAst};
         use crate::identity::PageId;
 
         let span = dummy_span;
@@ -219,10 +219,13 @@ mod tests {
                 }),
                 BlockAst::List(ListAst {
                     kind: ListKind::Unordered,
-                    items: vec![vec![
-                        InlineSegment::Text("Run ".to_string()),
-                        InlineSegment::Code("adoc check".to_string()),
-                    ]],
+                    items: vec![ListItem {
+                        inlines: vec![
+                            InlineSegment::Text("Run ".to_string()),
+                            InlineSegment::Code("adoc check".to_string()),
+                        ],
+                        span: span(),
+                    }],
                     span: span(),
                 }),
             ],
