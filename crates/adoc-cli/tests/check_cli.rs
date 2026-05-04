@@ -1,16 +1,11 @@
+mod support;
+
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-fn fixture_path(relative: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join(relative)
-}
+use support::{TestWorkspace, fixture_path};
 
 #[test]
 fn check_accepts_v0_1_prose_fixture_with_all_inline_syntax() {
@@ -752,35 +747,4 @@ fn check_reports_unreadable_source_path() {
     assert!(stdout.contains("error[io.unreadable_file]"));
     assert!(stdout.contains(source.to_str().expect("source path is utf-8")));
     assert!(stdout.contains("1 errors"));
-}
-
-struct TestWorkspace {
-    pub root: PathBuf,
-}
-
-impl TestWorkspace {
-    fn new(name: &str) -> Self {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock is after epoch")
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("adoc-{name}-{nonce}"));
-        fs::create_dir_all(&root).expect("test workspace can be created");
-        Self { root }
-    }
-
-    fn write(&self, relative_path: &str, contents: &str) -> PathBuf {
-        let path = self.root.join(relative_path);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("parent directory can be created");
-        }
-        fs::write(&path, contents).expect("test source can be written");
-        path
-    }
-}
-
-impl Drop for TestWorkspace {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
-    }
 }

@@ -6,17 +6,12 @@
 //! Snapshots live in `tests/snapshots/`. To accept an intentional change, run
 //! `cargo insta review`.
 
-use std::fs;
-use std::path::PathBuf;
-use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+mod support;
 
-fn fixture_path(relative: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join(relative)
-}
+use std::fs;
+use std::process::Command;
+
+use support::{TestWorkspace, fixture_path};
 
 fn run_check_in_workspace(name: &str, fixture_relative: &str, source_file: &str) -> String {
     let workspace = TestWorkspace::new(name);
@@ -68,34 +63,4 @@ fn snapshot_check_flags_raw_html_in_second_list_item() {
     );
 
     insta::assert_snapshot!("check_list_html_in_second_item_flags", combined);
-}
-
-struct TestWorkspace {
-    root: PathBuf,
-}
-
-impl TestWorkspace {
-    fn new(name: &str) -> Self {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock is after epoch")
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("adoc-{name}-{nonce}"));
-        fs::create_dir_all(&root).expect("test workspace can be created");
-        Self { root }
-    }
-
-    fn write(&self, relative_path: &str, contents: &str) {
-        let path = self.root.join(relative_path);
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("parent directory can be created");
-        }
-        fs::write(&path, contents).expect("test source can be written");
-    }
-}
-
-impl Drop for TestWorkspace {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
-    }
 }
