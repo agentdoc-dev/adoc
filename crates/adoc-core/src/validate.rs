@@ -67,30 +67,22 @@ pub(crate) struct RawHtmlForbidden;
 
 impl ValidationRule for RawHtmlForbidden {
     fn check(&self, page: &PageAst, source: &SourceFile, sink: &mut Vec<Diagnostic>) {
-        let lines: Vec<&str> = source.text.lines().collect();
         for block in &page.blocks {
             match block {
                 BlockAst::CodeBlock(_) => continue,
-                BlockAst::Heading(heading) => {
-                    flag_raw_html_in_span(&lines, source, &heading.span, sink)
-                }
+                BlockAst::Heading(heading) => flag_raw_html_in_span(source, &heading.span, sink),
                 BlockAst::Paragraph(paragraph) => {
-                    flag_raw_html_in_span(&lines, source, &paragraph.span, sink)
+                    flag_raw_html_in_span(source, &paragraph.span, sink)
                 }
-                BlockAst::List(list) => flag_raw_html_in_span(&lines, source, &list.span, sink),
+                BlockAst::List(list) => flag_raw_html_in_span(source, &list.span, sink),
             }
         }
     }
 }
 
-fn flag_raw_html_in_span(
-    lines: &[&str],
-    source: &SourceFile,
-    span: &SourceSpan,
-    sink: &mut Vec<Diagnostic>,
-) {
+fn flag_raw_html_in_span(source: &SourceFile, span: &SourceSpan, sink: &mut Vec<Diagnostic>) {
     for line_number in span.start.line..=span.end.line {
-        let Some(line) = lines.get(line_number.saturating_sub(1) as usize) else {
+        let Some(line) = source.line_text(line_number) else {
             continue;
         };
         let Some(matched) = find_raw_html(line) else {
