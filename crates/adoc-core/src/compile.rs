@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::path::PathBuf;
 
 use crate::artifact::{AgentJsonArtifact, AgentJsonDocument, ArtifactWriter};
@@ -49,6 +50,7 @@ pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileR
     diagnostics.extend(validate_pages(&parsed));
     let workspace = assemble_workspace(parsed);
     diagnostics.extend(validate_workspace(&workspace));
+    sort_diagnostics_by_source(&mut diagnostics);
     let artifacts = build_artifacts(&workspace, &diagnostics);
     CompileResult {
         diagnostics,
@@ -112,6 +114,19 @@ fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Opti
             html: HtmlRenderer.render(&workspace.pages),
             agent_json: AgentJsonArtifact.build(&workspace.pages, diagnostics),
         })
+}
+
+fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
+    diagnostics.sort_by(|left, right| match (&left.span, &right.span) {
+        (Some(left_span), Some(right_span)) => left_span
+            .file
+            .cmp(&right_span.file)
+            .then_with(|| left_span.start.line.cmp(&right_span.start.line))
+            .then_with(|| left_span.start.column.cmp(&right_span.start.column)),
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (None, None) => Ordering::Equal,
+    });
 }
 
 #[cfg(test)]
