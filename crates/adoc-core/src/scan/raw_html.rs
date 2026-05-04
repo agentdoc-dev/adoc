@@ -124,6 +124,16 @@ mod tests {
     }
 
     #[test]
+    fn matches_tag_close_after_quoted_greater_than_in_attribute() {
+        let m = find_raw_html(r#"<a href="x>y">link</a>"#).expect("expected match");
+        assert_eq!(m.start_column, 1);
+        assert_eq!(
+            m.end_column, 15,
+            "match should end after the closing bracket outside the quoted attribute"
+        );
+    }
+
+    #[test]
     fn returns_none_when_tag_name_is_not_alphabetic() {
         assert!(find_raw_html("<1div>").is_none());
     }
