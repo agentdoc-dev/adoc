@@ -1,0 +1,9 @@
+# Billing Credits @doc(billing.credits-page)
+
+The billing page defines the first claim.
+
+::claim billing.credits.foo
+status: verified
+--
+Credits are granted after payment succeeds.
+::
