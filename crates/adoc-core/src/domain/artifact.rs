@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use crate::domain::ast::PageAst;
 use crate::domain::diagnostic::Diagnostic;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -21,6 +22,16 @@ pub struct AgentJsonPage {
     pub id: String,
     pub title: Option<String>,
     pub source_path: String,
+}
+
+impl From<&PageAst> for AgentJsonPage {
+    fn from(page: &PageAst) -> Self {
+        Self {
+            id: page.id.as_str().to_string(),
+            title: page.title.clone(),
+            source_path: page.source_path.display().to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

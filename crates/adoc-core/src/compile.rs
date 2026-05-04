@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
 use std::path::PathBuf;
 
-use crate::artifact::{AgentJsonArtifact, AgentJsonDocument, ArtifactWriter};
+use crate::domain::artifact::AgentJsonDocument;
+use crate::infrastructure::artifact::{AgentJsonArtifact, ArtifactWriter};
 use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::parser::parse_page;
