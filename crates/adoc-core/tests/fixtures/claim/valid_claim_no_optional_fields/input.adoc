@@ -1,0 +1,9 @@
+# Billing Guide @doc(team.billing)
+
+The billing system records clean claim metadata.
+
+::claim billing.no-optional
+status: draft
+--
+A billing claim can omit optional metadata.
+::
