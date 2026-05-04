@@ -13,3 +13,6 @@ path = "src/main.rs"
 adoc-core = { path = "../adoc-core" }
 serde_json = "1"
 thiserror = "1"
+
+[dev-dependencies]
+insta = "1"

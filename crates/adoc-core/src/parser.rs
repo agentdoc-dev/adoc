@@ -486,6 +486,39 @@ mod tests {
     }
 
     #[test]
+    fn parse_page_list_span_currently_covers_only_first_item_line() {
+        // Locks current bug-as-state per PR #20 review (P1): `PendingList.span`
+        // is set once at first-item construction and never extended when more
+        // items are appended. This test pins that behavior so any TB-2..TB-8
+        // tracer that accidentally fixes the span will surface as a test
+        // failure rather than a silent shift. TB-9 deletes (or inverts) this
+        // assertion as part of the visible bug-fix diff.
+        let (page, diagnostics) = parse_source(
+            "# Lists @doc(team.lists)\n\n- one\n- two\n- three\n",
+        );
+        assert!(diagnostics.is_empty(), "fixture should parse cleanly: {diagnostics:?}");
+
+        let list = page
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::List(list) => Some(list),
+                _ => None,
+            })
+            .expect("list block exists");
+
+        assert_eq!(list.items.len(), 3, "fixture has three items");
+        assert_eq!(
+            list.span.start.line, 3,
+            "list span starts at the first item's line"
+        );
+        assert_eq!(
+            list.span.end.line, 3,
+            "BUG (P1): list span end-line equals start-line, not the last item's line"
+        );
+    }
+
+    #[test]
     fn parse_page_spans_multiline_paragraph_source_range() {
         let (page, diagnostics) = parse_source("# Guide\n\nCafé first\nsecond line\n");
 

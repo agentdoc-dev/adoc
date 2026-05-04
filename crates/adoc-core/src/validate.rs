@@ -518,6 +518,50 @@ mod tests {
         assert!(diagnostics.is_empty());
     }
 
+    // --- P1 spec tests pinned for TB-9 (PR #20 review) ---
+    //
+    // These two tests assert the post-fix behavior of `RawHtmlForbidden`:
+    // raw HTML in any list item — not just the first — must produce a
+    // `parse.raw_html` diagnostic. They are `#[ignore]`-d through TB-1..TB-8
+    // because the validator consults `list.span` (which only covers the first
+    // item line) and the parser never extends that span when more items are
+    // appended (parser.rs `push_list_item`). TB-9 un-ignores them and adds
+    // the validator change that makes them pass.
+
+    #[test]
+    #[ignore = "P1: un-ignored in TB-9 (PR #20 review)"]
+    fn raw_html_in_second_unordered_list_item_flags() {
+        let diagnostics = validate_text(
+            "# Bug @doc(team.bug)\n\n- first item\n- second has <span>raw</span>\n",
+        );
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "expected one parse.raw_html for the 2nd item, got {diagnostics:?}"
+        );
+        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
+        assert_eq!(span.start.line, 4, "diagnostic must point at the 2nd item's line");
+    }
+
+    #[test]
+    #[ignore = "P1: un-ignored in TB-9 (PR #20 review)"]
+    fn raw_html_in_second_ordered_list_item_flags() {
+        let diagnostics = validate_text(
+            "# Bug @doc(team.bug)\n\n1. first item\n2. second has <span>raw</span>\n",
+        );
+
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "expected one parse.raw_html for the 2nd item, got {diagnostics:?}"
+        );
+        assert_eq!(diagnostics[0].code, "parse.raw_html");
+        let span = diagnostics[0].span.as_ref().expect("diagnostic has span");
+        assert_eq!(span.start.line, 4, "diagnostic must point at the 2nd item's line");
+    }
+
     #[test]
     fn unsafe_link_rule_reports_link_column_in_indented_heading_padding() {
         let diagnostics = validate_text("##   [click](javascript:bad)\n");
