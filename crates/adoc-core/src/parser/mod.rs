@@ -416,6 +416,9 @@ fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPa
     let id_end = id_start + closing_parenthesis;
     let trailing_text = raw_text[id_end + 1..].trim();
     if !trailing_text.is_empty() {
+        // Treat annotation-looking parenthetical text as malformed, but leave
+        // prose examples like "Use the @doc(id) annotation" as ordinary heading
+        // text so authors can discuss the syntax without escaping it.
         return ParsedPageAnnotation {
             text: raw_text.to_string(),
             doc_id: None,
