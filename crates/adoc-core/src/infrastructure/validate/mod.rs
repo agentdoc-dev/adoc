@@ -155,6 +155,8 @@ fn check_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
         BlockAst::CodeBlock(_) => {}
         // Knowledge Object text is plain body/field text in v0.2. Inline
         // parsing for claim bodies lands in a later slice.
+        // TODO(v0.5): once claim bodies parse inline object references, run
+        // unsafe-link validation over those body inlines too.
         BlockAst::KnowledgeObject(_) | BlockAst::KnowledgeObjectPending(_) => {}
     }
 }
