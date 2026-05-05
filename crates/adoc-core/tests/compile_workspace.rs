@@ -1,6 +1,6 @@
 mod support;
 
-use adoc_core::{AgentJsonObject, CompileInput, DiagnosticCode, compile_workspace};
+use adoc_core::{AgentJsonObject, CompileInput, DiagnosticCode, Severity, compile_workspace};
 use support::TestWorkspace;
 
 #[test]
@@ -107,7 +107,7 @@ fn compile_workspace_resolves_claim_into_artifact_record() {
             "The billing system credits users automatically.\n",
             "\n",
             "::claim billing.credits\n",
-            "status: verified\n",
+            "status: draft\n",
             "owner: team-billing\n",
             "--\n",
             "The system credits users automatically when a payment fails.\n",
@@ -132,7 +132,7 @@ fn compile_workspace_resolves_claim_into_artifact_record() {
     let record: &AgentJsonObject = &artifacts.agent_json.objects[0];
     assert_eq!(record.id, "billing.credits");
     assert_eq!(record.kind, "claim");
-    assert_eq!(record.status, "verified");
+    assert_eq!(record.status, "draft");
     assert_eq!(
         record.body,
         "The system credits users automatically when a payment fails."
@@ -156,6 +156,169 @@ fn compile_workspace_resolves_claim_into_artifact_record() {
         "source_span.line must point at the ::claim open-fence line"
     );
     assert_eq!(record.source_span.column, 1);
+}
+
+#[test]
+fn compile_workspace_builds_verified_claim_with_all_v0_evidence() {
+    let workspace = TestWorkspace::new("verified-claim-all-evidence");
+    let source = workspace.write(
+        "billing.adoc",
+        concat!(
+            "# Billing Guide @doc(team.billing)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: verified\n",
+            "owner: team-billing\n",
+            "verified_at: 2026-05-05\n",
+            "source: billing-ledger\n",
+            "test: cargo test billing_credits\n",
+            "reviewed_by: qa-team\n",
+            "--\n",
+            "The system credits users automatically when a payment fails.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected verified claim to compile, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    let record = artifacts
+        .agent_json
+        .objects
+        .first()
+        .expect("claim object must be emitted");
+    assert_eq!(record.status, "verified");
+    assert_eq!(
+        record.fields.get("owner").map(String::as_str),
+        Some("team-billing")
+    );
+    assert_eq!(
+        record.fields.get("verified_at").map(String::as_str),
+        Some("2026-05-05")
+    );
+    assert_eq!(
+        record.fields.get("source").map(String::as_str),
+        Some("billing-ledger")
+    );
+    assert_eq!(
+        record.fields.get("test").map(String::as_str),
+        Some("cargo test billing_credits")
+    );
+    assert_eq!(
+        record.fields.get("reviewed_by").map(String::as_str),
+        Some("qa-team")
+    );
+    assert!(
+        artifacts.html.contains("claim claim--verified"),
+        "verified claim class missing: {}",
+        artifacts.html
+    );
+    assert!(
+        artifacts.html.contains("claim__verification"),
+        "verification section missing: {}",
+        artifacts.html
+    );
+    assert!(
+        artifacts
+            .html
+            .contains("claim__evidence-item claim__evidence-item--reviewed-by"),
+        "reviewed_by evidence marker missing: {}",
+        artifacts.html
+    );
+}
+
+#[test]
+fn compile_workspace_reports_all_missing_verified_claim_requirements() {
+    let workspace = TestWorkspace::new("verified-claim-missing-requirements");
+    let source = workspace.write(
+        "billing.adoc",
+        concat!(
+            "# Billing Guide @doc(team.billing)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: verified\n",
+            "--\n",
+            "The system credits users automatically when a payment fails.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "verified claim must be rejected");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let codes: Vec<_> = result
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert_eq!(
+        codes,
+        [
+            DiagnosticCode::SchemaMissingField,
+            DiagnosticCode::SchemaMissingField,
+            DiagnosticCode::ClaimVerifiedMissingEvidence,
+        ]
+    );
+    for diagnostic in &result.diagnostics {
+        assert_eq!(diagnostic.object_id.as_deref(), Some("billing.credits"));
+        assert!(
+            diagnostic
+                .help
+                .as_deref()
+                .is_some_and(|help| help.contains("Verified claims require")),
+            "verified diagnostic must explain the contract: {diagnostic:?}"
+        );
+    }
+    assert!(result.diagnostics[0].message.contains("`owner`"));
+    assert!(result.diagnostics[1].message.contains("`verified_at`"));
+}
+
+#[test]
+fn compile_workspace_warns_and_treats_status_casing_variant_as_plain() {
+    let workspace = TestWorkspace::new("verified-status-casing-warning");
+    let source = workspace.write(
+        "billing.adoc",
+        concat!(
+            "# Billing Guide @doc(team.billing)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: Verified\n",
+            "--\n",
+            "The system credits users automatically when a payment fails.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "casing variant should warn without verified-claim errors: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::ClaimStatusCasing
+    );
+    assert_eq!(result.diagnostics[0].severity, Severity::Warning);
+    assert_eq!(
+        result.diagnostics[0].object_id.as_deref(),
+        Some("billing.credits")
+    );
+    let artifacts = result.artifacts.expect("warnings must not block artifacts");
+    assert_eq!(artifacts.agent_json.objects[0].status, "Verified");
+    assert!(
+        !artifacts.html.contains("claim--verified"),
+        "casing variant must not render as verified: {}",
+        artifacts.html
+    );
 }
 
 #[test]
@@ -218,7 +381,7 @@ fn compile_workspace_blocks_artifacts_for_raw_html_in_claim_body() {
             "# Billing Guide @doc(team.billing)\n",
             "\n",
             "::claim billing.credits\n",
-            "status: verified\n",
+            "status: draft\n",
             "--\n",
             "Body <span>raw</span> text.\n",
             "::\n",

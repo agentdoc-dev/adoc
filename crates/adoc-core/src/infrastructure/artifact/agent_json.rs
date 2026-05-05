@@ -5,7 +5,13 @@ use crate::domain::artifact::{
 };
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::Diagnostic;
-use crate::domain::knowledge_object::{KnowledgeObject, claim::Claim};
+use crate::domain::knowledge_object::{
+    KnowledgeObject,
+    claim::{
+        Claim, Evidence, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
+        VERIFIED_AT_FIELD,
+    },
+};
 use crate::domain::ports::artifact_writer::ArtifactWriter;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -41,10 +47,7 @@ impl ArtifactWriter for AgentJsonArtifact {
 
 fn claim_to_agent_object(claim: &Claim, page_id: &str) -> AgentJsonObject {
     let span = claim.span();
-    let mut fields: BTreeMap<String, String> = BTreeMap::new();
-    for (k, v) in claim.fields().iter() {
-        fields.insert(k.clone(), v.clone());
-    }
+    let fields = fields_for_claim(claim);
     AgentJsonObject {
         id: claim.id().as_str().to_string(),
         kind: "claim".to_string(),
@@ -61,6 +64,50 @@ fn claim_to_agent_object(claim: &Claim, page_id: &str) -> AgentJsonObject {
     }
 }
 
+fn fields_for_claim(claim: &Claim) -> BTreeMap<String, String> {
+    let mut fields = BTreeMap::new();
+
+    for (key, value) in claim.fields().iter() {
+        if claim.verification().is_some() && is_verified_claim_dedicated_field(key) {
+            continue;
+        }
+        fields.insert(key.clone(), value.clone());
+    }
+
+    if let Some(verification) = claim.verification() {
+        fields.insert(
+            OWNER_FIELD.to_string(),
+            verification.owner().as_str().to_string(),
+        );
+        fields.insert(
+            VERIFIED_AT_FIELD.to_string(),
+            verification.verified_at().as_str().to_string(),
+        );
+        for evidence in verification.evidence() {
+            match evidence {
+                Evidence::Source(value) => {
+                    fields.insert(SOURCE_FIELD.to_string(), value.as_str().to_string());
+                }
+                Evidence::Test(value) => {
+                    fields.insert(TEST_FIELD.to_string(), value.as_str().to_string());
+                }
+                Evidence::ReviewedBy(value) => {
+                    fields.insert(REVIEWED_BY_FIELD.to_string(), value.as_str().to_string());
+                }
+            }
+        }
+    }
+
+    fields
+}
+
+fn is_verified_claim_dedicated_field(key: &str) -> bool {
+    matches!(
+        key,
+        OWNER_FIELD | VERIFIED_AT_FIELD | SOURCE_FIELD | TEST_FIELD | REVIEWED_BY_FIELD
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -70,7 +117,10 @@ mod tests {
     use crate::domain::ast::PageAst;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
     use crate::domain::identity::PageId;
-    use crate::domain::knowledge_object::{KnowledgeObject, claim::Claim};
+    use crate::domain::knowledge_object::{
+        KnowledgeObject,
+        claim::{Claim, Evidence, Owner, Verification, VerifiedAt},
+    };
     use crate::domain::ports::artifact_writer::ArtifactWriter;
 
     fn span() -> SourceSpan {
@@ -95,8 +145,16 @@ mod tests {
         body: &str,
         fields: BTreeMap<String, String>,
     ) -> BlockAst {
-        let claim =
-            Claim::try_new(id, Some(status), body, fields, span()).expect("test claim is valid");
+        let verification = (status == "verified").then(|| {
+            Verification::new(
+                Owner::try_new(fields.get(OWNER_FIELD).expect("owner")).expect("owner"),
+                VerifiedAt::try_new(fields.get(VERIFIED_AT_FIELD).expect("verified_at"))
+                    .expect("verified_at"),
+                vec![Evidence::source(fields.get(SOURCE_FIELD).expect("source")).expect("source")],
+            )
+        });
+        let claim = Claim::try_new(id, Some(status), body, fields, verification, span())
+            .expect("test claim is valid");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim)))
     }
 
@@ -115,7 +173,7 @@ mod tests {
             "team.guide",
             vec![make_claim(
                 "billing.credits",
-                "verified",
+                "plain",
                 "The system credits users automatically.",
                 BTreeMap::new(),
             )],
@@ -127,7 +185,7 @@ mod tests {
         let obj = &doc.objects[0];
         assert_eq!(obj.id, "billing.credits");
         assert_eq!(obj.kind, "claim");
-        assert_eq!(obj.status, "verified");
+        assert_eq!(obj.status, "plain");
         assert_eq!(obj.body, "The system credits users automatically.");
         assert_eq!(obj.page_id, "team.guide");
         assert!(
@@ -153,7 +211,7 @@ mod tests {
             "team.guide",
             vec![make_claim(
                 "billing.credits",
-                "verified",
+                "plain",
                 "The system credits users automatically.",
                 fields,
             )],
@@ -168,6 +226,45 @@ mod tests {
         assert!(
             !obj.fields.contains_key("status"),
             "status must not appear in fields map"
+        );
+    }
+
+    #[test]
+    fn agent_json_artifact_preserves_typed_verified_fields_in_flat_map() {
+        let fields = BTreeMap::from([
+            (OWNER_FIELD.to_string(), "team-billing".to_string()),
+            (VERIFIED_AT_FIELD.to_string(), "2026-05-05".to_string()),
+            (SOURCE_FIELD.to_string(), "payments ledger".to_string()),
+            ("audience".to_string(), "support".to_string()),
+        ]);
+        let page = make_page(
+            "team.guide",
+            vec![make_claim(
+                "billing.credits",
+                "verified",
+                "The system credits users automatically.",
+                fields,
+            )],
+        );
+        let artifact = AgentJsonArtifact;
+        let doc = artifact.build(&[page], &[]);
+
+        let obj = &doc.objects[0];
+        assert_eq!(
+            obj.fields.get(OWNER_FIELD).map(String::as_str),
+            Some("team-billing")
+        );
+        assert_eq!(
+            obj.fields.get(VERIFIED_AT_FIELD).map(String::as_str),
+            Some("2026-05-05")
+        );
+        assert_eq!(
+            obj.fields.get(SOURCE_FIELD).map(String::as_str),
+            Some("payments ledger")
+        );
+        assert_eq!(
+            obj.fields.get("audience").map(String::as_str),
+            Some("support")
         );
     }
 }

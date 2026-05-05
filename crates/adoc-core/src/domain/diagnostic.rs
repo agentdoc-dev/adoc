@@ -31,6 +31,8 @@ pub enum DiagnosticCode {
     ParseMalformedOpenFence,
     SchemaMissingField,
     SchemaDuplicateField,
+    ClaimVerifiedMissingEvidence,
+    ClaimStatusCasing,
     IdDuplicate,
     IdInvalid,
     IoUnreadableFile,
@@ -48,6 +50,8 @@ impl DiagnosticCode {
             DiagnosticCode::ParseMalformedOpenFence => "parse.malformed_open_fence",
             DiagnosticCode::SchemaMissingField => "schema.missing_field",
             DiagnosticCode::SchemaDuplicateField => "schema.duplicate_field",
+            DiagnosticCode::ClaimVerifiedMissingEvidence => "claim.verified_missing_evidence",
+            DiagnosticCode::ClaimStatusCasing => "claim.status_casing",
             DiagnosticCode::IdDuplicate => "id.duplicate",
             DiagnosticCode::IdInvalid => "id.invalid",
             DiagnosticCode::IoUnreadableFile => "io.unreadable_file",
@@ -72,6 +76,17 @@ impl Diagnostic {
         Self {
             code,
             severity: Severity::Error,
+            message: message.into(),
+            span: None,
+            object_id: None,
+            help: None,
+        }
+    }
+
+    pub(crate) fn warning(code: DiagnosticCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            severity: Severity::Warning,
             message: message.into(),
             span: None,
             object_id: None,

@@ -1,7 +1,7 @@
 # Billing Guide @doc(team.billing)
 
 ::claim billing.credits
-status: verified
+status: draft
 --
 Credits are granted after payment succeeds.
 ::

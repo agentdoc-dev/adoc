@@ -1,6 +1,12 @@
 use crate::domain::ast::{BlockAst, ListKind, PageAst};
 use crate::domain::inline::InlineSegment;
-use crate::domain::knowledge_object::KnowledgeObject;
+use crate::domain::knowledge_object::{
+    KnowledgeObject,
+    claim::{
+        Claim, Evidence, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
+        VERIFIED_AT_FIELD,
+    },
+};
 use crate::domain::ports::renderer::Renderer;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -72,41 +78,114 @@ fn render_block(block: &BlockAst, html: &mut String) {
         }
         BlockAst::KnowledgeObject(ko) => match ko.as_ref() {
             KnowledgeObject::Claim(claim) => {
-                html.push_str("<section class=\"claim\" id=\"");
-                html.push_str(&escape_html(claim.id().as_str()));
-                html.push_str("\">\n");
-                html.push_str("<header class=\"claim__header\">");
-                html.push_str("<span class=\"claim__kind\">claim</span>");
-                html.push_str("<code class=\"claim__id\">");
-                html.push_str(&escape_html(claim.id().as_str()));
-                html.push_str("</code>");
-                html.push_str("<span class=\"claim__status\">");
-                html.push_str(&escape_html(claim.status().as_str()));
-                html.push_str("</span>");
-                html.push_str("</header>\n");
-                html.push_str("<div class=\"claim__body\"><p>");
-                html.push_str(&escape_html(claim.body().as_str()));
-                html.push_str("</p></div>\n");
-                if !claim.fields().is_empty() {
-                    html.push_str("<footer class=\"claim__metadata\">\n");
-                    html.push_str("<dl>\n");
-                    for (key, value) in claim.fields().iter() {
-                        html.push_str("<dt>");
-                        html.push_str(&escape_html(key));
-                        html.push_str("</dt><dd>");
-                        html.push_str(&escape_html(value));
-                        html.push_str("</dd>\n");
-                    }
-                    html.push_str("</dl>\n");
-                    html.push_str("</footer>\n");
-                }
-                html.push_str("</section>\n");
+                render_claim(claim, html);
             }
         },
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before rendering")
         }
     }
+}
+
+fn render_claim(claim: &Claim, html: &mut String) {
+    let class = if claim.verification().is_some() {
+        "claim claim--verified"
+    } else {
+        "claim"
+    };
+    html.push_str("<section class=\"");
+    html.push_str(class);
+    html.push_str("\" id=\"");
+    html.push_str(&escape_html(claim.id().as_str()));
+    html.push_str("\">\n");
+    html.push_str("<header class=\"claim__header\">");
+    html.push_str("<span class=\"claim__kind\">claim</span>");
+    html.push_str("<code class=\"claim__id\">");
+    html.push_str(&escape_html(claim.id().as_str()));
+    html.push_str("</code>");
+    html.push_str("<span class=\"claim__status\">");
+    html.push_str(&escape_html(claim.status().as_str()));
+    html.push_str("</span>");
+    html.push_str("</header>\n");
+    html.push_str("<div class=\"claim__body\"><p>");
+    html.push_str(&escape_html(claim.body().as_str()));
+    html.push_str("</p></div>\n");
+
+    if let Some(verification) = claim.verification() {
+        html.push_str("<div class=\"claim__verification\">\n");
+        html.push_str("<dl>\n");
+        html.push_str("<dt>owner</dt><dd>");
+        html.push_str(&escape_html(verification.owner().as_str()));
+        html.push_str("</dd>\n");
+        html.push_str("<dt>verified_at</dt><dd>");
+        html.push_str(&escape_html(verification.verified_at().as_str()));
+        html.push_str("</dd>\n");
+        html.push_str("</dl>\n");
+        html.push_str("</div>\n");
+
+        html.push_str("<div class=\"claim__evidence\">\n");
+        html.push_str("<dl>\n");
+        for evidence in verification.evidence() {
+            render_evidence(evidence, html);
+        }
+        html.push_str("</dl>\n");
+        html.push_str("</div>\n");
+    }
+
+    render_claim_metadata(claim, html);
+    html.push_str("</section>\n");
+}
+
+fn render_evidence(evidence: &Evidence, html: &mut String) {
+    let modifier = match evidence {
+        Evidence::Source(_) => "source",
+        Evidence::Test(_) => "test",
+        Evidence::ReviewedBy(_) => "reviewed-by",
+    };
+    html.push_str("<div class=\"claim__evidence-item claim__evidence-item--");
+    html.push_str(modifier);
+    html.push_str("\"><dt>");
+    html.push_str(evidence.field_key());
+    html.push_str("</dt><dd>");
+    html.push_str(&escape_html(evidence.value().as_str()));
+    html.push_str("</dd></div>\n");
+}
+
+fn render_claim_metadata(claim: &Claim, html: &mut String) {
+    if claim.fields().is_empty() {
+        return;
+    }
+
+    let metadata: Vec<_> = claim
+        .fields()
+        .iter()
+        .filter(|(key, _)| {
+            claim.verification().is_none() || !is_verified_claim_dedicated_field(key)
+        })
+        .collect();
+
+    if metadata.is_empty() {
+        return;
+    }
+
+    html.push_str("<footer class=\"claim__metadata\">\n");
+    html.push_str("<dl>\n");
+    for (key, value) in metadata {
+        html.push_str("<dt>");
+        html.push_str(&escape_html(key));
+        html.push_str("</dt><dd>");
+        html.push_str(&escape_html(value));
+        html.push_str("</dd>\n");
+    }
+    html.push_str("</dl>\n");
+    html.push_str("</footer>\n");
+}
+
+fn is_verified_claim_dedicated_field(key: &str) -> bool {
+    matches!(
+        key,
+        OWNER_FIELD | VERIFIED_AT_FIELD | SOURCE_FIELD | TEST_FIELD | REVIEWED_BY_FIELD
+    )
 }
 
 fn render_inlines(segments: &[InlineSegment], html: &mut String) {
@@ -299,8 +378,29 @@ mod tests {
         span: SourceSpan,
     ) -> BlockAst {
         use crate::domain::knowledge_object::{KnowledgeObject, claim::Claim};
-        let claim =
-            Claim::try_new(id, Some(status), body, fields, span).expect("test claim must be valid");
+        let claim = Claim::try_new(id, Some(status), body, fields, None, span)
+            .expect("test claim must be valid");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim)))
+    }
+
+    fn make_verified_claim(
+        id: &str,
+        body: &str,
+        fields: std::collections::BTreeMap<String, String>,
+        span: SourceSpan,
+    ) -> BlockAst {
+        use crate::domain::knowledge_object::{
+            KnowledgeObject,
+            claim::{Claim, Evidence, Owner, Verification, VerifiedAt},
+        };
+        let verification = Verification::new(
+            Owner::try_new(fields.get("owner").expect("owner")).expect("owner"),
+            VerifiedAt::try_new(fields.get("verified_at").expect("verified_at"))
+                .expect("verified_at"),
+            vec![Evidence::source(fields.get("source").expect("source")).expect("source")],
+        );
+        let claim = Claim::try_new(id, Some("verified"), body, fields, Some(verification), span)
+            .expect("test claim must be valid");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim)))
     }
 
@@ -308,7 +408,7 @@ mod tests {
     fn claim_renders_to_section_with_kind_id_status_body() {
         let block = make_claim(
             "billing.credits",
-            "verified",
+            "plain",
             "body content",
             std::collections::BTreeMap::new(),
             dummy_span(),
@@ -329,7 +429,7 @@ mod tests {
             "missing id code: {html}"
         );
         assert!(
-            html.contains("<span class=\"claim__status\">verified</span>"),
+            html.contains("<span class=\"claim__status\">plain</span>"),
             "missing status span: {html}"
         );
         assert!(
@@ -342,7 +442,7 @@ mod tests {
     fn claim_omits_metadata_footer_when_fields_are_empty() {
         let block = make_claim(
             "billing.credits",
-            "verified",
+            "plain",
             "body content",
             std::collections::BTreeMap::new(),
             dummy_span(),
@@ -363,7 +463,7 @@ mod tests {
         fields.insert("owner".to_string(), "".to_string());
         let block = make_claim(
             "billing.credits",
-            "verified",
+            "plain",
             "body content",
             fields,
             dummy_span(),
@@ -393,7 +493,7 @@ mod tests {
         fields.insert("middle".to_string(), "second".to_string());
         let block = make_claim(
             "billing.credits",
-            "verified",
+            "plain",
             "body content",
             fields,
             dummy_span(),
@@ -420,7 +520,7 @@ mod tests {
         );
         let block = make_claim(
             "billing.credits",
-            "verified",
+            "plain",
             "body content",
             fields,
             dummy_span(),
@@ -463,6 +563,45 @@ mod tests {
         assert!(
             !html.contains("<script>"),
             "raw script tag leaked into output: {html}"
+        );
+    }
+
+    #[test]
+    fn verified_claim_renders_verification_and_evidence_sections() {
+        let fields = std::collections::BTreeMap::from([
+            ("owner".to_string(), "team-billing".to_string()),
+            ("verified_at".to_string(), "2026-05-05".to_string()),
+            ("source".to_string(), "payments ledger".to_string()),
+        ]);
+        let block = make_verified_claim("billing.credits", "body content", fields, dummy_span());
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            html.contains("<section class=\"claim claim--verified\" id=\"billing.credits\">"),
+            "missing verified modifier: {html}"
+        );
+        assert!(
+            html.contains("<div class=\"claim__verification\">"),
+            "missing verification section: {html}"
+        );
+        assert!(
+            html.contains("<dt>owner</dt><dd>team-billing</dd>"),
+            "missing owner: {html}"
+        );
+        assert!(
+            html.contains("<dt>verified_at</dt><dd>2026-05-05</dd>"),
+            "missing verified_at: {html}"
+        );
+        assert!(
+            html.contains("<div class=\"claim__evidence\">"),
+            "missing evidence section: {html}"
+        );
+        assert!(
+            html.contains(
+                "<div class=\"claim__evidence-item claim__evidence-item--source\"><dt>source</dt><dd>payments ledger</dd></div>"
+            ),
+            "missing source evidence: {html}"
         );
     }
 }

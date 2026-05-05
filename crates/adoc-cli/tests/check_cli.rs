@@ -535,7 +535,7 @@ fn duplicate_claim_ids_fail_check_and_block_build_artifacts() {
     let workspace = TestWorkspace::new("duplicate-claim-ids");
     workspace.write(
         "01-billing.adoc",
-        "# Billing Credits @doc(billing.credits-page)\n\n::claim billing.credits.foo\nstatus: verified\n--\nCredits are granted after payment succeeds.\n::\n",
+        "# Billing Credits @doc(billing.credits-page)\n\n::claim billing.credits.foo\nstatus: draft\n--\nCredits are granted after payment succeeds.\n::\n",
     );
     workspace.write(
         "02-billing-extra.adoc",

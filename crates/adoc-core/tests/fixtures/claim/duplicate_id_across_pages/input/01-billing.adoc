@@ -3,7 +3,7 @@
 The billing page defines the first claim.
 
 ::claim billing.credits.foo
-status: verified
+status: draft
 --
 Credits are granted after payment succeeds.
 ::

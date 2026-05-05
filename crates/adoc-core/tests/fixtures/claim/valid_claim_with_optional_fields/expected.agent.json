@@ -11,7 +11,7 @@
     {
       "id": "billing.optional-fields",
       "kind": "claim",
-      "status": "verified",
+      "status": "draft",
       "body": "The billing system credits users automatically when a payment fails.",
       "page_id": "team.billing",
       "source_span": {
