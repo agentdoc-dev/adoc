@@ -1,0 +1,36 @@
+# Core Object Set @doc(team.core-objects)
+
+Combined v0.4 object coverage for agents and human readers.
+
+::claim billing.credits.lifecycle
+status: verified
+owner: team-billing
+verified_at: 2026-05-05
+source: billing ledger
+test: cargo test billing_credits_lifecycle
+reviewed_by: qa-team
+--
+Credits move from pending to available after settlement completes.
+::
+
+::decision billing.policy
+status: accepted
+decided_by: architecture
+owner: platform
+--
+Use the billing policy document as the contract for account credit behavior.
+::
+
+::warning auth.session.clock-skew
+severity: high
+owner: platform
+--
+Session validation can fail when client and server clocks drift beyond tolerance.
+::
+
+::glossary billing.credits
+status: draft
+owner: team-billing
+--
+Credits are balance adjustments that reduce an account's future invoice amount.
+::

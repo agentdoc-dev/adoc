@@ -1,0 +1,98 @@
+{
+  "schema_version": "adoc.agent.v0",
+  "pages": [
+    {
+      "id": "team.core-objects",
+      "title": "Core Object Set",
+      "source_path": "core_object_set.adoc"
+    }
+  ],
+  "objects": [
+    {
+      "id": "billing.credits.lifecycle",
+      "kind": "claim",
+      "status": "verified",
+      "body": "Credits move from pending to available after settlement completes.",
+      "page_id": "team.core-objects",
+      "source_span": {
+        "path": "core_object_set.adoc",
+        "line": 5,
+        "column": 1
+      },
+      "fields": {
+        "owner": "team-billing",
+        "reviewed_by": "qa-team",
+        "source": "billing ledger",
+        "test": "cargo test billing_credits_lifecycle",
+        "verified_at": "2026-05-05"
+      },
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    },
+    {
+      "id": "billing.policy",
+      "kind": "decision",
+      "status": "accepted",
+      "body": "Use the billing policy document as the contract for account credit behavior.",
+      "page_id": "team.core-objects",
+      "source_span": {
+        "path": "core_object_set.adoc",
+        "line": 16,
+        "column": 1
+      },
+      "fields": {
+        "decided_by": "architecture",
+        "owner": "platform"
+      },
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    },
+    {
+      "id": "auth.session.clock-skew",
+      "kind": "warning",
+      "status": "high",
+      "body": "Session validation can fail when client and server clocks drift beyond tolerance.",
+      "page_id": "team.core-objects",
+      "source_span": {
+        "path": "core_object_set.adoc",
+        "line": 24,
+        "column": 1
+      },
+      "fields": {
+        "owner": "platform"
+      },
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    },
+    {
+      "id": "billing.credits",
+      "kind": "glossary",
+      "body": "Credits are balance adjustments that reduce an account's future invoice amount.",
+      "page_id": "team.core-objects",
+      "source_span": {
+        "path": "core_object_set.adoc",
+        "line": 31,
+        "column": 1
+      },
+      "fields": {
+        "owner": "team-billing",
+        "status": "draft"
+      },
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    }
+  ],
+  "diagnostics": []
+}

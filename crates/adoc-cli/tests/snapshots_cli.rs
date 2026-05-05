@@ -278,6 +278,17 @@ fn snapshot_check_passes_for_v0_4_glossary() {
 }
 
 #[test]
+fn snapshot_check_passes_for_v0_4_core_object_set() {
+    let combined = run_check_in_workspace(
+        "snap-check-core-object-set-clean",
+        "v0_4/core_object_set.adoc",
+        "core_object_set.adoc",
+    );
+
+    insta::assert_snapshot!("check_core_object_set_clean", combined);
+}
+
+#[test]
 fn snapshot_check_flags_glossary_missing_body() {
     let combined = run_check_in_workspace(
         "snap-check-glossary-missing-body",
