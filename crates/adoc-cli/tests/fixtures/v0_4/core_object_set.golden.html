@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentDoc</title>
+</head>
+<body>
+<article data-page-id="team.core-objects">
+<h1>Core Object Set</h1>
+<p>Combined v0.4 object coverage for agents and human readers.</p>
+<section class="claim claim--verified" id="billing.credits.lifecycle">
+<header class="claim__header"><span class="claim__kind">claim</span><code class="claim__id">billing.credits.lifecycle</code><span class="claim__status">verified</span></header>
+<div class="claim__body"><p>Credits move from pending to available after settlement completes.</p></div>
+<div class="claim__verification">
+<dl>
+<div class="claim__verification-item"><dt>owner</dt><dd>team-billing</dd></div>
+<div class="claim__verification-item"><dt>verified_at</dt><dd>2026-05-05</dd></div>
+</dl>
+</div>
+<div class="claim__evidence">
+<dl>
+<div class="claim__evidence-item claim__evidence-item--source"><dt>source</dt><dd>billing ledger</dd></div>
+<div class="claim__evidence-item claim__evidence-item--test"><dt>test</dt><dd>cargo test billing_credits_lifecycle</dd></div>
+<div class="claim__evidence-item claim__evidence-item--reviewed-by"><dt>reviewed_by</dt><dd>qa-team</dd></div>
+</dl>
+</div>
+</section>
+<section class="decision decision--accepted" id="billing.policy">
+<header class="decision__header"><span class="decision__kind">decision</span><code class="decision__id">billing.policy</code><span class="decision__status">accepted</span></header>
+<div class="decision__body"><p>Use the billing policy document as the contract for account credit behavior.</p></div>
+<div class="decision__verdict"><dl><div class="decision__verdict-item"><dt>decided_by</dt><dd>architecture</dd></div></dl></div>
+<footer class="decision__metadata">
+<dl>
+<dt>owner</dt><dd>platform</dd>
+</dl>
+</footer>
+</section>
+<section class="warning warning--high" id="auth.session.clock-skew">
+<header class="warning__header"><span class="warning__kind">warning</span><code class="warning__id">auth.session.clock-skew</code><span class="warning__severity">high</span></header>
+<div class="warning__body"><p>Session validation can fail when client and server clocks drift beyond tolerance.</p></div>
+<footer class="warning__metadata">
+<dl>
+<dt>owner</dt><dd>platform</dd>
+</dl>
+</footer>
+</section>
+<section class="glossary" id="billing.credits">
+<header class="glossary__header"><span class="glossary__kind">glossary</span><code class="glossary__id">billing.credits</code></header>
+<div class="glossary__body"><p>Credits are balance adjustments that reduce an account&#39;s future invoice amount.</p></div>
+<footer class="glossary__metadata">
+<dl>
+<dt>owner</dt><dd>team-billing</dd>
+<dt>status</dt><dd>draft</dd>
+</dl>
+</footer>
+</section>
+</article>
+</body>
+</html>

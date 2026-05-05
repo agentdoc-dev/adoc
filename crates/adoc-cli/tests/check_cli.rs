@@ -1373,6 +1373,127 @@ fn build_renders_v0_4_glossary_to_golden_agent_json() {
 }
 
 #[test]
+fn check_accepts_v0_4_core_object_set_fixture() {
+    let workspace = TestWorkspace::new("check-accepts-v0-4-core-object-set");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/core_object_set.adoc"))
+        .expect("core_object_set fixture is readable");
+    workspace.write("core_object_set.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "core_object_set.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        output.status.success(),
+        "expected v0.4 core object set fixture to check cleanly\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("0 errors, 0 warnings"),
+        "expected clean summary, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn build_renders_v0_4_core_object_set_to_golden_html() {
+    let workspace = TestWorkspace::new("build-renders-core-object-set-golden-html");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/core_object_set.adoc"))
+        .expect("core_object_set fixture is readable");
+    workspace.write("core_object_set.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "core_object_set.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.html"))
+        .expect("docs.html is written");
+    let golden = fs::read_to_string(fixture_path("v0_4/core_object_set.golden.html"))
+        .expect("golden HTML fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "rendered HTML diverged from core_object_set.golden.html"
+    );
+    assert!(
+        actual
+            .contains("<section class=\"claim claim--verified\" id=\"billing.credits.lifecycle\">"),
+        "verified claim class family missing from HTML"
+    );
+    assert!(
+        actual.contains("<section class=\"decision decision--accepted\" id=\"billing.policy\">"),
+        "accepted decision class family missing from HTML"
+    );
+    assert!(
+        actual.contains("<section class=\"warning warning--high\" id=\"auth.session.clock-skew\">"),
+        "warning severity class family missing from HTML"
+    );
+    assert!(
+        actual.contains("<section class=\"glossary\" id=\"billing.credits\">"),
+        "glossary class family missing from HTML"
+    );
+}
+
+#[test]
+fn build_renders_v0_4_core_object_set_to_golden_agent_json() {
+    let workspace = TestWorkspace::new("build-renders-core-object-set-golden-json");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/core_object_set.adoc"))
+        .expect("core_object_set fixture is readable");
+    workspace.write("core_object_set.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "core_object_set.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
+        .expect("docs.agent.json is written");
+    let golden = fs::read_to_string(fixture_path("v0_4/core_object_set.golden.agent.json"))
+        .expect("golden agent JSON fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "agent JSON diverged from core_object_set.golden.agent.json"
+    );
+    assert!(
+        actual.contains("\"kind\": \"claim\",\n      \"status\": \"verified\""),
+        "claim agent JSON must include top-level verified status"
+    );
+    assert!(
+        actual.contains("\"kind\": \"decision\",\n      \"status\": \"accepted\""),
+        "decision agent JSON must include top-level accepted status"
+    );
+    assert!(
+        actual.contains("\"kind\": \"warning\",\n      \"status\": \"high\""),
+        "warning agent JSON must map severity to top-level status"
+    );
+    assert!(
+        !actual.contains("\"kind\": \"glossary\",\n      \"status\":"),
+        "glossary agent JSON must omit top-level status"
+    );
+}
+
+#[test]
 fn check_rejects_glossary_with_missing_body() {
     let workspace = TestWorkspace::new("check-rejects-glossary-missing-body");
     let fixture_contents = fs::read_to_string(fixture_path("v0_4/glossary_missing_body.adoc"))
