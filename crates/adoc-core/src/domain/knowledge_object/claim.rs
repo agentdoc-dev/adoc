@@ -138,15 +138,11 @@ fn trim_ascii_edges(value: &str) -> &str {
 pub(crate) struct Verification {
     owner: Owner,
     verified_at: VerifiedAt,
-    evidence: Vec<Evidence>,
+    evidence: NonEmpty<Evidence>,
 }
 
 impl Verification {
-    pub(crate) fn new(owner: Owner, verified_at: VerifiedAt, evidence: Vec<Evidence>) -> Self {
-        assert!(
-            !evidence.is_empty(),
-            "verified claims require at least one evidence value"
-        );
+    pub(crate) fn new(owner: Owner, verified_at: VerifiedAt, evidence: NonEmpty<Evidence>) -> Self {
         Self {
             owner,
             verified_at,
@@ -163,7 +159,20 @@ impl Verification {
     }
 
     pub(crate) fn evidence(&self) -> &[Evidence] {
-        &self.evidence
+        self.evidence.as_slice()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NonEmpty<T>(Vec<T>);
+
+impl<T> NonEmpty<T> {
+    pub(crate) fn from_vec(values: Vec<T>) -> Option<Self> {
+        (!values.is_empty()).then_some(Self(values))
+    }
+
+    pub(crate) fn as_slice(&self) -> &[T] {
+        &self.0
     }
 }
 
@@ -495,11 +504,26 @@ mod tests {
         assert!(EvidenceValue::try_new(" \t ").is_none());
     }
 
+    #[test]
+    fn non_empty_rejects_empty_vec() {
+        assert!(NonEmpty::<Evidence>::from_vec(Vec::new()).is_none());
+    }
+
+    #[test]
+    fn non_empty_preserves_values() {
+        let evidence = NonEmpty::from_vec(vec![Evidence::source("runbook").expect("evidence")])
+            .expect("non-empty evidence");
+
+        assert_eq!(evidence.as_slice().len(), 1);
+        assert_eq!(evidence.as_slice()[0].field_key(), SOURCE_FIELD);
+    }
+
     fn verification() -> Verification {
         Verification::new(
             Owner::try_new("team-billing").expect("owner"),
             VerifiedAt::try_new("2026-05-05").expect("verified_at"),
-            vec![Evidence::source("runbook").expect("evidence")],
+            NonEmpty::from_vec(vec![Evidence::source("runbook").expect("evidence")])
+                .expect("non-empty evidence"),
         )
     }
 }

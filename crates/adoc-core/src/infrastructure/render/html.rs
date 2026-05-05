@@ -391,13 +391,16 @@ mod tests {
     ) -> BlockAst {
         use crate::domain::knowledge_object::{
             KnowledgeObject,
-            claim::{Claim, Evidence, Owner, Verification, VerifiedAt},
+            claim::{Claim, Evidence, NonEmpty, Owner, Verification, VerifiedAt},
         };
         let verification = Verification::new(
             Owner::try_new(fields.get("owner").expect("owner")).expect("owner"),
             VerifiedAt::try_new(fields.get("verified_at").expect("verified_at"))
                 .expect("verified_at"),
-            vec![Evidence::source(fields.get("source").expect("source")).expect("source")],
+            NonEmpty::from_vec(vec![
+                Evidence::source(fields.get("source").expect("source")).expect("source"),
+            ])
+            .expect("non-empty evidence"),
         );
         let claim = Claim::try_new(id, Some("verified"), body, fields, Some(verification), span)
             .expect("test claim must be valid");

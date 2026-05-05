@@ -110,7 +110,7 @@ mod tests {
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
     use crate::domain::knowledge_object::{
         KnowledgeObject,
-        claim::{Claim, Evidence, Owner, Verification, VerifiedAt},
+        claim::{Claim, Evidence, NonEmpty, Owner, Verification, VerifiedAt},
     };
 
     fn span() -> SourceSpan {
@@ -151,7 +151,8 @@ mod tests {
             Some(Verification::new(
                 Owner::try_new("team").expect("owner"),
                 VerifiedAt::try_new("2026-05-05").expect("verified_at"),
-                vec![Evidence::source("source").expect("evidence")],
+                NonEmpty::from_vec(vec![Evidence::source("source").expect("evidence")])
+                    .expect("non-empty evidence"),
             )),
             span(),
         )

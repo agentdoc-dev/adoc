@@ -119,7 +119,7 @@ mod tests {
     use crate::domain::identity::PageId;
     use crate::domain::knowledge_object::{
         KnowledgeObject,
-        claim::{Claim, Evidence, Owner, Verification, VerifiedAt},
+        claim::{Claim, Evidence, NonEmpty, Owner, Verification, VerifiedAt},
     };
     use crate::domain::ports::artifact_writer::ArtifactWriter;
 
@@ -150,7 +150,10 @@ mod tests {
                 Owner::try_new(fields.get(OWNER_FIELD).expect("owner")).expect("owner"),
                 VerifiedAt::try_new(fields.get(VERIFIED_AT_FIELD).expect("verified_at"))
                     .expect("verified_at"),
-                vec![Evidence::source(fields.get(SOURCE_FIELD).expect("source")).expect("source")],
+                NonEmpty::from_vec(vec![
+                    Evidence::source(fields.get(SOURCE_FIELD).expect("source")).expect("source"),
+                ])
+                .expect("non-empty evidence"),
             )
         });
         let claim = Claim::try_new(id, Some(status), body, fields, verification, span())
