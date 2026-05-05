@@ -47,8 +47,9 @@ pub(super) fn try_open_typed_block(
     // Strip the leading `::`.  The caller already checked `line.starts_with("::")`.
     let after_colons = &line[2..];
 
-    // Trim trailing whitespace for classification, but keep `line` for spans.
-    let after_colons_trimmed = after_colons.trim_end();
+    // Trim trailing ASCII whitespace for classification, but keep `line` for spans.
+    let after_colons_trimmed =
+        after_colons.trim_end_matches(|character: char| character.is_ascii_whitespace());
 
     // `::` alone (optional trailing ws) → None.
     if after_colons_trimmed.is_empty() {
@@ -58,7 +59,7 @@ pub(super) fn try_open_typed_block(
     // Extract the word immediately after `::` (no leading space allowed).
     // `:: foo` has a leading space → word is empty → None (not a typed-block).
     let word_end = after_colons
-        .find(|c: char| c.is_whitespace())
+        .find(|c: char| c.is_ascii_whitespace())
         .unwrap_or(after_colons.len());
     let word = &after_colons[..word_end];
 
@@ -72,7 +73,8 @@ pub(super) fn try_open_typed_block(
     match word {
         "claim" => {
             // Everything after `::claim`.
-            let rest = after_colons[word_end..].trim();
+            let rest = after_colons[word_end..]
+                .trim_matches(|character: char| character.is_ascii_whitespace());
 
             if rest.is_empty() {
                 // `::claim` with no id.
@@ -86,7 +88,7 @@ pub(super) fn try_open_typed_block(
             }
 
             // Whitespace-separated tokens in `rest`.
-            let mut tokens = rest.split_whitespace();
+            let mut tokens = rest.split_ascii_whitespace();
             let id_text = tokens
                 .next()
                 .expect("rest is non-empty so at least one token")
@@ -390,6 +392,19 @@ mod tests {
             matches!(result, TypedBlockOpen::OpenedClaim(_)),
             "tab separator should be tolerated"
         );
+    }
+
+    #[test]
+    fn try_open_typed_block_rejects_non_ascii_separator_between_claim_and_id() {
+        let line = "::claim\u{00a0}billing.credits";
+        let source = source_for_line(line);
+        let result = try_open_typed_block(line, 1, &source);
+        match result {
+            TypedBlockOpen::Diagnostic(d) => {
+                assert_eq!(d.code, DiagnosticCode::ParseUnknownBlockType);
+            }
+            _ => panic!("expected non-ASCII separator to reject the claim opener"),
+        }
     }
 
     #[test]
