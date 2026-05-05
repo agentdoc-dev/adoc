@@ -1,0 +1,7 @@
+# Empty segment claim id @doc(team.empty-segment)
+
+::claim billing..credits
+status: verified
+--
+The system credits users automatically.
+::

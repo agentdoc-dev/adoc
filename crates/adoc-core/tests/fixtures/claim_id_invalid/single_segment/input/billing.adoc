@@ -1,0 +1,7 @@
+# Single segment claim id @doc(team.single-segment)
+
+::claim billing
+status: verified
+--
+The system credits users automatically.
+::

@@ -1,0 +1,22 @@
+[
+  {
+    "code": "id.invalid",
+    "severity": "error",
+    "message": "invalid claim id `billing-.credits`: Object ID must be at least two lowercase kebab-case segments separated by '.'",
+    "span": {
+      "file": "tests/fixtures/claim_id_invalid/trailing_hyphen/input/billing.adoc",
+      "start": {
+        "line": 3,
+        "column": 1,
+        "offset": 55
+      },
+      "end": {
+        "line": 3,
+        "column": 25,
+        "offset": 79
+      }
+    },
+    "object_id": "billing-.credits",
+    "help": "Object IDs must be lowercase dot-separated kebab-case segments with at least two segments (e.g. `billing.credits`). Allowed characters per segment: a-z, 0-9, and internal hyphens."
+  }
+]

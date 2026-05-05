@@ -1,5 +1,12 @@
 use std::fmt;
 
+/// Shared user-facing explanation of the V0 Object ID grammar, suitable for
+/// use as a diagnostic `help` string wherever `id.invalid` is emitted.
+pub(crate) const OBJECT_ID_GRAMMAR_HELP: &str = "Object IDs must be lowercase \
+    dot-separated kebab-case segments with at least two segments \
+    (e.g. `billing.credits`). Allowed characters per segment: a-z, 0-9, \
+    and internal hyphens.";
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct ObjectId(String);
 
@@ -160,6 +167,38 @@ mod tests {
             "billing.credits-",
         ] {
             assert!(ObjectId::new(value).is_err(), "{value} should be invalid");
+        }
+    }
+
+    #[test]
+    fn new_rejects_all_violation_classes() {
+        let cases: &[(&str, &str)] = &[
+            // uppercase
+            ("Billing.Credits", "uppercase"),
+            // underscore
+            ("billing_credits.limit", "underscore"),
+            // slash
+            ("billing/credits.foo", "slash"),
+            // space
+            ("billing.credits limit", "space"),
+            // single segment
+            ("billing", "single segment"),
+            // empty segment: interior, leading dot, trailing dot
+            ("billing..credits", "empty interior segment"),
+            (".billing.credits", "leading dot"),
+            ("billing.credits.", "trailing dot"),
+            // leading hyphen
+            ("-billing.credits", "leading hyphen on first segment"),
+            ("billing.-credits", "leading hyphen on second segment"),
+            // trailing hyphen
+            ("billing-.credits", "trailing hyphen on first segment"),
+            ("billing.credits-", "trailing hyphen on last segment"),
+        ];
+        for (value, label) in cases {
+            assert!(
+                ObjectId::new(*value).is_err(),
+                "`{value}` ({label}) should be invalid"
+            );
         }
     }
 }

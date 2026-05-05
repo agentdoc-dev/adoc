@@ -1,0 +1,7 @@
+# Leading hyphen claim id @doc(team.leading-hyphen)
+
+::claim -billing.credits
+status: verified
+--
+The system credits users automatically.
+::

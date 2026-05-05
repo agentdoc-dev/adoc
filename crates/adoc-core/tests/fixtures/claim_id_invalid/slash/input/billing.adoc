@@ -1,0 +1,7 @@
+# Slash claim id @doc(team.slash)
+
+::claim billing/credits.foo
+status: verified
+--
+The system credits users automatically.
+::
