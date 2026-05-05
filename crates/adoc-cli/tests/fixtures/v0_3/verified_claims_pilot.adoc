@@ -1,0 +1,41 @@
+# Billing Verified Claims @doc(team.billing-verified)
+
+Verified billing behavior for support and agents.
+
+::claim billing.credits.automatic
+status: verified
+owner: team-billing
+verified_at: 2026-05-05
+source: payments ledger
+--
+Credits are granted automatically after a failed payment recovery.
+::
+
+::claim billing.credits.tested
+status: verified
+owner: team-billing
+verified_at: 2026-05-05
+test: cargo test billing_credits
+--
+The billing credit path has regression coverage.
+::
+
+::claim billing.credits.reviewed
+status: verified
+owner: team-billing
+verified_at: 2026-05-05
+source: support runbook
+test: cargo test support_credit_notes
+reviewed_by: qa-team
+--
+Support credit guidance matches the current billing workflow.
+::
+
+::claim billing.credits.review-only
+status: verified
+owner: team-billing
+verified_at: 2026-05-05
+reviewed_by: qa-team
+--
+Billing credit escalation notes were reviewed by QA.
+::

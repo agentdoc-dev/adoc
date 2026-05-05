@@ -1,0 +1,242 @@
+[
+  {
+    "code": "schema.missing_field",
+    "severity": "error",
+    "message": "verified claim `billing.missing-owner` is missing required field `owner`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 3,
+        "column": 1,
+        "offset": 46
+      },
+      "end": {
+        "line": 3,
+        "column": 30,
+        "offset": 75
+      }
+    },
+    "object_id": "billing.missing-owner",
+    "help": "Add `owner`. Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  },
+  {
+    "code": "schema.missing_field",
+    "severity": "error",
+    "message": "verified claim `billing.missing-verified-at` is missing required field `verified_at`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 11,
+        "column": 1,
+        "offset": 154
+      },
+      "end": {
+        "line": 11,
+        "column": 36,
+        "offset": 189
+      }
+    },
+    "object_id": "billing.missing-verified-at",
+    "help": "Add `verified_at`. Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  },
+  {
+    "code": "claim.verified_missing_evidence",
+    "severity": "error",
+    "message": "verified claim `billing.missing-evidence` requires at least one evidence field: `source`, `test`, or `reviewed_by`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 19,
+        "column": 1,
+        "offset": 270
+      },
+      "end": {
+        "line": 19,
+        "column": 33,
+        "offset": 302
+      }
+    },
+    "object_id": "billing.missing-evidence",
+    "help": "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  },
+  {
+    "code": "schema.missing_field",
+    "severity": "error",
+    "message": "verified claim `billing.missing-owner-verified-at` is missing required field `owner`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 27,
+        "column": 1,
+        "offset": 389
+      },
+      "end": {
+        "line": 27,
+        "column": 42,
+        "offset": 430
+      }
+    },
+    "object_id": "billing.missing-owner-verified-at",
+    "help": "Add `owner`. Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  },
+  {
+    "code": "schema.missing_field",
+    "severity": "error",
+    "message": "verified claim `billing.missing-owner-verified-at` is missing required field `verified_at`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 27,
+        "column": 1,
+        "offset": 389
+      },
+      "end": {
+        "line": 27,
+        "column": 42,
+        "offset": 430
+      }
+    },
+    "object_id": "billing.missing-owner-verified-at",
+    "help": "Add `verified_at`. Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  },
+  {
+    "code": "schema.missing_field",
+    "severity": "error",
+    "message": "verified claim `billing.missing-owner-evidence` is missing required field `owner`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 34,
+        "column": 1,
+        "offset": 501
+      },
+      "end": {
+        "line": 34,
+        "column": 39,
+        "offset": 539
+      }
+    },
+    "object_id": "billing.missing-owner-evidence",
+    "help": "Add `owner`. Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  },
+  {
+    "code": "claim.verified_missing_evidence",
+    "severity": "error",
+    "message": "verified claim `billing.missing-owner-evidence` requires at least one evidence field: `source`, `test`, or `reviewed_by`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 34,
+        "column": 1,
+        "offset": 501
+      },
+      "end": {
+        "line": 34,
+        "column": 39,
+        "offset": 539
+      }
+    },
+    "object_id": "billing.missing-owner-evidence",
+    "help": "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  },
+  {
+    "code": "schema.missing_field",
+    "severity": "error",
+    "message": "verified claim `billing.missing-verified-at-evidence` is missing required field `verified_at`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 41,
+        "column": 1,
+        "offset": 616
+      },
+      "end": {
+        "line": 41,
+        "column": 45,
+        "offset": 660
+      }
+    },
+    "object_id": "billing.missing-verified-at-evidence",
+    "help": "Add `verified_at`. Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  },
+  {
+    "code": "claim.verified_missing_evidence",
+    "severity": "error",
+    "message": "verified claim `billing.missing-verified-at-evidence` requires at least one evidence field: `source`, `test`, or `reviewed_by`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 41,
+        "column": 1,
+        "offset": 616
+      },
+      "end": {
+        "line": 41,
+        "column": 45,
+        "offset": 660
+      }
+    },
+    "object_id": "billing.missing-verified-at-evidence",
+    "help": "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  },
+  {
+    "code": "schema.missing_field",
+    "severity": "error",
+    "message": "verified claim `billing.missing-all` is missing required field `owner`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 48,
+        "column": 1,
+        "offset": 739
+      },
+      "end": {
+        "line": 48,
+        "column": 28,
+        "offset": 766
+      }
+    },
+    "object_id": "billing.missing-all",
+    "help": "Add `owner`. Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  },
+  {
+    "code": "schema.missing_field",
+    "severity": "error",
+    "message": "verified claim `billing.missing-all` is missing required field `verified_at`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 48,
+        "column": 1,
+        "offset": 739
+      },
+      "end": {
+        "line": 48,
+        "column": 28,
+        "offset": 766
+      }
+    },
+    "object_id": "billing.missing-all",
+    "help": "Add `verified_at`. Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  },
+  {
+    "code": "claim.verified_missing_evidence",
+    "severity": "error",
+    "message": "verified claim `billing.missing-all` requires at least one evidence field: `source`, `test`, or `reviewed_by`",
+    "span": {
+      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "start": {
+        "line": 48,
+        "column": 1,
+        "offset": 739
+      },
+      "end": {
+        "line": 48,
+        "column": 28,
+        "offset": 766
+      }
+    },
+    "object_id": "billing.missing-all",
+    "help": "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`."
+  }
+]

@@ -308,6 +308,15 @@ The first evidence fields for verified claims are:
 - `test`
 - `reviewed_by`
 
+Verified claim contract:
+
+- Only exact lowercase `status: verified` creates a Verified Claim.
+- ASCII case variants such as `Verified` emit `claim.status_casing` and are treated as plain claims.
+- Verified claims require non-empty `owner`, non-empty `verified_at`, and at least one non-empty evidence field.
+- Missing `owner` or `verified_at` emits `schema.missing_field` with the claim `object_id`.
+- Missing evidence emits `claim.verified_missing_evidence` with the claim `object_id`.
+- `verified_at` date format, owner format, multi-value evidence, and evidence scoring are out of scope for V0.
+
 ## Object IDs
 
 V0 object IDs use lowercase dot-separated kebab segments with at least two segments.

@@ -1,0 +1,9 @@
+# Missing Evidence @doc(team.missing-evidence)
+
+::claim billing.no-evidence
+status: verified
+owner: team-billing
+verified_at: 2026-05-05
+--
+Missing evidence should fail.
+::
