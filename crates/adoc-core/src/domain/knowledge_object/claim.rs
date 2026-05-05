@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::domain::diagnostic::SourceSpan;
 use crate::domain::identity::{ObjectId, ObjectIdError};
+use crate::domain::values::{BodyText, NonEmptyText, OptionalFields, trim_ascii_edges};
 
 pub(crate) const STATUS_FIELD: &str = "status";
 pub(crate) const OWNER_FIELD: &str = "owner";
@@ -15,8 +16,8 @@ pub(crate) const VERIFIED_STATUS: &str = "verified";
 pub(crate) struct Claim {
     id: ObjectId,
     status: ClaimStatus,
-    body: ClaimBody,
-    fields: ClaimFields,
+    body: BodyText,
+    fields: OptionalFields,
     verification: Option<Verification>,
     span: SourceSpan,
 }
@@ -27,6 +28,7 @@ pub(crate) enum ClaimError {
     MissingStatus,
     MissingBody,
     MissingVerification,
+    UnexpectedVerification,
 }
 
 impl Claim {
@@ -42,10 +44,9 @@ impl Claim {
         if status.is_verified() && verification.is_none() {
             return Err(ClaimError::MissingVerification);
         }
-        debug_assert!(
-            status.is_verified() || verification.is_none(),
-            "only exact `verified` claims may carry verification"
-        );
+        if !status.is_verified() && verification.is_some() {
+            return Err(ClaimError::UnexpectedVerification);
+        }
         debug_assert!(
             !optional_fields.contains_key(STATUS_FIELD),
             "optional claim fields must not contain required field `status`"
@@ -54,7 +55,7 @@ impl Claim {
         if verification.is_some() {
             strip_verified_claim_dedicated_fields(&mut optional_fields);
         }
-        let fields = ClaimFields::from_map(optional_fields);
+        let fields = OptionalFields::from_map(optional_fields);
         Ok(Self {
             id,
             status,
@@ -77,10 +78,10 @@ impl Claim {
         id_text: &str,
         status_text: Option<&str>,
         body_text: &str,
-    ) -> Result<(ObjectId, ClaimStatus, ClaimBody), ClaimError> {
+    ) -> Result<(ObjectId, ClaimStatus, BodyText), ClaimError> {
         let id = ObjectId::new(id_text).map_err(ClaimError::InvalidId)?;
         let status = ClaimStatus::try_new(status_text.unwrap_or(""))?;
-        let body = ClaimBody::try_new(body_text)?;
+        let body = BodyText::try_new(body_text).ok_or(ClaimError::MissingBody)?;
         Ok((id, status, body))
     }
 
@@ -92,11 +93,11 @@ impl Claim {
         &self.status
     }
 
-    pub(crate) fn body(&self) -> &ClaimBody {
+    pub(crate) fn body(&self) -> &BodyText {
         &self.body
     }
 
-    pub(crate) fn fields(&self) -> &ClaimFields {
+    pub(crate) fn fields(&self) -> &OptionalFields {
         &self.fields
     }
 
@@ -132,27 +133,6 @@ impl ClaimStatus {
     pub(crate) fn is_verified_ascii_case_variant(&self) -> bool {
         self.0 != VERIFIED_STATUS && self.0.eq_ignore_ascii_case(VERIFIED_STATUS)
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ClaimBody(String);
-
-impl ClaimBody {
-    pub(crate) fn try_new(s: &str) -> Result<Self, ClaimError> {
-        let trimmed = trim_ascii_edges(s);
-        if trimmed.is_empty() {
-            return Err(ClaimError::MissingBody);
-        }
-        Ok(Self(trimmed.to_string()))
-    }
-
-    pub(crate) fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-fn trim_ascii_edges(value: &str) -> &str {
-    value.trim_matches(|character: char| character.is_ascii_whitespace())
 }
 
 fn strip_verified_claim_dedicated_fields(fields: &mut BTreeMap<String, String>) {
@@ -213,7 +193,7 @@ pub(crate) struct Owner(String);
 
 impl Owner {
     pub(crate) fn try_new(value: &str) -> Option<Self> {
-        NonEmptyField::try_new(value).map(|value| Self(value.0))
+        NonEmptyText::try_new(value).map(|value| Self(value.as_str().to_string()))
     }
 
     pub(crate) fn as_str(&self) -> &str {
@@ -226,7 +206,7 @@ pub(crate) struct VerifiedAt(String);
 
 impl VerifiedAt {
     pub(crate) fn try_new(value: &str) -> Option<Self> {
-        NonEmptyField::try_new(value).map(|value| Self(value.0))
+        NonEmptyText::try_new(value).map(|value| Self(value.as_str().to_string()))
     }
 
     pub(crate) fn as_str(&self) -> &str {
@@ -274,37 +254,11 @@ pub(crate) struct EvidenceValue(String);
 
 impl EvidenceValue {
     pub(crate) fn try_new(value: &str) -> Option<Self> {
-        NonEmptyField::try_new(value).map(|value| Self(value.0))
+        NonEmptyText::try_new(value).map(|value| Self(value.as_str().to_string()))
     }
 
     pub(crate) fn as_str(&self) -> &str {
         &self.0
-    }
-}
-
-struct NonEmptyField(String);
-
-impl NonEmptyField {
-    fn try_new(value: &str) -> Option<Self> {
-        let trimmed = trim_ascii_edges(value);
-        (!trimmed.is_empty()).then(|| Self(trimmed.to_string()))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct ClaimFields(BTreeMap<String, String>);
-
-impl ClaimFields {
-    pub(crate) fn from_map(m: BTreeMap<String, String>) -> Self {
-        Self(m)
-    }
-
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (&String, &String)> {
-        self.0.iter()
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.0.is_empty()
     }
 }
 
@@ -358,36 +312,36 @@ mod tests {
 
     #[test]
     fn claim_body_try_new_rejects_empty() {
-        assert_eq!(ClaimBody::try_new(""), Err(ClaimError::MissingBody));
+        assert!(BodyText::try_new("").is_none());
     }
 
     #[test]
     fn claim_body_try_new_rejects_ascii_whitespace_only() {
-        assert_eq!(ClaimBody::try_new("   \t  "), Err(ClaimError::MissingBody));
+        assert!(BodyText::try_new("   \t  ").is_none());
     }
 
     #[test]
     fn claim_body_try_new_trims_and_accepts() {
-        let body = ClaimBody::try_new("  some claim body  ").expect("valid body");
+        let body = BodyText::try_new("  some claim body  ").expect("valid body");
         assert_eq!(body.as_str(), "some claim body");
     }
 
     #[test]
     fn claim_body_try_new_preserves_non_ascii_edge_whitespace() {
-        let body = ClaimBody::try_new("\u{00a0}some claim body\u{00a0}").expect("valid body");
+        let body = BodyText::try_new("\u{00a0}some claim body\u{00a0}").expect("valid body");
         assert_eq!(body.as_str(), "\u{00a0}some claim body\u{00a0}");
     }
 
     #[test]
     fn claim_fields_default_is_empty_and_iterates_in_sorted_key_order() {
-        let default_fields = ClaimFields::default();
+        let default_fields = OptionalFields::default();
         assert!(default_fields.is_empty());
 
         let mut map = BTreeMap::new();
         map.insert("zebra".to_string(), "z".to_string());
         map.insert("apple".to_string(), "a".to_string());
         map.insert("mango".to_string(), "m".to_string());
-        let fields = ClaimFields::from_map(map);
+        let fields = OptionalFields::from_map(map);
 
         assert!(!fields.is_empty());
         let keys: Vec<&str> = fields.iter().map(|(k, _)| k.as_str()).collect();
@@ -521,6 +475,20 @@ mod tests {
         );
 
         assert_eq!(result, Err(ClaimError::MissingVerification));
+    }
+
+    #[test]
+    fn claim_try_new_rejects_verification_for_non_verified_status() {
+        let result = Claim::try_new(
+            "billing.credits",
+            Some("plain"),
+            "body",
+            BTreeMap::new(),
+            Some(verification()),
+            span(),
+        );
+
+        assert_eq!(result, Err(ClaimError::UnexpectedVerification));
     }
 
     #[test]

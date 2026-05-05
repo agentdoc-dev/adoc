@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::domain::diagnostic::SourceSpan;
 use crate::domain::identity::{ObjectId, ObjectIdError};
+use crate::domain::values::{BodyText, NonEmptyText, OptionalFields, trim_ascii_edges};
 
 pub(crate) const STATUS_FIELD: &str = "status";
 pub(crate) const DECIDED_BY_FIELD: &str = "decided_by";
@@ -9,21 +10,12 @@ pub(crate) const ACCEPTED_STATUS: &str = "accepted";
 pub(crate) const VALID_STATUS_HELP: &str =
     "Valid decision statuses are: draft, proposed, accepted, superseded, revoked, archived.";
 
-const VALID_STATUSES: &[&str] = &[
-    "draft",
-    "proposed",
-    "accepted",
-    "superseded",
-    "revoked",
-    "archived",
-];
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Decision {
     id: ObjectId,
     status: DecisionStatus,
-    body: DecisionBody,
-    fields: DecisionFields,
+    body: BodyText,
+    fields: OptionalFields,
     verdict: Option<AcceptedVerdict>,
     span: SourceSpan,
 }
@@ -68,7 +60,7 @@ impl Decision {
             id,
             status,
             body,
-            fields: DecisionFields::from_map(optional_fields),
+            fields: OptionalFields::from_map(optional_fields),
             verdict,
             span,
         })
@@ -86,10 +78,10 @@ impl Decision {
         id_text: &str,
         status_text: Option<&str>,
         body_text: &str,
-    ) -> Result<(ObjectId, DecisionStatus, DecisionBody), DecisionError> {
+    ) -> Result<(ObjectId, DecisionStatus, BodyText), DecisionError> {
         let id = ObjectId::new(id_text).map_err(DecisionError::InvalidId)?;
         let status = DecisionStatus::try_new(status_text.unwrap_or(""))?;
-        let body = DecisionBody::try_new(body_text)?;
+        let body = BodyText::try_new(body_text).ok_or(DecisionError::MissingBody)?;
         Ok((id, status, body))
     }
 
@@ -101,11 +93,11 @@ impl Decision {
         &self.status
     }
 
-    pub(crate) fn body(&self) -> &DecisionBody {
+    pub(crate) fn body(&self) -> &BodyText {
         &self.body
     }
 
-    pub(crate) fn fields(&self) -> &DecisionFields {
+    pub(crate) fn fields(&self) -> &OptionalFields {
         &self.fields
     }
 
@@ -118,8 +110,15 @@ impl Decision {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DecisionStatus(String);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DecisionStatus {
+    Draft,
+    Proposed,
+    Accepted,
+    Superseded,
+    Revoked,
+    Archived,
+}
 
 impl DecisionStatus {
     pub(crate) fn try_new(value: &str) -> Result<Self, DecisionError> {
@@ -127,50 +126,30 @@ impl DecisionStatus {
         if trimmed.is_empty() {
             return Err(DecisionError::MissingStatus);
         }
-        if !VALID_STATUSES.contains(&trimmed) {
-            return Err(DecisionError::InvalidStatus(trimmed.to_string()));
+        match trimmed {
+            "draft" => Ok(Self::Draft),
+            "proposed" => Ok(Self::Proposed),
+            "accepted" => Ok(Self::Accepted),
+            "superseded" => Ok(Self::Superseded),
+            "revoked" => Ok(Self::Revoked),
+            "archived" => Ok(Self::Archived),
+            _ => Err(DecisionError::InvalidStatus(trimmed.to_string())),
         }
-        Ok(Self(trimmed.to_string()))
     }
 
     pub(crate) fn as_str(&self) -> &str {
-        &self.0
+        match self {
+            Self::Draft => "draft",
+            Self::Proposed => "proposed",
+            Self::Accepted => ACCEPTED_STATUS,
+            Self::Superseded => "superseded",
+            Self::Revoked => "revoked",
+            Self::Archived => "archived",
+        }
     }
 
     pub(crate) fn is_accepted(&self) -> bool {
-        self.0 == ACCEPTED_STATUS
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DecisionBody(String);
-
-impl DecisionBody {
-    pub(crate) fn try_new(value: &str) -> Result<Self, DecisionError> {
-        NonEmptyText::try_new(value)
-            .map(|value| Self(value.0))
-            .ok_or(DecisionError::MissingBody)
-    }
-
-    pub(crate) fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub(crate) struct DecisionFields(BTreeMap<String, String>);
-
-impl DecisionFields {
-    pub(crate) fn from_map(fields: BTreeMap<String, String>) -> Self {
-        Self(fields)
-    }
-
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (&String, &String)> {
-        self.0.iter()
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        matches!(self, Self::Accepted)
     }
 }
 
@@ -194,26 +173,12 @@ pub(crate) struct DecidedBy(String);
 
 impl DecidedBy {
     pub(crate) fn try_new(value: &str) -> Option<Self> {
-        NonEmptyText::try_new(value).map(|value| Self(value.0))
+        NonEmptyText::try_new(value).map(|value| Self(value.as_str().to_string()))
     }
 
     pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct NonEmptyText(String);
-
-impl NonEmptyText {
-    fn try_new(value: &str) -> Option<Self> {
-        let trimmed = trim_ascii_edges(value);
-        (!trimmed.is_empty()).then(|| Self(trimmed.to_string()))
-    }
-}
-
-fn trim_ascii_edges(value: &str) -> &str {
-    value.trim_matches(|character: char| character.is_ascii_whitespace())
 }
 
 #[cfg(test)]
