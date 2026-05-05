@@ -4,13 +4,31 @@
 //! sees a typed-block open-fence (`try_open_typed_block`) or when it is already
 //! inside a typed block (`consume_typed_block_line`, `finalize_unclosed_typed_block`).
 
-use crate::domain::ast::{BlockKind, ParsedTypedBlock};
+use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::knowledge_object::BlockKind;
 use crate::domain::source::SourceFile;
 
 use super::state::{TypedBlockBuildingState, TypedBlockPhase};
 
 const FIELD_KEY_GRAMMAR: &str = "[a-z][a-z0-9_]*";
+
+#[derive(Debug, Clone, Copy)]
+struct SupportedKind {
+    word: &'static str,
+    kind: BlockKind,
+}
+
+const SUPPORTED_KINDS: &[SupportedKind] = &[
+    SupportedKind {
+        word: "claim",
+        kind: BlockKind::Claim,
+    },
+    SupportedKind {
+        word: "decision",
+        kind: BlockKind::Decision,
+    },
+];
 
 /// Result of attempting to open a typed block on an `Idle` line starting with
 /// `::` at column 1.
@@ -89,7 +107,10 @@ pub(super) fn try_open_typed_block(
         return TypedBlockOpen::Diagnostic(
             Diagnostic::error(
                 DiagnosticCode::ParseUnknownBlockType,
-                format!("unknown typed-block kind `{word}`; supported in v0.2: claim, decision"),
+                format!(
+                    "unknown typed-block kind `{word}`; supported kinds: {}",
+                    supported_kind_list()
+                ),
             )
             .with_span(full_line_span),
         );
@@ -138,27 +159,36 @@ pub(super) fn try_open_typed_block(
 }
 
 fn kind_for_fence_word(word: &str) -> Option<BlockKind> {
-    match word {
-        "claim" => Some(BlockKind::Claim),
-        "decision" => Some(BlockKind::Decision),
-        _ => None,
-    }
+    SUPPORTED_KINDS
+        .iter()
+        .find(|supported| supported.word == word)
+        .map(|supported| supported.kind)
 }
 
 fn fence_word_for_kind(kind: BlockKind) -> &'static str {
-    match kind {
-        BlockKind::Claim => "claim",
-        BlockKind::Decision => "decision",
-    }
+    SUPPORTED_KINDS
+        .iter()
+        .find(|supported| supported.kind == kind)
+        .map(|supported| supported.word)
+        .expect("every BlockKind must have parser metadata")
 }
 
 fn supported_kind_non_ascii_separator(value: &str) -> Option<&'static str> {
-    ["claim", "decision"].into_iter().find(|word| {
+    SUPPORTED_KINDS.iter().find_map(|supported| {
         value
-            .strip_prefix(word)
+            .strip_prefix(supported.word)
             .and_then(|rest| rest.chars().next())
             .is_some_and(|character| character.is_whitespace() && !character.is_ascii_whitespace())
+            .then_some(supported.word)
     })
+}
+
+fn supported_kind_list() -> String {
+    SUPPORTED_KINDS
+        .iter()
+        .map(|supported| supported.word)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Feed one line to an active `TypedBlock` state, updating it in place.
@@ -493,6 +523,16 @@ mod tests {
                 assert!(
                     d.message.contains("fact"),
                     "message should quote the unknown word"
+                );
+                assert!(
+                    d.message.contains("supported kinds: claim, decision"),
+                    "message should list supported kinds from parser metadata: {}",
+                    d.message
+                );
+                assert!(
+                    !d.message.contains("v0."),
+                    "message should not carry stale milestone text: {}",
+                    d.message
                 );
             }
             _ => panic!("expected Diagnostic(ParseUnknownBlockType)"),
