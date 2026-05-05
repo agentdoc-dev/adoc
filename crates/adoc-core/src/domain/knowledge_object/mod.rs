@@ -12,8 +12,36 @@ pub(crate) enum BlockKind {
     Decision,
 }
 
+impl BlockKind {
+    #[cfg(test)]
+    pub(crate) const ALL: &'static [Self] = &[Self::Claim, Self::Decision];
+
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Claim => "claim",
+            Self::Decision => "decision",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum KnowledgeObject {
     Claim(Claim),
     Decision(Decision),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn block_kind_labels_match_source_fence_words() {
+        assert_eq!(BlockKind::Claim.as_str(), "claim");
+        assert_eq!(BlockKind::Decision.as_str(), "decision");
+    }
+
+    #[test]
+    fn block_kind_all_lists_every_supported_kind() {
+        assert_eq!(BlockKind::ALL, &[BlockKind::Claim, BlockKind::Decision]);
+    }
 }
