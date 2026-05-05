@@ -21,11 +21,11 @@ struct SupportedKind {
 
 const SUPPORTED_KINDS: &[SupportedKind] = &[
     SupportedKind {
-        word: "claim",
+        word: BlockKind::Claim.as_str(),
         kind: BlockKind::Claim,
     },
     SupportedKind {
-        word: "decision",
+        word: BlockKind::Decision.as_str(),
         kind: BlockKind::Decision,
     },
 ];
