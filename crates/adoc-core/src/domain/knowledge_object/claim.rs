@@ -14,6 +14,8 @@ pub(crate) const REVIEWED_BY_FIELD: &str = "reviewed_by";
 pub(crate) const VERIFIED_STATUS: &str = "verified";
 
 const VERIFIED_CLAIM_HELP: &str = "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`.";
+const CLAIM_MISSING_STATUS_HELP: &str = "Claims require non-empty `status`.";
+const CLAIM_MISSING_BODY_HELP: &str = "Claims require non-empty body text.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Claim {
@@ -294,14 +296,18 @@ fn emit_claim_error(
                 DiagnosticCode::SchemaMissingField,
                 "claim is missing required field `status`",
             )
-            .with_span(parsed.span.clone()),
+            .with_span(parsed.span.clone())
+            .with_object_id(&parsed.id_text)
+            .with_help(CLAIM_MISSING_STATUS_HELP),
         ),
         ClaimError::MissingBody => diagnostics.push(
             Diagnostic::error(
                 DiagnosticCode::SchemaMissingField,
                 "claim is missing required body",
             )
-            .with_span(parsed.span.clone()),
+            .with_span(parsed.span.clone())
+            .with_object_id(&parsed.id_text)
+            .with_help(CLAIM_MISSING_BODY_HELP),
         ),
         ClaimError::MissingVerification => {
             unreachable!("missing verification is handled by verified-claim diagnostics")

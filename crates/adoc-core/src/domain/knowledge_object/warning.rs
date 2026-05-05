@@ -8,6 +8,8 @@ use crate::domain::values::{BodyText, OptionalFields, trim_ascii_edges};
 pub(crate) const SEVERITY_FIELD: &str = "severity";
 pub(crate) const VALID_SEVERITY_HELP: &str =
     "Valid warning severities are: low, medium, high, critical.";
+const WARNING_MISSING_SEVERITY_HELP: &str = "Warnings require non-empty `severity`. Valid warning severities are: low, medium, high, critical.";
+const WARNING_MISSING_BODY_HELP: &str = "Warnings require non-empty body text.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Warning {
@@ -136,7 +138,7 @@ fn emit_warning_error(
             )
             .with_span(parsed.span.clone())
             .with_object_id(&parsed.id_text)
-            .with_help("Warnings require non-empty `severity`."),
+            .with_help(WARNING_MISSING_SEVERITY_HELP),
         ),
         WarningError::InvalidSeverity(severity) => diagnostics.push(
             Diagnostic::error(
@@ -156,7 +158,8 @@ fn emit_warning_error(
                 "warning is missing required body",
             )
             .with_span(parsed.span.clone())
-            .with_object_id(&parsed.id_text),
+            .with_object_id(&parsed.id_text)
+            .with_help(WARNING_MISSING_BODY_HELP),
         ),
     }
 }
