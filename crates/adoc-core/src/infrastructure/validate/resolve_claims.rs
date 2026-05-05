@@ -13,8 +13,8 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::knowledge_object::{
     KnowledgeObject,
     claim::{
-        Claim, ClaimError, Evidence, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, STATUS_FIELD,
-        TEST_FIELD, VERIFIED_AT_FIELD, VERIFIED_STATUS, Verification,
+        Claim, ClaimError, Evidence, NonEmpty, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD,
+        STATUS_FIELD, TEST_FIELD, VERIFIED_AT_FIELD, VERIFIED_STATUS, Verification,
     },
 };
 use crate::domain::source::SourceFile;
@@ -227,6 +227,8 @@ fn build_verification(
     if owner.is_none() || verified_at.is_none() || evidence.is_empty() {
         return None;
     }
+
+    let evidence = NonEmpty::from_vec(evidence).expect("evidence checked above");
 
     Some(Verification::new(
         owner.expect("owner checked above"),
