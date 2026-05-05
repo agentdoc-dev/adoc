@@ -143,6 +143,8 @@ fn snapshot_check_flags_verified_claim_missing_evidence() {
 
 #[test]
 fn snapshot_check_passes_for_v0_4_proposed_decision() {
+    // This snapshot pins clean `adoc check` behavior. Proposed-vs-accepted
+    // artifact shape is covered by the golden HTML/agent JSON build tests.
     let combined = run_check_in_workspace(
         "snap-check-proposed-decision-clean",
         "v0_4/decision_proposed.adoc",
@@ -154,6 +156,8 @@ fn snapshot_check_passes_for_v0_4_proposed_decision() {
 
 #[test]
 fn snapshot_check_passes_for_v0_4_accepted_decision() {
+    // This snapshot pins clean `adoc check` behavior. Proposed-vs-accepted
+    // artifact shape is covered by the golden HTML/agent JSON build tests.
     let combined = run_check_in_workspace(
         "snap-check-accepted-decision-clean",
         "v0_4/decision_accepted.adoc",
