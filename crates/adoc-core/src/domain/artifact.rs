@@ -41,8 +41,10 @@ pub struct AgentJsonObject {
     pub id: String,
     pub kind: String,
     /// Kind-primary normalized discriminant. For v0 this is the claim status,
-    /// decision status, or warning severity.
-    pub status: String,
+    /// decision status, or warning severity. Objects without such a
+    /// discriminant omit the field from serialized agent JSON.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
     pub body: String,
     pub page_id: String,
     pub source_span: AgentJsonSourceSpan,
@@ -75,7 +77,7 @@ mod tests {
         let obj = AgentJsonObject {
             id: "billing.credits".to_string(),
             kind: "claim".to_string(),
-            status: "verified".to_string(),
+            status: Some("verified".to_string()),
             body: "The system credits users automatically.".to_string(),
             page_id: "team.guide".to_string(),
             source_span: AgentJsonSourceSpan {
@@ -101,5 +103,30 @@ mod tests {
         assert_eq!(value["relations"]["depends_on"], serde_json::json!([]));
         assert_eq!(value["relations"]["supersedes"], serde_json::json!([]));
         assert_eq!(value["relations"]["related_to"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn agent_json_object_omits_status_when_absent() {
+        let obj = AgentJsonObject {
+            id: "billing.note".to_string(),
+            kind: "note".to_string(),
+            status: None,
+            body: "Freeform object without a kind-primary discriminant.".to_string(),
+            page_id: "team.guide".to_string(),
+            source_span: AgentJsonSourceSpan {
+                path: "sample.adoc".to_string(),
+                line: 5,
+                column: 1,
+            },
+            fields: BTreeMap::new(),
+            relations: AgentJsonRelations::default(),
+        };
+
+        let value = serde_json::to_value(&obj).expect("serialization must succeed");
+
+        assert!(
+            value.get("status").is_none(),
+            "absent status must be omitted from agent JSON"
+        );
     }
 }

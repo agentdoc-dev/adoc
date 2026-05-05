@@ -58,7 +58,7 @@ fn warning_to_agent_object(warning: &Warning, page_id: &str) -> AgentJsonObject 
     AgentJsonObject {
         id: warning.id().as_str().to_string(),
         kind: "warning".to_string(),
-        status: warning.severity().as_str().to_string(),
+        status: Some(warning.severity().as_str().to_string()),
         body: warning.body().as_str().to_string(),
         page_id: page_id.to_string(),
         source_span: AgentJsonSourceSpan {
@@ -81,7 +81,7 @@ fn decision_to_agent_object(decision: &Decision, page_id: &str) -> AgentJsonObje
     AgentJsonObject {
         id: decision.id().as_str().to_string(),
         kind: "decision".to_string(),
-        status: decision.status().as_str().to_string(),
+        status: Some(decision.status().as_str().to_string()),
         body: decision.body().as_str().to_string(),
         page_id: page_id.to_string(),
         source_span: AgentJsonSourceSpan {
@@ -117,7 +117,7 @@ fn claim_to_agent_object(claim: &Claim, page_id: &str) -> AgentJsonObject {
     AgentJsonObject {
         id: claim.id().as_str().to_string(),
         kind: "claim".to_string(),
-        status: claim.status().as_str().to_string(),
+        status: Some(claim.status().as_str().to_string()),
         body: claim.body().as_str().to_string(),
         page_id: page_id.to_string(),
         source_span: AgentJsonSourceSpan {
@@ -286,7 +286,7 @@ mod tests {
         let obj = &doc.objects[0];
         assert_eq!(obj.id, "billing.credits");
         assert_eq!(obj.kind, "claim");
-        assert_eq!(obj.status, "plain");
+        assert_eq!(obj.status.as_deref(), Some("plain"));
         assert_eq!(obj.body, "The system credits users automatically.");
         assert_eq!(obj.page_id, "team.guide");
         assert!(
@@ -385,7 +385,7 @@ mod tests {
 
         let obj = &doc.objects[0];
         assert_eq!(obj.kind, "decision");
-        assert_eq!(obj.status, "accepted");
+        assert_eq!(obj.status.as_deref(), Some("accepted"));
         assert_eq!(
             obj.fields.get(DECIDED_BY_FIELD).map(String::as_str),
             Some("architecture")
@@ -407,7 +407,7 @@ mod tests {
         let doc = artifact.build(&[page], &[]);
 
         let obj = &doc.objects[0];
-        assert_eq!(obj.status, "proposed");
+        assert_eq!(obj.status.as_deref(), Some("proposed"));
         assert_eq!(
             obj.fields.get(DECIDED_BY_FIELD).map(String::as_str),
             Some("architecture")
@@ -432,7 +432,7 @@ mod tests {
         let obj = &doc.objects[0];
         assert_eq!(obj.id, "auth.session.clock-skew");
         assert_eq!(obj.kind, "warning");
-        assert_eq!(obj.status, "critical");
+        assert_eq!(obj.status.as_deref(), Some("critical"));
         assert_eq!(obj.body, "Session clocks can drift.");
         assert_eq!(obj.page_id, "team.warnings");
         assert_eq!(obj.source_span.path, "sample.adoc");
