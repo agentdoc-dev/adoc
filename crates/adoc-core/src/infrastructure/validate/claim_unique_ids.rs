@@ -151,6 +151,7 @@ mod tests {
             Some("draft"),
             "Use the existing billing policy.",
             BTreeMap::new(),
+            None,
             span,
         )
         .expect("valid decision");

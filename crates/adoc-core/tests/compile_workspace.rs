@@ -478,8 +478,8 @@ fn compile_workspace_rejects_accepted_decision_empty_decided_by() {
 }
 
 #[test]
-fn compile_workspace_emits_accepted_decision_with_generic_metadata() {
-    let workspace = TestWorkspace::new("decision-accepted-generic-metadata");
+fn compile_workspace_emits_accepted_decision_with_verdict() {
+    let workspace = TestWorkspace::new("decision-accepted-verdict");
     let source = workspace.write(
         "decisions.adoc",
         concat!(
@@ -516,15 +516,22 @@ fn compile_workspace_emits_accepted_decision_with_generic_metadata() {
     assert!(
         artifacts
             .html
-            .contains("<footer class=\"decision__metadata\">\n<dl>\n"),
-        "generic metadata footer missing: {}",
+            .contains("<section class=\"decision decision--accepted\" id=\"billing.policy\">"),
+        "accepted decision modifier missing: {}",
         artifacts.html
     );
     assert!(
         artifacts
             .html
-            .contains("<dt>decided_by</dt><dd>architecture</dd>"),
-        "decided_by metadata missing: {}",
+            .contains("<div class=\"decision__verdict\"><dl><div class=\"decision__verdict-item\"><dt>decided_by</dt><dd>architecture</dd></div></dl></div>"),
+        "decided_by verdict missing: {}",
+        artifacts.html
+    );
+    assert!(
+        !artifacts
+            .html
+            .contains("<footer class=\"decision__metadata\">\n<dl>\n<dt>decided_by</dt>"),
+        "decided_by must not render as generic metadata: {}",
         artifacts.html
     );
 }

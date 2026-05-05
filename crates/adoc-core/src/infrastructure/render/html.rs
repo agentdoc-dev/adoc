@@ -3,7 +3,7 @@ use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
     KnowledgeObject,
     claim::{Claim, Evidence},
-    decision::Decision,
+    decision::{DECIDED_BY_FIELD, Decision},
 };
 use crate::domain::ports::renderer::Renderer;
 
@@ -89,7 +89,14 @@ fn render_block(block: &BlockAst, html: &mut String) {
 }
 
 fn render_decision(decision: &Decision, html: &mut String) {
-    html.push_str("<section class=\"decision\" id=\"");
+    let class = if decision.verdict().is_some() {
+        "decision decision--accepted"
+    } else {
+        "decision"
+    };
+    html.push_str("<section class=\"");
+    html.push_str(class);
+    html.push_str("\" id=\"");
     html.push_str(&escape_html(decision.id().as_str()));
     html.push_str("\">\n");
     html.push_str("<header class=\"decision__header\">");
@@ -104,6 +111,15 @@ fn render_decision(decision: &Decision, html: &mut String) {
     html.push_str("<div class=\"decision__body\"><p>");
     html.push_str(&escape_html(decision.body().as_str()));
     html.push_str("</p></div>\n");
+    if let Some(verdict) = decision.verdict() {
+        html.push_str("<div class=\"decision__verdict\"><dl>");
+        html.push_str("<div class=\"decision__verdict-item\"><dt>");
+        html.push_str(DECIDED_BY_FIELD);
+        html.push_str("</dt><dd>");
+        html.push_str(&escape_html(verdict.decided_by().as_str()));
+        html.push_str("</dd></div>");
+        html.push_str("</dl></div>\n");
+    }
     render_decision_metadata(decision, html);
     html.push_str("</section>\n");
 }
@@ -427,6 +443,22 @@ mod tests {
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim)))
     }
 
+    fn make_accepted_decision(
+        id: &str,
+        body: &str,
+        fields: std::collections::BTreeMap<String, String>,
+        span: SourceSpan,
+    ) -> BlockAst {
+        use crate::domain::knowledge_object::{
+            KnowledgeObject,
+            decision::{AcceptedVerdict, DecidedBy, Decision},
+        };
+        let verdict = AcceptedVerdict::new(DecidedBy::try_new("architecture").expect("decided_by"));
+        let decision = Decision::try_new(id, Some("accepted"), body, fields, Some(verdict), span)
+            .expect("test decision must be valid");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision)))
+    }
+
     #[test]
     fn claim_renders_to_section_with_kind_id_status_body() {
         let block = make_claim(
@@ -629,6 +661,43 @@ mod tests {
                 "<div class=\"claim__evidence-item claim__evidence-item--source\"><dt>source</dt><dd>payments ledger</dd></div>"
             ),
             "missing source evidence: {html}"
+        );
+    }
+
+    #[test]
+    fn accepted_decision_renders_modifier_and_verdict_before_metadata() {
+        let fields =
+            std::collections::BTreeMap::from([("audience".to_string(), "support".to_string())]);
+        let block = make_accepted_decision(
+            "billing.policy",
+            "Use the existing billing policy.",
+            fields,
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            html.contains("<section class=\"decision decision--accepted\" id=\"billing.policy\">"),
+            "missing accepted modifier: {html}"
+        );
+        assert!(
+            html.contains(
+                "<div class=\"decision__verdict\"><dl><div class=\"decision__verdict-item\"><dt>decided_by</dt><dd>architecture</dd></div></dl></div>"
+            ),
+            "missing verdict block: {html}"
+        );
+        let body = html.find("<div class=\"decision__body\">").expect("body");
+        let verdict = html
+            .find("<div class=\"decision__verdict\">")
+            .expect("verdict");
+        let metadata = html
+            .find("<footer class=\"decision__metadata\">")
+            .expect("metadata");
+        assert!(body < verdict && verdict < metadata, "wrong order: {html}");
+        assert!(
+            !html.contains("<footer class=\"decision__metadata\">\n<dl>\n<dt>decided_by</dt>"),
+            "decided_by must not render as generic metadata: {html}"
         );
     }
 }

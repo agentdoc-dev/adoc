@@ -17,8 +17,8 @@ use crate::domain::knowledge_object::{
         STATUS_FIELD, TEST_FIELD, VERIFIED_AT_FIELD, VERIFIED_STATUS, Verification,
     },
     decision::{
-        DECIDED_BY_FIELD, Decision, DecisionError, STATUS_FIELD as DECISION_STATUS_FIELD,
-        VALID_STATUS_HELP,
+        ACCEPTED_STATUS, AcceptedVerdict, DECIDED_BY_FIELD, DecidedBy, Decision, DecisionError,
+        STATUS_FIELD as DECISION_STATUS_FIELD, VALID_STATUS_HELP,
     },
 };
 use crate::domain::source::SourceFile;
@@ -101,11 +101,38 @@ fn build_decision(
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
 
+    let status_is_exact_accepted = status_text
+        .map(|status| status.trim_matches(|character: char| character.is_ascii_whitespace()))
+        == Some(ACCEPTED_STATUS);
+
+    let (optional_fields, verdict) = if status_is_exact_accepted {
+        if let Err(error) =
+            Decision::validate_basics(&parsed.id_text, status_text, &parsed.body_text)
+        {
+            emit_decision_error(parsed, error, diagnostics);
+            return None;
+        }
+
+        let Some(decided_by) = optional_fields
+            .get(DECIDED_BY_FIELD)
+            .and_then(|value| DecidedBy::try_new(value))
+        else {
+            diagnostics.push(missing_decided_by_diagnostic(parsed));
+            return None;
+        };
+        let mut storage_fields = optional_fields;
+        storage_fields.remove(DECIDED_BY_FIELD);
+        (storage_fields, Some(AcceptedVerdict::new(decided_by)))
+    } else {
+        (optional_fields, None)
+    };
+
     match Decision::try_new(
         &parsed.id_text,
         status_text,
         &parsed.body_text,
         optional_fields,
+        verdict,
         parsed.span.clone(),
     ) {
         Ok(decision) => Some(decision),
@@ -361,6 +388,19 @@ fn missing_evidence_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
     .with_help(VERIFIED_CLAIM_HELP)
 }
 
+fn missing_decided_by_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::SchemaMissingField,
+        format!(
+            "accepted decision `{}` is missing required field `{DECIDED_BY_FIELD}`",
+            parsed.id_text
+        ),
+    )
+    .with_span(parsed.span.clone())
+    .with_object_id(&parsed.id_text)
+    .with_help("Accepted decisions require non-empty `decided_by`.")
+}
+
 fn status_casing_diagnostic(parsed: &ParsedTypedBlock, status: &str) -> Diagnostic {
     Diagnostic::warning(
         DiagnosticCode::ClaimStatusCasing,
@@ -415,17 +455,18 @@ fn emit_decision_error(
             )
             .with_span(parsed.span.clone()),
         ),
-        DecisionError::MissingDecidedBy => diagnostics.push(
+        DecisionError::MissingVerdict => diagnostics.push(missing_decided_by_diagnostic(parsed)),
+        DecisionError::UnexpectedVerdict => diagnostics.push(
             Diagnostic::error(
-                DiagnosticCode::SchemaMissingField,
+                DiagnosticCode::SchemaInvalidStatus,
                 format!(
-                    "accepted decision `{}` is missing required field `{DECIDED_BY_FIELD}`",
+                    "decision `{}` has an accepted verdict but status is not `{ACCEPTED_STATUS}`",
                     parsed.id_text
                 ),
             )
             .with_span(parsed.span.clone())
             .with_object_id(&parsed.id_text)
-            .with_help("Accepted decisions require non-empty `decided_by`."),
+            .with_help("Only accepted decisions may carry an accepted verdict."),
         ),
     }
 }
@@ -726,5 +767,118 @@ mod tests {
         };
         let field_keys: Vec<&str> = claim.fields().iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(field_keys, vec!["owner", "source"]);
+    }
+
+    #[test]
+    fn resolves_accepted_decision_with_verdict_and_strips_decided_by_metadata() {
+        let pending = ParsedTypedBlock {
+            kind: BlockKind::Decision,
+            id_text: "billing.policy".to_string(),
+            raw_fields: BTreeMap::from([
+                ("status".to_string(), "accepted".to_string()),
+                ("decided_by".to_string(), " architecture ".to_string()),
+                ("audience".to_string(), "support".to_string()),
+            ]),
+            duplicate_keys: Vec::new(),
+            body_text: "Use the existing billing policy.".to_string(),
+            content_spans: Vec::new(),
+            span: span(),
+        };
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert!(diagnostics.is_empty());
+        let BlockAst::KnowledgeObject(ko) = &pairs[0].1.blocks[0] else {
+            panic!("expected KnowledgeObject");
+        };
+        let KnowledgeObject::Decision(decision) = ko.as_ref() else {
+            panic!("expected decision");
+        };
+        assert_eq!(
+            decision
+                .verdict()
+                .expect("accepted verdict")
+                .decided_by()
+                .as_str(),
+            "architecture"
+        );
+        let field_keys: Vec<&str> = decision
+            .fields()
+            .iter()
+            .map(|(key, _)| key.as_str())
+            .collect();
+        assert_eq!(field_keys, vec!["audience"]);
+    }
+
+    #[test]
+    fn emits_missing_field_for_empty_accepted_decision_decided_by() {
+        let pending = ParsedTypedBlock {
+            kind: BlockKind::Decision,
+            id_text: "billing.policy".to_string(),
+            raw_fields: BTreeMap::from([
+                ("status".to_string(), "accepted".to_string()),
+                ("decided_by".to_string(), " ".to_string()),
+            ]),
+            duplicate_keys: Vec::new(),
+            body_text: "Use the existing billing policy.".to_string(),
+            content_spans: Vec::new(),
+            span: span(),
+        };
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaMissingField);
+        assert!(diagnostics[0].message.contains("decided_by"));
+        assert_eq!(diagnostics[0].span.as_ref(), Some(&span()));
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.policy"));
+        assert!(
+            diagnostics[0]
+                .help
+                .as_deref()
+                .is_some_and(|help| help.contains("non-empty `decided_by`"))
+        );
+        assert!(pairs[0].1.blocks.is_empty());
+    }
+
+    #[test]
+    fn preserves_decided_by_metadata_for_non_accepted_decisions() {
+        let pending = ParsedTypedBlock {
+            kind: BlockKind::Decision,
+            id_text: "billing.policy".to_string(),
+            raw_fields: BTreeMap::from([
+                ("status".to_string(), "proposed".to_string()),
+                ("decided_by".to_string(), "architecture".to_string()),
+            ]),
+            duplicate_keys: Vec::new(),
+            body_text: "Use the existing billing policy.".to_string(),
+            content_spans: Vec::new(),
+            span: span(),
+        };
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert!(diagnostics.is_empty());
+        let BlockAst::KnowledgeObject(ko) = &pairs[0].1.blocks[0] else {
+            panic!("expected KnowledgeObject");
+        };
+        let KnowledgeObject::Decision(decision) = ko.as_ref() else {
+            panic!("expected decision");
+        };
+        assert!(decision.verdict().is_none());
+        assert_eq!(
+            decision
+                .fields()
+                .iter()
+                .next()
+                .map(|(key, value)| (key.as_str(), value.as_str())),
+            Some(("decided_by", "architecture"))
+        );
     }
 }
