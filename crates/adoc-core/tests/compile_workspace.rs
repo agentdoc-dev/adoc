@@ -167,7 +167,7 @@ fn compile_workspace_resolves_clean_decision_into_artifacts() {
             "# Decision Guide @doc(team.decisions)\n",
             "\n",
             "::decision billing.policy\n",
-            "status: draft\n",
+            "status: proposed\n",
             "--\n",
             "Use the existing billing policy.\n",
             "::\n",
@@ -189,7 +189,7 @@ fn compile_workspace_resolves_clean_decision_into_artifacts() {
         .expect("decision object must be emitted");
     assert_eq!(record.id, "billing.policy");
     assert_eq!(record.kind, "decision");
-    assert_eq!(record.status, "draft");
+    assert_eq!(record.status, "proposed");
     assert_eq!(record.body, "Use the existing billing policy.");
     assert_eq!(record.page_id, "team.decisions");
     assert!(record.fields.is_empty());
@@ -223,7 +223,7 @@ fn compile_workspace_rejects_duplicate_decision_id_and_blocks_artifacts() {
             "# Decision Guide @doc(team.decisions)\n",
             "\n",
             "::decision billing.policy\n",
-            "status: draft\n",
+            "status: proposed\n",
             "--\n",
             "Use the existing billing policy.\n",
             "::\n",
@@ -338,7 +338,7 @@ fn compile_workspace_rejects_decision_missing_body() {
             "# Decision Guide @doc(team.decisions)\n",
             "\n",
             "::decision billing.policy\n",
-            "status: draft\n",
+            "status: proposed\n",
             "--\n",
             "::\n",
         ),
@@ -396,7 +396,7 @@ fn compile_workspace_rejects_decision_invalid_status() {
         result.diagnostics[0]
             .help
             .as_deref()
-            .is_some_and(|help| help.contains("draft, proposed, accepted"))
+            .is_some_and(|help| help.contains("proposed, accepted"))
     );
 }
 

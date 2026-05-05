@@ -8,8 +8,7 @@ use crate::domain::values::{BodyText, NonEmptyText, OptionalFields, trim_ascii_e
 pub(crate) const STATUS_FIELD: &str = "status";
 pub(crate) const DECIDED_BY_FIELD: &str = "decided_by";
 pub(crate) const ACCEPTED_STATUS: &str = "accepted";
-pub(crate) const VALID_STATUS_HELP: &str =
-    "Valid decision statuses are: draft, proposed, accepted, superseded, revoked, archived.";
+pub(crate) const VALID_STATUS_HELP: &str = "Valid decision statuses are: proposed, accepted.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Decision {
@@ -241,12 +240,8 @@ fn missing_decided_by_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DecisionStatus {
-    Draft,
     Proposed,
     Accepted,
-    Superseded,
-    Revoked,
-    Archived,
 }
 
 impl DecisionStatus {
@@ -256,24 +251,16 @@ impl DecisionStatus {
             return Err(DecisionError::MissingStatus);
         }
         match trimmed {
-            "draft" => Ok(Self::Draft),
             "proposed" => Ok(Self::Proposed),
             "accepted" => Ok(Self::Accepted),
-            "superseded" => Ok(Self::Superseded),
-            "revoked" => Ok(Self::Revoked),
-            "archived" => Ok(Self::Archived),
             _ => Err(DecisionError::InvalidStatus(trimmed.to_string())),
         }
     }
 
     pub(crate) fn as_str(&self) -> &str {
         match self {
-            Self::Draft => "draft",
             Self::Proposed => "proposed",
             Self::Accepted => ACCEPTED_STATUS,
-            Self::Superseded => "superseded",
-            Self::Revoked => "revoked",
-            Self::Archived => "archived",
         }
     }
 
@@ -379,6 +366,10 @@ mod tests {
             Err(DecisionError::InvalidStatus("Accepted".to_string()))
         );
         assert_eq!(
+            DecisionStatus::try_new("draft"),
+            Err(DecisionError::InvalidStatus("draft".to_string()))
+        );
+        assert_eq!(
             DecisionStatus::try_new("planned"),
             Err(DecisionError::InvalidStatus("planned".to_string()))
         );
@@ -386,15 +377,15 @@ mod tests {
 
     #[test]
     fn decision_status_trims_ascii_edges_for_valid_values() {
-        let status = DecisionStatus::try_new("  archived  ").expect("valid status");
-        assert_eq!(status.as_str(), "archived");
+        let status = DecisionStatus::try_new("  proposed  ").expect("valid status");
+        assert_eq!(status.as_str(), "proposed");
     }
 
     #[test]
     fn decision_try_new_rejects_missing_body() {
         let result = Decision::try_new(
             "billing.policy",
-            Some("draft"),
+            Some("proposed"),
             " ",
             BTreeMap::new(),
             None,
