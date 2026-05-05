@@ -10,7 +10,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::domain::ast::{BlockAst, PageAst, ParsedClaim, PendingKnowledgeObject};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::domain::knowledge_object::{KnowledgeObject, claim::Claim, claim::ClaimError};
+use crate::domain::knowledge_object::{
+    KnowledgeObject,
+    claim::{Claim, ClaimError, STATUS_FIELD},
+};
 use crate::domain::source::SourceFile;
 
 /// Walk each parsed page in place: every `BlockAst::KnowledgeObjectPending`
@@ -64,11 +67,11 @@ fn build_claim(parsed: &ParsedClaim, diagnostics: &mut Vec<Diagnostic>) -> Optio
         return None;
     }
 
-    let status_text = parsed.raw_fields.get("status").map(String::as_str);
+    let status_text = parsed.raw_fields.get(STATUS_FIELD).map(String::as_str);
     let optional_fields: BTreeMap<String, String> = parsed
         .raw_fields
         .iter()
-        .filter(|(k, _)| k.as_str() != "status")
+        .filter(|(k, _)| k.as_str() != STATUS_FIELD)
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
 
