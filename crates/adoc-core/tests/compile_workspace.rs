@@ -132,7 +132,7 @@ fn compile_workspace_resolves_claim_into_artifact_record() {
     let record: &AgentJsonObject = &artifacts.agent_json.objects[0];
     assert_eq!(record.id, "billing.credits");
     assert_eq!(record.kind, "claim");
-    assert_eq!(record.status, "draft");
+    assert_eq!(record.status.as_deref(), Some("draft"));
     assert_eq!(
         record.body,
         "The system credits users automatically when a payment fails."
@@ -189,7 +189,7 @@ fn compile_workspace_resolves_clean_decision_into_artifacts() {
         .expect("decision object must be emitted");
     assert_eq!(record.id, "billing.policy");
     assert_eq!(record.kind, "decision");
-    assert_eq!(record.status, "proposed");
+    assert_eq!(record.status.as_deref(), Some("proposed"));
     assert_eq!(record.body, "Use the existing billing policy.");
     assert_eq!(record.page_id, "team.decisions");
     assert!(record.fields.is_empty());
@@ -246,7 +246,7 @@ fn compile_workspace_resolves_warning_into_artifacts() {
         .expect("warning object must be emitted");
     assert_eq!(record.id, "auth.session.clock-skew");
     assert_eq!(record.kind, "warning");
-    assert_eq!(record.status, "high");
+    assert_eq!(record.status.as_deref(), Some("high"));
     assert_eq!(
         record.body,
         "Session clocks can drift enough to reject otherwise valid tokens."
@@ -680,7 +680,7 @@ fn compile_workspace_emits_accepted_decision_with_verdict() {
         .first()
         .expect("decision object must be emitted");
     assert_eq!(record.kind, "decision");
-    assert_eq!(record.status, "accepted");
+    assert_eq!(record.status.as_deref(), Some("accepted"));
     assert_eq!(
         record.fields.get("decided_by").map(String::as_str),
         Some("architecture")
@@ -742,7 +742,7 @@ fn compile_workspace_builds_verified_claim_with_all_v0_evidence() {
         .objects
         .first()
         .expect("claim object must be emitted");
-    assert_eq!(record.status, "verified");
+    assert_eq!(record.status.as_deref(), Some("verified"));
     assert_eq!(
         record.fields.get("owner").map(String::as_str),
         Some("team-billing")
@@ -863,7 +863,10 @@ fn compile_workspace_warns_and_treats_status_casing_variant_as_plain() {
         Some("billing.credits")
     );
     let artifacts = result.artifacts.expect("warnings must not block artifacts");
-    assert_eq!(artifacts.agent_json.objects[0].status, "Verified");
+    assert_eq!(
+        artifacts.agent_json.objects[0].status.as_deref(),
+        Some("Verified")
+    );
     assert!(
         !artifacts.html.contains("claim--verified"),
         "casing variant must not render as verified: {}",

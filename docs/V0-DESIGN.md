@@ -412,6 +412,8 @@ Rules:
   current object set, this means claim status, decision status, and warning
   severity. V0 keeps these values in one slot rather than adding per-kind
   top-level discriminant fields.
+- Addendum: object kinds without a kind-primary normalized discriminant omit
+  `status` from Agent JSON rather than emitting `null` or an empty string.
 - Relations are ID arrays, not embedded objects.
 - Diagnostics are included using the same codes and messages as CLI diagnostics.
 - Schema versioning starts immediately, even if the shape is still pre-1.0.

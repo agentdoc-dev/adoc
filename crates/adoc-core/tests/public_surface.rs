@@ -34,7 +34,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _: AgentJsonObject = AgentJsonObject {
         id: String::new(),
         kind: String::new(),
-        status: String::new(),
+        status: Some(String::new()),
         body: String::new(),
         page_id: String::new(),
         source_span: AgentJsonSourceSpan {
