@@ -136,10 +136,7 @@ mod tests {
             diagnostics[0].span.as_ref().map(|span| &span.file),
             Some(&PathBuf::from("two.adoc"))
         );
-        assert_eq!(
-            diagnostics[0].object_id.as_deref(),
-            Some("billing.credits")
-        );
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.credits"));
     }
 
     #[test]

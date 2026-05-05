@@ -72,7 +72,7 @@ pub(crate) struct ClaimStatus(String);
 
 impl ClaimStatus {
     pub(crate) fn try_new(s: &str) -> Result<Self, ClaimError> {
-        let trimmed = s.trim();
+        let trimmed = trim_ascii_edges(s);
         if trimmed.is_empty() {
             return Err(ClaimError::MissingStatus);
         }
@@ -89,7 +89,7 @@ pub(crate) struct ClaimBody(String);
 
 impl ClaimBody {
     pub(crate) fn try_new(s: &str) -> Result<Self, ClaimError> {
-        let trimmed = s.trim();
+        let trimmed = trim_ascii_edges(s);
         if trimmed.is_empty() {
             return Err(ClaimError::MissingBody);
         }
@@ -99,6 +99,10 @@ impl ClaimBody {
     pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+fn trim_ascii_edges(value: &str) -> &str {
+    value.trim_matches(|character: char| character.is_ascii_whitespace())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -161,14 +165,31 @@ mod tests {
     }
 
     #[test]
+    fn claim_status_try_new_preserves_non_ascii_edge_whitespace() {
+        let status = ClaimStatus::try_new("\u{00a0}verified\u{00a0}").expect("valid status");
+        assert_eq!(status.as_str(), "\u{00a0}verified\u{00a0}");
+    }
+
+    #[test]
     fn claim_body_try_new_rejects_empty() {
         assert_eq!(ClaimBody::try_new(""), Err(ClaimError::MissingBody));
+    }
+
+    #[test]
+    fn claim_body_try_new_rejects_ascii_whitespace_only() {
+        assert_eq!(ClaimBody::try_new("   \t  "), Err(ClaimError::MissingBody));
     }
 
     #[test]
     fn claim_body_try_new_trims_and_accepts() {
         let body = ClaimBody::try_new("  some claim body  ").expect("valid body");
         assert_eq!(body.as_str(), "some claim body");
+    }
+
+    #[test]
+    fn claim_body_try_new_preserves_non_ascii_edge_whitespace() {
+        let body = ClaimBody::try_new("\u{00a0}some claim body\u{00a0}").expect("valid body");
+        assert_eq!(body.as_str(), "\u{00a0}some claim body\u{00a0}");
     }
 
     #[test]
