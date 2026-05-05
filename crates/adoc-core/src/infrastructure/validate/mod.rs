@@ -10,8 +10,8 @@
 //! so that diagnostic remains in the parser. See ADR-0007 for the decision.
 
 mod claim_unique_ids;
-pub(crate) mod resolve_claims;
-pub(crate) use resolve_claims::resolve_knowledge_objects;
+pub(crate) mod resolve_knowledge_objects;
+pub(crate) use resolve_knowledge_objects::resolve_knowledge_objects;
 
 use claim_unique_ids::KnowledgeObjectUniqueIds;
 

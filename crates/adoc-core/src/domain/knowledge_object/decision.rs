@@ -1,7 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::domain::diagnostic::SourceSpan;
-use crate::domain::identity::{ObjectId, ObjectIdError};
+use crate::domain::ast::ParsedTypedBlock;
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
+use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
 use crate::domain::values::{BodyText, NonEmptyText, OptionalFields, trim_ascii_edges};
 
 pub(crate) const STATUS_FIELD: &str = "status";
@@ -31,6 +32,79 @@ pub(crate) enum DecisionError {
 }
 
 impl Decision {
+    pub(crate) fn build_from_parsed(
+        parsed: &ParsedTypedBlock,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> Option<Self> {
+        if !parsed.duplicate_keys.is_empty() {
+            let mut emitted_keys = BTreeSet::new();
+            for key in &parsed.duplicate_keys {
+                if emitted_keys.insert(key.as_str()) {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::SchemaDuplicateField,
+                            format!("duplicate field `{key}` in decision"),
+                        )
+                        .with_span(parsed.span.clone()),
+                    );
+                }
+            }
+            // Duplicate fields poison the raw field map: last-value-wins storage
+            // makes missing-field validation ambiguous until the duplicates are fixed.
+            return None;
+        }
+
+        let status_text = parsed.raw_fields.get(STATUS_FIELD).map(String::as_str);
+        let optional_fields: BTreeMap<String, String> = parsed
+            .raw_fields
+            .iter()
+            .filter(|(key, _)| key.as_str() != STATUS_FIELD)
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+
+        let (_, status, _) =
+            match Self::parse_basics(&parsed.id_text, status_text, &parsed.body_text) {
+                Ok(basics) => basics,
+                Err(error) => {
+                    emit_decision_error(parsed, error, diagnostics);
+                    return None;
+                }
+            };
+
+        let (optional_fields, verdict) = if status.is_accepted() {
+            let Some(decided_by) = optional_fields
+                .get(DECIDED_BY_FIELD)
+                .and_then(|value| DecidedBy::try_new(value))
+            else {
+                diagnostics.push(missing_decided_by_diagnostic(parsed));
+                return None;
+            };
+            let mut storage_fields = optional_fields;
+            storage_fields.remove(DECIDED_BY_FIELD);
+            (storage_fields, Some(AcceptedVerdict::new(decided_by)))
+        } else {
+            (optional_fields, None)
+        };
+
+        match Self::try_new(
+            &parsed.id_text,
+            status_text,
+            &parsed.body_text,
+            optional_fields,
+            verdict,
+            parsed.span.clone(),
+        ) {
+            Ok(decision) => Some(decision),
+            Err(DecisionError::MissingVerdict | DecisionError::UnexpectedVerdict) => {
+                unreachable!("decision builder constructs verdict to match status")
+            }
+            Err(error) => {
+                emit_decision_error(parsed, error, diagnostics);
+                None
+            }
+        }
+    }
+
     pub(crate) fn try_new(
         id_text: &str,
         status_text: Option<&str>,
@@ -64,14 +138,6 @@ impl Decision {
             verdict,
             span,
         })
-    }
-
-    pub(crate) fn validate_basics(
-        id_text: &str,
-        status_text: Option<&str>,
-        body_text: &str,
-    ) -> Result<(), DecisionError> {
-        Self::parse_basics(id_text, status_text, body_text).map(|_| ())
     }
 
     fn parse_basics(
@@ -108,6 +174,69 @@ impl Decision {
     pub(crate) fn span(&self) -> &SourceSpan {
         &self.span
     }
+}
+
+fn emit_decision_error(
+    parsed: &ParsedTypedBlock,
+    error: DecisionError,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match error {
+        DecisionError::InvalidId(error) => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                format!("invalid decision id `{}`: {error}", parsed.id_text),
+            )
+            .with_span(parsed.span.clone())
+            .with_object_id(&parsed.id_text)
+            .with_help(OBJECT_ID_GRAMMAR_HELP),
+        ),
+        DecisionError::MissingStatus => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaMissingField,
+                "decision is missing required field `status`",
+            )
+            .with_span(parsed.span.clone()),
+        ),
+        DecisionError::InvalidStatus(status) => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaInvalidStatus,
+                format!(
+                    "decision `{}` has invalid status `{status}`",
+                    parsed.id_text
+                ),
+            )
+            .with_span(parsed.span.clone())
+            .with_object_id(&parsed.id_text)
+            .with_help(VALID_STATUS_HELP),
+        ),
+        DecisionError::MissingBody => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaMissingField,
+                "decision is missing required body",
+            )
+            .with_span(parsed.span.clone()),
+        ),
+        DecisionError::MissingVerdict => {
+            unreachable!("accepted decision verdict is validated before construction")
+        }
+        DecisionError::UnexpectedVerdict => {
+            unreachable!("decision builder only passes verdict for accepted status")
+        }
+    }
+}
+
+fn missing_decided_by_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::SchemaMissingField,
+        format!(
+            "accepted decision `{}` is missing required field `{DECIDED_BY_FIELD}`",
+            parsed.id_text
+        ),
+    )
+    .with_span(parsed.span.clone())
+    .with_object_id(&parsed.id_text)
+    .with_help("Accepted decisions require non-empty `decided_by`.")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,6 +316,7 @@ mod tests {
 
     use super::*;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
+    use crate::domain::knowledge_object::BlockKind;
 
     fn span() -> SourceSpan {
         SourceSpan {
@@ -201,6 +331,18 @@ mod tests {
                 column: 8,
                 offset: 7,
             },
+        }
+    }
+
+    fn parsed_decision(fields: BTreeMap<String, String>, body_text: &str) -> ParsedTypedBlock {
+        ParsedTypedBlock {
+            kind: BlockKind::Decision,
+            id_text: "billing.policy".to_string(),
+            raw_fields: fields,
+            duplicate_keys: Vec::new(),
+            body_text: body_text.to_string(),
+            content_spans: Vec::new(),
+            span: span(),
         }
     }
 
@@ -311,6 +453,23 @@ mod tests {
             decision.verdict().expect("verdict").decided_by().as_str(),
             "architecture"
         );
+    }
+
+    #[test]
+    fn decision_build_from_parsed_reports_missing_decided_by_for_accepted_status() {
+        let parsed = parsed_decision(
+            BTreeMap::from([(STATUS_FIELD.to_string(), ACCEPTED_STATUS.to_string())]),
+            "Use the existing billing policy.",
+        );
+        let mut diagnostics = Vec::new();
+
+        let decision = Decision::build_from_parsed(&parsed, &mut diagnostics);
+
+        assert!(decision.is_none());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaMissingField);
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.policy"));
+        assert!(diagnostics[0].message.contains(DECIDED_BY_FIELD));
     }
 
     #[test]
