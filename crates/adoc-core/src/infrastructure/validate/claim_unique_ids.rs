@@ -29,6 +29,7 @@ impl WorkspaceRule for ClaimUniqueIds {
                                 first_span.render_location()
                             ),
                         )
+                        .with_object_id(claim.id().as_str())
                         .with_span(claim.span().clone()),
                     );
                 } else {
@@ -135,7 +136,10 @@ mod tests {
             diagnostics[0].span.as_ref().map(|span| &span.file),
             Some(&PathBuf::from("two.adoc"))
         );
-        assert!(diagnostics[0].object_id.is_none());
+        assert_eq!(
+            diagnostics[0].object_id.as_deref(),
+            Some("billing.credits")
+        );
     }
 
     #[test]
