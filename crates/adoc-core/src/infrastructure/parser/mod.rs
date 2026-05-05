@@ -702,7 +702,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_page_rejects_decision_as_unknown_typed_block() {
+    fn parse_page_recognizes_decision_as_pending_typed_block() {
         let (page, diagnostics) = parse_source(concat!(
             "# Decisions @doc(team.decisions)\n\n",
             "::decision billing.policy\n",
@@ -712,14 +712,21 @@ mod tests {
             "::\n",
         ));
 
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseUnknownBlockType);
         assert!(
-            page.blocks
-                .iter()
-                .all(|block| !matches!(block, BlockAst::KnowledgeObjectPending(_))),
-            "unsupported decision source must not become pending typed-block state"
+            diagnostics.is_empty(),
+            "expected decision parser fixture to stay clean: {diagnostics:?}"
         );
+        let pending = page
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::KnowledgeObjectPending(pending) => Some(pending),
+                _ => None,
+            })
+            .expect("decision block should be parsed as pending typed block");
+
+        assert_eq!(pending.kind, BlockKind::Decision);
+        assert_eq!(pending.id_text, "billing.policy");
     }
 
     #[test]

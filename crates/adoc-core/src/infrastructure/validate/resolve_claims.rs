@@ -16,6 +16,10 @@ use crate::domain::knowledge_object::{
         Claim, ClaimError, Evidence, NonEmpty, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD,
         STATUS_FIELD, TEST_FIELD, VERIFIED_AT_FIELD, VERIFIED_STATUS, Verification,
     },
+    decision::{
+        DECIDED_BY_FIELD, Decision, DecisionError, STATUS_FIELD as DECISION_STATUS_FIELD,
+        VALID_STATUS_HELP,
+    },
 };
 use crate::domain::source::SourceFile;
 
@@ -48,12 +52,68 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
                         }
                         // failure → block dropped; diagnostics already emitted above
                     }
+                    BlockKind::Decision => {
+                        if let Some(decision) = build_decision(&parsed, diagnostics) {
+                            new_blocks.push(BlockAst::KnowledgeObject(Box::new(
+                                KnowledgeObject::Decision(decision),
+                            )));
+                        }
+                        // failure → block dropped; diagnostics already emitted above
+                    }
                 }
             }
             other => new_blocks.push(other),
         }
     }
     page.blocks = new_blocks;
+}
+
+fn build_decision(
+    parsed: &ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<Decision> {
+    if !parsed.duplicate_keys.is_empty() {
+        let mut emitted_keys = BTreeSet::new();
+        for key in &parsed.duplicate_keys {
+            if emitted_keys.insert(key.as_str()) {
+                diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::SchemaDuplicateField,
+                        format!("duplicate field `{key}` in decision"),
+                    )
+                    .with_span(parsed.span.clone()),
+                );
+            }
+        }
+        // Duplicate fields poison the raw field map: last-value-wins storage
+        // makes missing-field validation ambiguous until the duplicates are fixed.
+        return None;
+    }
+
+    let status_text = parsed
+        .raw_fields
+        .get(DECISION_STATUS_FIELD)
+        .map(String::as_str);
+    let optional_fields: BTreeMap<String, String> = parsed
+        .raw_fields
+        .iter()
+        .filter(|(key, _)| key.as_str() != DECISION_STATUS_FIELD)
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+
+    match Decision::try_new(
+        &parsed.id_text,
+        status_text,
+        &parsed.body_text,
+        optional_fields,
+        parsed.span.clone(),
+    ) {
+        Ok(decision) => Some(decision),
+        Err(error) => {
+            emit_decision_error(parsed, error, diagnostics);
+            None
+        }
+    }
 }
 
 fn build_claim(parsed: &ParsedTypedBlock, diagnostics: &mut Vec<Diagnostic>) -> Option<Claim> {
@@ -314,6 +374,62 @@ fn status_casing_diagnostic(parsed: &ParsedTypedBlock, status: &str) -> Diagnost
     .with_help("Status values are case-sensitive; only `verified` creates a Verified Claim.")
 }
 
+fn emit_decision_error(
+    parsed: &ParsedTypedBlock,
+    error: DecisionError,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match error {
+        DecisionError::InvalidId(e) => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                format!("invalid decision id `{}`: {e}", parsed.id_text),
+            )
+            .with_span(parsed.span.clone())
+            .with_object_id(&parsed.id_text)
+            .with_help(crate::domain::identity::OBJECT_ID_GRAMMAR_HELP),
+        ),
+        DecisionError::MissingStatus => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaMissingField,
+                "decision is missing required field `status`",
+            )
+            .with_span(parsed.span.clone()),
+        ),
+        DecisionError::InvalidStatus(status) => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaInvalidStatus,
+                format!(
+                    "decision `{}` has invalid status `{status}`",
+                    parsed.id_text
+                ),
+            )
+            .with_span(parsed.span.clone())
+            .with_object_id(&parsed.id_text)
+            .with_help(VALID_STATUS_HELP),
+        ),
+        DecisionError::MissingBody => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaMissingField,
+                "decision is missing required body",
+            )
+            .with_span(parsed.span.clone()),
+        ),
+        DecisionError::MissingDecidedBy => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaMissingField,
+                format!(
+                    "accepted decision `{}` is missing required field `{DECIDED_BY_FIELD}`",
+                    parsed.id_text
+                ),
+            )
+            .with_span(parsed.span.clone())
+            .with_object_id(&parsed.id_text)
+            .with_help("Accepted decisions require non-empty `decided_by`."),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -568,7 +684,9 @@ mod tests {
         let BlockAst::KnowledgeObject(ko) = &pairs[0].1.blocks[0] else {
             panic!("expected KnowledgeObject");
         };
-        let KnowledgeObject::Claim(claim) = ko.as_ref();
+        let KnowledgeObject::Claim(claim) = ko.as_ref() else {
+            panic!("expected claim");
+        };
         let field_keys: Vec<&str> = claim.fields().iter().map(|(k, _)| k.as_str()).collect();
         assert!(
             !field_keys.contains(&"status"),
@@ -603,7 +721,9 @@ mod tests {
         let BlockAst::KnowledgeObject(ko) = &pairs[0].1.blocks[0] else {
             panic!("expected KnowledgeObject");
         };
-        let KnowledgeObject::Claim(claim) = ko.as_ref();
+        let KnowledgeObject::Claim(claim) = ko.as_ref() else {
+            panic!("expected claim");
+        };
         let field_keys: Vec<&str> = claim.fields().iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(field_keys, vec!["owner", "source"]);
     }

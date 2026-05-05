@@ -13,7 +13,7 @@ mod claim_unique_ids;
 pub(crate) mod resolve_claims;
 pub(crate) use resolve_claims::resolve_knowledge_objects;
 
-use claim_unique_ids::ClaimUniqueIds;
+use claim_unique_ids::KnowledgeObjectUniqueIds;
 
 use crate::domain::ast::{BlockAst, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
@@ -30,9 +30,9 @@ const SOURCE_PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLi
 /// into typed aggregates. Empty until a rule needs typed `Claim` data.
 const RESOLVED_PAGE_RULES: &[&dyn ValidationRule] = &[];
 
-/// Workspace-level rules, applied in registration order after claim
+/// Workspace-level rules, applied in registration order after knowledge object
 /// resolution and workspace assembly.
-const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[&ClaimUniqueIds];
+const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[&KnowledgeObjectUniqueIds];
 
 /// Run every source-page rule against `page`. The orchestrator performs the
 /// final source-position diagnostic sort before returning `CompileResult`.

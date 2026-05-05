@@ -11,6 +11,7 @@ use crate::domain::knowledge_object::{
         Claim, Evidence, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
         VERIFIED_AT_FIELD,
     },
+    decision::Decision,
 };
 use crate::domain::ports::artifact_writer::ArtifactWriter;
 
@@ -28,6 +29,9 @@ impl ArtifactWriter for AgentJsonArtifact {
                         KnowledgeObject::Claim(claim) => {
                             objects.push(claim_to_agent_object(claim, page.id.as_str()));
                         }
+                        KnowledgeObject::Decision(decision) => {
+                            objects.push(decision_to_agent_object(decision, page.id.as_str()));
+                        }
                     },
                     BlockAst::KnowledgeObjectPending(_) => unreachable!(
                         "resolver must replace pending knowledge objects before artifact emission"
@@ -42,6 +46,28 @@ impl ArtifactWriter for AgentJsonArtifact {
             objects,
             diagnostics: diagnostics.to_vec(),
         }
+    }
+}
+
+fn decision_to_agent_object(decision: &Decision, page_id: &str) -> AgentJsonObject {
+    let span = decision.span();
+    AgentJsonObject {
+        id: decision.id().as_str().to_string(),
+        kind: "decision".to_string(),
+        status: decision.status().as_str().to_string(),
+        body: decision.body().as_str().to_string(),
+        page_id: page_id.to_string(),
+        source_span: AgentJsonSourceSpan {
+            path: span.file.display().to_string(),
+            line: span.start.line,
+            column: span.start.column,
+        },
+        fields: decision
+            .fields()
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        relations: AgentJsonRelations::default(),
     }
 }
 
