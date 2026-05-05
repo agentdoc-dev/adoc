@@ -104,3 +104,17 @@ fn snapshot_check_flags_claim_id_invalid_uppercase() {
 
     insta::assert_snapshot!("check_claim_id_invalid_uppercase_flags", combined);
 }
+
+#[test]
+fn snapshot_check_flags_duplicate_claim_id_same_page() {
+    // Pins the error shape for a same-page duplicate claim id. The diagnostic
+    // must carry code id.duplicate, name the repeated id, and reference the
+    // first-occurrence location so the user can resolve the conflict.
+    let combined = run_check_in_workspace(
+        "snap-check-claim-id-duplicate-same-page",
+        "v0_2/claim_id_duplicate_same_page.adoc",
+        "claim_id_duplicate_same_page.adoc",
+    );
+
+    insta::assert_snapshot!("check_claim_id_duplicate_same_page_flags", combined);
+}

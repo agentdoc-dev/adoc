@@ -1,0 +1,13 @@
+# Billing Guide @doc(team.billing)
+
+::claim billing.credits
+status: verified
+--
+Credits are granted after payment succeeds.
+::
+
+::claim billing.credits
+status: draft
+--
+Credits are also described here by mistake.
+::

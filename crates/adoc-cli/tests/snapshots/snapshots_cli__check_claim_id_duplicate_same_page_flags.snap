@@ -1,0 +1,10 @@
+---
+source: crates/adoc-cli/tests/snapshots_cli.rs
+assertion_line: 119
+expression: combined
+---
+exit-success: false
+---stdout---
+claim_id_duplicate_same_page.adoc:9:1: error[id.duplicate] duplicate claim id `billing.credits`; previously defined at claim_id_duplicate_same_page.adoc:3:1
+1 errors, 0 warnings
+---stderr---
