@@ -1,0 +1,7 @@
+# Architecture Decisions @doc(team.decisions)
+
+::decision billing.policy
+status: Accepted
+--
+Adopt the existing billing policy as the source of truth.
+::

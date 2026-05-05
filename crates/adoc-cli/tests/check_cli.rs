@@ -1010,6 +1010,290 @@ fn build_renders_v0_3_verified_claims_pilot_to_golden_agent_json() {
     );
 }
 
+#[test]
+fn check_accepts_v0_4_proposed_decision_fixture() {
+    let workspace = TestWorkspace::new("check-accepts-v0-4-proposed-decision");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/decision_proposed.adoc"))
+        .expect("decision_proposed fixture is readable");
+    workspace.write("decision_proposed.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "decision_proposed.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        output.status.success(),
+        "expected v0.4 proposed decision fixture to check cleanly\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("0 errors, 0 warnings"),
+        "expected clean summary, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn build_renders_v0_4_proposed_decision_to_golden_html() {
+    let workspace = TestWorkspace::new("build-renders-proposed-decision-golden-html");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/decision_proposed.adoc"))
+        .expect("decision_proposed fixture is readable");
+    workspace.write("decision_proposed.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "decision_proposed.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.html"))
+        .expect("docs.html is written");
+    let golden = fs::read_to_string(fixture_path("v0_4/decision_proposed.golden.html"))
+        .expect("golden HTML fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "rendered HTML diverged from decision_proposed.golden.html"
+    );
+}
+
+#[test]
+fn build_renders_v0_4_proposed_decision_to_golden_agent_json() {
+    let workspace = TestWorkspace::new("build-renders-proposed-decision-golden-json");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/decision_proposed.adoc"))
+        .expect("decision_proposed fixture is readable");
+    workspace.write("decision_proposed.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "decision_proposed.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
+        .expect("docs.agent.json is written");
+    let golden = fs::read_to_string(fixture_path("v0_4/decision_proposed.golden.agent.json"))
+        .expect("golden agent JSON fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "agent JSON diverged from decision_proposed.golden.agent.json"
+    );
+}
+
+#[test]
+fn build_renders_v0_4_accepted_decision_to_golden_html() {
+    let workspace = TestWorkspace::new("build-renders-accepted-decision-golden-html");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/decision_accepted.adoc"))
+        .expect("decision_accepted fixture is readable");
+    workspace.write("decision_accepted.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "decision_accepted.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.html"))
+        .expect("docs.html is written");
+    let golden = fs::read_to_string(fixture_path("v0_4/decision_accepted.golden.html"))
+        .expect("golden HTML fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "rendered HTML diverged from decision_accepted.golden.html"
+    );
+    assert!(
+        actual.contains("<section class=\"decision decision--accepted\" id=\"billing.policy\">"),
+        "accepted decision modifier missing from HTML"
+    );
+    assert!(
+        actual.contains("<div class=\"decision__verdict\"><dl><div class=\"decision__verdict-item\"><dt>decided_by</dt><dd>architecture</dd></div></dl></div>"),
+        "accepted decision verdict block missing from HTML"
+    );
+}
+
+#[test]
+fn build_renders_v0_4_accepted_decision_to_golden_agent_json() {
+    let workspace = TestWorkspace::new("build-renders-accepted-decision-golden-json");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/decision_accepted.adoc"))
+        .expect("decision_accepted fixture is readable");
+    workspace.write("decision_accepted.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "decision_accepted.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
+        .expect("docs.agent.json is written");
+    let golden = fs::read_to_string(fixture_path("v0_4/decision_accepted.golden.agent.json"))
+        .expect("golden agent JSON fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "agent JSON diverged from decision_accepted.golden.agent.json"
+    );
+    assert!(
+        actual.contains("\"decided_by\": \"architecture\""),
+        "accepted decision agent JSON must flatten fields.decided_by"
+    );
+}
+
+#[test]
+fn check_rejects_decision_with_missing_status() {
+    let workspace = TestWorkspace::new("check-rejects-decision-missing-status");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/decision_missing_status.adoc"))
+        .expect("decision_missing_status fixture is readable");
+    workspace.write("decision_missing_status.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "decision_missing_status.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected missing-status decision to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.missing_field]"),
+        "expected schema.missing_field diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("decision_missing_status.adoc:3:1"),
+        "expected diagnostic at line 3 column 1, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("status"),
+        "expected message to mention `status`, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn check_rejects_accepted_decision_with_missing_decided_by() {
+    let workspace = TestWorkspace::new("check-rejects-accepted-decision-missing-decided-by");
+    let fixture_contents = fs::read_to_string(fixture_path(
+        "v0_4/decision_accepted_missing_decided_by.adoc",
+    ))
+    .expect("decision_accepted_missing_decided_by fixture is readable");
+    workspace.write(
+        "decision_accepted_missing_decided_by.adoc",
+        &fixture_contents,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "decision_accepted_missing_decided_by.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected accepted decision without decided_by to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.missing_field]"),
+        "expected schema.missing_field diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("decided_by"),
+        "expected message to mention `decided_by`, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn check_rejects_accepted_decision_with_empty_decided_by() {
+    let workspace = TestWorkspace::new("check-rejects-accepted-decision-empty-decided-by");
+    let fixture_contents =
+        fs::read_to_string(fixture_path("v0_4/decision_accepted_empty_decided_by.adoc"))
+            .expect("decision_accepted_empty_decided_by fixture is readable");
+    workspace.write("decision_accepted_empty_decided_by.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "decision_accepted_empty_decided_by.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected accepted decision with empty decided_by to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.missing_field]"),
+        "expected schema.missing_field diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("decided_by"),
+        "expected message to mention `decided_by`, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn check_rejects_decision_with_invalid_status() {
+    let workspace = TestWorkspace::new("check-rejects-decision-invalid-status");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/decision_invalid_status.adoc"))
+        .expect("decision_invalid_status fixture is readable");
+    workspace.write("decision_invalid_status.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "decision_invalid_status.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected invalid-status decision to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.invalid_status]"),
+        "expected schema.invalid_status diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("Accepted"),
+        "expected message to mention rejected status, got:\n{stdout}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn check_reports_unreadable_source_path() {

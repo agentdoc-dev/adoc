@@ -1,0 +1,9 @@
+---
+source: crates/adoc-cli/tests/snapshots_cli.rs
+expression: combined
+---
+exit-success: false
+---stdout---
+decision_missing_status.adoc:3:1: error[schema.missing_field] decision is missing required field `status`
+1 errors, 0 warnings
+---stderr---

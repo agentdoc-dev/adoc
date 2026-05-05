@@ -140,3 +140,69 @@ fn snapshot_check_flags_verified_claim_missing_evidence() {
 
     insta::assert_snapshot!("check_verified_claim_missing_evidence_flags", combined);
 }
+
+#[test]
+fn snapshot_check_passes_for_v0_4_proposed_decision() {
+    let combined = run_check_in_workspace(
+        "snap-check-proposed-decision-clean",
+        "v0_4/decision_proposed.adoc",
+        "decision_proposed.adoc",
+    );
+
+    insta::assert_snapshot!("check_decision_proposed_clean", combined);
+}
+
+#[test]
+fn snapshot_check_passes_for_v0_4_accepted_decision() {
+    let combined = run_check_in_workspace(
+        "snap-check-accepted-decision-clean",
+        "v0_4/decision_accepted.adoc",
+        "decision_accepted.adoc",
+    );
+
+    insta::assert_snapshot!("check_decision_accepted_clean", combined);
+}
+
+#[test]
+fn snapshot_check_flags_decision_missing_status() {
+    let combined = run_check_in_workspace(
+        "snap-check-decision-missing-status",
+        "v0_4/decision_missing_status.adoc",
+        "decision_missing_status.adoc",
+    );
+
+    insta::assert_snapshot!("check_decision_missing_status_flags", combined);
+}
+
+#[test]
+fn snapshot_check_flags_accepted_decision_missing_decided_by() {
+    let combined = run_check_in_workspace(
+        "snap-check-accepted-decision-missing-decided-by",
+        "v0_4/decision_accepted_missing_decided_by.adoc",
+        "decision_accepted_missing_decided_by.adoc",
+    );
+
+    insta::assert_snapshot!("check_decision_accepted_missing_decided_by_flags", combined);
+}
+
+#[test]
+fn snapshot_check_flags_accepted_decision_empty_decided_by() {
+    let combined = run_check_in_workspace(
+        "snap-check-accepted-decision-empty-decided-by",
+        "v0_4/decision_accepted_empty_decided_by.adoc",
+        "decision_accepted_empty_decided_by.adoc",
+    );
+
+    insta::assert_snapshot!("check_decision_accepted_empty_decided_by_flags", combined);
+}
+
+#[test]
+fn snapshot_check_flags_decision_invalid_status() {
+    let combined = run_check_in_workspace(
+        "snap-check-decision-invalid-status",
+        "v0_4/decision_invalid_status.adoc",
+        "decision_invalid_status.adoc",
+    );
+
+    insta::assert_snapshot!("check_decision_invalid_status_flags", combined);
+}

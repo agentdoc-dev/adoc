@@ -1,0 +1,9 @@
+---
+source: crates/adoc-cli/tests/snapshots_cli.rs
+expression: combined
+---
+exit-success: false
+---stdout---
+decision_accepted_missing_decided_by.adoc:3:1: error[schema.missing_field] accepted decision `billing.policy` is missing required field `decided_by`
+1 errors, 0 warnings
+---stderr---

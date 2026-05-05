@@ -1,0 +1,9 @@
+---
+source: crates/adoc-cli/tests/snapshots_cli.rs
+expression: combined
+---
+exit-success: false
+---stdout---
+decision_invalid_status.adoc:3:1: error[schema.invalid_status] decision `billing.policy` has invalid status `Accepted`
+1 errors, 0 warnings
+---stderr---

@@ -1,0 +1,10 @@
+# Architecture Decisions @doc(team.decisions)
+
+Decision records that agents can inspect.
+
+::decision billing.policy
+status: proposed
+owner: architecture
+--
+Adopt the existing billing policy as the source of truth.
+::
