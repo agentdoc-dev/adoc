@@ -24,11 +24,9 @@ impl WorkspaceRule for ClaimUniqueIds {
                         Diagnostic::error(
                             DiagnosticCode::IdDuplicate,
                             format!(
-                                "duplicate claim id `{}`; previously defined at {}:{}:{}",
+                                "duplicate claim id `{}`; previously defined at {}",
                                 claim.id(),
-                                first_span.file.display(),
-                                first_span.start.line,
-                                first_span.start.column
+                                first_span.render_location()
                             ),
                         )
                         .with_span(claim.span().clone()),
