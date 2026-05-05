@@ -110,6 +110,17 @@ pub struct SourceSpan {
     pub end: SourcePosition,
 }
 
+impl SourceSpan {
+    pub(crate) fn render_location(&self) -> String {
+        format!(
+            "{}:{}:{}",
+            self.file.display(),
+            self.start.line,
+            self.start.column
+        )
+    }
+}
+
 impl Serialize for SourceSpan {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut state = serializer.serialize_struct("SourceSpan", 3)?;
@@ -155,6 +166,13 @@ mod tests {
         assert_eq!(value["file"], "docs/sample.adoc");
         assert_eq!(value["start"]["line"], 1);
         assert_eq!(value["end"]["column"], 5);
+    }
+
+    #[test]
+    fn source_span_renders_start_location() {
+        let span = span_with_file(PathBuf::from("docs/sample.adoc"));
+
+        assert_eq!(span.render_location(), "docs/sample.adoc:1:1");
     }
 
     #[cfg(unix)]
