@@ -555,4 +555,25 @@ mod tests {
         );
         assert!(pairs[0].1.blocks.is_empty());
     }
+
+    #[test]
+    fn emits_invalid_status_for_warning_invalid_severity() {
+        let pending = warning_pending(
+            BTreeMap::from([("severity".to_string(), "HIGH".to_string())]),
+            "Session clocks can drift.",
+        );
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaInvalidStatus);
+        assert!(diagnostics[0].message.contains("HIGH"));
+        assert_eq!(
+            diagnostics[0].object_id.as_deref(),
+            Some("auth.session.clock-skew")
+        );
+        assert!(pairs[0].1.blocks.is_empty());
+    }
 }

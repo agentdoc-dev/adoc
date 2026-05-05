@@ -93,7 +93,9 @@ fn render_block(block: &BlockAst, html: &mut String) {
 }
 
 fn render_warning(warning: &Warning, html: &mut String) {
-    html.push_str("<section class=\"warning\" id=\"");
+    html.push_str("<section class=\"warning warning--");
+    html.push_str(warning.severity().as_str());
+    html.push_str("\" id=\"");
     html.push_str(&escape_html(warning.id().as_str()));
     html.push_str("\">\n");
     html.push_str("<header class=\"warning__header\">");
@@ -785,7 +787,9 @@ mod tests {
         render_block(&block, &mut html);
 
         assert!(
-            html.contains("<section class=\"warning\" id=\"auth.session.clock-skew\">"),
+            html.contains(
+                "<section class=\"warning warning--high\" id=\"auth.session.clock-skew\">"
+            ),
             "missing warning section: {html}"
         );
         assert!(

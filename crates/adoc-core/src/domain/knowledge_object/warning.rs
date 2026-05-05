@@ -3,9 +3,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
-use crate::domain::values::{BodyText, NonEmptyText, OptionalFields};
+use crate::domain::values::{BodyText, OptionalFields, trim_ascii_edges};
 
 pub(crate) const SEVERITY_FIELD: &str = "severity";
+pub(crate) const VALID_SEVERITY_HELP: &str =
+    "Valid warning severities are: low, medium, high, critical.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Warning {
@@ -20,6 +22,7 @@ pub(crate) struct Warning {
 pub(crate) enum WarningError {
     InvalidId(ObjectIdError),
     MissingSeverity,
+    InvalidSeverity(String),
     MissingBody,
 }
 
@@ -97,8 +100,7 @@ impl Warning {
         span: SourceSpan,
     ) -> Result<Self, WarningError> {
         let id = ObjectId::new(id_text).map_err(WarningError::InvalidId)?;
-        let severity =
-            Severity::try_new(severity_text.unwrap_or("")).ok_or(WarningError::MissingSeverity)?;
+        let severity = Severity::try_new(severity_text.unwrap_or(""))?;
         let body = BodyText::try_new(body_text).ok_or(WarningError::MissingBody)?;
         debug_assert!(
             !optional_fields.contains_key(SEVERITY_FIELD),
@@ -158,6 +160,18 @@ fn emit_warning_error(
             .with_object_id(&parsed.id_text)
             .with_help("Warnings require non-empty `severity`."),
         ),
+        WarningError::InvalidSeverity(severity) => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaInvalidStatus,
+                format!(
+                    "warning `{}` has invalid severity `{severity}`",
+                    parsed.id_text
+                ),
+            )
+            .with_span(parsed.span.clone())
+            .with_object_id(&parsed.id_text)
+            .with_help(VALID_SEVERITY_HELP),
+        ),
         WarningError::MissingBody => diagnostics.push(
             Diagnostic::error(
                 DiagnosticCode::SchemaMissingField,
@@ -169,16 +183,36 @@ fn emit_warning_error(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Severity(String);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Severity {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
 
 impl Severity {
-    pub(crate) fn try_new(value: &str) -> Option<Self> {
-        NonEmptyText::try_new(value).map(|value| Self(value.as_str().to_string()))
+    pub(crate) fn try_new(value: &str) -> Result<Self, WarningError> {
+        let trimmed = trim_ascii_edges(value);
+        if trimmed.is_empty() {
+            return Err(WarningError::MissingSeverity);
+        }
+        match trimmed {
+            "low" => Ok(Self::Low),
+            "medium" => Ok(Self::Medium),
+            "high" => Ok(Self::High),
+            "critical" => Ok(Self::Critical),
+            _ => Err(WarningError::InvalidSeverity(trimmed.to_string())),
+        }
     }
 
     pub(crate) fn as_str(&self) -> &str {
-        &self.0
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Critical => "critical",
+        }
     }
 }
 
@@ -243,20 +277,37 @@ mod tests {
     }
 
     #[test]
-    fn warning_severity_accepts_any_non_empty_value() {
-        let severity = Severity::try_new("panic").expect("non-empty severity");
-        assert_eq!(severity.as_str(), "panic");
+    fn warning_severity_accepts_only_canonical_values() {
+        for value in ["low", "medium", "high", "critical"] {
+            let severity = Severity::try_new(value).expect("canonical severity");
+            assert_eq!(severity.as_str(), value);
+        }
     }
 
     #[test]
-    fn warning_severity_trims_ascii_edges_for_values() {
+    fn warning_severity_trims_ascii_edges_for_valid_values() {
         let severity = Severity::try_new("  critical  ").expect("valid severity");
         assert_eq!(severity.as_str(), "critical");
     }
 
     #[test]
-    fn warning_severity_rejects_empty() {
-        assert!(Severity::try_new(" \t ").is_none());
+    fn warning_severity_rejects_empty_unknown_and_miscased_values() {
+        assert_eq!(
+            Severity::try_new(" \t "),
+            Err(WarningError::MissingSeverity)
+        );
+        assert_eq!(
+            Severity::try_new("panic"),
+            Err(WarningError::InvalidSeverity("panic".to_string()))
+        );
+        assert_eq!(
+            Severity::try_new("Critical"),
+            Err(WarningError::InvalidSeverity("Critical".to_string()))
+        );
+        assert_eq!(
+            Severity::try_new("HIGH"),
+            Err(WarningError::InvalidSeverity("HIGH".to_string()))
+        );
     }
 
     #[test]
@@ -306,6 +357,31 @@ mod tests {
                 .as_deref()
                 .is_some_and(|help| help.contains("non-empty `severity`"))
         );
+    }
+
+    #[test]
+    fn warning_build_from_parsed_reports_invalid_severity() {
+        let parsed = parsed_warning(
+            BTreeMap::from([(SEVERITY_FIELD.to_string(), "panic".to_string())]),
+            "Session clocks can drift.",
+        );
+        let mut diagnostics = Vec::new();
+
+        let warning = Warning::build_from_parsed(&parsed, &mut diagnostics);
+
+        assert!(warning.is_none());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaInvalidStatus);
+        assert!(
+            diagnostics[0].message.contains("panic"),
+            "message should quote rejected severity: {:?}",
+            diagnostics[0]
+        );
+        assert_eq!(
+            diagnostics[0].object_id.as_deref(),
+            Some("auth.session.clock-skew")
+        );
+        assert_eq!(diagnostics[0].help.as_deref(), Some(VALID_SEVERITY_HELP));
     }
 
     #[test]
