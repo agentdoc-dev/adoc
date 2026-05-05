@@ -198,6 +198,9 @@ pub(super) fn consume_claim_line(
 /// Called at EOF when a `::claim` block was never closed.
 ///
 /// Emits one `parse.unclosed_fence` diagnostic and discards the partial state.
+/// This intentionally short-circuits schema validation for the unfinished
+/// block, so users see the structural fence error before any missing-field
+/// follow-on diagnostics.
 pub(super) fn finalize_unclosed_claim(
     state: ClaimBuildingState,
     diagnostics: &mut Vec<Diagnostic>,
