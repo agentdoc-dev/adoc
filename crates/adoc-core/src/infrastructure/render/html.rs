@@ -427,19 +427,35 @@ mod tests {
     ) -> BlockAst {
         use crate::domain::knowledge_object::{
             KnowledgeObject,
-            claim::{Claim, Evidence, NonEmpty, Owner, Verification, VerifiedAt},
+            claim::{
+                Claim, Evidence, NonEmpty, OWNER_FIELD, Owner, REVIEWED_BY_FIELD, SOURCE_FIELD,
+                TEST_FIELD, VERIFIED_AT_FIELD, Verification, VerifiedAt,
+            },
         };
         let verification = Verification::new(
-            Owner::try_new(fields.get("owner").expect("owner")).expect("owner"),
-            VerifiedAt::try_new(fields.get("verified_at").expect("verified_at"))
+            Owner::try_new(fields.get(OWNER_FIELD).expect("owner")).expect("owner"),
+            VerifiedAt::try_new(fields.get(VERIFIED_AT_FIELD).expect("verified_at"))
                 .expect("verified_at"),
             NonEmpty::from_vec(vec![
-                Evidence::source(fields.get("source").expect("source")).expect("source"),
+                Evidence::source(fields.get(SOURCE_FIELD).expect("source")).expect("source"),
             ])
             .expect("non-empty evidence"),
         );
-        let claim = Claim::try_new(id, Some("verified"), body, fields, Some(verification), span)
-            .expect("test claim must be valid");
+        let mut storage_fields = fields;
+        storage_fields.remove(OWNER_FIELD);
+        storage_fields.remove(VERIFIED_AT_FIELD);
+        storage_fields.remove(SOURCE_FIELD);
+        storage_fields.remove(TEST_FIELD);
+        storage_fields.remove(REVIEWED_BY_FIELD);
+        let claim = Claim::try_new(
+            id,
+            Some("verified"),
+            body,
+            storage_fields,
+            Some(verification),
+            span,
+        )
+        .expect("test claim must be valid");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim)))
     }
 

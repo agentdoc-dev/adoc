@@ -28,6 +28,7 @@ pub(crate) enum DecisionError {
     MissingBody,
     MissingVerdict,
     UnexpectedVerdict,
+    UnexpectedDedicatedField(&'static str),
 }
 
 impl Decision {
@@ -61,7 +62,7 @@ impl Decision {
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
 
-        let (_, status, _) =
+        let (id, status, body) =
             match Self::parse_basics(&parsed.id_text, status_text, &parsed.body_text) {
                 Ok(basics) => basics,
                 Err(error) => {
@@ -85,10 +86,10 @@ impl Decision {
             (optional_fields, None)
         };
 
-        match Self::try_new(
-            &parsed.id_text,
-            status_text,
-            &parsed.body_text,
+        match Self::from_parts(
+            id,
+            status,
+            body,
             optional_fields,
             verdict,
             parsed.span.clone(),
@@ -104,6 +105,7 @@ impl Decision {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn try_new(
         id_text: &str,
         status_text: Option<&str>,
@@ -113,7 +115,17 @@ impl Decision {
         span: SourceSpan,
     ) -> Result<Self, DecisionError> {
         let (id, status, body) = Self::parse_basics(id_text, status_text, body_text)?;
+        Self::from_parts(id, status, body, optional_fields, verdict, span)
+    }
 
+    fn from_parts(
+        id: ObjectId,
+        status: DecisionStatus,
+        body: BodyText,
+        optional_fields: BTreeMap<String, String>,
+        verdict: Option<AcceptedVerdict>,
+        span: SourceSpan,
+    ) -> Result<Self, DecisionError> {
         match (status.is_accepted(), verdict.is_some()) {
             (true, false) => return Err(DecisionError::MissingVerdict),
             (false, true) => return Err(DecisionError::UnexpectedVerdict),
@@ -124,9 +136,8 @@ impl Decision {
             !optional_fields.contains_key(STATUS_FIELD),
             "optional decision fields must not contain required field `status`"
         );
-        let mut optional_fields = optional_fields;
-        if verdict.is_some() {
-            optional_fields.remove(DECIDED_BY_FIELD);
+        if verdict.is_some() && optional_fields.contains_key(DECIDED_BY_FIELD) {
+            return Err(DecisionError::UnexpectedDedicatedField(DECIDED_BY_FIELD));
         }
 
         Ok(Self {
@@ -221,6 +232,9 @@ fn emit_decision_error(
         }
         DecisionError::UnexpectedVerdict => {
             unreachable!("decision builder only passes verdict for accepted status")
+        }
+        DecisionError::UnexpectedDedicatedField(_) => {
+            unreachable!("decision builder strips verdict fields before construction")
         }
     }
 }
@@ -426,8 +440,8 @@ mod tests {
     }
 
     #[test]
-    fn accepted_decision_accepts_verdict_and_strips_decided_by_from_fields() {
-        let decision = Decision::try_new(
+    fn accepted_decision_rejects_decided_by_field_when_verdict_exists() {
+        let result = Decision::try_new(
             "billing.policy",
             Some("accepted"),
             "Use the existing billing policy.",
@@ -436,13 +450,11 @@ mod tests {
                 DecidedBy::try_new("architecture").expect("decided_by"),
             )),
             span(),
-        )
-        .expect("valid accepted decision");
+        );
 
-        assert!(decision.fields().is_empty());
         assert_eq!(
-            decision.verdict().expect("verdict").decided_by().as_str(),
-            "architecture"
+            result,
+            Err(DecisionError::UnexpectedDedicatedField(DECIDED_BY_FIELD))
         );
     }
 
