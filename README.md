@@ -34,6 +34,7 @@ Typed Knowledge Objects such as `claim`, `decision`, `warning`, and `glossary` a
 
 - Rust `1.95.0`
 - Cargo, rustfmt, and Clippy
+- prek for local Git hooks
 
 The repository pins the toolchain in [rust-toolchain.toml](rust-toolchain.toml), so Rustup will select the correct version automatically.
 
@@ -269,6 +270,18 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo build --workspace --locked
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked
+```
+
+Install the pre-commit hook:
+
+```bash
+prek install
+```
+
+Run the hook suite manually:
+
+```bash
+prek run --all-files
 ```
 
 Useful focused commands:

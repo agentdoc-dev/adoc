@@ -1,0 +1,40 @@
+minimum_prek_version = "0.3.0"
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer", exclude = "crates/adoc-cli/tests/fixtures/.+\\.golden\\.agent\\.json$" },
+  { id = "check-toml" },
+  { id = "check-yaml" },
+  { id = "check-merge-conflict" },
+  { id = "detect-private-key" },
+  { id = "check-added-large-files", args = ["--maxkb=1024"] },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "cargo-fmt"
+name = "cargo fmt"
+language = "system"
+entry = "cargo fmt --all --check"
+files = "(^|/)(Cargo\\.toml|Cargo\\.lock|rust-toolchain\\.toml)$|\\.rs$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "cargo-clippy"
+name = "cargo clippy"
+language = "system"
+entry = "cargo clippy --workspace --all-targets --locked -- -D warnings"
+files = "(^|/)(Cargo\\.toml|Cargo\\.lock|rust-toolchain\\.toml)$|\\.rs$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "cargo-test"
+name = "cargo test"
+language = "system"
+entry = "cargo test --workspace --locked"
+files = "(^|/)(Cargo\\.toml|Cargo\\.lock|rust-toolchain\\.toml)$|\\.rs$"
+pass_filenames = false
