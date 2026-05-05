@@ -40,6 +40,8 @@ impl From<&PageAst> for AgentJsonPage {
 pub struct AgentJsonObject {
     pub id: String,
     pub kind: String,
+    /// Kind-primary normalized discriminant. For v0 this is the claim status,
+    /// decision status, or warning severity.
     pub status: String,
     pub body: String,
     pub page_id: String,

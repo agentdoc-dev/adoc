@@ -408,6 +408,10 @@ Object record sketch:
 Rules:
 
 - Agent JSON remains flat in V0.
+- Object `status` is the object's kind-primary normalized discriminant. For the
+  current object set, this means claim status, decision status, and warning
+  severity. V0 keeps these values in one slot rather than adding per-kind
+  top-level discriminant fields.
 - Relations are ID arrays, not embedded objects.
 - Diagnostics are included using the same codes and messages as CLI diagnostics.
 - Schema versioning starts immediately, even if the shape is still pre-1.0.
