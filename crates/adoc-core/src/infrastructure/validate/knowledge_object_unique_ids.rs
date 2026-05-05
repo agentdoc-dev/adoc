@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::domain::ast::{BlockAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::ObjectId;
-use crate::domain::knowledge_object::KnowledgeObject;
+use crate::domain::knowledge_object::{BlockKind, KnowledgeObject};
 use crate::domain::rules::WorkspaceRule;
 
 pub(crate) struct KnowledgeObjectUniqueIds;
@@ -42,52 +42,33 @@ impl WorkspaceRule for KnowledgeObjectUniqueIds {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum KnowledgeObjectKind {
-    Claim,
-    Decision,
-}
-
-impl KnowledgeObjectKind {
-    fn as_str(self) -> &'static str {
-        match self {
-            KnowledgeObjectKind::Claim => "claim",
-            KnowledgeObjectKind::Decision => "decision",
-        }
-    }
-}
-
 struct KnowledgeObjectIdentity<'a> {
-    kind: KnowledgeObjectKind,
+    kind: BlockKind,
     id: &'a ObjectId,
     span: &'a SourceSpan,
 }
 
 struct FirstOccurrence {
-    kind: KnowledgeObjectKind,
+    kind: BlockKind,
     span: SourceSpan,
 }
 
 fn knowledge_object_identity(knowledge_object: &KnowledgeObject) -> KnowledgeObjectIdentity<'_> {
     match knowledge_object {
         KnowledgeObject::Claim(claim) => KnowledgeObjectIdentity {
-            kind: KnowledgeObjectKind::Claim,
+            kind: BlockKind::Claim,
             id: claim.id(),
             span: claim.span(),
         },
         KnowledgeObject::Decision(decision) => KnowledgeObjectIdentity {
-            kind: KnowledgeObjectKind::Decision,
+            kind: BlockKind::Decision,
             id: decision.id(),
             span: decision.span(),
         },
     }
 }
 
-fn duplicate_message(
-    duplicate_kind: KnowledgeObjectKind,
-    id: &ObjectId,
-    first: &FirstOccurrence,
-) -> String {
+fn duplicate_message(duplicate_kind: BlockKind, id: &ObjectId, first: &FirstOccurrence) -> String {
     if duplicate_kind == first.kind {
         format!(
             "duplicate {} id `{}`; previously defined at {}",
