@@ -9,6 +9,9 @@ pub(crate) const STATUS_FIELD: &str = "status";
 pub(crate) const DECIDED_BY_FIELD: &str = "decided_by";
 pub(crate) const ACCEPTED_STATUS: &str = "accepted";
 pub(crate) const VALID_STATUS_HELP: &str = "Valid decision statuses are: proposed, accepted.";
+const DECISION_MISSING_STATUS_HELP: &str =
+    "Decisions require non-empty `status`. Valid decision statuses are: proposed, accepted.";
+const DECISION_MISSING_BODY_HELP: &str = "Decisions require non-empty body text.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Decision {
@@ -206,7 +209,9 @@ fn emit_decision_error(
                 DiagnosticCode::SchemaMissingField,
                 "decision is missing required field `status`",
             )
-            .with_span(parsed.span.clone()),
+            .with_span(parsed.span.clone())
+            .with_object_id(&parsed.id_text)
+            .with_help(DECISION_MISSING_STATUS_HELP),
         ),
         DecisionError::InvalidStatus(status) => diagnostics.push(
             Diagnostic::error(
@@ -225,7 +230,9 @@ fn emit_decision_error(
                 DiagnosticCode::SchemaMissingField,
                 "decision is missing required body",
             )
-            .with_span(parsed.span.clone()),
+            .with_span(parsed.span.clone())
+            .with_object_id(&parsed.id_text)
+            .with_help(DECISION_MISSING_BODY_HELP),
         ),
         DecisionError::MissingVerdict => {
             unreachable!("accepted decision verdict is validated before construction")

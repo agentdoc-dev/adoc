@@ -109,6 +109,24 @@ mod tests {
         }
     }
 
+    fn assert_missing_field_has_object_context(
+        diagnostic: &crate::domain::diagnostic::Diagnostic,
+        object_id: &str,
+        help_contains: &str,
+    ) {
+        assert_eq!(diagnostic.code, DiagnosticCode::SchemaMissingField);
+        assert_eq!(diagnostic.span.as_ref(), Some(&span()));
+        assert_eq!(diagnostic.object_id.as_deref(), Some(object_id));
+        assert!(
+            diagnostic
+                .help
+                .as_deref()
+                .is_some_and(|help| help.contains(help_contains)),
+            "expected help to contain `{help_contains}`, got {:?}",
+            diagnostic.help
+        );
+    }
+
     fn valid_pending(id: &str) -> ParsedTypedBlock {
         let mut fields = BTreeMap::new();
         fields.insert("status".to_string(), "verified".to_string());
@@ -236,11 +254,11 @@ mod tests {
         let diagnostics = resolve_knowledge_objects(&mut pairs);
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaMissingField);
         assert!(
             diagnostics[0].message.contains("status"),
             "message should mention 'status'"
         );
+        assert_missing_field_has_object_context(&diagnostics[0], "billing.credits", "status");
         assert!(pairs[0].1.blocks.is_empty());
     }
 
@@ -265,11 +283,11 @@ mod tests {
         let diagnostics = resolve_knowledge_objects(&mut pairs);
 
         assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaMissingField);
         assert!(
             diagnostics[0].message.contains("body"),
             "message should mention 'body'"
         );
+        assert_missing_field_has_object_context(&diagnostics[0], "billing.credits", "body");
         assert!(pairs[0].1.blocks.is_empty());
     }
 
@@ -451,6 +469,50 @@ mod tests {
     }
 
     #[test]
+    fn emits_missing_field_for_decision_missing_status_with_object_context() {
+        let pending = ParsedTypedBlock {
+            kind: BlockKind::Decision,
+            id_text: "billing.policy".to_string(),
+            raw_fields: BTreeMap::new(),
+            duplicate_keys: Vec::new(),
+            body_text: "Use the existing billing policy.".to_string(),
+            content_spans: Vec::new(),
+            span: span(),
+        };
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("status"));
+        assert_missing_field_has_object_context(&diagnostics[0], "billing.policy", "status");
+        assert!(pairs[0].1.blocks.is_empty());
+    }
+
+    #[test]
+    fn emits_missing_field_for_decision_missing_body_with_object_context() {
+        let pending = ParsedTypedBlock {
+            kind: BlockKind::Decision,
+            id_text: "billing.policy".to_string(),
+            raw_fields: BTreeMap::from([("status".to_string(), "proposed".to_string())]),
+            duplicate_keys: Vec::new(),
+            body_text: " ".to_string(),
+            content_spans: Vec::new(),
+            span: span(),
+        };
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("body"));
+        assert_missing_field_has_object_context(&diagnostics[0], "billing.policy", "body");
+        assert!(pairs[0].1.blocks.is_empty());
+    }
+
+    #[test]
     fn preserves_decided_by_metadata_for_non_accepted_decisions() {
         let pending = ParsedTypedBlock {
             kind: BlockKind::Decision,
@@ -532,6 +594,12 @@ mod tests {
             diagnostics[0].object_id.as_deref(),
             Some("auth.session.clock-skew")
         );
+        assert!(
+            diagnostics[0]
+                .help
+                .as_deref()
+                .is_some_and(|help| help.contains("severity"))
+        );
         assert!(pairs[0].1.blocks.is_empty());
     }
 
@@ -552,6 +620,12 @@ mod tests {
         assert_eq!(
             diagnostics[0].object_id.as_deref(),
             Some("auth.session.clock-skew")
+        );
+        assert!(
+            diagnostics[0]
+                .help
+                .as_deref()
+                .is_some_and(|help| help.contains("body"))
         );
         assert!(pairs[0].1.blocks.is_empty());
     }
