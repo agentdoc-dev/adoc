@@ -1,0 +1,22 @@
+[
+  {
+    "code": "id.invalid",
+    "severity": "error",
+    "message": "Path-derived page ID `notes` is invalid; add a valid @doc(id) annotation or rename the source path",
+    "span": {
+      "file": "tests/fixtures/page_id_invalid/path_derived/input/notes.adoc",
+      "start": {
+        "line": 1,
+        "column": 1,
+        "offset": 0
+      },
+      "end": {
+        "line": 1,
+        "column": 1,
+        "offset": 0
+      }
+    },
+    "object_id": "notes",
+    "help": "Object IDs must be lowercase dot-separated kebab-case segments with at least two segments (e.g. `billing.credits`). Allowed characters per segment: a-z, 0-9, and internal hyphens."
+  }
+]

@@ -52,6 +52,16 @@ fn duplicate_same_page_fixture_matches_expected_diagnostics() {
         .assert_matches_expected_diagnostics();
 }
 
+#[test]
+fn page_id_invalid_annotation_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("page_id_invalid/annotation").assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn page_id_invalid_path_derived_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("page_id_invalid/path_derived").assert_matches_expected_diagnostics();
+}
+
 #[derive(Debug)]
 struct DiagnosticFixture {
     name: String,

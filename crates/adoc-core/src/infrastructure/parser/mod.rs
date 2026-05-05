@@ -257,7 +257,7 @@ fn consume_heading(
             )),
         );
     }
-    if let Some(invalid_id) = heading.invalid_page_id {
+    if let Some(ref invalid_id) = heading.invalid_page_id {
         diagnostics.push(
             Diagnostic::error(
                 DiagnosticCode::IdInvalid,
@@ -267,7 +267,9 @@ fn consume_heading(
                 ctx.line_number,
                 invalid_id.start_column,
                 invalid_id.end_column,
-            )),
+            ))
+            .with_object_id(invalid_id.rejected_text.clone())
+            .with_help(crate::domain::identity::OBJECT_ID_GRAMMAR_HELP),
         );
     }
 
@@ -310,6 +312,8 @@ fn invalid_derived_page_id_diagnostic(
         ),
     )
     .with_span(source.span_for_line_columns(1, 1, 1))
+    .with_object_id(&error.value)
+    .with_help(crate::domain::identity::OBJECT_ID_GRAMMAR_HELP)
 }
 
 fn consume_list_item(
@@ -400,13 +404,23 @@ struct ParsedHeading {
     text_column: u32,
     doc_id: Option<ObjectId>,
     malformed_page_annotation: Option<PageAnnotationSpan>,
-    invalid_page_id: Option<PageAnnotationSpan>,
+    invalid_page_id: Option<InvalidPageIdSpan>,
 }
 
 #[derive(Clone, Copy)]
 struct PageAnnotationSpan {
     start_column: u32,
     end_column: u32,
+}
+
+/// Span of an `@doc(...)` argument that failed [`ObjectId`] validation,
+/// together with the verbatim rejected text so the diagnostic can include it.
+#[derive(Clone)]
+struct InvalidPageIdSpan {
+    start_column: u32,
+    end_column: u32,
+    /// The trimmed substring between the parens, exactly as the author wrote it.
+    rejected_text: String,
 }
 
 fn parse_heading(line: &str, leading_indent_columns: u32) -> Option<ParsedHeading> {
@@ -438,7 +452,7 @@ struct ParsedPageAnnotation {
     text: String,
     doc_id: Option<ObjectId>,
     malformed_span: Option<PageAnnotationSpan>,
-    invalid_id_span: Option<PageAnnotationSpan>,
+    invalid_id_span: Option<InvalidPageIdSpan>,
 }
 
 fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPageAnnotation {
@@ -525,17 +539,19 @@ fn parse_page_annotation(raw_text: &str, raw_text_start_column: u32) -> ParsedPa
             malformed_span: None,
             invalid_id_span: None,
         },
-        Err(_) => ParsedPageAnnotation {
-            text: raw_text.to_string(),
-            doc_id: None,
-            malformed_span: None,
-            invalid_id_span: Some(annotation_span(
-                raw_text_start_column,
-                raw_text,
-                id_start,
-                id_end,
-            )),
-        },
+        Err(_) => {
+            let span = annotation_span(raw_text_start_column, raw_text, id_start, id_end);
+            ParsedPageAnnotation {
+                text: raw_text.to_string(),
+                doc_id: None,
+                malformed_span: None,
+                invalid_id_span: Some(InvalidPageIdSpan {
+                    start_column: span.start_column,
+                    end_column: span.end_column,
+                    rejected_text: id.to_string(),
+                }),
+            }
+        }
     }
 }
 
@@ -634,6 +650,27 @@ mod tests {
         let span = diagnostics[0].span.as_ref().unwrap();
         assert_eq!(span.start.column, 8);
         assert_eq!(span.start.offset, 8);
+    }
+
+    // Slice C: pin that parse.malformed_page_annotation never carries
+    // object_id or help — no usable token exists for a truncated annotation.
+    #[test]
+    fn parse_page_malformed_annotation_has_no_object_id_and_no_help() {
+        let (_page, diagnostics) = parse_source("# Heading @doc(\n\nContent.\n");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::ParseMalformedPageAnnotation
+        );
+        assert!(
+            diagnostics[0].object_id.is_none(),
+            "malformed_page_annotation must not carry object_id"
+        );
+        assert!(
+            diagnostics[0].help.is_none(),
+            "malformed_page_annotation must not carry help"
+        );
     }
 
     #[test]
