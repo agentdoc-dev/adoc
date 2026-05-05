@@ -68,9 +68,6 @@ fn fields_for_claim(claim: &Claim) -> BTreeMap<String, String> {
     let mut fields = BTreeMap::new();
 
     for (key, value) in claim.fields().iter() {
-        if claim.verification().is_some() && is_verified_claim_dedicated_field(key) {
-            continue;
-        }
         fields.insert(key.clone(), value.clone());
     }
 
@@ -99,13 +96,6 @@ fn fields_for_claim(claim: &Claim) -> BTreeMap<String, String> {
     }
 
     fields
-}
-
-fn is_verified_claim_dedicated_field(key: &str) -> bool {
-    matches!(
-        key,
-        OWNER_FIELD | VERIFIED_AT_FIELD | SOURCE_FIELD | TEST_FIELD | REVIEWED_BY_FIELD
-    )
 }
 
 #[cfg(test)]

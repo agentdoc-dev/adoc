@@ -38,9 +38,7 @@ impl Claim {
         verification: Option<Verification>,
         span: SourceSpan,
     ) -> Result<Self, ClaimError> {
-        let id = ObjectId::new(id_text).map_err(ClaimError::InvalidId)?;
-        let status = ClaimStatus::try_new(status_text.unwrap_or(""))?;
-        let body = ClaimBody::try_new(body_text)?;
+        let (id, status, body) = Self::parse_basics(id_text, status_text, body_text)?;
         if status.is_verified() && verification.is_none() {
             return Err(ClaimError::MissingVerification);
         }
@@ -52,6 +50,10 @@ impl Claim {
             !optional_fields.contains_key(STATUS_FIELD),
             "optional claim fields must not contain required field `status`"
         );
+        let mut optional_fields = optional_fields;
+        if verification.is_some() {
+            strip_verified_claim_dedicated_fields(&mut optional_fields);
+        }
         let fields = ClaimFields::from_map(optional_fields);
         Ok(Self {
             id,
@@ -61,6 +63,25 @@ impl Claim {
             verification,
             span,
         })
+    }
+
+    pub(crate) fn validate_basics(
+        id_text: &str,
+        status_text: Option<&str>,
+        body_text: &str,
+    ) -> Result<(), ClaimError> {
+        Self::parse_basics(id_text, status_text, body_text).map(|_| ())
+    }
+
+    fn parse_basics(
+        id_text: &str,
+        status_text: Option<&str>,
+        body_text: &str,
+    ) -> Result<(ObjectId, ClaimStatus, ClaimBody), ClaimError> {
+        let id = ObjectId::new(id_text).map_err(ClaimError::InvalidId)?;
+        let status = ClaimStatus::try_new(status_text.unwrap_or(""))?;
+        let body = ClaimBody::try_new(body_text)?;
+        Ok((id, status, body))
     }
 
     pub(crate) fn id(&self) -> &ObjectId {
@@ -132,6 +153,17 @@ impl ClaimBody {
 
 fn trim_ascii_edges(value: &str) -> &str {
     value.trim_matches(|character: char| character.is_ascii_whitespace())
+}
+
+fn strip_verified_claim_dedicated_fields(fields: &mut BTreeMap<String, String>) {
+    fields.retain(|key, _| !is_verified_claim_dedicated_field(key));
+}
+
+fn is_verified_claim_dedicated_field(key: &str) -> bool {
+    matches!(
+        key,
+        OWNER_FIELD | VERIFIED_AT_FIELD | SOURCE_FIELD | TEST_FIELD | REVIEWED_BY_FIELD
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -386,10 +418,10 @@ mod tests {
         let optional = BTreeMap::from([("owner".to_string(), "team-a".to_string())]);
         let claim = Claim::try_new(
             "billing.credits",
-            Some("verified"),
+            Some("plain"),
             "some body",
             optional,
-            Some(verification()),
+            None,
             span(),
         )
         .expect("valid claim");
@@ -398,6 +430,31 @@ mod tests {
         let field_keys: Vec<&str> = claim.fields().iter().map(|(k, _)| k.as_str()).collect();
         assert!(!field_keys.contains(&"status"));
         assert_eq!(field_keys, vec!["owner"]);
+    }
+
+    #[test]
+    fn claim_try_new_strips_verified_dedicated_fields() {
+        let optional = BTreeMap::from([
+            (OWNER_FIELD.to_string(), "team-a".to_string()),
+            (VERIFIED_AT_FIELD.to_string(), "2026-05-05".to_string()),
+            (SOURCE_FIELD.to_string(), "runbook".to_string()),
+            (TEST_FIELD.to_string(), "cargo test".to_string()),
+            (REVIEWED_BY_FIELD.to_string(), "qa".to_string()),
+            ("audience".to_string(), "support".to_string()),
+        ]);
+
+        let claim = Claim::try_new(
+            "billing.credits",
+            Some("verified"),
+            "some body",
+            optional,
+            Some(verification()),
+            span(),
+        )
+        .expect("valid verified claim");
+
+        let field_keys: Vec<&str> = claim.fields().iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(field_keys, vec!["audience"]);
     }
 
     #[test]
