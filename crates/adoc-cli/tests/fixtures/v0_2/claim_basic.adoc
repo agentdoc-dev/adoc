@@ -3,7 +3,7 @@
 The billing system credits users automatically.
 
 ::claim billing.credits
-status: verified
+status: draft
 owner: team-billing
 --
 The system credits users automatically when a payment fails.

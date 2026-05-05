@@ -68,8 +68,15 @@ mod tests {
     }
 
     fn claim_block(id: &str, span: SourceSpan) -> BlockAst {
-        let claim = Claim::try_new(id, Some("verified"), "Claim body.", BTreeMap::new(), span)
-            .expect("valid claim");
+        let claim = Claim::try_new(
+            id,
+            Some("plain"),
+            "Claim body.",
+            BTreeMap::new(),
+            None,
+            span,
+        )
+        .expect("valid claim");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim)))
     }
 

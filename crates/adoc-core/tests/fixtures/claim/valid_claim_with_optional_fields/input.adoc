@@ -3,7 +3,7 @@
 The billing system records clean claim metadata.
 
 ::claim billing.optional-fields
-status: verified
+status: draft
 source: payments & "ledger"
 owner: team-billing's auditors
 --

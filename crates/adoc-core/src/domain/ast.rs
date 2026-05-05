@@ -108,7 +108,10 @@ mod tests {
 
     use super::*;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
-    use crate::domain::knowledge_object::{KnowledgeObject, claim::Claim};
+    use crate::domain::knowledge_object::{
+        KnowledgeObject,
+        claim::{Claim, Evidence, Owner, Verification, VerifiedAt},
+    };
 
     fn span() -> SourceSpan {
         SourceSpan {
@@ -145,6 +148,11 @@ mod tests {
             Some("verified"),
             "x",
             BTreeMap::new(),
+            Some(Verification::new(
+                Owner::try_new("team").expect("owner"),
+                VerifiedAt::try_new("2026-05-05").expect("verified_at"),
+                vec![Evidence::source("source").expect("evidence")],
+            )),
             span(),
         )
         .expect("valid claim");
