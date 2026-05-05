@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use crate::domain::diagnostic::SourceSpan;
 use crate::domain::identity::{ObjectId, ObjectIdError};
 
+pub(crate) const STATUS_FIELD: &str = "status";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Claim {
     id: ObjectId,
@@ -30,6 +32,10 @@ impl Claim {
         let id = ObjectId::new(id_text).map_err(ClaimError::InvalidId)?;
         let status = ClaimStatus::try_new(status_text.unwrap_or(""))?;
         let body = ClaimBody::try_new(body_text)?;
+        debug_assert!(
+            !optional_fields.contains_key(STATUS_FIELD),
+            "optional claim fields must not contain required field `status`"
+        );
         let fields = ClaimFields::from_map(optional_fields);
         Ok(Self {
             id,
