@@ -1,7 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::domain::diagnostic::SourceSpan;
-use crate::domain::identity::{ObjectId, ObjectIdError};
+use crate::domain::ast::ParsedTypedBlock;
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
+use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
 use crate::domain::values::{BodyText, NonEmptyText, OptionalFields, trim_ascii_edges};
 
 pub(crate) const STATUS_FIELD: &str = "status";
@@ -11,6 +12,8 @@ pub(crate) const SOURCE_FIELD: &str = "source";
 pub(crate) const TEST_FIELD: &str = "test";
 pub(crate) const REVIEWED_BY_FIELD: &str = "reviewed_by";
 pub(crate) const VERIFIED_STATUS: &str = "verified";
+
+const VERIFIED_CLAIM_HELP: &str = "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Claim {
@@ -32,6 +35,68 @@ pub(crate) enum ClaimError {
 }
 
 impl Claim {
+    pub(crate) fn build_from_parsed(
+        parsed: &ParsedTypedBlock,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> Option<Self> {
+        if !parsed.duplicate_keys.is_empty() {
+            let mut emitted_keys = BTreeSet::new();
+            for key in &parsed.duplicate_keys {
+                if emitted_keys.insert(key.as_str()) {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::SchemaDuplicateField,
+                            format!("duplicate field `{key}` in claim"),
+                        )
+                        .with_span(parsed.span.clone()),
+                    );
+                }
+            }
+            // Duplicate fields poison the raw field map: last-value-wins storage
+            // makes missing-field validation ambiguous until the duplicates are fixed.
+            return None;
+        }
+
+        let status_text = parsed.raw_fields.get(STATUS_FIELD).map(String::as_str);
+        let optional_fields: BTreeMap<String, String> = parsed
+            .raw_fields
+            .iter()
+            .filter(|(key, _)| key.as_str() != STATUS_FIELD)
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+
+        let status_is_exact_verified = status_text.map(trim_ascii_edges) == Some(VERIFIED_STATUS);
+
+        if status_is_exact_verified {
+            return Self::build_verified_from_parsed(
+                parsed,
+                status_text,
+                optional_fields,
+                diagnostics,
+            );
+        }
+
+        match Self::try_new(
+            &parsed.id_text,
+            status_text,
+            &parsed.body_text,
+            optional_fields,
+            None,
+            parsed.span.clone(),
+        ) {
+            Ok(claim) => {
+                if claim.status().is_verified_ascii_case_variant() {
+                    diagnostics.push(status_casing_diagnostic(parsed, claim.status().as_str()));
+                }
+                Some(claim)
+            }
+            Err(error) => {
+                emit_claim_error(parsed, error, diagnostics);
+                None
+            }
+        }
+    }
+
     pub(crate) fn try_new(
         id_text: &str,
         status_text: Option<&str>,
@@ -108,6 +173,173 @@ impl Claim {
     pub(crate) fn span(&self) -> &SourceSpan {
         &self.span
     }
+
+    fn build_verified_from_parsed(
+        parsed: &ParsedTypedBlock,
+        status_text: Option<&str>,
+        optional_fields: BTreeMap<String, String>,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> Option<Self> {
+        if let Err(error) = Self::validate_basics(&parsed.id_text, status_text, &parsed.body_text) {
+            emit_claim_error(parsed, error, diagnostics);
+            return None;
+        }
+
+        let verification = build_verification(parsed, &optional_fields, diagnostics)?;
+        let storage_fields = verified_claim_storage_fields(optional_fields);
+
+        match Self::try_new(
+            &parsed.id_text,
+            status_text,
+            &parsed.body_text,
+            storage_fields,
+            Some(verification),
+            parsed.span.clone(),
+        ) {
+            Ok(claim) => Some(claim),
+            Err(error) => {
+                emit_claim_error(parsed, error, diagnostics);
+                None
+            }
+        }
+    }
+}
+
+fn build_verification(
+    parsed: &ParsedTypedBlock,
+    fields: &BTreeMap<String, String>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<Verification> {
+    let owner = fields
+        .get(OWNER_FIELD)
+        .and_then(|value| Owner::try_new(value));
+    if owner.is_none() {
+        diagnostics.push(missing_verified_field_diagnostic(parsed, OWNER_FIELD));
+    }
+
+    let verified_at = fields
+        .get(VERIFIED_AT_FIELD)
+        .and_then(|value| VerifiedAt::try_new(value));
+    if verified_at.is_none() {
+        diagnostics.push(missing_verified_field_diagnostic(parsed, VERIFIED_AT_FIELD));
+    }
+
+    let mut evidence = Vec::new();
+    if let Some(value) = fields
+        .get(SOURCE_FIELD)
+        .and_then(|value| Evidence::source(value))
+    {
+        evidence.push(value);
+    }
+    if let Some(value) = fields
+        .get(TEST_FIELD)
+        .and_then(|value| Evidence::test(value))
+    {
+        evidence.push(value);
+    }
+    if let Some(value) = fields
+        .get(REVIEWED_BY_FIELD)
+        .and_then(|value| Evidence::reviewed_by(value))
+    {
+        evidence.push(value);
+    }
+    if evidence.is_empty() {
+        diagnostics.push(missing_evidence_diagnostic(parsed));
+    }
+
+    if owner.is_none() || verified_at.is_none() || evidence.is_empty() {
+        return None;
+    }
+
+    let evidence = NonEmpty::from_vec(evidence).expect("evidence checked above");
+
+    Some(Verification::new(
+        owner.expect("owner checked above"),
+        verified_at.expect("verified_at checked above"),
+        evidence,
+    ))
+}
+
+fn verified_claim_storage_fields(mut fields: BTreeMap<String, String>) -> BTreeMap<String, String> {
+    fields.retain(|key, _| !is_verified_claim_dedicated_field(key));
+    fields
+}
+
+fn emit_claim_error(
+    parsed: &ParsedTypedBlock,
+    error: ClaimError,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match error {
+        ClaimError::InvalidId(error) => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                format!("invalid claim id `{}`: {error}", parsed.id_text),
+            )
+            .with_span(parsed.span.clone())
+            .with_object_id(&parsed.id_text)
+            .with_help(OBJECT_ID_GRAMMAR_HELP),
+        ),
+        ClaimError::MissingStatus => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaMissingField,
+                "claim is missing required field `status`",
+            )
+            .with_span(parsed.span.clone()),
+        ),
+        ClaimError::MissingBody => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaMissingField,
+                "claim is missing required body",
+            )
+            .with_span(parsed.span.clone()),
+        ),
+        ClaimError::MissingVerification => {
+            unreachable!("missing verification is handled by verified-claim diagnostics")
+        }
+        ClaimError::UnexpectedVerification => {
+            unreachable!("claim builder only passes verification for exact verified claims")
+        }
+    }
+}
+
+fn missing_verified_field_diagnostic(parsed: &ParsedTypedBlock, field: &str) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::SchemaMissingField,
+        format!(
+            "verified claim `{}` is missing required field `{field}`",
+            parsed.id_text
+        ),
+    )
+    .with_span(parsed.span.clone())
+    .with_object_id(&parsed.id_text)
+    .with_help(format!("Add `{field}`. {VERIFIED_CLAIM_HELP}"))
+}
+
+fn missing_evidence_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::ClaimVerifiedMissingEvidence,
+        format!(
+            "verified claim `{}` requires at least one evidence field: `source`, `test`, or `reviewed_by`",
+            parsed.id_text
+        ),
+    )
+    .with_span(parsed.span.clone())
+    .with_object_id(&parsed.id_text)
+    .with_help(VERIFIED_CLAIM_HELP)
+}
+
+fn status_casing_diagnostic(parsed: &ParsedTypedBlock, status: &str) -> Diagnostic {
+    Diagnostic::warning(
+        DiagnosticCode::ClaimStatusCasing,
+        format!(
+            "claim `{}` uses status `{status}`; use exact lowercase `verified` to enable verified-claim rules",
+            parsed.id_text
+        ),
+    )
+    .with_span(parsed.span.clone())
+    .with_object_id(&parsed.id_text)
+    .with_help("Status values are case-sensitive; only `verified` creates a Verified Claim.")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -268,6 +500,7 @@ mod tests {
 
     use super::*;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
+    use crate::domain::knowledge_object::BlockKind;
 
     fn span() -> SourceSpan {
         SourceSpan {
@@ -282,6 +515,18 @@ mod tests {
                 column: 8,
                 offset: 7,
             },
+        }
+    }
+
+    fn parsed_claim(fields: BTreeMap<String, String>, body_text: &str) -> ParsedTypedBlock {
+        ParsedTypedBlock {
+            kind: BlockKind::Claim,
+            id_text: "billing.credits".to_string(),
+            raw_fields: fields,
+            duplicate_keys: Vec::new(),
+            body_text: body_text.to_string(),
+            content_spans: Vec::new(),
+            span: span(),
         }
     }
 
@@ -508,6 +753,29 @@ mod tests {
             claim.verification().expect("verification").owner().as_str(),
             "team-billing"
         );
+    }
+
+    #[test]
+    fn claim_build_from_parsed_reports_verified_claim_missing_evidence() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), VERIFIED_STATUS.to_string()),
+                (OWNER_FIELD.to_string(), "team-billing".to_string()),
+                (VERIFIED_AT_FIELD.to_string(), "2026-05-05".to_string()),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(&parsed, &mut diagnostics);
+
+        assert!(claim.is_none());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::ClaimVerifiedMissingEvidence
+        );
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.credits"));
     }
 
     #[test]
