@@ -29,6 +29,10 @@ const SUPPORTED_KINDS: &[SupportedKind] = &[
         kind: BlockKind::Decision,
     },
     SupportedKind {
+        word: BlockKind::Glossary.as_str(),
+        kind: BlockKind::Glossary,
+    },
+    SupportedKind {
         word: BlockKind::Warning.as_str(),
         kind: BlockKind::Warning,
     },
@@ -559,7 +563,7 @@ mod tests {
                 );
                 assert!(
                     d.message
-                        .contains("supported kinds: claim, decision, warning"),
+                        .contains("supported kinds: claim, decision, glossary, warning"),
                     "message should list supported kinds from parser metadata: {}",
                     d.message
                 );

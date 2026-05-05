@@ -65,6 +65,11 @@ fn knowledge_object_identity(knowledge_object: &KnowledgeObject) -> KnowledgeObj
             id: decision.id(),
             span: decision.span(),
         },
+        KnowledgeObject::Glossary(glossary) => KnowledgeObjectIdentity {
+            kind: BlockKind::Glossary,
+            id: glossary.id(),
+            span: glossary.span(),
+        },
         KnowledgeObject::Warning(warning) => KnowledgeObjectIdentity {
             kind: BlockKind::Warning,
             id: warning.id(),

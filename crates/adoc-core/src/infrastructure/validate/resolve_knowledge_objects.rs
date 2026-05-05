@@ -9,7 +9,8 @@
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::knowledge_object::{
-    BlockKind, KnowledgeObject, claim::Claim, decision::Decision, warning::Warning,
+    BlockKind, KnowledgeObject, claim::Claim, decision::Decision, glossary::Glossary,
+    warning::Warning,
 };
 use crate::domain::source::SourceFile;
 
@@ -44,6 +45,14 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
                         if let Some(decision) = Decision::build_from_parsed(&parsed, diagnostics) {
                             new_blocks.push(BlockAst::KnowledgeObject(Box::new(
                                 KnowledgeObject::Decision(decision),
+                            )));
+                        }
+                        // failure → block dropped; diagnostics already emitted above
+                    }
+                    BlockKind::Glossary => {
+                        if let Some(glossary) = Glossary::build_from_parsed(&parsed, diagnostics) {
+                            new_blocks.push(BlockAst::KnowledgeObject(Box::new(
+                                KnowledgeObject::Glossary(glossary),
                             )));
                         }
                         // failure → block dropped; diagnostics already emitted above
@@ -148,6 +157,18 @@ mod tests {
         ParsedTypedBlock {
             kind: BlockKind::Warning,
             id_text: "auth.session.clock-skew".to_string(),
+            raw_fields: fields,
+            duplicate_keys: Vec::new(),
+            body_text: body_text.to_string(),
+            content_spans: Vec::new(),
+            span: span(),
+        }
+    }
+
+    fn glossary_pending(fields: BTreeMap<String, String>, body_text: &str) -> ParsedTypedBlock {
+        ParsedTypedBlock {
+            kind: BlockKind::Glossary,
+            id_text: "billing.credits".to_string(),
             raw_fields: fields,
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
@@ -649,5 +670,55 @@ mod tests {
             Some("auth.session.clock-skew")
         );
         assert!(pairs[0].1.blocks.is_empty());
+    }
+
+    #[test]
+    fn resolves_glossary_and_preserves_status_as_metadata() {
+        let pending = glossary_pending(
+            BTreeMap::from([
+                ("status".to_string(), "draft".to_string()),
+                ("owner".to_string(), "team-billing".to_string()),
+            ]),
+            "Credits adjust account balances.",
+        );
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert!(diagnostics.is_empty());
+        let BlockAst::KnowledgeObject(ko) = &pairs[0].1.blocks[0] else {
+            panic!("expected KnowledgeObject");
+        };
+        let KnowledgeObject::Glossary(glossary) = ko.as_ref() else {
+            panic!("expected glossary");
+        };
+        let fields: Vec<(&str, &str)> = glossary
+            .fields()
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect();
+        assert_eq!(fields, vec![("owner", "team-billing"), ("status", "draft")]);
+    }
+
+    #[test]
+    fn emits_duplicate_field_for_glossary_and_drops_block() {
+        let mut pending = glossary_pending(
+            BTreeMap::from([("status".to_string(), "reviewed".to_string())]),
+            "Credits adjust account balances.",
+        );
+        pending.duplicate_keys = vec!["status".to_string()];
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaDuplicateField);
+        assert!(diagnostics[0].message.contains("glossary"));
+        assert!(
+            pairs[0].1.blocks.is_empty(),
+            "block must be dropped on duplicate field"
+        );
     }
 }

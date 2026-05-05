@@ -4,6 +4,7 @@ use crate::domain::knowledge_object::{
     KnowledgeObject,
     claim::{Claim, Evidence},
     decision::{DECIDED_BY_FIELD, Decision},
+    glossary::Glossary,
     warning::Warning,
 };
 use crate::domain::ports::renderer::Renderer;
@@ -82,6 +83,9 @@ fn render_block(block: &BlockAst, html: &mut String) {
             KnowledgeObject::Decision(decision) => {
                 render_decision(decision, html);
             }
+            KnowledgeObject::Glossary(glossary) => {
+                render_glossary(glossary, html);
+            }
             KnowledgeObject::Warning(warning) => {
                 render_warning(warning, html);
             }
@@ -90,6 +94,41 @@ fn render_block(block: &BlockAst, html: &mut String) {
             unreachable!("resolver must replace pending knowledge objects before rendering")
         }
     }
+}
+
+fn render_glossary(glossary: &Glossary, html: &mut String) {
+    html.push_str("<section class=\"glossary\" id=\"");
+    html.push_str(&escape_html(glossary.id().as_str()));
+    html.push_str("\">\n");
+    html.push_str("<header class=\"glossary__header\">");
+    html.push_str("<span class=\"glossary__kind\">glossary</span>");
+    html.push_str("<code class=\"glossary__id\">");
+    html.push_str(&escape_html(glossary.id().as_str()));
+    html.push_str("</code>");
+    html.push_str("</header>\n");
+    html.push_str("<div class=\"glossary__body\"><p>");
+    html.push_str(&escape_html(glossary.body().as_str()));
+    html.push_str("</p></div>\n");
+    render_glossary_metadata(glossary, html);
+    html.push_str("</section>\n");
+}
+
+fn render_glossary_metadata(glossary: &Glossary, html: &mut String) {
+    if glossary.fields().is_empty() {
+        return;
+    }
+
+    html.push_str("<footer class=\"glossary__metadata\">\n");
+    html.push_str("<dl>\n");
+    for (key, value) in glossary.fields().iter() {
+        html.push_str("<dt>");
+        html.push_str(&escape_html(key));
+        html.push_str("</dt><dd>");
+        html.push_str(&escape_html(value));
+        html.push_str("</dd>\n");
+    }
+    html.push_str("</dl>\n");
+    html.push_str("</footer>\n");
 }
 
 fn render_warning(warning: &Warning, html: &mut String) {
@@ -532,6 +571,18 @@ mod tests {
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Warning(warning)))
     }
 
+    fn make_glossary(
+        id: &str,
+        body: &str,
+        fields: std::collections::BTreeMap<String, String>,
+        span: SourceSpan,
+    ) -> BlockAst {
+        use crate::domain::knowledge_object::{KnowledgeObject, glossary::Glossary};
+        let glossary =
+            Glossary::try_new(id, body, fields, span).expect("test glossary must be valid");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Glossary(glossary)))
+    }
+
     #[test]
     fn claim_renders_to_section_with_kind_id_status_body() {
         let block = make_claim(
@@ -864,6 +915,58 @@ mod tests {
         assert!(
             html.contains("<dt>note</dt><dd>value &#39;x&#39; &amp; &lt;y&gt;</dd>"),
             "metadata not escaped: {html}"
+        );
+    }
+
+    #[test]
+    fn glossary_renders_definition_and_metadata_footer_only_when_fields_are_present() {
+        let block = make_glossary(
+            "billing.credits",
+            "Credits adjust account balances.",
+            std::collections::BTreeMap::new(),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            html.contains("<section class=\"glossary\" id=\"billing.credits\">"),
+            "missing glossary section: {html}"
+        );
+        assert!(
+            html.contains("<span class=\"glossary__kind\">glossary</span>"),
+            "missing glossary kind: {html}"
+        );
+        assert!(
+            html.contains("<code class=\"glossary__id\">billing.credits</code>"),
+            "missing glossary id: {html}"
+        );
+        assert!(
+            html.contains(
+                "<div class=\"glossary__body\"><p>Credits adjust account balances.</p></div>"
+            ),
+            "missing glossary body: {html}"
+        );
+        assert!(
+            !html.contains("<footer class=\"glossary__metadata\">"),
+            "unexpected metadata footer: {html}"
+        );
+
+        let block = make_glossary(
+            "billing.credits",
+            "Credits adjust account balances.",
+            std::collections::BTreeMap::from([("status".to_string(), "draft".to_string())]),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+        assert!(
+            html.contains("<footer class=\"glossary__metadata\">\n<dl>\n"),
+            "missing metadata footer: {html}"
+        );
+        assert!(
+            html.contains("<dt>status</dt><dd>draft</dd>"),
+            "missing preserved status metadata: {html}"
         );
     }
 }

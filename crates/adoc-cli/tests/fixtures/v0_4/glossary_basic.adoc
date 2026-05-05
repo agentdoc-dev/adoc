@@ -1,0 +1,10 @@
+# Glossary @doc(team.glossary)
+
+Terms that agents should interpret consistently.
+
+::glossary billing.credits
+status: draft
+owner: team-billing
+--
+Credits are balance adjustments applied to an account.
+::

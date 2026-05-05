@@ -1,0 +1,33 @@
+{
+  "schema_version": "adoc.agent.v0",
+  "pages": [
+    {
+      "id": "team.glossary",
+      "title": "Glossary",
+      "source_path": "glossary_basic.adoc"
+    }
+  ],
+  "objects": [
+    {
+      "id": "billing.credits",
+      "kind": "glossary",
+      "body": "Credits are balance adjustments applied to an account.",
+      "page_id": "team.glossary",
+      "source_span": {
+        "path": "glossary_basic.adoc",
+        "line": 5,
+        "column": 1
+      },
+      "fields": {
+        "owner": "team-billing",
+        "status": "draft"
+      },
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    }
+  ],
+  "diagnostics": []
+}
