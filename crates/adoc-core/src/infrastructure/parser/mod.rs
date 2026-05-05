@@ -13,7 +13,7 @@ mod state;
 use builders::{CodeBlockBuilder, ListBuilder, ParagraphBuilder};
 use state::ParseState;
 
-use crate::domain::ast::{BlockAst, HeadingAst, ListKind, PageAst, PendingKnowledgeObject};
+use crate::domain::ast::{BlockAst, HeadingAst, ListKind, PageAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::{ObjectId, PageId};
 use crate::domain::inline::{self, InlineOrigin};
@@ -51,11 +51,11 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
             continue;
         }
 
-        // Inside a claim block every line is consumed by the claim handler
+        // Inside a typed block every line is consumed by the typed-block handler
         // until the closing `::` fence. Blank lines, headings, etc. are body
         // content (or field lines) — not structural.
-        if state.is_in_claim_block() {
-            consume_claim_block_line(
+        if state.is_in_typed_block() {
+            consume_typed_block_line(
                 &mut state,
                 source,
                 line,
@@ -91,9 +91,9 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
                 claim::TypedBlockOpen::None => {
                     // Fall through to normal prose dispatch below.
                 }
-                claim::TypedBlockOpen::OpenedClaim(claim_state) => {
+                claim::TypedBlockOpen::Opened(typed_block_state) => {
                     commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
-                    state = ParseState::ClaimBlock(claim_state);
+                    state = ParseState::TypedBlock(typed_block_state);
                     continue;
                 }
                 claim::TypedBlockOpen::Diagnostic(d) => {
@@ -164,9 +164,9 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         );
     }
 
-    // Handle unclosed claim blocks at EOF before the general commit.
-    if let ParseState::ClaimBlock(claim_state) = state {
-        claim::finalize_unclosed_claim(claim_state, &mut diagnostics);
+    // Handle unclosed typed blocks at EOF before the general commit.
+    if let ParseState::TypedBlock(typed_block_state) = state {
+        claim::finalize_unclosed_typed_block(typed_block_state, &mut diagnostics);
         state = ParseState::Idle;
     }
     commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
@@ -212,7 +212,7 @@ fn consume_code_block_line(
     }
 }
 
-fn consume_claim_block_line(
+fn consume_typed_block_line(
     state: &mut ParseState,
     source: &SourceFile,
     line: &str,
@@ -220,15 +220,14 @@ fn consume_claim_block_line(
     blocks: &mut Vec<BlockAst>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let ParseState::ClaimBlock(claim_state) = state else {
-        unreachable!("guarded by ParseState::is_in_claim_block");
+    let ParseState::TypedBlock(typed_block_state) = state else {
+        unreachable!("guarded by ParseState::is_in_typed_block");
     };
-    match claim::consume_claim_line(claim_state, line, line_number, source, diagnostics) {
-        claim::ClaimLineOutcome::Continue => {}
-        claim::ClaimLineOutcome::Closed(parsed) => {
-            blocks.push(BlockAst::KnowledgeObjectPending(Box::new(
-                PendingKnowledgeObject::Claim(parsed),
-            )));
+    match claim::consume_typed_block_line(typed_block_state, line, line_number, source, diagnostics)
+    {
+        claim::TypedBlockLineOutcome::Continue => {}
+        claim::TypedBlockLineOutcome::Closed(parsed) => {
+            blocks.push(BlockAst::KnowledgeObjectPending(Box::new(parsed)));
             *state = ParseState::Idle;
         }
     }
@@ -591,7 +590,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::domain::ast::BlockAst;
+    use crate::domain::ast::{BlockAst, BlockKind};
 
     fn parse_source(text: &str) -> (PageAst, Vec<Diagnostic>) {
         let source = SourceFile::new_with_identity_path(
@@ -700,6 +699,55 @@ mod tests {
             list.span.end.line, 5,
             "list span ends at the last item's line"
         );
+    }
+
+    #[test]
+    fn parse_page_rejects_decision_as_unknown_typed_block() {
+        let (page, diagnostics) = parse_source(concat!(
+            "# Decisions @doc(team.decisions)\n\n",
+            "::decision billing.policy\n",
+            "status: draft\n",
+            "--\n",
+            "Use the existing billing policy.\n",
+            "::\n",
+        ));
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseUnknownBlockType);
+        assert!(
+            page.blocks
+                .iter()
+                .all(|block| !matches!(block, BlockAst::KnowledgeObjectPending(_))),
+            "unsupported decision source must not become pending typed-block state"
+        );
+    }
+
+    #[test]
+    fn parse_page_still_recognizes_claim_as_pending_typed_block() {
+        let (page, diagnostics) = parse_source(concat!(
+            "# Claims @doc(team.claims)\n\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "--\n",
+            "The system credits users automatically.\n",
+            "::\n",
+        ));
+
+        assert!(
+            diagnostics.is_empty(),
+            "expected claim parser regression fixture to stay clean: {diagnostics:?}"
+        );
+        let pending = page
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::KnowledgeObjectPending(pending) => Some(pending),
+                _ => None,
+            })
+            .expect("claim block should be parsed as pending typed block");
+
+        assert_eq!(pending.kind, BlockKind::Claim);
+        assert_eq!(pending.id_text, "billing.credits");
     }
 
     #[test]
