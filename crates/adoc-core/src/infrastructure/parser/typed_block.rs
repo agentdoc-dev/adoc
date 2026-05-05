@@ -355,6 +355,7 @@ fn trim_blank_edges(lines: &[String]) -> &[String] {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::path::PathBuf;
 
     use super::*;
@@ -398,6 +399,34 @@ mod tests {
             duplicate_keys: Vec::new(),
             body_lines: Vec::new(),
             content_spans: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn supported_kind_metadata_round_trips_every_block_kind() {
+        for &kind in BlockKind::ALL {
+            let word = fence_word_for_kind(kind);
+            assert_eq!(kind_for_fence_word(word), Some(kind));
+        }
+    }
+
+    #[test]
+    fn supported_kind_metadata_has_no_duplicate_words_or_kinds() {
+        let mut words = BTreeSet::new();
+        let mut kinds = Vec::new();
+
+        for supported in SUPPORTED_KINDS {
+            assert!(
+                words.insert(supported.word),
+                "duplicate supported typed-block word `{}`",
+                supported.word
+            );
+            assert!(
+                !kinds.contains(&supported.kind),
+                "duplicate parser metadata for {:?}",
+                supported.kind
+            );
+            kinds.push(supported.kind);
         }
     }
 
