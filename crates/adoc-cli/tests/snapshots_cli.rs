@@ -90,3 +90,17 @@ fn snapshot_check_flags_claim_missing_status() {
 
     insta::assert_snapshot!("check_claim_missing_status_flags", combined);
 }
+
+#[test]
+fn snapshot_check_flags_claim_id_invalid_uppercase() {
+    // Pins the error shape for a claim whose id violates the grammar (uppercase
+    // letters). The diagnostic must carry file:line:col, code id.invalid, and
+    // the rejected id text in the message.
+    let combined = run_check_in_workspace(
+        "snap-check-claim-id-invalid-uppercase",
+        "v0_2/claim_id_invalid_uppercase.adoc",
+        "claim_id_invalid_uppercase.adoc",
+    );
+
+    insta::assert_snapshot!("check_claim_id_invalid_uppercase_flags", combined);
+}

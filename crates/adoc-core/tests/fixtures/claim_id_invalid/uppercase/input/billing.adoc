@@ -1,0 +1,7 @@
+# Uppercase claim id @doc(team.uppercase)
+
+::claim Billing.Credits
+status: verified
+--
+The system credits users automatically.
+::

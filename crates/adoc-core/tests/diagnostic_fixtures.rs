@@ -10,6 +10,42 @@ fn duplicate_claim_id_fixture_matches_expected_diagnostics() {
     fixture.assert_matches_expected_diagnostics();
 }
 
+#[test]
+fn claim_id_invalid_uppercase_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("claim_id_invalid/uppercase").assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn claim_id_invalid_underscore_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("claim_id_invalid/underscore").assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn claim_id_invalid_slash_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("claim_id_invalid/slash").assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn claim_id_invalid_single_segment_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("claim_id_invalid/single_segment").assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn claim_id_invalid_empty_segment_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("claim_id_invalid/empty_segment").assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn claim_id_invalid_leading_hyphen_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("claim_id_invalid/leading_hyphen").assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn claim_id_invalid_trailing_hyphen_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("claim_id_invalid/trailing_hyphen")
+        .assert_matches_expected_diagnostics();
+}
+
 #[derive(Debug)]
 struct DiagnosticFixture {
     name: String,

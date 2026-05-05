@@ -88,6 +88,11 @@ impl Diagnostic {
         self.object_id = Some(object_id.into());
         self
     }
+
+    pub(crate) fn with_help(mut self, help: impl Into<String>) -> Self {
+        self.help = Some(help.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -178,6 +183,13 @@ mod tests {
         let span = span_with_file(PathBuf::from("docs/sample.adoc"));
 
         assert_eq!(span.render_location(), "docs/sample.adoc:1:1");
+    }
+
+    #[test]
+    fn with_help_sets_help_field() {
+        let diagnostic =
+            Diagnostic::error(DiagnosticCode::IdInvalid, "bad id").with_help("fix your id");
+        assert_eq!(diagnostic.help.as_deref(), Some("fix your id"));
     }
 
     #[cfg(unix)]

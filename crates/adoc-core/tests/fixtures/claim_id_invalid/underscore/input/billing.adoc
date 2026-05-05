@@ -1,0 +1,7 @@
+# Underscore claim id @doc(team.underscore)
+
+::claim billing_credits.limit
+status: verified
+--
+The system credits users automatically.
+::

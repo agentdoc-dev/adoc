@@ -89,7 +89,9 @@ fn build_claim(parsed: &ParsedClaim, diagnostics: &mut Vec<Diagnostic>) -> Optio
                     DiagnosticCode::IdInvalid,
                     format!("invalid claim id `{}`: {e}", parsed.id_text),
                 )
-                .with_span(parsed.span.clone()),
+                .with_span(parsed.span.clone())
+                .with_object_id(&parsed.id_text)
+                .with_help(crate::domain::identity::OBJECT_ID_GRAMMAR_HELP),
             );
             None
         }
@@ -243,6 +245,15 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::IdInvalid);
+        assert_eq!(
+            diagnostics[0].object_id.as_deref(),
+            Some("BadId"),
+            "object_id must carry the rejected id text"
+        );
+        assert!(
+            diagnostics[0].help.is_some(),
+            "help must be set on id.invalid diagnostics"
+        );
         assert!(pairs[0].1.blocks.is_empty(), "block must be dropped");
     }
 
