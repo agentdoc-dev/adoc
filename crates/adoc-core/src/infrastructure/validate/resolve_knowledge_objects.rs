@@ -6,17 +6,10 @@
 //! assembly so the orchestrator remains a linear sequence of named domain
 //! operations.
 
-use std::collections::{BTreeMap, BTreeSet};
-
-use crate::domain::ast::{BlockAst, PageAst, ParsedTypedBlock};
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::ast::{BlockAst, PageAst};
+use crate::domain::diagnostic::Diagnostic;
 use crate::domain::knowledge_object::{
-    BlockKind, KnowledgeObject,
-    claim::Claim,
-    decision::{
-        ACCEPTED_STATUS, AcceptedVerdict, DECIDED_BY_FIELD, DecidedBy, Decision, DecisionError,
-        STATUS_FIELD as DECISION_STATUS_FIELD, VALID_STATUS_HELP,
-    },
+    BlockKind, KnowledgeObject, claim::Claim, decision::Decision,
 };
 use crate::domain::source::SourceFile;
 
@@ -48,7 +41,7 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
                         // failure → block dropped; diagnostics already emitted above
                     }
                     BlockKind::Decision => {
-                        if let Some(decision) = build_decision(&parsed, diagnostics) {
+                        if let Some(decision) = Decision::build_from_parsed(&parsed, diagnostics) {
                             new_blocks.push(BlockAst::KnowledgeObject(Box::new(
                                 KnowledgeObject::Decision(decision),
                             )));
@@ -61,151 +54,6 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
         }
     }
     page.blocks = new_blocks;
-}
-
-fn build_decision(
-    parsed: &ParsedTypedBlock,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Option<Decision> {
-    if !parsed.duplicate_keys.is_empty() {
-        let mut emitted_keys = BTreeSet::new();
-        for key in &parsed.duplicate_keys {
-            if emitted_keys.insert(key.as_str()) {
-                diagnostics.push(
-                    Diagnostic::error(
-                        DiagnosticCode::SchemaDuplicateField,
-                        format!("duplicate field `{key}` in decision"),
-                    )
-                    .with_span(parsed.span.clone()),
-                );
-            }
-        }
-        // Duplicate fields poison the raw field map: last-value-wins storage
-        // makes missing-field validation ambiguous until the duplicates are fixed.
-        return None;
-    }
-
-    let status_text = parsed
-        .raw_fields
-        .get(DECISION_STATUS_FIELD)
-        .map(String::as_str);
-    let optional_fields: BTreeMap<String, String> = parsed
-        .raw_fields
-        .iter()
-        .filter(|(key, _)| key.as_str() != DECISION_STATUS_FIELD)
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
-
-    let status_is_exact_accepted = status_text
-        .map(|status| status.trim_matches(|character: char| character.is_ascii_whitespace()))
-        == Some(ACCEPTED_STATUS);
-
-    let (optional_fields, verdict) = if status_is_exact_accepted {
-        if let Err(error) =
-            Decision::validate_basics(&parsed.id_text, status_text, &parsed.body_text)
-        {
-            emit_decision_error(parsed, error, diagnostics);
-            return None;
-        }
-
-        let Some(decided_by) = optional_fields
-            .get(DECIDED_BY_FIELD)
-            .and_then(|value| DecidedBy::try_new(value))
-        else {
-            diagnostics.push(missing_decided_by_diagnostic(parsed));
-            return None;
-        };
-        let mut storage_fields = optional_fields;
-        storage_fields.remove(DECIDED_BY_FIELD);
-        (storage_fields, Some(AcceptedVerdict::new(decided_by)))
-    } else {
-        (optional_fields, None)
-    };
-
-    match Decision::try_new(
-        &parsed.id_text,
-        status_text,
-        &parsed.body_text,
-        optional_fields,
-        verdict,
-        parsed.span.clone(),
-    ) {
-        Ok(decision) => Some(decision),
-        Err(error) => {
-            emit_decision_error(parsed, error, diagnostics);
-            None
-        }
-    }
-}
-
-fn missing_decided_by_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
-    Diagnostic::error(
-        DiagnosticCode::SchemaMissingField,
-        format!(
-            "accepted decision `{}` is missing required field `{DECIDED_BY_FIELD}`",
-            parsed.id_text
-        ),
-    )
-    .with_span(parsed.span.clone())
-    .with_object_id(&parsed.id_text)
-    .with_help("Accepted decisions require non-empty `decided_by`.")
-}
-
-fn emit_decision_error(
-    parsed: &ParsedTypedBlock,
-    error: DecisionError,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    match error {
-        DecisionError::InvalidId(e) => diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::IdInvalid,
-                format!("invalid decision id `{}`: {e}", parsed.id_text),
-            )
-            .with_span(parsed.span.clone())
-            .with_object_id(&parsed.id_text)
-            .with_help(crate::domain::identity::OBJECT_ID_GRAMMAR_HELP),
-        ),
-        DecisionError::MissingStatus => diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::SchemaMissingField,
-                "decision is missing required field `status`",
-            )
-            .with_span(parsed.span.clone()),
-        ),
-        DecisionError::InvalidStatus(status) => diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::SchemaInvalidStatus,
-                format!(
-                    "decision `{}` has invalid status `{status}`",
-                    parsed.id_text
-                ),
-            )
-            .with_span(parsed.span.clone())
-            .with_object_id(&parsed.id_text)
-            .with_help(VALID_STATUS_HELP),
-        ),
-        DecisionError::MissingBody => diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::SchemaMissingField,
-                "decision is missing required body",
-            )
-            .with_span(parsed.span.clone()),
-        ),
-        DecisionError::MissingVerdict => diagnostics.push(missing_decided_by_diagnostic(parsed)),
-        DecisionError::UnexpectedVerdict => diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::SchemaInvalidStatus,
-                format!(
-                    "decision `{}` has an accepted verdict but status is not `{ACCEPTED_STATUS}`",
-                    parsed.id_text
-                ),
-            )
-            .with_span(parsed.span.clone())
-            .with_object_id(&parsed.id_text)
-            .with_help("Only accepted decisions may carry an accepted verdict."),
-        ),
-    }
 }
 
 #[cfg(test)]
