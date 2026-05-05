@@ -11,7 +11,7 @@ use crate::domain::knowledge_object::{
         Claim, Evidence, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
         VERIFIED_AT_FIELD,
     },
-    decision::Decision,
+    decision::{DECIDED_BY_FIELD, Decision},
 };
 use crate::domain::ports::artifact_writer::ArtifactWriter;
 
@@ -51,6 +51,7 @@ impl ArtifactWriter for AgentJsonArtifact {
 
 fn decision_to_agent_object(decision: &Decision, page_id: &str) -> AgentJsonObject {
     let span = decision.span();
+    let fields = fields_for_decision(decision);
     AgentJsonObject {
         id: decision.id().as_str().to_string(),
         kind: "decision".to_string(),
@@ -62,13 +63,26 @@ fn decision_to_agent_object(decision: &Decision, page_id: &str) -> AgentJsonObje
             line: span.start.line,
             column: span.start.column,
         },
-        fields: decision
-            .fields()
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
+        fields,
         relations: AgentJsonRelations::default(),
     }
+}
+
+fn fields_for_decision(decision: &Decision) -> BTreeMap<String, String> {
+    let mut fields = BTreeMap::new();
+
+    for (key, value) in decision.fields().iter() {
+        fields.insert(key.clone(), value.clone());
+    }
+
+    if let Some(verdict) = decision.verdict() {
+        fields.insert(
+            DECIDED_BY_FIELD.to_string(),
+            verdict.decided_by().as_str().to_string(),
+        );
+    }
+
+    fields
 }
 
 fn claim_to_agent_object(claim: &Claim, page_id: &str) -> AgentJsonObject {
@@ -136,6 +150,7 @@ mod tests {
     use crate::domain::knowledge_object::{
         KnowledgeObject,
         claim::{Claim, Evidence, NonEmpty, Owner, Verification, VerifiedAt},
+        decision::{AcceptedVerdict, DECIDED_BY_FIELD, DecidedBy, Decision},
     };
     use crate::domain::ports::artifact_writer::ArtifactWriter;
 
@@ -175,6 +190,27 @@ mod tests {
         let claim = Claim::try_new(id, Some(status), body, fields, verification, span())
             .expect("test claim is valid");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim)))
+    }
+
+    fn make_decision(
+        id: &str,
+        status: &str,
+        body: &str,
+        fields: BTreeMap<String, String>,
+    ) -> BlockAst {
+        let verdict = (status == "accepted").then(|| {
+            AcceptedVerdict::new(
+                DecidedBy::try_new(fields.get(DECIDED_BY_FIELD).expect("decided_by"))
+                    .expect("decided_by"),
+            )
+        });
+        let mut storage_fields = fields;
+        if verdict.is_some() {
+            storage_fields.remove(DECIDED_BY_FIELD);
+        }
+        let decision = Decision::try_new(id, Some(status), body, storage_fields, verdict, span())
+            .expect("test decision is valid");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision)))
     }
 
     fn make_page(id: &str, blocks: Vec<BlockAst>) -> PageAst {
@@ -284,6 +320,51 @@ mod tests {
         assert_eq!(
             obj.fields.get("audience").map(String::as_str),
             Some("support")
+        );
+    }
+
+    #[test]
+    fn agent_json_reprojects_accepted_decided_by_from_verdict() {
+        let page = make_page(
+            "team.guide",
+            vec![make_decision(
+                "billing.policy",
+                "accepted",
+                "Use the existing billing policy.",
+                BTreeMap::from([(DECIDED_BY_FIELD.to_string(), "architecture".to_string())]),
+            )],
+        );
+        let artifact = AgentJsonArtifact;
+        let doc = artifact.build(&[page], &[]);
+
+        let obj = &doc.objects[0];
+        assert_eq!(obj.kind, "decision");
+        assert_eq!(obj.status, "accepted");
+        assert_eq!(
+            obj.fields.get(DECIDED_BY_FIELD).map(String::as_str),
+            Some("architecture")
+        );
+    }
+
+    #[test]
+    fn agent_json_preserves_non_accepted_decided_by_metadata() {
+        let page = make_page(
+            "team.guide",
+            vec![make_decision(
+                "billing.policy",
+                "proposed",
+                "Use the existing billing policy.",
+                BTreeMap::from([(DECIDED_BY_FIELD.to_string(), "architecture".to_string())]),
+            )],
+        );
+        let artifact = AgentJsonArtifact;
+        let doc = artifact.build(&[page], &[]);
+
+        let obj = &doc.objects[0];
+        assert_eq!(obj.status, "proposed");
+        assert_eq!(
+            obj.fields.get(DECIDED_BY_FIELD).map(String::as_str),
+            Some("architecture")
         );
     }
 }
