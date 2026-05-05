@@ -215,6 +215,146 @@ fn compile_workspace_resolves_clean_decision_into_artifacts() {
 }
 
 #[test]
+fn compile_workspace_resolves_warning_into_artifacts() {
+    let workspace = TestWorkspace::new("resolve-warning-into-artifacts");
+    let source = workspace.write(
+        "warnings.adoc",
+        concat!(
+            "# Warning Guide @doc(team.warnings)\n",
+            "\n",
+            "::warning auth.session.clock-skew\n",
+            "severity: high\n",
+            "owner: platform\n",
+            "--\n",
+            "Session clocks can drift enough to reject otherwise valid tokens.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected warning to compile, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    let record = artifacts
+        .agent_json
+        .objects
+        .first()
+        .expect("warning object must be emitted");
+    assert_eq!(record.id, "auth.session.clock-skew");
+    assert_eq!(record.kind, "warning");
+    assert_eq!(record.status, "high");
+    assert_eq!(
+        record.body,
+        "Session clocks can drift enough to reject otherwise valid tokens."
+    );
+    assert_eq!(record.page_id, "team.warnings");
+    assert_eq!(
+        record.fields.get("owner").map(String::as_str),
+        Some("platform")
+    );
+    assert!(!record.fields.contains_key("severity"));
+    assert!(record.relations.depends_on.is_empty());
+    assert!(record.relations.supersedes.is_empty());
+    assert!(record.relations.related_to.is_empty());
+    assert_eq!(record.source_span.line, 3);
+    assert_eq!(record.source_span.column, 1);
+    assert!(
+        artifacts
+            .html
+            .contains("<section class=\"warning\" id=\"auth.session.clock-skew\">"),
+        "warning section missing: {}",
+        artifacts.html
+    );
+    assert!(
+        artifacts
+            .html
+            .contains("<span class=\"warning__kind\">warning</span>"),
+        "warning kind missing: {}",
+        artifacts.html
+    );
+    assert!(
+        artifacts
+            .html
+            .contains("<span class=\"warning__severity\">high</span>"),
+        "warning severity missing: {}",
+        artifacts.html
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_warning_missing_severity() {
+    let workspace = TestWorkspace::new("warning-missing-severity");
+    let source = workspace.write(
+        "warnings.adoc",
+        concat!(
+            "# Warning Guide @doc(team.warnings)\n",
+            "\n",
+            "::warning auth.session.clock-skew\n",
+            "--\n",
+            "Session clocks can drift.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "missing severity must be rejected");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaMissingField
+    );
+    assert!(result.diagnostics[0].message.contains("severity"));
+    assert_eq!(
+        result.diagnostics[0].object_id.as_deref(),
+        Some("auth.session.clock-skew")
+    );
+    assert_eq!(
+        result.diagnostics[0]
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((3, 1))
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_warning_missing_body() {
+    let workspace = TestWorkspace::new("warning-missing-body");
+    let source = workspace.write(
+        "warnings.adoc",
+        concat!(
+            "# Warning Guide @doc(team.warnings)\n",
+            "\n",
+            "::warning auth.session.clock-skew\n",
+            "severity: high\n",
+            "--\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "missing body must be rejected");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaMissingField
+    );
+    assert!(result.diagnostics[0].message.contains("body"));
+    assert_eq!(
+        result.diagnostics[0].object_id.as_deref(),
+        Some("auth.session.clock-skew")
+    );
+}
+
+#[test]
 fn compile_workspace_rejects_duplicate_decision_id_and_blocks_artifacts() {
     let workspace = TestWorkspace::new("decision-duplicate-id");
     let source = workspace.write(

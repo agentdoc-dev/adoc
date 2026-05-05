@@ -1,0 +1,10 @@
+# Runtime Warnings @doc(team.warnings)
+
+Warnings that agents should surface before taking action.
+
+::warning auth.session.clock-skew
+severity: high
+owner: platform
+--
+Session clocks can drift enough to reject otherwise valid tokens.
+::

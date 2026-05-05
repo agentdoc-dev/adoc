@@ -4,6 +4,7 @@ use crate::domain::knowledge_object::{
     KnowledgeObject,
     claim::{Claim, Evidence},
     decision::{DECIDED_BY_FIELD, Decision},
+    warning::Warning,
 };
 use crate::domain::ports::renderer::Renderer;
 
@@ -81,11 +82,52 @@ fn render_block(block: &BlockAst, html: &mut String) {
             KnowledgeObject::Decision(decision) => {
                 render_decision(decision, html);
             }
+            KnowledgeObject::Warning(warning) => {
+                render_warning(warning, html);
+            }
         },
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before rendering")
         }
     }
+}
+
+fn render_warning(warning: &Warning, html: &mut String) {
+    html.push_str("<section class=\"warning\" id=\"");
+    html.push_str(&escape_html(warning.id().as_str()));
+    html.push_str("\">\n");
+    html.push_str("<header class=\"warning__header\">");
+    html.push_str("<span class=\"warning__kind\">warning</span>");
+    html.push_str("<code class=\"warning__id\">");
+    html.push_str(&escape_html(warning.id().as_str()));
+    html.push_str("</code>");
+    html.push_str("<span class=\"warning__severity\">");
+    html.push_str(&escape_html(warning.severity().as_str()));
+    html.push_str("</span>");
+    html.push_str("</header>\n");
+    html.push_str("<div class=\"warning__body\"><p>");
+    html.push_str(&escape_html(warning.body().as_str()));
+    html.push_str("</p></div>\n");
+    render_warning_metadata(warning, html);
+    html.push_str("</section>\n");
+}
+
+fn render_warning_metadata(warning: &Warning, html: &mut String) {
+    if warning.fields().is_empty() {
+        return;
+    }
+
+    html.push_str("<footer class=\"warning__metadata\">\n");
+    html.push_str("<dl>\n");
+    for (key, value) in warning.fields().iter() {
+        html.push_str("<dt>");
+        html.push_str(&escape_html(key));
+        html.push_str("</dt><dd>");
+        html.push_str(&escape_html(value));
+        html.push_str("</dd>\n");
+    }
+    html.push_str("</dl>\n");
+    html.push_str("</footer>\n");
 }
 
 fn render_decision(decision: &Decision, html: &mut String) {
@@ -475,6 +517,19 @@ mod tests {
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision)))
     }
 
+    fn make_warning(
+        id: &str,
+        severity: &str,
+        body: &str,
+        fields: std::collections::BTreeMap<String, String>,
+        span: SourceSpan,
+    ) -> BlockAst {
+        use crate::domain::knowledge_object::{KnowledgeObject, warning::Warning};
+        let warning = Warning::try_new(id, Some(severity), body, fields, span)
+            .expect("test warning must be valid");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Warning(warning)))
+    }
+
     #[test]
     fn claim_renders_to_section_with_kind_id_status_body() {
         let block = make_claim(
@@ -714,6 +769,97 @@ mod tests {
         assert!(
             !html.contains("<footer class=\"decision__metadata\">\n<dl>\n<dt>decided_by</dt>"),
             "decided_by must not render as generic metadata: {html}"
+        );
+    }
+
+    #[test]
+    fn warning_renders_to_section_with_kind_id_severity_body() {
+        let block = make_warning(
+            "auth.session.clock-skew",
+            "high",
+            "Session clocks can drift.",
+            std::collections::BTreeMap::new(),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            html.contains("<section class=\"warning\" id=\"auth.session.clock-skew\">"),
+            "missing warning section: {html}"
+        );
+        assert!(
+            html.contains("<span class=\"warning__kind\">warning</span>"),
+            "missing kind span: {html}"
+        );
+        assert!(
+            html.contains("<code class=\"warning__id\">auth.session.clock-skew</code>"),
+            "missing id code: {html}"
+        );
+        assert!(
+            html.contains("<span class=\"warning__severity\">high</span>"),
+            "missing severity span: {html}"
+        );
+        assert!(
+            html.contains("<div class=\"warning__body\"><p>Session clocks can drift.</p></div>"),
+            "missing warning body: {html}"
+        );
+    }
+
+    #[test]
+    fn warning_renders_metadata_footer_only_when_fields_are_present() {
+        let block = make_warning(
+            "auth.session.clock-skew",
+            "medium",
+            "Session clocks can drift.",
+            std::collections::BTreeMap::new(),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+        assert!(
+            !html.contains("<footer class=\"warning__metadata\">"),
+            "unexpected metadata footer: {html}"
+        );
+
+        let block = make_warning(
+            "auth.session.clock-skew",
+            "medium",
+            "Session clocks can drift.",
+            std::collections::BTreeMap::from([("owner".to_string(), "platform".to_string())]),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+        assert!(
+            html.contains("<footer class=\"warning__metadata\">\n<dl>\n"),
+            "missing metadata footer: {html}"
+        );
+        assert!(
+            html.contains("<dt>owner</dt><dd>platform</dd>"),
+            "missing metadata field: {html}"
+        );
+    }
+
+    #[test]
+    fn warning_html_escapes_body_and_metadata() {
+        let block = make_warning(
+            "auth.session.clock-skew",
+            "critical",
+            "clock < token && token > drift",
+            std::collections::BTreeMap::from([("note".to_string(), "value 'x' & <y>".to_string())]),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            html.contains("clock &lt; token &amp;&amp; token &gt; drift"),
+            "body not escaped: {html}"
+        );
+        assert!(
+            html.contains("<dt>note</dt><dd>value &#39;x&#39; &amp; &lt;y&gt;</dd>"),
+            "metadata not escaped: {html}"
         );
     }
 }

@@ -168,6 +168,17 @@ fn snapshot_check_passes_for_v0_4_accepted_decision() {
 }
 
 #[test]
+fn snapshot_check_passes_for_v0_4_warning() {
+    let combined = run_check_in_workspace(
+        "snap-check-warning-clean",
+        "v0_4/warning_basic.adoc",
+        "warning_basic.adoc",
+    );
+
+    insta::assert_snapshot!("check_warning_clean", combined);
+}
+
+#[test]
 fn snapshot_check_flags_decision_missing_status() {
     let combined = run_check_in_workspace(
         "snap-check-decision-missing-status",
@@ -209,4 +220,26 @@ fn snapshot_check_flags_decision_invalid_status() {
     );
 
     insta::assert_snapshot!("check_decision_invalid_status_flags", combined);
+}
+
+#[test]
+fn snapshot_check_flags_warning_missing_severity() {
+    let combined = run_check_in_workspace(
+        "snap-check-warning-missing-severity",
+        "v0_4/warning_missing_severity.adoc",
+        "warning_missing_severity.adoc",
+    );
+
+    insta::assert_snapshot!("check_warning_missing_severity_flags", combined);
+}
+
+#[test]
+fn snapshot_check_flags_warning_missing_body() {
+    let combined = run_check_in_workspace(
+        "snap-check-warning-missing-body",
+        "v0_4/warning_missing_body.adoc",
+        "warning_missing_body.adoc",
+    );
+
+    insta::assert_snapshot!("check_warning_missing_body_flags", combined);
 }

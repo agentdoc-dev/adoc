@@ -65,6 +65,11 @@ fn knowledge_object_identity(knowledge_object: &KnowledgeObject) -> KnowledgeObj
             id: decision.id(),
             span: decision.span(),
         },
+        KnowledgeObject::Warning(warning) => KnowledgeObjectIdentity {
+            kind: BlockKind::Warning,
+            id: warning.id(),
+            span: warning.span(),
+        },
     }
 }
 
@@ -95,7 +100,7 @@ mod tests {
     use crate::domain::ast::{BlockAst, PageAst};
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
     use crate::domain::identity::PageId;
-    use crate::domain::knowledge_object::{claim::Claim, decision::Decision};
+    use crate::domain::knowledge_object::{claim::Claim, decision::Decision, warning::Warning};
 
     fn span(file: &str, line: u32, column: u32) -> SourceSpan {
         SourceSpan {
@@ -137,6 +142,18 @@ mod tests {
         )
         .expect("valid decision");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision)))
+    }
+
+    fn warning_block(id: &str, span: SourceSpan) -> BlockAst {
+        let warning = Warning::try_new(
+            id,
+            Some("high"),
+            "Session clocks can drift.",
+            BTreeMap::new(),
+            span,
+        )
+        .expect("valid warning");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Warning(warning)))
     }
 
     fn page(source_path: &str, blocks: Vec<BlockAst>) -> PageAst {
@@ -359,5 +376,54 @@ mod tests {
                 .map(|span| (span.start.line, span.start.column)),
             Some((9, 1))
         );
+    }
+
+    #[test]
+    fn emits_one_diagnostic_for_duplicate_warning_id() {
+        let workspace = WorkspaceAst {
+            pages: vec![
+                page(
+                    "one.adoc",
+                    vec![warning_block("auth.session", span("one.adoc", 3, 1))],
+                ),
+                page(
+                    "two.adoc",
+                    vec![warning_block("auth.session", span("two.adoc", 5, 1))],
+                ),
+            ],
+        };
+
+        let diagnostics = check(workspace);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IdDuplicate);
+        assert_eq!(
+            diagnostics[0].message,
+            "duplicate warning id `auth.session`; previously defined at one.adoc:3:1"
+        );
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("auth.session"));
+    }
+
+    #[test]
+    fn emits_one_diagnostic_for_warning_id_matching_existing_claim_id() {
+        let workspace = WorkspaceAst {
+            pages: vec![page(
+                "one.adoc",
+                vec![
+                    claim_block("auth.session", span("one.adoc", 3, 1)),
+                    warning_block("auth.session", span("one.adoc", 9, 1)),
+                ],
+            )],
+        };
+
+        let diagnostics = check(workspace);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IdDuplicate);
+        assert_eq!(
+            diagnostics[0].message,
+            "duplicate knowledge object id `auth.session`; previously defined as claim at one.adoc:3:1"
+        );
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("auth.session"));
     }
 }

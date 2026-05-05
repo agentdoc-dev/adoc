@@ -9,7 +9,7 @@
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::knowledge_object::{
-    BlockKind, KnowledgeObject, claim::Claim, decision::Decision,
+    BlockKind, KnowledgeObject, claim::Claim, decision::Decision, warning::Warning,
 };
 use crate::domain::source::SourceFile;
 
@@ -44,6 +44,14 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
                         if let Some(decision) = Decision::build_from_parsed(&parsed, diagnostics) {
                             new_blocks.push(BlockAst::KnowledgeObject(Box::new(
                                 KnowledgeObject::Decision(decision),
+                            )));
+                        }
+                        // failure → block dropped; diagnostics already emitted above
+                    }
+                    BlockKind::Warning => {
+                        if let Some(warning) = Warning::build_from_parsed(&parsed, diagnostics) {
+                            new_blocks.push(BlockAst::KnowledgeObject(Box::new(
+                                KnowledgeObject::Warning(warning),
                             )));
                         }
                         // failure → block dropped; diagnostics already emitted above
@@ -113,6 +121,18 @@ mod tests {
             raw_fields: fields,
             duplicate_keys: Vec::new(),
             body_text: "This is a valid claim body.".to_string(),
+            content_spans: Vec::new(),
+            span: span(),
+        }
+    }
+
+    fn warning_pending(fields: BTreeMap<String, String>, body_text: &str) -> ParsedTypedBlock {
+        ParsedTypedBlock {
+            kind: BlockKind::Warning,
+            id_text: "auth.session.clock-skew".to_string(),
+            raw_fields: fields,
+            duplicate_keys: Vec::new(),
+            body_text: body_text.to_string(),
             content_spans: Vec::new(),
             span: span(),
         }
@@ -465,5 +485,74 @@ mod tests {
                 .map(|(key, value)| (key.as_str(), value.as_str())),
             Some(("decided_by", "architecture"))
         );
+    }
+
+    #[test]
+    fn resolves_warning_and_strips_severity_metadata() {
+        let pending = warning_pending(
+            BTreeMap::from([
+                ("severity".to_string(), "critical".to_string()),
+                ("owner".to_string(), "platform".to_string()),
+            ]),
+            "Session clocks can drift.",
+        );
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert!(diagnostics.is_empty());
+        let BlockAst::KnowledgeObject(ko) = &pairs[0].1.blocks[0] else {
+            panic!("expected KnowledgeObject");
+        };
+        let KnowledgeObject::Warning(warning) = ko.as_ref() else {
+            panic!("expected warning");
+        };
+        assert_eq!(warning.severity().as_str(), "critical");
+        let field_keys: Vec<&str> = warning
+            .fields()
+            .iter()
+            .map(|(key, _)| key.as_str())
+            .collect();
+        assert_eq!(field_keys, vec!["owner"]);
+    }
+
+    #[test]
+    fn emits_missing_field_for_warning_missing_severity() {
+        let pending = warning_pending(BTreeMap::new(), "Session clocks can drift.");
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaMissingField);
+        assert!(diagnostics[0].message.contains("severity"));
+        assert_eq!(
+            diagnostics[0].object_id.as_deref(),
+            Some("auth.session.clock-skew")
+        );
+        assert!(pairs[0].1.blocks.is_empty());
+    }
+
+    #[test]
+    fn emits_missing_field_for_warning_missing_body() {
+        let pending = warning_pending(
+            BTreeMap::from([("severity".to_string(), "high".to_string())]),
+            " ",
+        );
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaMissingField);
+        assert!(diagnostics[0].message.contains("body"));
+        assert_eq!(
+            diagnostics[0].object_id.as_deref(),
+            Some("auth.session.clock-skew")
+        );
+        assert!(pairs[0].1.blocks.is_empty());
     }
 }
