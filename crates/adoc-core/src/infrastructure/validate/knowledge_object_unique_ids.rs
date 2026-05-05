@@ -105,7 +105,9 @@ mod tests {
     use crate::domain::ast::{BlockAst, PageAst};
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
     use crate::domain::identity::PageId;
-    use crate::domain::knowledge_object::{claim::Claim, decision::Decision, warning::Warning};
+    use crate::domain::knowledge_object::{
+        claim::Claim, decision::Decision, glossary::Glossary, warning::Warning,
+    };
 
     fn span(file: &str, line: u32, column: u32) -> SourceSpan {
         SourceSpan {
@@ -159,6 +161,17 @@ mod tests {
         )
         .expect("valid warning");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Warning(warning)))
+    }
+
+    fn glossary_block(id: &str, span: SourceSpan) -> BlockAst {
+        let glossary = Glossary::try_new(
+            id,
+            "Credits adjust account balances.",
+            BTreeMap::new(),
+            span,
+        )
+        .expect("valid glossary");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Glossary(glossary)))
     }
 
     fn page(source_path: &str, blocks: Vec<BlockAst>) -> PageAst {
@@ -407,6 +420,69 @@ mod tests {
             "duplicate warning id `auth.session`; previously defined at one.adoc:3:1"
         );
         assert_eq!(diagnostics[0].object_id.as_deref(), Some("auth.session"));
+    }
+
+    #[test]
+    fn emits_one_diagnostic_for_duplicate_glossary_id() {
+        let workspace = WorkspaceAst {
+            pages: vec![
+                page(
+                    "one.adoc",
+                    vec![glossary_block("billing.credits", span("one.adoc", 3, 1))],
+                ),
+                page(
+                    "two.adoc",
+                    vec![glossary_block("billing.credits", span("two.adoc", 5, 1))],
+                ),
+            ],
+        };
+
+        let diagnostics = check(workspace);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IdDuplicate);
+        assert_eq!(
+            diagnostics[0].message,
+            "duplicate glossary id `billing.credits`; previously defined at one.adoc:3:1"
+        );
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.credits"));
+        assert_eq!(
+            diagnostics[0]
+                .span
+                .as_ref()
+                .map(|span| (span.start.line, span.start.column)),
+            Some((5, 1))
+        );
+    }
+
+    #[test]
+    fn emits_one_diagnostic_for_glossary_id_matching_existing_claim_id() {
+        let workspace = WorkspaceAst {
+            pages: vec![page(
+                "one.adoc",
+                vec![
+                    claim_block("billing.shared", span("one.adoc", 3, 1)),
+                    glossary_block("billing.shared", span("one.adoc", 9, 1)),
+                ],
+            )],
+        };
+
+        let diagnostics = check(workspace);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IdDuplicate);
+        assert_eq!(
+            diagnostics[0].message,
+            "duplicate knowledge object id `billing.shared`; previously defined as claim at one.adoc:3:1"
+        );
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.shared"));
+        assert_eq!(
+            diagnostics[0]
+                .span
+                .as_ref()
+                .map(|span| (span.start.line, span.start.column)),
+            Some((9, 1))
+        );
     }
 
     #[test]
