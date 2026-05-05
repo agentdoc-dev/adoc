@@ -83,6 +83,11 @@ impl Diagnostic {
         self.span = Some(span);
         self
     }
+
+    pub(crate) fn with_object_id(mut self, object_id: impl Into<String>) -> Self {
+        self.object_id = Some(object_id.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
