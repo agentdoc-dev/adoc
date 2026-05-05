@@ -265,3 +265,25 @@ fn snapshot_check_flags_warning_severity_casing() {
 
     insta::assert_snapshot!("check_warning_severity_casing_flags", combined);
 }
+
+#[test]
+fn snapshot_check_passes_for_v0_4_glossary() {
+    let combined = run_check_in_workspace(
+        "snap-check-glossary-clean",
+        "v0_4/glossary_basic.adoc",
+        "glossary_basic.adoc",
+    );
+
+    insta::assert_snapshot!("check_glossary_clean", combined);
+}
+
+#[test]
+fn snapshot_check_flags_glossary_missing_body() {
+    let combined = run_check_in_workspace(
+        "snap-check-glossary-missing-body",
+        "v0_4/glossary_missing_body.adoc",
+        "glossary_missing_body.adoc",
+    );
+
+    insta::assert_snapshot!("check_glossary_missing_body_flags", combined);
+}

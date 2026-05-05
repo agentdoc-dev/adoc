@@ -1273,6 +1273,134 @@ fn build_renders_v0_4_warning_to_golden_agent_json() {
 }
 
 #[test]
+fn check_accepts_v0_4_glossary_fixture() {
+    let workspace = TestWorkspace::new("check-accepts-v0-4-glossary");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/glossary_basic.adoc"))
+        .expect("glossary_basic fixture is readable");
+    workspace.write("glossary_basic.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "glossary_basic.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        output.status.success(),
+        "expected v0.4 glossary fixture to check cleanly\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("0 errors, 0 warnings"),
+        "expected clean summary, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn build_renders_v0_4_glossary_to_golden_html() {
+    let workspace = TestWorkspace::new("build-renders-glossary-golden-html");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/glossary_basic.adoc"))
+        .expect("glossary_basic fixture is readable");
+    workspace.write("glossary_basic.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "glossary_basic.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.html"))
+        .expect("docs.html is written");
+    let golden = fs::read_to_string(fixture_path("v0_4/glossary_basic.golden.html"))
+        .expect("golden HTML fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "rendered HTML diverged from glossary_basic.golden.html"
+    );
+    assert!(
+        actual.contains("<section class=\"glossary\" id=\"billing.credits\">"),
+        "glossary section missing from HTML"
+    );
+}
+
+#[test]
+fn build_renders_v0_4_glossary_to_golden_agent_json() {
+    let workspace = TestWorkspace::new("build-renders-glossary-golden-json");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/glossary_basic.adoc"))
+        .expect("glossary_basic fixture is readable");
+    workspace.write("glossary_basic.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "glossary_basic.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
+        .expect("docs.agent.json is written");
+    let golden = fs::read_to_string(fixture_path("v0_4/glossary_basic.golden.agent.json"))
+        .expect("golden agent JSON fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "agent JSON diverged from glossary_basic.golden.agent.json"
+    );
+    assert!(
+        !actual.contains("\n      \"status\":"),
+        "glossary agent JSON must omit top-level status"
+    );
+    assert!(
+        actual.contains("\"status\": \"draft\""),
+        "glossary fields must preserve status metadata"
+    );
+}
+
+#[test]
+fn check_rejects_glossary_with_missing_body() {
+    let workspace = TestWorkspace::new("check-rejects-glossary-missing-body");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/glossary_missing_body.adoc"))
+        .expect("glossary_missing_body fixture is readable");
+    workspace.write("glossary_missing_body.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "glossary_missing_body.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected missing-body glossary to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.missing_field]"),
+        "expected schema.missing_field diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("body"),
+        "expected message to mention `body`, got:\n{stdout}"
+    );
+}
+
+#[test]
 fn check_rejects_warning_with_missing_severity() {
     let workspace = TestWorkspace::new("check-rejects-warning-missing-severity");
     let fixture_contents = fs::read_to_string(fixture_path("v0_4/warning_missing_severity.adoc"))

@@ -286,6 +286,224 @@ fn compile_workspace_resolves_warning_into_artifacts() {
 }
 
 #[test]
+fn compile_workspace_resolves_glossary_into_artifacts() {
+    let workspace = TestWorkspace::new("resolve-glossary-into-artifacts");
+    let source = workspace.write(
+        "glossary.adoc",
+        concat!(
+            "# Glossary @doc(team.glossary)\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "status: draft\n",
+            "owner: team-billing\n",
+            "--\n",
+            "Credits are balance adjustments applied to an account.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected glossary to compile, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    let record = artifacts
+        .agent_json
+        .objects
+        .first()
+        .expect("glossary object must be emitted");
+    assert_eq!(record.id, "billing.credits");
+    assert_eq!(record.kind, "glossary");
+    assert_eq!(record.status, None);
+    assert_eq!(
+        record.body,
+        "Credits are balance adjustments applied to an account."
+    );
+    assert_eq!(record.page_id, "team.glossary");
+    assert_eq!(
+        record.fields.get("status").map(String::as_str),
+        Some("draft")
+    );
+    assert_eq!(
+        record.fields.get("owner").map(String::as_str),
+        Some("team-billing")
+    );
+    assert!(record.relations.depends_on.is_empty());
+    assert!(record.relations.supersedes.is_empty());
+    assert!(record.relations.related_to.is_empty());
+    assert_eq!(record.source_span.line, 3);
+    assert_eq!(record.source_span.column, 1);
+    assert!(
+        artifacts
+            .html
+            .contains("<section class=\"glossary\" id=\"billing.credits\">"),
+        "glossary section missing: {}",
+        artifacts.html
+    );
+    assert!(
+        artifacts
+            .html
+            .contains("<span class=\"glossary__kind\">glossary</span>"),
+        "glossary kind missing: {}",
+        artifacts.html
+    );
+    assert!(
+        artifacts
+            .html
+            .contains("<code class=\"glossary__id\">billing.credits</code>"),
+        "glossary id missing: {}",
+        artifacts.html
+    );
+    assert!(
+        artifacts
+            .html
+            .contains("<footer class=\"glossary__metadata\">"),
+        "glossary metadata footer missing: {}",
+        artifacts.html
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_glossary_invalid_id() {
+    let workspace = TestWorkspace::new("glossary-invalid-id");
+    let source = workspace.write(
+        "glossary.adoc",
+        concat!(
+            "# Glossary @doc(team.glossary)\n",
+            "\n",
+            "::glossary BillingCredits\n",
+            "--\n",
+            "Credits are balance adjustments applied to an account.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "invalid glossary id must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == DiagnosticCode::IdInvalid)
+        .expect("id.invalid diagnostic must be emitted");
+    assert_eq!(diagnostic.object_id.as_deref(), Some("BillingCredits"));
+    assert!(
+        diagnostic
+            .message
+            .contains("invalid glossary id `BillingCredits`"),
+        "diagnostic should name rejected glossary id: {:?}",
+        diagnostic
+    );
+    assert!(
+        diagnostic
+            .help
+            .as_deref()
+            .is_some_and(|help| help.contains("Object IDs must")),
+        "diagnostic should carry object id grammar help: {:?}",
+        diagnostic
+    );
+    assert_eq!(
+        diagnostic
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((3, 1))
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_glossary_missing_body() {
+    let workspace = TestWorkspace::new("glossary-missing-body");
+    let source = workspace.write(
+        "glossary.adoc",
+        concat!(
+            "# Glossary @doc(team.glossary)\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "status: draft\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "missing glossary body must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == DiagnosticCode::SchemaMissingField)
+        .expect("schema.missing_field diagnostic must be emitted");
+    assert_eq!(diagnostic.object_id.as_deref(), Some("billing.credits"));
+    assert!(
+        diagnostic.message.contains("body"),
+        "diagnostic should mention body: {:?}",
+        diagnostic
+    );
+    assert!(
+        diagnostic
+            .help
+            .as_deref()
+            .is_some_and(|help| help.contains("non-empty body")),
+        "diagnostic should include fix-oriented help: {:?}",
+        diagnostic
+    );
+    assert_eq!(
+        diagnostic
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((3, 1))
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_glossary_duplicate_field_key_and_drops_block() {
+    let workspace = TestWorkspace::new("glossary-duplicate-field");
+    let source = workspace.write(
+        "glossary.adoc",
+        concat!(
+            "# Glossary @doc(team.glossary)\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "status: draft\n",
+            "status: reviewed\n",
+            "--\n",
+            "Credits are balance adjustments applied to an account.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "duplicate glossary field must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == DiagnosticCode::SchemaDuplicateField)
+        .expect("schema.duplicate_field diagnostic must be emitted");
+    assert!(
+        diagnostic
+            .message
+            .contains("duplicate field `status` in glossary"),
+        "diagnostic should name duplicate glossary field: {:?}",
+        diagnostic
+    );
+    assert_eq!(
+        diagnostic
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((3, 1))
+    );
+}
+
+#[test]
 fn compile_workspace_rejects_warning_missing_severity() {
     let workspace = TestWorkspace::new("warning-missing-severity");
     let source = workspace.write(

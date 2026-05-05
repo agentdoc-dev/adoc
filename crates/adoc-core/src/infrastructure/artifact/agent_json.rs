@@ -12,6 +12,7 @@ use crate::domain::knowledge_object::{
         VERIFIED_AT_FIELD,
     },
     decision::{DECIDED_BY_FIELD, Decision},
+    glossary::Glossary,
     warning::Warning,
 };
 use crate::domain::ports::artifact_writer::ArtifactWriter;
@@ -33,6 +34,9 @@ impl ArtifactWriter for AgentJsonArtifact {
                         KnowledgeObject::Decision(decision) => {
                             objects.push(decision_to_agent_object(decision, page.id.as_str()));
                         }
+                        KnowledgeObject::Glossary(glossary) => {
+                            objects.push(glossary_to_agent_object(glossary, page.id.as_str()));
+                        }
                         KnowledgeObject::Warning(warning) => {
                             objects.push(warning_to_agent_object(warning, page.id.as_str()));
                         }
@@ -50,6 +54,28 @@ impl ArtifactWriter for AgentJsonArtifact {
             objects,
             diagnostics: diagnostics.to_vec(),
         }
+    }
+}
+
+fn glossary_to_agent_object(glossary: &Glossary, page_id: &str) -> AgentJsonObject {
+    let span = glossary.span();
+    AgentJsonObject {
+        id: glossary.id().as_str().to_string(),
+        kind: "glossary".to_string(),
+        status: None,
+        body: glossary.body().as_str().to_string(),
+        page_id: page_id.to_string(),
+        source_span: AgentJsonSourceSpan {
+            path: span.file.display().to_string(),
+            line: span.start.line,
+            column: span.start.column,
+        },
+        fields: glossary
+            .fields()
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        relations: AgentJsonRelations::default(),
     }
 }
 

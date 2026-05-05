@@ -2,27 +2,32 @@
 
 pub(crate) mod claim;
 pub(crate) mod decision;
+pub(crate) mod glossary;
 pub(crate) mod warning;
 
 use claim::Claim;
 use decision::Decision;
+use glossary::Glossary;
 use warning::Warning;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BlockKind {
     Claim,
     Decision,
+    Glossary,
     Warning,
 }
 
 impl BlockKind {
     #[cfg(test)]
-    pub(crate) const ALL: &'static [Self] = &[Self::Claim, Self::Decision, Self::Warning];
+    pub(crate) const ALL: &'static [Self] =
+        &[Self::Claim, Self::Decision, Self::Glossary, Self::Warning];
 
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::Claim => "claim",
             Self::Decision => "decision",
+            Self::Glossary => "glossary",
             Self::Warning => "warning",
         }
     }
@@ -32,6 +37,7 @@ impl BlockKind {
 pub(crate) enum KnowledgeObject {
     Claim(Claim),
     Decision(Decision),
+    Glossary(Glossary),
     Warning(Warning),
 }
 
@@ -43,6 +49,7 @@ mod tests {
     fn block_kind_labels_match_source_fence_words() {
         assert_eq!(BlockKind::Claim.as_str(), "claim");
         assert_eq!(BlockKind::Decision.as_str(), "decision");
+        assert_eq!(BlockKind::Glossary.as_str(), "glossary");
         assert_eq!(BlockKind::Warning.as_str(), "warning");
     }
 
@@ -50,7 +57,12 @@ mod tests {
     fn block_kind_all_lists_every_supported_kind() {
         assert_eq!(
             BlockKind::ALL,
-            &[BlockKind::Claim, BlockKind::Decision, BlockKind::Warning]
+            &[
+                BlockKind::Claim,
+                BlockKind::Decision,
+                BlockKind::Glossary,
+                BlockKind::Warning
+            ]
         );
     }
 }
