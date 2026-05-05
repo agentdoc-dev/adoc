@@ -148,7 +148,7 @@ mod tests {
     fn decision_block(id: &str, span: SourceSpan) -> BlockAst {
         let decision = Decision::try_new(
             id,
-            Some("draft"),
+            Some("proposed"),
             "Use the existing billing policy.",
             BTreeMap::new(),
             None,
