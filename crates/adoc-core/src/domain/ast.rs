@@ -41,6 +41,7 @@ pub(crate) enum BlockAst {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BlockKind {
     Claim,
+    Decision,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -89,7 +89,7 @@ pub(super) fn try_open_typed_block(
         return TypedBlockOpen::Diagnostic(
             Diagnostic::error(
                 DiagnosticCode::ParseUnknownBlockType,
-                format!("unknown typed-block kind `{word}`; supported in v0.2: claim"),
+                format!("unknown typed-block kind `{word}`; supported in v0.2: claim, decision"),
             )
             .with_span(full_line_span),
         );
@@ -140,6 +140,7 @@ pub(super) fn try_open_typed_block(
 fn kind_for_fence_word(word: &str) -> Option<BlockKind> {
     match word {
         "claim" => Some(BlockKind::Claim),
+        "decision" => Some(BlockKind::Decision),
         _ => None,
     }
 }
@@ -147,11 +148,12 @@ fn kind_for_fence_word(word: &str) -> Option<BlockKind> {
 fn fence_word_for_kind(kind: BlockKind) -> &'static str {
     match kind {
         BlockKind::Claim => "claim",
+        BlockKind::Decision => "decision",
     }
 }
 
 fn supported_kind_non_ascii_separator(value: &str) -> Option<&'static str> {
-    ["claim"].into_iter().find(|word| {
+    ["claim", "decision"].into_iter().find(|word| {
         value
             .strip_prefix(word)
             .and_then(|rest| rest.chars().next())
@@ -467,20 +469,16 @@ mod tests {
     }
 
     #[test]
-    fn try_open_typed_block_rejects_decision_as_unknown_until_supported() {
+    fn try_open_typed_block_recognizes_minimal_decision() {
         let line = "::decision foo.bar";
         let source = source_for_line(line);
         let result = try_open_typed_block(line, 1, &source);
         match result {
-            TypedBlockOpen::Diagnostic(d) => {
-                assert_eq!(d.code, DiagnosticCode::ParseUnknownBlockType);
-                assert!(
-                    d.message.contains("decision"),
-                    "message should quote the unsupported kind: {}",
-                    d.message
-                );
+            TypedBlockOpen::Opened(state) => {
+                assert_eq!(state.kind, BlockKind::Decision);
+                assert_eq!(state.id_text, "foo.bar");
             }
-            _ => panic!("expected Diagnostic(ParseUnknownBlockType)"),
+            _ => panic!("expected Opened"),
         }
     }
 

@@ -67,6 +67,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::ParseMalformedOpenFence;
     let _ = DiagnosticCode::SchemaMissingField;
     let _ = DiagnosticCode::SchemaDuplicateField;
+    let _ = DiagnosticCode::SchemaInvalidStatus;
     let _ = DiagnosticCode::ClaimVerifiedMissingEvidence;
     let _ = DiagnosticCode::ClaimStatusCasing;
     let _ = DiagnosticCode::IdDuplicate;
@@ -81,6 +82,10 @@ fn public_surface_compiles_with_only_documented_imports() {
     assert_eq!(
         DiagnosticCode::SchemaDuplicateField.as_str(),
         "schema.duplicate_field"
+    );
+    assert_eq!(
+        DiagnosticCode::SchemaInvalidStatus.as_str(),
+        "schema.invalid_status"
     );
     assert_eq!(
         DiagnosticCode::ClaimVerifiedMissingEvidence.as_str(),

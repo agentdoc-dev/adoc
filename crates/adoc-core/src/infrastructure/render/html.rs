@@ -3,6 +3,7 @@ use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
     KnowledgeObject,
     claim::{Claim, Evidence},
+    decision::Decision,
 };
 use crate::domain::ports::renderer::Renderer;
 
@@ -77,11 +78,52 @@ fn render_block(block: &BlockAst, html: &mut String) {
             KnowledgeObject::Claim(claim) => {
                 render_claim(claim, html);
             }
+            KnowledgeObject::Decision(decision) => {
+                render_decision(decision, html);
+            }
         },
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before rendering")
         }
     }
+}
+
+fn render_decision(decision: &Decision, html: &mut String) {
+    html.push_str("<section class=\"decision\" id=\"");
+    html.push_str(&escape_html(decision.id().as_str()));
+    html.push_str("\">\n");
+    html.push_str("<header class=\"decision__header\">");
+    html.push_str("<span class=\"decision__kind\">decision</span>");
+    html.push_str("<code class=\"decision__id\">");
+    html.push_str(&escape_html(decision.id().as_str()));
+    html.push_str("</code>");
+    html.push_str("<span class=\"decision__status\">");
+    html.push_str(&escape_html(decision.status().as_str()));
+    html.push_str("</span>");
+    html.push_str("</header>\n");
+    html.push_str("<div class=\"decision__body\"><p>");
+    html.push_str(&escape_html(decision.body().as_str()));
+    html.push_str("</p></div>\n");
+    render_decision_metadata(decision, html);
+    html.push_str("</section>\n");
+}
+
+fn render_decision_metadata(decision: &Decision, html: &mut String) {
+    if decision.fields().is_empty() {
+        return;
+    }
+
+    html.push_str("<footer class=\"decision__metadata\">\n");
+    html.push_str("<dl>\n");
+    for (key, value) in decision.fields().iter() {
+        html.push_str("<dt>");
+        html.push_str(&escape_html(key));
+        html.push_str("</dt><dd>");
+        html.push_str(&escape_html(value));
+        html.push_str("</dd>\n");
+    }
+    html.push_str("</dl>\n");
+    html.push_str("</footer>\n");
 }
 
 fn render_claim(claim: &Claim, html: &mut String) {

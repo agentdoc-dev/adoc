@@ -159,8 +159,8 @@ fn compile_workspace_resolves_claim_into_artifact_record() {
 }
 
 #[test]
-fn compile_workspace_rejects_decision_as_unknown_typed_block_until_supported() {
-    let workspace = TestWorkspace::new("decision-block-unknown-until-supported");
+fn compile_workspace_resolves_clean_decision_into_artifacts() {
+    let workspace = TestWorkspace::new("resolve-clean-decision-into-artifacts");
     let source = workspace.write(
         "decisions.adoc",
         concat!(
@@ -177,31 +177,355 @@ fn compile_workspace_rejects_decision_as_unknown_typed_block_until_supported() {
     let result = compile_workspace(CompileInput { root: source });
 
     assert!(
-        result.has_errors(),
-        "decision must remain unsupported in this slice"
-    );
-    assert!(result.artifacts.is_none(), "errors must block artifacts");
-    assert_eq!(
-        result.diagnostics.len(),
-        1,
-        "expected exactly one diagnostic, got: {:?}",
+        !result.has_errors(),
+        "expected decision to compile, got: {:?}",
         result.diagnostics
     );
-    assert_eq!(
-        result.diagnostics[0].code,
-        DiagnosticCode::ParseUnknownBlockType
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    let record = artifacts
+        .agent_json
+        .objects
+        .first()
+        .expect("decision object must be emitted");
+    assert_eq!(record.id, "billing.policy");
+    assert_eq!(record.kind, "decision");
+    assert_eq!(record.status, "draft");
+    assert_eq!(record.body, "Use the existing billing policy.");
+    assert_eq!(record.page_id, "team.decisions");
+    assert!(record.fields.is_empty());
+    assert!(record.relations.depends_on.is_empty());
+    assert!(record.relations.supersedes.is_empty());
+    assert!(record.relations.related_to.is_empty());
+    assert_eq!(record.source_span.line, 3);
+    assert_eq!(record.source_span.column, 1);
+    assert!(
+        artifacts
+            .html
+            .contains("<section class=\"decision\" id=\"billing.policy\">"),
+        "decision section missing: {}",
+        artifacts.html
     );
     assert!(
-        result.diagnostics[0].message.contains("decision"),
-        "diagnostic should name the unsupported kind: {}",
-        result.diagnostics[0].message
+        artifacts
+            .html
+            .contains("<span class=\"decision__kind\">decision</span>"),
+        "decision kind missing: {}",
+        artifacts.html
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_duplicate_decision_id_and_blocks_artifacts() {
+    let workspace = TestWorkspace::new("decision-duplicate-id");
+    let source = workspace.write(
+        "decisions.adoc",
+        concat!(
+            "# Decision Guide @doc(team.decisions)\n",
+            "\n",
+            "::decision billing.policy\n",
+            "status: draft\n",
+            "--\n",
+            "Use the existing billing policy.\n",
+            "::\n",
+            "\n",
+            "::decision billing.policy\n",
+            "status: proposed\n",
+            "--\n",
+            "Switch to a new billing policy.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "duplicate decision ID must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(result.diagnostics[0].code, DiagnosticCode::IdDuplicate);
+    assert_eq!(
+        result.diagnostics[0].object_id.as_deref(),
+        Some("billing.policy")
     );
     assert_eq!(
         result.diagnostics[0]
             .span
             .as_ref()
             .map(|span| (span.start.line, span.start.column)),
+        Some((9, 1))
+    );
+    assert!(
+        result.diagnostics[0]
+            .message
+            .contains("previously defined at")
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_decision_missing_status() {
+    let workspace = TestWorkspace::new("decision-missing-status");
+    let source = workspace.write(
+        "decisions.adoc",
+        concat!(
+            "# Decision Guide @doc(team.decisions)\n",
+            "\n",
+            "::decision billing.policy\n",
+            "--\n",
+            "Use the existing billing policy.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "missing status must be rejected");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaMissingField
+    );
+    assert!(result.diagnostics[0].message.contains("status"));
+    assert_eq!(
+        result.diagnostics[0]
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
         Some((3, 1))
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_decision_empty_status() {
+    let workspace = TestWorkspace::new("decision-empty-status");
+    let source = workspace.write(
+        "decisions.adoc",
+        concat!(
+            "# Decision Guide @doc(team.decisions)\n",
+            "\n",
+            "::decision billing.policy\n",
+            "status:   \n",
+            "--\n",
+            "Use the existing billing policy.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "empty status must be rejected");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaMissingField
+    );
+    assert!(result.diagnostics[0].message.contains("status"));
+    assert_eq!(
+        result.diagnostics[0]
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((3, 1))
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_decision_missing_body() {
+    let workspace = TestWorkspace::new("decision-missing-body");
+    let source = workspace.write(
+        "decisions.adoc",
+        concat!(
+            "# Decision Guide @doc(team.decisions)\n",
+            "\n",
+            "::decision billing.policy\n",
+            "status: draft\n",
+            "--\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "missing body must be rejected");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaMissingField
+    );
+    assert!(result.diagnostics[0].message.contains("body"));
+    assert_eq!(
+        result.diagnostics[0]
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((3, 1))
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_decision_invalid_status() {
+    let workspace = TestWorkspace::new("decision-invalid-status");
+    let source = workspace.write(
+        "decisions.adoc",
+        concat!(
+            "# Decision Guide @doc(team.decisions)\n",
+            "\n",
+            "::decision billing.policy\n",
+            "status: Accepted\n",
+            "--\n",
+            "Use the existing billing policy.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "mis-cased status must be rejected");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaInvalidStatus
+    );
+    assert_eq!(
+        result.diagnostics[0].object_id.as_deref(),
+        Some("billing.policy")
+    );
+    assert!(
+        result.diagnostics[0]
+            .help
+            .as_deref()
+            .is_some_and(|help| help.contains("draft, proposed, accepted"))
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_accepted_decision_missing_decided_by() {
+    let workspace = TestWorkspace::new("decision-accepted-missing-decided-by");
+    let source = workspace.write(
+        "decisions.adoc",
+        concat!(
+            "# Decision Guide @doc(team.decisions)\n",
+            "\n",
+            "::decision billing.policy\n",
+            "status: accepted\n",
+            "--\n",
+            "Use the existing billing policy.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        result.has_errors(),
+        "accepted decision must require decided_by"
+    );
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaMissingField
+    );
+    assert!(result.diagnostics[0].message.contains("decided_by"));
+    assert_eq!(
+        result.diagnostics[0]
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((3, 1))
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_accepted_decision_empty_decided_by() {
+    let workspace = TestWorkspace::new("decision-accepted-empty-decided-by");
+    let source = workspace.write(
+        "decisions.adoc",
+        concat!(
+            "# Decision Guide @doc(team.decisions)\n",
+            "\n",
+            "::decision billing.policy\n",
+            "status: accepted\n",
+            "decided_by: \n",
+            "--\n",
+            "Use the existing billing policy.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        result.has_errors(),
+        "accepted decision must require non-empty decided_by"
+    );
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaMissingField
+    );
+    assert!(result.diagnostics[0].message.contains("decided_by"));
+    assert_eq!(
+        result.diagnostics[0]
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((3, 1))
+    );
+}
+
+#[test]
+fn compile_workspace_emits_accepted_decision_with_generic_metadata() {
+    let workspace = TestWorkspace::new("decision-accepted-generic-metadata");
+    let source = workspace.write(
+        "decisions.adoc",
+        concat!(
+            "# Decision Guide @doc(team.decisions)\n",
+            "\n",
+            "::decision billing.policy\n",
+            "status: accepted\n",
+            "decided_by: architecture\n",
+            "--\n",
+            "Use the existing billing policy.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected accepted decision to compile, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    let record = artifacts
+        .agent_json
+        .objects
+        .first()
+        .expect("decision object must be emitted");
+    assert_eq!(record.kind, "decision");
+    assert_eq!(record.status, "accepted");
+    assert_eq!(
+        record.fields.get("decided_by").map(String::as_str),
+        Some("architecture")
+    );
+    assert!(
+        artifacts
+            .html
+            .contains("<footer class=\"decision__metadata\">\n<dl>\n"),
+        "generic metadata footer missing: {}",
+        artifacts.html
+    );
+    assert!(
+        artifacts
+            .html
+            .contains("<dt>decided_by</dt><dd>architecture</dd>"),
+        "decided_by metadata missing: {}",
+        artifacts.html
     );
 }
 
