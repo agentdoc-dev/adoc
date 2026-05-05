@@ -736,6 +736,34 @@ mod tests {
     }
 
     #[test]
+    fn parse_page_recognizes_warning_as_pending_typed_block() {
+        let (page, diagnostics) = parse_source(concat!(
+            "# Warnings @doc(team.warnings)\n\n",
+            "::warning auth.session.clock-skew\n",
+            "severity: high\n",
+            "--\n",
+            "Session clocks can drift.\n",
+            "::\n",
+        ));
+
+        assert!(
+            diagnostics.is_empty(),
+            "expected warning parser fixture to stay clean: {diagnostics:?}"
+        );
+        let pending = page
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::KnowledgeObjectPending(pending) => Some(pending),
+                _ => None,
+            })
+            .expect("warning block should be parsed as pending typed block");
+
+        assert_eq!(pending.kind, BlockKind::Warning);
+        assert_eq!(pending.id_text, "auth.session.clock-skew");
+    }
+
+    #[test]
     fn parse_page_still_recognizes_claim_as_pending_typed_block() {
         let (page, diagnostics) = parse_source(concat!(
             "# Claims @doc(team.claims)\n\n",

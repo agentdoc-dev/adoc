@@ -28,6 +28,10 @@ const SUPPORTED_KINDS: &[SupportedKind] = &[
         word: BlockKind::Decision.as_str(),
         kind: BlockKind::Decision,
     },
+    SupportedKind {
+        word: BlockKind::Warning.as_str(),
+        kind: BlockKind::Warning,
+    },
 ];
 
 /// Result of attempting to open a typed block on an `Idle` line starting with
@@ -554,7 +558,8 @@ mod tests {
                     "message should quote the unknown word"
                 );
                 assert!(
-                    d.message.contains("supported kinds: claim, decision"),
+                    d.message
+                        .contains("supported kinds: claim, decision, warning"),
                     "message should list supported kinds from parser metadata: {}",
                     d.message
                 );

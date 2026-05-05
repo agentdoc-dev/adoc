@@ -1173,6 +1173,162 @@ fn build_renders_v0_4_accepted_decision_to_golden_agent_json() {
 }
 
 #[test]
+fn check_accepts_v0_4_warning_fixture() {
+    let workspace = TestWorkspace::new("check-accepts-v0-4-warning");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/warning_basic.adoc"))
+        .expect("warning_basic fixture is readable");
+    workspace.write("warning_basic.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "warning_basic.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        output.status.success(),
+        "expected v0.4 warning fixture to check cleanly\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("0 errors, 0 warnings"),
+        "expected clean summary, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn build_renders_v0_4_warning_to_golden_html() {
+    let workspace = TestWorkspace::new("build-renders-warning-golden-html");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/warning_basic.adoc"))
+        .expect("warning_basic fixture is readable");
+    workspace.write("warning_basic.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "warning_basic.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.html"))
+        .expect("docs.html is written");
+    let golden = fs::read_to_string(fixture_path("v0_4/warning_basic.golden.html"))
+        .expect("golden HTML fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "rendered HTML diverged from warning_basic.golden.html"
+    );
+    assert!(
+        actual.contains("<section class=\"warning\" id=\"auth.session.clock-skew\">"),
+        "warning section missing from HTML"
+    );
+}
+
+#[test]
+fn build_renders_v0_4_warning_to_golden_agent_json() {
+    let workspace = TestWorkspace::new("build-renders-warning-golden-json");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/warning_basic.adoc"))
+        .expect("warning_basic fixture is readable");
+    workspace.write("warning_basic.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", "warning_basic.adoc", "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
+        .expect("docs.agent.json is written");
+    let golden = fs::read_to_string(fixture_path("v0_4/warning_basic.golden.agent.json"))
+        .expect("golden agent JSON fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "agent JSON diverged from warning_basic.golden.agent.json"
+    );
+    assert!(
+        actual.contains("\"status\": \"high\""),
+        "warning agent JSON must use status for severity"
+    );
+    assert!(
+        !actual.contains("\"severity\""),
+        "severity must not appear in warning fields"
+    );
+}
+
+#[test]
+fn check_rejects_warning_with_missing_severity() {
+    let workspace = TestWorkspace::new("check-rejects-warning-missing-severity");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/warning_missing_severity.adoc"))
+        .expect("warning_missing_severity fixture is readable");
+    workspace.write("warning_missing_severity.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "warning_missing_severity.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected missing-severity warning to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.missing_field]"),
+        "expected schema.missing_field diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("severity"),
+        "expected message to mention `severity`, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn check_rejects_warning_with_missing_body() {
+    let workspace = TestWorkspace::new("check-rejects-warning-missing-body");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/warning_missing_body.adoc"))
+        .expect("warning_missing_body fixture is readable");
+    workspace.write("warning_missing_body.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "warning_missing_body.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected missing-body warning to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.missing_field]"),
+        "expected schema.missing_field diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("body"),
+        "expected message to mention `body`, got:\n{stdout}"
+    );
+}
+
+#[test]
 fn check_rejects_decision_with_missing_status() {
     let workspace = TestWorkspace::new("check-rejects-decision-missing-status");
     let fixture_contents = fs::read_to_string(fixture_path("v0_4/decision_missing_status.adoc"))

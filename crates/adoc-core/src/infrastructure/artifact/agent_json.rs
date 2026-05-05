@@ -12,6 +12,7 @@ use crate::domain::knowledge_object::{
         VERIFIED_AT_FIELD,
     },
     decision::{DECIDED_BY_FIELD, Decision},
+    warning::Warning,
 };
 use crate::domain::ports::artifact_writer::ArtifactWriter;
 
@@ -32,6 +33,9 @@ impl ArtifactWriter for AgentJsonArtifact {
                         KnowledgeObject::Decision(decision) => {
                             objects.push(decision_to_agent_object(decision, page.id.as_str()));
                         }
+                        KnowledgeObject::Warning(warning) => {
+                            objects.push(warning_to_agent_object(warning, page.id.as_str()));
+                        }
                     },
                     BlockAst::KnowledgeObjectPending(_) => unreachable!(
                         "resolver must replace pending knowledge objects before artifact emission"
@@ -46,6 +50,28 @@ impl ArtifactWriter for AgentJsonArtifact {
             objects,
             diagnostics: diagnostics.to_vec(),
         }
+    }
+}
+
+fn warning_to_agent_object(warning: &Warning, page_id: &str) -> AgentJsonObject {
+    let span = warning.span();
+    AgentJsonObject {
+        id: warning.id().as_str().to_string(),
+        kind: "warning".to_string(),
+        status: warning.severity().as_str().to_string(),
+        body: warning.body().as_str().to_string(),
+        page_id: page_id.to_string(),
+        source_span: AgentJsonSourceSpan {
+            path: span.file.display().to_string(),
+            line: span.start.line,
+            column: span.start.column,
+        },
+        fields: warning
+            .fields()
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        relations: AgentJsonRelations::default(),
     }
 }
 
@@ -221,6 +247,18 @@ mod tests {
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision)))
     }
 
+    fn make_warning(
+        id: &str,
+        severity: &str,
+        body: &str,
+        fields: BTreeMap<String, String>,
+    ) -> BlockAst {
+        use crate::domain::knowledge_object::warning::Warning;
+        let warning =
+            Warning::try_new(id, Some(severity), body, fields, span()).expect("valid warning");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Warning(warning)))
+    }
+
     fn make_page(id: &str, blocks: Vec<BlockAst>) -> PageAst {
         PageAst {
             id: PageId::from_string(id).expect("test page id is valid"),
@@ -374,5 +412,39 @@ mod tests {
             obj.fields.get(DECIDED_BY_FIELD).map(String::as_str),
             Some("architecture")
         );
+    }
+
+    #[test]
+    fn agent_json_artifact_emits_warning_with_severity_as_status() {
+        let page = make_page(
+            "team.warnings",
+            vec![make_warning(
+                "auth.session.clock-skew",
+                "critical",
+                "Session clocks can drift.",
+                BTreeMap::from([("owner".to_string(), "platform".to_string())]),
+            )],
+        );
+        let artifact = AgentJsonArtifact;
+        let doc = artifact.build(&[page], &[]);
+
+        assert_eq!(doc.objects.len(), 1);
+        let obj = &doc.objects[0];
+        assert_eq!(obj.id, "auth.session.clock-skew");
+        assert_eq!(obj.kind, "warning");
+        assert_eq!(obj.status, "critical");
+        assert_eq!(obj.body, "Session clocks can drift.");
+        assert_eq!(obj.page_id, "team.warnings");
+        assert_eq!(obj.source_span.path, "sample.adoc");
+        assert_eq!(obj.source_span.line, 5);
+        assert_eq!(obj.source_span.column, 1);
+        assert_eq!(
+            obj.fields.get("owner").map(String::as_str),
+            Some("platform")
+        );
+        assert!(!obj.fields.contains_key("severity"));
+        assert!(obj.relations.depends_on.is_empty());
+        assert!(obj.relations.supersedes.is_empty());
+        assert!(obj.relations.related_to.is_empty());
     }
 }
