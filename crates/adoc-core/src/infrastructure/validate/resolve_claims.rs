@@ -227,6 +227,9 @@ fn build_claim(parsed: &ParsedTypedBlock, diagnostics: &mut Vec<Diagnostic>) -> 
         Err(ClaimError::MissingVerification) => {
             unreachable!("non-verified claims must not require a verification aggregate")
         }
+        Err(ClaimError::UnexpectedVerification) => {
+            unreachable!("resolver only passes verification for exact verified claims")
+        }
     }
 }
 
@@ -358,6 +361,9 @@ fn emit_claim_error(
         ),
         ClaimError::MissingVerification => {
             unreachable!("missing verification is handled by verified-claim diagnostics")
+        }
+        ClaimError::UnexpectedVerification => {
+            unreachable!("resolver only passes verification for exact verified claims")
         }
     }
 }
