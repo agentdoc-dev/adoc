@@ -2,10 +2,7 @@ use crate::domain::ast::{BlockAst, ListKind, PageAst};
 use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
     KnowledgeObject,
-    claim::{
-        Claim, Evidence, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
-        VERIFIED_AT_FIELD,
-    },
+    claim::{Claim, Evidence},
 };
 use crate::domain::ports::renderer::Renderer;
 
@@ -156,21 +153,9 @@ fn render_claim_metadata(claim: &Claim, html: &mut String) {
         return;
     }
 
-    let metadata: Vec<_> = claim
-        .fields()
-        .iter()
-        .filter(|(key, _)| {
-            claim.verification().is_none() || !is_verified_claim_dedicated_field(key)
-        })
-        .collect();
-
-    if metadata.is_empty() {
-        return;
-    }
-
     html.push_str("<footer class=\"claim__metadata\">\n");
     html.push_str("<dl>\n");
-    for (key, value) in metadata {
+    for (key, value) in claim.fields().iter() {
         html.push_str("<dt>");
         html.push_str(&escape_html(key));
         html.push_str("</dt><dd>");
@@ -179,13 +164,6 @@ fn render_claim_metadata(claim: &Claim, html: &mut String) {
     }
     html.push_str("</dl>\n");
     html.push_str("</footer>\n");
-}
-
-fn is_verified_claim_dedicated_field(key: &str) -> bool {
-    matches!(
-        key,
-        OWNER_FIELD | VERIFIED_AT_FIELD | SOURCE_FIELD | TEST_FIELD | REVIEWED_BY_FIELD
-    )
 }
 
 fn render_inlines(segments: &[InlineSegment], html: &mut String) {

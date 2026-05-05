@@ -146,31 +146,19 @@ fn build_verified_claim(
     optional_fields: BTreeMap<String, String>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<Claim> {
-    let verification_gate = Claim::try_new(
-        &parsed.id_text,
-        status_text,
-        &parsed.body_text,
-        optional_fields.clone(),
-        None,
-        parsed.span.clone(),
-    );
-
-    match verification_gate {
-        Err(ClaimError::MissingVerification) => {}
-        Err(error) => {
-            emit_claim_error(parsed, error, diagnostics);
-            return None;
-        }
-        Ok(_) => unreachable!("exact verified claims require verification"),
+    if let Err(error) = Claim::validate_basics(&parsed.id_text, status_text, &parsed.body_text) {
+        emit_claim_error(parsed, error, diagnostics);
+        return None;
     }
 
     let verification = build_verification(parsed, &optional_fields, diagnostics)?;
+    let storage_fields = verified_claim_storage_fields(optional_fields);
 
     match Claim::try_new(
         &parsed.id_text,
         status_text,
         &parsed.body_text,
-        optional_fields,
+        storage_fields,
         Some(verification),
         parsed.span.clone(),
     ) {
@@ -235,6 +223,18 @@ fn build_verification(
         verified_at.expect("verified_at checked above"),
         evidence,
     ))
+}
+
+fn verified_claim_storage_fields(mut fields: BTreeMap<String, String>) -> BTreeMap<String, String> {
+    fields.retain(|key, _| !is_verified_claim_dedicated_field(key));
+    fields
+}
+
+fn is_verified_claim_dedicated_field(key: &str) -> bool {
+    matches!(
+        key,
+        OWNER_FIELD | VERIFIED_AT_FIELD | SOURCE_FIELD | TEST_FIELD | REVIEWED_BY_FIELD
+    )
 }
 
 fn emit_claim_error(parsed: &ParsedClaim, error: ClaimError, diagnostics: &mut Vec<Diagnostic>) {
@@ -532,7 +532,7 @@ mod tests {
     }
 
     #[test]
-    fn strips_status_from_optional_fields_passed_to_claim_try_new() {
+    fn strips_status_and_verified_fields_from_verified_claim_storage() {
         let pending = ParsedClaim {
             id_text: "billing.credits".to_string(),
             raw_fields: {
@@ -541,6 +541,7 @@ mod tests {
                 m.insert("owner".to_string(), "team-a".to_string());
                 m.insert("verified_at".to_string(), "2026-05-05".to_string());
                 m.insert("source".to_string(), "runbook".to_string());
+                m.insert("audience".to_string(), "support".to_string());
                 m
             },
             duplicate_keys: Vec::new(),
@@ -565,9 +566,36 @@ mod tests {
             !field_keys.contains(&"status"),
             "status must not appear in optional fields"
         );
-        assert!(
-            field_keys.contains(&"owner"),
-            "owner must appear in optional fields"
-        );
+        assert_eq!(field_keys, vec!["audience"]);
+    }
+
+    #[test]
+    fn keeps_verified_field_names_as_metadata_for_plain_claims() {
+        let pending = ParsedClaim {
+            id_text: "billing.credits".to_string(),
+            raw_fields: {
+                let mut m = BTreeMap::new();
+                m.insert("status".to_string(), "plain".to_string());
+                m.insert("owner".to_string(), "team-a".to_string());
+                m.insert("source".to_string(), "runbook".to_string());
+                m
+            },
+            duplicate_keys: Vec::new(),
+            body_text: "some body".to_string(),
+            content_spans: Vec::new(),
+            span: span(),
+        };
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert!(diagnostics.is_empty());
+        let BlockAst::KnowledgeObject(ko) = &pairs[0].1.blocks[0] else {
+            panic!("expected KnowledgeObject");
+        };
+        let KnowledgeObject::Claim(claim) = ko.as_ref();
+        let field_keys: Vec<&str> = claim.fields().iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(field_keys, vec!["owner", "source"]);
     }
 }
