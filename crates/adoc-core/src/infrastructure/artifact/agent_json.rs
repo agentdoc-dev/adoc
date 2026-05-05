@@ -187,7 +187,15 @@ mod tests {
                 .expect("non-empty evidence"),
             )
         });
-        let claim = Claim::try_new(id, Some(status), body, fields, verification, span())
+        let mut storage_fields = fields;
+        if verification.is_some() {
+            storage_fields.remove(OWNER_FIELD);
+            storage_fields.remove(VERIFIED_AT_FIELD);
+            storage_fields.remove(SOURCE_FIELD);
+            storage_fields.remove(TEST_FIELD);
+            storage_fields.remove(REVIEWED_BY_FIELD);
+        }
+        let claim = Claim::try_new(id, Some(status), body, storage_fields, verification, span())
             .expect("test claim is valid");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim)))
     }
