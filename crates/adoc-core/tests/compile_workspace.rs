@@ -159,6 +159,53 @@ fn compile_workspace_resolves_claim_into_artifact_record() {
 }
 
 #[test]
+fn compile_workspace_rejects_decision_as_unknown_typed_block_until_supported() {
+    let workspace = TestWorkspace::new("decision-block-unknown-until-supported");
+    let source = workspace.write(
+        "decisions.adoc",
+        concat!(
+            "# Decision Guide @doc(team.decisions)\n",
+            "\n",
+            "::decision billing.policy\n",
+            "status: draft\n",
+            "--\n",
+            "Use the existing billing policy.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        result.has_errors(),
+        "decision must remain unsupported in this slice"
+    );
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(
+        result.diagnostics.len(),
+        1,
+        "expected exactly one diagnostic, got: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::ParseUnknownBlockType
+    );
+    assert!(
+        result.diagnostics[0].message.contains("decision"),
+        "diagnostic should name the unsupported kind: {}",
+        result.diagnostics[0].message
+    );
+    assert_eq!(
+        result.diagnostics[0]
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((3, 1))
+    );
+}
+
+#[test]
 fn compile_workspace_builds_verified_claim_with_all_v0_evidence() {
     let workspace = TestWorkspace::new("verified-claim-all-evidence");
     let source = workspace.write(

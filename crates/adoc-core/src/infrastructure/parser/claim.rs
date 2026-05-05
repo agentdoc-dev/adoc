@@ -1,14 +1,14 @@
-//! Line-by-line claim-block handlers for the `::claim` typed-block parser.
+//! Line-by-line typed-block handlers for currently supported typed blocks.
 //!
 //! Functions in this module are called from [`super::mod`] when the parser
-//! sees a `::claim` open-fence (`try_open_typed_block`) or when it is already
-//! inside a claim block (`consume_claim_line`, `finalize_unclosed_claim`).
+//! sees a typed-block open-fence (`try_open_typed_block`) or when it is already
+//! inside a typed block (`consume_typed_block_line`, `finalize_unclosed_typed_block`).
 
-use crate::domain::ast::ParsedClaim;
+use crate::domain::ast::{BlockKind, ParsedTypedBlock};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::source::SourceFile;
 
-use super::state::{ClaimBuildingState, ClaimPhase};
+use super::state::{TypedBlockBuildingState, TypedBlockPhase};
 
 const FIELD_KEY_GRAMMAR: &str = "[a-z][a-z0-9_]*";
 
@@ -17,29 +17,29 @@ const FIELD_KEY_GRAMMAR: &str = "[a-z][a-z0-9_]*";
 pub(super) enum TypedBlockOpen {
     /// Not a typed-block opener at all (e.g. line was `::` alone or indented).
     None,
-    /// Valid `::claim <id>` opener — transition to `ClaimBlock` state.
-    OpenedClaim(ClaimBuildingState),
+    /// Valid typed-block opener — transition to `TypedBlock` state.
+    Opened(TypedBlockBuildingState),
     /// Recognised typed-block syntax but malformed or unknown kind — emit the
     /// diagnostic; consume the line; do NOT enter any block state.
     Diagnostic(Diagnostic),
 }
 
-/// Result of feeding one line to an active claim block.
-pub(super) enum ClaimLineOutcome {
-    /// Line consumed; still accumulating the claim block.
+/// Result of feeding one line to an active typed block.
+pub(super) enum TypedBlockLineOutcome {
+    /// Line consumed; still accumulating the typed block.
     Continue,
-    /// `::` close fence encountered — emit the completed `ParsedClaim`.
-    Closed(ParsedClaim),
+    /// `::` close fence encountered — emit the completed `ParsedTypedBlock`.
+    Closed(ParsedTypedBlock),
 }
 
 /// Attempt to open a typed block when `state == Idle` and the raw line starts
 /// with `::` at column 1.
 ///
 /// Recognition rules (per issue #28 D6/D11):
-/// - `::claim <id>` (single token) → `OpenedClaim`.
-/// - `::claim <id> <junk>` → `Diagnostic(ParseMalformedOpenFence)`.
-/// - `::claim` alone → `Diagnostic(ParseMalformedOpenFence)`.
-/// - `::<word> …` where word ≠ `claim` and word non-empty → `Diagnostic(ParseUnknownBlockType)`.
+/// - `::<supported-kind> <id>` (single token) → `Opened`.
+/// - `::<supported-kind> <id> <junk>` → `Diagnostic(ParseMalformedOpenFence)`.
+/// - `::<supported-kind>` alone → `Diagnostic(ParseMalformedOpenFence)`.
+/// - `::<word> …` where word is unsupported and non-empty → `Diagnostic(ParseUnknownBlockType)`.
 /// - `::` exactly (optional trailing whitespace) → `None`.
 pub(super) fn try_open_typed_block(
     line: &str,
@@ -72,100 +72,119 @@ pub(super) fn try_open_typed_block(
 
     let full_line_span = source.span_for_line(line_number, line);
 
-    if word != "claim" && has_claim_prefix_with_non_ascii_whitespace(after_colons) {
+    if supported_kind_non_ascii_separator(after_colons).is_some() {
         return TypedBlockOpen::Diagnostic(
             Diagnostic::error(
                 DiagnosticCode::ParseMalformedOpenFence,
-                "::claim open fence must use ASCII whitespace between `claim` and the id",
+                format!(
+                    "::{} open fence must use ASCII whitespace between `{}` and the id",
+                    word, word
+                ),
             )
             .with_span(full_line_span),
         );
     }
 
-    match word {
-        "claim" => {
-            // Everything after `::claim`.
-            let rest = after_colons[word_end..]
-                .trim_matches(|character: char| character.is_ascii_whitespace());
-
-            if rest.is_empty() {
-                // `::claim` with no id.
-                return TypedBlockOpen::Diagnostic(
-                    Diagnostic::error(
-                        DiagnosticCode::ParseMalformedOpenFence,
-                        "::claim block is missing a required id token",
-                    )
-                    .with_span(full_line_span),
-                );
-            }
-
-            // Whitespace-separated tokens in `rest`.
-            let mut tokens = rest.split_ascii_whitespace();
-            let id_text = tokens
-                .next()
-                .expect("rest is non-empty so at least one token")
-                .to_string();
-
-            if tokens.next().is_some() {
-                // Trailing junk after the id.
-                return TypedBlockOpen::Diagnostic(
-                    Diagnostic::error(
-                        DiagnosticCode::ParseMalformedOpenFence,
-                        format!(
-                            "::claim open fence has unexpected tokens after the id `{id_text}`"
-                        ),
-                    )
-                    .with_span(full_line_span),
-                );
-            }
-
-            let open_fence_span = source.span_for_line(line_number, line);
-            TypedBlockOpen::OpenedClaim(ClaimBuildingState {
-                id_text,
-                open_fence_span,
-                phase: ClaimPhase::ReadingFields,
-                raw_fields: std::collections::BTreeMap::new(),
-                duplicate_keys: Vec::new(),
-                body_lines: Vec::new(),
-                content_spans: Vec::new(),
-            })
-        }
-        unknown => TypedBlockOpen::Diagnostic(
+    let Some(kind) = kind_for_fence_word(word) else {
+        return TypedBlockOpen::Diagnostic(
             Diagnostic::error(
                 DiagnosticCode::ParseUnknownBlockType,
-                format!("unknown typed-block kind `{unknown}`; supported in v0.2: claim"),
+                format!("unknown typed-block kind `{word}`; supported in v0.2: claim"),
             )
             .with_span(full_line_span),
-        ),
+        );
+    };
+
+    let rest =
+        after_colons[word_end..].trim_matches(|character: char| character.is_ascii_whitespace());
+
+    if rest.is_empty() {
+        return TypedBlockOpen::Diagnostic(
+            Diagnostic::error(
+                DiagnosticCode::ParseMalformedOpenFence,
+                format!("::{word} block is missing a required id token"),
+            )
+            .with_span(full_line_span),
+        );
+    }
+
+    let mut tokens = rest.split_ascii_whitespace();
+    let id_text = tokens
+        .next()
+        .expect("rest is non-empty so at least one token")
+        .to_string();
+
+    if tokens.next().is_some() {
+        return TypedBlockOpen::Diagnostic(
+            Diagnostic::error(
+                DiagnosticCode::ParseMalformedOpenFence,
+                format!("::{word} open fence has unexpected tokens after the id `{id_text}`"),
+            )
+            .with_span(full_line_span),
+        );
+    }
+
+    let open_fence_span = source.span_for_line(line_number, line);
+    TypedBlockOpen::Opened(TypedBlockBuildingState {
+        kind,
+        id_text,
+        open_fence_span,
+        phase: TypedBlockPhase::ReadingFields,
+        raw_fields: std::collections::BTreeMap::new(),
+        duplicate_keys: Vec::new(),
+        body_lines: Vec::new(),
+        content_spans: Vec::new(),
+    })
+}
+
+fn kind_for_fence_word(word: &str) -> Option<BlockKind> {
+    match word {
+        "claim" => Some(BlockKind::Claim),
+        _ => None,
     }
 }
 
-/// Feed one line to an active `ClaimBlock` state, updating it in place.
+fn fence_word_for_kind(kind: BlockKind) -> &'static str {
+    match kind {
+        BlockKind::Claim => "claim",
+    }
+}
+
+fn supported_kind_non_ascii_separator(value: &str) -> Option<&'static str> {
+    ["claim"].into_iter().find(|word| {
+        value
+            .strip_prefix(word)
+            .and_then(|rest| rest.chars().next())
+            .is_some_and(|character| character.is_whitespace() && !character.is_ascii_whitespace())
+    })
+}
+
+/// Feed one line to an active `TypedBlock` state, updating it in place.
 ///
-/// Called for every line while `ParseState::ClaimBlock(_)` is active.
-pub(super) fn consume_claim_line(
-    state: &mut ClaimBuildingState,
+/// Called for every line while `ParseState::TypedBlock(_)` is active.
+pub(super) fn consume_typed_block_line(
+    state: &mut TypedBlockBuildingState,
     line: &str,
     line_number: u32,
     source: &SourceFile,
     diagnostics: &mut Vec<Diagnostic>,
-) -> ClaimLineOutcome {
+) -> TypedBlockLineOutcome {
     match state.phase {
-        ClaimPhase::ReadingFields => {
+        TypedBlockPhase::ReadingFields => {
             if line == "::" {
                 // Close fence in fields region — no body.
-                return ClaimLineOutcome::Closed(build_parsed_claim(state));
+                return TypedBlockLineOutcome::Closed(build_parsed_typed_block(state));
             }
 
             if line == "--" {
                 // Separator: transition to reading the body.
-                state.phase = ClaimPhase::ReadingBody;
-                return ClaimLineOutcome::Continue;
+                state.phase = TypedBlockPhase::ReadingBody;
+                return TypedBlockLineOutcome::Continue;
             }
 
             if line.trim().is_empty() {
                 // Blank lines between fields are silently skipped.
-                return ClaimLineOutcome::Continue;
+                return TypedBlockLineOutcome::Continue;
             }
 
             // Try to parse as `key: value` where key starts with lowercase
@@ -178,51 +197,53 @@ pub(super) fn consume_claim_line(
                     state.duplicate_keys.push(key.clone());
                 }
                 state.raw_fields.insert(key, value);
-                return ClaimLineOutcome::Continue;
+                return TypedBlockLineOutcome::Continue;
             }
 
             // Anything else is a malformed field line.
+            let kind_word = fence_word_for_kind(state.kind);
             diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode::ParseMalformedField,
                     format!(
-                        "malformed claim field line: {line:?}; claim field keys must match {FIELD_KEY_GRAMMAR} followed by ':'"
+                        "malformed {kind_word} field line: {line:?}; {kind_word} field keys must match {FIELD_KEY_GRAMMAR} followed by ':'"
                     ),
                 )
                 .with_span(source.span_for_line(line_number, line)),
             );
-            ClaimLineOutcome::Continue
+            TypedBlockLineOutcome::Continue
         }
 
-        ClaimPhase::ReadingBody => {
+        TypedBlockPhase::ReadingBody => {
             if line == "::" {
                 // Close fence.
-                return ClaimLineOutcome::Closed(build_parsed_claim(state));
+                return TypedBlockLineOutcome::Closed(build_parsed_typed_block(state));
             }
             // Append raw line (preserve all internal whitespace).
             state.body_lines.push(line.to_string());
             state
                 .content_spans
                 .push(source.span_for_line(line_number, line));
-            ClaimLineOutcome::Continue
+            TypedBlockLineOutcome::Continue
         }
     }
 }
 
-/// Called at EOF when a `::claim` block was never closed.
+/// Called at EOF when a typed block was never closed.
 ///
 /// Emits one `parse.unclosed_fence` diagnostic and discards the partial state.
 /// This intentionally short-circuits schema validation for the unfinished
 /// block, so users see the structural fence error before any missing-field
 /// follow-on diagnostics.
-pub(super) fn finalize_unclosed_claim(
-    state: ClaimBuildingState,
+pub(super) fn finalize_unclosed_typed_block(
+    state: TypedBlockBuildingState,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    let kind_word = fence_word_for_kind(state.kind);
     diagnostics.push(
         Diagnostic::error(
             DiagnosticCode::ParseUnclosedFence,
-            "::claim block is missing a closing :: fence",
+            format!("::{kind_word} block is missing a closing :: fence"),
         )
         .with_span(state.open_fence_span),
     );
@@ -231,13 +252,6 @@ pub(super) fn finalize_unclosed_claim(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn has_claim_prefix_with_non_ascii_whitespace(value: &str) -> bool {
-    value
-        .strip_prefix("claim")
-        .and_then(|rest| rest.chars().next())
-        .is_some_and(|character| character.is_whitespace() && !character.is_ascii_whitespace())
-}
 
 /// Attempt to parse a field line of the form `key: value` or `key:value`
 /// where `key` matches `[a-z][a-z0-9_]*`.
@@ -271,13 +285,14 @@ fn try_parse_field(trimmed: &str) -> Option<(String, String)> {
     Some((key.to_string(), value))
 }
 
-/// Assemble a `ParsedClaim` from the current builder state.
+/// Assemble a `ParsedTypedBlock` from the current builder state.
 /// Leading and trailing fully-blank lines are trimmed from `body_lines`.
-fn build_parsed_claim(state: &ClaimBuildingState) -> ParsedClaim {
+fn build_parsed_typed_block(state: &TypedBlockBuildingState) -> ParsedTypedBlock {
     let trimmed_body_lines = trim_blank_edges(&state.body_lines);
     let body_text = trimmed_body_lines.join("\n");
 
-    ParsedClaim {
+    ParsedTypedBlock {
+        kind: state.kind,
         id_text: state.id_text.clone(),
         raw_fields: state.raw_fields.clone(),
         duplicate_keys: state.duplicate_keys.clone(),
@@ -341,11 +356,12 @@ mod tests {
         }
     }
 
-    fn fresh_state(id: &str) -> ClaimBuildingState {
-        ClaimBuildingState {
+    fn fresh_state(id: &str) -> TypedBlockBuildingState {
+        TypedBlockBuildingState {
+            kind: BlockKind::Claim,
             id_text: id.to_string(),
             open_fence_span: dummy_span(),
-            phase: ClaimPhase::ReadingFields,
+            phase: TypedBlockPhase::ReadingFields,
             raw_fields: std::collections::BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_lines: Vec::new(),
@@ -389,19 +405,20 @@ mod tests {
         let source = source_for_line(line);
         let result = try_open_typed_block(line, 1, &source);
         match result {
-            TypedBlockOpen::OpenedClaim(state) => {
+            TypedBlockOpen::Opened(state) => {
+                assert_eq!(state.kind, BlockKind::Claim);
                 assert_eq!(state.id_text, "billing.credits");
-                assert!(matches!(state.phase, ClaimPhase::ReadingFields));
+                assert!(matches!(state.phase, TypedBlockPhase::ReadingFields));
                 assert!(state.raw_fields.is_empty());
                 assert!(state.duplicate_keys.is_empty());
                 assert!(state.body_lines.is_empty());
             }
             other => panic!(
-                "expected OpenedClaim, got {}",
+                "expected Opened, got {}",
                 match other {
                     TypedBlockOpen::None => "None",
                     TypedBlockOpen::Diagnostic(_) => "Diagnostic",
-                    TypedBlockOpen::OpenedClaim(_) => "OpenedClaim",
+                    TypedBlockOpen::Opened(_) => "Opened",
                 }
             ),
         }
@@ -413,7 +430,7 @@ mod tests {
         let source = source_for_line(line);
         let result = try_open_typed_block(line, 1, &source);
         assert!(
-            matches!(result, TypedBlockOpen::OpenedClaim(_)),
+            matches!(result, TypedBlockOpen::Opened(_)),
             "tab separator should be tolerated"
         );
     }
@@ -442,15 +459,15 @@ mod tests {
         let source = source_for_line(line);
         let result = try_open_typed_block(line, 1, &source);
         match result {
-            TypedBlockOpen::OpenedClaim(state) => {
+            TypedBlockOpen::Opened(state) => {
                 assert_eq!(state.id_text, "billing.credits");
             }
-            _ => panic!("expected OpenedClaim with trimmed id"),
+            _ => panic!("expected Opened with trimmed id"),
         }
     }
 
     #[test]
-    fn try_open_typed_block_rejects_unknown_block_kind() {
+    fn try_open_typed_block_rejects_decision_as_unknown_until_supported() {
         let line = "::decision foo.bar";
         let source = source_for_line(line);
         let result = try_open_typed_block(line, 1, &source);
@@ -459,6 +476,24 @@ mod tests {
                 assert_eq!(d.code, DiagnosticCode::ParseUnknownBlockType);
                 assert!(
                     d.message.contains("decision"),
+                    "message should quote the unsupported kind: {}",
+                    d.message
+                );
+            }
+            _ => panic!("expected Diagnostic(ParseUnknownBlockType)"),
+        }
+    }
+
+    #[test]
+    fn try_open_typed_block_rejects_unknown_block_kind() {
+        let line = "::fact foo.bar";
+        let source = source_for_line(line);
+        let result = try_open_typed_block(line, 1, &source);
+        match result {
+            TypedBlockOpen::Diagnostic(d) => {
+                assert_eq!(d.code, DiagnosticCode::ParseUnknownBlockType);
+                assert!(
+                    d.message.contains("fact"),
                     "message should quote the unknown word"
                 );
             }
@@ -506,15 +541,15 @@ mod tests {
     }
 
     #[test]
-    fn consume_claim_line_records_field() {
+    fn consume_typed_block_line_records_field() {
         let source = make_source("status: verified\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
         let outcome =
-            consume_claim_line(&mut state, "status: verified", 1, &source, &mut diagnostics);
+            consume_typed_block_line(&mut state, "status: verified", 1, &source, &mut diagnostics);
 
-        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
         assert_eq!(
             state.raw_fields.get("status").map(String::as_str),
             Some("verified")
@@ -523,13 +558,13 @@ mod tests {
     }
 
     #[test]
-    fn consume_claim_line_tracks_duplicate_field() {
+    fn consume_typed_block_line_tracks_duplicate_field() {
         let source = make_source("status: first\nstatus: second\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        consume_claim_line(&mut state, "status: first", 1, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "status: second", 2, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "status: first", 1, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "status: second", 2, &source, &mut diagnostics);
 
         assert!(
             state.duplicate_keys.contains(&"status".to_string()),
@@ -544,53 +579,53 @@ mod tests {
     }
 
     #[test]
-    fn consume_claim_line_transitions_to_body_on_separator() {
+    fn consume_typed_block_line_transitions_to_body_on_separator() {
         let source = make_source("--\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        let outcome = consume_claim_line(&mut state, "--", 1, &source, &mut diagnostics);
+        let outcome = consume_typed_block_line(&mut state, "--", 1, &source, &mut diagnostics);
 
-        assert!(matches!(outcome, ClaimLineOutcome::Continue));
-        assert!(matches!(state.phase, ClaimPhase::ReadingBody));
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
+        assert!(matches!(state.phase, TypedBlockPhase::ReadingBody));
         assert!(diagnostics.is_empty());
     }
 
     #[test]
-    fn consume_claim_line_requires_separator_at_exact_column_one() {
+    fn consume_typed_block_line_requires_separator_at_exact_column_one() {
         let source = make_source("  --\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        let outcome = consume_claim_line(&mut state, "  --", 1, &source, &mut diagnostics);
+        let outcome = consume_typed_block_line(&mut state, "  --", 1, &source, &mut diagnostics);
 
-        assert!(matches!(outcome, ClaimLineOutcome::Continue));
-        assert!(matches!(state.phase, ClaimPhase::ReadingFields));
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
+        assert!(matches!(state.phase, TypedBlockPhase::ReadingFields));
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::ParseMalformedField);
     }
 
     #[test]
-    fn consume_claim_line_requires_separator_without_trailing_whitespace() {
+    fn consume_typed_block_line_requires_separator_without_trailing_whitespace() {
         let source = make_source("-- \n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        let outcome = consume_claim_line(&mut state, "-- ", 1, &source, &mut diagnostics);
+        let outcome = consume_typed_block_line(&mut state, "-- ", 1, &source, &mut diagnostics);
 
-        assert!(matches!(outcome, ClaimLineOutcome::Continue));
-        assert!(matches!(state.phase, ClaimPhase::ReadingFields));
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
+        assert!(matches!(state.phase, TypedBlockPhase::ReadingFields));
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::ParseMalformedField);
     }
 
     #[test]
-    fn consume_claim_line_requires_field_key_at_column_one() {
+    fn consume_typed_block_line_requires_field_key_at_column_one() {
         let source = make_source("  status: verified\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        let outcome = consume_claim_line(
+        let outcome = consume_typed_block_line(
             &mut state,
             "  status: verified",
             1,
@@ -598,21 +633,22 @@ mod tests {
             &mut diagnostics,
         );
 
-        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
         assert!(state.raw_fields.is_empty());
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::ParseMalformedField);
     }
 
     #[test]
-    fn consume_claim_line_emits_malformed_field_for_capitalized_key() {
+    fn consume_typed_block_line_emits_malformed_field_for_capitalized_key() {
         let source = make_source("Status: x\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        let outcome = consume_claim_line(&mut state, "Status: x", 1, &source, &mut diagnostics);
+        let outcome =
+            consume_typed_block_line(&mut state, "Status: x", 1, &source, &mut diagnostics);
 
-        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::ParseMalformedField);
         assert!(
@@ -627,12 +663,12 @@ mod tests {
     }
 
     #[test]
-    fn consume_claim_line_explains_field_key_grammar_for_hyphenated_key() {
+    fn consume_typed_block_line_explains_field_key_grammar_for_hyphenated_key() {
         let source = make_source("reviewed-by: team-a\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        let outcome = consume_claim_line(
+        let outcome = consume_typed_block_line(
             &mut state,
             "reviewed-by: team-a",
             1,
@@ -640,7 +676,7 @@ mod tests {
             &mut diagnostics,
         );
 
-        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::ParseMalformedField);
         assert!(
@@ -655,15 +691,15 @@ mod tests {
     }
 
     #[test]
-    fn consume_claim_line_appends_body_lines_in_body_phase() {
+    fn consume_typed_block_line_appends_body_lines_in_body_phase() {
         let source = make_source("--\nfirst body line\nsecond body line\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
         // transition to body
-        consume_claim_line(&mut state, "--", 1, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "first body line", 2, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "second body line", 3, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "--", 1, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "first body line", 2, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "second body line", 3, &source, &mut diagnostics);
 
         assert_eq!(
             state.body_lines,
@@ -673,18 +709,18 @@ mod tests {
     }
 
     #[test]
-    fn consume_claim_line_closes_on_double_colon() {
+    fn consume_typed_block_line_closes_on_double_colon() {
         let source = make_source("status: verified\n--\nSome body text.\n::\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        consume_claim_line(&mut state, "status: verified", 1, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "--", 2, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "Some body text.", 3, &source, &mut diagnostics);
-        let outcome = consume_claim_line(&mut state, "::", 4, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "status: verified", 1, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "--", 2, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "Some body text.", 3, &source, &mut diagnostics);
+        let outcome = consume_typed_block_line(&mut state, "::", 4, &source, &mut diagnostics);
 
         match outcome {
-            ClaimLineOutcome::Closed(parsed) => {
+            TypedBlockLineOutcome::Closed(parsed) => {
                 assert_eq!(parsed.id_text, "billing.credits");
                 assert_eq!(parsed.body_text, "Some body text.");
                 assert_eq!(
@@ -698,101 +734,101 @@ mod tests {
                     .collect();
                 assert_eq!(content_lines, vec![1, 3]);
             }
-            ClaimLineOutcome::Continue => panic!("expected Closed"),
+            TypedBlockLineOutcome::Continue => panic!("expected Closed"),
         }
         assert!(diagnostics.is_empty());
     }
 
     #[test]
-    fn consume_claim_line_keeps_indented_double_colon_in_body() {
+    fn consume_typed_block_line_keeps_indented_double_colon_in_body() {
         let source = make_source("  ::\n");
         let mut state = fresh_state("billing.credits");
-        state.phase = ClaimPhase::ReadingBody;
+        state.phase = TypedBlockPhase::ReadingBody;
         let mut diagnostics = Vec::new();
 
-        let outcome = consume_claim_line(&mut state, "  ::", 1, &source, &mut diagnostics);
+        let outcome = consume_typed_block_line(&mut state, "  ::", 1, &source, &mut diagnostics);
 
-        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
         assert_eq!(state.body_lines, vec!["  ::"]);
         assert!(diagnostics.is_empty());
     }
 
     #[test]
-    fn consume_claim_line_keeps_trailing_space_double_colon_in_body() {
+    fn consume_typed_block_line_keeps_trailing_space_double_colon_in_body() {
         let source = make_source(":: \n");
         let mut state = fresh_state("billing.credits");
-        state.phase = ClaimPhase::ReadingBody;
+        state.phase = TypedBlockPhase::ReadingBody;
         let mut diagnostics = Vec::new();
 
-        let outcome = consume_claim_line(&mut state, ":: ", 1, &source, &mut diagnostics);
+        let outcome = consume_typed_block_line(&mut state, ":: ", 1, &source, &mut diagnostics);
 
-        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
         assert_eq!(state.body_lines, vec![":: "]);
         assert!(diagnostics.is_empty());
     }
 
     #[test]
-    fn consume_claim_line_trims_leading_and_trailing_blank_body_lines() {
+    fn consume_typed_block_line_trims_leading_and_trailing_blank_body_lines() {
         let source = make_source("--\n\nline one\n\nline two\n\n::\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        consume_claim_line(&mut state, "--", 1, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "", 2, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "line one", 3, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "", 4, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "line two", 5, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "", 6, &source, &mut diagnostics);
-        let outcome = consume_claim_line(&mut state, "::", 7, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "--", 1, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "", 2, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "line one", 3, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "", 4, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "line two", 5, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "", 6, &source, &mut diagnostics);
+        let outcome = consume_typed_block_line(&mut state, "::", 7, &source, &mut diagnostics);
 
         match outcome {
-            ClaimLineOutcome::Closed(parsed) => {
+            TypedBlockLineOutcome::Closed(parsed) => {
                 // Leading/trailing blank lines stripped; internal blank preserved.
                 assert_eq!(parsed.body_text, "line one\n\nline two");
             }
-            ClaimLineOutcome::Continue => panic!("expected Closed"),
+            TypedBlockLineOutcome::Continue => panic!("expected Closed"),
         }
     }
 
     // Test: close fence in fields region (no body)
     #[test]
-    fn consume_claim_line_closes_on_double_colon_in_fields_region() {
+    fn consume_typed_block_line_closes_on_double_colon_in_fields_region() {
         let source = make_source("status: verified\n::\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        consume_claim_line(&mut state, "status: verified", 1, &source, &mut diagnostics);
-        let outcome = consume_claim_line(&mut state, "::", 2, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "status: verified", 1, &source, &mut diagnostics);
+        let outcome = consume_typed_block_line(&mut state, "::", 2, &source, &mut diagnostics);
 
         match outcome {
-            ClaimLineOutcome::Closed(parsed) => {
+            TypedBlockLineOutcome::Closed(parsed) => {
                 assert_eq!(parsed.body_text, "");
             }
-            ClaimLineOutcome::Continue => panic!("expected Closed"),
+            TypedBlockLineOutcome::Continue => panic!("expected Closed"),
         }
     }
 
     // Test: blank lines between fields are silently skipped
     #[test]
-    fn consume_claim_line_skips_blank_lines_in_fields_region() {
+    fn consume_typed_block_line_skips_blank_lines_in_fields_region() {
         let source = make_source("status: verified\n\nowner: team-a\n");
         let mut state = fresh_state("billing.credits");
         let mut diagnostics = Vec::new();
 
-        consume_claim_line(&mut state, "status: verified", 1, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "", 2, &source, &mut diagnostics);
-        consume_claim_line(&mut state, "owner: team-a", 3, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "status: verified", 1, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "", 2, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "owner: team-a", 3, &source, &mut diagnostics);
 
         assert!(diagnostics.is_empty());
         assert_eq!(state.raw_fields.len(), 2);
     }
 
-    // Test: finalize_unclosed_claim emits the right diagnostic
+    // Test: finalize_unclosed_typed_block emits the right diagnostic
     #[test]
-    fn finalize_unclosed_claim_emits_unclosed_fence_diagnostic() {
+    fn finalize_unclosed_typed_block_emits_unclosed_fence_diagnostic() {
         let mut diagnostics = Vec::new();
         let state = fresh_state("billing.credits");
-        finalize_unclosed_claim(state, &mut diagnostics);
+        finalize_unclosed_typed_block(state, &mut diagnostics);
 
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::ParseUnclosedFence);

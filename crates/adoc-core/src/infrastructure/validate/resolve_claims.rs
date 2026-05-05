@@ -1,5 +1,5 @@
-//! Page-resolver stage: converts every `BlockAst::KnowledgeObjectPending`
-//! into a `BlockAst::KnowledgeObject(Claim)` (success) or drops it with
+//! Page-resolver stage: converts supported `BlockAst::KnowledgeObjectPending`
+//! values into typed `KnowledgeObject` aggregates or drops them with
 //! diagnostics (failure).
 //!
 //! Runs as a separate pipeline stage between per-page validation and workspace
@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::domain::ast::{BlockAst, PageAst, ParsedClaim, PendingKnowledgeObject};
+use crate::domain::ast::{BlockAst, BlockKind, PageAst, ParsedTypedBlock};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::knowledge_object::{
     KnowledgeObject,
@@ -21,9 +21,9 @@ use crate::domain::source::SourceFile;
 
 const VERIFIED_CLAIM_HELP: &str = "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`.";
 
-/// Walk each parsed page in place: every `BlockAst::KnowledgeObjectPending`
-/// is replaced with `BlockAst::KnowledgeObject(...)` on success, or dropped
-/// (with diagnostics emitted) on failure.
+/// Walk each parsed page in place: supported `BlockAst::KnowledgeObjectPending`
+/// blocks are replaced with `BlockAst::KnowledgeObject(...)` on success, or
+/// dropped after emitting diagnostics on failure.
 pub(crate) fn resolve_knowledge_objects(parsed: &mut [(SourceFile, PageAst)]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for (_source, page) in parsed.iter_mut() {
@@ -37,23 +37,26 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
     let mut new_blocks = Vec::with_capacity(original.len());
     for block in original {
         match block {
-            BlockAst::KnowledgeObjectPending(pending) => match *pending {
-                PendingKnowledgeObject::Claim(parsed) => {
-                    if let Some(claim) = build_claim(&parsed, diagnostics) {
-                        new_blocks.push(BlockAst::KnowledgeObject(Box::new(
-                            KnowledgeObject::Claim(claim),
-                        )));
+            BlockAst::KnowledgeObjectPending(pending) => {
+                let parsed = *pending;
+                match parsed.kind {
+                    BlockKind::Claim => {
+                        if let Some(claim) = build_claim(&parsed, diagnostics) {
+                            new_blocks.push(BlockAst::KnowledgeObject(Box::new(
+                                KnowledgeObject::Claim(claim),
+                            )));
+                        }
+                        // failure → block dropped; diagnostics already emitted above
                     }
-                    // failure → block dropped; diagnostics already emitted above
                 }
-            },
+            }
             other => new_blocks.push(other),
         }
     }
     page.blocks = new_blocks;
 }
 
-fn build_claim(parsed: &ParsedClaim, diagnostics: &mut Vec<Diagnostic>) -> Option<Claim> {
+fn build_claim(parsed: &ParsedTypedBlock, diagnostics: &mut Vec<Diagnostic>) -> Option<Claim> {
     if !parsed.duplicate_keys.is_empty() {
         let mut emitted_keys = BTreeSet::new();
         for key in &parsed.duplicate_keys {
@@ -141,7 +144,7 @@ fn build_claim(parsed: &ParsedClaim, diagnostics: &mut Vec<Diagnostic>) -> Optio
 }
 
 fn build_verified_claim(
-    parsed: &ParsedClaim,
+    parsed: &ParsedTypedBlock,
     status_text: Option<&str>,
     optional_fields: BTreeMap<String, String>,
     diagnostics: &mut Vec<Diagnostic>,
@@ -171,7 +174,7 @@ fn build_verified_claim(
 }
 
 fn build_verification(
-    parsed: &ParsedClaim,
+    parsed: &ParsedTypedBlock,
     fields: &BTreeMap<String, String>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<Verification> {
@@ -237,7 +240,11 @@ fn is_verified_claim_dedicated_field(key: &str) -> bool {
     )
 }
 
-fn emit_claim_error(parsed: &ParsedClaim, error: ClaimError, diagnostics: &mut Vec<Diagnostic>) {
+fn emit_claim_error(
+    parsed: &ParsedTypedBlock,
+    error: ClaimError,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
     match error {
         ClaimError::InvalidId(e) => diagnostics.push(
             Diagnostic::error(
@@ -268,7 +275,7 @@ fn emit_claim_error(parsed: &ParsedClaim, error: ClaimError, diagnostics: &mut V
     }
 }
 
-fn missing_verified_field_diagnostic(parsed: &ParsedClaim, field: &str) -> Diagnostic {
+fn missing_verified_field_diagnostic(parsed: &ParsedTypedBlock, field: &str) -> Diagnostic {
     Diagnostic::error(
         DiagnosticCode::SchemaMissingField,
         format!(
@@ -281,7 +288,7 @@ fn missing_verified_field_diagnostic(parsed: &ParsedClaim, field: &str) -> Diagn
     .with_help(format!("Add `{field}`. {VERIFIED_CLAIM_HELP}"))
 }
 
-fn missing_evidence_diagnostic(parsed: &ParsedClaim) -> Diagnostic {
+fn missing_evidence_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
     Diagnostic::error(
         DiagnosticCode::ClaimVerifiedMissingEvidence,
         format!(
@@ -294,7 +301,7 @@ fn missing_evidence_diagnostic(parsed: &ParsedClaim) -> Diagnostic {
     .with_help(VERIFIED_CLAIM_HELP)
 }
 
-fn status_casing_diagnostic(parsed: &ParsedClaim, status: &str) -> Diagnostic {
+fn status_casing_diagnostic(parsed: &ParsedTypedBlock, status: &str) -> Diagnostic {
     Diagnostic::warning(
         DiagnosticCode::ClaimStatusCasing,
         format!(
@@ -313,7 +320,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::domain::ast::{BlockAst, HeadingAst, PageAst, ParsedClaim, PendingKnowledgeObject};
+    use crate::domain::ast::{BlockAst, HeadingAst, PageAst, ParsedTypedBlock};
     use crate::domain::diagnostic::{DiagnosticCode, SourcePosition, SourceSpan};
     use crate::domain::identity::PageId;
     use crate::domain::inline::InlineSegment;
@@ -343,24 +350,23 @@ mod tests {
         )
     }
 
-    fn page_with_pending(pending: ParsedClaim) -> PageAst {
+    fn page_with_pending(pending: ParsedTypedBlock) -> PageAst {
         PageAst {
             id: PageId::untitled_fallback(),
             title: None,
             source_path: PathBuf::from("test.adoc"),
-            blocks: vec![BlockAst::KnowledgeObjectPending(Box::new(
-                PendingKnowledgeObject::Claim(pending),
-            ))],
+            blocks: vec![BlockAst::KnowledgeObjectPending(Box::new(pending))],
         }
     }
 
-    fn valid_pending(id: &str) -> ParsedClaim {
+    fn valid_pending(id: &str) -> ParsedTypedBlock {
         let mut fields = BTreeMap::new();
         fields.insert("status".to_string(), "verified".to_string());
         fields.insert("owner".to_string(), "team-billing".to_string());
         fields.insert("verified_at".to_string(), "2026-05-05".to_string());
         fields.insert("source".to_string(), "billing ledger".to_string());
-        ParsedClaim {
+        ParsedTypedBlock {
+            kind: BlockKind::Claim,
             id_text: id.to_string(),
             raw_fields: fields,
             duplicate_keys: Vec::new(),
@@ -391,7 +397,8 @@ mod tests {
 
     #[test]
     fn drops_block_and_emits_one_per_duplicate_key() {
-        let pending = ParsedClaim {
+        let pending = ParsedTypedBlock {
+            kind: BlockKind::Claim,
             id_text: "billing.credits".to_string(),
             raw_fields: {
                 let mut m = BTreeMap::new();
@@ -418,7 +425,8 @@ mod tests {
 
     #[test]
     fn emits_id_invalid_for_bad_id() {
-        let pending = ParsedClaim {
+        let pending = ParsedTypedBlock {
+            kind: BlockKind::Claim,
             id_text: "BadId".to_string(),
             raw_fields: {
                 let mut m = BTreeMap::new();
@@ -451,7 +459,8 @@ mod tests {
 
     #[test]
     fn emits_missing_field_for_missing_status() {
-        let pending = ParsedClaim {
+        let pending = ParsedTypedBlock {
+            kind: BlockKind::Claim,
             id_text: "billing.credits".to_string(),
             raw_fields: BTreeMap::new(), // no status
             duplicate_keys: Vec::new(),
@@ -475,7 +484,8 @@ mod tests {
 
     #[test]
     fn emits_missing_field_for_empty_body() {
-        let pending = ParsedClaim {
+        let pending = ParsedTypedBlock {
+            kind: BlockKind::Claim,
             id_text: "billing.credits".to_string(),
             raw_fields: {
                 let mut m = BTreeMap::new();
@@ -513,10 +523,7 @@ mod tests {
             id: PageId::untitled_fallback(),
             title: None,
             source_path: PathBuf::from("test.adoc"),
-            blocks: vec![
-                heading,
-                BlockAst::KnowledgeObjectPending(Box::new(PendingKnowledgeObject::Claim(pending))),
-            ],
+            blocks: vec![heading, BlockAst::KnowledgeObjectPending(Box::new(pending))],
         };
         let mut pairs = vec![(source(), page)];
 
@@ -533,7 +540,8 @@ mod tests {
 
     #[test]
     fn strips_status_and_verified_fields_from_verified_claim_storage() {
-        let pending = ParsedClaim {
+        let pending = ParsedTypedBlock {
+            kind: BlockKind::Claim,
             id_text: "billing.credits".to_string(),
             raw_fields: {
                 let mut m = BTreeMap::new();
@@ -571,7 +579,8 @@ mod tests {
 
     #[test]
     fn keeps_verified_field_names_as_metadata_for_plain_claims() {
-        let pending = ParsedClaim {
+        let pending = ParsedTypedBlock {
+            kind: BlockKind::Claim,
             id_text: "billing.credits".to_string(),
             raw_fields: {
                 let mut m = BTreeMap::new();

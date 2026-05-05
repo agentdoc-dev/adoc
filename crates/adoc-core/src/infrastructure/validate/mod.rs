@@ -96,13 +96,11 @@ impl ValidationRule for RawHtmlForbidden {
                 // Pending objects still carry parser-owned source spans that
                 // source-page validators can scan before resolution.
                 BlockAst::KnowledgeObject(_) => {}
-                BlockAst::KnowledgeObjectPending(pending) => match pending.as_ref() {
-                    crate::domain::ast::PendingKnowledgeObject::Claim(claim) => {
-                        for span in &claim.content_spans {
-                            flag_raw_html_in_span(source, span, sink);
-                        }
+                BlockAst::KnowledgeObjectPending(pending) => {
+                    for span in &pending.content_spans {
+                        flag_raw_html_in_span(source, span, sink);
                     }
-                },
+                }
             }
         }
     }

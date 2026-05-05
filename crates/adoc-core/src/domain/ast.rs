@@ -35,12 +35,12 @@ pub(crate) enum BlockAst {
     /// replaces every Pending with either `KnowledgeObject(...)` (success) or
     /// drops it after emitting `schema.*`/`id.invalid` diagnostics. By the
     /// time the renderer or artifact emitter sees the AST, no Pending exists.
-    KnowledgeObjectPending(Box<PendingKnowledgeObject>),
+    KnowledgeObjectPending(Box<ParsedTypedBlock>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum PendingKnowledgeObject {
-    Claim(ParsedClaim),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BlockKind {
+    Claim,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,13 +86,14 @@ pub(crate) struct CodeBlockAst {
     pub(crate) span: SourceSpan,
 }
 
-/// Parser-produced shell of a claim block before validation. Carries the raw
+/// Parser-produced shell of a typed block before validation. Carries the raw
 /// text as parsed plus a record of duplicate field keys the parser observed,
-/// so the validator can emit `schema.duplicate_field` diagnostics. Lives in
-/// `domain` because `BlockAst` references it; transient — never reaches the
-/// renderer or artifact emitter.
+/// so the validator can emit `schema.duplicate_field` diagnostics for
+/// supported kinds. Lives in `domain` because `BlockAst` references it;
+/// transient — never reaches the renderer or artifact emitter.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ParsedClaim {
+pub(crate) struct ParsedTypedBlock {
+    pub(crate) kind: BlockKind,
     pub(crate) id_text: String,
     pub(crate) raw_fields: BTreeMap<String, String>,
     pub(crate) duplicate_keys: Vec<String>,
@@ -131,7 +132,8 @@ mod tests {
 
     #[test]
     fn block_ast_supports_knowledge_object_and_pending_variants() {
-        let parsed = ParsedClaim {
+        let parsed = ParsedTypedBlock {
+            kind: BlockKind::Claim,
             id_text: "billing.credits".to_string(),
             raw_fields: BTreeMap::new(),
             duplicate_keys: Vec::new(),
@@ -139,8 +141,7 @@ mod tests {
             content_spans: Vec::new(),
             span: span(),
         };
-        let pending_block =
-            BlockAst::KnowledgeObjectPending(Box::new(PendingKnowledgeObject::Claim(parsed)));
+        let pending_block = BlockAst::KnowledgeObjectPending(Box::new(parsed));
         assert_eq!(pending_block, pending_block.clone());
 
         let claim = Claim::try_new(
