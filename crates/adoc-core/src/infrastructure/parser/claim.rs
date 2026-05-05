@@ -224,7 +224,9 @@ fn try_parse_field(trimmed: &str) -> Option<(String, String)> {
         return None;
     }
     let mut key_chars = key.chars();
-    let first = key_chars.next()?;
+    let first = key_chars
+        .next()
+        .expect("key is non-empty per explicit check above");
     if !first.is_ascii_lowercase() {
         return None;
     }
