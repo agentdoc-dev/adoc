@@ -111,12 +111,12 @@ fn render_claim(claim: &Claim, html: &mut String) {
     if let Some(verification) = claim.verification() {
         html.push_str("<div class=\"claim__verification\">\n");
         html.push_str("<dl>\n");
-        html.push_str("<dt>owner</dt><dd>");
+        html.push_str("<div class=\"claim__verification-item\"><dt>owner</dt><dd>");
         html.push_str(&escape_html(verification.owner().as_str()));
-        html.push_str("</dd>\n");
-        html.push_str("<dt>verified_at</dt><dd>");
+        html.push_str("</dd></div>\n");
+        html.push_str("<div class=\"claim__verification-item\"><dt>verified_at</dt><dd>");
         html.push_str(&escape_html(verification.verified_at().as_str()));
-        html.push_str("</dd>\n");
+        html.push_str("</dd></div>\n");
         html.push_str("</dl>\n");
         html.push_str("</div>\n");
 
@@ -567,11 +567,15 @@ mod tests {
             "missing verification section: {html}"
         );
         assert!(
-            html.contains("<dt>owner</dt><dd>team-billing</dd>"),
+            html.contains(
+                "<div class=\"claim__verification-item\"><dt>owner</dt><dd>team-billing</dd></div>"
+            ),
             "missing owner: {html}"
         );
         assert!(
-            html.contains("<dt>verified_at</dt><dd>2026-05-05</dd>"),
+            html.contains(
+                "<div class=\"claim__verification-item\"><dt>verified_at</dt><dd>2026-05-05</dd></div>"
+            ),
             "missing verified_at: {html}"
         );
         assert!(
