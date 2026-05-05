@@ -265,7 +265,7 @@ fn compile_workspace_resolves_warning_into_artifacts() {
     assert!(
         artifacts
             .html
-            .contains("<section class=\"warning\" id=\"auth.session.clock-skew\">"),
+            .contains("<section class=\"warning warning--high\" id=\"auth.session.clock-skew\">"),
         "warning section missing: {}",
         artifacts.html
     );
@@ -348,6 +348,38 @@ fn compile_workspace_rejects_warning_missing_body() {
         DiagnosticCode::SchemaMissingField
     );
     assert!(result.diagnostics[0].message.contains("body"));
+    assert_eq!(
+        result.diagnostics[0].object_id.as_deref(),
+        Some("auth.session.clock-skew")
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_warning_invalid_severity() {
+    let workspace = TestWorkspace::new("warning-invalid-severity");
+    let source = workspace.write(
+        "warnings.adoc",
+        concat!(
+            "# Warning Guide @doc(team.warnings)\n",
+            "\n",
+            "::warning auth.session.clock-skew\n",
+            "severity: Critical\n",
+            "--\n",
+            "Session clocks can drift.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "invalid severity must be rejected");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaInvalidStatus
+    );
+    assert!(result.diagnostics[0].message.contains("Critical"));
     assert_eq!(
         result.diagnostics[0].object_id.as_deref(),
         Some("auth.session.clock-skew")

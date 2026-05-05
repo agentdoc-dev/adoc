@@ -1,0 +1,7 @@
+# Runtime Warnings @doc(team.warnings)
+
+::warning auth.session.clock-skew
+severity: panic
+--
+Session clocks can drift enough to reject otherwise valid tokens.
+::

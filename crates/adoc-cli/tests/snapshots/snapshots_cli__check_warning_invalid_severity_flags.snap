@@ -1,0 +1,9 @@
+---
+source: crates/adoc-cli/tests/snapshots_cli.rs
+expression: combined
+---
+exit-success: false
+---stdout---
+warning_invalid_severity.adoc:3:1: error[schema.invalid_status] warning `auth.session.clock-skew` has invalid severity `panic`
+1 errors, 0 warnings
+---stderr---

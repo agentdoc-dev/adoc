@@ -243,3 +243,25 @@ fn snapshot_check_flags_warning_missing_body() {
 
     insta::assert_snapshot!("check_warning_missing_body_flags", combined);
 }
+
+#[test]
+fn snapshot_check_flags_warning_invalid_severity() {
+    let combined = run_check_in_workspace(
+        "snap-check-warning-invalid-severity",
+        "v0_4/warning_invalid_severity.adoc",
+        "warning_invalid_severity.adoc",
+    );
+
+    insta::assert_snapshot!("check_warning_invalid_severity_flags", combined);
+}
+
+#[test]
+fn snapshot_check_flags_warning_severity_casing() {
+    let combined = run_check_in_workspace(
+        "snap-check-warning-severity-casing",
+        "v0_4/warning_severity_casing.adoc",
+        "warning_severity_casing.adoc",
+    );
+
+    insta::assert_snapshot!("check_warning_severity_casing_flags", combined);
+}

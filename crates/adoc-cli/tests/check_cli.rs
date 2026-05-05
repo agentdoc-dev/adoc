@@ -1228,8 +1228,8 @@ fn build_renders_v0_4_warning_to_golden_html() {
         "rendered HTML diverged from warning_basic.golden.html"
     );
     assert!(
-        actual.contains("<section class=\"warning\" id=\"auth.session.clock-skew\">"),
-        "warning section missing from HTML"
+        actual.contains("<section class=\"warning warning--high\" id=\"auth.session.clock-skew\">"),
+        "warning severity modifier missing from HTML"
     );
 }
 
@@ -1325,6 +1325,62 @@ fn check_rejects_warning_with_missing_body() {
     assert!(
         stdout.contains("body"),
         "expected message to mention `body`, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn check_rejects_warning_with_invalid_severity() {
+    let workspace = TestWorkspace::new("check-rejects-warning-invalid-severity");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/warning_invalid_severity.adoc"))
+        .expect("warning_invalid_severity fixture is readable");
+    workspace.write("warning_invalid_severity.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "warning_invalid_severity.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected invalid-severity warning to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.invalid_status]"),
+        "expected schema.invalid_status diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("panic"),
+        "expected message to mention rejected severity, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn check_rejects_warning_with_severity_casing() {
+    let workspace = TestWorkspace::new("check-rejects-warning-severity-casing");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/warning_severity_casing.adoc"))
+        .expect("warning_severity_casing fixture is readable");
+    workspace.write("warning_severity_casing.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "warning_severity_casing.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected casing-variant severity warning to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.invalid_status]"),
+        "expected schema.invalid_status diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("Critical"),
+        "expected message to mention rejected severity, got:\n{stdout}"
     );
 }
 
