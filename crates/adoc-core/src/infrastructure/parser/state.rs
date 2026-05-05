@@ -10,8 +10,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::domain::ast::{BlockAst, BlockKind};
+use crate::domain::ast::BlockAst;
 use crate::domain::diagnostic::{Diagnostic, SourceSpan};
+use crate::domain::knowledge_object::BlockKind;
 use crate::domain::source::SourceFile;
 
 use super::builders::{CodeBlockBuilder, ListBuilder, ParagraphBuilder};
@@ -25,7 +26,7 @@ pub(super) enum ParseState {
 }
 
 /// Transient accumulator for a typed block while lines are being read.
-/// Consumed by `claim::consume_typed_block_line` when the closing `::` is found.
+/// Consumed by `typed_block::consume_typed_block_line` when the closing `::` is found.
 pub(super) struct TypedBlockBuildingState {
     pub(super) kind: BlockKind,
     pub(super) id_text: String,

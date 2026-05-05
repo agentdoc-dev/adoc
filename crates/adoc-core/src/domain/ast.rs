@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::domain::diagnostic::SourceSpan;
 use crate::domain::identity::PageId;
 use crate::domain::inline::InlineSegment;
-use crate::domain::knowledge_object::KnowledgeObject;
+use crate::domain::knowledge_object::{BlockKind, KnowledgeObject};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WorkspaceAst {
@@ -36,12 +36,6 @@ pub(crate) enum BlockAst {
     /// drops it after emitting `schema.*`/`id.invalid` diagnostics. By the
     /// time the renderer or artifact emitter sees the AST, no Pending exists.
     KnowledgeObjectPending(Box<ParsedTypedBlock>),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BlockKind {
-    Claim,
-    Decision,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

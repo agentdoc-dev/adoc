@@ -7,8 +7,8 @@
 //! rules run in the validation pass per ADR-0007.
 
 mod builders;
-mod claim;
 mod state;
+mod typed_block;
 
 use builders::{CodeBlockBuilder, ListBuilder, ParagraphBuilder};
 use state::ParseState;
@@ -87,16 +87,16 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         // Indented lines (leading spaces) fail `starts_with("::")` and fall
         // through to prose — the column-1 invariant is preserved automatically.
         if line.starts_with("::") {
-            match claim::try_open_typed_block(line, line_number, source) {
-                claim::TypedBlockOpen::None => {
+            match typed_block::try_open_typed_block(line, line_number, source) {
+                typed_block::TypedBlockOpen::None => {
                     // Fall through to normal prose dispatch below.
                 }
-                claim::TypedBlockOpen::Opened(typed_block_state) => {
+                typed_block::TypedBlockOpen::Opened(typed_block_state) => {
                     commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
                     state = ParseState::TypedBlock(typed_block_state);
                     continue;
                 }
-                claim::TypedBlockOpen::Diagnostic(d) => {
+                typed_block::TypedBlockOpen::Diagnostic(d) => {
                     commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
                     diagnostics.push(d);
                     continue;
@@ -166,7 +166,7 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
 
     // Handle unclosed typed blocks at EOF before the general commit.
     if let ParseState::TypedBlock(typed_block_state) = state {
-        claim::finalize_unclosed_typed_block(typed_block_state, &mut diagnostics);
+        typed_block::finalize_unclosed_typed_block(typed_block_state, &mut diagnostics);
         state = ParseState::Idle;
     }
     commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
@@ -223,10 +223,15 @@ fn consume_typed_block_line(
     let ParseState::TypedBlock(typed_block_state) = state else {
         unreachable!("guarded by ParseState::is_in_typed_block");
     };
-    match claim::consume_typed_block_line(typed_block_state, line, line_number, source, diagnostics)
-    {
-        claim::TypedBlockLineOutcome::Continue => {}
-        claim::TypedBlockLineOutcome::Closed(parsed) => {
+    match typed_block::consume_typed_block_line(
+        typed_block_state,
+        line,
+        line_number,
+        source,
+        diagnostics,
+    ) {
+        typed_block::TypedBlockLineOutcome::Continue => {}
+        typed_block::TypedBlockLineOutcome::Closed(parsed) => {
             blocks.push(BlockAst::KnowledgeObjectPending(Box::new(parsed)));
             *state = ParseState::Idle;
         }
@@ -590,7 +595,8 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::domain::ast::{BlockAst, BlockKind};
+    use crate::domain::ast::BlockAst;
+    use crate::domain::knowledge_object::BlockKind;
 
     fn parse_source(text: &str) -> (PageAst, Vec<Diagnostic>) {
         let source = SourceFile::new_with_identity_path(

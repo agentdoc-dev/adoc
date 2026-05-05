@@ -8,10 +8,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::domain::ast::{BlockAst, BlockKind, PageAst, ParsedTypedBlock};
+use crate::domain::ast::{BlockAst, PageAst, ParsedTypedBlock};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::knowledge_object::{
-    KnowledgeObject,
+    BlockKind, KnowledgeObject,
     claim::{
         Claim, ClaimError, Evidence, NonEmpty, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD,
         STATUS_FIELD, TEST_FIELD, VERIFIED_AT_FIELD, VERIFIED_STATUS, Verification,
