@@ -1,0 +1,10 @@
+---
+source: crates/adoc-cli/tests/snapshots_cli.rs
+assertion_line: 141
+expression: combined
+---
+exit-success: false
+---stdout---
+verified_claim_missing_evidence.adoc:3:1: error[claim.verified_missing_evidence] verified claim `billing.no-evidence` requires at least one evidence field: `source`, `test`, or `reviewed_by`
+1 errors, 0 warnings
+---stderr---

@@ -53,6 +53,11 @@ fn duplicate_same_page_fixture_matches_expected_diagnostics() {
 }
 
 #[test]
+fn verified_claim_missing_matrix_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("claim_verified/missing_matrix").assert_matches_expected_diagnostics();
+}
+
+#[test]
 fn page_id_invalid_annotation_fixture_matches_expected_diagnostics() {
     DiagnosticFixture::new("page_id_invalid/annotation").assert_matches_expected_diagnostics();
 }

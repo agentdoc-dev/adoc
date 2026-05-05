@@ -1,0 +1,52 @@
+# Verified Claims @doc(team.verified-claims)
+
+::claim billing.missing-owner
+status: verified
+verified_at: 2026-05-05
+source: ledger
+--
+Missing owner.
+::
+
+::claim billing.missing-verified-at
+status: verified
+owner: team-billing
+source: ledger
+--
+Missing verified_at.
+::
+
+::claim billing.missing-evidence
+status: verified
+owner: team-billing
+verified_at: 2026-05-05
+--
+Missing evidence.
+::
+
+::claim billing.missing-owner-verified-at
+status: verified
+source: ledger
+--
+Missing owner and verified_at.
+::
+
+::claim billing.missing-owner-evidence
+status: verified
+verified_at: 2026-05-05
+--
+Missing owner and evidence.
+::
+
+::claim billing.missing-verified-at-evidence
+status: verified
+owner: team-billing
+--
+Missing verified_at and evidence.
+::
+
+::claim billing.missing-all
+status: verified
+--
+Missing owner, verified_at, and evidence.
+::

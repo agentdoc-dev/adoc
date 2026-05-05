@@ -118,3 +118,25 @@ fn snapshot_check_flags_duplicate_claim_id_same_page() {
 
     insta::assert_snapshot!("check_claim_id_duplicate_same_page_flags", combined);
 }
+
+#[test]
+fn snapshot_check_passes_for_v0_3_verified_claims_pilot() {
+    let combined = run_check_in_workspace(
+        "snap-check-verified-pilot-clean",
+        "v0_3/verified_claims_pilot.adoc",
+        "verified_claims_pilot.adoc",
+    );
+
+    insta::assert_snapshot!("check_verified_claims_pilot_clean", combined);
+}
+
+#[test]
+fn snapshot_check_flags_verified_claim_missing_evidence() {
+    let combined = run_check_in_workspace(
+        "snap-check-verified-missing-evidence",
+        "v0_3/verified_claim_missing_evidence.adoc",
+        "verified_claim_missing_evidence.adoc",
+    );
+
+    insta::assert_snapshot!("check_verified_claim_missing_evidence_flags", combined);
+}

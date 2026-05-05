@@ -1,0 +1,9 @@
+---
+source: crates/adoc-cli/tests/snapshots_cli.rs
+assertion_line: 130
+expression: combined
+---
+exit-success: true
+---stdout---
+0 errors, 0 warnings
+---stderr---

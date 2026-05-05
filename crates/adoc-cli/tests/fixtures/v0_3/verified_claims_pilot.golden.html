@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentDoc</title>
+</head>
+<body>
+<article data-page-id="team.billing-verified">
+<h1>Billing Verified Claims</h1>
+<p>Verified billing behavior for support and agents.</p>
+<section class="claim claim--verified" id="billing.credits.automatic">
+<header class="claim__header"><span class="claim__kind">claim</span><code class="claim__id">billing.credits.automatic</code><span class="claim__status">verified</span></header>
+<div class="claim__body"><p>Credits are granted automatically after a failed payment recovery.</p></div>
+<div class="claim__verification">
+<dl>
+<dt>owner</dt><dd>team-billing</dd>
+<dt>verified_at</dt><dd>2026-05-05</dd>
+</dl>
+</div>
+<div class="claim__evidence">
+<dl>
+<div class="claim__evidence-item claim__evidence-item--source"><dt>source</dt><dd>payments ledger</dd></div>
+</dl>
+</div>
+</section>
+<section class="claim claim--verified" id="billing.credits.tested">
+<header class="claim__header"><span class="claim__kind">claim</span><code class="claim__id">billing.credits.tested</code><span class="claim__status">verified</span></header>
+<div class="claim__body"><p>The billing credit path has regression coverage.</p></div>
+<div class="claim__verification">
+<dl>
+<dt>owner</dt><dd>team-billing</dd>
+<dt>verified_at</dt><dd>2026-05-05</dd>
+</dl>
+</div>
+<div class="claim__evidence">
+<dl>
+<div class="claim__evidence-item claim__evidence-item--test"><dt>test</dt><dd>cargo test billing_credits</dd></div>
+</dl>
+</div>
+</section>
+<section class="claim claim--verified" id="billing.credits.reviewed">
+<header class="claim__header"><span class="claim__kind">claim</span><code class="claim__id">billing.credits.reviewed</code><span class="claim__status">verified</span></header>
+<div class="claim__body"><p>Support credit guidance matches the current billing workflow.</p></div>
+<div class="claim__verification">
+<dl>
+<dt>owner</dt><dd>team-billing</dd>
+<dt>verified_at</dt><dd>2026-05-05</dd>
+</dl>
+</div>
+<div class="claim__evidence">
+<dl>
+<div class="claim__evidence-item claim__evidence-item--source"><dt>source</dt><dd>support runbook</dd></div>
+<div class="claim__evidence-item claim__evidence-item--test"><dt>test</dt><dd>cargo test support_credit_notes</dd></div>
+<div class="claim__evidence-item claim__evidence-item--reviewed-by"><dt>reviewed_by</dt><dd>qa-team</dd></div>
+</dl>
+</div>
+</section>
+<section class="claim claim--verified" id="billing.credits.review-only">
+<header class="claim__header"><span class="claim__kind">claim</span><code class="claim__id">billing.credits.review-only</code><span class="claim__status">verified</span></header>
+<div class="claim__body"><p>Billing credit escalation notes were reviewed by QA.</p></div>
+<div class="claim__verification">
+<dl>
+<dt>owner</dt><dd>team-billing</dd>
+<dt>verified_at</dt><dd>2026-05-05</dd>
+</dl>
+</div>
+<div class="claim__evidence">
+<dl>
+<div class="claim__evidence-item claim__evidence-item--reviewed-by"><dt>reviewed_by</dt><dd>qa-team</dd></div>
+</dl>
+</div>
+</section>
+</article>
+</body>
+</html>
