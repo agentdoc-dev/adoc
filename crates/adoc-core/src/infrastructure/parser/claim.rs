@@ -72,6 +72,16 @@ pub(super) fn try_open_typed_block(
 
     let full_line_span = source.span_for_line(line_number, line);
 
+    if word != "claim" && has_claim_prefix_with_non_ascii_whitespace(after_colons) {
+        return TypedBlockOpen::Diagnostic(
+            Diagnostic::error(
+                DiagnosticCode::ParseMalformedOpenFence,
+                "::claim open fence must use ASCII whitespace between `claim` and the id",
+            )
+            .with_span(full_line_span),
+        );
+    }
+
     match word {
         "claim" => {
             // Everything after `::claim`.
@@ -221,6 +231,13 @@ pub(super) fn finalize_unclosed_claim(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+fn has_claim_prefix_with_non_ascii_whitespace(value: &str) -> bool {
+    value
+        .strip_prefix("claim")
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(|character| character.is_whitespace() && !character.is_ascii_whitespace())
+}
 
 /// Attempt to parse a field line of the form `key: value` or `key:value`
 /// where `key` matches `[a-z][a-z0-9_]*`.
@@ -408,7 +425,12 @@ mod tests {
         let result = try_open_typed_block(line, 1, &source);
         match result {
             TypedBlockOpen::Diagnostic(d) => {
-                assert_eq!(d.code, DiagnosticCode::ParseUnknownBlockType);
+                assert_eq!(d.code, DiagnosticCode::ParseMalformedOpenFence);
+                assert!(
+                    d.message.contains("ASCII whitespace"),
+                    "message should explain ASCII whitespace requirement: {}",
+                    d.message
+                );
             }
             _ => panic!("expected non-ASCII separator to reject the claim opener"),
         }
