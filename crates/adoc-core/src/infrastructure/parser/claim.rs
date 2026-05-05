@@ -10,6 +10,8 @@ use crate::domain::source::SourceFile;
 
 use super::state::{ClaimBuildingState, ClaimPhase};
 
+const FIELD_KEY_GRAMMAR: &str = "[a-z][a-z0-9_]*";
+
 /// Result of attempting to open a typed block on an `Idle` line starting with
 /// `::` at column 1.
 pub(super) enum TypedBlockOpen {
@@ -173,7 +175,9 @@ pub(super) fn consume_claim_line(
             diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode::ParseMalformedField,
-                    format!("malformed claim field line: {line:?}"),
+                    format!(
+                        "malformed claim field line: {line:?}; claim field keys must match {FIELD_KEY_GRAMMAR} followed by ':'"
+                    ),
                 )
                 .with_span(source.span_for_line(line_number, line)),
             );
@@ -589,6 +593,39 @@ mod tests {
         assert!(matches!(outcome, ClaimLineOutcome::Continue));
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::ParseMalformedField);
+        assert!(
+            diagnostics[0].message.contains(FIELD_KEY_GRAMMAR),
+            "message should explain field key grammar: {}",
+            diagnostics[0].message
+        );
+        assert!(
+            state.raw_fields.is_empty(),
+            "malformed line must not be stored"
+        );
+    }
+
+    #[test]
+    fn consume_claim_line_explains_field_key_grammar_for_hyphenated_key() {
+        let source = make_source("reviewed-by: team-a\n");
+        let mut state = fresh_state("billing.credits");
+        let mut diagnostics = Vec::new();
+
+        let outcome = consume_claim_line(
+            &mut state,
+            "reviewed-by: team-a",
+            1,
+            &source,
+            &mut diagnostics,
+        );
+
+        assert!(matches!(outcome, ClaimLineOutcome::Continue));
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseMalformedField);
+        assert!(
+            diagnostics[0].message.contains(FIELD_KEY_GRAMMAR),
+            "message should explain field key grammar: {}",
+            diagnostics[0].message
+        );
         assert!(
             state.raw_fields.is_empty(),
             "malformed line must not be stored"
