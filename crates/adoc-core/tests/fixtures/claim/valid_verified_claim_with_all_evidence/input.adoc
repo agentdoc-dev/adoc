@@ -1,0 +1,14 @@
+# Billing Guide @doc(team.billing)
+
+The billing system records verified operational knowledge.
+
+::claim billing.verified-credits
+status: verified
+owner: team-billing
+verified_at: 2026-05-05
+source: payments ledger
+test: cargo test billing_credits
+reviewed_by: qa-team
+--
+The billing system credits users automatically when a payment fails.
+::
