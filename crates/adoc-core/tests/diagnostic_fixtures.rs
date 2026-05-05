@@ -46,6 +46,12 @@ fn claim_id_invalid_trailing_hyphen_fixture_matches_expected_diagnostics() {
         .assert_matches_expected_diagnostics();
 }
 
+#[test]
+fn duplicate_same_page_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("claim_id_invalid/duplicate_same_page")
+        .assert_matches_expected_diagnostics();
+}
+
 #[derive(Debug)]
 struct DiagnosticFixture {
     name: String,
