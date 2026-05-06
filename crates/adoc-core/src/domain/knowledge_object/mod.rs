@@ -1,6 +1,6 @@
 //! Aggregate family — populated by Slice 1.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourcePosition, SourceSpan};
@@ -120,20 +120,14 @@ impl RelationTarget {
     }
 }
 
-pub(super) struct FieldsAndRelations {
-    pub(super) fields: BTreeMap<String, String>,
-    pub(super) relations: Relations,
-}
-
 pub(super) fn extract_relations(
-    parsed: &ParsedTypedBlock,
+    parsed: &mut ParsedTypedBlock,
     diagnostics: &mut Vec<Diagnostic>,
-) -> FieldsAndRelations {
-    let mut fields = parsed.raw_fields.clone();
+) -> Relations {
     let mut relations = Relations::empty();
 
     for key in [DEPENDS_ON_FIELD, SUPERSEDES_FIELD, RELATED_TO_FIELD] {
-        let Some(value) = fields.remove(key) else {
+        let Some(value) = parsed.raw_fields.remove(key) else {
             continue;
         };
         let value_span = parsed
@@ -150,7 +144,7 @@ pub(super) fn extract_relations(
         }
     }
 
-    FieldsAndRelations { fields, relations }
+    relations
 }
 
 fn parse_relation_targets(

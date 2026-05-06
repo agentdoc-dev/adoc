@@ -32,26 +32,22 @@ pub(crate) enum WarningError {
 
 impl Warning {
     pub(crate) fn build_from_parsed(
-        parsed: &ParsedTypedBlock,
+        mut parsed: ParsedTypedBlock,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
-        if super::reject_duplicate_fields(parsed, "warning", diagnostics) {
+        if super::reject_duplicate_fields(&parsed, "warning", diagnostics) {
             return None;
         }
 
-        let severity_text = parsed.raw_fields.get(SEVERITY_FIELD).map(String::as_str);
-        let fields_and_relations = super::extract_relations(parsed, diagnostics);
-        let optional_fields: BTreeMap<String, String> = fields_and_relations
-            .fields
-            .iter()
-            .filter(|(key, _)| key.as_str() != SEVERITY_FIELD)
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect();
+        let relations = super::extract_relations(&mut parsed, diagnostics);
+        let severity_text = parsed.raw_fields.remove(SEVERITY_FIELD);
+        let optional_fields = std::mem::take(&mut parsed.raw_fields);
+        let severity_text = severity_text.as_deref();
 
-        let (id, severity, body) = match Self::parse_basics_from_parsed(parsed, severity_text) {
+        let (id, severity, body) = match Self::parse_basics_from_parsed(&parsed, severity_text) {
             Ok(basics) => basics,
             Err(error) => {
-                emit_warning_error(parsed, error, diagnostics);
+                emit_warning_error(&parsed, error, diagnostics);
                 return None;
             }
         };
@@ -61,12 +57,12 @@ impl Warning {
             severity,
             body,
             optional_fields,
-            fields_and_relations.relations,
+            relations,
             parsed.span.clone(),
         ) {
             Ok(warning) => Some(warning),
             Err(error) => {
-                emit_warning_error(parsed, error, diagnostics);
+                emit_warning_error(&parsed, error, diagnostics);
                 None
             }
         }
@@ -362,7 +358,7 @@ mod tests {
         let parsed = parsed_warning(BTreeMap::new(), "Session clocks can drift.");
         let mut diagnostics = Vec::new();
 
-        let warning = Warning::build_from_parsed(&parsed, &mut diagnostics);
+        let warning = Warning::build_from_parsed(parsed, &mut diagnostics);
 
         assert!(warning.is_none());
         assert_eq!(diagnostics.len(), 1);
@@ -388,7 +384,7 @@ mod tests {
         );
         let mut diagnostics = Vec::new();
 
-        let warning = Warning::build_from_parsed(&parsed, &mut diagnostics);
+        let warning = Warning::build_from_parsed(parsed, &mut diagnostics);
 
         assert!(warning.is_none());
         assert_eq!(diagnostics.len(), 1);
@@ -416,7 +412,7 @@ mod tests {
         );
         let mut diagnostics = Vec::new();
 
-        let warning = Warning::build_from_parsed(&parsed, &mut diagnostics).expect("valid warning");
+        let warning = Warning::build_from_parsed(parsed, &mut diagnostics).expect("valid warning");
 
         assert!(diagnostics.is_empty());
         let field_keys: Vec<&str> = warning
@@ -436,7 +432,7 @@ mod tests {
         parsed.duplicate_keys = vec![SEVERITY_FIELD.to_string(), SEVERITY_FIELD.to_string()];
         let mut diagnostics = Vec::new();
 
-        let warning = Warning::build_from_parsed(&parsed, &mut diagnostics);
+        let warning = Warning::build_from_parsed(parsed, &mut diagnostics);
 
         assert!(warning.is_none());
         assert_eq!(diagnostics.len(), 1);

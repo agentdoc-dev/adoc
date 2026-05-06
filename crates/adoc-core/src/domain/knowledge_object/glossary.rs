@@ -25,36 +25,31 @@ pub(crate) enum GlossaryError {
 
 impl Glossary {
     pub(crate) fn build_from_parsed(
-        parsed: &ParsedTypedBlock,
+        mut parsed: ParsedTypedBlock,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
-        if super::reject_duplicate_fields(parsed, "glossary", diagnostics) {
+        if super::reject_duplicate_fields(&parsed, "glossary", diagnostics) {
             return None;
         }
 
         let id = match ObjectId::new(&parsed.id_text) {
             Ok(id) => id,
             Err(error) => {
-                emit_glossary_error(parsed, GlossaryError::InvalidId(error), diagnostics);
+                emit_glossary_error(&parsed, GlossaryError::InvalidId(error), diagnostics);
                 return None;
             }
         };
-        let Some(body) = super::body_from_parsed(parsed) else {
-            emit_glossary_error(parsed, GlossaryError::MissingBody, diagnostics);
+        let Some(body) = super::body_from_parsed(&parsed) else {
+            emit_glossary_error(&parsed, GlossaryError::MissingBody, diagnostics);
             return None;
         };
-        let fields_and_relations = super::extract_relations(parsed, diagnostics);
+        let relations = super::extract_relations(&mut parsed, diagnostics);
+        let fields = std::mem::take(&mut parsed.raw_fields);
 
-        match Self::from_parts(
-            id,
-            body,
-            fields_and_relations.fields,
-            fields_and_relations.relations,
-            parsed.span.clone(),
-        ) {
+        match Self::from_parts(id, body, fields, relations, parsed.span.clone()) {
             Ok(glossary) => Some(glossary),
             Err(error) => {
-                emit_glossary_error(parsed, error, diagnostics);
+                emit_glossary_error(&parsed, error, diagnostics);
                 None
             }
         }
@@ -240,7 +235,7 @@ mod tests {
         );
         let mut diagnostics = Vec::new();
 
-        let glossary = Glossary::build_from_parsed(&parsed, &mut diagnostics);
+        let glossary = Glossary::build_from_parsed(parsed, &mut diagnostics);
 
         assert!(glossary.is_none(), "invalid id must drop the block");
         assert_eq!(diagnostics.len(), 1);
@@ -267,7 +262,7 @@ mod tests {
         );
         let mut diagnostics = Vec::new();
 
-        let glossary = Glossary::build_from_parsed(&parsed, &mut diagnostics);
+        let glossary = Glossary::build_from_parsed(parsed, &mut diagnostics);
 
         assert!(glossary.is_none(), "duplicate fields must drop the block");
         assert_eq!(diagnostics.len(), 1, "duplicate key emitted once");
