@@ -1,0 +1,12 @@
+# Billing Ledger @doc(billing.ledger-page)
+
+Ledger objects can live in nested source directories.
+
+::claim billing.ledger
+status: verified
+owner: team-billing
+verified_at: 2026-05-06
+source: ledger reconciliation report
+--
+The ledger records every credit and refund balance movement.
+::

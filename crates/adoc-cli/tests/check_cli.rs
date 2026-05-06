@@ -3,6 +3,7 @@ mod support;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::process::Command;
 
 use support::{TestWorkspace, fixture_path};
@@ -23,7 +24,7 @@ fn assert_fixture_build_matches_golden(
     source_file: &str,
     artifact_file: &str,
     golden_relative: &str,
-) {
+) -> String {
     let workspace = TestWorkspace::new(workspace_name);
     write_fixture_to_workspace(&workspace, fixture_relative, source_file);
 
@@ -49,6 +50,66 @@ fn assert_fixture_build_matches_golden(
         actual, golden,
         "{artifact_file} diverged from {golden_relative}"
     );
+    actual
+}
+
+fn copy_fixture_directory_to_workspace(
+    workspace: &TestWorkspace,
+    fixture_relative: &str,
+    target_dir: &str,
+) {
+    let fixture_root = fixture_path(fixture_relative);
+    let target_root = workspace.root.join(target_dir);
+    copy_directory(&fixture_root, &target_root);
+}
+
+fn copy_directory(source: &Path, target: &Path) {
+    fs::create_dir_all(target).expect("target directory can be created");
+    for entry in fs::read_dir(source).expect("fixture directory is readable") {
+        let entry = entry.expect("fixture entry is readable");
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        if source_path.is_dir() {
+            copy_directory(&source_path, &target_path);
+        } else {
+            fs::copy(&source_path, &target_path).expect("fixture file can be copied");
+        }
+    }
+}
+
+fn assert_fixture_directory_build_matches_golden(
+    workspace_name: &str,
+    fixture_relative: &str,
+    source_dir: &str,
+    artifact_file: &str,
+    golden_relative: &str,
+) -> String {
+    let workspace = TestWorkspace::new(workspace_name);
+    copy_fixture_directory_to_workspace(&workspace, fixture_relative, source_dir);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", source_dir, "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join(artifact_file))
+        .expect("artifact is written");
+    let golden =
+        fs::read_to_string(fixture_path(golden_relative)).expect("golden fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "{artifact_file} diverged from {golden_relative}"
+    );
+    actual
 }
 
 #[test]
@@ -1681,6 +1742,80 @@ fn check_rejects_v0_5_broken_relation_fixture() {
     assert!(
         stdout.contains("depends_on target `missing.object`"),
         "expected diagnostic to name missing relation target, got:\n{stdout}"
+    );
+}
+
+#[test]
+fn build_renders_v0_6_multi_file_project_to_golden_html() {
+    let actual = assert_fixture_directory_build_matches_golden(
+        "build-renders-v0-6-multi-file-html",
+        "v0_6/project",
+        "project",
+        "docs.html",
+        "v0_6/project.golden.html",
+    );
+
+    assert!(
+        actual.contains("data-page-id=\"billing.glossary\"")
+            && actual.contains("data-page-id=\"billing.policy\"")
+            && actual.contains("data-page-id=\"billing.ledger-page\""),
+        "expected every .adoc page to render into consolidated HTML"
+    );
+    assert!(
+        !actual.contains("ignored.markdown"),
+        "non-.adoc fixture files must be ignored"
+    );
+}
+
+#[test]
+fn build_renders_v0_6_multi_file_project_to_golden_agent_json() {
+    let actual = assert_fixture_directory_build_matches_golden(
+        "build-renders-v0-6-multi-file-json",
+        "v0_6/project",
+        "project",
+        "docs.agent.json",
+        "v0_6/project.golden.agent.json",
+    );
+
+    assert!(
+        actual.contains("\"source_path\": \"project/01-glossary.adoc\"")
+            && actual.contains("\"source_path\": \"project/02-policy.adoc\"")
+            && actual.contains("\"source_path\": \"project/nested/03-ledger.adoc\""),
+        "expected deterministic recursive .adoc source paths"
+    );
+    assert!(
+        !actual.contains("ignored.markdown"),
+        "non-.adoc fixture files must be ignored"
+    );
+}
+
+#[test]
+fn check_rejects_v0_6_duplicate_id_across_files() {
+    let workspace = TestWorkspace::new("check-rejects-v0-6-duplicate-id");
+    copy_fixture_directory_to_workspace(&workspace, "v0_6/duplicate_id", "duplicate_id");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "duplicate_id"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected duplicate id fixture to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("duplicate_id/02-refunds.adoc:3:1"),
+        "expected duplicate diagnostic on second file, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("error[id.duplicate]"),
+        "expected id.duplicate diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("previously defined as claim at duplicate_id/01-refunds.adoc:3:1"),
+        "expected first definition location, got:\n{stdout}"
     );
 }
 

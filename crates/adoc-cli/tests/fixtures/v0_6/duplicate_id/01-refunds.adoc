@@ -1,0 +1,7 @@
+# Refunds A @doc(billing.refunds-a)
+
+::claim billing.refunds
+status: draft
+--
+First refund claim.
+::

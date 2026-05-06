@@ -1,0 +1,7 @@
+# Refunds B @doc(billing.refunds-b)
+
+::decision billing.refunds
+status: proposed
+--
+Second object reuses the refund id across files.
+::

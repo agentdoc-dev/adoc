@@ -518,6 +518,39 @@ fn compile_workspace_links_cross_file_prose_reference_to_claim() {
 }
 
 #[test]
+fn compile_workspace_ignores_non_adoc_files_during_directory_scan() {
+    let workspace = TestWorkspace::new("ignore-non-adoc-files");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Guide @doc(team.guide)\n\nCompiled source content.\n",
+    );
+    workspace.write(
+        "notes.md",
+        "# Notes\n\n<div>This raw HTML would fail if the file were compiled.</div>\n",
+    );
+
+    let result = compile_workspace(CompileInput {
+        root: source.parent().expect("source has parent").to_path_buf(),
+    });
+
+    assert!(
+        !result.has_errors(),
+        "non-.adoc files must be ignored, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    assert_eq!(artifacts.agent_json.pages.len(), 1);
+    assert!(
+        artifacts.agent_json.pages[0]
+            .source_path
+            .ends_with("guide.adoc"),
+        "expected only the .adoc source path, got: {}",
+        artifacts.agent_json.pages[0].source_path
+    );
+    assert!(!artifacts.html.contains("This raw HTML would fail"));
+}
+
+#[test]
 fn compile_workspace_links_references_in_heading_and_list_item() {
     let workspace = TestWorkspace::new("heading-list-prose-refs");
     let source = workspace.write(
