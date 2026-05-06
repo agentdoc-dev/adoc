@@ -1,9 +1,9 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use serde::{Serialize, Serializer, ser::SerializeStruct};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de, ser::SerializeStruct};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Diagnostic {
     pub code: DiagnosticCode,
     pub severity: Severity,
@@ -42,6 +42,12 @@ pub enum DiagnosticCode {
     IoUnreadableFile,
     IoUnreadableDirectory,
     IoUnsupportedSourceExtension,
+    IoArtifactMissing,
+    IoArtifactUnreadable,
+    IoArtifactMalformed,
+    SchemaUnsupportedVersion,
+    IdDuplicateInArtifact,
+    RetrievalObjectNotFound,
 }
 
 impl DiagnosticCode {
@@ -66,6 +72,43 @@ impl DiagnosticCode {
             DiagnosticCode::IoUnreadableFile => "io.unreadable_file",
             DiagnosticCode::IoUnreadableDirectory => "io.unreadable_directory",
             DiagnosticCode::IoUnsupportedSourceExtension => "io.unsupported_source_extension",
+            DiagnosticCode::IoArtifactMissing => "io.artifact_missing",
+            DiagnosticCode::IoArtifactUnreadable => "io.artifact_unreadable",
+            DiagnosticCode::IoArtifactMalformed => "io.artifact_malformed",
+            DiagnosticCode::SchemaUnsupportedVersion => "schema.unsupported_version",
+            DiagnosticCode::IdDuplicateInArtifact => "id.duplicate_in_artifact",
+            DiagnosticCode::RetrievalObjectNotFound => "retrieval.object_not_found",
+        }
+    }
+
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "parse.raw_html" => Some(DiagnosticCode::ParseRawHtml),
+            "parse.unsafe_link" => Some(DiagnosticCode::ParseUnsafeLink),
+            "parse.unclosed_fence" => Some(DiagnosticCode::ParseUnclosedFence),
+            "parse.malformed_page_annotation" => Some(DiagnosticCode::ParseMalformedPageAnnotation),
+            "parse.nested_typed_block" => Some(DiagnosticCode::ParseNestedTypedBlock),
+            "parse.malformed_field" => Some(DiagnosticCode::ParseMalformedField),
+            "parse.malformed_open_fence" => Some(DiagnosticCode::ParseMalformedOpenFence),
+            "schema.unknown_kind" => Some(DiagnosticCode::SchemaUnknownKind),
+            "schema.missing_field" => Some(DiagnosticCode::SchemaMissingField),
+            "schema.duplicate_field" => Some(DiagnosticCode::SchemaDuplicateField),
+            "schema.invalid_status" => Some(DiagnosticCode::SchemaInvalidStatus),
+            "claim.verified_missing_evidence" => Some(DiagnosticCode::ClaimVerifiedMissingEvidence),
+            "claim.status_casing" => Some(DiagnosticCode::ClaimStatusCasing),
+            "id.duplicate" => Some(DiagnosticCode::IdDuplicate),
+            "id.invalid" => Some(DiagnosticCode::IdInvalid),
+            "ref.broken" => Some(DiagnosticCode::RefBroken),
+            "io.unreadable_file" => Some(DiagnosticCode::IoUnreadableFile),
+            "io.unreadable_directory" => Some(DiagnosticCode::IoUnreadableDirectory),
+            "io.unsupported_source_extension" => Some(DiagnosticCode::IoUnsupportedSourceExtension),
+            "io.artifact_missing" => Some(DiagnosticCode::IoArtifactMissing),
+            "io.artifact_unreadable" => Some(DiagnosticCode::IoArtifactUnreadable),
+            "io.artifact_malformed" => Some(DiagnosticCode::IoArtifactMalformed),
+            "schema.unsupported_version" => Some(DiagnosticCode::SchemaUnsupportedVersion),
+            "id.duplicate_in_artifact" => Some(DiagnosticCode::IdDuplicateInArtifact),
+            "retrieval.object_not_found" => Some(DiagnosticCode::RetrievalObjectNotFound),
+            _ => None,
         }
     }
 }
@@ -81,6 +124,42 @@ impl Serialize for DiagnosticCode {
         serializer.serialize_str(self.as_str())
     }
 }
+
+impl<'de> Deserialize<'de> for DiagnosticCode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        DiagnosticCode::from_str(&value)
+            .ok_or_else(|| de::Error::unknown_variant(&value, DIAGNOSTIC_CODE_VARIANTS))
+    }
+}
+
+const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
+    "parse.raw_html",
+    "parse.unsafe_link",
+    "parse.unclosed_fence",
+    "parse.malformed_page_annotation",
+    "parse.nested_typed_block",
+    "parse.malformed_field",
+    "parse.malformed_open_fence",
+    "schema.unknown_kind",
+    "schema.missing_field",
+    "schema.duplicate_field",
+    "schema.invalid_status",
+    "claim.verified_missing_evidence",
+    "claim.status_casing",
+    "id.duplicate",
+    "id.invalid",
+    "ref.broken",
+    "io.unreadable_file",
+    "io.unreadable_directory",
+    "io.unsupported_source_extension",
+    "io.artifact_missing",
+    "io.artifact_unreadable",
+    "io.artifact_malformed",
+    "schema.unsupported_version",
+    "id.duplicate_in_artifact",
+    "retrieval.object_not_found",
+];
 
 impl Diagnostic {
     pub(crate) fn error(code: DiagnosticCode, message: impl Into<String>) -> Self {
@@ -121,7 +200,7 @@ impl Diagnostic {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
     Error,
@@ -139,7 +218,7 @@ impl fmt::Display for Severity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct SourceSpan {
     pub file: PathBuf,
     pub start: SourcePosition,
@@ -167,7 +246,7 @@ impl Serialize for SourceSpan {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourcePosition {
     pub line: u32,
     pub column: u32,

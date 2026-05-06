@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::domain::ast::PageAst;
 use crate::domain::diagnostic::Diagnostic;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentJsonDocument {
     pub schema_version: String,
     pub pages: Vec<AgentJsonPage>,
@@ -19,7 +19,7 @@ impl AgentJsonDocument {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentJsonPage {
     pub id: String,
     pub title: Option<String>,
@@ -36,7 +36,7 @@ impl From<&PageAst> for AgentJsonPage {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentJsonObject {
     pub id: String,
     pub kind: String,
@@ -52,14 +52,14 @@ pub struct AgentJsonObject {
     pub relations: AgentJsonRelations,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentJsonSourceSpan {
     pub path: String,
     pub line: u32,
     pub column: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AgentJsonRelations {
     pub depends_on: Vec<String>,
     pub supersedes: Vec<String>,

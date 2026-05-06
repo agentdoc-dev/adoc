@@ -1,10 +1,13 @@
 use std::collections::BTreeMap;
+use std::fs;
+use std::io;
+use std::path::Path;
 
 use crate::domain::artifact::{
     AgentJsonDocument, AgentJsonObject, AgentJsonPage, AgentJsonRelations, AgentJsonSourceSpan,
 };
 use crate::domain::ast::{BlockAst, PageAst};
-use crate::domain::diagnostic::Diagnostic;
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::knowledge_object::{
     KnowledgeObject, RelationField, RelationTarget, Relations, projection::MetadataField,
 };
@@ -12,6 +15,61 @@ use crate::domain::ports::artifact_writer::ArtifactWriter;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct AgentJsonArtifact;
+
+#[allow(dead_code)]
+const SUPPORTED_AGENT_JSON_SCHEMA_VERSION: &str = "adoc.agent.v0";
+
+#[allow(dead_code)]
+pub(crate) fn read_agent_json_document(path: &Path) -> Result<AgentJsonDocument, Vec<Diagnostic>> {
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) => return Err(vec![read_error_diagnostic(path, error)]),
+    };
+    let document = match serde_json::from_str::<AgentJsonDocument>(&contents) {
+        Ok(document) => document,
+        Err(error) => {
+            return Err(vec![
+                Diagnostic::error(
+                    DiagnosticCode::IoArtifactMalformed,
+                    format!("Artifact '{}' is malformed: {error}", path.display()),
+                )
+                .with_help("Rebuild docs.agent.json from the source workspace."),
+            ]);
+        }
+    };
+
+    if document.schema_version != SUPPORTED_AGENT_JSON_SCHEMA_VERSION {
+        return Err(vec![
+            Diagnostic::error(
+                DiagnosticCode::SchemaUnsupportedVersion,
+                format!(
+                    "Artifact '{}' uses unsupported schema_version '{}'.",
+                    path.display(),
+                    document.schema_version
+                ),
+            )
+            .with_help(format!(
+                "Expected schema_version '{}'.",
+                SUPPORTED_AGENT_JSON_SCHEMA_VERSION
+            )),
+        ]);
+    }
+
+    Ok(document)
+}
+
+#[allow(dead_code)]
+fn read_error_diagnostic(path: &Path, error: io::Error) -> Diagnostic {
+    let code = if error.kind() == io::ErrorKind::NotFound {
+        DiagnosticCode::IoArtifactMissing
+    } else {
+        DiagnosticCode::IoArtifactUnreadable
+    };
+    Diagnostic::error(
+        code,
+        format!("Unable to read artifact '{}': {error}", path.display()),
+    )
+}
 
 impl ArtifactWriter for AgentJsonArtifact {
     type Output = AgentJsonDocument;
@@ -97,11 +155,13 @@ fn relation_ids(targets: &[RelationTarget]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::fs;
     use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
     use crate::domain::ast::PageAst;
-    use crate::domain::diagnostic::{SourcePosition, SourceSpan};
+    use crate::domain::diagnostic::{DiagnosticCode, Severity, SourcePosition, SourceSpan};
     use crate::domain::identity::PageId;
     use crate::domain::knowledge_object::{
         KnowledgeObject,
@@ -112,6 +172,14 @@ mod tests {
         decision::{AcceptedVerdict, DECIDED_BY_FIELD, DecidedBy, Decision},
     };
     use crate::domain::ports::artifact_writer::ArtifactWriter;
+
+    fn temp_path(name: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("adoc-core-{name}-{suffix}"))
+    }
 
     fn span() -> SourceSpan {
         SourceSpan {
@@ -397,5 +465,91 @@ mod tests {
         assert!(obj.relations.depends_on.is_empty());
         assert!(obj.relations.supersedes.is_empty());
         assert!(obj.relations.related_to.is_empty());
+    }
+
+    #[test]
+    fn read_agent_json_document_loads_existing_v0_agent_artifact() {
+        let path = PathBuf::from(
+            "tests/fixtures/claim/valid_claim_no_optional_fields/expected.agent.json",
+        );
+
+        let doc = read_agent_json_document(&path).expect("fixture must load");
+
+        assert_eq!(doc.schema_version, "adoc.agent.v0");
+        assert_eq!(doc.pages.len(), 1);
+        assert_eq!(doc.objects[0].id, "billing.no-optional");
+        assert!(doc.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn read_agent_json_document_reports_missing_artifact() {
+        let path = temp_path("missing.agent.json");
+
+        let diagnostics = read_agent_json_document(&path).expect_err("missing artifact must fail");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactMissing);
+        assert_eq!(diagnostics[0].severity, Severity::Error);
+    }
+
+    #[test]
+    fn read_agent_json_document_reports_unreadable_artifact() {
+        let path = temp_path("artifact-dir");
+        fs::create_dir(&path).expect("create temp directory");
+
+        let diagnostics = read_agent_json_document(&path).expect_err("directory must not load");
+
+        fs::remove_dir(&path).expect("remove temp directory");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactUnreadable);
+    }
+
+    #[test]
+    fn read_agent_json_document_reports_malformed_json() {
+        let path = temp_path("malformed.agent.json");
+        fs::write(&path, "{").expect("write malformed json");
+
+        let diagnostics = read_agent_json_document(&path).expect_err("malformed JSON must fail");
+
+        fs::remove_file(&path).expect("remove temp file");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactMalformed);
+    }
+
+    #[test]
+    fn read_agent_json_document_reports_malformed_top_level_object() {
+        let path = temp_path("array.agent.json");
+        fs::write(&path, "[]").expect("write top-level array");
+
+        let diagnostics = read_agent_json_document(&path).expect_err("top-level array must fail");
+
+        fs::remove_file(&path).expect("remove temp file");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactMalformed);
+    }
+
+    #[test]
+    fn read_agent_json_document_reports_unsupported_schema_version() {
+        let path = temp_path("unsupported.agent.json");
+        fs::write(
+            &path,
+            r#"{
+              "schema_version": "adoc.agent.v9",
+              "pages": [],
+              "objects": [],
+              "diagnostics": []
+            }"#,
+        )
+        .expect("write unsupported artifact");
+
+        let diagnostics =
+            read_agent_json_document(&path).expect_err("unsupported version must fail");
+
+        fs::remove_file(&path).expect("remove temp file");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::SchemaUnsupportedVersion
+        );
     }
 }

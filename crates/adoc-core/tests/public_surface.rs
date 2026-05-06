@@ -77,6 +77,12 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::IoUnreadableFile;
     let _ = DiagnosticCode::IoUnreadableDirectory;
     let _ = DiagnosticCode::IoUnsupportedSourceExtension;
+    let _ = DiagnosticCode::IoArtifactMissing;
+    let _ = DiagnosticCode::IoArtifactUnreadable;
+    let _ = DiagnosticCode::IoArtifactMalformed;
+    let _ = DiagnosticCode::SchemaUnsupportedVersion;
+    let _ = DiagnosticCode::IdDuplicateInArtifact;
+    let _ = DiagnosticCode::RetrievalObjectNotFound;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
     assert_eq!(
@@ -124,5 +130,29 @@ fn public_surface_compiles_with_only_documented_imports() {
     assert_eq!(
         DiagnosticCode::IoUnsupportedSourceExtension.as_str(),
         "io.unsupported_source_extension"
+    );
+    assert_eq!(
+        DiagnosticCode::IoArtifactMissing.as_str(),
+        "io.artifact_missing"
+    );
+    assert_eq!(
+        DiagnosticCode::IoArtifactUnreadable.as_str(),
+        "io.artifact_unreadable"
+    );
+    assert_eq!(
+        DiagnosticCode::IoArtifactMalformed.as_str(),
+        "io.artifact_malformed"
+    );
+    assert_eq!(
+        DiagnosticCode::SchemaUnsupportedVersion.as_str(),
+        "schema.unsupported_version"
+    );
+    assert_eq!(
+        DiagnosticCode::IdDuplicateInArtifact.as_str(),
+        "id.duplicate_in_artifact"
+    );
+    assert_eq!(
+        DiagnosticCode::RetrievalObjectNotFound.as_str(),
+        "retrieval.object_not_found"
     );
 }
