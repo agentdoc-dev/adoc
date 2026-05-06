@@ -2,10 +2,8 @@ use crate::domain::ast::{BlockAst, ListKind, PageAst};
 use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
     KnowledgeObject, RelationField, Relations,
-    claim::{Claim, Evidence},
-    decision::{DECIDED_BY_FIELD, Decision},
-    glossary::Glossary,
-    warning::Warning,
+    claim::Evidence,
+    projection::{KnowledgeObjectMetadata, MetadataDiscriminant, MetadataField},
 };
 use crate::domain::ports::renderer::Renderer;
 
@@ -84,106 +82,163 @@ fn render_block(block: &BlockAst, html: &mut String) {
 }
 
 fn render_knowledge_object(knowledge_object: &KnowledgeObject, html: &mut String) {
+    let metadata = knowledge_object.metadata_projection();
+
     match knowledge_object {
-        KnowledgeObject::Claim(claim) => {
-            render_claim(knowledge_object, claim, html);
+        KnowledgeObject::Claim(_) => {
+            render_claim(knowledge_object, &metadata, html);
         }
-        KnowledgeObject::Decision(decision) => {
-            render_decision(knowledge_object, decision, html);
+        KnowledgeObject::Decision(_) => {
+            render_decision(knowledge_object, &metadata, html);
         }
-        KnowledgeObject::Glossary(glossary) => {
-            render_glossary(knowledge_object, glossary, html);
+        KnowledgeObject::Glossary(_) => {
+            render_glossary(knowledge_object, &metadata, html);
         }
-        KnowledgeObject::Warning(warning) => {
-            render_warning(knowledge_object, warning, html);
+        KnowledgeObject::Warning(_) => {
+            render_warning(knowledge_object, &metadata, html);
         }
     }
 }
 
-fn render_glossary(knowledge_object: &KnowledgeObject, _glossary: &Glossary, html: &mut String) {
+fn render_glossary(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
     render_object_section_open(knowledge_object, "glossary", html);
-    render_object_header(knowledge_object, None, html);
+    render_object_header(knowledge_object, metadata.discriminant(), html);
     render_object_body(knowledge_object, html);
-    render_object_metadata(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
 }
 
-fn render_warning(knowledge_object: &KnowledgeObject, warning: &Warning, html: &mut String) {
-    let class = format!("warning warning--{}", warning.severity().as_str());
+fn render_warning(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    let class = match metadata.discriminant() {
+        Some(discriminant) => format!("warning warning--{}", discriminant.value_as_str()),
+        None => "warning".to_string(),
+    };
+
     render_object_section_open(knowledge_object, &class, html);
-    render_object_header(
-        knowledge_object,
-        Some(("severity", warning.severity().as_str())),
-        html,
-    );
+    render_object_header(knowledge_object, metadata.discriminant(), html);
     render_object_body(knowledge_object, html);
-    render_object_metadata(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
 }
 
-fn render_decision(knowledge_object: &KnowledgeObject, decision: &Decision, html: &mut String) {
-    let class = if decision.verdict().is_some() {
+fn render_decision(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    let class = if accepted_decision_field(metadata).is_some() {
         "decision decision--accepted"
     } else {
         "decision"
     };
     render_object_section_open(knowledge_object, class, html);
-    render_object_header(
-        knowledge_object,
-        Some(("status", decision.status().as_str())),
-        html,
-    );
+    render_object_header(knowledge_object, metadata.discriminant(), html);
     render_object_body(knowledge_object, html);
-    if let Some(verdict) = decision.verdict() {
+    if let Some(decided_by) = accepted_decision_field(metadata) {
         html.push_str("<div class=\"decision__verdict\"><dl>");
         html.push_str("<div class=\"decision__verdict-item\"><dt>");
-        html.push_str(DECIDED_BY_FIELD);
+        html.push_str(decided_by.key());
         html.push_str("</dt><dd>");
-        html.push_str(&escape_html(verdict.decided_by().as_str()));
+        html.push_str(&escape_html(decided_by.value_as_str()));
         html.push_str("</dd></div>");
         html.push_str("</dl></div>\n");
     }
-    render_object_metadata(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
 }
 
-fn render_claim(knowledge_object: &KnowledgeObject, claim: &Claim, html: &mut String) {
-    let class = if claim.verification().is_some() {
+fn render_claim(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    let class = if has_claim_verification(metadata) {
         "claim claim--verified"
     } else {
         "claim"
     };
     render_object_section_open(knowledge_object, class, html);
-    render_object_header(
-        knowledge_object,
-        Some(("status", claim.status().as_str())),
-        html,
-    );
+    render_object_header(knowledge_object, metadata.discriminant(), html);
     render_object_body(knowledge_object, html);
 
-    if let Some(verification) = claim.verification() {
+    if let (Some(owner), Some(verified_at)) = (
+        claim_owner_field(metadata),
+        claim_verified_at_field(metadata),
+    ) {
         html.push_str("<div class=\"claim__verification\">\n");
         html.push_str("<dl>\n");
-        html.push_str("<div class=\"claim__verification-item\"><dt>owner</dt><dd>");
-        html.push_str(&escape_html(verification.owner().as_str()));
+        html.push_str("<div class=\"claim__verification-item\"><dt>");
+        html.push_str(owner.key());
+        html.push_str("</dt><dd>");
+        html.push_str(&escape_html(owner.value_as_str()));
         html.push_str("</dd></div>\n");
-        html.push_str("<div class=\"claim__verification-item\"><dt>verified_at</dt><dd>");
-        html.push_str(&escape_html(verification.verified_at().as_str()));
+        html.push_str("<div class=\"claim__verification-item\"><dt>");
+        html.push_str(verified_at.key());
+        html.push_str("</dt><dd>");
+        html.push_str(&escape_html(verified_at.value_as_str()));
         html.push_str("</dd></div>\n");
         html.push_str("</dl>\n");
         html.push_str("</div>\n");
 
         html.push_str("<div class=\"claim__evidence\">\n");
         html.push_str("<dl>\n");
-        for evidence in verification.evidence() {
+        for evidence in claim_evidence_fields(metadata) {
             render_evidence(evidence, html);
         }
         html.push_str("</dl>\n");
         html.push_str("</div>\n");
     }
 
-    render_object_metadata(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
+}
+
+fn has_claim_verification(metadata: &KnowledgeObjectMetadata<'_>) -> bool {
+    claim_owner_field(metadata).is_some()
+}
+
+fn claim_owner_field<'a>(
+    metadata: &'a KnowledgeObjectMetadata<'a>,
+) -> Option<&'a MetadataField<'a>> {
+    metadata
+        .fields()
+        .iter()
+        .find(|field| matches!(field, MetadataField::Owner(_)))
+}
+
+fn claim_verified_at_field<'a>(
+    metadata: &'a KnowledgeObjectMetadata<'a>,
+) -> Option<&'a MetadataField<'a>> {
+    metadata
+        .fields()
+        .iter()
+        .find(|field| matches!(field, MetadataField::VerifiedAt(_)))
+}
+
+fn claim_evidence_fields<'a>(
+    metadata: &'a KnowledgeObjectMetadata<'a>,
+) -> impl Iterator<Item = &'a Evidence> {
+    metadata.fields().iter().filter_map(|field| match field {
+        MetadataField::Evidence(evidence) => Some(*evidence),
+        _ => None,
+    })
+}
+
+fn accepted_decision_field<'a>(
+    metadata: &'a KnowledgeObjectMetadata<'a>,
+) -> Option<&'a MetadataField<'a>> {
+    metadata
+        .fields()
+        .iter()
+        .find(|field| matches!(field, MetadataField::DecidedBy(_)))
 }
 
 fn render_evidence(evidence: &Evidence, html: &mut String) {
@@ -215,7 +270,7 @@ fn render_object_section_open(
 
 fn render_object_header(
     knowledge_object: &KnowledgeObject,
-    discriminant: Option<(&str, &str)>,
+    discriminant: Option<MetadataDiscriminant<'_>>,
     html: &mut String,
 ) {
     let kind = knowledge_object.kind().as_str();
@@ -234,17 +289,24 @@ fn render_object_header(
     html.push_str(&escape_html(knowledge_object.id().as_str()));
     html.push_str("</code>");
 
-    if let Some((field, value)) = discriminant {
+    if let Some(discriminant) = discriminant {
         html.push_str("<span class=\"");
         html.push_str(kind);
         html.push_str("__");
-        html.push_str(field);
+        html.push_str(discriminant_field_name(discriminant));
         html.push_str("\">");
-        html.push_str(&escape_html(value));
+        html.push_str(&escape_html(discriminant.value_as_str()));
         html.push_str("</span>");
     }
 
     html.push_str("</header>\n");
+}
+
+fn discriminant_field_name(discriminant: MetadataDiscriminant<'_>) -> &'static str {
+    match discriminant {
+        MetadataDiscriminant::ClaimStatus(_) | MetadataDiscriminant::DecisionStatus(_) => "status",
+        MetadataDiscriminant::WarningSeverity(_) => "severity",
+    }
 }
 
 fn render_object_body(knowledge_object: &KnowledgeObject, html: &mut String) {
@@ -257,8 +319,12 @@ fn render_object_body(knowledge_object: &KnowledgeObject, html: &mut String) {
     html.push_str("</p></div>\n");
 }
 
-fn render_object_metadata(knowledge_object: &KnowledgeObject, html: &mut String) {
-    if knowledge_object.fields().is_empty() && knowledge_object.relations().is_empty() {
+fn render_object_metadata(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    if !has_stored_metadata_fields(metadata) && knowledge_object.relations().is_empty() {
         return;
     }
 
@@ -266,14 +332,25 @@ fn render_object_metadata(knowledge_object: &KnowledgeObject, html: &mut String)
     html.push_str("<footer class=\"");
     html.push_str(kind);
     html.push_str("__metadata\">\n");
-    render_metadata_fields(knowledge_object, html);
+    render_metadata_fields(metadata, html);
     render_relations(kind, knowledge_object.relations(), html);
     html.push_str("</footer>\n");
 }
 
-fn render_metadata_fields(knowledge_object: &KnowledgeObject, html: &mut String) {
+fn has_stored_metadata_fields(metadata: &KnowledgeObjectMetadata<'_>) -> bool {
+    metadata
+        .fields()
+        .iter()
+        .any(|field| matches!(field, MetadataField::Stored { .. }))
+}
+
+fn render_metadata_fields(metadata: &KnowledgeObjectMetadata<'_>, html: &mut String) {
     let mut rendered_any = false;
-    knowledge_object.visit_metadata_fields(&mut |key: &str, value: &str| {
+    for field in metadata.fields() {
+        let MetadataField::Stored { key, value } = field else {
+            continue;
+        };
+
         if !rendered_any {
             html.push_str("<dl>\n");
             rendered_any = true;
@@ -283,7 +360,7 @@ fn render_metadata_fields(knowledge_object: &KnowledgeObject, html: &mut String)
         html.push_str("</dt><dd>");
         html.push_str(&escape_html(value));
         html.push_str("</dd>\n");
-    });
+    }
     if rendered_any {
         html.push_str("</dl>\n");
     }

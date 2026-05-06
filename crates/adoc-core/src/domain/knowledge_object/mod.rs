@@ -356,19 +356,6 @@ pub(crate) enum KnowledgeObject {
     Warning(Warning),
 }
 
-pub(crate) trait MetadataFieldVisitor {
-    fn visit_field(&mut self, key: &str, value: &str);
-}
-
-impl<F> MetadataFieldVisitor for F
-where
-    F: FnMut(&str, &str),
-{
-    fn visit_field(&mut self, key: &str, value: &str) {
-        self(key, value);
-    }
-}
-
 impl KnowledgeObject {
     pub(crate) fn kind(&self) -> BlockKind {
         match self {
@@ -432,12 +419,6 @@ impl KnowledgeObject {
             Self::Warning(warning) => warning.fields(),
         }
     }
-
-    pub(crate) fn visit_metadata_fields<V: MetadataFieldVisitor + ?Sized>(&self, visitor: &mut V) {
-        for (key, value) in self.fields().iter() {
-            visitor.visit_field(key, value);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -448,9 +429,7 @@ mod tests {
     use super::*;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
     use crate::domain::inline::InlineSegment;
-    use crate::domain::knowledge_object::claim::{
-        Claim, Evidence, NonEmpty, Owner, Verification, VerifiedAt,
-    };
+    use crate::domain::knowledge_object::claim::Claim;
     use crate::domain::knowledge_object::decision::{AcceptedVerdict, DecidedBy, Decision};
     use crate::domain::knowledge_object::glossary::Glossary;
     use crate::domain::knowledge_object::warning::Warning;
@@ -523,25 +502,6 @@ mod tests {
                 span("warning.adoc", 11, 1),
             )
             .expect("valid warning"),
-        )
-    }
-
-    fn verified_claim_object() -> KnowledgeObject {
-        KnowledgeObject::Claim(
-            Claim::try_new(
-                "billing.verified",
-                Some("verified"),
-                "Verified claim body.",
-                BTreeMap::from([("audience".to_string(), "support".to_string())]),
-                Some(Verification::new(
-                    Owner::try_new("team-billing").expect("owner"),
-                    VerifiedAt::try_new("2026-05-06").expect("verified_at"),
-                    NonEmpty::from_vec(vec![Evidence::source("ledger").expect("evidence")])
-                        .expect("non-empty evidence"),
-                )),
-                span("claim.adoc", 13, 1),
-            )
-            .expect("valid verified claim"),
         )
     }
 
@@ -664,46 +624,5 @@ mod tests {
 
             assert_eq!(object.body().to_source(), format!("{body} Extended."));
         }
-    }
-
-    #[test]
-    fn knowledge_object_metadata_visitor_walks_stored_fields_only_in_sorted_order() {
-        let glossary = KnowledgeObject::Glossary(
-            Glossary::try_new(
-                "billing.terms",
-                "Terms body.",
-                BTreeMap::from([
-                    ("zeta".to_string(), "last".to_string()),
-                    ("alpha".to_string(), "first".to_string()),
-                ]),
-                span("glossary.adoc", 17, 1),
-            )
-            .expect("valid glossary"),
-        );
-
-        let mut visited = Vec::new();
-        glossary.visit_metadata_fields(&mut |key: &str, value: &str| {
-            visited.push((key.to_string(), value.to_string()));
-        });
-
-        assert_eq!(
-            visited,
-            vec![
-                ("alpha".to_string(), "first".to_string()),
-                ("zeta".to_string(), "last".to_string()),
-            ]
-        );
-
-        let verified_claim = verified_claim_object();
-        let mut visited = Vec::new();
-        verified_claim.visit_metadata_fields(&mut |key: &str, value: &str| {
-            visited.push((key.to_string(), value.to_string()));
-        });
-
-        assert_eq!(
-            visited,
-            vec![("audience".to_string(), "support".to_string())],
-            "visitor must not reproject typed verification metadata"
-        );
     }
 }
