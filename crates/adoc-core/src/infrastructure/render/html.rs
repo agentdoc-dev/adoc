@@ -76,110 +76,64 @@ fn render_block(block: &BlockAst, html: &mut String) {
             html.push_str(&escape_html(&code_block.code));
             html.push_str("</code></pre>\n");
         }
-        BlockAst::KnowledgeObject(ko) => match ko.as_ref() {
-            KnowledgeObject::Claim(claim) => {
-                render_claim(claim, html);
-            }
-            KnowledgeObject::Decision(decision) => {
-                render_decision(decision, html);
-            }
-            KnowledgeObject::Glossary(glossary) => {
-                render_glossary(glossary, html);
-            }
-            KnowledgeObject::Warning(warning) => {
-                render_warning(warning, html);
-            }
-        },
+        BlockAst::KnowledgeObject(ko) => render_knowledge_object(ko, html),
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before rendering")
         }
     }
 }
 
-fn render_glossary(glossary: &Glossary, html: &mut String) {
-    html.push_str("<section class=\"glossary\" id=\"");
-    html.push_str(&escape_html(glossary.id().as_str()));
-    html.push_str("\">\n");
-    html.push_str("<header class=\"glossary__header\">");
-    html.push_str("<span class=\"glossary__kind\">glossary</span>");
-    html.push_str("<code class=\"glossary__id\">");
-    html.push_str(&escape_html(glossary.id().as_str()));
-    html.push_str("</code>");
-    html.push_str("</header>\n");
-    html.push_str("<div class=\"glossary__body\"><p>");
-    render_inlines(glossary.body().inlines(), html);
-    html.push_str("</p></div>\n");
-    render_glossary_metadata(glossary, html);
+fn render_knowledge_object(knowledge_object: &KnowledgeObject, html: &mut String) {
+    match knowledge_object {
+        KnowledgeObject::Claim(claim) => {
+            render_claim(knowledge_object, claim, html);
+        }
+        KnowledgeObject::Decision(decision) => {
+            render_decision(knowledge_object, decision, html);
+        }
+        KnowledgeObject::Glossary(glossary) => {
+            render_glossary(knowledge_object, glossary, html);
+        }
+        KnowledgeObject::Warning(warning) => {
+            render_warning(knowledge_object, warning, html);
+        }
+    }
+}
+
+fn render_glossary(knowledge_object: &KnowledgeObject, _glossary: &Glossary, html: &mut String) {
+    render_object_section_open(knowledge_object, "glossary", html);
+    render_object_header(knowledge_object, None, html);
+    render_object_body(knowledge_object, html);
+    render_object_metadata(knowledge_object, html);
     html.push_str("</section>\n");
 }
 
-fn render_glossary_metadata(glossary: &Glossary, html: &mut String) {
-    if glossary.fields().is_empty() && glossary.relations().is_empty() {
-        return;
-    }
-
-    html.push_str("<footer class=\"glossary__metadata\">\n");
-    render_metadata_fields(glossary.fields().iter(), html);
-    render_relations("glossary", glossary.relations(), html);
-    html.push_str("</footer>\n");
-}
-
-fn render_warning(warning: &Warning, html: &mut String) {
-    html.push_str("<section class=\"warning warning--");
-    html.push_str(warning.severity().as_str());
-    html.push_str("\" id=\"");
-    html.push_str(&escape_html(warning.id().as_str()));
-    html.push_str("\">\n");
-    html.push_str("<header class=\"warning__header\">");
-    html.push_str("<span class=\"warning__kind\">warning</span>");
-    html.push_str("<code class=\"warning__id\">");
-    html.push_str(&escape_html(warning.id().as_str()));
-    html.push_str("</code>");
-    html.push_str("<span class=\"warning__severity\">");
-    html.push_str(&escape_html(warning.severity().as_str()));
-    html.push_str("</span>");
-    html.push_str("</header>\n");
-    html.push_str("<div class=\"warning__body\"><p>");
-    render_inlines(warning.body().inlines(), html);
-    html.push_str("</p></div>\n");
-    render_warning_metadata(warning, html);
+fn render_warning(knowledge_object: &KnowledgeObject, warning: &Warning, html: &mut String) {
+    let class = format!("warning warning--{}", warning.severity().as_str());
+    render_object_section_open(knowledge_object, &class, html);
+    render_object_header(
+        knowledge_object,
+        Some(("severity", warning.severity().as_str())),
+        html,
+    );
+    render_object_body(knowledge_object, html);
+    render_object_metadata(knowledge_object, html);
     html.push_str("</section>\n");
 }
 
-fn render_warning_metadata(warning: &Warning, html: &mut String) {
-    if warning.fields().is_empty() && warning.relations().is_empty() {
-        return;
-    }
-
-    html.push_str("<footer class=\"warning__metadata\">\n");
-    render_metadata_fields(warning.fields().iter(), html);
-    render_relations("warning", warning.relations(), html);
-    html.push_str("</footer>\n");
-}
-
-fn render_decision(decision: &Decision, html: &mut String) {
+fn render_decision(knowledge_object: &KnowledgeObject, decision: &Decision, html: &mut String) {
     let class = if decision.verdict().is_some() {
         "decision decision--accepted"
     } else {
         "decision"
     };
-    html.push_str("<section class=\"");
-    html.push_str(class);
-    html.push_str("\" id=\"");
-    html.push_str(&escape_html(decision.id().as_str()));
-    html.push_str("\">\n");
-    html.push_str("<header class=\"decision__header\">");
-    html.push_str("<span class=\"decision__kind\">decision</span>");
-    html.push_str("<code class=\"decision__id\">");
-    html.push_str(&escape_html(decision.id().as_str()));
-    html.push_str("</code>");
-    html.push_str("<span class=\"decision__status\">");
-    html.push_str(&escape_html(decision.status().as_str()));
-    html.push_str("</span>");
-    html.push_str("</header>\n");
-    html.push_str("<div class=\"decision__body\"><p>");
-    render_inlines(decision.body().inlines(), html);
-    html.push_str("</p></div>\n");
+    render_object_section_open(knowledge_object, class, html);
+    render_object_header(
+        knowledge_object,
+        Some(("status", decision.status().as_str())),
+        html,
+    );
+    render_object_body(knowledge_object, html);
     if let Some(verdict) = decision.verdict() {
         html.push_str("<div class=\"decision__verdict\"><dl>");
         html.push_str("<div class=\"decision__verdict-item\"><dt>");
@@ -189,44 +143,23 @@ fn render_decision(decision: &Decision, html: &mut String) {
         html.push_str("</dd></div>");
         html.push_str("</dl></div>\n");
     }
-    render_decision_metadata(decision, html);
+    render_object_metadata(knowledge_object, html);
     html.push_str("</section>\n");
 }
 
-fn render_decision_metadata(decision: &Decision, html: &mut String) {
-    if decision.fields().is_empty() && decision.relations().is_empty() {
-        return;
-    }
-
-    html.push_str("<footer class=\"decision__metadata\">\n");
-    render_metadata_fields(decision.fields().iter(), html);
-    render_relations("decision", decision.relations(), html);
-    html.push_str("</footer>\n");
-}
-
-fn render_claim(claim: &Claim, html: &mut String) {
+fn render_claim(knowledge_object: &KnowledgeObject, claim: &Claim, html: &mut String) {
     let class = if claim.verification().is_some() {
         "claim claim--verified"
     } else {
         "claim"
     };
-    html.push_str("<section class=\"");
-    html.push_str(class);
-    html.push_str("\" id=\"");
-    html.push_str(&escape_html(claim.id().as_str()));
-    html.push_str("\">\n");
-    html.push_str("<header class=\"claim__header\">");
-    html.push_str("<span class=\"claim__kind\">claim</span>");
-    html.push_str("<code class=\"claim__id\">");
-    html.push_str(&escape_html(claim.id().as_str()));
-    html.push_str("</code>");
-    html.push_str("<span class=\"claim__status\">");
-    html.push_str(&escape_html(claim.status().as_str()));
-    html.push_str("</span>");
-    html.push_str("</header>\n");
-    html.push_str("<div class=\"claim__body\"><p>");
-    render_inlines(claim.body().inlines(), html);
-    html.push_str("</p></div>\n");
+    render_object_section_open(knowledge_object, class, html);
+    render_object_header(
+        knowledge_object,
+        Some(("status", claim.status().as_str())),
+        html,
+    );
+    render_object_body(knowledge_object, html);
 
     if let Some(verification) = claim.verification() {
         html.push_str("<div class=\"claim__verification\">\n");
@@ -249,7 +182,7 @@ fn render_claim(claim: &Claim, html: &mut String) {
         html.push_str("</div>\n");
     }
 
-    render_claim_metadata(claim, html);
+    render_object_metadata(knowledge_object, html);
     html.push_str("</section>\n");
 }
 
@@ -268,23 +201,79 @@ fn render_evidence(evidence: &Evidence, html: &mut String) {
     html.push_str("</dd></div>\n");
 }
 
-fn render_claim_metadata(claim: &Claim, html: &mut String) {
-    if claim.fields().is_empty() && claim.relations().is_empty() {
+fn render_object_section_open(
+    knowledge_object: &KnowledgeObject,
+    class_name: &str,
+    html: &mut String,
+) {
+    html.push_str("<section class=\"");
+    html.push_str(class_name);
+    html.push_str("\" id=\"");
+    html.push_str(&escape_html(knowledge_object.id().as_str()));
+    html.push_str("\">\n");
+}
+
+fn render_object_header(
+    knowledge_object: &KnowledgeObject,
+    discriminant: Option<(&str, &str)>,
+    html: &mut String,
+) {
+    let kind = knowledge_object.kind().as_str();
+
+    html.push_str("<header class=\"");
+    html.push_str(kind);
+    html.push_str("__header\">");
+    html.push_str("<span class=\"");
+    html.push_str(kind);
+    html.push_str("__kind\">");
+    html.push_str(kind);
+    html.push_str("</span>");
+    html.push_str("<code class=\"");
+    html.push_str(kind);
+    html.push_str("__id\">");
+    html.push_str(&escape_html(knowledge_object.id().as_str()));
+    html.push_str("</code>");
+
+    if let Some((field, value)) = discriminant {
+        html.push_str("<span class=\"");
+        html.push_str(kind);
+        html.push_str("__");
+        html.push_str(field);
+        html.push_str("\">");
+        html.push_str(&escape_html(value));
+        html.push_str("</span>");
+    }
+
+    html.push_str("</header>\n");
+}
+
+fn render_object_body(knowledge_object: &KnowledgeObject, html: &mut String) {
+    let kind = knowledge_object.kind().as_str();
+
+    html.push_str("<div class=\"");
+    html.push_str(kind);
+    html.push_str("__body\"><p>");
+    render_inlines(knowledge_object.body().inlines(), html);
+    html.push_str("</p></div>\n");
+}
+
+fn render_object_metadata(knowledge_object: &KnowledgeObject, html: &mut String) {
+    if knowledge_object.fields().is_empty() && knowledge_object.relations().is_empty() {
         return;
     }
 
-    html.push_str("<footer class=\"claim__metadata\">\n");
-    render_metadata_fields(claim.fields().iter(), html);
-    render_relations("claim", claim.relations(), html);
+    let kind = knowledge_object.kind().as_str();
+    html.push_str("<footer class=\"");
+    html.push_str(kind);
+    html.push_str("__metadata\">\n");
+    render_metadata_fields(knowledge_object, html);
+    render_relations(kind, knowledge_object.relations(), html);
     html.push_str("</footer>\n");
 }
 
-fn render_metadata_fields<'a>(
-    fields: impl Iterator<Item = (&'a String, &'a String)>,
-    html: &mut String,
-) {
+fn render_metadata_fields(knowledge_object: &KnowledgeObject, html: &mut String) {
     let mut rendered_any = false;
-    for (key, value) in fields {
+    knowledge_object.visit_metadata_fields(&mut |key: &str, value: &str| {
         if !rendered_any {
             html.push_str("<dl>\n");
             rendered_any = true;
@@ -294,7 +283,7 @@ fn render_metadata_fields<'a>(
         html.push_str("</dt><dd>");
         html.push_str(&escape_html(value));
         html.push_str("</dd>\n");
-    }
+    });
     if rendered_any {
         html.push_str("</dl>\n");
     }

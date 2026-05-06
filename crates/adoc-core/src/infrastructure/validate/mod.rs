@@ -21,7 +21,6 @@ use knowledge_object_unique_ids::KnowledgeObjectUniqueIds;
 use crate::domain::ast::{BlockAst, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::inline::InlineSegment;
-use crate::domain::knowledge_object::KnowledgeObject;
 use crate::domain::rules::{ValidationRule, WorkspaceRule};
 use crate::domain::scan::raw_html::find_raw_html;
 use crate::domain::source::SourceFile;
@@ -153,18 +152,7 @@ impl ValidationRule for KnowledgeObjectBodyUnsafeLinksForbidden {
             let BlockAst::KnowledgeObject(knowledge_object) = block else {
                 continue;
             };
-            match knowledge_object.as_ref() {
-                KnowledgeObject::Claim(claim) => check_inlines(claim.body().inlines(), sink),
-                KnowledgeObject::Decision(decision) => {
-                    check_inlines(decision.body().inlines(), sink);
-                }
-                KnowledgeObject::Glossary(glossary) => {
-                    check_inlines(glossary.body().inlines(), sink);
-                }
-                KnowledgeObject::Warning(warning) => {
-                    check_inlines(warning.body().inlines(), sink);
-                }
-            }
+            check_inlines(knowledge_object.body().inlines(), sink);
         }
     }
 }
