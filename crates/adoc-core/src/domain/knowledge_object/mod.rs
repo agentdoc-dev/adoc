@@ -51,7 +51,6 @@ pub(crate) enum BlockKind {
 }
 
 impl BlockKind {
-    #[cfg(test)]
     pub(crate) const ALL: &'static [Self] =
         &[Self::Claim, Self::Decision, Self::Glossary, Self::Warning];
 
@@ -65,13 +64,7 @@ impl BlockKind {
     }
 
     pub(crate) fn from_fence_word(word: &str) -> Option<Self> {
-        match word {
-            "claim" => Some(Self::Claim),
-            "decision" => Some(Self::Decision),
-            "glossary" => Some(Self::Glossary),
-            "warning" => Some(Self::Warning),
-            _ => None,
-        }
+        Self::ALL.iter().copied().find(|kind| kind.as_str() == word)
     }
 }
 

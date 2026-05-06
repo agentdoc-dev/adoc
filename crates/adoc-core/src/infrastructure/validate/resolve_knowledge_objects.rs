@@ -15,8 +15,7 @@ use crate::domain::knowledge_object::{
 };
 use crate::domain::source::SourceFile;
 
-const UNKNOWN_KIND_HELP: &str = "supported kinds: claim, decision, glossary, warning. Kinds \
-    procedure, example, agent, policy, contradiction, source, and custom schemas are deferred.";
+const UNKNOWN_KIND_DEFERRED_HELP: &str = "Kinds procedure, example, agent, policy, contradiction, source, and custom schemas are deferred.";
 
 /// Drop field/body-shape diagnostics from grammar-valid unsupported kinds.
 /// The resolver owns kind support, so unsupported typed blocks are opaque
@@ -122,13 +121,22 @@ fn unknown_kind_diagnostic(parsed: &crate::domain::ast::ParsedTypedBlock) -> Dia
         format!("unknown typed-block kind `{}`", parsed.kind_word),
     )
     .with_span(parsed.kind_word_span.clone())
-    .with_help(UNKNOWN_KIND_HELP);
+    .with_help(unknown_kind_help());
 
     if ObjectId::new(parsed.id_text.clone()).is_ok() {
         diagnostic = diagnostic.with_object_id(&parsed.id_text);
     }
 
     diagnostic
+}
+
+fn unknown_kind_help() -> String {
+    let supported = BlockKind::ALL
+        .iter()
+        .map(|kind| kind.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("supported kinds: {supported}. {UNKNOWN_KIND_DEFERRED_HELP}")
 }
 
 #[cfg(test)]
@@ -354,11 +362,12 @@ mod tests {
         assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaUnknownKind);
         assert_eq!(diagnostics[0].span.as_ref(), Some(&span()));
         assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.policy"));
+        let expected_help = unknown_kind_help();
         assert!(
             diagnostics[0]
                 .help
                 .as_deref()
-                .is_some_and(|help| help == UNKNOWN_KIND_HELP)
+                .is_some_and(|help| help == expected_help.as_str())
         );
         assert!(pairs[0].1.blocks.is_empty());
     }
@@ -387,6 +396,24 @@ mod tests {
             "invalid id text must not be attached as object_id"
         );
         assert!(pairs[0].1.blocks.is_empty());
+    }
+
+    #[test]
+    fn unknown_kind_help_lists_supported_kinds_from_registry() {
+        let help = unknown_kind_help();
+
+        assert_eq!(
+            help,
+            "supported kinds: claim, decision, glossary, warning. Kinds \
+            procedure, example, agent, policy, contradiction, source, and custom schemas are deferred."
+        );
+        for kind in BlockKind::ALL {
+            assert!(
+                help.contains(kind.as_str()),
+                "help must mention supported kind `{}`: {help}",
+                kind.as_str()
+            );
+        }
     }
 
     #[test]
