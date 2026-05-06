@@ -184,6 +184,7 @@ pub enum DiagnosticCode {
     IdInvalid,
     RefBroken,
     IoUnreadableFile,
+    IoUnreadableDirectory,
     IoUnsupportedSourceExtension,
 }
 ```
@@ -194,7 +195,7 @@ Diagnostic guidance:
 - Use grouped semantic diagnostic codes, not numeric codes, in V0.
 - Prefer fix-oriented messages.
 - Include `object_id` when a diagnostic belongs to a Knowledge Object.
-- V0 includes diagnostics for raw HTML, unsafe links, unreadable files, unsupported single-file source extensions, malformed fences, malformed page annotations, malformed typed blocks, duplicate IDs, missing fields, invalid verified claims, unknown object types, invalid Object IDs, and broken references.
+- V0 includes diagnostics for raw HTML, unsafe links, unreadable files, unreadable directories, unsupported single-file source extensions, malformed fences, malformed page annotations, malformed typed blocks, duplicate IDs, missing fields, invalid verified claims, unknown object types, invalid Object IDs, and broken references.
 
 Initial diagnostic code examples:
 
@@ -210,6 +211,7 @@ Initial diagnostic code examples:
 - `ref.broken`
 - `claim.verified_missing_evidence`
 - `io.unreadable_file`
+- `io.unreadable_directory`
 - `io.unsupported_source_extension`
 - `io.output_not_directory`
 

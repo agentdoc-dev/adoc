@@ -103,6 +103,14 @@ fn load_error_diagnostic(load_error: SourceLoadError) -> Diagnostic {
                 load_error.message,
             ),
         ),
+        SourceLoadErrorKind::UnreadableDirectory => Diagnostic::error(
+            DiagnosticCode::IoUnreadableDirectory,
+            format!(
+                "could not read AgentDoc Source directory {}: {}",
+                load_error.path.display(),
+                load_error.message,
+            ),
+        ),
         SourceLoadErrorKind::UnsupportedSourceExtension => Diagnostic::error(
             DiagnosticCode::IoUnsupportedSourceExtension,
             format!(
@@ -268,6 +276,23 @@ mod tests {
         assert!(parsed.is_empty());
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::IoUnreadableFile);
+    }
+
+    #[test]
+    fn load_error_diagnostic_maps_unreadable_directory_to_io_diagnostic() {
+        let diagnostic = load_error_diagnostic(SourceLoadError::unreadable_directory(
+            PathBuf::from("/work/blocked"),
+            "permission denied",
+        ));
+
+        assert_eq!(diagnostic.code, DiagnosticCode::IoUnreadableDirectory);
+        assert_eq!(diagnostic.severity, Severity::Error);
+        assert!(
+            diagnostic
+                .message
+                .contains("could not read AgentDoc Source directory /work/blocked")
+        );
+        assert!(diagnostic.message.contains("permission denied"));
     }
 
     #[test]

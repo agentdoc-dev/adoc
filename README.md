@@ -268,6 +268,7 @@ Examples:
 - raw HTML emits `error[parse.raw_html]`
 - unsafe links emit `error[parse.unsafe_link]`
 - broken object references and relation targets emit `error[ref.broken]`
+- unreadable directories emit `error[io.unreadable_directory]`
 - unsupported single-file source extensions emit `error[io.unsupported_source_extension]`
 
 `adoc build` writes `docs.html` and `docs.agent.json` only when there are no error diagnostics.

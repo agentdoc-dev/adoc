@@ -75,6 +75,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::IdInvalid;
     let _ = DiagnosticCode::RefBroken;
     let _ = DiagnosticCode::IoUnreadableFile;
+    let _ = DiagnosticCode::IoUnreadableDirectory;
     let _ = DiagnosticCode::IoUnsupportedSourceExtension;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
@@ -100,6 +101,10 @@ fn public_surface_compiles_with_only_documented_imports() {
     );
     assert_eq!(DiagnosticCode::IdDuplicate.as_str(), "id.duplicate");
     assert_eq!(DiagnosticCode::RefBroken.as_str(), "ref.broken");
+    assert_eq!(
+        DiagnosticCode::IoUnreadableDirectory.as_str(),
+        "io.unreadable_directory"
+    );
     assert_eq!(
         DiagnosticCode::ParseNestedTypedBlock.as_str(),
         "parse.nested_typed_block"

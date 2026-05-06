@@ -15,8 +15,9 @@ pub(crate) trait SourceProvider {
 /// Reported by a [`SourceProvider`] when a single source cannot be loaded.
 ///
 /// `compile_workspace` translates each error into an I/O diagnostic; ordinary
-/// read failures remain `io.unreadable_file`, while provider-classified source
-/// contract failures can map to a narrower diagnostic code.
+/// read failures remain `io.unreadable_file`, directory traversal failures map
+/// to `io.unreadable_directory`, and provider-classified source contract
+/// failures can map to a narrower diagnostic code.
 #[derive(Debug, Clone)]
 pub(crate) struct SourceLoadError {
     pub path: PathBuf,
@@ -33,6 +34,14 @@ impl SourceLoadError {
         }
     }
 
+    pub(crate) fn unreadable_directory(path: PathBuf, message: impl Into<String>) -> Self {
+        Self {
+            path,
+            message: message.into(),
+            kind: SourceLoadErrorKind::UnreadableDirectory,
+        }
+    }
+
     pub(crate) fn unsupported_source_extension(path: PathBuf) -> Self {
         Self {
             path,
@@ -45,5 +54,6 @@ impl SourceLoadError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SourceLoadErrorKind {
     Unreadable,
+    UnreadableDirectory,
     UnsupportedSourceExtension,
 }
