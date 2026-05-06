@@ -1,0 +1,10 @@
+# Broken Relation @doc(team.relation-broken)
+
+Broken relation targets fail check and block build artifacts.
+
+::claim billing.refunds
+status: draft
+depends_on: missing.object
+--
+Refund workflows depend on knowledge that has not been declared.
+::

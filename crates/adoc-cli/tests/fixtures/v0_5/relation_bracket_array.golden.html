@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentDoc</title>
+</head>
+<body>
+<article data-page-id="team.relation-bracket-array">
+<h1>Relation Bracket Array</h1>
+<p>Bracket relation arrays preserve ordered object links.</p>
+<section class="glossary" id="billing.credits">
+<header class="glossary__header"><span class="glossary__kind">glossary</span><code class="glossary__id">billing.credits</code></header>
+<div class="glossary__body"><p>Credits are balance adjustments that reduce future invoices.</p></div>
+</section>
+<section class="claim" id="billing.ledger">
+<header class="claim__header"><span class="claim__kind">claim</span><code class="claim__id">billing.ledger</code><span class="claim__status">draft</span></header>
+<div class="claim__body"><p>The ledger records every account balance movement.</p></div>
+</section>
+<section class="claim" id="billing.refunds">
+<header class="claim__header"><span class="claim__kind">claim</span><code class="claim__id">billing.refunds</code><span class="claim__status">draft</span></header>
+<div class="claim__body"><p>Refund workflows depend on both credit semantics and ledger entries.</p></div>
+<footer class="claim__metadata">
+<section class="claim__relations"><dl>
+<dt>depends_on</dt><dd><a class="object-ref" href="#billing.credits">billing.credits</a>, <a class="object-ref" href="#billing.ledger">billing.ledger</a></dd>
+</dl></section>
+</footer>
+</section>
+</article>
+</body>
+</html>

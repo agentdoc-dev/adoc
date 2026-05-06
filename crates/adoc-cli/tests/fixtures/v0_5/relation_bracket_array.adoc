@@ -1,0 +1,21 @@
+# Relation Bracket Array @doc(team.relation-bracket-array)
+
+Bracket relation arrays preserve ordered object links.
+
+::glossary billing.credits
+--
+Credits are balance adjustments that reduce future invoices.
+::
+
+::claim billing.ledger
+status: draft
+--
+The ledger records every account balance movement.
+::
+
+::claim billing.refunds
+status: draft
+depends_on: [billing.credits, billing.ledger]
+--
+Refund workflows depend on both credit semantics and ledger entries.
+::
