@@ -7,6 +7,7 @@
 //! rules run in the validation pass per ADR-0007.
 
 mod builders;
+mod inline;
 mod state;
 mod typed_block;
 
@@ -16,7 +17,7 @@ use state::ParseState;
 use crate::domain::ast::{BlockAst, HeadingAst, ListKind, PageAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::{ObjectId, PageId};
-use crate::domain::inline::{self, InlineOrigin};
+use crate::domain::inline::{self as domain_inline, InlineOrigin};
 use crate::domain::source::{DerivedPageIdError, SourceFile, derive_page_id};
 
 /// Per-line context handed to each block-kind consumer.
@@ -286,7 +287,7 @@ fn consume_heading(
     let is_first_page_heading = heading.level == 1 && !*has_seen_page_heading;
     if is_first_page_heading {
         *has_seen_page_heading = true;
-        page.title = Some(inline::plain_text(&inlines));
+        page.title = Some(domain_inline::plain_text(&inlines));
         if let Some(doc_id) = heading.doc_id.clone() {
             page.id = PageId::new(doc_id);
         }
@@ -914,7 +915,7 @@ mod tests {
             .expect("paragraph block exists");
 
         assert_eq!(
-            inline::plain_text(&paragraph.inlines),
+            domain_inline::plain_text(&paragraph.inlines),
             "Café first second line"
         );
         assert_eq!(paragraph.span.start.line, 3);
