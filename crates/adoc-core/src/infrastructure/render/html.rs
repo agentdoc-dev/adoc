@@ -340,6 +340,16 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
             render_inlines(text, html);
             html.push_str("</a>");
         }
+        InlineSegment::ObjectReference { id, .. } => {
+            html.push_str("<a class=\"object-ref\" href=\"#");
+            html.push_str(&escape_html(id.as_str()));
+            html.push_str("\">");
+            html.push_str(&escape_html(id.as_str()));
+            html.push_str("</a>");
+        }
+        InlineSegment::ObjectReferencePending { .. } => {
+            unreachable!("object references must resolve before rendering")
+        }
     }
 }
 

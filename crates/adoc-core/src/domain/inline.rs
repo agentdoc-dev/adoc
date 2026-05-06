@@ -1,4 +1,5 @@
 use crate::domain::diagnostic::{Diagnostic, SourceSpan};
+use crate::domain::identity::ObjectId;
 use crate::domain::source::{LineCursor, SourceFile};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,6 +11,14 @@ pub(crate) enum InlineSegment {
     Link {
         text: Vec<InlineSegment>,
         url: String,
+        span: SourceSpan,
+    },
+    ObjectReferencePending {
+        raw_id: String,
+        span: SourceSpan,
+    },
+    ObjectReference {
+        id: ObjectId,
         span: SourceSpan,
     },
 }
@@ -80,6 +89,10 @@ pub(crate) fn parse_inlines(
             cursor += consumed;
             continue;
         }
+        if let Some(consumed) = scan_object_reference(text, cursor, origin, &mut output) {
+            cursor += consumed;
+            continue;
+        }
         if let Some(consumed) = scan_link(text, cursor, origin, &mut output) {
             cursor += consumed;
             continue;
@@ -137,8 +150,41 @@ fn append_plain_text(segments: &[InlineSegment], buffer: &mut String) {
                 append_plain_text(inner, buffer)
             }
             InlineSegment::Link { text, .. } => append_plain_text(text, buffer),
+            InlineSegment::ObjectReferencePending { raw_id, .. } => {
+                buffer.push_str("[[");
+                buffer.push_str(raw_id);
+                buffer.push_str("]]");
+            }
+            InlineSegment::ObjectReference { id, .. } => {
+                buffer.push_str("[[");
+                buffer.push_str(id.as_str());
+                buffer.push_str("]]");
+            }
         }
     }
+}
+
+fn scan_object_reference(
+    text: &str,
+    cursor: usize,
+    origin: InlineOrigin<'_>,
+    output: &mut ScannerOutput,
+) -> Option<usize> {
+    if !text[cursor..].starts_with("[[") {
+        return None;
+    }
+
+    let after_open = &text[cursor + 2..];
+    let close_offset = after_open.find("]]")?;
+    let raw_id = after_open[..close_offset].to_string();
+    let total_consumed = 2 + close_offset + 2;
+
+    let start_column = origin.column_after(&text[..cursor]);
+    let end_column = origin.column_after(&text[..cursor + total_consumed]);
+    let span = origin.span(start_column, end_column);
+
+    output.push_segment(InlineSegment::ObjectReferencePending { raw_id, span });
+    Some(total_consumed)
 }
 
 fn scan_link(
@@ -392,6 +438,65 @@ mod tests {
             "https://example.test",
         );
         assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_inlines_recognizes_pending_object_reference() {
+        let source = source_file("See [[billing.credits]] now.");
+        let origin = origin_for(&source, 1, 1);
+
+        let (segments, diagnostics) = parse_inlines("See [[billing.credits]] now.", origin);
+
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            segments,
+            vec![
+                InlineSegment::Text("See ".to_string()),
+                InlineSegment::ObjectReferencePending {
+                    raw_id: "billing.credits".to_string(),
+                    span: source.span_for_line_columns(1, 5, 24),
+                },
+                InlineSegment::Text(" now.".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_inlines_treats_unmatched_object_reference_as_literal() {
+        let (segments, diagnostics) = parse("See [[billing.credits now.");
+
+        assert!(diagnostics.is_empty());
+        assert_eq!(
+            segments,
+            vec![InlineSegment::Text(
+                "See [[billing.credits now.".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn parse_inlines_recognizes_object_reference_inside_emphasis_and_strong() {
+        let (segments, diagnostics) = parse("*[[billing.credits]]* and **[[auth.session]]**");
+
+        assert!(diagnostics.is_empty());
+        assert!(matches!(
+            &segments[0],
+            InlineSegment::Emphasis(inner)
+                if matches!(
+                    &inner[0],
+                    InlineSegment::ObjectReferencePending { raw_id, .. }
+                        if raw_id == "billing.credits"
+                )
+        ));
+        assert!(matches!(
+            &segments[2],
+            InlineSegment::Strong(inner)
+                if matches!(
+                    &inner[0],
+                    InlineSegment::ObjectReferencePending { raw_id, .. }
+                        if raw_id == "auth.session"
+                )
+        ));
     }
 
     #[test]
