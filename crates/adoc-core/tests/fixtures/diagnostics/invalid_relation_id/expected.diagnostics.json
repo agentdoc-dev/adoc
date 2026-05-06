@@ -1,0 +1,22 @@
+[
+  {
+    "code": "id.invalid",
+    "severity": "error",
+    "message": "invalid relation id `Missing.Object` in `depends_on` for `billing.refunds`: Object ID must be at least two lowercase kebab-case segments separated by '.'",
+    "span": {
+      "file": "tests/fixtures/diagnostics/invalid_relation_id/input/team/bad.adoc",
+      "start": {
+        "line": 3,
+        "column": 13,
+        "offset": 50
+      },
+      "end": {
+        "line": 3,
+        "column": 27,
+        "offset": 64
+      }
+    },
+    "object_id": "Missing.Object",
+    "help": "Object IDs must be lowercase dot-separated kebab-case segments with at least two segments (e.g. `billing.credits`). Allowed characters per segment: a-z, 0-9, and internal hyphens."
+  }
+]

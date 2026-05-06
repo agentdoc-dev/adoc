@@ -1,0 +1,22 @@
+[
+  {
+    "code": "parse.malformed_open_fence",
+    "severity": "error",
+    "message": "::claim block is missing a required id token",
+    "span": {
+      "file": "tests/fixtures/diagnostics/malformed_open_fence/input/team/bad.adoc",
+      "start": {
+        "line": 1,
+        "column": 1,
+        "offset": 0
+      },
+      "end": {
+        "line": 1,
+        "column": 8,
+        "offset": 7
+      }
+    },
+    "object_id": null,
+    "help": null
+  }
+]

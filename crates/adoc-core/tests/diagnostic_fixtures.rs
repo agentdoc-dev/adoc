@@ -67,6 +67,38 @@ fn page_id_invalid_path_derived_fixture_matches_expected_diagnostics() {
     DiagnosticFixture::new("page_id_invalid/path_derived").assert_matches_expected_diagnostics();
 }
 
+#[test]
+fn raw_html_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("diagnostics/raw_html").assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn malformed_open_fence_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("diagnostics/malformed_open_fence")
+        .assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn unknown_kind_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("diagnostics/unknown_kind").assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn broken_object_reference_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("diagnostics/broken_object_reference")
+        .assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn broken_relation_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("diagnostics/broken_relation").assert_matches_expected_diagnostics();
+}
+
+#[test]
+fn invalid_relation_id_fixture_matches_expected_diagnostics() {
+    DiagnosticFixture::new("diagnostics/invalid_relation_id").assert_matches_expected_diagnostics();
+}
+
 #[derive(Debug)]
 struct DiagnosticFixture {
     name: String,

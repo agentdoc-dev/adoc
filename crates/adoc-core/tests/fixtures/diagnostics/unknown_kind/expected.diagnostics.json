@@ -1,0 +1,22 @@
+[
+  {
+    "code": "schema.unknown_kind",
+    "severity": "error",
+    "message": "unknown typed-block kind `fact`",
+    "span": {
+      "file": "tests/fixtures/diagnostics/unknown_kind/input/team/bad.adoc",
+      "start": {
+        "line": 1,
+        "column": 3,
+        "offset": 2
+      },
+      "end": {
+        "line": 1,
+        "column": 7,
+        "offset": 6
+      }
+    },
+    "object_id": "billing.unknown",
+    "help": "supported kinds: claim, decision, glossary, warning. Kinds procedure, example, agent, policy, contradiction, source, and custom schemas are deferred."
+  }
+]

@@ -1,0 +1,22 @@
+[
+  {
+    "code": "parse.raw_html",
+    "severity": "error",
+    "message": "Raw HTML is not allowed in strict mode; write AgentDoc Source prose instead",
+    "span": {
+      "file": "tests/fixtures/diagnostics/raw_html/input/team/bad.adoc",
+      "start": {
+        "line": 1,
+        "column": 1,
+        "offset": 0
+      },
+      "end": {
+        "line": 1,
+        "column": 6,
+        "offset": 5
+      }
+    },
+    "object_id": null,
+    "help": null
+  }
+]
