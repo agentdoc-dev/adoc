@@ -48,22 +48,8 @@ impl Claim {
             return None;
         }
 
-        let relations = super::extract_relations(&mut parsed, diagnostics);
         let status_text = parsed.raw_fields.remove(STATUS_FIELD);
-        let optional_fields = std::mem::take(&mut parsed.raw_fields);
         let status_text = status_text.as_deref();
-
-        let status_is_exact_verified = status_text.map(trim_ascii_edges) == Some(VERIFIED_STATUS);
-
-        if status_is_exact_verified {
-            return Self::build_verified_from_parsed(
-                &parsed,
-                status_text,
-                optional_fields,
-                relations,
-                diagnostics,
-            );
-        }
 
         let (id, status, body) = match Self::parse_basics_from_parsed(&parsed, status_text) {
             Ok(basics) => basics,
@@ -72,6 +58,13 @@ impl Claim {
                 return None;
             }
         };
+
+        if status.is_verified() {
+            return Self::build_verified_from_parsed(parsed, id, status, body, diagnostics);
+        }
+
+        let relations = super::extract_relations(&mut parsed, diagnostics);
+        let optional_fields = std::mem::take(&mut parsed.raw_fields);
 
         match Self::from_parts(
             id,
@@ -207,21 +200,15 @@ impl Claim {
     }
 
     fn build_verified_from_parsed(
-        parsed: &ParsedTypedBlock,
-        status_text: Option<&str>,
-        optional_fields: BTreeMap<String, String>,
-        relations: Relations,
+        mut parsed: ParsedTypedBlock,
+        id: ObjectId,
+        status: ClaimStatus,
+        body: Body,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
-        let (id, status, body) = match Self::parse_basics_from_parsed(parsed, status_text) {
-            Ok(basics) => basics,
-            Err(error) => {
-                emit_claim_error(parsed, error, diagnostics);
-                return None;
-            }
-        };
-
-        let verification = build_verification(parsed, &optional_fields, diagnostics)?;
+        let verification = build_verification(&parsed, &parsed.raw_fields, diagnostics)?;
+        let relations = super::extract_relations(&mut parsed, diagnostics);
+        let optional_fields = std::mem::take(&mut parsed.raw_fields);
         let storage_fields = verified_claim_storage_fields(optional_fields);
 
         match Self::from_parts(
@@ -235,7 +222,7 @@ impl Claim {
         ) {
             Ok(claim) => Some(claim),
             Err(error) => {
-                emit_claim_error(parsed, error, diagnostics);
+                emit_claim_error(&parsed, error, diagnostics);
                 None
             }
         }

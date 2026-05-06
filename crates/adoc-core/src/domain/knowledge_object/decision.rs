@@ -45,9 +45,7 @@ impl Decision {
             return None;
         }
 
-        let relations = super::extract_relations(&mut parsed, diagnostics);
         let status_text = parsed.raw_fields.remove(STATUS_FIELD);
-        let optional_fields = std::mem::take(&mut parsed.raw_fields);
         let status_text = status_text.as_deref();
 
         let (id, status, body) = match Self::parse_basics_from_parsed(&parsed, status_text) {
@@ -58,19 +56,24 @@ impl Decision {
             }
         };
 
-        let (optional_fields, verdict) = if status.is_accepted() {
-            let Some(decided_by) = optional_fields
+        let verdict = if status.is_accepted() {
+            let Some(decided_by) = parsed
+                .raw_fields
                 .get(DECIDED_BY_FIELD)
                 .and_then(|value| DecidedBy::try_new(value))
             else {
                 diagnostics.push(missing_decided_by_diagnostic(&parsed));
                 return None;
             };
-            let mut storage_fields = optional_fields;
-            storage_fields.remove(DECIDED_BY_FIELD);
-            (storage_fields, Some(AcceptedVerdict::new(decided_by)))
+            Some(AcceptedVerdict::new(decided_by))
         } else {
-            (optional_fields, None)
+            None
+        };
+
+        let relations = super::extract_relations(&mut parsed, diagnostics);
+        let mut optional_fields = std::mem::take(&mut parsed.raw_fields);
+        if verdict.is_some() {
+            optional_fields.remove(DECIDED_BY_FIELD);
         };
 
         match Self::from_parts(
