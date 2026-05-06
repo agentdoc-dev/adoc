@@ -115,6 +115,8 @@ pub(super) fn try_open_typed_block(
     }
 
     let open_fence_span = source.span_for_line(line_number, line);
+    // The leading `::` owns columns 1-2; `is_fence_word` keeps `word` ASCII,
+    // so character count matches displayed source columns.
     let kind_word_span =
         source.span_for_line_columns(line_number, 3, 3 + word.chars().count() as u32);
     TypedBlockOpen::Opened(TypedBlockBuildingState {
@@ -141,6 +143,11 @@ fn is_fence_word(word: &str) -> bool {
         })
 }
 
+/// Silent nested-opener detector for active typed blocks.
+///
+/// This intentionally mirrors the opener's prefix/word extraction without
+/// emitting diagnostics. Grammar-invalid shapes like `::Fact-Cap` remain body
+/// text instead of becoming nested-block errors.
 fn looks_like_open_fence(line: &str) -> bool {
     let Some(after_colons) = line.strip_prefix("::") else {
         return false;
@@ -231,6 +238,8 @@ pub(super) fn consume_typed_block_line(
         TypedBlockPhase::ReadingBody => {
             if looks_like_open_fence(line) {
                 diagnostics.push(nested_typed_block_diagnostic(source, line_number, line));
+                // Preserve the line so close-fence recovery is unchanged; the
+                // error blocks artifact writes before this body text can emit.
                 state.body_lines.push(line.to_string());
                 state
                     .content_spans
