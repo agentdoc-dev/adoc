@@ -39,7 +39,7 @@ impl Glossary {
                 return None;
             }
         };
-        let Some(body) = super::body_from_parsed(&parsed) else {
+        let Some(body) = super::body_from_parsed(&parsed, diagnostics) else {
             emit_glossary_error(&parsed, GlossaryError::MissingBody, diagnostics);
             return None;
         };

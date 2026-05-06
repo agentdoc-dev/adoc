@@ -44,13 +44,14 @@ impl Warning {
         let optional_fields = std::mem::take(&mut parsed.raw_fields);
         let severity_text = severity_text.as_deref();
 
-        let (id, severity, body) = match Self::parse_basics_from_parsed(&parsed, severity_text) {
-            Ok(basics) => basics,
-            Err(error) => {
-                emit_warning_error(&parsed, error, diagnostics);
-                return None;
-            }
-        };
+        let (id, severity, body) =
+            match Self::parse_basics_from_parsed(&parsed, severity_text, diagnostics) {
+                Ok(basics) => basics,
+                Err(error) => {
+                    emit_warning_error(&parsed, error, diagnostics);
+                    return None;
+                }
+            };
 
         match Self::from_parts(
             id,
@@ -114,10 +115,11 @@ impl Warning {
     fn parse_basics_from_parsed(
         parsed: &ParsedTypedBlock,
         severity_text: Option<&str>,
+        diagnostics: &mut Vec<Diagnostic>,
     ) -> Result<(ObjectId, WarningSeverity, Body), WarningError> {
         let id = ObjectId::new(&parsed.id_text).map_err(WarningError::InvalidId)?;
         let severity = WarningSeverity::try_new(severity_text.unwrap_or(""))?;
-        let body = super::body_from_parsed(parsed).ok_or(WarningError::MissingBody)?;
+        let body = super::body_from_parsed(parsed, diagnostics).ok_or(WarningError::MissingBody)?;
         Ok((id, severity, body))
     }
 
