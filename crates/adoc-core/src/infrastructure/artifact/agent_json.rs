@@ -69,7 +69,12 @@ fn knowledge_object_to_agent_object(
 fn metadata_fields_to_agent(metadata_fields: &[MetadataField<'_>]) -> BTreeMap<String, String> {
     let mut fields = BTreeMap::new();
     for field in metadata_fields {
-        fields.insert(field.key().to_string(), field.value_as_str().to_string());
+        let previous = fields.insert(field.key().to_string(), field.value_as_str().to_string());
+        debug_assert!(
+            previous.is_none(),
+            "duplicate metadata field: {}",
+            field.key()
+        );
     }
     fields
 }
@@ -194,6 +199,24 @@ mod tests {
             source_path: PathBuf::from("sample.adoc"),
             blocks,
         }
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "duplicate metadata field")]
+    fn agent_json_duplicate_metadata_field_panics_in_debug_builds() {
+        let metadata_fields = [
+            MetadataField::Stored {
+                key: "owner",
+                value: "team-a",
+            },
+            MetadataField::Stored {
+                key: "owner",
+                value: "team-b",
+            },
+        ];
+
+        let _ = metadata_fields_to_agent(&metadata_fields);
     }
 
     #[test]
