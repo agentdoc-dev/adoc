@@ -1494,6 +1494,98 @@ fn build_renders_v0_4_core_object_set_to_golden_agent_json() {
 }
 
 #[test]
+fn check_rejects_unknown_typed_block_kind() {
+    let workspace = TestWorkspace::new("check-rejects-unknown-kind");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/unknown_kind.adoc"))
+        .expect("unknown_kind fixture is readable");
+    workspace.write("unknown_kind.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "unknown_kind.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected unknown kind to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("unknown_kind.adoc:5:3"),
+        "expected diagnostic on the unknown kind word, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("error[schema.unknown_kind]"),
+        "expected schema.unknown_kind diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("fact"),
+        "expected message to mention rejected kind, got:\n{stdout}"
+    );
+    assert!(stdout.contains("1 errors"));
+}
+
+#[test]
+fn check_rejects_nested_typed_block_in_fields() {
+    let workspace = TestWorkspace::new("check-rejects-nested-fields");
+    let fixture_contents =
+        fs::read_to_string(fixture_path("v0_4/nested_typed_block_in_fields.adoc"))
+            .expect("nested fields fixture is readable");
+    workspace.write("nested_typed_block_in_fields.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "nested_typed_block_in_fields.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected nested typed block in fields to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("nested_typed_block_in_fields.adoc:7:1"),
+        "expected diagnostic on the nested opener line, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("error[parse.nested_typed_block]"),
+        "expected parse.nested_typed_block diagnostic, got:\n{stdout}"
+    );
+    assert!(stdout.contains("1 errors"));
+}
+
+#[test]
+fn check_rejects_nested_typed_block_in_body() {
+    let workspace = TestWorkspace::new("check-rejects-nested-body");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/nested_typed_block_in_body.adoc"))
+        .expect("nested body fixture is readable");
+    workspace.write("nested_typed_block_in_body.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "nested_typed_block_in_body.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected nested typed block in body to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("nested_typed_block_in_body.adoc:9:1"),
+        "expected diagnostic on the nested opener line, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("error[parse.nested_typed_block]"),
+        "expected parse.nested_typed_block diagnostic, got:\n{stdout}"
+    );
+    assert!(stdout.contains("1 errors"));
+}
+
+#[test]
 fn check_rejects_glossary_with_missing_body() {
     let workspace = TestWorkspace::new("check-rejects-glossary-missing-body");
     let fixture_contents = fs::read_to_string(fixture_path("v0_4/glossary_missing_body.adoc"))

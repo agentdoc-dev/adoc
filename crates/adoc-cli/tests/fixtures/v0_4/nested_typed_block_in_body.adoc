@@ -1,0 +1,11 @@
+# Nested Body @doc(team.nested-body)
+
+V0 forbids nested typed blocks; they are deferred until V6.
+
+::claim billing.credits
+status: draft
+--
+The outer claim starts here.
+::warning auth.session
+The nested warning attempt remains body text.
+::

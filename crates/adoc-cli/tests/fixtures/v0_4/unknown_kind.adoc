@@ -1,0 +1,9 @@
+# Deferred Kinds @doc(team.deferred-kinds)
+
+V0 deferred kinds: procedure, example, agent, policy, contradiction, source, and custom schemas.
+
+::fact billing.policy
+status: draft
+--
+Fact blocks are deferred beyond the V0 Core Object Set.
+::

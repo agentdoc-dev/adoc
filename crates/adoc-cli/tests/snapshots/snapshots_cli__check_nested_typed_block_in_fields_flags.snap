@@ -1,0 +1,9 @@
+---
+source: crates/adoc-cli/tests/snapshots_cli.rs
+expression: combined
+---
+exit-success: false
+---stdout---
+nested_typed_block_in_fields.adoc:7:1: error[parse.nested_typed_block] nested typed block opener is not allowed inside a typed block
+1 errors, 0 warnings
+---stderr---

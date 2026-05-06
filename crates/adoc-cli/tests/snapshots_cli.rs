@@ -289,6 +289,39 @@ fn snapshot_check_passes_for_v0_4_core_object_set() {
 }
 
 #[test]
+fn snapshot_check_flags_unknown_kind() {
+    let combined = run_check_in_workspace(
+        "snap-check-unknown-kind",
+        "v0_4/unknown_kind.adoc",
+        "unknown_kind.adoc",
+    );
+
+    insta::assert_snapshot!("check_unknown_kind_flags", combined);
+}
+
+#[test]
+fn snapshot_check_flags_nested_typed_block_in_fields() {
+    let combined = run_check_in_workspace(
+        "snap-check-nested-fields",
+        "v0_4/nested_typed_block_in_fields.adoc",
+        "nested_typed_block_in_fields.adoc",
+    );
+
+    insta::assert_snapshot!("check_nested_typed_block_in_fields_flags", combined);
+}
+
+#[test]
+fn snapshot_check_flags_nested_typed_block_in_body() {
+    let combined = run_check_in_workspace(
+        "snap-check-nested-body",
+        "v0_4/nested_typed_block_in_body.adoc",
+        "nested_typed_block_in_body.adoc",
+    );
+
+    insta::assert_snapshot!("check_nested_typed_block_in_body_flags", combined);
+}
+
+#[test]
 fn snapshot_check_flags_glossary_missing_body() {
     let combined = run_check_in_workspace(
         "snap-check-glossary-missing-body",
