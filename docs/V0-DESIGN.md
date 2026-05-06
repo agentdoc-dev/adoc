@@ -341,12 +341,12 @@ Use the new billing policy.
 ::
 ```
 
-The compiler trims ASCII whitespace around each segment, ignores a trailing
-comma, deduplicates repeated targets while preserving first occurrence order,
-and emits `id.invalid` for malformed or empty interior segments. Relation
-targets that use valid Object ID grammar but do not resolve emit `ref.broken`.
-Relation fields are removed from ordinary object metadata before rendering and
-agent JSON emission.
+The compiler trims ASCII whitespace around each segment, ignores only a trailing
+empty segment from a final comma, deduplicates repeated targets while preserving
+first occurrence order, and emits `id.invalid` for malformed, leading empty, or
+interior empty segments. Relation targets that use valid Object ID grammar but
+do not resolve emit `ref.broken`. Relation fields are removed from ordinary
+object metadata before rendering and agent JSON emission.
 
 The first evidence fields for verified claims are:
 
