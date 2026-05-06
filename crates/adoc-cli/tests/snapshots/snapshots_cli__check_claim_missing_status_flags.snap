@@ -5,5 +5,7 @@ expression: combined
 exit-success: false
 ---stdout---
 claim_missing_status.adoc:3:1: error[schema.missing_field] claim is missing required field `status`
+  object_id: billing.credits
+  help: Claims require non-empty `status`.
 1 errors, 0 warnings
 ---stderr---
