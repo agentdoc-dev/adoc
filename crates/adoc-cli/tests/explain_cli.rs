@@ -129,8 +129,8 @@ fn explain_artifact_errors_exit_2() {
 }
 
 #[test]
-fn explain_format_json_is_rejected_for_tracer_3() {
-    let workspace = TestWorkspace::new("explain-json-rejected");
+fn explain_format_json_emits_retrieval_envelope() {
+    let workspace = TestWorkspace::new("explain-json-success");
     copy_valid_artifact(&workspace, "dist/docs.agent.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
@@ -144,7 +144,98 @@ fn explain_format_json_is_rejected_for_tracer_3() {
         .output()
         .expect("adoc explain runs");
 
-    assert_eq!(output.status.code(), Some(1));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("unsupported explain format: json"));
+    assert!(
+        output.status.success(),
+        "expected explain JSON to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "success JSON mode should not emit stderr diagnostics"
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["diagnostics"], serde_json::json!([]));
+    assert_eq!(value["records"][0]["id"], "billing.refunds.issue-credit");
+    assert_eq!(value["records"][0]["kind"], "claim");
+    assert_eq!(value["records"][0]["status"], "verified");
+    assert_eq!(value["records"][0]["owner"], "team-billing");
+    assert_eq!(
+        value["records"][0]["body"],
+        "Refund credits are issued from the ledger after approval."
+    );
+    assert_eq!(value["records"][0]["source"]["path"], "docs/refunds.adoc");
+    assert!(value["records"][0].get("match").is_none());
+    assert!(value["records"][0].get("retrieval").is_none());
+}
+
+#[test]
+fn explain_format_json_object_not_found_exits_3_with_envelope() {
+    let workspace = TestWorkspace::new("explain-json-not-found");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["explain", "billing.missing", "--format", "json"])
+        .output()
+        .expect("adoc explain runs");
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(
+        output.stderr.is_empty(),
+        "JSON diagnostics should be emitted in stdout envelope"
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["records"], serde_json::json!([]));
+    assert_eq!(
+        value["diagnostics"][0]["code"],
+        "retrieval.object_not_found"
+    );
+    assert_eq!(value["diagnostics"][0]["object_id"], "billing.missing");
+}
+
+#[test]
+fn explain_format_json_artifact_errors_exit_2_with_envelope() {
+    let workspace = TestWorkspace::new("explain-json-artifact-errors");
+    let cases = [
+        ("malformed_artifact.agent.json", "io.artifact_malformed"),
+        (
+            "unsupported_version.agent.json",
+            "schema.unsupported_version",
+        ),
+        ("duplicate_id.agent.json", "id.duplicate_in_artifact"),
+    ];
+
+    for (fixture, expected_code) in cases {
+        let artifact = fixture_path(&format!("v1_1_explain/{fixture}"));
+        let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+            .current_dir(&workspace.root)
+            .args([
+                "explain",
+                "billing.refunds.issue-credit",
+                "--artifact",
+                artifact.to_str().expect("fixture path is UTF-8"),
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("adoc explain runs");
+
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "expected artifact error exit for {fixture}"
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "JSON diagnostics should be emitted in stdout envelope for {fixture}"
+        );
+        let value: serde_json::Value =
+            serde_json::from_slice(&output.stdout).expect("stdout is JSON");
+        assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+        assert_eq!(value["records"], serde_json::json!([]));
+        assert_eq!(value["diagnostics"][0]["code"], expected_code);
+    }
 }

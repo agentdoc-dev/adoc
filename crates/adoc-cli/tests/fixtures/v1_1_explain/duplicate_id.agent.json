@@ -1,0 +1,61 @@
+{
+  "schema_version": "adoc.agent.v0",
+  "pages": [
+    {
+      "id": "billing.refunds",
+      "title": "Refunds",
+      "source_path": "docs/refunds.adoc"
+    }
+  ],
+  "objects": [
+    {
+      "id": "billing.refunds.issue-credit",
+      "kind": "claim",
+      "status": "verified",
+      "body": "Refund credits are issued from the ledger after approval.",
+      "page_id": "billing.refunds",
+      "source_span": {
+        "path": "docs/refunds.adoc",
+        "line": 12,
+        "column": 3
+      },
+      "fields": {
+        "owner": "team-billing",
+        "reviewed_by": "risk-team",
+        "source": "ledger-export",
+        "test": "cargo test refunds",
+        "verified_at": "2026-05-06"
+      },
+      "relations": {
+        "depends_on": [
+          "billing.credits.ledger-source"
+        ],
+        "supersedes": [
+          "billing.refunds.manual-credit"
+        ],
+        "related_to": [
+          "billing.refunds.audit-required"
+        ]
+      }
+    },
+    {
+      "id": "billing.refunds.issue-credit",
+      "kind": "claim",
+      "status": "verified",
+      "body": "Duplicate copy.",
+      "page_id": "billing.refunds",
+      "source_span": {
+        "path": "docs/refunds.adoc",
+        "line": 40,
+        "column": 1
+      },
+      "fields": {},
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    }
+  ],
+  "diagnostics": []
+}

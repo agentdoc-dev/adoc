@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use adoc_core::{
-    AgentJsonDocument, AgentJsonRelations, CompileInput, Diagnostic, DiagnosticCode,
-    RetrievalInput, RetrievalRecord, Severity, compile_workspace, explain_object,
-    load_retrieval_session,
+    AgentJsonDocument, AgentJsonRelations, CompileInput, Diagnostic, DiagnosticCode, ExplainResult,
+    RetrievalEnvelope, RetrievalInput, RetrievalRecord, Severity, compile_workspace,
+    explain_object, load_retrieval_session,
 };
 
 use crate::error::CliError;
@@ -29,7 +29,7 @@ fn run(arguments: Vec<String>) -> i32 {
             eprintln!("{error}");
             eprintln!("usage: adoc check <path>");
             eprintln!("       adoc build <path> --out <directory>");
-            eprintln!("       adoc explain <object-id> [--artifact <path>] [--format text]");
+            eprintln!("       adoc explain <object-id> [--artifact <path>] [--format text|json]");
             error.exit_code()
         }
     }
@@ -64,32 +64,35 @@ fn build(path: PathBuf, out: PathBuf) -> i32 {
 }
 
 fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
-    match format {
-        ExplainFormat::Text => {}
-    }
-
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact,
     });
     let session = match load_result.session {
         Some(session) => session,
         None => {
+            if format.is_json() {
+                return print_explain_json(RetrievalEnvelope::new(
+                    Vec::new(),
+                    load_result.diagnostics,
+                ))
+                .map_or_else(report, |()| 2);
+            }
             eprint_diagnostics(&load_result.diagnostics);
             return 2;
         }
     };
 
     let explain_result = explain_object(&session, &object_id);
-    if !explain_result.diagnostics.is_empty() {
+    let exit_code = explain_exit_code(&explain_result);
+
+    if format.is_json() {
+        return print_explain_json(RetrievalEnvelope::from(explain_result))
+            .map_or_else(report, |()| exit_code);
+    }
+
+    if exit_code != 0 {
         eprint_diagnostics(&explain_result.diagnostics);
-        if explain_result
-            .diagnostics
-            .iter()
-            .any(|diagnostic| diagnostic.code == DiagnosticCode::RetrievalObjectNotFound)
-        {
-            return 3;
-        }
-        return 2;
+        return exit_code;
     }
 
     for record in &explain_result.records {
@@ -97,6 +100,27 @@ fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
     }
 
     0
+}
+
+fn explain_exit_code(result: &ExplainResult) -> i32 {
+    if result
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::RetrievalObjectNotFound)
+    {
+        return 3;
+    }
+    if !result.diagnostics.is_empty() {
+        return 2;
+    }
+    0
+}
+
+fn print_explain_json(envelope: RetrievalEnvelope) -> Result<(), CliError> {
+    let text = serde_json::to_string_pretty(&envelope)
+        .map_err(|source| CliError::RetrievalJsonSerialize { source })?;
+    println!("{text}");
+    Ok(())
 }
 
 fn report(error: CliError) -> i32 {
@@ -280,6 +304,13 @@ enum Command {
 
 enum ExplainFormat {
     Text,
+    Json,
+}
+
+impl ExplainFormat {
+    fn is_json(&self) -> bool {
+        matches!(self, Self::Json)
+    }
 }
 
 fn parse_command(arguments: Vec<String>) -> Result<Command, CliError> {
@@ -328,6 +359,7 @@ fn parse_explain_command(arguments: &[String]) -> Result<Command, CliError> {
                 };
                 format = match value.as_str() {
                     "text" => ExplainFormat::Text,
+                    "json" => ExplainFormat::Json,
                     unsupported => {
                         return Err(CliError::UnsupportedExplainFormat {
                             format: unsupported.to_string(),

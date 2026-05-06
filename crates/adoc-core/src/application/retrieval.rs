@@ -5,6 +5,8 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::retrieval::{LookupIndex, RetrievalRecord};
 use crate::infrastructure::artifact::agent_json::read_agent_json_document;
 
+pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v0";
+
 #[derive(Debug, Clone)]
 pub struct RetrievalInput {
     pub artifact_path: PathBuf,
@@ -26,6 +28,29 @@ pub struct RetrievalSession {
 pub struct ExplainResult {
     pub records: Vec<RetrievalRecord>,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RetrievalEnvelope {
+    pub schema_version: &'static str,
+    pub records: Vec<RetrievalRecord>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl RetrievalEnvelope {
+    pub fn new(records: Vec<RetrievalRecord>, diagnostics: Vec<Diagnostic>) -> Self {
+        Self {
+            schema_version: RETRIEVAL_SCHEMA_VERSION,
+            records,
+            diagnostics,
+        }
+    }
+}
+
+impl From<ExplainResult> for RetrievalEnvelope {
+    fn from(result: ExplainResult) -> Self {
+        Self::new(result.records, result.diagnostics)
+    }
 }
 
 pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {
