@@ -67,6 +67,9 @@ fn collect_declared_ids(parsed: &[(SourceFile, PageAst)]) -> BTreeSet<ObjectId> 
             let BlockAst::KnowledgeObjectPending(pending) = block else {
                 continue;
             };
+            // Include grammar-valid pending IDs even when object construction
+            // later fails. That build error is more actionable and already
+            // blocks artifacts, so extra ref.broken cascades add noise.
             if let Ok(id) = ObjectId::new(pending.id_text.clone()) {
                 ids.insert(id);
             }
