@@ -1009,6 +1009,176 @@ fn compile_workspace_rejects_broken_relation_target() {
 }
 
 #[test]
+fn relation_cascade_decision_invalid_status_suppresses_relation_diagnostics() {
+    let workspace = TestWorkspace::new("relation-cascade-decision-invalid-status");
+    let source = workspace.write(
+        "decisions.adoc",
+        concat!(
+            "# Decisions @doc(team.decisions)\n",
+            "\n",
+            "::decision billing.policy\n",
+            "status: Accepted\n",
+            "depends_on: missing.object, BadTarget\n",
+            "--\n",
+            "Use the existing billing policy.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "invalid decision must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let codes: Vec<_> = result
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert_eq!(
+        codes,
+        [DiagnosticCode::SchemaInvalidStatus],
+        "invalid decision basics should suppress relation diagnostics: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn relation_cascade_warning_missing_severity_suppresses_relation_diagnostics() {
+    let workspace = TestWorkspace::new("relation-cascade-warning-missing-severity");
+    let source = workspace.write(
+        "warnings.adoc",
+        concat!(
+            "# Warnings @doc(team.warnings)\n",
+            "\n",
+            "::warning auth.session.clock-skew\n",
+            "depends_on: missing.object\n",
+            "--\n",
+            "Session clocks can drift.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "invalid warning must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let codes: Vec<_> = result
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert_eq!(
+        codes,
+        [DiagnosticCode::SchemaMissingField],
+        "missing warning severity should suppress relation diagnostics: {:?}",
+        result.diagnostics
+    );
+    assert!(result.diagnostics[0].message.contains("severity"));
+}
+
+#[test]
+fn relation_cascade_warning_invalid_severity_suppresses_relation_diagnostics() {
+    let workspace = TestWorkspace::new("relation-cascade-warning-invalid-severity");
+    let source = workspace.write(
+        "warnings.adoc",
+        concat!(
+            "# Warnings @doc(team.warnings)\n",
+            "\n",
+            "::warning auth.session.clock-skew\n",
+            "severity: Critical\n",
+            "depends_on: BadTarget\n",
+            "--\n",
+            "Session clocks can drift.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "invalid warning must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let codes: Vec<_> = result
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert_eq!(
+        codes,
+        [DiagnosticCode::SchemaInvalidStatus],
+        "invalid warning severity should suppress relation diagnostics: {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn relation_cascade_claim_missing_status_suppresses_relation_diagnostics() {
+    let workspace = TestWorkspace::new("relation-cascade-claim-missing-status");
+    let source = workspace.write(
+        "claims.adoc",
+        concat!(
+            "# Claims @doc(team.claims)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "depends_on: missing.object\n",
+            "--\n",
+            "Credits are balance adjustments.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "invalid claim must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let codes: Vec<_> = result
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert_eq!(
+        codes,
+        [DiagnosticCode::SchemaMissingField],
+        "missing claim status should suppress relation diagnostics: {:?}",
+        result.diagnostics
+    );
+    assert!(result.diagnostics[0].message.contains("status"));
+}
+
+#[test]
+fn relation_cascade_claim_invalid_id_suppresses_relation_id_diagnostic() {
+    let workspace = TestWorkspace::new("relation-cascade-claim-invalid-id");
+    let source = workspace.write(
+        "claims.adoc",
+        concat!(
+            "# Claims @doc(team.claims)\n",
+            "\n",
+            "::claim BillingCredits\n",
+            "status: draft\n",
+            "depends_on: BadTarget\n",
+            "--\n",
+            "Credits are balance adjustments.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "invalid claim must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(
+        result.diagnostics.len(),
+        1,
+        "invalid claim id should suppress relation id diagnostics: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(result.diagnostics[0].code, DiagnosticCode::IdInvalid);
+    assert_eq!(
+        result.diagnostics[0].object_id.as_deref(),
+        Some("BillingCredits")
+    );
+}
+
+#[test]
 fn compile_workspace_rejects_empty_interior_relation_segment() {
     let workspace = TestWorkspace::new("empty-interior-relation-segment");
     let source = workspace.write(

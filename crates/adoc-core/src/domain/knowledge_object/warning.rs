@@ -39,9 +39,7 @@ impl Warning {
             return None;
         }
 
-        let relations = super::extract_relations(&mut parsed, diagnostics);
         let severity_text = parsed.raw_fields.remove(SEVERITY_FIELD);
-        let optional_fields = std::mem::take(&mut parsed.raw_fields);
         let severity_text = severity_text.as_deref();
 
         let (id, severity, body) = match Self::parse_basics_from_parsed(&parsed, severity_text) {
@@ -51,6 +49,9 @@ impl Warning {
                 return None;
             }
         };
+
+        let relations = super::extract_relations(&mut parsed, diagnostics);
+        let optional_fields = std::mem::take(&mut parsed.raw_fields);
 
         match Self::from_parts(
             id,
