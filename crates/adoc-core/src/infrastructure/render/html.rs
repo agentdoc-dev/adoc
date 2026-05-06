@@ -1,7 +1,7 @@
 use crate::domain::ast::{BlockAst, ListKind, PageAst};
 use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
-    KnowledgeObject, Relations,
+    KnowledgeObject, RelationField, Relations,
     claim::{Claim, Evidence},
     decision::{DECIDED_BY_FIELD, Decision},
     glossary::Glossary,
@@ -308,14 +308,14 @@ fn render_relations(kind: &str, relations: &Relations, html: &mut String) {
     html.push_str("<section class=\"");
     html.push_str(kind);
     html.push_str("__relations\"><dl>\n");
-    render_relation_group("depends_on", relations.depends_on(), html);
-    render_relation_group("supersedes", relations.supersedes(), html);
-    render_relation_group("related_to", relations.related_to(), html);
+    for field in RelationField::ALL {
+        render_relation_group(field, relations.targets(field), html);
+    }
     html.push_str("</dl></section>\n");
 }
 
 fn render_relation_group(
-    label: &str,
+    field: RelationField,
     targets: &[crate::domain::knowledge_object::RelationTarget],
     html: &mut String,
 ) {
@@ -324,7 +324,7 @@ fn render_relation_group(
     }
 
     html.push_str("<dt>");
-    html.push_str(label);
+    html.push_str(field.as_str());
     html.push_str("</dt><dd>");
     for (index, target) in targets.iter().enumerate() {
         if index > 0 {
