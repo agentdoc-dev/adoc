@@ -18,9 +18,24 @@ use decision::Decision;
 use glossary::Glossary;
 use warning::Warning;
 
-pub(crate) const DEPENDS_ON_FIELD: &str = "depends_on";
-pub(crate) const SUPERSEDES_FIELD: &str = "supersedes";
-pub(crate) const RELATED_TO_FIELD: &str = "related_to";
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RelationField {
+    DependsOn,
+    Supersedes,
+    RelatedTo,
+}
+
+impl RelationField {
+    pub(crate) const ALL: [Self; 3] = [Self::DependsOn, Self::Supersedes, Self::RelatedTo];
+
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::DependsOn => "depends_on",
+            Self::Supersedes => "supersedes",
+            Self::RelatedTo => "related_to",
+        }
+    }
+}
 
 pub(super) fn reject_duplicate_fields(
     parsed: &ParsedTypedBlock,
@@ -83,16 +98,20 @@ impl Relations {
         Self::default()
     }
 
-    pub(crate) fn depends_on(&self) -> &[RelationTarget] {
-        &self.depends_on
+    pub(crate) fn targets(&self, field: RelationField) -> &[RelationTarget] {
+        match field {
+            RelationField::DependsOn => &self.depends_on,
+            RelationField::Supersedes => &self.supersedes,
+            RelationField::RelatedTo => &self.related_to,
+        }
     }
 
-    pub(crate) fn supersedes(&self) -> &[RelationTarget] {
-        &self.supersedes
-    }
-
-    pub(crate) fn related_to(&self) -> &[RelationTarget] {
-        &self.related_to
+    fn set_targets(&mut self, field: RelationField, targets: Vec<RelationTarget>) {
+        match field {
+            RelationField::DependsOn => self.depends_on = targets,
+            RelationField::Supersedes => self.supersedes = targets,
+            RelationField::RelatedTo => self.related_to = targets,
+        }
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -126,7 +145,8 @@ pub(super) fn extract_relations(
 ) -> Relations {
     let mut relations = Relations::empty();
 
-    for key in [DEPENDS_ON_FIELD, SUPERSEDES_FIELD, RELATED_TO_FIELD] {
+    for field in RelationField::ALL {
+        let key = field.as_str();
         let Some(value) = parsed.raw_fields.remove(key) else {
             continue;
         };
@@ -136,12 +156,7 @@ pub(super) fn extract_relations(
             .cloned()
             .unwrap_or_else(|| parsed.span.clone());
         let targets = parse_relation_targets(parsed, key, &value, &value_span, diagnostics);
-        match key {
-            DEPENDS_ON_FIELD => relations.depends_on = targets,
-            SUPERSEDES_FIELD => relations.supersedes = targets,
-            RELATED_TO_FIELD => relations.related_to = targets,
-            _ => unreachable!("relation key list is exhaustive"),
-        }
+        relations.set_targets(field, targets);
     }
 
     relations
@@ -360,5 +375,20 @@ mod tests {
                 BlockKind::Warning
             ]
         );
+    }
+
+    #[test]
+    fn relation_field_all_lists_every_supported_relation_field_in_source_order() {
+        assert_eq!(
+            RelationField::ALL,
+            [
+                RelationField::DependsOn,
+                RelationField::Supersedes,
+                RelationField::RelatedTo,
+            ]
+        );
+        assert_eq!(RelationField::DependsOn.as_str(), "depends_on");
+        assert_eq!(RelationField::Supersedes.as_str(), "supersedes");
+        assert_eq!(RelationField::RelatedTo.as_str(), "related_to");
     }
 }

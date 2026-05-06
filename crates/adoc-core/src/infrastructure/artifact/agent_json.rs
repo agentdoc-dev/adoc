@@ -6,7 +6,7 @@ use crate::domain::artifact::{
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::knowledge_object::{
-    KnowledgeObject, RelationTarget, Relations,
+    KnowledgeObject, RelationField, RelationTarget, Relations,
     claim::{
         Claim, Evidence, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
         VERIFIED_AT_FIELD,
@@ -158,9 +158,9 @@ fn claim_to_agent_object(claim: &Claim, page_id: &str) -> AgentJsonObject {
 
 fn relations_to_agent(relations: &Relations) -> AgentJsonRelations {
     AgentJsonRelations {
-        depends_on: relation_ids(relations.depends_on()),
-        supersedes: relation_ids(relations.supersedes()),
-        related_to: relation_ids(relations.related_to()),
+        depends_on: relation_ids(relations.targets(RelationField::DependsOn)),
+        supersedes: relation_ids(relations.targets(RelationField::Supersedes)),
+        related_to: relation_ids(relations.targets(RelationField::RelatedTo)),
     }
 }
 
