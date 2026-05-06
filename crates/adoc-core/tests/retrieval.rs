@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use adoc_core::{DiagnosticCode, RetrievalInput, explain_object, load_retrieval_session};
+use adoc_core::{
+    DiagnosticCode, RetrievalEnvelope, RetrievalInput, explain_object, load_retrieval_session,
+};
 
 fn fixture_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -74,6 +76,26 @@ fn explain_object_serializes_record_without_search_match_block() {
 
     assert!(value.get("match").is_none());
     assert!(value.get("retrieval").is_none());
+}
+
+#[test]
+fn retrieval_envelope_serializes_stable_schema_with_records_and_diagnostics() {
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: fixture_path(
+            "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
+        ),
+    });
+    let session = result.session.expect("retrieval session loads");
+    let explained = explain_object(&session, "billing.verified-credits");
+
+    let value =
+        serde_json::to_value(RetrievalEnvelope::from(explained)).expect("envelope serializes");
+
+    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["records"][0]["id"], "billing.verified-credits");
+    assert_eq!(value["diagnostics"], serde_json::json!([]));
+    assert!(value["records"][0].get("match").is_none());
+    assert!(value["records"][0].get("retrieval").is_none());
 }
 
 #[test]

@@ -4,8 +4,8 @@ mod infrastructure;
 
 pub use application::compile::{BuildArtifacts, CompileInput, CompileResult};
 pub use application::retrieval::{
-    ExplainResult, RetrievalInput, RetrievalLoadResult, RetrievalSession, explain_object,
-    load_retrieval_session,
+    ExplainResult, RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput,
+    RetrievalLoadResult, RetrievalSession, explain_object, load_retrieval_session,
 };
 pub use domain::artifact::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan,

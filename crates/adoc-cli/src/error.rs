@@ -32,12 +32,18 @@ pub(crate) enum CliError {
     InvalidBuildUsage,
 
     #[error(
-        "invalid explain usage: explain requires <object-id> [--artifact <path>] [--format text]"
+        "invalid explain usage: explain requires <object-id> [--artifact <path>] [--format text|json]"
     )]
     InvalidExplainUsage,
 
     #[error("unsupported explain format: {format}")]
     UnsupportedExplainFormat { format: String },
+
+    #[error("error[retrieval.json_serialize] could not serialize retrieval JSON: {source}")]
+    RetrievalJsonSerialize {
+        #[source]
+        source: serde_json::Error,
+    },
 
     #[error("missing command")]
     MissingCommand,
@@ -50,6 +56,7 @@ impl CliError {
     pub(crate) fn exit_code(&self) -> i32 {
         match self {
             CliError::InvalidExplainUsage | CliError::UnsupportedExplainFormat { .. } => 1,
+            CliError::RetrievalJsonSerialize { .. } => 2,
             CliError::InvalidBuildUsage
             | CliError::MissingCommand
             | CliError::UnknownCommand { .. } => 2,
