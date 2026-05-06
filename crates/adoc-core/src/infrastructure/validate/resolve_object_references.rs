@@ -77,26 +77,27 @@ fn resolve_relations(
     declared_ids: &BTreeSet<ObjectId>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    for target in relations
-        .depends_on()
-        .iter()
-        .chain(relations.supersedes())
-        .chain(relations.related_to())
-    {
-        if declared_ids.contains(target.id()) {
-            continue;
+    for (label, targets) in [
+        ("depends_on", relations.depends_on()),
+        ("supersedes", relations.supersedes()),
+        ("related_to", relations.related_to()),
+    ] {
+        for target in targets {
+            if declared_ids.contains(target.id()) {
+                continue;
+            }
+            diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::RefBroken,
+                    format!(
+                        "{label} target `{}` does not resolve to a declared Knowledge Object",
+                        target.id().as_str()
+                    ),
+                )
+                .with_span(target.span().clone())
+                .with_object_id(target.id().as_str()),
+            );
         }
-        diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::RefBroken,
-                format!(
-                    "relation target `{}` does not resolve to a declared Knowledge Object",
-                    target.id().as_str()
-                ),
-            )
-            .with_span(target.span().clone())
-            .with_object_id(target.id().as_str()),
-        );
     }
 }
 
