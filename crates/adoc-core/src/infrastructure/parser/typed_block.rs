@@ -6,37 +6,14 @@
 
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::domain::knowledge_object::BlockKind;
 use crate::domain::source::SourceFile;
 
 use super::state::{TypedBlockBuildingState, TypedBlockPhase};
 
 const FIELD_KEY_GRAMMAR: &str = "[a-z][a-z0-9_]*";
-
-#[derive(Debug, Clone, Copy)]
-struct SupportedKind {
-    word: &'static str,
-    kind: BlockKind,
-}
-
-const SUPPORTED_KINDS: &[SupportedKind] = &[
-    SupportedKind {
-        word: BlockKind::Claim.as_str(),
-        kind: BlockKind::Claim,
-    },
-    SupportedKind {
-        word: BlockKind::Decision.as_str(),
-        kind: BlockKind::Decision,
-    },
-    SupportedKind {
-        word: BlockKind::Glossary.as_str(),
-        kind: BlockKind::Glossary,
-    },
-    SupportedKind {
-        word: BlockKind::Warning.as_str(),
-        kind: BlockKind::Warning,
-    },
-];
+const FENCE_WORD_GRAMMAR: &str = "[a-z][a-z0-9_]*";
+const NESTED_TYPED_BLOCK_HELP: &str =
+    "nested typed blocks are not supported in V0; declare each typed block at top level";
 
 /// Result of attempting to open a typed block on an `Idle` line starting with
 /// `::` at column 1.
@@ -55,17 +32,17 @@ pub(super) enum TypedBlockLineOutcome {
     /// Line consumed; still accumulating the typed block.
     Continue,
     /// `::` close fence encountered — emit the completed `ParsedTypedBlock`.
-    Closed(ParsedTypedBlock),
+    Closed(Box<ParsedTypedBlock>),
 }
 
 /// Attempt to open a typed block when `state == Idle` and the raw line starts
 /// with `::` at column 1.
 ///
-/// Recognition rules (per issue #28 D6/D11):
-/// - `::<supported-kind> <id>` (single token) → `Opened`.
-/// - `::<supported-kind> <id> <junk>` → `Diagnostic(ParseMalformedOpenFence)`.
-/// - `::<supported-kind>` alone → `Diagnostic(ParseMalformedOpenFence)`.
-/// - `::<word> …` where word is unsupported and non-empty → `Diagnostic(ParseUnknownBlockType)`.
+/// Recognition rules:
+/// - `::<grammar-valid-word> <id>` (single token) → `Opened`.
+/// - `::<grammar-valid-word> <id> <junk>` → `Diagnostic(ParseMalformedOpenFence)`.
+/// - `::<grammar-valid-word>` alone → `Diagnostic(ParseMalformedOpenFence)`.
+/// - `::<grammar-invalid-word> …` → `Diagnostic(ParseMalformedOpenFence)`.
 /// - `::` exactly (optional trailing whitespace) → `None`.
 pub(super) fn try_open_typed_block(
     line: &str,
@@ -98,31 +75,15 @@ pub(super) fn try_open_typed_block(
 
     let full_line_span = source.span_for_line(line_number, line);
 
-    if supported_kind_non_ascii_separator(after_colons).is_some() {
+    if !is_fence_word(word) {
         return TypedBlockOpen::Diagnostic(
             Diagnostic::error(
                 DiagnosticCode::ParseMalformedOpenFence,
-                format!(
-                    "::{} open fence must use ASCII whitespace between `{}` and the id",
-                    word, word
-                ),
+                format!("typed-block kind `{word}` must match {FENCE_WORD_GRAMMAR}"),
             )
             .with_span(full_line_span),
         );
     }
-
-    let Some(kind) = kind_for_fence_word(word) else {
-        return TypedBlockOpen::Diagnostic(
-            Diagnostic::error(
-                DiagnosticCode::ParseUnknownBlockType,
-                format!(
-                    "unknown typed-block kind `{word}`; supported kinds: {}",
-                    supported_kind_list()
-                ),
-            )
-            .with_span(full_line_span),
-        );
-    };
 
     let rest =
         after_colons[word_end..].trim_matches(|character: char| character.is_ascii_whitespace());
@@ -154,8 +115,11 @@ pub(super) fn try_open_typed_block(
     }
 
     let open_fence_span = source.span_for_line(line_number, line);
+    let kind_word_span =
+        source.span_for_line_columns(line_number, 3, 3 + word.chars().count() as u32);
     TypedBlockOpen::Opened(TypedBlockBuildingState {
-        kind,
+        kind_word: word.to_string(),
+        kind_word_span,
         id_text,
         open_fence_span,
         phase: TypedBlockPhase::ReadingFields,
@@ -166,37 +130,42 @@ pub(super) fn try_open_typed_block(
     })
 }
 
-fn kind_for_fence_word(word: &str) -> Option<BlockKind> {
-    SUPPORTED_KINDS
-        .iter()
-        .find(|supported| supported.word == word)
-        .map(|supported| supported.kind)
+fn is_fence_word(word: &str) -> bool {
+    let mut chars = word.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_lowercase()
+        && chars.all(|character| {
+            character.is_ascii_lowercase() || character.is_ascii_digit() || character == '_'
+        })
 }
 
-fn fence_word_for_kind(kind: BlockKind) -> &'static str {
-    SUPPORTED_KINDS
-        .iter()
-        .find(|supported| supported.kind == kind)
-        .map(|supported| supported.word)
-        .expect("every BlockKind must have parser metadata")
+fn looks_like_open_fence(line: &str) -> bool {
+    let Some(after_colons) = line.strip_prefix("::") else {
+        return false;
+    };
+    if after_colons
+        .trim_end_matches(|character: char| character.is_ascii_whitespace())
+        .is_empty()
+    {
+        return false;
+    }
+
+    let word_end = after_colons
+        .find(|character: char| character.is_ascii_whitespace())
+        .unwrap_or(after_colons.len());
+    let word = &after_colons[..word_end];
+    !word.is_empty() && is_fence_word(word)
 }
 
-fn supported_kind_non_ascii_separator(value: &str) -> Option<&'static str> {
-    SUPPORTED_KINDS.iter().find_map(|supported| {
-        value
-            .strip_prefix(supported.word)
-            .and_then(|rest| rest.chars().next())
-            .is_some_and(|character| character.is_whitespace() && !character.is_ascii_whitespace())
-            .then_some(supported.word)
-    })
-}
-
-fn supported_kind_list() -> String {
-    SUPPORTED_KINDS
-        .iter()
-        .map(|supported| supported.word)
-        .collect::<Vec<_>>()
-        .join(", ")
+fn nested_typed_block_diagnostic(source: &SourceFile, line_number: u32, line: &str) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::ParseNestedTypedBlock,
+        "nested typed block opener is not allowed inside a typed block",
+    )
+    .with_span(source.span_for_line(line_number, line))
+    .with_help(NESTED_TYPED_BLOCK_HELP)
 }
 
 /// Feed one line to an active `TypedBlock` state, updating it in place.
@@ -211,9 +180,14 @@ pub(super) fn consume_typed_block_line(
 ) -> TypedBlockLineOutcome {
     match state.phase {
         TypedBlockPhase::ReadingFields => {
+            if looks_like_open_fence(line) {
+                diagnostics.push(nested_typed_block_diagnostic(source, line_number, line));
+                return TypedBlockLineOutcome::Continue;
+            }
+
             if line == "::" {
                 // Close fence in fields region — no body.
-                return TypedBlockLineOutcome::Closed(build_parsed_typed_block(state));
+                return TypedBlockLineOutcome::Closed(Box::new(build_parsed_typed_block(state)));
             }
 
             if line == "--" {
@@ -241,7 +215,7 @@ pub(super) fn consume_typed_block_line(
             }
 
             // Anything else is a malformed field line.
-            let kind_word = fence_word_for_kind(state.kind);
+            let kind_word = state.kind_word.as_str();
             diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode::ParseMalformedField,
@@ -255,9 +229,18 @@ pub(super) fn consume_typed_block_line(
         }
 
         TypedBlockPhase::ReadingBody => {
+            if looks_like_open_fence(line) {
+                diagnostics.push(nested_typed_block_diagnostic(source, line_number, line));
+                state.body_lines.push(line.to_string());
+                state
+                    .content_spans
+                    .push(source.span_for_line(line_number, line));
+                return TypedBlockLineOutcome::Continue;
+            }
+
             if line == "::" {
                 // Close fence.
-                return TypedBlockLineOutcome::Closed(build_parsed_typed_block(state));
+                return TypedBlockLineOutcome::Closed(Box::new(build_parsed_typed_block(state)));
             }
             // Append raw line (preserve all internal whitespace).
             state.body_lines.push(line.to_string());
@@ -279,7 +262,7 @@ pub(super) fn finalize_unclosed_typed_block(
     state: TypedBlockBuildingState,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let kind_word = fence_word_for_kind(state.kind);
+    let kind_word = state.kind_word.as_str();
     diagnostics.push(
         Diagnostic::error(
             DiagnosticCode::ParseUnclosedFence,
@@ -332,7 +315,8 @@ fn build_parsed_typed_block(state: &TypedBlockBuildingState) -> ParsedTypedBlock
     let body_text = trimmed_body_lines.join("\n");
 
     ParsedTypedBlock {
-        kind: state.kind,
+        kind_word: state.kind_word.clone(),
+        kind_word_span: state.kind_word_span.clone(),
         id_text: state.id_text.clone(),
         raw_fields: state.raw_fields.clone(),
         duplicate_keys: state.duplicate_keys.clone(),
@@ -363,7 +347,6 @@ fn trim_blank_edges(lines: &[String]) -> &[String] {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
     use std::path::PathBuf;
 
     use super::*;
@@ -399,7 +382,8 @@ mod tests {
 
     fn fresh_state(id: &str) -> TypedBlockBuildingState {
         TypedBlockBuildingState {
-            kind: BlockKind::Claim,
+            kind_word: "claim".to_string(),
+            kind_word_span: dummy_span(),
             id_text: id.to_string(),
             open_fence_span: dummy_span(),
             phase: TypedBlockPhase::ReadingFields,
@@ -407,34 +391,6 @@ mod tests {
             duplicate_keys: Vec::new(),
             body_lines: Vec::new(),
             content_spans: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn supported_kind_metadata_round_trips_every_block_kind() {
-        for &kind in BlockKind::ALL {
-            let word = fence_word_for_kind(kind);
-            assert_eq!(kind_for_fence_word(word), Some(kind));
-        }
-    }
-
-    #[test]
-    fn supported_kind_metadata_has_no_duplicate_words_or_kinds() {
-        let mut words = BTreeSet::new();
-        let mut kinds = Vec::new();
-
-        for supported in SUPPORTED_KINDS {
-            assert!(
-                words.insert(supported.word),
-                "duplicate supported typed-block word `{}`",
-                supported.word
-            );
-            assert!(
-                !kinds.contains(&supported.kind),
-                "duplicate parser metadata for {:?}",
-                supported.kind
-            );
-            kinds.push(supported.kind);
         }
     }
 
@@ -475,7 +431,9 @@ mod tests {
         let result = try_open_typed_block(line, 1, &source);
         match result {
             TypedBlockOpen::Opened(state) => {
-                assert_eq!(state.kind, BlockKind::Claim);
+                assert_eq!(state.kind_word, "claim");
+                assert_eq!(state.kind_word_span.start.column, 3);
+                assert_eq!(state.kind_word_span.end.column, 8);
                 assert_eq!(state.id_text, "billing.credits");
                 assert!(matches!(state.phase, TypedBlockPhase::ReadingFields));
                 assert!(state.raw_fields.is_empty());
@@ -513,8 +471,8 @@ mod tests {
             TypedBlockOpen::Diagnostic(d) => {
                 assert_eq!(d.code, DiagnosticCode::ParseMalformedOpenFence);
                 assert!(
-                    d.message.contains("ASCII whitespace"),
-                    "message should explain ASCII whitespace requirement: {}",
+                    d.message.contains(FENCE_WORD_GRAMMAR),
+                    "message should explain fence-word grammar: {}",
                     d.message
                 );
             }
@@ -542,7 +500,7 @@ mod tests {
         let result = try_open_typed_block(line, 1, &source);
         match result {
             TypedBlockOpen::Opened(state) => {
-                assert_eq!(state.kind, BlockKind::Decision);
+                assert_eq!(state.kind_word, "decision");
                 assert_eq!(state.id_text, "foo.bar");
             }
             _ => panic!("expected Opened"),
@@ -550,31 +508,49 @@ mod tests {
     }
 
     #[test]
-    fn try_open_typed_block_rejects_unknown_block_kind() {
+    fn try_open_typed_block_opens_unknown_grammar_valid_block_kind() {
         let line = "::fact foo.bar";
         let source = source_for_line(line);
         let result = try_open_typed_block(line, 1, &source);
         match result {
+            TypedBlockOpen::Opened(state) => {
+                assert_eq!(state.kind_word, "fact");
+                assert_eq!(state.id_text, "foo.bar");
+                assert_eq!(state.kind_word_span.start.column, 3);
+                assert_eq!(state.kind_word_span.end.column, 7);
+            }
+            _ => panic!("expected unknown grammar-valid kind to open"),
+        }
+    }
+
+    #[test]
+    fn try_open_typed_block_rejects_grammar_invalid_block_kind() {
+        let line = "::Fact-Cap foo.bar";
+        let source = source_for_line(line);
+        let result = try_open_typed_block(line, 1, &source);
+        match result {
             TypedBlockOpen::Diagnostic(d) => {
-                assert_eq!(d.code, DiagnosticCode::ParseUnknownBlockType);
+                assert_eq!(d.code, DiagnosticCode::ParseMalformedOpenFence);
                 assert!(
-                    d.message.contains("fact"),
-                    "message should quote the unknown word"
-                );
-                assert!(
-                    d.message
-                        .contains("supported kinds: claim, decision, glossary, warning"),
-                    "message should list supported kinds from parser metadata: {}",
-                    d.message
-                );
-                assert!(
-                    !d.message.contains("v0."),
-                    "message should not carry stale milestone text: {}",
+                    d.message.contains(FENCE_WORD_GRAMMAR),
+                    "message should explain fence-word grammar: {}",
                     d.message
                 );
             }
-            _ => panic!("expected Diagnostic(ParseUnknownBlockType)"),
+            _ => panic!("expected Diagnostic(ParseMalformedOpenFence)"),
         }
+    }
+
+    #[test]
+    fn looks_like_open_fence_recognizes_only_column_one_grammar_valid_openers() {
+        assert!(looks_like_open_fence("::warning auth.session"));
+        assert!(looks_like_open_fence("::fact billing.policy"));
+        assert!(looks_like_open_fence("::fact"));
+        assert!(!looks_like_open_fence("::"));
+        assert!(!looks_like_open_fence("::   "));
+        assert!(!looks_like_open_fence(" ::warning auth.session"));
+        assert!(!looks_like_open_fence("::~ascii"));
+        assert!(!looks_like_open_fence("::Fact-Cap foo.bar"));
     }
 
     #[test]
@@ -739,6 +715,34 @@ mod tests {
     }
 
     #[test]
+    fn consume_typed_block_line_rejects_nested_open_fence_in_fields_phase() {
+        let source = make_source("::warning auth.session\n");
+        let mut state = fresh_state("billing.credits");
+        let mut diagnostics = Vec::new();
+
+        let outcome = consume_typed_block_line(
+            &mut state,
+            "::warning auth.session",
+            1,
+            &source,
+            &mut diagnostics,
+        );
+
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
+        assert!(matches!(state.phase, TypedBlockPhase::ReadingFields));
+        assert!(state.raw_fields.is_empty(), "nested opener is not a field");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseNestedTypedBlock);
+        assert_eq!(
+            diagnostics[0]
+                .span
+                .as_ref()
+                .map(|span| (span.start.line, span.start.column)),
+            Some((1, 1))
+        );
+    }
+
+    #[test]
     fn consume_typed_block_line_explains_field_key_grammar_for_hyphenated_key() {
         let source = make_source("reviewed-by: team-a\n");
         let mut state = fresh_state("billing.credits");
@@ -781,6 +785,54 @@ mod tests {
             state.body_lines,
             vec!["first body line", "second body line"]
         );
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn consume_typed_block_line_rejects_nested_open_fence_in_body_phase_and_preserves_line() {
+        let source = make_source("::fact billing.policy\n");
+        let mut state = fresh_state("billing.credits");
+        state.phase = TypedBlockPhase::ReadingBody;
+        let mut diagnostics = Vec::new();
+
+        let outcome = consume_typed_block_line(
+            &mut state,
+            "::fact billing.policy",
+            1,
+            &source,
+            &mut diagnostics,
+        );
+
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
+        assert_eq!(state.body_lines, vec!["::fact billing.policy"]);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseNestedTypedBlock);
+        assert_eq!(
+            diagnostics[0]
+                .span
+                .as_ref()
+                .map(|span| (span.start.line, span.start.column)),
+            Some((1, 1))
+        );
+    }
+
+    #[test]
+    fn consume_typed_block_line_keeps_grammar_invalid_open_fence_shape_in_body() {
+        let source = make_source("::Fact-Cap billing.policy\n");
+        let mut state = fresh_state("billing.credits");
+        state.phase = TypedBlockPhase::ReadingBody;
+        let mut diagnostics = Vec::new();
+
+        let outcome = consume_typed_block_line(
+            &mut state,
+            "::Fact-Cap billing.policy",
+            1,
+            &source,
+            &mut diagnostics,
+        );
+
+        assert!(matches!(outcome, TypedBlockLineOutcome::Continue));
+        assert_eq!(state.body_lines, vec!["::Fact-Cap billing.policy"]);
         assert!(diagnostics.is_empty());
     }
 

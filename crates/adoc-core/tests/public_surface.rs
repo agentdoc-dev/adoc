@@ -62,9 +62,10 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::ParseUnsafeLink;
     let _ = DiagnosticCode::ParseUnclosedFence;
     let _ = DiagnosticCode::ParseMalformedPageAnnotation;
-    let _ = DiagnosticCode::ParseUnknownBlockType;
+    let _ = DiagnosticCode::ParseNestedTypedBlock;
     let _ = DiagnosticCode::ParseMalformedField;
     let _ = DiagnosticCode::ParseMalformedOpenFence;
+    let _ = DiagnosticCode::SchemaUnknownKind;
     let _ = DiagnosticCode::SchemaMissingField;
     let _ = DiagnosticCode::SchemaDuplicateField;
     let _ = DiagnosticCode::SchemaInvalidStatus;
@@ -97,8 +98,12 @@ fn public_surface_compiles_with_only_documented_imports() {
     );
     assert_eq!(DiagnosticCode::IdDuplicate.as_str(), "id.duplicate");
     assert_eq!(
-        DiagnosticCode::ParseUnknownBlockType.as_str(),
-        "parse.unknown_block_type"
+        DiagnosticCode::ParseNestedTypedBlock.as_str(),
+        "parse.nested_typed_block"
+    );
+    assert_eq!(
+        DiagnosticCode::SchemaUnknownKind.as_str(),
+        "schema.unknown_kind"
     );
     assert_eq!(
         DiagnosticCode::ParseMalformedField.as_str(),

@@ -110,7 +110,6 @@ mod tests {
 
     use super::*;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
-    use crate::domain::knowledge_object::BlockKind;
 
     fn span() -> SourceSpan {
         SourceSpan {
@@ -135,7 +134,8 @@ mod tests {
         body_text: &str,
     ) -> ParsedTypedBlock {
         ParsedTypedBlock {
-            kind: BlockKind::Glossary,
+            kind_word: "glossary".to_string(),
+            kind_word_span: span(),
             id_text: id_text.to_string(),
             raw_fields: fields,
             duplicate_keys,
