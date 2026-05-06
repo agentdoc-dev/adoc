@@ -23,6 +23,19 @@ depends_on: billing.credits.ledger-source
 Available credit balance cannot become negative during invoice application or refund settlement.
 ::
 
+::claim billing.credits.decrement-after-success
+status: verified
+owner: team-billing
+verified_at: 2026-05-06
+source: billing service credit application trace 2026-05-05
+test: cargo test billing_credit_decrement_after_success
+reviewed_by: qa-billing
+depends_on: billing.credits.ledger-source
+related_to: billing.credits
+--
+Consumed [[billing.credits]] are decremented only after the successful billing operation posts its [[billing.ledger]] movement.
+::
+
 ::claim billing.refunds.audit-required
 status: verified
 owner: team-billing
