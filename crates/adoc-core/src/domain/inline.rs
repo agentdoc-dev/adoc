@@ -120,11 +120,11 @@ pub(crate) fn parse_inlines(
             cursor += consumed;
             continue;
         }
-        if let Some(consumed) = scan_object_reference(text, cursor, origin, &mut output) {
+        if let Some(consumed) = scan_link(text, cursor, origin, &mut output) {
             cursor += consumed;
             continue;
         }
-        if let Some(consumed) = scan_link(text, cursor, origin, &mut output) {
+        if let Some(consumed) = scan_object_reference(text, cursor, origin, &mut output) {
             cursor += consumed;
             continue;
         }
@@ -264,24 +264,28 @@ fn scan_link(
     origin: InlineOrigin<'_>,
     output: &mut ScannerOutput,
 ) -> Option<usize> {
-    if !text[cursor..].starts_with('[') {
+    let remainder = &text[cursor..];
+    if !remainder.starts_with('[') {
         return None;
     }
-    let after_open_bracket = &text[cursor + 1..];
-    let close_bracket_offset = after_open_bracket.find(']')?;
-    if close_bracket_offset == 0 {
+    if remainder.starts_with("[[") && !remainder.starts_with("[[[") {
         return None;
     }
-    let label_text = &after_open_bracket[..close_bracket_offset];
 
-    let after_close_bracket = &after_open_bracket[close_bracket_offset + 1..];
+    let close_bracket_index = find_link_label_close(text, cursor)?;
+    if close_bracket_index == cursor + 1 {
+        return None;
+    }
+    let label_text = &text[cursor + 1..close_bracket_index];
+
+    let after_close_bracket = &text[close_bracket_index + 1..];
     if !after_close_bracket.starts_with('(') {
         return None;
     }
     let after_open_paren = &after_close_bracket[1..];
     let close_paren_offset = after_open_paren.find(')')?;
     let url = after_open_paren[..close_paren_offset].to_string();
-    let total_consumed = 1 + close_bracket_offset + 1 + 1 + close_paren_offset + 1;
+    let total_consumed = close_bracket_index - cursor + 1 + 1 + close_paren_offset + 1;
 
     let span = origin.span_for_offsets(text, cursor, cursor + total_consumed);
 
@@ -294,6 +298,28 @@ fn scan_link(
         span,
     });
     Some(total_consumed)
+}
+
+fn find_link_label_close(text: &str, cursor: usize) -> Option<usize> {
+    let mut scan = cursor + 1;
+    while scan < text.len() {
+        let remainder = &text[scan..];
+        if remainder.starts_with("[[") {
+            let after_open = scan + 2;
+            let close_offset = text[after_open..].find("]]")?;
+            scan = after_open + close_offset + 2;
+            continue;
+        }
+        if remainder.starts_with(']') {
+            return Some(scan);
+        }
+        let character = remainder
+            .chars()
+            .next()
+            .expect("scan points at a character boundary");
+        scan += character.len_utf8();
+    }
+    None
 }
 
 fn scan_code(text: &str, cursor: usize, output: &mut ScannerOutput) -> Option<usize> {
@@ -507,6 +533,56 @@ mod tests {
             "https://example.test",
         );
         assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn parse_inlines_recognizes_object_reference_inside_link_label() {
+        let (segments, diagnostics) = parse("[See [[billing.credits]]](https://example.test)");
+
+        assert!(diagnostics.is_empty());
+        assert!(matches!(
+            &segments[..],
+            [InlineSegment::Link { text, url, .. }]
+                if url == "https://example.test"
+                    && matches!(
+                        &text[..],
+                        [
+                            InlineSegment::Text(prefix),
+                            InlineSegment::ObjectReferencePending { raw_id, .. }
+                        ] if prefix == "See " && raw_id == "billing.credits"
+                    )
+        ));
+    }
+
+    #[test]
+    fn parse_inlines_recognizes_object_reference_as_entire_link_label() {
+        let (segments, diagnostics) = parse("[[[billing.credits]]](https://example.test)");
+
+        assert!(diagnostics.is_empty());
+        assert!(matches!(
+            &segments[..],
+            [InlineSegment::Link { text, url, .. }]
+                if url == "https://example.test"
+                    && matches!(
+                        &text[..],
+                        [InlineSegment::ObjectReferencePending { raw_id, .. }]
+                            if raw_id == "billing.credits"
+                    )
+        ));
+    }
+
+    #[test]
+    fn parse_inlines_keeps_object_reference_precedence_over_link_shape() {
+        let (segments, diagnostics) = parse("[[billing.credits]](https://example.test)");
+
+        assert!(diagnostics.is_empty());
+        assert!(matches!(
+            &segments[..],
+            [
+                InlineSegment::ObjectReferencePending { raw_id, .. },
+                InlineSegment::Text(suffix)
+            ] if raw_id == "billing.credits" && suffix == "(https://example.test)"
+        ));
     }
 
     #[test]
