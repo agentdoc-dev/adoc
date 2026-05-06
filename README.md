@@ -4,17 +4,19 @@
 
 AgentDoc is a human-readable documentation system for teams that need documentation to behave like maintained, agent-safe knowledge.
 
-The current implementation is an early Rust CLI named `adoc`. It compiles native AgentDoc Source (`.adoc`) into:
+The current implementation is a pre-release Rust CLI named `adoc`. V0 is complete for the local compiler loop: it compiles native AgentDoc Source (`.adoc`) into:
 
 - `docs.html` for humans
 - `docs.agent.json` for agents and tooling
 - source-located diagnostics for invalid input
 
+V1 is planned to add local retrieval over the generated agent artifact, starting with `adoc explain` and `adoc search`.
+
 AgentDoc is not AsciiDoc, even though the source extension is `.adoc`.
 
 ## Status
 
-AgentDoc is pre-release compiler infrastructure. The current V0 compiler supports:
+AgentDoc is pre-release compiler infrastructure. The V0 compiler is complete for the source-to-artifact loop and supports:
 
 - `adoc check <path>`
 - `adoc build <path> --out <directory>`
@@ -27,10 +29,13 @@ AgentDoc is pre-release compiler infrastructure. The current V0 compiler support
 - verified claims with `owner`, `verified_at`, and V0 evidence fields
 - object references written as `[[object.id]]`
 - relation fields `depends_on`, `supersedes`, and `related_to`
-- strict diagnostics for raw HTML, unsafe links, unclosed fenced code blocks, malformed typed blocks, malformed page annotations, invalid or duplicate Object IDs, invalid verified claims, and broken references
+- strict diagnostics for raw HTML, unsafe links, unclosed fenced code blocks, malformed typed blocks, malformed page annotations, invalid or duplicate Object IDs, invalid verified claims, broken references, and unsupported single-file source extensions
+- diagnostic metadata with source location, severity, code, message, and `object_id`/`help` when available
 - HTML and agent JSON artifact emission when no error diagnostics exist
 
-Config files, includes, custom schemas, search, migrations, and graph exports are deferred beyond the current V0 compiler loop. See [docs/ROADMAP.md](docs/ROADMAP.md).
+V1 local retrieval is next. Planned V1 commands include artifact-backed `adoc explain` and `adoc search` over `dist/docs.agent.json`; they are not implemented yet.
+
+Config files, includes, custom schemas, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, a web app, and permissioned governance are deferred beyond the current V0 compiler loop. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Quick Start
 
@@ -94,6 +99,24 @@ Inspect the generated files:
 ls -la /tmp/adoc-example/dist
 cat /tmp/adoc-example/dist/docs.html
 cat /tmp/adoc-example/dist/docs.agent.json
+```
+
+Expected files:
+
+```text
+docs.html
+docs.agent.json
+```
+
+### Try The Billing Pilot
+
+The realistic V0 pilot under [examples/billing-pilot](examples/billing-pilot) exercises the full core object set: `claim`, `decision`, `warning`, and `glossary`. It contains 20+ Knowledge Objects, 5+ verified claims, object references, relations, and source spans in the agent artifact.
+
+```bash
+rm -rf /tmp/adoc-billing-pilot
+cargo run -p adoc-cli --bin adoc -- check examples/billing-pilot
+cargo run -p adoc-cli --bin adoc -- build examples/billing-pilot --out /tmp/adoc-billing-pilot
+ls -la /tmp/adoc-billing-pilot
 ```
 
 Expected files:
@@ -179,10 +202,21 @@ The ledger records every credit and refund balance movement.
 ::decision billing.refund-policy
 status: accepted
 decided_by: architecture
-supersedes: billing.legacy-refunds
-depends_on: [billing.ledger, billing.credits]
+depends_on: [billing.ledger, billing.credit-balance]
 --
 Use policy-based refund approval with ledger-backed audit entries.
+::
+
+::warning billing.invoice.manual-adjustment
+severity: high
+related_to: billing.ledger
+--
+Manual invoice adjustments must cite [[billing.ledger]] before approval.
+::
+
+::glossary billing.credit-balance
+--
+The customer-visible balance available for future invoices.
 ::
 ````
 
@@ -220,7 +254,23 @@ fn main() {}
 
 Current limitations:
 
-- custom schemas, includes, config files, search, and migrations are deferred
+- `adoc explain`, `adoc search`, and `adoc init` are planned after V0
+- custom schemas, includes, config files, search index artifacts, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, web app, and permissions are deferred
+
+## Diagnostics
+
+`adoc check` and `adoc build` run the same strict compiler path. Diagnostics include file, line, column, severity, diagnostic code, and fix-oriented message.
+
+When a diagnostic belongs to a Knowledge Object, the CLI also prints `object_id`. When a targeted remediation is available, it prints `help`.
+
+Examples:
+
+- raw HTML emits `error[parse.raw_html]`
+- unsafe links emit `error[parse.unsafe_link]`
+- broken object references and relation targets emit `error[ref.broken]`
+- unsupported single-file source extensions emit `error[io.unsupported_source_extension]`
+
+`adoc build` writes `docs.html` and `docs.agent.json` only when there are no error diagnostics.
 
 ## Smoke Tests
 
@@ -365,7 +415,7 @@ Dependabot is configured in [.github/dependabot.yml](.github/dependabot.yml) for
 
 - [CONTEXT.md](CONTEXT.md): project language and domain decisions
 - [docs/PRD.md](docs/PRD.md): product requirements
-- [docs/ROADMAP.md](docs/ROADMAP.md): V0 tracer-bullet roadmap
+- [docs/ROADMAP.md](docs/ROADMAP.md): product roadmap from completed V0 through planned retrieval, review, patching, schema, graph, and team surfaces
 - [docs/V0-DESIGN.md](docs/V0-DESIGN.md): Rust implementation contract
 - [docs/adr/](docs/adr): architecture decision records
 
@@ -392,7 +442,7 @@ Parser, validation, renderer, and artifact internals stay private until another 
 
 ## Roadmap
 
-Implemented V0 compiler milestones include:
+V0 is complete for the local source-to-artifact compiler loop. Implemented V0 milestones include:
 
 - richer page identity and source diagnostics
 - common prose rendering for inline code, emphasis, and links
@@ -401,8 +451,17 @@ Implemented V0 compiler milestones include:
 - `decision`, `warning`, and `glossary`
 - object references and relations
 - multi-file project behavior
+- standardized diagnostics and production-usable fixtures
+- a realistic billing pilot
 
-Next milestones focus on pilot hardening, review workflows, patch safety, and deferred product surfaces such as config, includes, graph exports, and custom schemas.
+V1 focuses on local retrieval over the existing flat agent artifact:
+
+- define the supported `docs.agent.json` read contract
+- add `adoc explain <object-id>` for object lookup and citation
+- add `adoc search <query>` for deterministic exact local search
+- prove retrieval against the billing pilot
+
+Later milestones cover project ergonomics, migration, review workflows, patch safety, expanded schema, graph exports, composition, and team surfaces.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full sequence.
 
