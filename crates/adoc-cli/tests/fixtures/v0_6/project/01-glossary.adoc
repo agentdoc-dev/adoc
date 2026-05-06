@@ -1,0 +1,8 @@
+# Billing Glossary @doc(billing.glossary)
+
+Shared terms for the billing workspace.
+
+::glossary billing.credits
+--
+Credits reduce future invoice balances.
+::

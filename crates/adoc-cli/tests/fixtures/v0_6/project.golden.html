@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentDoc</title>
+</head>
+<body>
+<article data-page-id="billing.glossary">
+<h1>Billing Glossary</h1>
+<p>Shared terms for the billing workspace.</p>
+<section class="glossary" id="billing.credits">
+<header class="glossary__header"><span class="glossary__kind">glossary</span><code class="glossary__id">billing.credits</code></header>
+<div class="glossary__body"><p>Credits reduce future invoice balances.</p></div>
+</section>
+</article>
+<article data-page-id="billing.policy">
+<h1>Billing Policy</h1>
+<p>Refund policy references <a class="object-ref" href="#billing.credits">billing.credits</a> across files.</p>
+<section class="claim" id="billing.refunds">
+<header class="claim__header"><span class="claim__kind">claim</span><code class="claim__id">billing.refunds</code><span class="claim__status">draft</span></header>
+<div class="claim__body"><p>Refunds create credit adjustments after ledger persistence succeeds.</p></div>
+<footer class="claim__metadata">
+<section class="claim__relations"><dl>
+<dt>depends_on</dt><dd><a class="object-ref" href="#billing.ledger">billing.ledger</a></dd>
+</dl></section>
+</footer>
+</section>
+</article>
+<article data-page-id="billing.ledger-page">
+<h1>Billing Ledger</h1>
+<p>Ledger objects can live in nested source directories.</p>
+<section class="claim claim--verified" id="billing.ledger">
+<header class="claim__header"><span class="claim__kind">claim</span><code class="claim__id">billing.ledger</code><span class="claim__status">verified</span></header>
+<div class="claim__body"><p>The ledger records every credit and refund balance movement.</p></div>
+<div class="claim__verification">
+<dl>
+<div class="claim__verification-item"><dt>owner</dt><dd>team-billing</dd></div>
+<div class="claim__verification-item"><dt>verified_at</dt><dd>2026-05-06</dd></div>
+</dl>
+</div>
+<div class="claim__evidence">
+<dl>
+<div class="claim__evidence-item claim__evidence-item--source"><dt>source</dt><dd>ledger reconciliation report</dd></div>
+</dl>
+</div>
+</section>
+</article>
+</body>
+</html>

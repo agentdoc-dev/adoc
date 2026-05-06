@@ -1,0 +1,10 @@
+# Billing Policy @doc(billing.policy)
+
+Refund policy references [[billing.credits]] across files.
+
+::claim billing.refunds
+status: draft
+depends_on: billing.ledger
+--
+Refunds create credit adjustments after ledger persistence succeeds.
+::
