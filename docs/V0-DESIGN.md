@@ -191,6 +191,7 @@ Initial diagnostic code examples:
 - `parse.unsafe_link`
 - `parse.unclosed_fence`
 - `parse.malformed_page_annotation`
+- `parse.nested_typed_block`
 - `schema.unknown_kind`
 - `schema.missing_field`
 - `id.invalid`

@@ -1,0 +1,10 @@
+# Nested Fields @doc(team.nested-fields)
+
+V0 forbids nested typed blocks; they are deferred until V6.
+
+::claim billing.credits
+status: draft
+::warning auth.session
+--
+The outer claim continues after the rejected nested opener.
+::
