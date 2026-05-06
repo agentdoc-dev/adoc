@@ -549,6 +549,10 @@ fn compile_workspace_links_references_in_heading_and_list_item() {
         "expected object reference anchor in heading: {}",
         artifacts.html
     );
+    assert_eq!(
+        artifacts.agent_json.pages[0].title.as_deref(),
+        Some("See billing.credits")
+    );
     assert!(
         artifacts.html.contains(
             "<li>Use <strong><a class=\"object-ref\" href=\"#billing.credits\">billing.credits</a></strong> in balance docs.</li>"
