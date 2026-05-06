@@ -1,0 +1,33 @@
+# Billing Pilot Glossary @doc(billing.glossary)
+
+Shared billing language for the V0 pilot.
+
+::glossary billing.credits
+owner: team-billing
+--
+Credits are account balance adjustments that reduce future invoices after a payment, refund, or support correction.
+::
+
+::glossary billing.ledger
+owner: team-billing
+--
+The billing ledger is the append-only record of money movement for invoices, payments, credits, refunds, and adjustments.
+::
+
+::glossary billing.invoice
+owner: team-billing
+--
+An invoice is the customer-facing statement of charges, taxes, credits, and the remaining amount due for an account.
+::
+
+::glossary billing.refund
+owner: team-billing
+--
+A refund returns money to a payment method and must be paired with ledger entries that explain the account balance change.
+::
+
+::glossary billing.entitlement
+owner: team-access
+--
+An entitlement is the product access state granted by paid invoices, trials, credits, or account-level overrides.
+::

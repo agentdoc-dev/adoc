@@ -1,0 +1,92 @@
+# Billing Pilot Claims @doc(billing.claims)
+
+Verified and draft claims for the billing pilot. These claims cite glossary objects such as [[billing.credits]], [[billing.ledger]], and [[billing.invoice]].
+
+::claim billing.credits.ledger-source
+status: verified
+owner: team-billing
+verified_at: 2026-05-06
+source: ledger schema migration 2026-04-28
+test: cargo test billing_ledger_records_credit_movements
+--
+Every posted [[billing.credits]] movement is sourced from a ledger entry in [[billing.ledger]] before it can affect an invoice.
+::
+
+::claim billing.credits.nonnegative
+status: verified
+owner: team-billing
+verified_at: 2026-05-06
+test: cargo test billing_credit_balance_never_negative
+reviewed_by: qa-billing
+depends_on: billing.credits.ledger-source
+--
+Available credit balance cannot become negative during invoice application or refund settlement.
+::
+
+::claim billing.refunds.audit-required
+status: verified
+owner: team-billing
+verified_at: 2026-05-06
+source: refund operations runbook v3
+reviewed_by: support-leads
+--
+Each [[billing.refund]] that issues account credit must keep an auditable link to the original payment and operator action.
+::
+
+::claim billing.invoices.apply-credits
+status: verified
+owner: team-billing
+verified_at: 2026-05-06
+source: invoice finalization design note
+test: cargo test invoice_finalization_applies_available_credit
+depends_on: [billing.credits.nonnegative, billing.credits.ledger-source]
+--
+Invoice finalization applies available [[billing.credits]] before collecting the remaining amount due on [[billing.invoice]].
+::
+
+::claim billing.entitlements.sync-after-payment
+status: verified
+owner: team-access
+verified_at: 2026-05-06
+test: cargo test entitlements_sync_after_payment_settlement
+reviewed_by: access-platform
+related_to: billing.entitlement
+--
+Entitlement state is recalculated after payment settlement so [[billing.entitlement]] access matches the account balance.
+::
+
+::claim billing.refunds.issue-credit
+status: verified
+owner: team-billing
+verified_at: 2026-05-06
+source: refund service production trace 2026-05-05
+test: cargo test refund_issue_credit_records_ledger_entry
+reviewed_by: qa-billing
+depends_on: [billing.credits.ledger-source, billing.refunds.audit-required]
+--
+Refund operators issue [[billing.credits]] only after the refund workflow writes its audit record and ledger movement.
+::
+
+::claim billing.credits.pending-window
+status: draft
+owner: team-billing
+depends_on: billing.credits.ledger-source
+--
+Pending credit should become available within one settlement cycle after the payment processor confirms capture.
+::
+
+::claim billing.refunds.manual-review
+status: draft
+owner: support-operations
+related_to: billing.refunds.audit-required
+--
+Refunds above the manual review threshold should pause credit issuance until a support lead approves the action.
+::
+
+::claim billing.invoices.tax-before-credit
+status: draft
+owner: tax-platform
+related_to: billing.invoice
+--
+Tax calculation should run before credit application so invoice tax records remain explainable during finance review.
+::
