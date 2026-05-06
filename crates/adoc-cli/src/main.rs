@@ -4,7 +4,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use adoc_core::{AgentJsonDocument, CompileInput, Diagnostic, Severity, compile_workspace};
+use adoc_core::{
+    AgentJsonDocument, AgentJsonRelations, CompileInput, Diagnostic, DiagnosticCode,
+    RetrievalInput, RetrievalRecord, Severity, compile_workspace, explain_object,
+    load_retrieval_session,
+};
 
 use crate::error::CliError;
 
@@ -16,10 +20,16 @@ fn run(arguments: Vec<String>) -> i32 {
     match parse_command(arguments) {
         Ok(Command::Check { path }) => check(path),
         Ok(Command::Build { path, out }) => build(path, out),
+        Ok(Command::Explain {
+            object_id,
+            artifact,
+            format,
+        }) => explain(object_id, artifact, format),
         Err(error) => {
             eprintln!("{error}");
             eprintln!("usage: adoc check <path>");
             eprintln!("       adoc build <path> --out <directory>");
+            eprintln!("       adoc explain <object-id> [--artifact <path>] [--format text]");
             error.exit_code()
         }
     }
@@ -51,6 +61,42 @@ fn build(path: PathBuf, out: PathBuf) -> i32 {
         Ok(()) => 0,
         Err(error) => report(error),
     }
+}
+
+fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
+    match format {
+        ExplainFormat::Text => {}
+    }
+
+    let load_result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact,
+    });
+    let session = match load_result.session {
+        Some(session) => session,
+        None => {
+            eprint_diagnostics(&load_result.diagnostics);
+            return 2;
+        }
+    };
+
+    let explain_result = explain_object(&session, &object_id);
+    if !explain_result.diagnostics.is_empty() {
+        eprint_diagnostics(&explain_result.diagnostics);
+        if explain_result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == DiagnosticCode::RetrievalObjectNotFound)
+        {
+            return 3;
+        }
+        return 2;
+    }
+
+    for record in &explain_result.records {
+        print_explain_text(record);
+    }
+
+    0
 }
 
 fn report(error: CliError) -> i32 {
@@ -115,6 +161,33 @@ fn print_diagnostics(diagnostics: &[Diagnostic]) {
     }
 }
 
+fn eprint_diagnostics(diagnostics: &[Diagnostic]) {
+    for diagnostic in diagnostics {
+        if let Some(span) = &diagnostic.span {
+            eprintln!(
+                "{}:{}:{}: {}[{}] {}",
+                span.file.display(),
+                span.start.line,
+                span.start.column,
+                diagnostic.severity,
+                diagnostic.code,
+                diagnostic.message
+            );
+        } else {
+            eprintln!(
+                "{}[{}] {}",
+                diagnostic.severity, diagnostic.code, diagnostic.message
+            );
+        }
+        if let Some(object_id) = &diagnostic.object_id {
+            eprintln!("  object_id: {object_id}");
+        }
+        if let Some(help) = &diagnostic.help {
+            eprintln!("  help: {help}");
+        }
+    }
+}
+
 fn print_summary(diagnostics: &[Diagnostic]) {
     let errors = diagnostics
         .iter()
@@ -128,9 +201,85 @@ fn print_summary(diagnostics: &[Diagnostic]) {
     println!("{errors} errors, {warnings} warnings");
 }
 
+fn print_explain_text(record: &RetrievalRecord) {
+    println!("Object: {}", record.id);
+    println!("Kind: {}", record.kind);
+    if let Some(status) = &record.status {
+        if record.kind == "warning" {
+            println!("Severity: {status}");
+        } else {
+            println!("Status: {status}");
+        }
+    }
+    if let Some(owner) = &record.owner {
+        println!("Owner: {owner}");
+    }
+    if let Some(verified_at) = &record.verified_at {
+        println!("Verified: {verified_at}");
+    }
+    println!("Statement: {}", record.body);
+    print_evidence(record);
+    println!(
+        "Source: {}:{}:{}",
+        record.source.path, record.source.line, record.source.column
+    );
+    print_relations(&record.relations);
+}
+
+fn print_evidence(record: &RetrievalRecord) {
+    let evidence_fields = ["source", "test", "reviewed_by"];
+    if !evidence_fields
+        .iter()
+        .any(|field| record.evidence.contains_key(*field))
+    {
+        return;
+    }
+
+    println!("Evidence:");
+    for field in evidence_fields {
+        if let Some(value) = record.evidence.get(field) {
+            println!("- {field}: {value}");
+        }
+    }
+}
+
+fn print_relations(relations: &AgentJsonRelations) {
+    if relations.depends_on.is_empty()
+        && relations.supersedes.is_empty()
+        && relations.related_to.is_empty()
+    {
+        return;
+    }
+
+    println!("Relations:");
+    if !relations.depends_on.is_empty() {
+        println!("- depends_on: {}", relations.depends_on.join(", "));
+    }
+    if !relations.supersedes.is_empty() {
+        println!("- supersedes: {}", relations.supersedes.join(", "));
+    }
+    if !relations.related_to.is_empty() {
+        println!("- related_to: {}", relations.related_to.join(", "));
+    }
+}
+
 enum Command {
-    Check { path: PathBuf },
-    Build { path: PathBuf, out: PathBuf },
+    Check {
+        path: PathBuf,
+    },
+    Build {
+        path: PathBuf,
+        out: PathBuf,
+    },
+    Explain {
+        object_id: String,
+        artifact: PathBuf,
+        format: ExplainFormat,
+    },
+}
+
+enum ExplainFormat {
+    Text,
 }
 
 fn parse_command(arguments: Vec<String>) -> Result<Command, CliError> {
@@ -144,10 +293,56 @@ fn parse_command(arguments: Vec<String>) -> Result<Command, CliError> {
                 out: PathBuf::from(out),
             })
         }
+        [command, arguments @ ..] if command == "explain" => parse_explain_command(arguments),
         [] => Err(CliError::MissingCommand),
         [command, ..] if command == "build" => Err(CliError::InvalidBuildUsage),
         [command, ..] => Err(CliError::UnknownCommand {
             command: command.clone(),
         }),
     }
+}
+
+fn parse_explain_command(arguments: &[String]) -> Result<Command, CliError> {
+    let Some((object_id, rest)) = arguments.split_first() else {
+        return Err(CliError::InvalidExplainUsage);
+    };
+    if object_id.starts_with("--") {
+        return Err(CliError::InvalidExplainUsage);
+    }
+
+    let mut artifact = PathBuf::from("dist/docs.agent.json");
+    let mut format = ExplainFormat::Text;
+    let mut index = 0;
+    while index < rest.len() {
+        match rest[index].as_str() {
+            "--artifact" => {
+                let Some(path) = rest.get(index + 1) else {
+                    return Err(CliError::InvalidExplainUsage);
+                };
+                artifact = PathBuf::from(path);
+                index += 2;
+            }
+            "--format" => {
+                let Some(value) = rest.get(index + 1) else {
+                    return Err(CliError::InvalidExplainUsage);
+                };
+                format = match value.as_str() {
+                    "text" => ExplainFormat::Text,
+                    unsupported => {
+                        return Err(CliError::UnsupportedExplainFormat {
+                            format: unsupported.to_string(),
+                        });
+                    }
+                };
+                index += 2;
+            }
+            _ => return Err(CliError::InvalidExplainUsage),
+        }
+    }
+
+    Ok(Command::Explain {
+        object_id: object_id.clone(),
+        artifact,
+        format,
+    })
 }

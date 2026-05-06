@@ -31,6 +31,14 @@ pub(crate) enum CliError {
     #[error("invalid build usage: build requires <path> --out <directory>")]
     InvalidBuildUsage,
 
+    #[error(
+        "invalid explain usage: explain requires <object-id> [--artifact <path>] [--format text]"
+    )]
+    InvalidExplainUsage,
+
+    #[error("unsupported explain format: {format}")]
+    UnsupportedExplainFormat { format: String },
+
     #[error("missing command")]
     MissingCommand,
 
@@ -41,6 +49,7 @@ pub(crate) enum CliError {
 impl CliError {
     pub(crate) fn exit_code(&self) -> i32 {
         match self {
+            CliError::InvalidExplainUsage | CliError::UnsupportedExplainFormat { .. } => 1,
             CliError::InvalidBuildUsage
             | CliError::MissingCommand
             | CliError::UnknownCommand { .. } => 2,
