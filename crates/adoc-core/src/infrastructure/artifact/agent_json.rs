@@ -6,11 +6,7 @@ use crate::domain::artifact::{
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::knowledge_object::{
-    KnowledgeObject, RelationField, RelationTarget, Relations,
-    claim::{
-        Evidence, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD, VERIFIED_AT_FIELD,
-    },
-    decision::DECIDED_BY_FIELD,
+    KnowledgeObject, RelationField, RelationTarget, Relations, projection::MetadataField,
 };
 use crate::domain::ports::artifact_writer::ArtifactWriter;
 
@@ -48,12 +44,16 @@ fn knowledge_object_to_agent_object(
     page_id: &str,
 ) -> AgentJsonObject {
     let span = knowledge_object.span();
-    let mut fields = stored_metadata_fields(knowledge_object);
-    append_typed_metadata_fields(knowledge_object, &mut fields);
+    let metadata = knowledge_object.metadata_projection();
+    let status = metadata
+        .discriminant()
+        .map(|discriminant| discriminant.value_as_str().to_string());
+    let fields = metadata_fields_to_agent(metadata.fields());
+
     AgentJsonObject {
         id: knowledge_object.id().as_str().to_string(),
         kind: knowledge_object.kind().as_str().to_string(),
-        status: object_status(knowledge_object),
+        status,
         body: knowledge_object.body().to_source(),
         page_id: page_id.to_string(),
         source_span: AgentJsonSourceSpan {
@@ -66,21 +66,12 @@ fn knowledge_object_to_agent_object(
     }
 }
 
-fn stored_metadata_fields(knowledge_object: &KnowledgeObject) -> BTreeMap<String, String> {
+fn metadata_fields_to_agent(metadata_fields: &[MetadataField<'_>]) -> BTreeMap<String, String> {
     let mut fields = BTreeMap::new();
-    knowledge_object.visit_metadata_fields(&mut |key: &str, value: &str| {
-        fields.insert(key.to_string(), value.to_string());
-    });
-    fields
-}
-
-fn object_status(knowledge_object: &KnowledgeObject) -> Option<String> {
-    match knowledge_object {
-        KnowledgeObject::Claim(claim) => Some(claim.status().as_str().to_string()),
-        KnowledgeObject::Decision(decision) => Some(decision.status().as_str().to_string()),
-        KnowledgeObject::Glossary(_) => None,
-        KnowledgeObject::Warning(warning) => Some(warning.severity().as_str().to_string()),
+    for field in metadata_fields {
+        fields.insert(field.key().to_string(), field.value_as_str().to_string());
     }
+    fields
 }
 
 fn relations_to_agent(relations: &Relations) -> AgentJsonRelations {
@@ -98,49 +89,6 @@ fn relation_ids(targets: &[RelationTarget]) -> Vec<String> {
         .collect()
 }
 
-fn append_typed_metadata_fields(
-    knowledge_object: &KnowledgeObject,
-    fields: &mut BTreeMap<String, String>,
-) {
-    match knowledge_object {
-        KnowledgeObject::Claim(claim) => {
-            if let Some(verification) = claim.verification() {
-                fields.insert(
-                    OWNER_FIELD.to_string(),
-                    verification.owner().as_str().to_string(),
-                );
-                fields.insert(
-                    VERIFIED_AT_FIELD.to_string(),
-                    verification.verified_at().as_str().to_string(),
-                );
-                for evidence in verification.evidence() {
-                    match evidence {
-                        Evidence::Source(value) => {
-                            fields.insert(SOURCE_FIELD.to_string(), value.as_str().to_string());
-                        }
-                        Evidence::Test(value) => {
-                            fields.insert(TEST_FIELD.to_string(), value.as_str().to_string());
-                        }
-                        Evidence::ReviewedBy(value) => {
-                            fields
-                                .insert(REVIEWED_BY_FIELD.to_string(), value.as_str().to_string());
-                        }
-                    }
-                }
-            }
-        }
-        KnowledgeObject::Decision(decision) => {
-            if let Some(verdict) = decision.verdict() {
-                fields.insert(
-                    DECIDED_BY_FIELD.to_string(),
-                    verdict.decided_by().as_str().to_string(),
-                );
-            }
-        }
-        KnowledgeObject::Glossary(_) | KnowledgeObject::Warning(_) => {}
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -152,7 +100,10 @@ mod tests {
     use crate::domain::identity::PageId;
     use crate::domain::knowledge_object::{
         KnowledgeObject,
-        claim::{Claim, Evidence, NonEmpty, Owner, Verification, VerifiedAt},
+        claim::{
+            Claim, Evidence, NonEmpty, OWNER_FIELD, Owner, REVIEWED_BY_FIELD, SOURCE_FIELD,
+            TEST_FIELD, VERIFIED_AT_FIELD, Verification, VerifiedAt,
+        },
         decision::{AcceptedVerdict, DECIDED_BY_FIELD, DecidedBy, Decision},
     };
     use crate::domain::ports::artifact_writer::ArtifactWriter;

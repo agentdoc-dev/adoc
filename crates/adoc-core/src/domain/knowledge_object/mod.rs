@@ -10,6 +10,7 @@ use crate::domain::values::Body;
 pub(crate) mod claim;
 pub(crate) mod decision;
 pub(crate) mod glossary;
+pub(crate) mod projection;
 pub(crate) mod warning;
 
 use claim::Claim;
