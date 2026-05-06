@@ -117,16 +117,24 @@ fn render_warning(
     metadata: &KnowledgeObjectMetadata<'_>,
     html: &mut String,
 ) {
-    let class = match metadata.discriminant() {
-        Some(discriminant) => format!("warning warning--{}", discriminant.value_as_str()),
-        None => "warning".to_string(),
-    };
+    let discriminant = warning_severity_discriminant(metadata);
+    let class = format!("warning warning--{}", discriminant.value_as_str());
 
     render_object_section_open(knowledge_object, &class, html);
-    render_object_header(knowledge_object, metadata.discriminant(), html);
+    render_object_header(knowledge_object, Some(discriminant), html);
     render_object_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
+}
+
+fn warning_severity_discriminant<'a>(
+    metadata: &KnowledgeObjectMetadata<'a>,
+) -> MetadataDiscriminant<'a> {
+    match metadata.discriminant() {
+        Some(discriminant @ MetadataDiscriminant::WarningSeverity(_)) => discriminant,
+        Some(_) => unreachable!("warning metadata projection must use warning severity"),
+        None => unreachable!("warning metadata projection must include warning severity"),
+    }
 }
 
 fn render_decision(
