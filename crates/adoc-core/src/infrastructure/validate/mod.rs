@@ -11,8 +11,10 @@
 
 mod knowledge_object_unique_ids;
 pub(crate) mod resolve_knowledge_objects;
+mod resolve_object_references;
 pub(crate) use resolve_knowledge_objects::resolve_knowledge_objects;
 pub(crate) use resolve_knowledge_objects::suppress_unknown_kind_shape_diagnostics;
+pub(crate) use resolve_object_references::resolve_object_references;
 
 use knowledge_object_unique_ids::KnowledgeObjectUniqueIds;
 
@@ -180,7 +182,10 @@ fn check_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic>) {
             InlineSegment::Emphasis(inner) | InlineSegment::Strong(inner) => {
                 check_inlines(inner, sink);
             }
-            InlineSegment::Text(_) | InlineSegment::Code(_) => {}
+            InlineSegment::Text(_)
+            | InlineSegment::Code(_)
+            | InlineSegment::ObjectReferencePending { .. }
+            | InlineSegment::ObjectReference { .. } => {}
         }
     }
 }

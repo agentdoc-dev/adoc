@@ -6,6 +6,8 @@
 //! assembly so the orchestrator remains a linear sequence of named domain
 //! operations.
 
+use std::collections::BTreeSet;
+
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
@@ -30,12 +32,47 @@ pub(crate) fn suppress_unknown_kind_shape_diagnostics(
 /// Walk each parsed page in place: supported `BlockAst::KnowledgeObjectPending`
 /// blocks are replaced with `BlockAst::KnowledgeObject(...)` on success, or
 /// dropped after emitting diagnostics on failure.
-pub(crate) fn resolve_knowledge_objects(parsed: &mut [(SourceFile, PageAst)]) -> Vec<Diagnostic> {
+#[derive(Debug, Default)]
+pub(crate) struct ResolveKnowledgeObjectsOutput {
+    pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) declared_ids: BTreeSet<ObjectId>,
+}
+
+impl std::ops::Deref for ResolveKnowledgeObjectsOutput {
+    type Target = [Diagnostic];
+
+    fn deref(&self) -> &Self::Target {
+        &self.diagnostics
+    }
+}
+
+pub(crate) fn resolve_knowledge_objects(
+    parsed: &mut [(SourceFile, PageAst)],
+) -> ResolveKnowledgeObjectsOutput {
     let mut diagnostics = Vec::new();
+    let declared_ids = collect_declared_ids(parsed);
     for (_source, page) in parsed.iter_mut() {
         resolve_page(page, &mut diagnostics);
     }
-    diagnostics
+    ResolveKnowledgeObjectsOutput {
+        diagnostics,
+        declared_ids,
+    }
+}
+
+fn collect_declared_ids(parsed: &[(SourceFile, PageAst)]) -> BTreeSet<ObjectId> {
+    let mut ids = BTreeSet::new();
+    for (_source, page) in parsed {
+        for block in &page.blocks {
+            let BlockAst::KnowledgeObjectPending(pending) = block else {
+                continue;
+            };
+            if let Ok(id) = ObjectId::new(pending.id_text.clone()) {
+                ids.insert(id);
+            }
+        }
+    }
+    ids
 }
 
 fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
@@ -263,6 +300,25 @@ mod tests {
             matches!(&pairs[0].1.blocks[0], BlockAst::KnowledgeObject(_)),
             "expected KnowledgeObject block"
         );
+    }
+
+    #[test]
+    fn declared_ids_include_valid_pending_ids_even_when_build_fails() {
+        let mut pending = valid_pending("billing.credits");
+        pending.raw_fields.remove("status");
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let output = resolve_knowledge_objects(&mut pairs);
+
+        assert!(
+            output
+                .declared_ids
+                .contains(&ObjectId::new("billing.credits").expect("valid id")),
+            "declared ids should include grammar-valid typed block ids"
+        );
+        assert_eq!(output.diagnostics.len(), 1);
+        assert!(pairs[0].1.blocks.is_empty(), "invalid KO should be dropped");
     }
 
     #[test]

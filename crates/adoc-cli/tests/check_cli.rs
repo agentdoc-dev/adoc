@@ -588,6 +588,53 @@ fn duplicate_claim_ids_fail_check_and_block_build_artifacts() {
 }
 
 #[test]
+fn broken_prose_reference_fails_check_and_blocks_build_artifacts() {
+    let workspace = TestWorkspace::new("broken-prose-reference");
+    workspace.write(
+        "guide.adoc",
+        "# Guide @doc(team.guide)\n\nSee [[missing.object]] for details.\n",
+    );
+
+    let check_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "check",
+            workspace.root.to_str().expect("root path is utf-8"),
+        ])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !check_output.status.success(),
+        "expected broken reference to fail check"
+    );
+    let check_stdout = String::from_utf8_lossy(&check_output.stdout);
+    assert!(
+        check_stdout.contains("error[ref.broken]"),
+        "expected ref.broken diagnostic in stdout:\n{check_stdout}"
+    );
+
+    let output_directory = workspace.root.join("dist");
+    let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            workspace.root.to_str().expect("root path is utf-8"),
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        !build_output.status.success(),
+        "expected broken reference to fail build"
+    );
+    assert!(!output_directory.join("docs.html").exists());
+    assert!(!output_directory.join("docs.agent.json").exists());
+}
+
+#[test]
 fn check_allows_raw_html_inside_closed_fenced_code_block() {
     let workspace = TestWorkspace::new("check-allows-raw-html-in-fence");
     let source = workspace.write(

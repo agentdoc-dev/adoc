@@ -7,7 +7,7 @@ pub(crate) const OBJECT_ID_GRAMMAR_HELP: &str = "Object IDs must be lowercase \
     (e.g. `billing.credits`). Allowed characters per segment: a-z, 0-9, \
     and internal hyphens.";
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct ObjectId(String);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,7 +77,7 @@ impl fmt::Display for ObjectId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct PageId(ObjectId);
 
 impl PageId {

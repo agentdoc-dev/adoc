@@ -37,6 +37,7 @@ pub enum DiagnosticCode {
     ClaimStatusCasing,
     IdDuplicate,
     IdInvalid,
+    RefBroken,
     IoUnreadableFile,
 }
 
@@ -58,6 +59,7 @@ impl DiagnosticCode {
             DiagnosticCode::ClaimStatusCasing => "claim.status_casing",
             DiagnosticCode::IdDuplicate => "id.duplicate",
             DiagnosticCode::IdInvalid => "id.invalid",
+            DiagnosticCode::RefBroken => "ref.broken",
             DiagnosticCode::IoUnreadableFile => "io.unreadable_file",
         }
     }

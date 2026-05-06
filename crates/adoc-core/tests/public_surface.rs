@@ -73,6 +73,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::ClaimStatusCasing;
     let _ = DiagnosticCode::IdDuplicate;
     let _ = DiagnosticCode::IdInvalid;
+    let _ = DiagnosticCode::RefBroken;
     let _ = DiagnosticCode::IoUnreadableFile;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
@@ -97,6 +98,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         "claim.status_casing"
     );
     assert_eq!(DiagnosticCode::IdDuplicate.as_str(), "id.duplicate");
+    assert_eq!(DiagnosticCode::RefBroken.as_str(), "ref.broken");
     assert_eq!(
         DiagnosticCode::ParseNestedTypedBlock.as_str(),
         "parse.nested_typed_block"

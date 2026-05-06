@@ -441,6 +441,124 @@ fn compile_workspace_resolves_glossary_into_artifacts() {
 }
 
 #[test]
+fn compile_workspace_links_same_file_prose_reference_to_glossary() {
+    let workspace = TestWorkspace::new("same-file-prose-ref-to-glossary");
+    let source = workspace.write(
+        "glossary.adoc",
+        concat!(
+            "# Glossary @doc(team.glossary)\n",
+            "\n",
+            "Credits are defined by [[billing.credits]].\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "--\n",
+            "Credits are balance adjustments applied to an account.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected prose reference to resolve, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    assert!(
+        artifacts.html.contains(
+            "Credits are defined by <a class=\"object-ref\" href=\"#billing.credits\">billing.credits</a>."
+        ),
+        "expected object reference anchor in HTML: {}",
+        artifacts.html
+    );
+}
+
+#[test]
+fn compile_workspace_links_cross_file_prose_reference_to_claim() {
+    let workspace = TestWorkspace::new("cross-file-prose-ref-to-claim");
+    workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "See *[[billing.credits]]* before changing balances.\n",
+        ),
+    );
+    let source = workspace.write(
+        "billing.adoc",
+        concat!(
+            "# Billing @doc(team.billing)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "--\n",
+            "Credits adjust account balances.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput {
+        root: source.parent().expect("source has parent").to_path_buf(),
+    });
+
+    assert!(
+        !result.has_errors(),
+        "expected cross-file prose reference to resolve, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    assert!(
+        artifacts.html.contains(
+            "<em><a class=\"object-ref\" href=\"#billing.credits\">billing.credits</a></em>"
+        ),
+        "expected object reference anchor inside emphasis: {}",
+        artifacts.html
+    );
+}
+
+#[test]
+fn compile_workspace_links_references_in_heading_and_list_item() {
+    let workspace = TestWorkspace::new("heading-list-prose-refs");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# See [[billing.credits]] @doc(team.guide)\n",
+            "\n",
+            "- Use **[[billing.credits]]** in balance docs.\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "--\n",
+            "Credits are balance adjustments applied to an account.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected heading and list references to resolve, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    assert!(
+        artifacts.html.contains(
+            "<h1>See <a class=\"object-ref\" href=\"#billing.credits\">billing.credits</a></h1>"
+        ),
+        "expected object reference anchor in heading: {}",
+        artifacts.html
+    );
+    assert!(
+        artifacts.html.contains(
+            "<li>Use <strong><a class=\"object-ref\" href=\"#billing.credits\">billing.credits</a></strong> in balance docs.</li>"
+        ),
+        "expected object reference anchor in list item: {}",
+        artifacts.html
+    );
+}
+
+#[test]
 fn compile_workspace_rejects_glossary_invalid_id() {
     let workspace = TestWorkspace::new("glossary-invalid-id");
     let source = workspace.write(
