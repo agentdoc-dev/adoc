@@ -1,23 +1,20 @@
-//! Page-resolver stage: converts supported `BlockAst::KnowledgeObjectPending`
-//! values into typed `KnowledgeObject` aggregates or drops them with
-//! diagnostics (failure).
+//! Page-resolver stage: replaces `BlockAst::KnowledgeObjectPending` values
+//! with typed Knowledge Object aggregates, or drops invalid pending blocks
+//! after diagnostics are emitted.
 //!
-//! Runs as a separate pipeline stage between per-page validation and workspace
-//! assembly so the orchestrator remains a linear sequence of named domain
-//! operations.
+//! Runs as a separate application pipeline stage. Page walking, block
+//! replacement, and declared-ID collection stay here; single-block conversion
+//! is delegated to `domain::services::resolve_pending_block`.
 
 use std::collections::BTreeSet;
 
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
-use crate::domain::knowledge_object::{
-    BlockKind, KnowledgeObject, claim::Claim, decision::Decision, glossary::Glossary,
-    warning::Warning,
+use crate::domain::services::resolve_pending_block::{
+    is_supported_kind_word, resolve_pending_block,
 };
 use crate::domain::source::SourceFile;
-
-const UNKNOWN_KIND_DEFERRED_HELP: &str = "Kinds procedure, example, agent, policy, contradiction, source, and custom schemas are deferred.";
 
 /// Drop field/body-shape diagnostics from grammar-valid unsupported kinds.
 /// The resolver owns kind support, so unsupported typed blocks are opaque
@@ -84,44 +81,8 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
     for block in original {
         match block {
             BlockAst::KnowledgeObjectPending(pending) => {
-                let parsed = *pending;
-                let Some(kind) = BlockKind::from_fence_word(&parsed.kind_word) else {
-                    diagnostics.push(unknown_kind_diagnostic(&parsed));
-                    continue;
-                };
-                match kind {
-                    BlockKind::Claim => {
-                        if let Some(claim) = Claim::build_from_parsed(parsed, diagnostics) {
-                            new_blocks.push(BlockAst::KnowledgeObject(Box::new(
-                                KnowledgeObject::Claim(claim),
-                            )));
-                        }
-                        // failure → block dropped; diagnostics already emitted above
-                    }
-                    BlockKind::Decision => {
-                        if let Some(decision) = Decision::build_from_parsed(parsed, diagnostics) {
-                            new_blocks.push(BlockAst::KnowledgeObject(Box::new(
-                                KnowledgeObject::Decision(decision),
-                            )));
-                        }
-                        // failure → block dropped; diagnostics already emitted above
-                    }
-                    BlockKind::Glossary => {
-                        if let Some(glossary) = Glossary::build_from_parsed(parsed, diagnostics) {
-                            new_blocks.push(BlockAst::KnowledgeObject(Box::new(
-                                KnowledgeObject::Glossary(glossary),
-                            )));
-                        }
-                        // failure → block dropped; diagnostics already emitted above
-                    }
-                    BlockKind::Warning => {
-                        if let Some(warning) = Warning::build_from_parsed(parsed, diagnostics) {
-                            new_blocks.push(BlockAst::KnowledgeObject(Box::new(
-                                KnowledgeObject::Warning(warning),
-                            )));
-                        }
-                        // failure → block dropped; diagnostics already emitted above
-                    }
+                if let Some(knowledge_object) = resolve_pending_block(*pending, diagnostics) {
+                    new_blocks.push(BlockAst::KnowledgeObject(Box::new(knowledge_object)));
                 }
             }
             other => new_blocks.push(other),
@@ -146,37 +107,13 @@ fn is_unknown_kind_shape_diagnostic(
             let BlockAst::KnowledgeObjectPending(pending) = block else {
                 return false;
             };
-            BlockKind::from_fence_word(&pending.kind_word).is_none()
+            !is_supported_kind_word(&pending.kind_word)
                 && pending
                     .content_spans
                     .iter()
                     .any(|content_span| content_span == diagnostic_span)
         })
     })
-}
-
-fn unknown_kind_diagnostic(parsed: &crate::domain::ast::ParsedTypedBlock) -> Diagnostic {
-    let mut diagnostic = Diagnostic::error(
-        DiagnosticCode::SchemaUnknownKind,
-        format!("unknown typed-block kind `{}`", parsed.kind_word),
-    )
-    .with_span(parsed.kind_word_span.clone())
-    .with_help(unknown_kind_help());
-
-    if ObjectId::new(parsed.id_text.clone()).is_ok() {
-        diagnostic = diagnostic.with_object_id(&parsed.id_text);
-    }
-
-    diagnostic
-}
-
-fn unknown_kind_help() -> String {
-    let supported = BlockKind::ALL
-        .iter()
-        .map(|kind| kind.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("supported kinds: {supported}. {UNKNOWN_KIND_DEFERRED_HELP}")
 }
 
 #[cfg(test)]
@@ -189,6 +126,8 @@ mod tests {
     use crate::domain::diagnostic::{DiagnosticCode, SourcePosition, SourceSpan};
     use crate::domain::identity::PageId;
     use crate::domain::inline::InlineSegment;
+    use crate::domain::knowledge_object::KnowledgeObject;
+    use crate::domain::services::resolve_pending_block::unknown_kind_help;
     use crate::domain::source::SourceFile;
 
     fn span() -> SourceSpan {
@@ -469,24 +408,6 @@ mod tests {
             "invalid id text must not be attached as object_id"
         );
         assert!(pairs[0].1.blocks.is_empty());
-    }
-
-    #[test]
-    fn unknown_kind_help_lists_supported_kinds_from_registry() {
-        let help = unknown_kind_help();
-
-        assert_eq!(
-            help,
-            "supported kinds: claim, decision, glossary, warning. Kinds \
-            procedure, example, agent, policy, contradiction, source, and custom schemas are deferred."
-        );
-        for kind in BlockKind::ALL {
-            assert!(
-                help.contains(kind.as_str()),
-                "help must mention supported kind `{}`: {help}",
-                kind.as_str()
-            );
-        }
     }
 
     #[test]
