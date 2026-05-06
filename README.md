@@ -14,7 +14,7 @@ AgentDoc is not AsciiDoc, even though the source extension is `.adoc`.
 
 ## Status
 
-AgentDoc is pre-release compiler infrastructure. The V0.1 implementation supports a prose page slice:
+AgentDoc is pre-release compiler infrastructure. The current V0 compiler supports:
 
 - `adoc check <path>`
 - `adoc build <path> --out <directory>`
@@ -23,10 +23,14 @@ AgentDoc is pre-release compiler infrastructure. The V0.1 implementation support
 - path-derived page identity when no annotation exists
 - headings, paragraphs, unordered lists, ordered lists, and fenced code blocks
 - rich inline rendering for inline code, emphasis, strong text, and links
-- strict diagnostics for raw HTML, unsafe links, unclosed fenced code blocks, malformed page annotations, and invalid Object IDs
+- typed Knowledge Objects: `claim`, `decision`, `warning`, and `glossary`
+- verified claims with `owner`, `verified_at`, and V0 evidence fields
+- object references written as `[[object.id]]`
+- relation fields `depends_on`, `supersedes`, and `related_to`
+- strict diagnostics for raw HTML, unsafe links, unclosed fenced code blocks, malformed typed blocks, malformed page annotations, invalid or duplicate Object IDs, invalid verified claims, and broken references
 - HTML and agent JSON artifact emission when no error diagnostics exist
 
-Typed Knowledge Objects such as `claim`, `decision`, `warning`, and `glossary` are planned for later V0 slices. See [docs/ROADMAP.md](docs/ROADMAP.md).
+Config files, includes, custom schemas, search, migrations, and graph exports are deferred beyond the current V0 compiler loop. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Quick Start
 
@@ -142,7 +146,7 @@ adoc build <path> --out <directory>
 
 ## AgentDoc Source
 
-The V0.1 source grammar is intentionally small.
+The V0 source grammar is intentionally small.
 
 ````adoc
 # Page Title @doc(product.area)
@@ -159,6 +163,45 @@ Paragraph text is plain prose.
 Fenced code is preserved and escaped in HTML.
 ```
 ````
+
+Typed Knowledge Objects use top-level fenced blocks:
+
+````adoc
+::claim billing.ledger
+status: verified
+owner: team-billing
+verified_at: 2026-05-06
+source: ledger reconciliation report
+--
+The ledger records every credit and refund balance movement.
+::
+
+::decision billing.refund-policy
+status: accepted
+decided_by: architecture
+supersedes: billing.legacy-refunds
+depends_on: [billing.ledger, billing.credits]
+--
+Use policy-based refund approval with ledger-backed audit entries.
+::
+````
+
+Supported object kinds:
+
+- `claim`
+- `decision`
+- `warning`
+- `glossary`
+
+Supported relation fields:
+
+- `depends_on`
+- `supersedes`
+- `related_to`
+
+Relation values can be a single Object ID, a comma-separated list, or a bracket array. The compiler deduplicates repeated targets while preserving first occurrence order. Valid targets that do not resolve to a declared Knowledge Object emit `ref.broken`; malformed targets emit `id.invalid`.
+
+Object references use `[[object.id]]` in prose, headings, list items, and typed object bodies. References are rendered as HTML links and preserved as citeable source text in agent JSON object bodies.
 
 Page annotations are optional. IDs must be lowercase dot-separated kebab-case values with at least two segments, such as `product.area`. If the first heading does not include `@doc(id)`, the compiler derives the page identity from the file path and applies the same ID grammar.
 
@@ -177,7 +220,6 @@ fn main() {}
 
 Current limitations:
 
-- typed Knowledge Objects are not implemented yet
 - custom schemas, includes, config files, search, and migrations are deferred
 
 ## Smoke Tests
@@ -262,7 +304,13 @@ The architectural contract is documented in [docs/V0-DESIGN.md](docs/V0-DESIGN.m
 
 ### Quality Gates
 
-Run the same checks as CI:
+Single test command:
+
+```bash
+cargo test --workspace --locked
+```
+
+Run the same full check set as CI:
 
 ```bash
 cargo fmt --all --check
@@ -344,7 +392,7 @@ Parser, validation, renderer, and artifact internals stay private until another 
 
 ## Roadmap
 
-The next V0 milestones add:
+Implemented V0 compiler milestones include:
 
 - richer page identity and source diagnostics
 - common prose rendering for inline code, emphasis, and links
@@ -353,6 +401,8 @@ The next V0 milestones add:
 - `decision`, `warning`, and `glossary`
 - object references and relations
 - multi-file project behavior
+
+Next milestones focus on pilot hardening, review workflows, patch safety, and deferred product surfaces such as config, includes, graph exports, and custom schemas.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full sequence.
 

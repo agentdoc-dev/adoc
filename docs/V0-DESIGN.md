@@ -171,7 +171,18 @@ pub enum DiagnosticCode {
     ParseUnsafeLink,
     ParseUnclosedFence,
     ParseMalformedPageAnnotation,
+    ParseNestedTypedBlock,
+    ParseMalformedField,
+    ParseMalformedOpenFence,
+    SchemaUnknownKind,
+    SchemaMissingField,
+    SchemaDuplicateField,
+    SchemaInvalidStatus,
+    ClaimVerifiedMissingEvidence,
+    ClaimStatusCasing,
+    IdDuplicate,
     IdInvalid,
+    RefBroken,
     IoUnreadableFile,
 }
 ```
@@ -182,8 +193,7 @@ Diagnostic guidance:
 - Use grouped semantic diagnostic codes, not numeric codes, in V0.
 - Prefer fix-oriented messages.
 - Include `object_id` when a diagnostic belongs to a Knowledge Object.
-- V0.1 should include diagnostics for raw HTML, unsafe links, unreadable files, malformed fences, malformed page annotations, and invalid Object IDs.
-- Later V0 slices add duplicate IDs, missing fields, invalid verified claims, unknown object types, and broken references.
+- V0 includes diagnostics for raw HTML, unsafe links, unreadable files, malformed fences, malformed page annotations, malformed typed blocks, duplicate IDs, missing fields, invalid verified claims, unknown object types, invalid Object IDs, and broken references.
 
 Initial diagnostic code examples:
 
@@ -312,8 +322,8 @@ The first supported relation fields are:
 - `supersedes`
 - `related_to`
 
-Relation values are comma-separated Object IDs in any supported Knowledge
-Object field region:
+Relation values are Object IDs in any supported Knowledge Object field region.
+They can be scalar, comma-separated, or bracket-array values:
 
 ```adoc
 ::decision billing.new-policy
@@ -321,6 +331,7 @@ status: accepted
 decided_by: architecture
 supersedes: billing.old-policy
 related_to: billing.credits, billing.ledger
+depends_on: [billing.ledger, billing.policy]
 --
 Use the new billing policy.
 ::

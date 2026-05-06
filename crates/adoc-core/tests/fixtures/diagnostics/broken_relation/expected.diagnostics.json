@@ -1,0 +1,22 @@
+[
+  {
+    "code": "ref.broken",
+    "severity": "error",
+    "message": "depends_on target `missing.object` does not resolve to a declared Knowledge Object",
+    "span": {
+      "file": "tests/fixtures/diagnostics/broken_relation/input/team/bad.adoc",
+      "start": {
+        "line": 3,
+        "column": 13,
+        "offset": 50
+      },
+      "end": {
+        "line": 3,
+        "column": 27,
+        "offset": 64
+      }
+    },
+    "object_id": "missing.object",
+    "help": null
+  }
+]
