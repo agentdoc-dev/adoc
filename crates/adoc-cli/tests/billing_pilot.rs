@@ -1,7 +1,7 @@
 #[allow(dead_code)]
 mod support;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde_json::Value;
@@ -14,6 +14,17 @@ fn repo_root() -> PathBuf {
         .parent()
         .expect("workspace has repo root")
         .to_path_buf()
+}
+
+fn is_billing_pilot_adoc_path(path: &str) -> bool {
+    let path = Path::new(path);
+
+    path.extension()
+        .is_some_and(|extension| extension == "adoc")
+        && path
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|directory| directory == "billing-pilot")
 }
 
 #[test]
@@ -117,9 +128,9 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
     for object in objects {
         let source_span = &object["source_span"];
         assert!(
-            source_span["path"].as_str().is_some_and(|path| {
-                path.starts_with("examples/billing-pilot/") && path.ends_with(".adoc")
-            }),
+            source_span["path"]
+                .as_str()
+                .is_some_and(is_billing_pilot_adoc_path),
             "object should expose source path for citations: {object}"
         );
         assert!(
