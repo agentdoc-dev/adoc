@@ -858,6 +858,13 @@ fn compile_workspace_rejects_broken_relation_target() {
         .iter()
         .find(|diagnostic| diagnostic.code == DiagnosticCode::RefBroken)
         .expect("ref.broken diagnostic must be emitted");
+    assert!(
+        diagnostic
+            .message
+            .contains("depends_on target `missing.object`"),
+        "diagnostic should name relation field: {:?}",
+        diagnostic
+    );
     assert_eq!(diagnostic.object_id.as_deref(), Some("missing.object"));
     assert_eq!(
         diagnostic
