@@ -17,6 +17,6 @@
       }
     },
     "object_id": "missing.object",
-    "help": null
+    "help": "Relation targets must name an existing Knowledge Object. Supported relation fields: `depends_on`, `supersedes`, `related_to`."
   }
 ]
