@@ -106,6 +106,12 @@ fn print_diagnostics(diagnostics: &[Diagnostic]) {
                 diagnostic.severity, diagnostic.code, diagnostic.message
             );
         }
+        if let Some(object_id) = &diagnostic.object_id {
+            println!("  object_id: {object_id}");
+        }
+        if let Some(help) = &diagnostic.help {
+            println!("  help: {help}");
+        }
     }
 }
 

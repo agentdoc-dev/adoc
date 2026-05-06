@@ -5,5 +5,7 @@ expression: combined
 exit-success: false
 ---stdout---
 decision_missing_status.adoc:3:1: error[schema.missing_field] decision is missing required field `status`
+  object_id: billing.policy
+  help: Decisions require non-empty `status`. Valid decision statuses are: proposed, accepted.
 1 errors, 0 warnings
 ---stderr---

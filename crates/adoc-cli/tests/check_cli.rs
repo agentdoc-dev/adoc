@@ -1000,6 +1000,14 @@ fn check_rejects_claim_with_missing_status() {
         stdout.contains("status"),
         "expected message to mention `status`, got:\n{stdout}"
     );
+    assert!(
+        stdout.contains("  object_id: billing.credits"),
+        "expected diagnostic object_id metadata, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("  help: Claims require non-empty `status`."),
+        "expected diagnostic help metadata, got:\n{stdout}"
+    );
 }
 
 #[test]

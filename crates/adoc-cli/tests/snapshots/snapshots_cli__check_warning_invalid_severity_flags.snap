@@ -5,5 +5,7 @@ expression: combined
 exit-success: false
 ---stdout---
 warning_invalid_severity.adoc:3:1: error[schema.invalid_status] warning `auth.session.clock-skew` has invalid severity `panic`
+  object_id: auth.session.clock-skew
+  help: Valid warning severities are: low, medium, high, critical.
 1 errors, 0 warnings
 ---stderr---

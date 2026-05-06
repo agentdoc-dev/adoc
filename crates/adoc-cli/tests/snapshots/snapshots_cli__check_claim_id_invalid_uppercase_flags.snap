@@ -6,5 +6,7 @@ expression: combined
 exit-success: false
 ---stdout---
 claim_id_invalid_uppercase.adoc:3:1: error[id.invalid] invalid claim id `Billing.Credits`: Object ID must be at least two lowercase kebab-case segments separated by '.'
+  object_id: Billing.Credits
+  help: Object IDs must be lowercase dot-separated kebab-case segments with at least two segments (e.g. `billing.credits`). Allowed characters per segment: a-z, 0-9, and internal hyphens.
 1 errors, 0 warnings
 ---stderr---
