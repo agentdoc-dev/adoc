@@ -250,6 +250,7 @@ mod tests {
             kind_word_span: span(),
             id_text: id.to_string(),
             raw_fields: fields,
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "This is a valid claim body.".to_string(),
             body_spans: Vec::new(),
@@ -264,6 +265,7 @@ mod tests {
             kind_word_span: span(),
             id_text: "auth.session.clock-skew".to_string(),
             raw_fields: fields,
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
             body_spans: Vec::new(),
@@ -278,6 +280,7 @@ mod tests {
             kind_word_span: span(),
             id_text: "billing.credits".to_string(),
             raw_fields: fields,
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
             body_spans: Vec::new(),
@@ -335,6 +338,7 @@ mod tests {
                 m.insert("status".to_string(), "verified".to_string());
                 m
             },
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: vec!["status".to_string(), "status".to_string()],
             body_text: "some body".to_string(),
             body_spans: Vec::new(),
@@ -365,6 +369,7 @@ mod tests {
                 m.insert("status".to_string(), "verified".to_string());
                 m
             },
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "some body".to_string(),
             body_spans: Vec::new(),
@@ -397,6 +402,7 @@ mod tests {
             kind_word_span: span(),
             id_text: "billing.policy".to_string(),
             raw_fields: BTreeMap::new(),
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: String::new(),
             body_spans: Vec::new(),
@@ -441,6 +447,7 @@ mod tests {
             kind_word_span: span(),
             id_text: "Billing.Policy".to_string(),
             raw_fields: BTreeMap::new(),
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: String::new(),
             body_spans: Vec::new(),
@@ -486,6 +493,7 @@ mod tests {
             kind_word_span: span(),
             id_text: "billing.credits".to_string(),
             raw_fields: BTreeMap::new(), // no status
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "some body".to_string(),
             body_spans: Vec::new(),
@@ -517,6 +525,7 @@ mod tests {
                 m.insert("status".to_string(), "verified".to_string());
                 m
             },
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: String::new(), // empty body
             body_spans: Vec::new(),
@@ -579,6 +588,7 @@ mod tests {
                 m.insert("audience".to_string(), "support".to_string());
                 m
             },
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "some body".to_string(),
             body_spans: Vec::new(),
@@ -620,6 +630,7 @@ mod tests {
                 m.insert("source".to_string(), "runbook".to_string());
                 m
             },
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "some body".to_string(),
             body_spans: Vec::new(),
@@ -653,6 +664,7 @@ mod tests {
                 ("decided_by".to_string(), " architecture ".to_string()),
                 ("audience".to_string(), "support".to_string()),
             ]),
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "Use the existing billing policy.".to_string(),
             body_spans: Vec::new(),
@@ -697,6 +709,7 @@ mod tests {
                 ("status".to_string(), "accepted".to_string()),
                 ("decided_by".to_string(), " ".to_string()),
             ]),
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "Use the existing billing policy.".to_string(),
             body_spans: Vec::new(),
@@ -729,6 +742,7 @@ mod tests {
             kind_word_span: span(),
             id_text: "billing.policy".to_string(),
             raw_fields: BTreeMap::new(),
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "Use the existing billing policy.".to_string(),
             body_spans: Vec::new(),
@@ -753,6 +767,7 @@ mod tests {
             kind_word_span: span(),
             id_text: "billing.policy".to_string(),
             raw_fields: BTreeMap::from([("status".to_string(), "proposed".to_string())]),
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: " ".to_string(),
             body_spans: Vec::new(),
@@ -780,6 +795,7 @@ mod tests {
                 ("status".to_string(), "proposed".to_string()),
                 ("decided_by".to_string(), "architecture".to_string()),
             ]),
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "Use the existing billing policy.".to_string(),
             body_spans: Vec::new(),

@@ -678,6 +678,246 @@ fn compile_workspace_rejects_unsafe_link_inside_claim_body() {
 }
 
 #[test]
+fn compile_workspace_emits_decision_supersedes_relation_in_html_and_agent_json() {
+    let workspace = TestWorkspace::new("decision-supersedes-relation");
+    let source = workspace.write(
+        "decisions.adoc",
+        concat!(
+            "# Decisions @doc(team.decisions)\n",
+            "\n",
+            "::decision billing.old-policy\n",
+            "status: accepted\n",
+            "decided_by: architecture\n",
+            "--\n",
+            "Use the old billing policy.\n",
+            "::\n",
+            "\n",
+            "::decision billing.new-policy\n",
+            "status: accepted\n",
+            "decided_by: architecture\n",
+            "supersedes: billing.old-policy\n",
+            "--\n",
+            "Use the new billing policy.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected decision relation to resolve, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    assert!(
+        artifacts.html.contains(
+            "<section class=\"decision__relations\"><dl>\n<dt>supersedes</dt><dd><a class=\"object-ref\" href=\"#billing.old-policy\">billing.old-policy</a></dd>\n</dl></section>"
+        ),
+        "expected supersedes relation link in HTML: {}",
+        artifacts.html
+    );
+    let decision = artifacts
+        .agent_json
+        .objects
+        .iter()
+        .find(|object| object.id == "billing.new-policy")
+        .expect("new decision emitted");
+    assert_eq!(decision.relations.supersedes, vec!["billing.old-policy"]);
+    assert!(
+        !decision.fields.contains_key("supersedes"),
+        "relation field must be stripped from optional fields"
+    );
+}
+
+#[test]
+fn compile_workspace_emits_claim_depends_on_multiple_object_kinds() {
+    let workspace = TestWorkspace::new("claim-depends-on-relation");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "--\n",
+            "Credits are balance adjustments.\n",
+            "::\n",
+            "\n",
+            "::claim billing.ledger\n",
+            "status: draft\n",
+            "--\n",
+            "Ledger records balance changes.\n",
+            "::\n",
+            "\n",
+            "::claim billing.refunds\n",
+            "status: draft\n",
+            "depends_on: billing.credits, billing.ledger\n",
+            "--\n",
+            "Refunds depend on credits and ledger records.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected claim relations to resolve, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    let claim = artifacts
+        .agent_json
+        .objects
+        .iter()
+        .find(|object| object.id == "billing.refunds")
+        .expect("claim emitted");
+    assert_eq!(
+        claim.relations.depends_on,
+        vec!["billing.credits", "billing.ledger"]
+    );
+    assert!(
+        artifacts.html.contains(
+            "<dt>depends_on</dt><dd><a class=\"object-ref\" href=\"#billing.credits\">billing.credits</a>, <a class=\"object-ref\" href=\"#billing.ledger\">billing.ledger</a></dd>"
+        ),
+        "expected depends_on relation links in HTML: {}",
+        artifacts.html
+    );
+}
+
+#[test]
+fn compile_workspace_deduplicates_relation_targets_and_ignores_trailing_comma() {
+    let workspace = TestWorkspace::new("dedupe-relation-targets");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "--\n",
+            "Credits are balance adjustments.\n",
+            "::\n",
+            "\n",
+            "::claim billing.refunds\n",
+            "status: draft\n",
+            "related_to: billing.credits, billing.credits,\n",
+            "--\n",
+            "Refunds relate to credits.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected duplicate/trailing relation targets to compile, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    let claim = artifacts
+        .agent_json
+        .objects
+        .iter()
+        .find(|object| object.id == "billing.refunds")
+        .expect("claim emitted");
+    assert_eq!(claim.relations.related_to, vec!["billing.credits"]);
+    assert!(
+        !claim.fields.contains_key("related_to"),
+        "relation field must be stripped from optional fields"
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_broken_relation_target() {
+    let workspace = TestWorkspace::new("broken-relation-target");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::claim billing.refunds\n",
+            "status: draft\n",
+            "depends_on: missing.object\n",
+            "--\n",
+            "Refunds depend on missing knowledge.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "broken relation must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == DiagnosticCode::RefBroken)
+        .expect("ref.broken diagnostic must be emitted");
+    assert_eq!(diagnostic.object_id.as_deref(), Some("missing.object"));
+    assert_eq!(
+        diagnostic
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((5, 13)),
+        "diagnostic should point at the missing relation ID"
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_empty_interior_relation_segment() {
+    let workspace = TestWorkspace::new("empty-interior-relation-segment");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::claim billing.refunds\n",
+            "status: draft\n",
+            "depends_on: billing.credits, , billing.ledger\n",
+            "--\n",
+            "Refunds depend on credits and ledger records.\n",
+            "::\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "--\n",
+            "Credits are balance adjustments.\n",
+            "::\n",
+            "\n",
+            "::claim billing.ledger\n",
+            "status: draft\n",
+            "--\n",
+            "Ledger records balance changes.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "empty relation segment must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == DiagnosticCode::IdInvalid)
+        .expect("id.invalid diagnostic must be emitted");
+    assert!(
+        diagnostic.message.contains("empty relation"),
+        "diagnostic should explain empty relation segment: {:?}",
+        diagnostic
+    );
+    assert_eq!(
+        diagnostic
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((5, 29)),
+        "diagnostic should point at the empty interior segment"
+    );
+}
+
+#[test]
 fn compile_workspace_rejects_glossary_invalid_id() {
     let workspace = TestWorkspace::new("glossary-invalid-id");
     let source = workspace.write(

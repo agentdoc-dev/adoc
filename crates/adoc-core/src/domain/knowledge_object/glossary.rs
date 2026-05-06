@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
+use crate::domain::knowledge_object::Relations;
 use crate::domain::values::{Body, OptionalFields};
 
 const GLOSSARY_MISSING_BODY_HELP: &str = "Glossary entries require non-empty body text.";
@@ -12,6 +13,7 @@ pub(crate) struct Glossary {
     id: ObjectId,
     body: Body,
     fields: OptionalFields,
+    relations: Relations,
     span: SourceSpan,
 }
 
@@ -41,8 +43,15 @@ impl Glossary {
             emit_glossary_error(parsed, GlossaryError::MissingBody, diagnostics);
             return None;
         };
+        let fields_and_relations = super::extract_relations(parsed, diagnostics);
 
-        match Self::from_parts(id, body, parsed.raw_fields.clone(), parsed.span.clone()) {
+        match Self::from_parts(
+            id,
+            body,
+            fields_and_relations.fields,
+            fields_and_relations.relations,
+            parsed.span.clone(),
+        ) {
             Ok(glossary) => Some(glossary),
             Err(error) => {
                 emit_glossary_error(parsed, error, diagnostics);
@@ -60,19 +69,21 @@ impl Glossary {
     ) -> Result<Self, GlossaryError> {
         let id = ObjectId::new(id_text).map_err(GlossaryError::InvalidId)?;
         let body = Body::from_plain_text(body_text).ok_or(GlossaryError::MissingBody)?;
-        Self::from_parts(id, body, fields, span)
+        Self::from_parts(id, body, fields, Relations::empty(), span)
     }
 
     fn from_parts(
         id: ObjectId,
         body: Body,
         fields: BTreeMap<String, String>,
+        relations: Relations,
         span: SourceSpan,
     ) -> Result<Self, GlossaryError> {
         Ok(Self {
             id,
             body,
             fields: OptionalFields::from_map(fields),
+            relations,
             span,
         })
     }
@@ -91,6 +102,10 @@ impl Glossary {
 
     pub(crate) fn fields(&self) -> &OptionalFields {
         &self.fields
+    }
+
+    pub(crate) fn relations(&self) -> &Relations {
+        &self.relations
     }
 
     pub(crate) fn span(&self) -> &SourceSpan {
@@ -159,6 +174,7 @@ mod tests {
             kind_word_span: span(),
             id_text: id_text.to_string(),
             raw_fields: fields,
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys,
             body_text: body_text.to_string(),
             body_spans: Vec::new(),

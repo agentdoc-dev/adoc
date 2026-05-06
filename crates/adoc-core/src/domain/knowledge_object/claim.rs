@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
+use crate::domain::knowledge_object::Relations;
 use crate::domain::values::{Body, NonEmptyText, OptionalFields, trim_ascii_edges};
 
 pub(crate) const STATUS_FIELD: &str = "status";
@@ -24,6 +25,7 @@ pub(crate) struct Claim {
     body: Body,
     fields: OptionalFields,
     verification: Option<Verification>,
+    relations: Relations,
     span: SourceSpan,
 }
 
@@ -47,8 +49,9 @@ impl Claim {
         }
 
         let status_text = parsed.raw_fields.get(STATUS_FIELD).map(String::as_str);
-        let optional_fields: BTreeMap<String, String> = parsed
-            .raw_fields
+        let fields_and_relations = super::extract_relations(parsed, diagnostics);
+        let optional_fields: BTreeMap<String, String> = fields_and_relations
+            .fields
             .iter()
             .filter(|(key, _)| key.as_str() != STATUS_FIELD)
             .map(|(key, value)| (key.clone(), value.clone()))
@@ -61,6 +64,7 @@ impl Claim {
                 parsed,
                 status_text,
                 optional_fields,
+                fields_and_relations.relations,
                 diagnostics,
             );
         }
@@ -73,7 +77,15 @@ impl Claim {
             }
         };
 
-        match Self::from_parts(id, status, body, optional_fields, None, parsed.span.clone()) {
+        match Self::from_parts(
+            id,
+            status,
+            body,
+            optional_fields,
+            None,
+            fields_and_relations.relations,
+            parsed.span.clone(),
+        ) {
             Ok(claim) => {
                 if claim.status().is_verified_ascii_case_variant() {
                     diagnostics.push(status_casing_diagnostic(parsed, claim.status().as_str()));
@@ -97,7 +109,15 @@ impl Claim {
         span: SourceSpan,
     ) -> Result<Self, ClaimError> {
         let (id, status, body) = Self::parse_basics(id_text, status_text, body_text)?;
-        Self::from_parts(id, status, body, optional_fields, verification, span)
+        Self::from_parts(
+            id,
+            status,
+            body,
+            optional_fields,
+            verification,
+            Relations::empty(),
+            span,
+        )
     }
 
     fn from_parts(
@@ -106,6 +126,7 @@ impl Claim {
         body: Body,
         optional_fields: BTreeMap<String, String>,
         verification: Option<Verification>,
+        relations: Relations,
         span: SourceSpan,
     ) -> Result<Self, ClaimError> {
         if status.is_verified() && verification.is_none() {
@@ -130,6 +151,7 @@ impl Claim {
             body,
             fields,
             verification,
+            relations,
             span,
         })
     }
@@ -180,6 +202,10 @@ impl Claim {
         self.verification.as_ref()
     }
 
+    pub(crate) fn relations(&self) -> &Relations {
+        &self.relations
+    }
+
     pub(crate) fn span(&self) -> &SourceSpan {
         &self.span
     }
@@ -188,6 +214,7 @@ impl Claim {
         parsed: &ParsedTypedBlock,
         status_text: Option<&str>,
         optional_fields: BTreeMap<String, String>,
+        relations: Relations,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
         let (id, status, body) = match Self::parse_basics_from_parsed(parsed, status_text) {
@@ -207,6 +234,7 @@ impl Claim {
             body,
             storage_fields,
             Some(verification),
+            relations,
             parsed.span.clone(),
         ) {
             Ok(claim) => Some(claim),
@@ -551,6 +579,7 @@ mod tests {
             kind_word_span: span(),
             id_text: "billing.credits".to_string(),
             raw_fields: fields,
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
             body_spans: Vec::new(),

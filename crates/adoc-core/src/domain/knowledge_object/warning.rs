@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
+use crate::domain::knowledge_object::Relations;
 use crate::domain::values::{Body, OptionalFields, trim_ascii_edges};
 
 pub(crate) const SEVERITY_FIELD: &str = "severity";
@@ -17,6 +18,7 @@ pub(crate) struct Warning {
     severity: WarningSeverity,
     body: Body,
     fields: OptionalFields,
+    relations: Relations,
     span: SourceSpan,
 }
 
@@ -38,8 +40,9 @@ impl Warning {
         }
 
         let severity_text = parsed.raw_fields.get(SEVERITY_FIELD).map(String::as_str);
-        let optional_fields: BTreeMap<String, String> = parsed
-            .raw_fields
+        let fields_and_relations = super::extract_relations(parsed, diagnostics);
+        let optional_fields: BTreeMap<String, String> = fields_and_relations
+            .fields
             .iter()
             .filter(|(key, _)| key.as_str() != SEVERITY_FIELD)
             .map(|(key, value)| (key.clone(), value.clone()))
@@ -53,7 +56,14 @@ impl Warning {
             }
         };
 
-        match Self::from_parts(id, severity, body, optional_fields, parsed.span.clone()) {
+        match Self::from_parts(
+            id,
+            severity,
+            body,
+            optional_fields,
+            fields_and_relations.relations,
+            parsed.span.clone(),
+        ) {
             Ok(warning) => Some(warning),
             Err(error) => {
                 emit_warning_error(parsed, error, diagnostics);
@@ -73,7 +83,14 @@ impl Warning {
         let id = ObjectId::new(id_text).map_err(WarningError::InvalidId)?;
         let severity = WarningSeverity::try_new(severity_text.unwrap_or(""))?;
         let body = Body::from_plain_text(body_text).ok_or(WarningError::MissingBody)?;
-        Self::from_parts(id, severity, body, optional_fields, span)
+        Self::from_parts(
+            id,
+            severity,
+            body,
+            optional_fields,
+            Relations::empty(),
+            span,
+        )
     }
 
     fn from_parts(
@@ -81,6 +98,7 @@ impl Warning {
         severity: WarningSeverity,
         body: Body,
         optional_fields: BTreeMap<String, String>,
+        relations: Relations,
         span: SourceSpan,
     ) -> Result<Self, WarningError> {
         debug_assert!(
@@ -92,6 +110,7 @@ impl Warning {
             severity,
             body,
             fields: OptionalFields::from_map(optional_fields),
+            relations,
             span,
         })
     }
@@ -124,6 +143,10 @@ impl Warning {
 
     pub(crate) fn fields(&self) -> &OptionalFields {
         &self.fields
+    }
+
+    pub(crate) fn relations(&self) -> &Relations {
+        &self.relations
     }
 
     pub(crate) fn span(&self) -> &SourceSpan {
@@ -241,6 +264,7 @@ mod tests {
             kind_word_span: span(),
             id_text: "auth.session.clock-skew".to_string(),
             raw_fields: fields,
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
             body_spans: Vec::new(),

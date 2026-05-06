@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
+use crate::domain::knowledge_object::Relations;
 use crate::domain::values::{Body, NonEmptyText, OptionalFields, trim_ascii_edges};
 
 pub(crate) const STATUS_FIELD: &str = "status";
@@ -20,6 +21,7 @@ pub(crate) struct Decision {
     body: Body,
     fields: OptionalFields,
     verdict: Option<AcceptedVerdict>,
+    relations: Relations,
     span: SourceSpan,
 }
 
@@ -44,8 +46,9 @@ impl Decision {
         }
 
         let status_text = parsed.raw_fields.get(STATUS_FIELD).map(String::as_str);
-        let optional_fields: BTreeMap<String, String> = parsed
-            .raw_fields
+        let fields_and_relations = super::extract_relations(parsed, diagnostics);
+        let optional_fields: BTreeMap<String, String> = fields_and_relations
+            .fields
             .iter()
             .filter(|(key, _)| key.as_str() != STATUS_FIELD)
             .map(|(key, value)| (key.clone(), value.clone()))
@@ -80,6 +83,7 @@ impl Decision {
             body,
             optional_fields,
             verdict,
+            fields_and_relations.relations,
             parsed.span.clone(),
         ) {
             Ok(decision) => Some(decision),
@@ -103,7 +107,15 @@ impl Decision {
         span: SourceSpan,
     ) -> Result<Self, DecisionError> {
         let (id, status, body) = Self::parse_basics(id_text, status_text, body_text)?;
-        Self::from_parts(id, status, body, optional_fields, verdict, span)
+        Self::from_parts(
+            id,
+            status,
+            body,
+            optional_fields,
+            verdict,
+            Relations::empty(),
+            span,
+        )
     }
 
     fn from_parts(
@@ -112,6 +124,7 @@ impl Decision {
         body: Body,
         optional_fields: BTreeMap<String, String>,
         verdict: Option<AcceptedVerdict>,
+        relations: Relations,
         span: SourceSpan,
     ) -> Result<Self, DecisionError> {
         match (status.is_accepted(), verdict.is_some()) {
@@ -134,6 +147,7 @@ impl Decision {
             body,
             fields: OptionalFields::from_map(optional_fields),
             verdict,
+            relations,
             span,
         })
     }
@@ -182,6 +196,10 @@ impl Decision {
 
     pub(crate) fn verdict(&self) -> Option<&AcceptedVerdict> {
         self.verdict.as_ref()
+    }
+
+    pub(crate) fn relations(&self) -> &Relations {
+        &self.relations
     }
 
     pub(crate) fn span(&self) -> &SourceSpan {
@@ -347,6 +365,7 @@ mod tests {
             kind_word_span: span(),
             id_text: "billing.policy".to_string(),
             raw_fields: fields,
+            raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
             body_spans: Vec::new(),
