@@ -7,12 +7,16 @@
 //! operations.
 
 use crate::domain::ast::{BlockAst, PageAst};
-use crate::domain::diagnostic::Diagnostic;
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::identity::ObjectId;
 use crate::domain::knowledge_object::{
     BlockKind, KnowledgeObject, claim::Claim, decision::Decision, glossary::Glossary,
     warning::Warning,
 };
 use crate::domain::source::SourceFile;
+
+const UNKNOWN_KIND_HELP: &str = "supported kinds: claim, decision, glossary, warning. Kinds \
+    procedure, example, agent, policy, contradiction, source, and custom schemas are deferred.";
 
 /// Walk each parsed page in place: supported `BlockAst::KnowledgeObjectPending`
 /// blocks are replaced with `BlockAst::KnowledgeObject(...)` on success, or
@@ -32,7 +36,11 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
         match block {
             BlockAst::KnowledgeObjectPending(pending) => {
                 let parsed = *pending;
-                match parsed.kind {
+                let Some(kind) = BlockKind::from_fence_word(&parsed.kind_word) else {
+                    diagnostics.push(unknown_kind_diagnostic(&parsed));
+                    continue;
+                };
+                match kind {
                     BlockKind::Claim => {
                         if let Some(claim) = Claim::build_from_parsed(&parsed, diagnostics) {
                             new_blocks.push(BlockAst::KnowledgeObject(Box::new(
@@ -71,6 +79,21 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
         }
     }
     page.blocks = new_blocks;
+}
+
+fn unknown_kind_diagnostic(parsed: &crate::domain::ast::ParsedTypedBlock) -> Diagnostic {
+    let mut diagnostic = Diagnostic::error(
+        DiagnosticCode::SchemaUnknownKind,
+        format!("unknown typed-block kind `{}`", parsed.kind_word),
+    )
+    .with_span(parsed.kind_word_span.clone())
+    .with_help(UNKNOWN_KIND_HELP);
+
+    if ObjectId::new(parsed.id_text.clone()).is_ok() {
+        diagnostic = diagnostic.with_object_id(&parsed.id_text);
+    }
+
+    diagnostic
 }
 
 #[cfg(test)]
@@ -143,7 +166,8 @@ mod tests {
         fields.insert("verified_at".to_string(), "2026-05-05".to_string());
         fields.insert("source".to_string(), "billing ledger".to_string());
         ParsedTypedBlock {
-            kind: BlockKind::Claim,
+            kind_word: "claim".to_string(),
+            kind_word_span: span(),
             id_text: id.to_string(),
             raw_fields: fields,
             duplicate_keys: Vec::new(),
@@ -155,7 +179,8 @@ mod tests {
 
     fn warning_pending(fields: BTreeMap<String, String>, body_text: &str) -> ParsedTypedBlock {
         ParsedTypedBlock {
-            kind: BlockKind::Warning,
+            kind_word: "warning".to_string(),
+            kind_word_span: span(),
             id_text: "auth.session.clock-skew".to_string(),
             raw_fields: fields,
             duplicate_keys: Vec::new(),
@@ -167,7 +192,8 @@ mod tests {
 
     fn glossary_pending(fields: BTreeMap<String, String>, body_text: &str) -> ParsedTypedBlock {
         ParsedTypedBlock {
-            kind: BlockKind::Glossary,
+            kind_word: "glossary".to_string(),
+            kind_word_span: span(),
             id_text: "billing.credits".to_string(),
             raw_fields: fields,
             duplicate_keys: Vec::new(),
@@ -199,7 +225,8 @@ mod tests {
     #[test]
     fn drops_block_and_emits_one_per_duplicate_key() {
         let pending = ParsedTypedBlock {
-            kind: BlockKind::Claim,
+            kind_word: "claim".to_string(),
+            kind_word_span: span(),
             id_text: "billing.credits".to_string(),
             raw_fields: {
                 let mut m = BTreeMap::new();
@@ -227,7 +254,8 @@ mod tests {
     #[test]
     fn emits_id_invalid_for_bad_id() {
         let pending = ParsedTypedBlock {
-            kind: BlockKind::Claim,
+            kind_word: "claim".to_string(),
+            kind_word_span: span(),
             id_text: "BadId".to_string(),
             raw_fields: {
                 let mut m = BTreeMap::new();
@@ -259,9 +287,78 @@ mod tests {
     }
 
     #[test]
+    fn emits_schema_unknown_kind_for_valid_id_without_cascade() {
+        let pending = ParsedTypedBlock {
+            kind_word: "fact".to_string(),
+            kind_word_span: span(),
+            id_text: "billing.policy".to_string(),
+            raw_fields: BTreeMap::new(),
+            duplicate_keys: Vec::new(),
+            body_text: String::new(),
+            content_spans: Vec::new(),
+            span: SourceSpan {
+                file: PathBuf::from("test.adoc"),
+                start: SourcePosition {
+                    line: 1,
+                    column: 1,
+                    offset: 0,
+                },
+                end: SourcePosition {
+                    line: 1,
+                    column: 20,
+                    offset: 19,
+                },
+            },
+        };
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert_eq!(diagnostics.len(), 1, "unknown kind is single-shot");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaUnknownKind);
+        assert_eq!(diagnostics[0].span.as_ref(), Some(&span()));
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.policy"));
+        assert!(
+            diagnostics[0]
+                .help
+                .as_deref()
+                .is_some_and(|help| help == UNKNOWN_KIND_HELP)
+        );
+        assert!(pairs[0].1.blocks.is_empty());
+    }
+
+    #[test]
+    fn emits_schema_unknown_kind_for_invalid_id_without_id_invalid_cascade() {
+        let pending = ParsedTypedBlock {
+            kind_word: "fact".to_string(),
+            kind_word_span: span(),
+            id_text: "Billing.Policy".to_string(),
+            raw_fields: BTreeMap::new(),
+            duplicate_keys: Vec::new(),
+            body_text: String::new(),
+            content_spans: Vec::new(),
+            span: span(),
+        };
+        let page = page_with_pending(pending);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_knowledge_objects(&mut pairs);
+
+        assert_eq!(diagnostics.len(), 1, "unknown kind is single-shot");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaUnknownKind);
+        assert!(
+            diagnostics[0].object_id.is_none(),
+            "invalid id text must not be attached as object_id"
+        );
+        assert!(pairs[0].1.blocks.is_empty());
+    }
+
+    #[test]
     fn emits_missing_field_for_missing_status() {
         let pending = ParsedTypedBlock {
-            kind: BlockKind::Claim,
+            kind_word: "claim".to_string(),
+            kind_word_span: span(),
             id_text: "billing.credits".to_string(),
             raw_fields: BTreeMap::new(), // no status
             duplicate_keys: Vec::new(),
@@ -286,7 +383,8 @@ mod tests {
     #[test]
     fn emits_missing_field_for_empty_body() {
         let pending = ParsedTypedBlock {
-            kind: BlockKind::Claim,
+            kind_word: "claim".to_string(),
+            kind_word_span: span(),
             id_text: "billing.credits".to_string(),
             raw_fields: {
                 let mut m = BTreeMap::new();
@@ -342,7 +440,8 @@ mod tests {
     #[test]
     fn strips_status_and_verified_fields_from_verified_claim_storage() {
         let pending = ParsedTypedBlock {
-            kind: BlockKind::Claim,
+            kind_word: "claim".to_string(),
+            kind_word_span: span(),
             id_text: "billing.credits".to_string(),
             raw_fields: {
                 let mut m = BTreeMap::new();
@@ -383,7 +482,8 @@ mod tests {
     #[test]
     fn keeps_verified_field_names_as_metadata_for_plain_claims() {
         let pending = ParsedTypedBlock {
-            kind: BlockKind::Claim,
+            kind_word: "claim".to_string(),
+            kind_word_span: span(),
             id_text: "billing.credits".to_string(),
             raw_fields: {
                 let mut m = BTreeMap::new();
@@ -416,7 +516,8 @@ mod tests {
     #[test]
     fn resolves_accepted_decision_with_verdict_and_strips_decided_by_metadata() {
         let pending = ParsedTypedBlock {
-            kind: BlockKind::Decision,
+            kind_word: "decision".to_string(),
+            kind_word_span: span(),
             id_text: "billing.policy".to_string(),
             raw_fields: BTreeMap::from([
                 ("status".to_string(), "accepted".to_string()),
@@ -459,7 +560,8 @@ mod tests {
     #[test]
     fn emits_missing_field_for_empty_accepted_decision_decided_by() {
         let pending = ParsedTypedBlock {
-            kind: BlockKind::Decision,
+            kind_word: "decision".to_string(),
+            kind_word_span: span(),
             id_text: "billing.policy".to_string(),
             raw_fields: BTreeMap::from([
                 ("status".to_string(), "accepted".to_string()),
@@ -492,7 +594,8 @@ mod tests {
     #[test]
     fn emits_missing_field_for_decision_missing_status_with_object_context() {
         let pending = ParsedTypedBlock {
-            kind: BlockKind::Decision,
+            kind_word: "decision".to_string(),
+            kind_word_span: span(),
             id_text: "billing.policy".to_string(),
             raw_fields: BTreeMap::new(),
             duplicate_keys: Vec::new(),
@@ -514,7 +617,8 @@ mod tests {
     #[test]
     fn emits_missing_field_for_decision_missing_body_with_object_context() {
         let pending = ParsedTypedBlock {
-            kind: BlockKind::Decision,
+            kind_word: "decision".to_string(),
+            kind_word_span: span(),
             id_text: "billing.policy".to_string(),
             raw_fields: BTreeMap::from([("status".to_string(), "proposed".to_string())]),
             duplicate_keys: Vec::new(),
@@ -536,7 +640,8 @@ mod tests {
     #[test]
     fn preserves_decided_by_metadata_for_non_accepted_decisions() {
         let pending = ParsedTypedBlock {
-            kind: BlockKind::Decision,
+            kind_word: "decision".to_string(),
+            kind_word_span: span(),
             id_text: "billing.policy".to_string(),
             raw_fields: BTreeMap::from([
                 ("status".to_string(), "proposed".to_string()),

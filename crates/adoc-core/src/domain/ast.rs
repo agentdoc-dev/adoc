@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::domain::diagnostic::SourceSpan;
 use crate::domain::identity::PageId;
 use crate::domain::inline::InlineSegment;
-use crate::domain::knowledge_object::{BlockKind, KnowledgeObject};
+use crate::domain::knowledge_object::KnowledgeObject;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WorkspaceAst {
@@ -88,7 +88,8 @@ pub(crate) struct CodeBlockAst {
 /// transient — never reaches the renderer or artifact emitter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ParsedTypedBlock {
-    pub(crate) kind: BlockKind,
+    pub(crate) kind_word: String,
+    pub(crate) kind_word_span: SourceSpan,
     pub(crate) id_text: String,
     pub(crate) raw_fields: BTreeMap<String, String>,
     pub(crate) duplicate_keys: Vec<String>,
@@ -128,7 +129,8 @@ mod tests {
     #[test]
     fn block_ast_supports_knowledge_object_and_pending_variants() {
         let parsed = ParsedTypedBlock {
-            kind: BlockKind::Claim,
+            kind_word: "claim".to_string(),
+            kind_word_span: span(),
             id_text: "billing.credits".to_string(),
             raw_fields: BTreeMap::new(),
             duplicate_keys: Vec::new(),

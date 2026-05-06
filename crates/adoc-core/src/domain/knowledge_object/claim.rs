@@ -512,7 +512,6 @@ mod tests {
 
     use super::*;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
-    use crate::domain::knowledge_object::BlockKind;
 
     fn span() -> SourceSpan {
         SourceSpan {
@@ -532,7 +531,8 @@ mod tests {
 
     fn parsed_claim(fields: BTreeMap<String, String>, body_text: &str) -> ParsedTypedBlock {
         ParsedTypedBlock {
-            kind: BlockKind::Claim,
+            kind_word: "claim".to_string(),
+            kind_word_span: span(),
             id_text: "billing.credits".to_string(),
             raw_fields: fields,
             duplicate_keys: Vec::new(),

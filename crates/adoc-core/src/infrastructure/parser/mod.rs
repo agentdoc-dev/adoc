@@ -232,7 +232,7 @@ fn consume_typed_block_line(
     ) {
         typed_block::TypedBlockLineOutcome::Continue => {}
         typed_block::TypedBlockLineOutcome::Closed(parsed) => {
-            blocks.push(BlockAst::KnowledgeObjectPending(Box::new(parsed)));
+            blocks.push(BlockAst::KnowledgeObjectPending(parsed));
             *state = ParseState::Idle;
         }
     }
@@ -596,7 +596,6 @@ mod tests {
 
     use super::*;
     use crate::domain::ast::BlockAst;
-    use crate::domain::knowledge_object::BlockKind;
 
     fn parse_source(text: &str) -> (PageAst, Vec<Diagnostic>) {
         let source = SourceFile::new_with_identity_path(
@@ -731,7 +730,7 @@ mod tests {
             })
             .expect("decision block should be parsed as pending typed block");
 
-        assert_eq!(pending.kind, BlockKind::Decision);
+        assert_eq!(pending.kind_word, "decision");
         assert_eq!(pending.id_text, "billing.policy");
     }
 
@@ -759,7 +758,7 @@ mod tests {
             })
             .expect("warning block should be parsed as pending typed block");
 
-        assert_eq!(pending.kind, BlockKind::Warning);
+        assert_eq!(pending.kind_word, "warning");
         assert_eq!(pending.id_text, "auth.session.clock-skew");
     }
 
@@ -787,7 +786,7 @@ mod tests {
             })
             .expect("claim block should be parsed as pending typed block");
 
-        assert_eq!(pending.kind, BlockKind::Claim);
+        assert_eq!(pending.kind_word, "claim");
         assert_eq!(pending.id_text, "billing.credits");
     }
 

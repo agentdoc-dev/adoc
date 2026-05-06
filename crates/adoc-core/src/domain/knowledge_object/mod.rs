@@ -63,6 +63,16 @@ impl BlockKind {
             Self::Warning => "warning",
         }
     }
+
+    pub(crate) fn from_fence_word(word: &str) -> Option<Self> {
+        match word {
+            "claim" => Some(Self::Claim),
+            "decision" => Some(Self::Decision),
+            "glossary" => Some(Self::Glossary),
+            "warning" => Some(Self::Warning),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +93,25 @@ mod tests {
         assert_eq!(BlockKind::Decision.as_str(), "decision");
         assert_eq!(BlockKind::Glossary.as_str(), "glossary");
         assert_eq!(BlockKind::Warning.as_str(), "warning");
+    }
+
+    #[test]
+    fn block_kind_resolves_supported_fence_words_only() {
+        assert_eq!(BlockKind::from_fence_word("claim"), Some(BlockKind::Claim));
+        assert_eq!(
+            BlockKind::from_fence_word("decision"),
+            Some(BlockKind::Decision)
+        );
+        assert_eq!(
+            BlockKind::from_fence_word("glossary"),
+            Some(BlockKind::Glossary)
+        );
+        assert_eq!(
+            BlockKind::from_fence_word("warning"),
+            Some(BlockKind::Warning)
+        );
+        assert_eq!(BlockKind::from_fence_word("fact"), None);
+        assert_eq!(BlockKind::from_fence_word("Claim"), None);
     }
 
     #[test]
