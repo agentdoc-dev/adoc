@@ -6,7 +6,7 @@ use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::ports::artifact_writer::ArtifactWriter;
 use crate::domain::ports::renderer::Renderer;
-use crate::domain::ports::source_provider::SourceProvider;
+use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
 use crate::domain::source::SourceFile;
 use crate::infrastructure::artifact::AgentJsonArtifact;
 use crate::infrastructure::parser::parse_page;
@@ -71,9 +71,9 @@ pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileR
 }
 
 /// Load every source the provider yields, parse each successfully-loaded one
-/// into a `PageAst`, and translate load failures into `io.unreadable_file`
-/// diagnostics. Returns the (source, page) pairs for downstream validation
-/// plus the parse-time and load-time diagnostics in source order.
+/// into a `PageAst`, and translate load failures into I/O diagnostics. Returns
+/// the (source, page) pairs for downstream validation plus the parse-time and
+/// load-time diagnostics in source order.
 fn load_pages<P: SourceProvider>(provider: &P) -> (Vec<(SourceFile, PageAst)>, Vec<Diagnostic>) {
     let mut parsed = Vec::new();
     let mut diagnostics = Vec::new();
@@ -84,17 +84,30 @@ fn load_pages<P: SourceProvider>(provider: &P) -> (Vec<(SourceFile, PageAst)>, V
                 diagnostics.extend(parse_diagnostics);
                 parsed.push((source, page));
             }
-            Err(load_error) => diagnostics.push(Diagnostic::error(
-                DiagnosticCode::IoUnreadableFile,
-                format!(
-                    "could not read AgentDoc Source {}: {}",
-                    load_error.path.display(),
-                    load_error.message,
-                ),
-            )),
+            Err(load_error) => diagnostics.push(load_error_diagnostic(load_error)),
         }
     }
     (parsed, diagnostics)
+}
+
+fn load_error_diagnostic(load_error: SourceLoadError) -> Diagnostic {
+    match load_error.kind {
+        SourceLoadErrorKind::Unreadable => Diagnostic::error(
+            DiagnosticCode::IoUnreadableFile,
+            format!(
+                "could not read AgentDoc Source {}: {}",
+                load_error.path.display(),
+                load_error.message,
+            ),
+        ),
+        SourceLoadErrorKind::UnsupportedSourceExtension => Diagnostic::error(
+            DiagnosticCode::IoUnsupportedSourceExtension,
+            format!(
+                "unsupported AgentDoc Source extension for {}; expected a .adoc file",
+                load_error.path.display(),
+            ),
+        ),
+    }
 }
 
 /// Run every source-page rule against the (source, page) pairs in order.

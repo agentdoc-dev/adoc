@@ -626,6 +626,35 @@ fn check_rejects_adjacent_inline_raw_html_tag() {
 }
 
 #[test]
+fn check_rejects_single_file_with_non_adoc_extension() {
+    let workspace = TestWorkspace::new("check-rejects-single-md-file");
+    let source = workspace.write(
+        "guide.md",
+        "# Guide\n\n<div>This must not compile as AgentDoc Source.</div>\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected unsupported extension to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[io.unsupported_source_extension]"),
+        "expected unsupported source extension diagnostic in stdout:\n{stdout}"
+    );
+    assert!(
+        stdout.contains(".adoc"),
+        "expected message to name the supported extension:\n{stdout}"
+    );
+    assert!(stdout.contains("1 errors"));
+}
+
+#[test]
 fn build_rejects_inline_raw_html_and_writes_no_artifacts() {
     let workspace = TestWorkspace::new("build-rejects-inline-raw-html");
     let source = workspace.write(

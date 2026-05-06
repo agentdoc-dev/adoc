@@ -39,6 +39,7 @@ pub enum DiagnosticCode {
     IdInvalid,
     RefBroken,
     IoUnreadableFile,
+    IoUnsupportedSourceExtension,
 }
 
 impl DiagnosticCode {
@@ -61,6 +62,7 @@ impl DiagnosticCode {
             DiagnosticCode::IdInvalid => "id.invalid",
             DiagnosticCode::RefBroken => "ref.broken",
             DiagnosticCode::IoUnreadableFile => "io.unreadable_file",
+            DiagnosticCode::IoUnsupportedSourceExtension => "io.unsupported_source_extension",
         }
     }
 }
