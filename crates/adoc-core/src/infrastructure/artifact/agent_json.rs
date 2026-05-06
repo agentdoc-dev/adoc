@@ -6,7 +6,7 @@ use crate::domain::artifact::{
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::knowledge_object::{
-    KnowledgeObject,
+    KnowledgeObject, RelationTarget, Relations,
     claim::{
         Claim, Evidence, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
         VERIFIED_AT_FIELD,
@@ -75,7 +75,7 @@ fn glossary_to_agent_object(glossary: &Glossary, page_id: &str) -> AgentJsonObje
             .iter()
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect(),
-        relations: AgentJsonRelations::default(),
+        relations: relations_to_agent(glossary.relations()),
     }
 }
 
@@ -97,7 +97,7 @@ fn warning_to_agent_object(warning: &Warning, page_id: &str) -> AgentJsonObject 
             .iter()
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect(),
-        relations: AgentJsonRelations::default(),
+        relations: relations_to_agent(warning.relations()),
     }
 }
 
@@ -116,7 +116,7 @@ fn decision_to_agent_object(decision: &Decision, page_id: &str) -> AgentJsonObje
             column: span.start.column,
         },
         fields,
-        relations: AgentJsonRelations::default(),
+        relations: relations_to_agent(decision.relations()),
     }
 }
 
@@ -152,8 +152,23 @@ fn claim_to_agent_object(claim: &Claim, page_id: &str) -> AgentJsonObject {
             column: span.start.column,
         },
         fields,
-        relations: AgentJsonRelations::default(),
+        relations: relations_to_agent(claim.relations()),
     }
+}
+
+fn relations_to_agent(relations: &Relations) -> AgentJsonRelations {
+    AgentJsonRelations {
+        depends_on: relation_ids(relations.depends_on()),
+        supersedes: relation_ids(relations.supersedes()),
+        related_to: relation_ids(relations.related_to()),
+    }
+}
+
+fn relation_ids(targets: &[RelationTarget]) -> Vec<String> {
+    targets
+        .iter()
+        .map(|target| target.id().as_str().to_string())
+        .collect()
 }
 
 fn fields_for_claim(claim: &Claim) -> BTreeMap<String, String> {

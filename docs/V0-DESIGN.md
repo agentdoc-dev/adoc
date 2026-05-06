@@ -312,6 +312,27 @@ The first supported relation fields are:
 - `supersedes`
 - `related_to`
 
+Relation values are comma-separated Object IDs in any supported Knowledge
+Object field region:
+
+```adoc
+::decision billing.new-policy
+status: accepted
+decided_by: architecture
+supersedes: billing.old-policy
+related_to: billing.credits, billing.ledger
+--
+Use the new billing policy.
+::
+```
+
+The compiler trims ASCII whitespace around each segment, ignores a trailing
+comma, deduplicates repeated targets while preserving first occurrence order,
+and emits `id.invalid` for malformed or empty interior segments. Relation
+targets that use valid Object ID grammar but do not resolve emit `ref.broken`.
+Relation fields are removed from ordinary object metadata before rendering and
+agent JSON emission.
+
 The first evidence fields for verified claims are:
 
 - `source`
@@ -428,6 +449,7 @@ Rules:
   For glossary, an author-supplied `status` field remains ordinary optional
   metadata under `fields.status`; it is not promoted to top-level `status`.
 - Relations are ID arrays, not embedded objects.
+- Relation arrays preserve source order after duplicate target removal.
 - Object `body` is a faithful source-text projection of the inline-aware body,
   preserving `[[object.id]]` markers rather than embedding a graph model.
 - Diagnostics are included using the same codes and messages as CLI diagnostics.

@@ -1,9 +1,10 @@
 //! Aggregate family — populated by Slice 1.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::domain::ast::ParsedTypedBlock;
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourcePosition, SourceSpan};
+use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::inline::{InlineOrigin, InlineSegment, parse_inlines};
 use crate::domain::values::Body;
 
@@ -16,6 +17,10 @@ use claim::Claim;
 use decision::Decision;
 use glossary::Glossary;
 use warning::Warning;
+
+pub(crate) const DEPENDS_ON_FIELD: &str = "depends_on";
+pub(crate) const SUPERSEDES_FIELD: &str = "supersedes";
+pub(crate) const RELATED_TO_FIELD: &str = "related_to";
 
 pub(super) fn reject_duplicate_fields(
     parsed: &ParsedTypedBlock,
@@ -64,6 +69,225 @@ pub(super) fn body_from_parsed(parsed: &ParsedTypedBlock) -> Option<Body> {
     }
 
     Body::try_new(inlines)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct Relations {
+    depends_on: Vec<RelationTarget>,
+    supersedes: Vec<RelationTarget>,
+    related_to: Vec<RelationTarget>,
+}
+
+impl Relations {
+    pub(crate) fn empty() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn depends_on(&self) -> &[RelationTarget] {
+        &self.depends_on
+    }
+
+    pub(crate) fn supersedes(&self) -> &[RelationTarget] {
+        &self.supersedes
+    }
+
+    pub(crate) fn related_to(&self) -> &[RelationTarget] {
+        &self.related_to
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.depends_on.is_empty() && self.supersedes.is_empty() && self.related_to.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RelationTarget {
+    id: ObjectId,
+    span: SourceSpan,
+}
+
+impl RelationTarget {
+    pub(crate) fn new(id: ObjectId, span: SourceSpan) -> Self {
+        Self { id, span }
+    }
+
+    pub(crate) fn id(&self) -> &ObjectId {
+        &self.id
+    }
+
+    pub(crate) fn span(&self) -> &SourceSpan {
+        &self.span
+    }
+}
+
+pub(super) struct FieldsAndRelations {
+    pub(super) fields: BTreeMap<String, String>,
+    pub(super) relations: Relations,
+}
+
+pub(super) fn extract_relations(
+    parsed: &ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> FieldsAndRelations {
+    let mut fields = parsed.raw_fields.clone();
+    let mut relations = Relations::empty();
+
+    for key in [DEPENDS_ON_FIELD, SUPERSEDES_FIELD, RELATED_TO_FIELD] {
+        let Some(value) = fields.remove(key) else {
+            continue;
+        };
+        let value_span = parsed
+            .raw_field_spans
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| parsed.span.clone());
+        let targets = parse_relation_targets(parsed, key, &value, &value_span, diagnostics);
+        match key {
+            DEPENDS_ON_FIELD => relations.depends_on = targets,
+            SUPERSEDES_FIELD => relations.supersedes = targets,
+            RELATED_TO_FIELD => relations.related_to = targets,
+            _ => unreachable!("relation key list is exhaustive"),
+        }
+    }
+
+    FieldsAndRelations { fields, relations }
+}
+
+fn parse_relation_targets(
+    parsed: &ParsedTypedBlock,
+    key: &str,
+    value: &str,
+    value_span: &SourceSpan,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<RelationTarget> {
+    if value.is_empty() {
+        return Vec::new();
+    }
+
+    let mut targets = Vec::new();
+    let mut seen = BTreeSet::new();
+    let mut segment_start = 0;
+    for (comma_index, _) in value.match_indices(',') {
+        push_relation_segment(
+            parsed,
+            key,
+            value,
+            segment_start,
+            comma_index,
+            value_span,
+            &mut seen,
+            &mut targets,
+            diagnostics,
+            false,
+        );
+        segment_start = comma_index + 1;
+    }
+    push_relation_segment(
+        parsed,
+        key,
+        value,
+        segment_start,
+        value.len(),
+        value_span,
+        &mut seen,
+        &mut targets,
+        diagnostics,
+        true,
+    );
+
+    targets
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_relation_segment(
+    parsed: &ParsedTypedBlock,
+    key: &str,
+    value: &str,
+    start: usize,
+    end: usize,
+    value_span: &SourceSpan,
+    seen: &mut BTreeSet<ObjectId>,
+    targets: &mut Vec<RelationTarget>,
+    diagnostics: &mut Vec<Diagnostic>,
+    is_last: bool,
+) {
+    let raw = &value[start..end];
+    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(raw) else {
+        if is_last {
+            return;
+        }
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                format!("empty relation segment in `{key}` for `{}`", parsed.id_text),
+            )
+            .with_span(relation_segment_span(value_span, value, start, end))
+            .with_object_id(&parsed.id_text)
+            .with_help(OBJECT_ID_GRAMMAR_HELP),
+        );
+        return;
+    };
+
+    let span = relation_segment_span(
+        value_span,
+        value,
+        start + trimmed_start,
+        start + trimmed_end,
+    );
+    match ObjectId::new(trimmed) {
+        Ok(id) => {
+            if seen.insert(id.clone()) {
+                targets.push(RelationTarget::new(id, span));
+            }
+        }
+        Err(error) => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                format!(
+                    "invalid relation id `{trimmed}` in `{key}` for `{}`: {error}",
+                    parsed.id_text
+                ),
+            )
+            .with_span(span)
+            .with_object_id(trimmed)
+            .with_help(OBJECT_ID_GRAMMAR_HELP),
+        ),
+    }
+}
+
+fn trim_segment(value: &str) -> Option<(&str, usize, usize)> {
+    let start = value
+        .char_indices()
+        .find(|(_, character)| !character.is_ascii_whitespace())
+        .map(|(index, _)| index)?;
+    let end = value
+        .char_indices()
+        .rev()
+        .find(|(_, character)| !character.is_ascii_whitespace())
+        .map(|(index, character)| index + character.len_utf8())
+        .expect("start proves a non-whitespace character exists");
+    Some((&value[start..end], start, end))
+}
+
+fn relation_segment_span(
+    value_span: &SourceSpan,
+    value: &str,
+    start: usize,
+    end: usize,
+) -> SourceSpan {
+    SourceSpan {
+        file: value_span.file.clone(),
+        start: SourcePosition {
+            line: value_span.start.line,
+            column: value_span.start.column + value[..start].chars().count() as u32,
+            offset: value_span.start.offset + start as u32,
+        },
+        end: SourcePosition {
+            line: value_span.start.line,
+            column: value_span.start.column + value[..end].chars().count() as u32,
+            offset: value_span.start.offset + end as u32,
+        },
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

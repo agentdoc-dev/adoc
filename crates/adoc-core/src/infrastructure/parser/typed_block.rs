@@ -126,6 +126,7 @@ pub(super) fn try_open_typed_block(
         open_fence_span,
         phase: TypedBlockPhase::ReadingFields,
         raw_fields: std::collections::BTreeMap::new(),
+        raw_field_spans: std::collections::BTreeMap::new(),
         duplicate_keys: Vec::new(),
         body_lines: Vec::new(),
         body_spans: Vec::new(),
@@ -214,11 +215,18 @@ pub(super) fn consume_typed_block_line(
             state
                 .content_spans
                 .push(source.span_for_line(line_number, line));
-            if let Some((key, value)) = try_parse_field(line.trim_end()) {
+            if let Some(field) = try_parse_field(line.trim_end()) {
+                let value_span = source.span_for_line_columns(
+                    line_number,
+                    field.value_start_column,
+                    field.value_start_column + field.value.chars().count() as u32,
+                );
+                let key = field.key;
                 if state.raw_fields.contains_key(&key) {
                     state.duplicate_keys.push(key.clone());
                 }
-                state.raw_fields.insert(key, value);
+                state.raw_fields.insert(key.clone(), field.value);
+                state.raw_field_spans.insert(key, value_span);
                 return TypedBlockLineOutcome::Continue;
             }
 
@@ -286,9 +294,15 @@ pub(super) fn finalize_unclosed_typed_block(
 // Helpers
 // ---------------------------------------------------------------------------
 
+struct ParsedFieldLine {
+    key: String,
+    value: String,
+    value_start_column: u32,
+}
+
 /// Attempt to parse a field line of the form `key: value` or `key:value`
 /// where `key` matches `[a-z][a-z0-9_]*`.
-fn try_parse_field(trimmed: &str) -> Option<(String, String)> {
+fn try_parse_field(trimmed: &str) -> Option<ParsedFieldLine> {
     let colon_pos = trimmed.find(':')?;
     let key = &trimmed[..colon_pos];
 
@@ -309,13 +323,20 @@ fn try_parse_field(trimmed: &str) -> Option<(String, String)> {
 
     // Value is what comes after the colon; strip at most one leading space/tab.
     let after_colon = &trimmed[colon_pos + 1..];
-    let value = after_colon
-        .strip_prefix(' ')
-        .or_else(|| after_colon.strip_prefix('\t'))
-        .unwrap_or(after_colon)
-        .to_string();
+    let (leading_stripped_chars, value) = if let Some(value) = after_colon.strip_prefix(' ') {
+        (1, value)
+    } else if let Some(value) = after_colon.strip_prefix('\t') {
+        (1, value)
+    } else {
+        (0, after_colon)
+    };
+    let value_start_column = colon_pos as u32 + 2 + leading_stripped_chars;
 
-    Some((key.to_string(), value))
+    Some(ParsedFieldLine {
+        key: key.to_string(),
+        value: value.to_string(),
+        value_start_column,
+    })
 }
 
 /// Assemble a `ParsedTypedBlock` from the current builder state.
@@ -330,6 +351,7 @@ fn build_parsed_typed_block(state: &TypedBlockBuildingState) -> ParsedTypedBlock
         kind_word_span: state.kind_word_span.clone(),
         id_text: state.id_text.clone(),
         raw_fields: state.raw_fields.clone(),
+        raw_field_spans: state.raw_field_spans.clone(),
         duplicate_keys: state.duplicate_keys.clone(),
         body_text,
         body_spans,
@@ -396,6 +418,7 @@ mod tests {
             open_fence_span: dummy_span(),
             phase: TypedBlockPhase::ReadingFields,
             raw_fields: std::collections::BTreeMap::new(),
+            raw_field_spans: std::collections::BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_lines: Vec::new(),
             body_spans: Vec::new(),

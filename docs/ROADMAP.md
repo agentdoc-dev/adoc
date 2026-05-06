@@ -143,7 +143,7 @@ Scope:
 
 - Parse object references written as `[[object.id]]`.
 - Support relation fields `depends_on`, `supersedes`, and `related_to`.
-- Accept relation values as a single ID or ID array.
+- Accept relation values as comma-separated Object IDs.
 - Validate that referenced IDs exist in the scanned source set.
 - Preserve relations as ID arrays in agent JSON.
 - Render object references as links in HTML.

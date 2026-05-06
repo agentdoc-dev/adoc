@@ -4,7 +4,7 @@ use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::inline::InlineSegment;
-use crate::domain::knowledge_object::KnowledgeObject;
+use crate::domain::knowledge_object::{KnowledgeObject, Relations};
 use crate::domain::source::SourceFile;
 
 pub(crate) fn resolve_object_references(
@@ -37,7 +37,7 @@ fn resolve_page(
                 }
             }
             BlockAst::KnowledgeObject(knowledge_object) => {
-                resolve_knowledge_object_body(knowledge_object, declared_ids, diagnostics);
+                resolve_knowledge_object_references(knowledge_object, declared_ids, diagnostics);
             }
             BlockAst::CodeBlock(_) => {}
             BlockAst::KnowledgeObjectPending(_) => {
@@ -47,7 +47,7 @@ fn resolve_page(
     }
 }
 
-fn resolve_knowledge_object_body(
+fn resolve_knowledge_object_references(
     knowledge_object: &mut KnowledgeObject,
     declared_ids: &BTreeSet<ObjectId>,
     diagnostics: &mut Vec<Diagnostic>,
@@ -55,16 +55,48 @@ fn resolve_knowledge_object_body(
     match knowledge_object {
         KnowledgeObject::Claim(claim) => {
             resolve_inlines(claim.body_mut().inlines_mut(), declared_ids, diagnostics);
+            resolve_relations(claim.relations(), declared_ids, diagnostics);
         }
         KnowledgeObject::Decision(decision) => {
             resolve_inlines(decision.body_mut().inlines_mut(), declared_ids, diagnostics);
+            resolve_relations(decision.relations(), declared_ids, diagnostics);
         }
         KnowledgeObject::Glossary(glossary) => {
             resolve_inlines(glossary.body_mut().inlines_mut(), declared_ids, diagnostics);
+            resolve_relations(glossary.relations(), declared_ids, diagnostics);
         }
         KnowledgeObject::Warning(warning) => {
             resolve_inlines(warning.body_mut().inlines_mut(), declared_ids, diagnostics);
+            resolve_relations(warning.relations(), declared_ids, diagnostics);
         }
+    }
+}
+
+fn resolve_relations(
+    relations: &Relations,
+    declared_ids: &BTreeSet<ObjectId>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for target in relations
+        .depends_on()
+        .iter()
+        .chain(relations.supersedes())
+        .chain(relations.related_to())
+    {
+        if declared_ids.contains(target.id()) {
+            continue;
+        }
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::RefBroken,
+                format!(
+                    "relation target `{}` does not resolve to a declared Knowledge Object",
+                    target.id().as_str()
+                ),
+            )
+            .with_span(target.span().clone())
+            .with_object_id(target.id().as_str()),
+        );
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::domain::ast::{BlockAst, ListKind, PageAst};
 use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
-    KnowledgeObject,
+    KnowledgeObject, Relations,
     claim::{Claim, Evidence},
     decision::{DECIDED_BY_FIELD, Decision},
     glossary::Glossary,
@@ -114,20 +114,13 @@ fn render_glossary(glossary: &Glossary, html: &mut String) {
 }
 
 fn render_glossary_metadata(glossary: &Glossary, html: &mut String) {
-    if glossary.fields().is_empty() {
+    if glossary.fields().is_empty() && glossary.relations().is_empty() {
         return;
     }
 
     html.push_str("<footer class=\"glossary__metadata\">\n");
-    html.push_str("<dl>\n");
-    for (key, value) in glossary.fields().iter() {
-        html.push_str("<dt>");
-        html.push_str(&escape_html(key));
-        html.push_str("</dt><dd>");
-        html.push_str(&escape_html(value));
-        html.push_str("</dd>\n");
-    }
-    html.push_str("</dl>\n");
+    render_metadata_fields(glossary.fields().iter(), html);
+    render_relations("glossary", glossary.relations(), html);
     html.push_str("</footer>\n");
 }
 
@@ -154,20 +147,13 @@ fn render_warning(warning: &Warning, html: &mut String) {
 }
 
 fn render_warning_metadata(warning: &Warning, html: &mut String) {
-    if warning.fields().is_empty() {
+    if warning.fields().is_empty() && warning.relations().is_empty() {
         return;
     }
 
     html.push_str("<footer class=\"warning__metadata\">\n");
-    html.push_str("<dl>\n");
-    for (key, value) in warning.fields().iter() {
-        html.push_str("<dt>");
-        html.push_str(&escape_html(key));
-        html.push_str("</dt><dd>");
-        html.push_str(&escape_html(value));
-        html.push_str("</dd>\n");
-    }
-    html.push_str("</dl>\n");
+    render_metadata_fields(warning.fields().iter(), html);
+    render_relations("warning", warning.relations(), html);
     html.push_str("</footer>\n");
 }
 
@@ -208,20 +194,13 @@ fn render_decision(decision: &Decision, html: &mut String) {
 }
 
 fn render_decision_metadata(decision: &Decision, html: &mut String) {
-    if decision.fields().is_empty() {
+    if decision.fields().is_empty() && decision.relations().is_empty() {
         return;
     }
 
     html.push_str("<footer class=\"decision__metadata\">\n");
-    html.push_str("<dl>\n");
-    for (key, value) in decision.fields().iter() {
-        html.push_str("<dt>");
-        html.push_str(&escape_html(key));
-        html.push_str("</dt><dd>");
-        html.push_str(&escape_html(value));
-        html.push_str("</dd>\n");
-    }
-    html.push_str("</dl>\n");
+    render_metadata_fields(decision.fields().iter(), html);
+    render_relations("decision", decision.relations(), html);
     html.push_str("</footer>\n");
 }
 
@@ -290,21 +269,78 @@ fn render_evidence(evidence: &Evidence, html: &mut String) {
 }
 
 fn render_claim_metadata(claim: &Claim, html: &mut String) {
-    if claim.fields().is_empty() {
+    if claim.fields().is_empty() && claim.relations().is_empty() {
         return;
     }
 
     html.push_str("<footer class=\"claim__metadata\">\n");
-    html.push_str("<dl>\n");
-    for (key, value) in claim.fields().iter() {
+    render_metadata_fields(claim.fields().iter(), html);
+    render_relations("claim", claim.relations(), html);
+    html.push_str("</footer>\n");
+}
+
+fn render_metadata_fields<'a>(
+    fields: impl Iterator<Item = (&'a String, &'a String)>,
+    html: &mut String,
+) {
+    let mut rendered_any = false;
+    for (key, value) in fields {
+        if !rendered_any {
+            html.push_str("<dl>\n");
+            rendered_any = true;
+        }
         html.push_str("<dt>");
         html.push_str(&escape_html(key));
         html.push_str("</dt><dd>");
         html.push_str(&escape_html(value));
         html.push_str("</dd>\n");
     }
-    html.push_str("</dl>\n");
-    html.push_str("</footer>\n");
+    if rendered_any {
+        html.push_str("</dl>\n");
+    }
+}
+
+fn render_relations(kind: &str, relations: &Relations, html: &mut String) {
+    if relations.is_empty() {
+        return;
+    }
+
+    html.push_str("<section class=\"");
+    html.push_str(kind);
+    html.push_str("__relations\"><dl>\n");
+    render_relation_group("depends_on", relations.depends_on(), html);
+    render_relation_group("supersedes", relations.supersedes(), html);
+    render_relation_group("related_to", relations.related_to(), html);
+    html.push_str("</dl></section>\n");
+}
+
+fn render_relation_group(
+    label: &str,
+    targets: &[crate::domain::knowledge_object::RelationTarget],
+    html: &mut String,
+) {
+    if targets.is_empty() {
+        return;
+    }
+
+    html.push_str("<dt>");
+    html.push_str(label);
+    html.push_str("</dt><dd>");
+    for (index, target) in targets.iter().enumerate() {
+        if index > 0 {
+            html.push_str(", ");
+        }
+        render_object_ref_anchor(target.id().as_str(), html);
+    }
+    html.push_str("</dd>\n");
+}
+
+fn render_object_ref_anchor(id: &str, html: &mut String) {
+    html.push_str("<a class=\"object-ref\" href=\"#");
+    html.push_str(&escape_html(id));
+    html.push_str("\">");
+    html.push_str(&escape_html(id));
+    html.push_str("</a>");
 }
 
 fn render_inlines(segments: &[InlineSegment], html: &mut String) {
@@ -341,11 +377,7 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
             html.push_str("</a>");
         }
         InlineSegment::ObjectReference { id, .. } => {
-            html.push_str("<a class=\"object-ref\" href=\"#");
-            html.push_str(&escape_html(id.as_str()));
-            html.push_str("\">");
-            html.push_str(&escape_html(id.as_str()));
-            html.push_str("</a>");
+            render_object_ref_anchor(id.as_str(), html);
         }
         InlineSegment::ObjectReferencePending { .. } => {
             unreachable!("object references must resolve before rendering")
