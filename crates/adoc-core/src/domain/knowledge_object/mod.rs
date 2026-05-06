@@ -49,7 +49,10 @@ pub(super) fn reject_duplicate_fields(
     true
 }
 
-pub(super) fn body_from_parsed(parsed: &ParsedTypedBlock) -> Option<Body> {
+pub(super) fn body_from_parsed(
+    parsed: &ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<Body> {
     if parsed.body_spans.is_empty() {
         return Body::from_plain_text(&parsed.body_text);
     }
@@ -60,11 +63,8 @@ pub(super) fn body_from_parsed(parsed: &ParsedTypedBlock) -> Option<Body> {
             inlines.push(InlineSegment::Text("\n".to_string()));
         }
         let span = &parsed.body_spans[index];
-        let (line_inlines, diagnostics) = parse_inlines(line, InlineOrigin::from_span(span));
-        debug_assert!(
-            diagnostics.is_empty(),
-            "body inline parsing should not emit diagnostics in V0.5"
-        );
+        let (line_inlines, line_diagnostics) = parse_inlines(line, InlineOrigin::from_span(span));
+        diagnostics.extend(line_diagnostics);
         inlines.extend(line_inlines);
     }
 

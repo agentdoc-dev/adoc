@@ -50,13 +50,14 @@ impl Decision {
         let optional_fields = std::mem::take(&mut parsed.raw_fields);
         let status_text = status_text.as_deref();
 
-        let (id, status, body) = match Self::parse_basics_from_parsed(&parsed, status_text) {
-            Ok(basics) => basics,
-            Err(error) => {
-                emit_decision_error(&parsed, error, diagnostics);
-                return None;
-            }
-        };
+        let (id, status, body) =
+            match Self::parse_basics_from_parsed(&parsed, status_text, diagnostics) {
+                Ok(basics) => basics,
+                Err(error) => {
+                    emit_decision_error(&parsed, error, diagnostics);
+                    return None;
+                }
+            };
 
         let (optional_fields, verdict) = if status.is_accepted() {
             let Some(decided_by) = optional_fields
@@ -163,10 +164,12 @@ impl Decision {
     fn parse_basics_from_parsed(
         parsed: &ParsedTypedBlock,
         status_text: Option<&str>,
+        diagnostics: &mut Vec<Diagnostic>,
     ) -> Result<(ObjectId, DecisionStatus, Body), DecisionError> {
         let id = ObjectId::new(&parsed.id_text).map_err(DecisionError::InvalidId)?;
         let status = DecisionStatus::try_new(status_text.unwrap_or(""))?;
-        let body = super::body_from_parsed(parsed).ok_or(DecisionError::MissingBody)?;
+        let body =
+            super::body_from_parsed(parsed, diagnostics).ok_or(DecisionError::MissingBody)?;
         Ok((id, status, body))
     }
 
