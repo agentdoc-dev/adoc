@@ -596,6 +596,7 @@ mod tests {
 
     use super::*;
     use crate::domain::ast::BlockAst;
+    use crate::domain::inline::InlineSegment;
 
     fn parse_source(text: &str) -> (PageAst, Vec<Diagnostic>) {
         let source = SourceFile::new_with_identity_path(
@@ -732,6 +733,111 @@ mod tests {
 
         assert_eq!(pending.kind_word, "decision");
         assert_eq!(pending.id_text, "billing.policy");
+    }
+
+    #[test]
+    fn parse_page_parses_claim_body_inlines_before_pending_resolution() {
+        let (page, diagnostics) = parse_source(concat!(
+            "# Claims @doc(team.claims)\n\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "--\n",
+            "Use *credits* and `ledger`.\n",
+            "::\n",
+        ));
+
+        assert!(
+            diagnostics.is_empty(),
+            "expected claim parser fixture to stay clean: {diagnostics:?}"
+        );
+        let pending = page
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::KnowledgeObjectPending(pending) => Some(pending),
+                _ => None,
+            })
+            .expect("claim block should be parsed as pending typed block");
+
+        assert_eq!(
+            pending.body_inlines,
+            vec![
+                InlineSegment::Text("Use ".to_string()),
+                InlineSegment::Emphasis(vec![InlineSegment::Text("credits".to_string())]),
+                InlineSegment::Text(" and ".to_string()),
+                InlineSegment::Code("ledger".to_string()),
+                InlineSegment::Text(".".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_page_keeps_object_references_pending_in_typed_block_body() {
+        let (page, diagnostics) = parse_source(concat!(
+            "# Claims @doc(team.claims)\n\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "--\n",
+            "See [[billing.ledger]].\n",
+            "::\n",
+        ));
+
+        assert!(
+            diagnostics.is_empty(),
+            "expected claim parser fixture to stay clean: {diagnostics:?}"
+        );
+        let pending = page
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::KnowledgeObjectPending(pending) => Some(pending),
+                _ => None,
+            })
+            .expect("claim block should be parsed as pending typed block");
+
+        assert!(matches!(
+            pending.body_inlines.as_slice(),
+            [
+                InlineSegment::Text(prefix),
+                InlineSegment::ObjectReferencePending { raw_id, .. },
+                InlineSegment::Text(suffix),
+            ] if prefix == "See " && raw_id == "billing.ledger" && suffix == "."
+        ));
+    }
+
+    #[test]
+    fn parse_page_preserves_newline_text_between_typed_block_body_lines() {
+        let (page, diagnostics) = parse_source(concat!(
+            "# Claims @doc(team.claims)\n\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "--\n",
+            "line one\n",
+            "line two\n",
+            "::\n",
+        ));
+
+        assert!(
+            diagnostics.is_empty(),
+            "expected claim parser fixture to stay clean: {diagnostics:?}"
+        );
+        let pending = page
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::KnowledgeObjectPending(pending) => Some(pending),
+                _ => None,
+            })
+            .expect("claim block should be parsed as pending typed block");
+
+        assert_eq!(
+            pending.body_inlines,
+            vec![
+                InlineSegment::Text("line one".to_string()),
+                InlineSegment::Text("\n".to_string()),
+                InlineSegment::Text("line two".to_string()),
+            ]
+        );
     }
 
     #[test]

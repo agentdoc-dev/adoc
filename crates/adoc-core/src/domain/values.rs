@@ -25,6 +25,7 @@ impl Body {
         (!trim_ascii_edges(&text).is_empty()).then_some(Self(inlines))
     }
 
+    #[cfg(test)]
     pub(crate) fn from_plain_text(value: &str) -> Option<Self> {
         NonEmptyText::try_new(value)
             .map(|text| Self(vec![InlineSegment::Text(text.as_str().to_string())]))

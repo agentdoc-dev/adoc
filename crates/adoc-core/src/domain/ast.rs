@@ -95,9 +95,26 @@ pub(crate) struct ParsedTypedBlock {
     pub(crate) raw_field_spans: BTreeMap<String, SourceSpan>,
     pub(crate) duplicate_keys: Vec<String>,
     pub(crate) body_text: String,
+    pub(crate) body_inlines: Vec<InlineSegment>,
     pub(crate) body_spans: Vec<SourceSpan>,
     pub(crate) content_spans: Vec<SourceSpan>,
     pub(crate) span: SourceSpan,
+}
+
+#[cfg(test)]
+impl ParsedTypedBlock {
+    pub(crate) fn test_body_inlines_from_text(text: &str) -> Vec<InlineSegment> {
+        let mut inlines = Vec::new();
+        for (index, line) in text.split('\n').enumerate() {
+            if index > 0 {
+                inlines.push(InlineSegment::Text("\n".to_string()));
+            }
+            if !line.is_empty() {
+                inlines.push(InlineSegment::Text(line.to_string()));
+            }
+        }
+        inlines
+    }
 }
 
 #[cfg(test)]
@@ -138,6 +155,7 @@ mod tests {
             raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "x".to_string(),
+            body_inlines: ParsedTypedBlock::test_body_inlines_from_text("x"),
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),

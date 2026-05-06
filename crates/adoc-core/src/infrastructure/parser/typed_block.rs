@@ -5,7 +5,8 @@
 //! inside a typed block (`consume_typed_block_line`, `finalize_unclosed_typed_block`).
 
 use crate::domain::ast::ParsedTypedBlock;
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
+use crate::domain::inline::{InlineOrigin, InlineSegment, parse_inlines};
 use crate::domain::source::SourceFile;
 
 use super::state::{TypedBlockBuildingState, TypedBlockPhase};
@@ -196,7 +197,10 @@ pub(super) fn consume_typed_block_line(
 
             if line == "::" {
                 // Close fence in fields region — no body.
-                return TypedBlockLineOutcome::Closed(Box::new(build_parsed_typed_block(state)));
+                return TypedBlockLineOutcome::Closed(Box::new(build_parsed_typed_block(
+                    state,
+                    diagnostics,
+                )));
             }
 
             if line == "--" {
@@ -258,7 +262,10 @@ pub(super) fn consume_typed_block_line(
 
             if line == "::" {
                 // Close fence.
-                return TypedBlockLineOutcome::Closed(Box::new(build_parsed_typed_block(state)));
+                return TypedBlockLineOutcome::Closed(Box::new(build_parsed_typed_block(
+                    state,
+                    diagnostics,
+                )));
             }
             // Append raw line (preserve all internal whitespace).
             state.body_lines.push(line.to_string());
@@ -341,10 +348,14 @@ fn try_parse_field(trimmed: &str) -> Option<ParsedFieldLine> {
 
 /// Assemble a `ParsedTypedBlock` from the current builder state.
 /// Leading and trailing fully-blank lines are trimmed from `body_lines`.
-fn build_parsed_typed_block(state: &TypedBlockBuildingState) -> ParsedTypedBlock {
+fn build_parsed_typed_block(
+    state: &TypedBlockBuildingState,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> ParsedTypedBlock {
     let body_range = trim_blank_edges_range(&state.body_lines);
     let body_text = state.body_lines[body_range.clone()].join("\n");
     let body_spans = state.body_spans[body_range].to_vec();
+    let body_inlines = parse_body_inlines(&body_text, &body_spans, diagnostics);
 
     ParsedTypedBlock {
         kind_word: state.kind_word.clone(),
@@ -354,10 +365,35 @@ fn build_parsed_typed_block(state: &TypedBlockBuildingState) -> ParsedTypedBlock
         raw_field_spans: state.raw_field_spans.clone(),
         duplicate_keys: state.duplicate_keys.clone(),
         body_text,
+        body_inlines,
         body_spans,
         content_spans: state.content_spans.clone(),
         span: state.open_fence_span.clone(),
     }
+}
+
+fn parse_body_inlines(
+    body_text: &str,
+    body_spans: &[SourceSpan],
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<InlineSegment> {
+    if body_spans.is_empty() {
+        return Vec::new();
+    }
+
+    let mut inlines = Vec::new();
+    for (index, line) in body_text.split('\n').enumerate() {
+        if index > 0 {
+            inlines.push(InlineSegment::Text("\n".to_string()));
+        }
+        let Some(span) = body_spans.get(index) else {
+            break;
+        };
+        let (line_inlines, line_diagnostics) = parse_inlines(line, InlineOrigin::from_span(span));
+        diagnostics.extend(line_diagnostics);
+        inlines.extend(line_inlines);
+    }
+    inlines
 }
 
 /// Strip leading and trailing elements from `lines` that are blank (trim to
@@ -884,6 +920,10 @@ mod tests {
                 assert_eq!(parsed.id_text, "billing.credits");
                 assert_eq!(parsed.body_text, "Some body text.");
                 assert_eq!(
+                    parsed.body_inlines,
+                    vec![InlineSegment::Text("Some body text.".to_string())]
+                );
+                assert_eq!(
                     parsed.raw_fields.get("status").map(String::as_str),
                     Some("verified")
                 );
@@ -945,6 +985,15 @@ mod tests {
             TypedBlockLineOutcome::Closed(parsed) => {
                 // Leading/trailing blank lines stripped; internal blank preserved.
                 assert_eq!(parsed.body_text, "line one\n\nline two");
+                assert_eq!(
+                    parsed.body_inlines,
+                    vec![
+                        InlineSegment::Text("line one".to_string()),
+                        InlineSegment::Text("\n".to_string()),
+                        InlineSegment::Text("\n".to_string()),
+                        InlineSegment::Text("line two".to_string()),
+                    ]
+                );
             }
             TypedBlockLineOutcome::Continue => panic!("expected Closed"),
         }
