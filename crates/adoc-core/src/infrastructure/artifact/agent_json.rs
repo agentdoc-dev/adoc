@@ -63,7 +63,7 @@ fn glossary_to_agent_object(glossary: &Glossary, page_id: &str) -> AgentJsonObje
         id: glossary.id().as_str().to_string(),
         kind: "glossary".to_string(),
         status: None,
-        body: glossary.body().as_str().to_string(),
+        body: glossary.body().to_source(),
         page_id: page_id.to_string(),
         source_span: AgentJsonSourceSpan {
             path: span.file.display().to_string(),
@@ -85,7 +85,7 @@ fn warning_to_agent_object(warning: &Warning, page_id: &str) -> AgentJsonObject 
         id: warning.id().as_str().to_string(),
         kind: "warning".to_string(),
         status: Some(warning.severity().as_str().to_string()),
-        body: warning.body().as_str().to_string(),
+        body: warning.body().to_source(),
         page_id: page_id.to_string(),
         source_span: AgentJsonSourceSpan {
             path: span.file.display().to_string(),
@@ -108,7 +108,7 @@ fn decision_to_agent_object(decision: &Decision, page_id: &str) -> AgentJsonObje
         id: decision.id().as_str().to_string(),
         kind: "decision".to_string(),
         status: Some(decision.status().as_str().to_string()),
-        body: decision.body().as_str().to_string(),
+        body: decision.body().to_source(),
         page_id: page_id.to_string(),
         source_span: AgentJsonSourceSpan {
             path: span.file.display().to_string(),
@@ -144,7 +144,7 @@ fn claim_to_agent_object(claim: &Claim, page_id: &str) -> AgentJsonObject {
         id: claim.id().as_str().to_string(),
         kind: "claim".to_string(),
         status: Some(claim.status().as_str().to_string()),
-        body: claim.body().as_str().to_string(),
+        body: claim.body().to_source(),
         page_id: page_id.to_string(),
         source_span: AgentJsonSourceSpan {
             path: span.file.display().to_string(),

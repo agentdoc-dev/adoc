@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
-use crate::domain::values::{BodyText, NonEmptyText, OptionalFields, trim_ascii_edges};
+use crate::domain::values::{Body, NonEmptyText, OptionalFields, trim_ascii_edges};
 
 pub(crate) const STATUS_FIELD: &str = "status";
 pub(crate) const DECIDED_BY_FIELD: &str = "decided_by";
@@ -17,7 +17,7 @@ const DECISION_MISSING_BODY_HELP: &str = "Decisions require non-empty body text.
 pub(crate) struct Decision {
     id: ObjectId,
     status: DecisionStatus,
-    body: BodyText,
+    body: Body,
     fields: OptionalFields,
     verdict: Option<AcceptedVerdict>,
     span: SourceSpan,
@@ -51,14 +51,13 @@ impl Decision {
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
 
-        let (id, status, body) =
-            match Self::parse_basics(&parsed.id_text, status_text, &parsed.body_text) {
-                Ok(basics) => basics,
-                Err(error) => {
-                    emit_decision_error(parsed, error, diagnostics);
-                    return None;
-                }
-            };
+        let (id, status, body) = match Self::parse_basics_from_parsed(parsed, status_text) {
+            Ok(basics) => basics,
+            Err(error) => {
+                emit_decision_error(parsed, error, diagnostics);
+                return None;
+            }
+        };
 
         let (optional_fields, verdict) = if status.is_accepted() {
             let Some(decided_by) = optional_fields
@@ -110,7 +109,7 @@ impl Decision {
     fn from_parts(
         id: ObjectId,
         status: DecisionStatus,
-        body: BodyText,
+        body: Body,
         optional_fields: BTreeMap<String, String>,
         verdict: Option<AcceptedVerdict>,
         span: SourceSpan,
@@ -139,14 +138,25 @@ impl Decision {
         })
     }
 
+    #[cfg(test)]
     fn parse_basics(
         id_text: &str,
         status_text: Option<&str>,
         body_text: &str,
-    ) -> Result<(ObjectId, DecisionStatus, BodyText), DecisionError> {
+    ) -> Result<(ObjectId, DecisionStatus, Body), DecisionError> {
         let id = ObjectId::new(id_text).map_err(DecisionError::InvalidId)?;
         let status = DecisionStatus::try_new(status_text.unwrap_or(""))?;
-        let body = BodyText::try_new(body_text).ok_or(DecisionError::MissingBody)?;
+        let body = Body::from_plain_text(body_text).ok_or(DecisionError::MissingBody)?;
+        Ok((id, status, body))
+    }
+
+    fn parse_basics_from_parsed(
+        parsed: &ParsedTypedBlock,
+        status_text: Option<&str>,
+    ) -> Result<(ObjectId, DecisionStatus, Body), DecisionError> {
+        let id = ObjectId::new(&parsed.id_text).map_err(DecisionError::InvalidId)?;
+        let status = DecisionStatus::try_new(status_text.unwrap_or(""))?;
+        let body = super::body_from_parsed(parsed).ok_or(DecisionError::MissingBody)?;
         Ok((id, status, body))
     }
 
@@ -158,8 +168,12 @@ impl Decision {
         &self.status
     }
 
-    pub(crate) fn body(&self) -> &BodyText {
+    pub(crate) fn body(&self) -> &Body {
         &self.body
+    }
+
+    pub(crate) fn body_mut(&mut self) -> &mut Body {
+        &mut self.body
     }
 
     pub(crate) fn fields(&self) -> &OptionalFields {
@@ -335,6 +349,7 @@ mod tests {
             raw_fields: fields,
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         }
@@ -354,7 +369,10 @@ mod tests {
 
         assert_eq!(decision.id().as_str(), "billing.policy");
         assert_eq!(decision.status().as_str(), "proposed");
-        assert_eq!(decision.body().as_str(), "Use the existing billing policy.");
+        assert_eq!(
+            decision.body().to_source(),
+            "Use the existing billing policy."
+        );
         assert!(decision.fields().is_empty());
     }
 

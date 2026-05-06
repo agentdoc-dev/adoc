@@ -252,6 +252,7 @@ mod tests {
             raw_fields: fields,
             duplicate_keys: Vec::new(),
             body_text: "This is a valid claim body.".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         }
@@ -265,6 +266,7 @@ mod tests {
             raw_fields: fields,
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         }
@@ -278,6 +280,7 @@ mod tests {
             raw_fields: fields,
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         }
@@ -334,6 +337,7 @@ mod tests {
             },
             duplicate_keys: vec!["status".to_string(), "status".to_string()],
             body_text: "some body".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };
@@ -363,6 +367,7 @@ mod tests {
             },
             duplicate_keys: Vec::new(),
             body_text: "some body".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };
@@ -394,6 +399,7 @@ mod tests {
             raw_fields: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: String::new(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: SourceSpan {
                 file: PathBuf::from("test.adoc"),
@@ -437,6 +443,7 @@ mod tests {
             raw_fields: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: String::new(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };
@@ -481,6 +488,7 @@ mod tests {
             raw_fields: BTreeMap::new(), // no status
             duplicate_keys: Vec::new(),
             body_text: "some body".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };
@@ -511,6 +519,7 @@ mod tests {
             },
             duplicate_keys: Vec::new(),
             body_text: String::new(), // empty body
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };
@@ -572,6 +581,7 @@ mod tests {
             },
             duplicate_keys: Vec::new(),
             body_text: "some body".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };
@@ -612,6 +622,7 @@ mod tests {
             },
             duplicate_keys: Vec::new(),
             body_text: "some body".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };
@@ -644,6 +655,7 @@ mod tests {
             ]),
             duplicate_keys: Vec::new(),
             body_text: "Use the existing billing policy.".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };
@@ -687,6 +699,7 @@ mod tests {
             ]),
             duplicate_keys: Vec::new(),
             body_text: "Use the existing billing policy.".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };
@@ -718,6 +731,7 @@ mod tests {
             raw_fields: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "Use the existing billing policy.".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };
@@ -741,6 +755,7 @@ mod tests {
             raw_fields: BTreeMap::from([("status".to_string(), "proposed".to_string())]),
             duplicate_keys: Vec::new(),
             body_text: " ".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };
@@ -767,6 +782,7 @@ mod tests {
             ]),
             duplicate_keys: Vec::new(),
             body_text: "Use the existing billing policy.".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };

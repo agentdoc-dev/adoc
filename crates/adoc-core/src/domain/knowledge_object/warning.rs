@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
-use crate::domain::values::{BodyText, OptionalFields, trim_ascii_edges};
+use crate::domain::values::{Body, OptionalFields, trim_ascii_edges};
 
 pub(crate) const SEVERITY_FIELD: &str = "severity";
 pub(crate) const VALID_SEVERITY_HELP: &str =
@@ -15,7 +15,7 @@ const WARNING_MISSING_BODY_HELP: &str = "Warnings require non-empty body text.";
 pub(crate) struct Warning {
     id: ObjectId,
     severity: WarningSeverity,
-    body: BodyText,
+    body: Body,
     fields: OptionalFields,
     span: SourceSpan,
 }
@@ -45,13 +45,15 @@ impl Warning {
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
 
-        match Self::try_new(
-            &parsed.id_text,
-            severity_text,
-            &parsed.body_text,
-            optional_fields,
-            parsed.span.clone(),
-        ) {
+        let (id, severity, body) = match Self::parse_basics_from_parsed(parsed, severity_text) {
+            Ok(basics) => basics,
+            Err(error) => {
+                emit_warning_error(parsed, error, diagnostics);
+                return None;
+            }
+        };
+
+        match Self::from_parts(id, severity, body, optional_fields, parsed.span.clone()) {
             Ok(warning) => Some(warning),
             Err(error) => {
                 emit_warning_error(parsed, error, diagnostics);
@@ -60,6 +62,7 @@ impl Warning {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn try_new(
         id_text: &str,
         severity_text: Option<&str>,
@@ -69,7 +72,17 @@ impl Warning {
     ) -> Result<Self, WarningError> {
         let id = ObjectId::new(id_text).map_err(WarningError::InvalidId)?;
         let severity = WarningSeverity::try_new(severity_text.unwrap_or(""))?;
-        let body = BodyText::try_new(body_text).ok_or(WarningError::MissingBody)?;
+        let body = Body::from_plain_text(body_text).ok_or(WarningError::MissingBody)?;
+        Self::from_parts(id, severity, body, optional_fields, span)
+    }
+
+    fn from_parts(
+        id: ObjectId,
+        severity: WarningSeverity,
+        body: Body,
+        optional_fields: BTreeMap<String, String>,
+        span: SourceSpan,
+    ) -> Result<Self, WarningError> {
         debug_assert!(
             !optional_fields.contains_key(SEVERITY_FIELD),
             "optional warning fields must not contain required field `severity`"
@@ -83,6 +96,16 @@ impl Warning {
         })
     }
 
+    fn parse_basics_from_parsed(
+        parsed: &ParsedTypedBlock,
+        severity_text: Option<&str>,
+    ) -> Result<(ObjectId, WarningSeverity, Body), WarningError> {
+        let id = ObjectId::new(&parsed.id_text).map_err(WarningError::InvalidId)?;
+        let severity = WarningSeverity::try_new(severity_text.unwrap_or(""))?;
+        let body = super::body_from_parsed(parsed).ok_or(WarningError::MissingBody)?;
+        Ok((id, severity, body))
+    }
+
     pub(crate) fn id(&self) -> &ObjectId {
         &self.id
     }
@@ -91,8 +114,12 @@ impl Warning {
         &self.severity
     }
 
-    pub(crate) fn body(&self) -> &BodyText {
+    pub(crate) fn body(&self) -> &Body {
         &self.body
+    }
+
+    pub(crate) fn body_mut(&mut self) -> &mut Body {
+        &mut self.body
     }
 
     pub(crate) fn fields(&self) -> &OptionalFields {
@@ -216,6 +243,7 @@ mod tests {
             raw_fields: fields,
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         }
@@ -234,7 +262,7 @@ mod tests {
 
         assert_eq!(warning.id().as_str(), "auth.session.clock-skew");
         assert_eq!(warning.severity().as_str(), "high");
-        assert_eq!(warning.body().as_str(), "Session clocks can drift.");
+        assert_eq!(warning.body().to_source(), "Session clocks can drift.");
         assert_eq!(
             warning
                 .fields()

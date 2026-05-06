@@ -559,6 +559,125 @@ fn compile_workspace_links_references_in_heading_and_list_item() {
 }
 
 #[test]
+fn compile_workspace_links_reference_inside_claim_body_and_preserves_source_body() {
+    let workspace = TestWorkspace::new("claim-body-ref-to-glossary");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "--\n",
+            "Credits are balance adjustments applied to an account.\n",
+            "::\n",
+            "\n",
+            "::claim billing.credit-policy\n",
+            "status: draft\n",
+            "--\n",
+            "Use [[billing.credits]] before issuing refunds.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected claim body reference to resolve, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    assert!(
+        artifacts.html.contains(
+            "<div class=\"claim__body\"><p>Use <a class=\"object-ref\" href=\"#billing.credits\">billing.credits</a> before issuing refunds.</p></div>"
+        ),
+        "expected claim body reference anchor: {}",
+        artifacts.html
+    );
+    let claim = artifacts
+        .agent_json
+        .objects
+        .iter()
+        .find(|object| object.id == "billing.credit-policy")
+        .expect("claim object emitted");
+    assert_eq!(
+        claim.body,
+        "Use [[billing.credits]] before issuing refunds."
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_broken_reference_inside_decision_body() {
+    let workspace = TestWorkspace::new("decision-body-broken-ref");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::decision billing.refunds\n",
+            "status: proposed\n",
+            "--\n",
+            "Use [[missing.object]] before issuing refunds.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "broken body reference must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == DiagnosticCode::RefBroken)
+        .expect("ref.broken diagnostic must be emitted");
+    assert_eq!(diagnostic.object_id.as_deref(), Some("missing.object"));
+    assert_eq!(
+        diagnostic
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((6, 5)),
+        "diagnostic should point at the body reference"
+    );
+}
+
+#[test]
+fn compile_workspace_rejects_unsafe_link_inside_claim_body() {
+    let workspace = TestWorkspace::new("claim-body-unsafe-link");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::claim billing.credit-policy\n",
+            "status: draft\n",
+            "--\n",
+            "Do not use [bad](javascript:alert) links.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "unsafe body link must fail");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == DiagnosticCode::ParseUnsafeLink)
+        .expect("parse.unsafe_link diagnostic must be emitted");
+    assert_eq!(
+        diagnostic
+            .span
+            .as_ref()
+            .map(|span| (span.start.line, span.start.column)),
+        Some((6, 12)),
+        "diagnostic should point at the body link"
+    );
+}
+
+#[test]
 fn compile_workspace_rejects_glossary_invalid_id() {
     let workspace = TestWorkspace::new("glossary-invalid-id");
     let source = workspace.write(

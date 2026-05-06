@@ -35,6 +35,7 @@ pub(super) struct TypedBlockBuildingState {
     pub(super) raw_fields: BTreeMap<String, String>,
     pub(super) duplicate_keys: Vec<String>,
     pub(super) body_lines: Vec<String>,
+    pub(super) body_spans: Vec<SourceSpan>,
     pub(super) content_spans: Vec<SourceSpan>,
 }
 

@@ -233,8 +233,12 @@ pub struct TypedBlockAst {
     pub kind: String,
     pub id: String,
     pub fields: Vec<FieldAst>,
-    pub body: String,
+    pub body: Body,
     pub span: SourceSpan,
+}
+
+pub struct Body {
+    pub inlines: Vec<InlineSegment>,
 }
 
 pub struct FieldAst {
@@ -251,9 +255,14 @@ pub enum FieldValueAst {
 
 Guidance:
 
-- V0 typed block bodies are stored as body text.
+- V0 typed block bodies are inline-aware `Body` values. The parser preserves
+  each body line's source span, Knowledge Object construction parses body text
+  with `parse_inlines`, and validation resolves `[[object.id]]` references
+  before rendering.
 - Nested typed blocks are invalid in V0.
-- Inline syntax can be rendered during HTML generation without exposing a separate public inline AST yet.
+- Agent JSON projects body inlines back to source text (`[[object.id]]`,
+  emphasis, strong, links, and code markers) so agents can cite Object IDs
+  without a graph artifact.
 
 ## Parser Strategy
 
@@ -353,6 +362,7 @@ Rules:
 - Use semantic HTML where practical.
 - Include page headings and prose.
 - Render Knowledge Objects as identifiable sections/cards once typed blocks exist.
+- Render inline-aware Knowledge Object bodies through the shared inline renderer.
 - Show kind, ID, status, owner, verification, evidence, and relations when present.
 - Do not emit JavaScript in V0.
 
@@ -418,6 +428,8 @@ Rules:
   For glossary, an author-supplied `status` field remains ordinary optional
   metadata under `fields.status`; it is not promoted to top-level `status`.
 - Relations are ID arrays, not embedded objects.
+- Object `body` is a faithful source-text projection of the inline-aware body,
+  preserving `[[object.id]]` markers rather than embedding a graph model.
 - Diagnostics are included using the same codes and messages as CLI diagnostics.
 - Schema versioning starts immediately, even if the shape is still pre-1.0.
 
