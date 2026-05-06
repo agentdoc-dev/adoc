@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
@@ -42,21 +42,7 @@ impl Claim {
         parsed: &ParsedTypedBlock,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
-        if !parsed.duplicate_keys.is_empty() {
-            let mut emitted_keys = BTreeSet::new();
-            for key in &parsed.duplicate_keys {
-                if emitted_keys.insert(key.as_str()) {
-                    diagnostics.push(
-                        Diagnostic::error(
-                            DiagnosticCode::SchemaDuplicateField,
-                            format!("duplicate field `{key}` in claim"),
-                        )
-                        .with_span(parsed.span.clone()),
-                    );
-                }
-            }
-            // Duplicate fields poison the raw field map: last-value-wins storage
-            // makes missing-field validation ambiguous until the duplicates are fixed.
+        if super::reject_duplicate_fields(parsed, "claim", diagnostics) {
             return None;
         }
 

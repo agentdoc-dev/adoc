@@ -1,5 +1,10 @@
 //! Aggregate family — populated by Slice 1.
 
+use std::collections::BTreeSet;
+
+use crate::domain::ast::ParsedTypedBlock;
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+
 pub(crate) mod claim;
 pub(crate) mod decision;
 pub(crate) mod glossary;
@@ -9,6 +14,33 @@ use claim::Claim;
 use decision::Decision;
 use glossary::Glossary;
 use warning::Warning;
+
+pub(super) fn reject_duplicate_fields(
+    parsed: &ParsedTypedBlock,
+    kind_word: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> bool {
+    if parsed.duplicate_keys.is_empty() {
+        return false;
+    }
+
+    let mut emitted_keys = BTreeSet::new();
+    for key in &parsed.duplicate_keys {
+        if emitted_keys.insert(key.as_str()) {
+            diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::SchemaDuplicateField,
+                    format!("duplicate field `{key}` in {kind_word}"),
+                )
+                .with_span(parsed.span.clone()),
+            );
+        }
+    }
+
+    // Duplicate fields poison the raw field map: last-value-wins storage makes
+    // missing-field validation ambiguous until the duplicates are fixed.
+    true
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BlockKind {
