@@ -17,6 +17,6 @@
       }
     },
     "object_id": "missing.object",
-    "help": null
+    "help": "Inline object references like `[[object.id]]` must name an existing Knowledge Object declared in the scanned workspace."
   }
 ]

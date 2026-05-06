@@ -7,6 +7,9 @@ use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{KnowledgeObject, RelationField, Relations};
 use crate::domain::source::SourceFile;
 
+const BROKEN_RELATION_HELP: &str = "Relation targets must name an existing Knowledge Object. Supported relation fields: `depends_on`, `supersedes`, `related_to`.";
+const BROKEN_INLINE_OBJECT_REFERENCE_HELP: &str = "Inline object references like `[[object.id]]` must name an existing Knowledge Object declared in the scanned workspace.";
+
 pub(crate) fn resolve_object_references(
     parsed: &mut [(SourceFile, PageAst)],
     declared_ids: &BTreeSet<ObjectId>,
@@ -81,7 +84,8 @@ fn resolve_relations(
                     ),
                 )
                 .with_span(target.span().clone())
-                .with_object_id(target.id().as_str()),
+                .with_object_id(target.id().as_str())
+                .with_help(BROKEN_RELATION_HELP),
             );
         }
     }
@@ -125,7 +129,8 @@ fn resolve_inlines(
                             format!("object reference `{raw_id}` does not resolve to a declared Knowledge Object"),
                         )
                         .with_span(span.clone())
-                        .with_object_id(raw_id.as_str()),
+                        .with_object_id(raw_id.as_str())
+                        .with_help(BROKEN_INLINE_OBJECT_REFERENCE_HELP),
                     );
                 }
             }
@@ -211,6 +216,10 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::RefBroken);
         assert_eq!(diagnostics[0].object_id.as_deref(), Some("missing.object"));
+        assert_eq!(
+            diagnostics[0].help.as_deref(),
+            Some(BROKEN_INLINE_OBJECT_REFERENCE_HELP)
+        );
     }
 
     #[test]
