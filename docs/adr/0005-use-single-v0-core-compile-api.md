@@ -9,3 +9,5 @@ AgentDoc V0 will expose one high-level `compile_workspace()` entry point from `a
 V0.5 adds `DiagnosticCode::RefBroken` with wire code `ref.broken` for object references and relation targets that use valid Object ID grammar but do not resolve to any declared Knowledge Object in the scanned workspace.
 
 V0.5 also adds `DiagnosticCode::IoUnsupportedSourceExtension` with wire code `io.unsupported_source_extension` for existing single-file compile roots whose extension is not exactly `.adoc`. Directory scans continue to ignore non-`.adoc` files silently; missing paths and ordinary read failures remain `io.unreadable_file`.
+
+V0.5 also adds `DiagnosticCode::IoUnreadableDirectory` with wire code `io.unreadable_directory` for directories that exist but cannot be traversed during recursive source discovery. Missing roots and ordinary file read failures remain `io.unreadable_file`.

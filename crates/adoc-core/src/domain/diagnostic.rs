@@ -18,8 +18,9 @@ pub struct Diagnostic {
 /// Per ADR-0005, this is part of the public surface as of v0.x — promoted from
 /// `pub(crate)` so external consumers (the CLI today, future LSP/web hosts
 /// tomorrow) can pattern-match on it instead of comparing strings. The wire
-/// format remains the dotted code string (`parse.raw_html`, `io.unreadable_file`,
-/// etc.); the manual `Serialize` impl below preserves byte-identical JSON.
+/// format remains the dotted code string (`parse.raw_html`,
+/// `io.unreadable_file`, `io.unreadable_directory`, etc.); the manual
+/// `Serialize` impl below preserves byte-identical JSON.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticCode {
     ParseRawHtml,
@@ -39,6 +40,7 @@ pub enum DiagnosticCode {
     IdInvalid,
     RefBroken,
     IoUnreadableFile,
+    IoUnreadableDirectory,
     IoUnsupportedSourceExtension,
 }
 
@@ -62,6 +64,7 @@ impl DiagnosticCode {
             DiagnosticCode::IdInvalid => "id.invalid",
             DiagnosticCode::RefBroken => "ref.broken",
             DiagnosticCode::IoUnreadableFile => "io.unreadable_file",
+            DiagnosticCode::IoUnreadableDirectory => "io.unreadable_directory",
             DiagnosticCode::IoUnsupportedSourceExtension => "io.unsupported_source_extension",
         }
     }
