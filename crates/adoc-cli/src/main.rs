@@ -145,6 +145,7 @@ fn parse_command(arguments: Vec<String>) -> Result<Command, CliError> {
             })
         }
         [] => Err(CliError::MissingCommand),
+        [command, ..] if command == "build" => Err(CliError::InvalidBuildUsage),
         [command, ..] => Err(CliError::UnknownCommand {
             command: command.clone(),
         }),

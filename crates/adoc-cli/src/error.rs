@@ -28,6 +28,9 @@ pub(crate) enum CliError {
     #[error("build did not produce artifacts")]
     BuildMissingArtifacts,
 
+    #[error("invalid build usage: build requires <path> --out <directory>")]
+    InvalidBuildUsage,
+
     #[error("missing command")]
     MissingCommand,
 
@@ -38,7 +41,9 @@ pub(crate) enum CliError {
 impl CliError {
     pub(crate) fn exit_code(&self) -> i32 {
         match self {
-            CliError::MissingCommand | CliError::UnknownCommand { .. } => 2,
+            CliError::InvalidBuildUsage
+            | CliError::MissingCommand
+            | CliError::UnknownCommand { .. } => 2,
             _ => 1,
         }
     }
