@@ -228,14 +228,10 @@ fn append_plain_text(segments: &[InlineSegment], buffer: &mut String) {
             }
             InlineSegment::Link { text, .. } => append_plain_text(text, buffer),
             InlineSegment::ObjectReferencePending { raw_id, .. } => {
-                buffer.push_str("[[");
                 buffer.push_str(raw_id);
-                buffer.push_str("]]");
             }
             InlineSegment::ObjectReference { id, .. } => {
-                buffer.push_str("[[");
                 buffer.push_str(id.as_str());
-                buffer.push_str("]]");
             }
         }
     }
@@ -723,6 +719,28 @@ mod tests {
         ];
 
         assert_eq!(plain_text(&segments), "Hello world");
+    }
+
+    #[test]
+    fn plain_text_flattens_object_references_to_ids() {
+        let source = source_file("[[billing.credits]]");
+        let segments = vec![
+            InlineSegment::Text("See ".to_string()),
+            InlineSegment::ObjectReferencePending {
+                raw_id: "billing.credits".to_string(),
+                span: source.span_for_line_columns(1, 1, 20),
+            },
+            InlineSegment::Text(" and ".to_string()),
+            InlineSegment::ObjectReference {
+                id: ObjectId::new("auth.session").expect("valid id"),
+                span: source.span_for_line_columns(1, 1, 17),
+            },
+        ];
+
+        assert_eq!(
+            plain_text(&segments),
+            "See billing.credits and auth.session"
+        );
     }
 
     #[test]
