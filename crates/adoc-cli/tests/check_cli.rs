@@ -339,6 +339,61 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
 }
 
 #[test]
+fn build_invalid_usage_missing_out_exits_2_with_build_specific_message() {
+    let workspace = TestWorkspace::new("build-invalid-usage-missing-out");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["build", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc build runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("build requires <path> --out <directory>"),
+        "expected build-specific usage message, got:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains("unknown or invalid command: build"),
+        "build arity errors should not be reported as unknown commands:\n{stderr}"
+    );
+}
+
+#[test]
+fn build_invalid_usage_wrong_out_flag_exits_2_with_build_specific_message() {
+    let workspace = TestWorkspace::new("build-invalid-usage-wrong-out-flag");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            source.to_str().expect("source path is utf-8"),
+            "--output",
+            "dist",
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("build requires <path> --out <directory>"),
+        "expected build-specific usage message, got:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains("unknown or invalid command: build"),
+        "build flag errors should not be reported as unknown commands:\n{stderr}"
+    );
+}
+
+#[test]
 fn build_groups_contiguous_list_items_by_list_kind() {
     let workspace = TestWorkspace::new("build-groups-contiguous-lists");
     let source = workspace.write(
