@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
@@ -26,19 +26,7 @@ impl Glossary {
         parsed: &ParsedTypedBlock,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
-        if !parsed.duplicate_keys.is_empty() {
-            let mut emitted_keys = BTreeSet::new();
-            for key in &parsed.duplicate_keys {
-                if emitted_keys.insert(key.as_str()) {
-                    diagnostics.push(
-                        Diagnostic::error(
-                            DiagnosticCode::SchemaDuplicateField,
-                            format!("duplicate field `{key}` in glossary"),
-                        )
-                        .with_span(parsed.span.clone()),
-                    );
-                }
-            }
+        if super::reject_duplicate_fields(parsed, "glossary", diagnostics) {
             return None;
         }
 
