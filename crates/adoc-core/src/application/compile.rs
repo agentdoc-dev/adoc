@@ -1,6 +1,10 @@
 use std::cmp::Ordering;
 use std::path::PathBuf;
 
+use crate::application::resolve_knowledge_objects::{
+    resolve_knowledge_objects, suppress_unknown_kind_shape_diagnostics,
+};
+use crate::application::resolve_object_references::resolve_object_references;
 use crate::domain::artifact::AgentJsonDocument;
 use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
@@ -12,7 +16,6 @@ use crate::infrastructure::artifact::AgentJsonArtifact;
 use crate::infrastructure::parser::parse_page;
 use crate::infrastructure::render::HtmlRenderer;
 use crate::infrastructure::validate::{
-    resolve_knowledge_objects, resolve_object_references, suppress_unknown_kind_shape_diagnostics,
     validate_resolved_page, validate_source_page, validate_workspace,
 };
 
@@ -120,9 +123,8 @@ fn validate_source_pages(parsed: &[(SourceFile, PageAst)]) -> Vec<Diagnostic> {
     diagnostics
 }
 
-/// Run every resolved-page rule after Knowledge Object resolution. Empty in
-/// v0.2 until a rule needs typed aggregate data but kept explicit to make the
-/// pipeline contract obvious.
+/// Run every resolved-page rule after Knowledge Object resolution. Rules in
+/// this phase can rely on typed aggregate data instead of pending parser shells.
 fn validate_resolved_pages(parsed: &[(SourceFile, PageAst)]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for (source, page) in parsed {
@@ -283,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_resolved_pages_returns_empty_for_empty_registry() {
+    fn validate_resolved_pages_returns_empty_for_page_without_knowledge_objects() {
         let provider = InMemorySourceProvider::new().with_source(source_file(
             "guide.adoc",
             "# Guide @doc(team.guide)\n\nHello.\n",

@@ -8,13 +8,12 @@
 //! The exception is `parse.unclosed_fence`: closure detection requires
 //! streaming context (you only know a fence is unclosed once EOF is reached),
 //! so that diagnostic remains in the parser. See ADR-0007 for the decision.
+//!
+//! Mutating resolution stages are not validation rules; they live in
+//! `application/` and call domain services where aggregate-family behavior is
+//! needed.
 
 mod knowledge_object_unique_ids;
-pub(crate) mod resolve_knowledge_objects;
-mod resolve_object_references;
-pub(crate) use resolve_knowledge_objects::resolve_knowledge_objects;
-pub(crate) use resolve_knowledge_objects::suppress_unknown_kind_shape_diagnostics;
-pub(crate) use resolve_object_references::resolve_object_references;
 
 use knowledge_object_unique_ids::KnowledgeObjectUniqueIds;
 
@@ -30,7 +29,7 @@ use crate::domain::source::SourceFile;
 const SOURCE_PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLinkForbidden];
 
 /// Resolved-page rules run after pending Knowledge Objects have been converted
-/// into typed aggregates. Empty until a rule needs typed `Claim` data.
+/// into typed aggregates.
 const RESOLVED_PAGE_RULES: &[&dyn ValidationRule] = &[&KnowledgeObjectBodyUnsafeLinksForbidden];
 
 /// Workspace-level rules, applied in registration order after knowledge object
@@ -44,7 +43,7 @@ pub(crate) fn validate_source_page(page: &PageAst, source: &SourceFile) -> Vec<D
 }
 
 /// Run every resolved-page rule against `page` after Knowledge Object
-/// resolution. The registry is intentionally empty in the first claim slice.
+/// resolution.
 pub(crate) fn validate_resolved_page(page: &PageAst, source: &SourceFile) -> Vec<Diagnostic> {
     validate_page_with_rules(page, source, RESOLVED_PAGE_RULES)
 }
