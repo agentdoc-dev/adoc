@@ -6,9 +6,10 @@
 
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::domain::inline::{InlineOrigin, InlineSegment, parse_inlines};
+use crate::domain::inline::{InlineOrigin, InlineSegment};
 use crate::domain::source::SourceFile;
 
+use super::inline::parse_inlines;
 use super::state::{TypedBlockBuildingState, TypedBlockPhase};
 
 const FIELD_KEY_GRAMMAR: &str = "[a-z][a-z0-9_]*";
