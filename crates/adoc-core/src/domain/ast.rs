@@ -94,6 +94,7 @@ pub(crate) struct ParsedTypedBlock {
     pub(crate) raw_fields: BTreeMap<String, String>,
     pub(crate) duplicate_keys: Vec<String>,
     pub(crate) body_text: String,
+    pub(crate) body_spans: Vec<SourceSpan>,
     pub(crate) content_spans: Vec<SourceSpan>,
     pub(crate) span: SourceSpan,
 }
@@ -135,6 +136,7 @@ mod tests {
             raw_fields: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "x".to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         };

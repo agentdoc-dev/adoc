@@ -128,6 +128,7 @@ pub(super) fn try_open_typed_block(
         raw_fields: std::collections::BTreeMap::new(),
         duplicate_keys: Vec::new(),
         body_lines: Vec::new(),
+        body_spans: Vec::new(),
         content_spans: Vec::new(),
     })
 }
@@ -241,9 +242,9 @@ pub(super) fn consume_typed_block_line(
                 // Preserve the line so close-fence recovery is unchanged; the
                 // error blocks artifact writes before this body text can emit.
                 state.body_lines.push(line.to_string());
-                state
-                    .content_spans
-                    .push(source.span_for_line(line_number, line));
+                let span = source.span_for_line(line_number, line);
+                state.body_spans.push(span.clone());
+                state.content_spans.push(span);
                 return TypedBlockLineOutcome::Continue;
             }
 
@@ -253,9 +254,9 @@ pub(super) fn consume_typed_block_line(
             }
             // Append raw line (preserve all internal whitespace).
             state.body_lines.push(line.to_string());
-            state
-                .content_spans
-                .push(source.span_for_line(line_number, line));
+            let span = source.span_for_line(line_number, line);
+            state.body_spans.push(span.clone());
+            state.content_spans.push(span);
             TypedBlockLineOutcome::Continue
         }
     }
@@ -320,8 +321,9 @@ fn try_parse_field(trimmed: &str) -> Option<(String, String)> {
 /// Assemble a `ParsedTypedBlock` from the current builder state.
 /// Leading and trailing fully-blank lines are trimmed from `body_lines`.
 fn build_parsed_typed_block(state: &TypedBlockBuildingState) -> ParsedTypedBlock {
-    let trimmed_body_lines = trim_blank_edges(&state.body_lines);
-    let body_text = trimmed_body_lines.join("\n");
+    let body_range = trim_blank_edges_range(&state.body_lines);
+    let body_text = state.body_lines[body_range.clone()].join("\n");
+    let body_spans = state.body_spans[body_range].to_vec();
 
     ParsedTypedBlock {
         kind_word: state.kind_word.clone(),
@@ -330,6 +332,7 @@ fn build_parsed_typed_block(state: &TypedBlockBuildingState) -> ParsedTypedBlock
         raw_fields: state.raw_fields.clone(),
         duplicate_keys: state.duplicate_keys.clone(),
         body_text,
+        body_spans,
         content_spans: state.content_spans.clone(),
         span: state.open_fence_span.clone(),
     }
@@ -337,7 +340,7 @@ fn build_parsed_typed_block(state: &TypedBlockBuildingState) -> ParsedTypedBlock
 
 /// Strip leading and trailing elements from `lines` that are blank (trim to
 /// empty). Internal blank lines are preserved.
-fn trim_blank_edges(lines: &[String]) -> &[String] {
+fn trim_blank_edges_range(lines: &[String]) -> std::ops::Range<usize> {
     let start = lines
         .iter()
         .position(|l| !l.trim().is_empty())
@@ -347,11 +350,7 @@ fn trim_blank_edges(lines: &[String]) -> &[String] {
         .rposition(|l| !l.trim().is_empty())
         .map(|i| i + 1)
         .unwrap_or(0);
-    if start >= end {
-        &lines[0..0]
-    } else {
-        &lines[start..end]
-    }
+    if start >= end { 0..0 } else { start..end }
 }
 
 #[cfg(test)]
@@ -399,6 +398,7 @@ mod tests {
             raw_fields: std::collections::BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_lines: Vec::new(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
         }
     }

@@ -45,11 +45,11 @@ pub struct BuildArtifacts {
 
 pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
     // Pipeline stages: load → validate-source-pages → resolve-KOs →
-    // validate-resolved-pages → assemble → validate-workspace → build. Each
-    // stage is a separate function below so it can be unit-tested in
-    // isolation and the orchestrator reads as a sequence of named domain
-    // operations rather than one walls-of-text loop. Pages move through the
-    // pipeline without cloning. See ADR-0006 addendum.
+    // resolve-object-references → validate-resolved-pages → assemble →
+    // validate-workspace → build. Each stage is a separate function below so
+    // it can be unit-tested in isolation and the orchestrator reads as a
+    // sequence of named domain operations rather than one walls-of-text loop.
+    // Pages move through the pipeline without cloning. See ADR-0006 addendum.
     let (mut parsed, mut diagnostics) = load_pages(provider);
     diagnostics.extend(validate_source_pages(&parsed));
     suppress_unknown_kind_shape_diagnostics(&parsed, &mut diagnostics);

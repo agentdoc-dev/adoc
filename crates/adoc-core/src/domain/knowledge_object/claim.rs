@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
-use crate::domain::values::{BodyText, NonEmptyText, OptionalFields, trim_ascii_edges};
+use crate::domain::values::{Body, NonEmptyText, OptionalFields, trim_ascii_edges};
 
 pub(crate) const STATUS_FIELD: &str = "status";
 pub(crate) const OWNER_FIELD: &str = "owner";
@@ -21,7 +21,7 @@ const CLAIM_MISSING_BODY_HELP: &str = "Claims require non-empty body text.";
 pub(crate) struct Claim {
     id: ObjectId,
     status: ClaimStatus,
-    body: BodyText,
+    body: Body,
     fields: OptionalFields,
     verification: Option<Verification>,
     span: SourceSpan,
@@ -65,14 +65,15 @@ impl Claim {
             );
         }
 
-        match Self::try_new(
-            &parsed.id_text,
-            status_text,
-            &parsed.body_text,
-            optional_fields,
-            None,
-            parsed.span.clone(),
-        ) {
+        let (id, status, body) = match Self::parse_basics_from_parsed(parsed, status_text) {
+            Ok(basics) => basics,
+            Err(error) => {
+                emit_claim_error(parsed, error, diagnostics);
+                return None;
+            }
+        };
+
+        match Self::from_parts(id, status, body, optional_fields, None, parsed.span.clone()) {
             Ok(claim) => {
                 if claim.status().is_verified_ascii_case_variant() {
                     diagnostics.push(status_casing_diagnostic(parsed, claim.status().as_str()));
@@ -86,6 +87,7 @@ impl Claim {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn try_new(
         id_text: &str,
         status_text: Option<&str>,
@@ -101,7 +103,7 @@ impl Claim {
     fn from_parts(
         id: ObjectId,
         status: ClaimStatus,
-        body: BodyText,
+        body: Body,
         optional_fields: BTreeMap<String, String>,
         verification: Option<Verification>,
         span: SourceSpan,
@@ -132,14 +134,25 @@ impl Claim {
         })
     }
 
+    #[cfg(test)]
     fn parse_basics(
         id_text: &str,
         status_text: Option<&str>,
         body_text: &str,
-    ) -> Result<(ObjectId, ClaimStatus, BodyText), ClaimError> {
+    ) -> Result<(ObjectId, ClaimStatus, Body), ClaimError> {
         let id = ObjectId::new(id_text).map_err(ClaimError::InvalidId)?;
         let status = ClaimStatus::try_new(status_text.unwrap_or(""))?;
-        let body = BodyText::try_new(body_text).ok_or(ClaimError::MissingBody)?;
+        let body = Body::from_plain_text(body_text).ok_or(ClaimError::MissingBody)?;
+        Ok((id, status, body))
+    }
+
+    fn parse_basics_from_parsed(
+        parsed: &ParsedTypedBlock,
+        status_text: Option<&str>,
+    ) -> Result<(ObjectId, ClaimStatus, Body), ClaimError> {
+        let id = ObjectId::new(&parsed.id_text).map_err(ClaimError::InvalidId)?;
+        let status = ClaimStatus::try_new(status_text.unwrap_or(""))?;
+        let body = super::body_from_parsed(parsed).ok_or(ClaimError::MissingBody)?;
         Ok((id, status, body))
     }
 
@@ -151,8 +164,12 @@ impl Claim {
         &self.status
     }
 
-    pub(crate) fn body(&self) -> &BodyText {
+    pub(crate) fn body(&self) -> &Body {
         &self.body
+    }
+
+    pub(crate) fn body_mut(&mut self) -> &mut Body {
+        &mut self.body
     }
 
     pub(crate) fn fields(&self) -> &OptionalFields {
@@ -173,14 +190,13 @@ impl Claim {
         optional_fields: BTreeMap<String, String>,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
-        let (id, status, body) =
-            match Self::parse_basics(&parsed.id_text, status_text, &parsed.body_text) {
-                Ok(basics) => basics,
-                Err(error) => {
-                    emit_claim_error(parsed, error, diagnostics);
-                    return None;
-                }
-            };
+        let (id, status, body) = match Self::parse_basics_from_parsed(parsed, status_text) {
+            Ok(basics) => basics,
+            Err(error) => {
+                emit_claim_error(parsed, error, diagnostics);
+                return None;
+            }
+        };
 
         let verification = build_verification(parsed, &optional_fields, diagnostics)?;
         let storage_fields = verified_claim_storage_fields(optional_fields);
@@ -537,6 +553,7 @@ mod tests {
             raw_fields: fields,
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         }
@@ -569,24 +586,24 @@ mod tests {
 
     #[test]
     fn claim_body_try_new_rejects_empty() {
-        assert!(BodyText::try_new("").is_none());
+        assert!(Body::from_plain_text("").is_none());
     }
 
     #[test]
     fn claim_body_try_new_rejects_ascii_whitespace_only() {
-        assert!(BodyText::try_new("   \t  ").is_none());
+        assert!(Body::from_plain_text("   \t  ").is_none());
     }
 
     #[test]
     fn claim_body_try_new_trims_and_accepts() {
-        let body = BodyText::try_new("  some claim body  ").expect("valid body");
-        assert_eq!(body.as_str(), "some claim body");
+        let body = Body::from_plain_text("  some claim body  ").expect("valid body");
+        assert_eq!(body.to_source(), "some claim body");
     }
 
     #[test]
     fn claim_body_try_new_preserves_non_ascii_edge_whitespace() {
-        let body = BodyText::try_new("\u{00a0}some claim body\u{00a0}").expect("valid body");
-        assert_eq!(body.as_str(), "\u{00a0}some claim body\u{00a0}");
+        let body = Body::from_plain_text("\u{00a0}some claim body\u{00a0}").expect("valid body");
+        assert_eq!(body.to_source(), "\u{00a0}some claim body\u{00a0}");
     }
 
     #[test]
@@ -619,7 +636,7 @@ mod tests {
 
         assert_eq!(claim.id().as_str(), "billing.credits");
         assert_eq!(claim.status().as_str(), "plain");
-        assert_eq!(claim.body().as_str(), "x");
+        assert_eq!(claim.body().to_source(), "x");
         assert!(claim.fields().is_empty());
         assert!(claim.verification().is_none());
     }

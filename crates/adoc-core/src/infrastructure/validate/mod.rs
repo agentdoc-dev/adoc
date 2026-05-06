@@ -21,6 +21,7 @@ use knowledge_object_unique_ids::KnowledgeObjectUniqueIds;
 use crate::domain::ast::{BlockAst, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::inline::InlineSegment;
+use crate::domain::knowledge_object::KnowledgeObject;
 use crate::domain::rules::{ValidationRule, WorkspaceRule};
 use crate::domain::scan::raw_html::find_raw_html;
 use crate::domain::source::SourceFile;
@@ -31,7 +32,7 @@ const SOURCE_PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLi
 
 /// Resolved-page rules run after pending Knowledge Objects have been converted
 /// into typed aggregates. Empty until a rule needs typed `Claim` data.
-const RESOLVED_PAGE_RULES: &[&dyn ValidationRule] = &[];
+const RESOLVED_PAGE_RULES: &[&dyn ValidationRule] = &[&KnowledgeObjectBodyUnsafeLinksForbidden];
 
 /// Workspace-level rules, applied in registration order after knowledge object
 /// resolution and workspace assembly.
@@ -144,6 +145,30 @@ impl ValidationRule for UnsafeLinkForbidden {
     }
 }
 
+pub(crate) struct KnowledgeObjectBodyUnsafeLinksForbidden;
+
+impl ValidationRule for KnowledgeObjectBodyUnsafeLinksForbidden {
+    fn check(&self, page: &PageAst, _source: &SourceFile, sink: &mut Vec<Diagnostic>) {
+        for block in &page.blocks {
+            let BlockAst::KnowledgeObject(knowledge_object) = block else {
+                continue;
+            };
+            match knowledge_object.as_ref() {
+                KnowledgeObject::Claim(claim) => check_inlines(claim.body().inlines(), sink),
+                KnowledgeObject::Decision(decision) => {
+                    check_inlines(decision.body().inlines(), sink);
+                }
+                KnowledgeObject::Glossary(glossary) => {
+                    check_inlines(glossary.body().inlines(), sink);
+                }
+                KnowledgeObject::Warning(warning) => {
+                    check_inlines(warning.body().inlines(), sink);
+                }
+            }
+        }
+    }
+}
+
 fn check_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
     match block {
         BlockAst::Heading(heading) => check_inlines(&heading.inlines, sink),
@@ -154,10 +179,9 @@ fn check_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
             }
         }
         BlockAst::CodeBlock(_) => {}
-        // Knowledge Object text is plain body/field text in v0.2. Inline
-        // parsing for claim bodies lands in a later slice.
-        // TODO(v0.5): once claim bodies parse inline object references, run
-        // unsafe-link validation over those body inlines too.
+        // Knowledge Object body inlines are available only after resolution,
+        // so `KnowledgeObjectBodyUnsafeLinksForbidden` handles them in the
+        // resolved-page phase.
         BlockAst::KnowledgeObject(_) | BlockAst::KnowledgeObjectPending(_) => {}
     }
 }

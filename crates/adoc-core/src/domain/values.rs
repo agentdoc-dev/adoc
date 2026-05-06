@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use crate::domain::inline::{InlineSegment, plain_text, to_source};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NonEmptyText(String);
 
@@ -15,15 +17,29 @@ impl NonEmptyText {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct BodyText(NonEmptyText);
+pub(crate) struct Body(Vec<InlineSegment>);
 
-impl BodyText {
-    pub(crate) fn try_new(value: &str) -> Option<Self> {
-        NonEmptyText::try_new(value).map(Self)
+impl Body {
+    pub(crate) fn try_new(inlines: Vec<InlineSegment>) -> Option<Self> {
+        let text = plain_text(&inlines);
+        (!trim_ascii_edges(&text).is_empty()).then_some(Self(inlines))
     }
 
-    pub(crate) fn as_str(&self) -> &str {
-        self.0.as_str()
+    pub(crate) fn from_plain_text(value: &str) -> Option<Self> {
+        NonEmptyText::try_new(value)
+            .map(|text| Self(vec![InlineSegment::Text(text.as_str().to_string())]))
+    }
+
+    pub(crate) fn inlines(&self) -> &[InlineSegment] {
+        &self.0
+    }
+
+    pub(crate) fn inlines_mut(&mut self) -> &mut Vec<InlineSegment> {
+        &mut self.0
+    }
+
+    pub(crate) fn to_source(&self) -> String {
+        to_source(&self.0)
     }
 }
 
@@ -68,12 +84,34 @@ mod tests {
     }
 
     #[test]
-    fn body_text_reuses_non_empty_text_rules() {
-        assert!(BodyText::try_new(" \t ").is_none());
-        assert_eq!(
-            BodyText::try_new("  body  ").expect("body").as_str(),
-            "body"
-        );
+    fn body_rejects_empty_plain_text_projection() {
+        assert!(Body::try_new(vec![InlineSegment::Text(" \t ".to_string())]).is_none());
+    }
+
+    #[test]
+    fn body_preserves_inline_source_projection() {
+        let body = Body::try_new(vec![
+            InlineSegment::Text("Use ".to_string()),
+            InlineSegment::ObjectReferencePending {
+                raw_id: "billing.credits".to_string(),
+                span: crate::domain::diagnostic::SourceSpan {
+                    file: std::path::PathBuf::from("guide.adoc"),
+                    start: crate::domain::diagnostic::SourcePosition {
+                        line: 1,
+                        column: 5,
+                        offset: 4,
+                    },
+                    end: crate::domain::diagnostic::SourcePosition {
+                        line: 1,
+                        column: 24,
+                        offset: 23,
+                    },
+                },
+            },
+        ])
+        .expect("non-empty body");
+
+        assert_eq!(body.to_source(), "Use [[billing.credits]]");
     }
 
     #[test]

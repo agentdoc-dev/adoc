@@ -107,7 +107,7 @@ fn render_glossary(glossary: &Glossary, html: &mut String) {
     html.push_str("</code>");
     html.push_str("</header>\n");
     html.push_str("<div class=\"glossary__body\"><p>");
-    html.push_str(&escape_html(glossary.body().as_str()));
+    render_inlines(glossary.body().inlines(), html);
     html.push_str("</p></div>\n");
     render_glossary_metadata(glossary, html);
     html.push_str("</section>\n");
@@ -147,7 +147,7 @@ fn render_warning(warning: &Warning, html: &mut String) {
     html.push_str("</span>");
     html.push_str("</header>\n");
     html.push_str("<div class=\"warning__body\"><p>");
-    html.push_str(&escape_html(warning.body().as_str()));
+    render_inlines(warning.body().inlines(), html);
     html.push_str("</p></div>\n");
     render_warning_metadata(warning, html);
     html.push_str("</section>\n");
@@ -192,7 +192,7 @@ fn render_decision(decision: &Decision, html: &mut String) {
     html.push_str("</span>");
     html.push_str("</header>\n");
     html.push_str("<div class=\"decision__body\"><p>");
-    html.push_str(&escape_html(decision.body().as_str()));
+    render_inlines(decision.body().inlines(), html);
     html.push_str("</p></div>\n");
     if let Some(verdict) = decision.verdict() {
         html.push_str("<div class=\"decision__verdict\"><dl>");
@@ -246,7 +246,7 @@ fn render_claim(claim: &Claim, html: &mut String) {
     html.push_str("</span>");
     html.push_str("</header>\n");
     html.push_str("<div class=\"claim__body\"><p>");
-    html.push_str(&escape_html(claim.body().as_str()));
+    render_inlines(claim.body().inlines(), html);
     html.push_str("</p></div>\n");
 
     if let Some(verification) = claim.verification() {

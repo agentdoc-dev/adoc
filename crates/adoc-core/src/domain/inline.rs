@@ -1,4 +1,6 @@
-use crate::domain::diagnostic::{Diagnostic, SourceSpan};
+use std::path::Path;
+
+use crate::domain::diagnostic::{Diagnostic, SourcePosition, SourceSpan};
 use crate::domain::identity::ObjectId;
 use crate::domain::source::{LineCursor, SourceFile};
 
@@ -28,15 +30,26 @@ pub(crate) enum InlineSegment {
 /// without touching cursor arithmetic directly.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct InlineOrigin<'a> {
-    source: &'a SourceFile,
+    file: &'a Path,
     cursor: LineCursor,
+    offset: u32,
 }
 
 impl<'a> InlineOrigin<'a> {
     pub(crate) fn at(source: &'a SourceFile, line: u32, column: u32) -> Self {
+        let position = source.span_for_line_columns(line, column, column).start;
         Self {
-            source,
-            cursor: LineCursor::at(line, column),
+            file: source.path.as_path(),
+            cursor: LineCursor::at(position.line, position.column),
+            offset: position.offset,
+        }
+    }
+
+    pub(crate) fn from_span(span: &'a SourceSpan) -> Self {
+        Self {
+            file: span.file.as_path(),
+            cursor: LineCursor::at(span.start.line, span.start.column),
+            offset: span.start.offset,
         }
     }
 
@@ -65,15 +78,33 @@ impl<'a> InlineOrigin<'a> {
     /// New origin with the cursor advanced past `prefix` on the same line.
     pub(crate) fn advance_past(&self, prefix: &str) -> Self {
         Self {
-            source: self.source,
+            file: self.file,
             cursor: self.cursor.advance_past(prefix),
+            offset: self.offset + prefix.len() as u32,
         }
     }
 
-    /// Span on this origin's line between `start_column` and `end_column`.
-    pub(crate) fn span(&self, start_column: u32, end_column: u32) -> SourceSpan {
-        self.source
-            .span_for_line_columns(self.cursor.line(), start_column, end_column)
+    pub(crate) fn span_for_offsets(
+        &self,
+        text: &str,
+        start_byte: usize,
+        end_byte: usize,
+    ) -> SourceSpan {
+        let start_column = self.column_after(&text[..start_byte]);
+        let end_column = self.column_after(&text[..end_byte]);
+        SourceSpan {
+            file: self.file.to_path_buf(),
+            start: SourcePosition {
+                line: self.cursor.line(),
+                column: start_column,
+                offset: self.offset + start_byte as u32,
+            },
+            end: SourcePosition {
+                line: self.cursor.line(),
+                column: end_column,
+                offset: self.offset + end_byte as u32,
+            },
+        }
     }
 }
 
@@ -142,6 +173,52 @@ pub(crate) fn plain_text(segments: &[InlineSegment]) -> String {
     buffer
 }
 
+pub(crate) fn to_source(segments: &[InlineSegment]) -> String {
+    let mut buffer = String::new();
+    append_source(segments, &mut buffer);
+    buffer
+}
+
+fn append_source(segments: &[InlineSegment], buffer: &mut String) {
+    for segment in segments {
+        match segment {
+            InlineSegment::Text(text) => buffer.push_str(text),
+            InlineSegment::Code(text) => {
+                buffer.push('`');
+                buffer.push_str(text);
+                buffer.push('`');
+            }
+            InlineSegment::Emphasis(inner) => {
+                buffer.push('*');
+                append_source(inner, buffer);
+                buffer.push('*');
+            }
+            InlineSegment::Strong(inner) => {
+                buffer.push_str("**");
+                append_source(inner, buffer);
+                buffer.push_str("**");
+            }
+            InlineSegment::Link { text, url, .. } => {
+                buffer.push('[');
+                append_source(text, buffer);
+                buffer.push_str("](");
+                buffer.push_str(url);
+                buffer.push(')');
+            }
+            InlineSegment::ObjectReferencePending { raw_id, .. } => {
+                buffer.push_str("[[");
+                buffer.push_str(raw_id);
+                buffer.push_str("]]");
+            }
+            InlineSegment::ObjectReference { id, .. } => {
+                buffer.push_str("[[");
+                buffer.push_str(id.as_str());
+                buffer.push_str("]]");
+            }
+        }
+    }
+}
+
 fn append_plain_text(segments: &[InlineSegment], buffer: &mut String) {
     for segment in segments {
         match segment {
@@ -179,9 +256,7 @@ fn scan_object_reference(
     let raw_id = after_open[..close_offset].to_string();
     let total_consumed = 2 + close_offset + 2;
 
-    let start_column = origin.column_after(&text[..cursor]);
-    let end_column = origin.column_after(&text[..cursor + total_consumed]);
-    let span = origin.span(start_column, end_column);
+    let span = origin.span_for_offsets(text, cursor, cursor + total_consumed);
 
     output.push_segment(InlineSegment::ObjectReferencePending { raw_id, span });
     Some(total_consumed)
@@ -212,9 +287,7 @@ fn scan_link(
     let url = after_open_paren[..close_paren_offset].to_string();
     let total_consumed = 1 + close_bracket_offset + 1 + 1 + close_paren_offset + 1;
 
-    let start_column = origin.column_after(&text[..cursor]);
-    let end_column = origin.column_after(&text[..cursor + total_consumed]);
-    let span = origin.span(start_column, end_column);
+    let span = origin.span_for_offsets(text, cursor, cursor + total_consumed);
 
     let label_origin = origin.advance_past(&text[..cursor + 1]);
     let (label_segments, label_diagnostics) = parse_inlines(label_text, label_origin);
@@ -650,5 +723,35 @@ mod tests {
         ];
 
         assert_eq!(plain_text(&segments), "Hello world");
+    }
+
+    #[test]
+    fn to_source_round_trips_all_inline_variants() {
+        let source = source_file("[[billing.credits]]");
+        let segments = vec![
+            InlineSegment::Text("See ".to_string()),
+            InlineSegment::Code("adoc check".to_string()),
+            InlineSegment::Text(" ".to_string()),
+            InlineSegment::Emphasis(vec![InlineSegment::Text("term".to_string())]),
+            InlineSegment::Text(" ".to_string()),
+            InlineSegment::Strong(vec![InlineSegment::ObjectReferencePending {
+                raw_id: "billing.credits".to_string(),
+                span: source.span_for_line_columns(1, 1, 20),
+            }]),
+            InlineSegment::Text(" ".to_string()),
+            InlineSegment::Link {
+                text: vec![InlineSegment::ObjectReference {
+                    id: ObjectId::new("auth.session").expect("valid id"),
+                    span: source.span_for_line_columns(1, 1, 17),
+                }],
+                url: "https://example.test".to_string(),
+                span: source.span_for_line_columns(1, 1, 20),
+            },
+        ];
+
+        assert_eq!(
+            to_source(&segments),
+            "See `adoc check` *term* **[[billing.credits]]** [[[auth.session]]](https://example.test)"
+        );
     }
 }

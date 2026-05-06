@@ -3,14 +3,14 @@ use std::collections::BTreeMap;
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
-use crate::domain::values::{BodyText, OptionalFields};
+use crate::domain::values::{Body, OptionalFields};
 
 const GLOSSARY_MISSING_BODY_HELP: &str = "Glossary entries require non-empty body text.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Glossary {
     id: ObjectId,
-    body: BodyText,
+    body: Body,
     fields: OptionalFields,
     span: SourceSpan,
 }
@@ -30,12 +30,19 @@ impl Glossary {
             return None;
         }
 
-        match Self::try_new(
-            &parsed.id_text,
-            &parsed.body_text,
-            parsed.raw_fields.clone(),
-            parsed.span.clone(),
-        ) {
+        let id = match ObjectId::new(&parsed.id_text) {
+            Ok(id) => id,
+            Err(error) => {
+                emit_glossary_error(parsed, GlossaryError::InvalidId(error), diagnostics);
+                return None;
+            }
+        };
+        let Some(body) = super::body_from_parsed(parsed) else {
+            emit_glossary_error(parsed, GlossaryError::MissingBody, diagnostics);
+            return None;
+        };
+
+        match Self::from_parts(id, body, parsed.raw_fields.clone(), parsed.span.clone()) {
             Ok(glossary) => Some(glossary),
             Err(error) => {
                 emit_glossary_error(parsed, error, diagnostics);
@@ -44,6 +51,7 @@ impl Glossary {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn try_new(
         id_text: &str,
         body_text: &str,
@@ -51,7 +59,16 @@ impl Glossary {
         span: SourceSpan,
     ) -> Result<Self, GlossaryError> {
         let id = ObjectId::new(id_text).map_err(GlossaryError::InvalidId)?;
-        let body = BodyText::try_new(body_text).ok_or(GlossaryError::MissingBody)?;
+        let body = Body::from_plain_text(body_text).ok_or(GlossaryError::MissingBody)?;
+        Self::from_parts(id, body, fields, span)
+    }
+
+    fn from_parts(
+        id: ObjectId,
+        body: Body,
+        fields: BTreeMap<String, String>,
+        span: SourceSpan,
+    ) -> Result<Self, GlossaryError> {
         Ok(Self {
             id,
             body,
@@ -64,8 +81,12 @@ impl Glossary {
         &self.id
     }
 
-    pub(crate) fn body(&self) -> &BodyText {
+    pub(crate) fn body(&self) -> &Body {
         &self.body
+    }
+
+    pub(crate) fn body_mut(&mut self) -> &mut Body {
+        &mut self.body
     }
 
     pub(crate) fn fields(&self) -> &OptionalFields {
@@ -140,6 +161,7 @@ mod tests {
             raw_fields: fields,
             duplicate_keys,
             body_text: body_text.to_string(),
+            body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
         }
@@ -160,7 +182,7 @@ mod tests {
 
         assert_eq!(glossary.id().as_str(), "billing.credits");
         assert_eq!(
-            glossary.body().as_str(),
+            glossary.body().to_source(),
             "Credits adjust an account balance."
         );
         let fields: Vec<(&str, &str)> = glossary

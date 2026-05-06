@@ -4,6 +4,7 @@ use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::inline::InlineSegment;
+use crate::domain::knowledge_object::KnowledgeObject;
 use crate::domain::source::SourceFile;
 
 pub(crate) fn resolve_object_references(
@@ -35,10 +36,34 @@ fn resolve_page(
                     resolve_inlines(&mut item.inlines, declared_ids, diagnostics);
                 }
             }
-            BlockAst::CodeBlock(_) | BlockAst::KnowledgeObject(_) => {}
+            BlockAst::KnowledgeObject(knowledge_object) => {
+                resolve_knowledge_object_body(knowledge_object, declared_ids, diagnostics);
+            }
+            BlockAst::CodeBlock(_) => {}
             BlockAst::KnowledgeObjectPending(_) => {
                 unreachable!("knowledge objects must resolve before object references")
             }
+        }
+    }
+}
+
+fn resolve_knowledge_object_body(
+    knowledge_object: &mut KnowledgeObject,
+    declared_ids: &BTreeSet<ObjectId>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match knowledge_object {
+        KnowledgeObject::Claim(claim) => {
+            resolve_inlines(claim.body_mut().inlines_mut(), declared_ids, diagnostics);
+        }
+        KnowledgeObject::Decision(decision) => {
+            resolve_inlines(decision.body_mut().inlines_mut(), declared_ids, diagnostics);
+        }
+        KnowledgeObject::Glossary(glossary) => {
+            resolve_inlines(glossary.body_mut().inlines_mut(), declared_ids, diagnostics);
+        }
+        KnowledgeObject::Warning(warning) => {
+            resolve_inlines(warning.body_mut().inlines_mut(), declared_ids, diagnostics);
         }
     }
 }
