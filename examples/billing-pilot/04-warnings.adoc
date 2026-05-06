@@ -1,0 +1,35 @@
+# Billing Pilot Warnings @doc(billing.warnings)
+
+Known risks to watch while reviewing the pilot output.
+
+::warning billing.warning.double-credit
+severity: high
+owner: team-billing
+depends_on: billing.credits.nonnegative
+--
+Concurrent refund retries can double-apply [[billing.credits]] unless ledger idempotency keys are checked before posting.
+::
+
+::warning billing.warning.ledger-delay
+severity: medium
+owner: team-billing
+related_to: billing.ledger
+--
+Delayed ledger replication can make support tools show stale credit availability for recently settled payments.
+::
+
+::warning billing.warning.refund-race
+severity: high
+owner: team-billing
+depends_on: [billing.refunds.audit-required, billing.decision.ledger-first]
+--
+Manual refund approval can race with automatic processor callbacks if both paths attempt to write the final refund ledger entry.
+::
+
+::warning billing.warning.tax-adjustment
+severity: low
+owner: tax-platform
+related_to: billing.invoices.tax-before-credit
+--
+Tax adjustment explanations may be incomplete when a corrected invoice receives credit after finalization.
+::

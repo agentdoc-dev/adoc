@@ -1,0 +1,38 @@
+# Billing Pilot Decisions @doc(billing.decisions)
+
+Architecture choices for the billing pilot.
+
+::decision billing.decision.legacy-refunds
+status: accepted
+decided_by: billing-architecture
+owner: team-billing
+--
+Legacy refunds recorded the operator action in support notes before a later ledger adjustment reconciled the balance.
+::
+
+::decision billing.decision.ledger-first
+status: accepted
+decided_by: billing-architecture
+owner: team-billing
+depends_on: billing.ledger
+--
+All balance-changing billing workflows write [[billing.ledger]] entries before exposing customer-visible credit or refund state.
+::
+
+::decision billing.decision.refunds-credit
+status: accepted
+decided_by: billing-architecture
+owner: team-billing
+supersedes: billing.decision.legacy-refunds
+depends_on: [billing.refunds.audit-required, billing.credits.ledger-source]
+--
+Refund workflows issue account credit through the ledger-first path so agents can cite [[billing.refunds.issue-credit]] when explaining customer balances.
+::
+
+::decision billing.decision.entitlements-evented
+status: proposed
+owner: team-access
+related_to: billing.entitlement
+--
+Entitlement updates should move to billing settlement events instead of polling invoice state.
+::
