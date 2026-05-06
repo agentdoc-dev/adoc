@@ -1,0 +1,7 @@
+# Deferred Freeform @doc(team.deferred-freeform)
+
+V0 deferred kinds: procedure, example, agent, policy, contradiction, source, and custom schemas.
+
+::fact billing.policy
+Future fact blocks may allow prose before a separator.
+::

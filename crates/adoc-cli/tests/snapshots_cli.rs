@@ -300,6 +300,17 @@ fn snapshot_check_flags_unknown_kind() {
 }
 
 #[test]
+fn snapshot_check_flags_unknown_kind_freeform() {
+    let combined = run_check_in_workspace(
+        "snap-check-unknown-kind-freeform",
+        "v0_4/unknown_kind_freeform.adoc",
+        "unknown_kind_freeform.adoc",
+    );
+
+    insta::assert_snapshot!("check_unknown_kind_freeform_flags", combined);
+}
+
+#[test]
 fn snapshot_check_flags_nested_typed_block_in_fields() {
     let combined = run_check_in_workspace(
         "snap-check-nested-fields",

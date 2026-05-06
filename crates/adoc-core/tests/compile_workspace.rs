@@ -33,6 +33,80 @@ fn compile_workspace_returns_mixed_validation_diagnostics_in_source_order() {
 }
 
 #[test]
+fn compile_workspace_rejects_unknown_kind_without_field_parse_cascade() {
+    let workspace = TestWorkspace::new("unknown-kind-freeform-single-shot");
+    let source = workspace.write(
+        "deferred.adoc",
+        concat!(
+            "# Deferred @doc(team.deferred)\n",
+            "\n",
+            "::fact billing.policy\n",
+            "Future fact blocks may allow prose before a separator.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "unknown kind should fail compilation");
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let codes: Vec<_> = result
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert_eq!(
+        codes,
+        [DiagnosticCode::SchemaUnknownKind],
+        "unsupported grammar-valid blocks should not leak field-shape diagnostics"
+    );
+}
+
+#[test]
+fn compile_workspace_keeps_universal_diagnostics_inside_unknown_kind() {
+    let workspace = TestWorkspace::new("unknown-kind-keeps-universal-diagnostics");
+    let source = workspace.write(
+        "deferred.adoc",
+        concat!(
+            "# Deferred @doc(team.deferred)\n",
+            "\n",
+            "::fact billing.policy\n",
+            "<div>Raw HTML is still a strict-mode source error.</div>\n",
+            "::warning auth.session\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        result.has_errors(),
+        "invalid source should fail compilation"
+    );
+    let codes: Vec<_> = result
+        .diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.code)
+        .collect();
+    assert!(
+        codes.contains(&DiagnosticCode::SchemaUnknownKind),
+        "unknown kind diagnostic must remain: {codes:?}"
+    );
+    assert!(
+        codes.contains(&DiagnosticCode::ParseRawHtml),
+        "raw HTML diagnostic must remain: {codes:?}"
+    );
+    assert!(
+        codes.contains(&DiagnosticCode::ParseNestedTypedBlock),
+        "nested typed-block diagnostic must remain: {codes:?}"
+    );
+    assert!(
+        !codes.contains(&DiagnosticCode::ParseMalformedField),
+        "unknown-kind field-shape diagnostic must be suppressed: {codes:?}"
+    );
+}
+
+#[test]
 fn compile_workspace_rejects_invalid_explicit_page_id() {
     let workspace = TestWorkspace::new("invalid-explicit-page-id");
     let source = workspace.write(

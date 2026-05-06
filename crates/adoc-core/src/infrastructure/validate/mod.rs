@@ -12,6 +12,7 @@
 mod knowledge_object_unique_ids;
 pub(crate) mod resolve_knowledge_objects;
 pub(crate) use resolve_knowledge_objects::resolve_knowledge_objects;
+pub(crate) use resolve_knowledge_objects::suppress_unknown_kind_shape_diagnostics;
 
 use knowledge_object_unique_ids::KnowledgeObjectUniqueIds;
 
