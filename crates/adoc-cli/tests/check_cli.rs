@@ -7,6 +7,50 @@ use std::process::Command;
 
 use support::{TestWorkspace, fixture_path};
 
+fn write_fixture_to_workspace(
+    workspace: &TestWorkspace,
+    fixture_relative: &str,
+    source_file: &str,
+) {
+    let fixture_contents =
+        fs::read_to_string(fixture_path(fixture_relative)).expect("fixture is readable");
+    workspace.write(source_file, &fixture_contents);
+}
+
+fn assert_fixture_build_matches_golden(
+    workspace_name: &str,
+    fixture_relative: &str,
+    source_file: &str,
+    artifact_file: &str,
+    golden_relative: &str,
+) {
+    let workspace = TestWorkspace::new(workspace_name);
+    write_fixture_to_workspace(&workspace, fixture_relative, source_file);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["build", source_file, "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join(artifact_file))
+        .expect("artifact is written");
+    let golden =
+        fs::read_to_string(fixture_path(golden_relative)).expect("golden fixture is readable");
+
+    assert_eq!(
+        actual, golden,
+        "{artifact_file} diverged from {golden_relative}"
+    );
+}
+
 #[test]
 fn check_accepts_v0_1_prose_fixture_with_all_inline_syntax() {
     let fixture = fixture_path("v0_1/prose_page.adoc");
@@ -1537,6 +1581,106 @@ fn build_renders_v0_4_core_object_set_to_golden_agent_json() {
     assert!(
         !actual.contains("\"kind\": \"glossary\",\n      \"status\":"),
         "glossary agent JSON must omit top-level status"
+    );
+}
+
+#[test]
+fn build_renders_v0_5_scalar_relation_to_golden_html() {
+    assert_fixture_build_matches_golden(
+        "build-renders-v0-5-scalar-relation-html",
+        "v0_5/relation_scalar.adoc",
+        "relation_scalar.adoc",
+        "docs.html",
+        "v0_5/relation_scalar.golden.html",
+    );
+}
+
+#[test]
+fn build_renders_v0_5_scalar_relation_to_golden_agent_json() {
+    assert_fixture_build_matches_golden(
+        "build-renders-v0-5-scalar-relation-json",
+        "v0_5/relation_scalar.adoc",
+        "relation_scalar.adoc",
+        "docs.agent.json",
+        "v0_5/relation_scalar.golden.agent.json",
+    );
+}
+
+#[test]
+fn build_renders_v0_5_bracket_array_relation_to_golden_html() {
+    assert_fixture_build_matches_golden(
+        "build-renders-v0-5-bracket-array-relation-html",
+        "v0_5/relation_bracket_array.adoc",
+        "relation_bracket_array.adoc",
+        "docs.html",
+        "v0_5/relation_bracket_array.golden.html",
+    );
+}
+
+#[test]
+fn build_renders_v0_5_bracket_array_relation_to_golden_agent_json() {
+    assert_fixture_build_matches_golden(
+        "build-renders-v0-5-bracket-array-relation-json",
+        "v0_5/relation_bracket_array.adoc",
+        "relation_bracket_array.adoc",
+        "docs.agent.json",
+        "v0_5/relation_bracket_array.golden.agent.json",
+    );
+}
+
+#[test]
+fn build_renders_v0_5_decision_supersedes_to_golden_html() {
+    assert_fixture_build_matches_golden(
+        "build-renders-v0-5-decision-supersedes-html",
+        "v0_5/decision_supersedes.adoc",
+        "decision_supersedes.adoc",
+        "docs.html",
+        "v0_5/decision_supersedes.golden.html",
+    );
+}
+
+#[test]
+fn build_renders_v0_5_decision_supersedes_to_golden_agent_json() {
+    assert_fixture_build_matches_golden(
+        "build-renders-v0-5-decision-supersedes-json",
+        "v0_5/decision_supersedes.adoc",
+        "decision_supersedes.adoc",
+        "docs.agent.json",
+        "v0_5/decision_supersedes.golden.agent.json",
+    );
+}
+
+#[test]
+fn check_rejects_v0_5_broken_relation_fixture() {
+    let workspace = TestWorkspace::new("check-rejects-v0-5-broken-relation");
+    write_fixture_to_workspace(
+        &workspace,
+        "v0_5/relation_broken.adoc",
+        "relation_broken.adoc",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "relation_broken.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected broken relation fixture to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("relation_broken.adoc:7:13"),
+        "expected diagnostic on relation target, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("error[ref.broken]"),
+        "expected ref.broken diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("depends_on target `missing.object`"),
+        "expected diagnostic to name missing relation target, got:\n{stdout}"
     );
 }
 

@@ -173,10 +173,17 @@ fn parse_relation_targets(
         return Vec::new();
     }
 
+    let Some((content_start, content_end)) =
+        relation_content_range(parsed, key, value, value_span, diagnostics)
+    else {
+        return Vec::new();
+    };
+
     let mut targets = Vec::new();
     let mut seen = BTreeSet::new();
-    let mut segment_start = 0;
-    for (comma_index, _) in value.match_indices(',') {
+    let mut segment_start = content_start;
+    for (relative_comma_index, _) in value[content_start..content_end].match_indices(',') {
+        let comma_index = content_start + relative_comma_index;
         push_relation_segment(
             parsed,
             key,
@@ -196,7 +203,7 @@ fn parse_relation_targets(
         key,
         value,
         segment_start,
-        value.len(),
+        content_end,
         value_span,
         &mut seen,
         &mut targets,
@@ -205,6 +212,40 @@ fn parse_relation_targets(
     );
 
     targets
+}
+
+fn relation_content_range(
+    parsed: &ParsedTypedBlock,
+    key: &str,
+    value: &str,
+    value_span: &SourceSpan,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<(usize, usize)> {
+    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(value) else {
+        return Some((0, 0));
+    };
+
+    match (trimmed.strip_prefix('['), trimmed.strip_suffix(']')) {
+        (Some(_), Some(_)) => Some((trimmed_start + 1, trimmed_end - 1)),
+        (Some(_), None) | (None, Some(_)) => {
+            diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::IdInvalid,
+                    format!("malformed relation array in `{key}` for `{}`", parsed.id_text),
+                )
+                .with_span(relation_segment_span(
+                    value_span,
+                    value,
+                    trimmed_start,
+                    trimmed_end,
+                ))
+                .with_object_id(&parsed.id_text)
+                .with_help("Relation arrays must use `[object.id, other.id]`; each target must also be a valid Object ID."),
+            );
+            None
+        }
+        (None, None) => Some((0, value.len())),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

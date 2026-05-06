@@ -1,0 +1,50 @@
+{
+  "schema_version": "adoc.agent.v0",
+  "pages": [
+    {
+      "id": "team.relation-scalar",
+      "title": "Relation Scalar",
+      "source_path": "relation_scalar.adoc"
+    }
+  ],
+  "objects": [
+    {
+      "id": "billing.credits",
+      "kind": "glossary",
+      "body": "Credits are balance adjustments that reduce future invoices.",
+      "page_id": "team.relation-scalar",
+      "source_span": {
+        "path": "relation_scalar.adoc",
+        "line": 5,
+        "column": 1
+      },
+      "fields": {},
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    },
+    {
+      "id": "billing.refunds",
+      "kind": "claim",
+      "status": "draft",
+      "body": "Refund workflows use credit behavior when issuing account adjustments.",
+      "page_id": "team.relation-scalar",
+      "source_span": {
+        "path": "relation_scalar.adoc",
+        "line": 10,
+        "column": 1
+      },
+      "fields": {},
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": [
+          "billing.credits"
+        ]
+      }
+    }
+  ],
+  "diagnostics": []
+}

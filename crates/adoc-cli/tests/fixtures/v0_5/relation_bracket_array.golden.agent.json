@@ -1,0 +1,69 @@
+{
+  "schema_version": "adoc.agent.v0",
+  "pages": [
+    {
+      "id": "team.relation-bracket-array",
+      "title": "Relation Bracket Array",
+      "source_path": "relation_bracket_array.adoc"
+    }
+  ],
+  "objects": [
+    {
+      "id": "billing.credits",
+      "kind": "glossary",
+      "body": "Credits are balance adjustments that reduce future invoices.",
+      "page_id": "team.relation-bracket-array",
+      "source_span": {
+        "path": "relation_bracket_array.adoc",
+        "line": 5,
+        "column": 1
+      },
+      "fields": {},
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    },
+    {
+      "id": "billing.ledger",
+      "kind": "claim",
+      "status": "draft",
+      "body": "The ledger records every account balance movement.",
+      "page_id": "team.relation-bracket-array",
+      "source_span": {
+        "path": "relation_bracket_array.adoc",
+        "line": 10,
+        "column": 1
+      },
+      "fields": {},
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    },
+    {
+      "id": "billing.refunds",
+      "kind": "claim",
+      "status": "draft",
+      "body": "Refund workflows depend on both credit semantics and ledger entries.",
+      "page_id": "team.relation-bracket-array",
+      "source_span": {
+        "path": "relation_bracket_array.adoc",
+        "line": 16,
+        "column": 1
+      },
+      "fields": {},
+      "relations": {
+        "depends_on": [
+          "billing.credits",
+          "billing.ledger"
+        ],
+        "supersedes": [],
+        "related_to": []
+      }
+    }
+  ],
+  "diagnostics": []
+}

@@ -790,6 +790,61 @@ fn compile_workspace_emits_claim_depends_on_multiple_object_kinds() {
 }
 
 #[test]
+fn compile_workspace_emits_relation_bracket_array_in_first_occurrence_order() {
+    let workspace = TestWorkspace::new("relation-bracket-array");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "--\n",
+            "Credits are balance adjustments.\n",
+            "::\n",
+            "\n",
+            "::claim billing.ledger\n",
+            "status: draft\n",
+            "--\n",
+            "Ledger records balance changes.\n",
+            "::\n",
+            "\n",
+            "::claim billing.refunds\n",
+            "status: draft\n",
+            "depends_on: [billing.credits, billing.ledger, billing.credits]\n",
+            "--\n",
+            "Refunds depend on credits and ledger records.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected bracket-array relation targets to resolve, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    let claim = artifacts
+        .agent_json
+        .objects
+        .iter()
+        .find(|object| object.id == "billing.refunds")
+        .expect("claim emitted");
+    assert_eq!(
+        claim.relations.depends_on,
+        vec!["billing.credits", "billing.ledger"]
+    );
+    assert!(
+        artifacts.html.contains(
+            "<dt>depends_on</dt><dd><a class=\"object-ref\" href=\"#billing.credits\">billing.credits</a>, <a class=\"object-ref\" href=\"#billing.ledger\">billing.ledger</a></dd>"
+        ),
+        "expected depends_on relation links in HTML: {}",
+        artifacts.html
+    );
+}
+
+#[test]
 fn compile_workspace_deduplicates_relation_targets_and_ignores_trailing_comma() {
     let workspace = TestWorkspace::new("dedupe-relation-targets");
     let source = workspace.write(

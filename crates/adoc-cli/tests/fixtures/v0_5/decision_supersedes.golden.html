@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentDoc</title>
+</head>
+<body>
+<article data-page-id="team.decision-supersedes">
+<h1>Decision Supersedes</h1>
+<p>Decision relations preserve replacement history.</p>
+<section class="decision decision--accepted" id="billing.legacy-refunds">
+<header class="decision__header"><span class="decision__kind">decision</span><code class="decision__id">billing.legacy-refunds</code><span class="decision__status">accepted</span></header>
+<div class="decision__body"><p>Use manual refund approval for every account adjustment.</p></div>
+<div class="decision__verdict"><dl><div class="decision__verdict-item"><dt>decided_by</dt><dd>architecture</dd></div></dl></div>
+</section>
+<section class="decision decision--accepted" id="billing.refund-policy">
+<header class="decision__header"><span class="decision__kind">decision</span><code class="decision__id">billing.refund-policy</code><span class="decision__status">accepted</span></header>
+<div class="decision__body"><p>Use policy-based refund approval with ledger-backed audit entries.</p></div>
+<div class="decision__verdict"><dl><div class="decision__verdict-item"><dt>decided_by</dt><dd>architecture</dd></div></dl></div>
+<footer class="decision__metadata">
+<section class="decision__relations"><dl>
+<dt>supersedes</dt><dd><a class="object-ref" href="#billing.legacy-refunds">billing.legacy-refunds</a></dd>
+</dl></section>
+</footer>
+</section>
+</article>
+</body>
+</html>

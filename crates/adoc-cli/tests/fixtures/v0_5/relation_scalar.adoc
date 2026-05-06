@@ -1,0 +1,15 @@
+# Relation Scalar @doc(team.relation-scalar)
+
+Scalar relation values preserve a single object link.
+
+::glossary billing.credits
+--
+Credits are balance adjustments that reduce future invoices.
+::
+
+::claim billing.refunds
+status: draft
+related_to: billing.credits
+--
+Refund workflows use credit behavior when issuing account adjustments.
+::

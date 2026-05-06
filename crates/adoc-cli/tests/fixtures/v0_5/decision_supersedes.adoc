@@ -1,0 +1,18 @@
+# Decision Supersedes @doc(team.decision-supersedes)
+
+Decision relations preserve replacement history.
+
+::decision billing.legacy-refunds
+status: accepted
+decided_by: architecture
+--
+Use manual refund approval for every account adjustment.
+::
+
+::decision billing.refund-policy
+status: accepted
+decided_by: architecture
+supersedes: billing.legacy-refunds
+--
+Use policy-based refund approval with ledger-backed audit entries.
+::
