@@ -605,6 +605,27 @@ fn check_does_not_flag_angle_brackets_in_prose() {
 }
 
 #[test]
+fn check_rejects_adjacent_inline_raw_html_tag() {
+    let workspace = TestWorkspace::new("check-rejects-adjacent-inline-raw-html");
+    let source = workspace.write(
+        "guide.adoc",
+        "# Unsafe Input @doc(docs.unsafe-input)\n\nKeep<span>raw html</span> out.\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(!output.status.success(), "expected raw HTML to fail check");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("guide.adoc:3:5"));
+    assert!(stdout.contains("error[parse.raw_html]"));
+    assert!(stdout.contains("Raw HTML is not allowed in strict mode"));
+    assert!(stdout.contains("1 errors"));
+}
+
+#[test]
 fn build_rejects_inline_raw_html_and_writes_no_artifacts() {
     let workspace = TestWorkspace::new("build-rejects-inline-raw-html");
     let source = workspace.write(

@@ -312,6 +312,16 @@ mod tests {
     }
 
     #[test]
+    fn raw_html_rule_rejects_adjacent_inline_raw_html_tag() {
+        let diagnostics =
+            validate_text("# Unsafe @doc(team.unsafe)\n\nKeep<span>raw html</span> out.\n");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::ParseRawHtml);
+        assert_eq!(diagnostics[0].span.as_ref().unwrap().start.column, 5);
+    }
+
+    #[test]
     fn raw_html_rule_rejects_unknown_raw_html_tag() {
         let diagnostics = validate_text("# Unsafe @doc(team.unsafe)\n\n<foo>bar</foo>\n");
 
