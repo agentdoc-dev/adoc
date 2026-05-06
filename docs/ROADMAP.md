@@ -236,14 +236,120 @@ Deferred:
 
 ## V1: Local Retrieval
 
-V1 makes the flat agent artifact easier for humans and agents to query without introducing a graph database.
+V1 makes the flat agent artifact useful as a local retrieval surface. This is the next work after V0.
+
+V1 is not the full PRD MVP by itself. It is the first post-compiler milestone: humans and agents should be able to look up compiled Knowledge Objects by ID, search locally, and cite stable object IDs without introducing a graph database, embeddings, hosted storage, or an agent API server.
+
+### V1.0: Agent Artifact Read Contract
+
+Goal: treat `dist/docs.agent.json` as a supported read model, not just a build byproduct.
 
 Suggested tracer-bullet slices:
 
-- `adoc explain <object-id>` reads build artifacts or source and prints one object with status, owner, evidence, source location, and relations.
-- `adoc search <query>` performs simple local text search over object body, ID, title, kind, owner, and status.
-- Retrieval filters support kind and status before more advanced ranking exists.
-- Agent JSON gains stable schema versioning so external agents can rely on it.
+- Define the V1-compatible agent artifact contract around the existing flat object list.
+- Keep `schema_version: adoc.agent.v0` as the initial supported schema version unless the artifact shape must break.
+- Add an artifact reader that validates required top-level fields before commands use the file.
+- Add clear diagnostics for missing artifact, unreadable artifact, malformed JSON, unsupported schema version, missing object list, and duplicate object IDs inside the artifact.
+- Build an in-memory object lookup by ID from the flat artifact.
+- Preserve the source of truth rule: `.adoc` source remains canonical; V1 retrieval commands read the latest built artifact.
+
+Minimum V1 artifact contract:
+
+- top-level `schema_version`
+- top-level `objects`
+- top-level `diagnostics` when present
+- per-object `id`, `kind`, `body`, and source location when available
+- per-object `status`, `owner`, evidence fields, relation fields, and metadata fields when present
+
+Acceptance:
+
+- A valid V0 `docs.agent.json` can be loaded and queried by object ID.
+- A missing or malformed artifact fails with a fix-oriented message that tells the user to run `adoc build <path> --out dist`.
+- Unsupported schema versions fail closed.
+- Artifact loading is covered by unit tests and CLI-level tests.
+
+Deferred:
+
+- Separate search index files.
+- Graph artifacts.
+- Artifact migration across incompatible versions.
+- Source recompilation inside retrieval commands.
+
+### V1.1: `adoc explain`
+
+Goal: make object IDs immediately useful to humans and agents.
+
+Suggested tracer-bullet slices:
+
+- Implement `adoc explain <object-id>`.
+- Read `dist/docs.agent.json` by default.
+- Support an explicit artifact path such as `--artifact <path>` so examples and tests do not depend on the default output directory.
+- Print kind, ID, status, owner, body, evidence, source location, and relations.
+- Show all preserved metadata fields in deterministic order.
+- Return a distinct not-found error when the artifact loads but the object ID does not exist.
+- Keep the first implementation artifact-backed only.
+
+Acceptance:
+
+- `adoc explain billing.credits.decrement-after-success --artifact dist/docs.agent.json` prints a concise object explanation.
+- Verified claims show verification metadata and V0 evidence fields.
+- Decisions show `decided_by` when available.
+- Warnings and glossary entries render with their kind-specific fields.
+- Unknown IDs fail without suggesting that the source is invalid.
+
+Deferred:
+
+- Health score.
+- Relation traversal.
+- Recompiling source before explain.
+- Permission-aware redaction.
+
+### V1.2: `adoc search`
+
+Goal: provide useful exact local search before introducing ranking infrastructure.
+
+Suggested tracer-bullet slices:
+
+- Implement `adoc search <query>`.
+- Read `dist/docs.agent.json` by default and support `--artifact <path>`.
+- Search object ID, kind, status, owner, body, relation IDs, and metadata field values.
+- Support `--kind <kind>` and `--status <status>` filters first.
+- Rank deterministically with simple rules: exact ID match, ID prefix/substring match, body match, then metadata match.
+- Print object ID, kind, status, source location, and a short snippet or matched field.
+- Keep output stable enough for tests and future CI summaries.
+
+Acceptance:
+
+- Search can find a verified claim by body text, ID fragment, owner, and evidence path.
+- `--kind claim` and `--status verified` narrow the result set.
+- Empty result sets are explicit and not treated as command errors.
+- Invalid filters fail with supported values.
+
+Deferred:
+
+- Embeddings.
+- BM25 or fuzzy ranking.
+- `docs.search.json`.
+- Relation traversal.
+- Scope, owner, evidence-type, freshness, or permission filters.
+
+### V1.3: Retrieval Pilot and Documentation
+
+Goal: prove the local retrieval loop on the V0 pilot.
+
+Suggested tracer-bullet slices:
+
+- Build `examples/billing-pilot` into `dist/docs.html` and `dist/docs.agent.json`.
+- Run `adoc explain` against representative claims, decisions, warnings, and glossary terms.
+- Run `adoc search` against product behavior, owner names, evidence paths, and relation IDs.
+- Add documentation for the local workflow: `adoc build`, `adoc explain`, `adoc search`.
+- Document the citation pattern agents should use: cite object ID, status, owner, and evidence when present.
+
+Acceptance:
+
+- The billing pilot can answer simple lookup questions using only `explain` and `search`.
+- The workflow is understandable without reading compiler internals.
+- The docs make clear that search is exact local retrieval, not RAG infrastructure.
 
 Design guidance:
 
@@ -251,16 +357,48 @@ Design guidance:
 - Do not add embeddings until exact search and filters are useful.
 - Keep citation by object ID as the center of the workflow.
 - Treat this version as local retrieval, not RAG infrastructure.
+- Keep source parsing, validation, and artifact emission behind the existing compiler path.
+- Avoid config-file assumptions until a project initializer exists.
 
-Questions to resolve later:
+Resolved V1 decisions:
 
-- Should search read source directly or require a prior build?
-- What is the minimum stable JSON schema versioning contract?
-- Should `adoc explain` be source-of-truth aware or artifact-only?
+- `adoc explain` and `adoc search` require a prior build in V1.
+- The default artifact path is `dist/docs.agent.json`.
+- Both commands should support `--artifact <path>`.
+- V1 reads artifacts only; source-aware retrieval can wait until config or LSP work creates a real need.
+
+## V1.5: Local Project Ergonomics and MVP Gap Closure
+
+V1.5 closes small local-tooling gaps before migration and team workflows expand the product surface.
+
+Suggested tracer-bullet slices:
+
+- Add `adoc init` only after the no-config V1 workflow is proven.
+- Introduce a minimal `agentdoc.config.yaml` with strict mode, docs path, and output paths.
+- Keep custom schemas, remote sources, permissions, and team ownership out of the first config version.
+- Let `adoc check` and `adoc build` use config defaults when no path is passed.
+- Add basic stale-by-expiration diagnostics for objects that carry `expires_at`.
+- Consider emitting `docs.search.json` only after `adoc search` has proven the local read model and result shape.
+- Update docs and examples around the default local workflow.
+
+Design guidance:
+
+- Do not add config to solve problems that explicit CLI flags already solve.
+- Config should make the common local workflow shorter, not introduce project semantics prematurely.
+- Staleness by expiration is the first lifecycle diagnostic because it needs no Git integration.
+- Keep strict mode as the default.
+
+Acceptance:
+
+- A user can run `adoc init`, edit the generated example, run `adoc check`, run `adoc build`, then run `adoc explain` and `adoc search`.
+- Existing explicit `adoc check <path>` and `adoc build <path> --out <directory>` workflows continue to work.
+- Expired verified claims produce useful diagnostics without mutating source.
 
 ## V2: Migration and Compatibility
 
 V2 helps existing Markdown users enter the native AgentDoc world.
+
+V2 should remain after V1/V1.5 because migration is valuable only when the native artifact and retrieval workflow are already useful.
 
 Suggested tracer-bullet slices:
 
@@ -276,6 +414,8 @@ Design guidance:
 - Compatibility mode must not weaken strict mode.
 - Suggested object extraction should be review-first, not auto-trust.
 - Keep Markdown migration separate from custom schema design.
+- Preserve the strict native `.adoc` target as the output of migration.
+- Make compatibility mode a transition aid, not a permanent second dialect.
 
 Questions to resolve later:
 
@@ -287,12 +427,15 @@ Questions to resolve later:
 
 V3 brings AgentDoc into pull-request workflows.
 
+V3 should start with local Git and compiled artifacts. GitHub, GitLab, hosted review state, and blocking CI policies should wait until object-level diffs and impact reports are useful in local runs.
+
 Suggested tracer-bullet slices:
 
-- `adoc check --changed` validates changed docs and affected objects.
-- CI output mode emits a PR-comment-ready summary.
 - Object-level semantic diff shows created, deleted, and changed objects.
-- Source-path impact analysis marks claims or examples that reference changed files.
+- Field-level diff highlights body, status, owner, evidence, and relation changes.
+- `adoc check --changed` validates changed `.adoc` files using local Git diff.
+- Source-path impact analysis marks verified claims whose V0 evidence references changed files.
+- CI output mode emits a PR-comment-ready summary after local diff and impact analysis are useful.
 - Review artifacts identify required owners for changed verified claims.
 
 Design guidance:
@@ -301,16 +444,20 @@ Design guidance:
 - Semantic diff should compare Knowledge Objects, not rendered HTML.
 - Source-path impact should be conservative and explain why an object was flagged.
 - Keep CI advisory before making it blocking by default.
+- Do not make examples part of source-path impact analysis until `example` objects exist.
+- Do not mutate source status to `needs_review` in the first CI version; report diagnostics and proof obligations first.
 
 Questions to resolve later:
 
 - What change should fail CI versus warn?
 - How should owner identity map to GitHub/GitLab reviewers?
-- Should stale-by-source-change mark objects `needs_review` in source or only diagnostics?
+- When should advisory CI become blocking?
 
 ## V4: Agent Patch Review
 
 V4 lets agents propose changes while humans remain in control.
+
+V4 depends on V1 object lookup and V3 semantic comparison. It should validate proposed semantic changes before any source rewrite is attempted.
 
 Suggested tracer-bullet slices:
 
@@ -318,6 +465,7 @@ Suggested tracer-bullet slices:
 - `adoc patch --check patch.json` validates a proposed patch without modifying source.
 - Patch validation checks target existence, base hash, schema validity, lifecycle transition, and impacted references.
 - Patch review output shows proposed object-level changes and proof obligations.
+- Add or expose stable object content hashes before requiring `base_hash`.
 - Optional later slice applies validated patches to source files.
 
 Design guidance:
@@ -326,6 +474,8 @@ Design guidance:
 - Base hashes are mandatory to prevent stale edits.
 - Proof obligations should be generated before patch application.
 - Keep patch format object-oriented rather than line-oriented.
+- Treat patch application as a separate editing problem; validation can ship first.
+- Require review for anything that changes verified knowledge.
 
 Questions to resolve later:
 
@@ -339,6 +489,7 @@ V5 grows the object vocabulary and lifecycle after the first workflows are stabl
 
 Suggested tracer-bullet slices:
 
+- Add `constraint` first because the PRD treats it as a core object type and it is close to existing claim/decision validation.
 - Add `procedure` with ordered-step rendering and agent JSON.
 - Add `example` with declared checks but no sandbox execution at first.
 - Add `agent` instruction objects with explicit allowed and forbidden actions.
@@ -352,12 +503,14 @@ Design guidance:
 - Do not introduce custom schemas before the core object set feels stable.
 - Keep automated contradiction detection out until explicit contradiction objects are useful.
 - Treat executable examples as a separate runtime/sandbox problem.
+- Agent instruction objects may be authored, rendered, and retrieved before the full permission engine exists, but they must be clearly marked as not enforcing runtime permissions yet.
+- `source` objects should coexist with inline evidence at first; do not force evidence normalization too early.
 
 Questions to resolve later:
 
-- Which object type creates the most value after claims and decisions?
 - Should `agent` instruction objects require a permission model immediately?
 - Should `source` objects replace inline evidence or coexist with it?
+- Should verified lifecycle rules expand object-by-object or all at once?
 
 ## V6: Graph and Composition
 
@@ -365,8 +518,9 @@ V6 introduces richer structure once flat artifacts become limiting.
 
 Suggested tracer-bullet slices:
 
-- Emit a graph artifact from the existing flat object list and relation fields.
+- Emit a simple JSON graph artifact from the existing flat object list and relation fields before considering SQLite.
 - Add relation traversal commands after graph output exists.
+- Add relation-aware search filters after traversal behavior is proven.
 - Add `@include` with circular include detection and source-map preservation.
 - Add nested typed blocks only after source spans and JSON shape are settled.
 - Add custom schema registry after core schema versioning exists.
@@ -377,10 +531,12 @@ Design guidance:
 - Includes must not hide where an object came from.
 - Nested blocks need a clear rule for whether child blocks are independent Knowledge Objects.
 - Custom schemas must not define parser behavior.
+- SQLite or another embedded graph store should be introduced only when JSON artifacts become too slow or awkward for real workflows.
+- Includes should remain local-only by default.
 
 Questions to resolve later:
 
-- Should graph output be JSON, SQLite, or both?
+- When does the graph artifact need SQLite instead of JSON?
 - How should includes interact with duplicate IDs and diagnostics?
 - Are nested typed blocks worth their parser and mental-model cost?
 
@@ -388,14 +544,16 @@ Questions to resolve later:
 
 V7 turns the CLI-proven model into team and enterprise surfaces.
 
+V7 should be split internally: read-only artifact browsing can arrive much earlier than enterprise governance, but permissions, audit, RBAC, and compliance require the team review semantics from V3 and patch semantics from V4.
+
 Suggested tracer-bullet slices:
 
 - Read-only object explorer over compiled artifacts.
-- Review dashboard for semantic diffs and stale objects.
-- Ownership and approval workflows.
-- Agent activity log.
-- Permissioned rendering for public/private knowledge.
-- SSO, RBAC, audit exports, compliance lenses, and self-hosted deployment.
+- Review dashboard for semantic diffs, impacted objects, and stale-by-expiration diagnostics.
+- Ownership and approval workflows after owner semantics are useful in CLI review artifacts.
+- Agent activity log after patch proposal and retrieval APIs exist.
+- Permissioned rendering for public/private knowledge after a local permission model exists.
+- SSO, RBAC, audit exports, compliance lenses, and self-hosted deployment only after the governance model is clear.
 
 Design guidance:
 
@@ -403,6 +561,7 @@ Design guidance:
 - Governance should follow real team workflow needs, not precede them.
 - Public/private rendering must fail closed.
 - Enterprise controls should be introduced only after ownership and review semantics are clear.
+- The web app must not become the system of record before the Git/source workflow is intentionally replaced.
 
 Questions to resolve later:
 
@@ -412,7 +571,7 @@ Questions to resolve later:
 
 ## Current V0 Cut
 
-The currently resolved first cut is:
+The currently resolved and implemented first cut is:
 
 - Product surface: local CLI.
 - Command name: `adoc`.
@@ -437,12 +596,13 @@ The currently resolved first cut is:
 - Outputs: `dist/docs.html`, `dist/docs.agent.json`.
 - Agent JSON shape: flat object list plus diagnostics.
 
-## Explicitly Deferred
+## Explicitly Deferred From V0
 
 - Markdown migration and compatibility mode.
 - `adoc init`.
 - Config files.
 - Search and explain commands.
+- Search index artifacts such as `docs.search.json`.
 - Graph artifacts and graph traversal.
 - Nested typed blocks.
 - Includes.
