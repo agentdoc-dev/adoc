@@ -65,14 +65,13 @@ impl Claim {
             );
         }
 
-        let (id, status, body) =
-            match Self::parse_basics_from_parsed(&parsed, status_text, diagnostics) {
-                Ok(basics) => basics,
-                Err(error) => {
-                    emit_claim_error(&parsed, error, diagnostics);
-                    return None;
-                }
-            };
+        let (id, status, body) = match Self::parse_basics_from_parsed(&parsed, status_text) {
+            Ok(basics) => basics,
+            Err(error) => {
+                emit_claim_error(&parsed, error, diagnostics);
+                return None;
+            }
+        };
 
         match Self::from_parts(
             id,
@@ -168,11 +167,10 @@ impl Claim {
     fn parse_basics_from_parsed(
         parsed: &ParsedTypedBlock,
         status_text: Option<&str>,
-        diagnostics: &mut Vec<Diagnostic>,
     ) -> Result<(ObjectId, ClaimStatus, Body), ClaimError> {
         let id = ObjectId::new(&parsed.id_text).map_err(ClaimError::InvalidId)?;
         let status = ClaimStatus::try_new(status_text.unwrap_or(""))?;
-        let body = super::body_from_parsed(parsed, diagnostics).ok_or(ClaimError::MissingBody)?;
+        let body = super::body_from_parsed(parsed).ok_or(ClaimError::MissingBody)?;
         Ok((id, status, body))
     }
 
@@ -215,14 +213,13 @@ impl Claim {
         relations: Relations,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
-        let (id, status, body) =
-            match Self::parse_basics_from_parsed(parsed, status_text, diagnostics) {
-                Ok(basics) => basics,
-                Err(error) => {
-                    emit_claim_error(parsed, error, diagnostics);
-                    return None;
-                }
-            };
+        let (id, status, body) = match Self::parse_basics_from_parsed(parsed, status_text) {
+            Ok(basics) => basics,
+            Err(error) => {
+                emit_claim_error(parsed, error, diagnostics);
+                return None;
+            }
+        };
 
         let verification = build_verification(parsed, &optional_fields, diagnostics)?;
         let storage_fields = verified_claim_storage_fields(optional_fields);
@@ -581,6 +578,7 @@ mod tests {
             raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: body_text.to_string(),
+            body_inlines: ParsedTypedBlock::test_body_inlines_from_text(body_text),
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),

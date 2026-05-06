@@ -150,6 +150,9 @@ mod tests {
             raw_field_spans: BTreeMap::new(),
             duplicate_keys: Vec::new(),
             body_text: "The system credits users automatically.".to_string(),
+            body_inlines: ParsedTypedBlock::test_body_inlines_from_text(
+                "The system credits users automatically.",
+            ),
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),

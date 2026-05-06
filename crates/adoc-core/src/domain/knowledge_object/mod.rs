@@ -5,7 +5,6 @@ use std::collections::BTreeSet;
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourcePosition, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
-use crate::domain::inline::{InlineOrigin, InlineSegment, parse_inlines};
 use crate::domain::values::Body;
 
 pub(crate) mod claim;
@@ -64,26 +63,8 @@ pub(super) fn reject_duplicate_fields(
     true
 }
 
-pub(super) fn body_from_parsed(
-    parsed: &ParsedTypedBlock,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Option<Body> {
-    if parsed.body_spans.is_empty() {
-        return Body::from_plain_text(&parsed.body_text);
-    }
-
-    let mut inlines = Vec::new();
-    for (index, line) in parsed.body_text.split('\n').enumerate() {
-        if index > 0 {
-            inlines.push(InlineSegment::Text("\n".to_string()));
-        }
-        let span = &parsed.body_spans[index];
-        let (line_inlines, line_diagnostics) = parse_inlines(line, InlineOrigin::from_span(span));
-        diagnostics.extend(line_diagnostics);
-        inlines.extend(line_inlines);
-    }
-
-    Body::try_new(inlines)
+pub(super) fn body_from_parsed(parsed: &ParsedTypedBlock) -> Option<Body> {
+    Body::try_new(parsed.body_inlines.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

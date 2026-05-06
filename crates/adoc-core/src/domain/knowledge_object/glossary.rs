@@ -39,7 +39,7 @@ impl Glossary {
                 return None;
             }
         };
-        let Some(body) = super::body_from_parsed(&parsed, diagnostics) else {
+        let Some(body) = super::body_from_parsed(&parsed) else {
             emit_glossary_error(&parsed, GlossaryError::MissingBody, diagnostics);
             return None;
         };
@@ -172,6 +172,7 @@ mod tests {
             raw_field_spans: BTreeMap::new(),
             duplicate_keys,
             body_text: body_text.to_string(),
+            body_inlines: ParsedTypedBlock::test_body_inlines_from_text(body_text),
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
