@@ -414,6 +414,8 @@ Rules:
   top-level discriminant fields.
 - Addendum: object kinds without a kind-primary normalized discriminant omit
   `status` from Agent JSON rather than emitting `null` or an empty string.
+  For glossary, an author-supplied `status` field remains ordinary optional
+  metadata under `fields.status`; it is not promoted to top-level `status`.
 - Relations are ID arrays, not embedded objects.
 - Diagnostics are included using the same codes and messages as CLI diagnostics.
 - Schema versioning starts immediately, even if the shape is still pre-1.0.
