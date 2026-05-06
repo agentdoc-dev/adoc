@@ -12,7 +12,8 @@ use crate::infrastructure::artifact::AgentJsonArtifact;
 use crate::infrastructure::parser::parse_page;
 use crate::infrastructure::render::HtmlRenderer;
 use crate::infrastructure::validate::{
-    resolve_knowledge_objects, validate_resolved_page, validate_source_page, validate_workspace,
+    resolve_knowledge_objects, suppress_unknown_kind_shape_diagnostics, validate_resolved_page,
+    validate_source_page, validate_workspace,
 };
 
 #[derive(Debug, Clone)]
@@ -51,6 +52,7 @@ pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileR
     // pipeline without cloning. See ADR-0006 addendum.
     let (mut parsed, mut diagnostics) = load_pages(provider);
     diagnostics.extend(validate_source_pages(&parsed));
+    suppress_unknown_kind_shape_diagnostics(&parsed, &mut diagnostics);
     diagnostics.extend(resolve_knowledge_objects(&mut parsed));
     diagnostics.extend(validate_resolved_pages(&parsed));
     let workspace = assemble_workspace(parsed);

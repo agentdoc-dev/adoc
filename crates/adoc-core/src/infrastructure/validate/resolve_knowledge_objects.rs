@@ -18,6 +18,16 @@ use crate::domain::source::SourceFile;
 const UNKNOWN_KIND_HELP: &str = "supported kinds: claim, decision, glossary, warning. Kinds \
     procedure, example, agent, policy, contradiction, source, and custom schemas are deferred.";
 
+/// Drop field/body-shape diagnostics from grammar-valid unsupported kinds.
+/// The resolver owns kind support, so unsupported typed blocks are opaque
+/// after their opener while universal source/structure diagnostics remain.
+pub(crate) fn suppress_unknown_kind_shape_diagnostics(
+    parsed: &[(SourceFile, PageAst)],
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    diagnostics.retain(|diagnostic| !is_unknown_kind_shape_diagnostic(parsed, diagnostic));
+}
+
 /// Walk each parsed page in place: supported `BlockAst::KnowledgeObjectPending`
 /// blocks are replaced with `BlockAst::KnowledgeObject(...)` on success, or
 /// dropped after emitting diagnostics on failure.
@@ -79,6 +89,31 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
         }
     }
     page.blocks = new_blocks;
+}
+
+fn is_unknown_kind_shape_diagnostic(
+    parsed: &[(SourceFile, PageAst)],
+    diagnostic: &Diagnostic,
+) -> bool {
+    if diagnostic.code != DiagnosticCode::ParseMalformedField {
+        return false;
+    }
+    let Some(diagnostic_span) = diagnostic.span.as_ref() else {
+        return false;
+    };
+
+    parsed.iter().any(|(_source, page)| {
+        page.blocks.iter().any(|block| {
+            let BlockAst::KnowledgeObjectPending(pending) = block else {
+                return false;
+            };
+            BlockKind::from_fence_word(&pending.kind_word).is_none()
+                && pending
+                    .content_spans
+                    .iter()
+                    .any(|content_span| content_span == diagnostic_span)
+        })
+    })
 }
 
 fn unknown_kind_diagnostic(parsed: &crate::domain::ast::ParsedTypedBlock) -> Diagnostic {

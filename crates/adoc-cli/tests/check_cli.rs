@@ -1527,6 +1527,39 @@ fn check_rejects_unknown_typed_block_kind() {
 }
 
 #[test]
+fn check_rejects_unknown_typed_block_kind_without_field_cascade() {
+    let workspace = TestWorkspace::new("check-rejects-unknown-kind-freeform");
+    let fixture_contents = fs::read_to_string(fixture_path("v0_4/unknown_kind_freeform.adoc"))
+        .expect("unknown_kind_freeform fixture is readable");
+    workspace.write("unknown_kind_freeform.adoc", &fixture_contents);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["check", "unknown_kind_freeform.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected unknown kind to fail check"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("unknown_kind_freeform.adoc:5:3"),
+        "expected diagnostic on the unknown kind word, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("error[schema.unknown_kind]"),
+        "expected schema.unknown_kind diagnostic, got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("error[parse.malformed_field]"),
+        "unknown kind must not cascade into field-shape diagnostics, got:\n{stdout}"
+    );
+    assert!(stdout.contains("1 errors"));
+}
+
+#[test]
 fn check_rejects_nested_typed_block_in_fields() {
     let workspace = TestWorkspace::new("check-rejects-nested-fields");
     let fixture_contents =

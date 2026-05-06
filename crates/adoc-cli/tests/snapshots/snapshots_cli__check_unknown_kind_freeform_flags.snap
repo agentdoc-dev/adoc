@@ -1,0 +1,9 @@
+---
+source: crates/adoc-cli/tests/snapshots_cli.rs
+expression: combined
+---
+exit-success: false
+---stdout---
+unknown_kind_freeform.adoc:5:3: error[schema.unknown_kind] unknown typed-block kind `fact`
+1 errors, 0 warnings
+---stderr---
