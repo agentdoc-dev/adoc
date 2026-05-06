@@ -1520,7 +1520,7 @@ fn check_rejects_unknown_typed_block_kind() {
         "expected schema.unknown_kind diagnostic, got:\n{stdout}"
     );
     assert!(
-        stdout.contains("fact"),
+        stdout.contains("`fact`"),
         "expected message to mention rejected kind, got:\n{stdout}"
     );
     assert!(stdout.contains("1 errors"));
