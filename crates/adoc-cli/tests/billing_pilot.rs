@@ -125,6 +125,91 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
         ])
     );
 
+    let decrement_claim = objects
+        .iter()
+        .find(|object| object["id"] == "billing.credits.decrement-after-success")
+        .expect("decrement-after-success claim is present");
+    assert_eq!(decrement_claim["kind"], "claim");
+    assert_eq!(decrement_claim["status"], "verified");
+    assert_eq!(decrement_claim["fields"]["owner"], "team-billing");
+    assert_eq!(decrement_claim["fields"]["verified_at"], "2026-05-06");
+    assert_eq!(
+        decrement_claim["relations"]["depends_on"],
+        serde_json::json!(["billing.credits.ledger-source"])
+    );
+
+    let artifact_path = output_directory.join("docs.agent.json");
+    let artifact_arg = artifact_path
+        .to_str()
+        .expect("artifact path is UTF-8")
+        .to_owned();
+    let explain_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&repo_root)
+        .args([
+            "explain",
+            "billing.credits.decrement-after-success",
+            "--artifact",
+            &artifact_arg,
+        ])
+        .output()
+        .expect("adoc explain runs");
+
+    assert!(
+        explain_output.status.success(),
+        "expected billing pilot explain to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&explain_output.stdout),
+        String::from_utf8_lossy(&explain_output.stderr)
+    );
+    let explain_stdout = String::from_utf8_lossy(&explain_output.stdout);
+    assert!(explain_stdout.contains("Object: billing.credits.decrement-after-success"));
+    assert!(explain_stdout.contains("Kind: claim"));
+    assert!(explain_stdout.contains("Status: verified"));
+    assert!(explain_stdout.contains("Owner: team-billing"));
+    assert!(explain_stdout.contains("Verified: 2026-05-06"));
+    assert!(explain_stdout.contains("Evidence:"));
+    assert!(
+        explain_stdout.contains("- source: billing service credit application trace 2026-05-05")
+    );
+    assert!(explain_stdout.contains("- test: cargo test billing_credit_decrement_after_success"));
+    assert!(explain_stdout.contains("- reviewed_by: qa-billing"));
+    assert!(explain_stdout.contains("Relations:"));
+    assert!(explain_stdout.contains("- depends_on: billing.credits.ledger-source"));
+
+    let explain_json_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&repo_root)
+        .args([
+            "explain",
+            "billing.credits.decrement-after-success",
+            "--artifact",
+            &artifact_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc explain --format json runs");
+
+    assert!(
+        explain_json_output.status.success(),
+        "expected billing pilot explain JSON to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&explain_json_output.stdout),
+        String::from_utf8_lossy(&explain_json_output.stderr)
+    );
+    assert!(
+        explain_json_output.stderr.is_empty(),
+        "success JSON mode should not emit stderr diagnostics"
+    );
+    let explain_json: Value =
+        serde_json::from_slice(&explain_json_output.stdout).expect("explain stdout is JSON");
+    assert_eq!(explain_json["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(explain_json["diagnostics"], serde_json::json!([]));
+    assert_eq!(
+        explain_json["records"][0]["id"],
+        "billing.credits.decrement-after-success"
+    );
+    assert_eq!(explain_json["records"][0]["kind"], "claim");
+    assert_eq!(explain_json["records"][0]["status"], "verified");
+    assert_eq!(explain_json["records"][0]["owner"], "team-billing");
+
     for object in objects {
         let source_span = &object["source_span"];
         assert!(
