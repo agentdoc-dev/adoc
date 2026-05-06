@@ -965,6 +965,133 @@ fn compile_workspace_deduplicates_relation_targets_and_ignores_trailing_comma() 
 }
 
 #[test]
+fn relation_empty_segment_bracket_array_ignores_trailing_empty() {
+    let workspace = TestWorkspace::new("relation-empty-segment-bracket-trailing");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "--\n",
+            "Credits are balance adjustments.\n",
+            "::\n",
+            "\n",
+            "::claim billing.refunds\n",
+            "status: draft\n",
+            "related_to: [billing.credits,]\n",
+            "--\n",
+            "Refunds relate to credits.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        !result.has_errors(),
+        "expected bracket-array trailing empty relation segment to compile, got: {:?}",
+        result.diagnostics
+    );
+    let artifacts = result.artifacts.expect("artifacts must be produced");
+    let claim = artifacts
+        .agent_json
+        .objects
+        .iter()
+        .find(|object| object.id == "billing.refunds")
+        .expect("claim emitted");
+    assert_eq!(claim.relations.related_to, vec!["billing.credits"]);
+}
+
+#[test]
+fn relation_empty_segment_bracket_array_rejects_leading_empty() {
+    let workspace = TestWorkspace::new("relation-empty-segment-bracket-leading");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "--\n",
+            "Credits are balance adjustments.\n",
+            "::\n",
+            "\n",
+            "::claim billing.refunds\n",
+            "status: draft\n",
+            "related_to: [, billing.credits]\n",
+            "--\n",
+            "Refunds relate to credits.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        result.has_errors(),
+        "leading empty relation segment must fail"
+    );
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == DiagnosticCode::IdInvalid)
+        .expect("id.invalid diagnostic must be emitted");
+    assert!(
+        diagnostic.message.contains("empty relation"),
+        "diagnostic should explain empty relation segment: {:?}",
+        diagnostic
+    );
+}
+
+#[test]
+fn relation_empty_segment_bracket_array_rejects_interior_empty() {
+    let workspace = TestWorkspace::new("relation-empty-segment-bracket-interior");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::glossary billing.credits\n",
+            "--\n",
+            "Credits are balance adjustments.\n",
+            "::\n",
+            "\n",
+            "::claim billing.ledger\n",
+            "status: draft\n",
+            "--\n",
+            "Ledger records balance changes.\n",
+            "::\n",
+            "\n",
+            "::claim billing.refunds\n",
+            "status: draft\n",
+            "related_to: [billing.credits,, billing.ledger]\n",
+            "--\n",
+            "Refunds relate to credits and ledger records.\n",
+            "::\n",
+        ),
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        result.has_errors(),
+        "interior empty relation segment must fail"
+    );
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    let diagnostic = result
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == DiagnosticCode::IdInvalid)
+        .expect("id.invalid diagnostic must be emitted");
+    assert!(
+        diagnostic.message.contains("empty relation"),
+        "diagnostic should explain empty relation segment: {:?}",
+        diagnostic
+    );
+}
+
+#[test]
 fn compile_workspace_rejects_broken_relation_target() {
     let workspace = TestWorkspace::new("broken-relation-target");
     let source = workspace.write(
