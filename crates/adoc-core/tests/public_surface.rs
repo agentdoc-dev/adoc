@@ -9,7 +9,9 @@ use std::path::PathBuf;
 
 use adoc_core::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, BuildArtifacts,
-    CompileInput, CompileResult, Diagnostic, DiagnosticCode, Severity, compile_workspace,
+    CompileInput, CompileResult, Diagnostic, DiagnosticCode, ExplainResult, RetrievalInput,
+    RetrievalLoadResult, RetrievalRecord, RetrievalSession, RetrievalSource, Severity,
+    compile_workspace, explain_object, load_retrieval_session,
 };
 
 #[test]
@@ -155,4 +157,42 @@ fn public_surface_compiles_with_only_documented_imports() {
         DiagnosticCode::RetrievalObjectNotFound.as_str(),
         "retrieval.object_not_found"
     );
+
+    let _: fn(RetrievalInput) -> RetrievalLoadResult = load_retrieval_session;
+    let _: RetrievalInput = RetrievalInput {
+        artifact_path: PathBuf::from("/missing-docs-agent-json-for-surface-test"),
+    };
+    let retrieval_result = RetrievalLoadResult {
+        session: None,
+        diagnostics: Vec::new(),
+    };
+    let _retrieval_diagnostics: Vec<Diagnostic> = retrieval_result.diagnostics;
+    let _maybe_session: Option<RetrievalSession> = retrieval_result.session;
+
+    let record = RetrievalRecord {
+        id: String::new(),
+        kind: String::new(),
+        status: None,
+        owner: None,
+        verified_at: None,
+        body: String::new(),
+        source: RetrievalSource {
+            path: String::new(),
+            line: 0,
+            column: 0,
+        },
+        evidence: std::collections::BTreeMap::new(),
+        fields: std::collections::BTreeMap::new(),
+        relations: AgentJsonRelations::default(),
+    };
+    let _: RetrievalRecord = record;
+
+    let explain_result = ExplainResult {
+        records: Vec::new(),
+        diagnostics: Vec::new(),
+    };
+    let _explain_records: Vec<RetrievalRecord> = explain_result.records;
+    let _explain_diagnostics: Vec<Diagnostic> = explain_result.diagnostics;
+
+    let _: fn(&RetrievalSession, &str) -> ExplainResult = explain_object;
 }
