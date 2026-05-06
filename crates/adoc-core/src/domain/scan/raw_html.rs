@@ -1,11 +1,11 @@
 //! Raw-HTML opening-tag scanner.
 //!
 //! [`find_raw_html`] scans a single line and returns the column range of the
-//! first opening tag at a tag boundary (start of line or after whitespace),
-//! or `None` if the line contains only inline `<` characters that aren't
-//! tag-shaped (e.g. `Vec<String>`, `a < b`). Tag bodies are validated via
-//! [`raw_html_tag_end`] — the name must start with an ASCII letter and may
-//! continue with letters, digits, or `-` (so custom elements like
+//! first opening tag at a tag boundary (start of line or after whitespace) or
+//! the first adjacent paired tag, or `None` if the line contains only inline
+//! `<` characters that aren't tag-shaped (e.g. `Vec<String>`, `a < b`). Tag
+//! bodies are validated via [`raw_html_tag`] — the name must start with an
+//! ASCII letter and may continue with letters, digits, or `-` (so custom elements like
 //! `<my-component>` match too).
 //!
 //! The scanner has no AST awareness or diagnostic emission; consumers wrap
@@ -20,26 +20,34 @@ pub(crate) struct RawHtmlMatch {
     pub(crate) end_column: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RawHtmlTag {
+    end: usize,
+    name_start: usize,
+    name_end: usize,
+    is_closing: bool,
+}
+
 pub(crate) fn find_raw_html(line: &str) -> Option<RawHtmlMatch> {
     for (start_index, character) in line.char_indices() {
         if character != '<' {
             continue;
         }
 
+        let after_opening_bracket = &line[start_index + character.len_utf8()..];
+        let Some(tag) = raw_html_tag(after_opening_bracket) else {
+            continue;
+        };
+
         let is_tag_boundary = start_index == 0
             || line[..start_index]
                 .chars()
                 .last()
                 .is_some_and(|character| character.is_whitespace());
-        if !is_tag_boundary {
-            continue;
-        }
-
-        let after_opening_bracket = &line[start_index + character.len_utf8()..];
-        let Some(tag_end) = raw_html_tag_end(after_opening_bracket) else {
+        if !is_tag_boundary && !has_matching_closing_tag(after_opening_bracket, tag) {
             continue;
         };
-        let end_index = start_index + character.len_utf8() + tag_end;
+        let end_index = start_index + character.len_utf8() + tag.end;
 
         return Some(RawHtmlMatch {
             start_column: column_offset(&line[..start_index]),
@@ -50,10 +58,12 @@ pub(crate) fn find_raw_html(line: &str) -> Option<RawHtmlMatch> {
     None
 }
 
-fn raw_html_tag_end(value: &str) -> Option<usize> {
+fn raw_html_tag(value: &str) -> Option<RawHtmlTag> {
     let mut name_start = 0;
+    let mut is_closing = false;
     if value.starts_with('/') {
         name_start = 1;
+        is_closing = true;
     }
 
     let first_character = value[name_start..].chars().next()?;
@@ -70,7 +80,7 @@ fn raw_html_tag_end(value: &str) -> Option<usize> {
     }
 
     let next_character = value[name_end..].chars().next()?;
-    match next_character {
+    let end = match next_character {
         '>' => Some(name_end + 1),
         '/' => value[name_end + 1..]
             .starts_with('>')
@@ -78,7 +88,42 @@ fn raw_html_tag_end(value: &str) -> Option<usize> {
         character if character.is_whitespace() => tag_close_after_attributes(&value[name_end..])
             .map(|relative_index| name_end + relative_index + 1),
         _ => None,
+    }?;
+
+    Some(RawHtmlTag {
+        end,
+        name_start,
+        name_end,
+        is_closing,
+    })
+}
+
+fn has_matching_closing_tag(value: &str, opening_tag: RawHtmlTag) -> bool {
+    if opening_tag.is_closing {
+        return false;
     }
+
+    let opening_name = &value[opening_tag.name_start..opening_tag.name_end];
+    for (index, character) in value[opening_tag.end..].char_indices() {
+        if character != '<' {
+            continue;
+        }
+
+        let candidate = &value[opening_tag.end + index + character.len_utf8()..];
+        let Some(closing_tag) = raw_html_tag(candidate) else {
+            continue;
+        };
+        if !closing_tag.is_closing {
+            continue;
+        }
+
+        let closing_name = &candidate[closing_tag.name_start..closing_tag.name_end];
+        if opening_name.eq_ignore_ascii_case(closing_name) {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn tag_close_after_attributes(value: &str) -> Option<usize> {
@@ -112,9 +157,21 @@ mod tests {
     }
 
     #[test]
+    fn returns_none_for_comparison_text() {
+        assert!(find_raw_html("a < b").is_none());
+    }
+
+    #[test]
     fn skips_to_first_match_after_whitespace() {
         let m = find_raw_html("hello <span>x</span>").expect("expected match");
         assert_eq!(m.start_column, 7);
+    }
+
+    #[test]
+    fn matches_adjacent_paired_tag() {
+        let m = find_raw_html("Keep<span>raw</span>").expect("expected match");
+        assert_eq!(m.start_column, 5);
+        assert_eq!(m.end_column, 11);
     }
 
     #[test]
