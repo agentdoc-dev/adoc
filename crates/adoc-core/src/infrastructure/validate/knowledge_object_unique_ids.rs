@@ -54,27 +54,10 @@ struct FirstOccurrence {
 }
 
 fn knowledge_object_identity(knowledge_object: &KnowledgeObject) -> KnowledgeObjectIdentity<'_> {
-    match knowledge_object {
-        KnowledgeObject::Claim(claim) => KnowledgeObjectIdentity {
-            kind: BlockKind::Claim,
-            id: claim.id(),
-            span: claim.span(),
-        },
-        KnowledgeObject::Decision(decision) => KnowledgeObjectIdentity {
-            kind: BlockKind::Decision,
-            id: decision.id(),
-            span: decision.span(),
-        },
-        KnowledgeObject::Glossary(glossary) => KnowledgeObjectIdentity {
-            kind: BlockKind::Glossary,
-            id: glossary.id(),
-            span: glossary.span(),
-        },
-        KnowledgeObject::Warning(warning) => KnowledgeObjectIdentity {
-            kind: BlockKind::Warning,
-            id: warning.id(),
-            span: warning.span(),
-        },
+    KnowledgeObjectIdentity {
+        kind: knowledge_object.kind(),
+        id: knowledge_object.id(),
+        span: knowledge_object.span(),
     }
 }
 

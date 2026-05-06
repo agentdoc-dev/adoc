@@ -52,24 +52,12 @@ fn resolve_knowledge_object_references(
     declared_ids: &BTreeSet<ObjectId>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    match knowledge_object {
-        KnowledgeObject::Claim(claim) => {
-            resolve_inlines(claim.body_mut().inlines_mut(), declared_ids, diagnostics);
-            resolve_relations(claim.relations(), declared_ids, diagnostics);
-        }
-        KnowledgeObject::Decision(decision) => {
-            resolve_inlines(decision.body_mut().inlines_mut(), declared_ids, diagnostics);
-            resolve_relations(decision.relations(), declared_ids, diagnostics);
-        }
-        KnowledgeObject::Glossary(glossary) => {
-            resolve_inlines(glossary.body_mut().inlines_mut(), declared_ids, diagnostics);
-            resolve_relations(glossary.relations(), declared_ids, diagnostics);
-        }
-        KnowledgeObject::Warning(warning) => {
-            resolve_inlines(warning.body_mut().inlines_mut(), declared_ids, diagnostics);
-            resolve_relations(warning.relations(), declared_ids, diagnostics);
-        }
-    }
+    resolve_inlines(
+        knowledge_object.body_mut().inlines_mut(),
+        declared_ids,
+        diagnostics,
+    );
+    resolve_relations(knowledge_object.relations(), declared_ids, diagnostics);
 }
 
 fn resolve_relations(

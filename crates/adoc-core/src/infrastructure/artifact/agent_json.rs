@@ -8,12 +8,9 @@ use crate::domain::diagnostic::Diagnostic;
 use crate::domain::knowledge_object::{
     KnowledgeObject, RelationField, RelationTarget, Relations,
     claim::{
-        Claim, Evidence, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
-        VERIFIED_AT_FIELD,
+        Evidence, OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD, VERIFIED_AT_FIELD,
     },
-    decision::{DECIDED_BY_FIELD, Decision},
-    glossary::Glossary,
-    warning::Warning,
+    decision::DECIDED_BY_FIELD,
 };
 use crate::domain::ports::artifact_writer::ArtifactWriter;
 
@@ -27,20 +24,9 @@ impl ArtifactWriter for AgentJsonArtifact {
         for page in pages {
             for block in &page.blocks {
                 match block {
-                    BlockAst::KnowledgeObject(ko) => match ko.as_ref() {
-                        KnowledgeObject::Claim(claim) => {
-                            objects.push(claim_to_agent_object(claim, page.id.as_str()));
-                        }
-                        KnowledgeObject::Decision(decision) => {
-                            objects.push(decision_to_agent_object(decision, page.id.as_str()));
-                        }
-                        KnowledgeObject::Glossary(glossary) => {
-                            objects.push(glossary_to_agent_object(glossary, page.id.as_str()));
-                        }
-                        KnowledgeObject::Warning(warning) => {
-                            objects.push(warning_to_agent_object(warning, page.id.as_str()));
-                        }
-                    },
+                    BlockAst::KnowledgeObject(ko) => {
+                        objects.push(knowledge_object_to_agent_object(ko, page.id.as_str()));
+                    }
                     BlockAst::KnowledgeObjectPending(_) => unreachable!(
                         "resolver must replace pending knowledge objects before artifact emission"
                     ),
@@ -57,58 +43,18 @@ impl ArtifactWriter for AgentJsonArtifact {
     }
 }
 
-fn glossary_to_agent_object(glossary: &Glossary, page_id: &str) -> AgentJsonObject {
-    let span = glossary.span();
+fn knowledge_object_to_agent_object(
+    knowledge_object: &KnowledgeObject,
+    page_id: &str,
+) -> AgentJsonObject {
+    let span = knowledge_object.span();
+    let mut fields = stored_metadata_fields(knowledge_object);
+    append_typed_metadata_fields(knowledge_object, &mut fields);
     AgentJsonObject {
-        id: glossary.id().as_str().to_string(),
-        kind: "glossary".to_string(),
-        status: None,
-        body: glossary.body().to_source(),
-        page_id: page_id.to_string(),
-        source_span: AgentJsonSourceSpan {
-            path: span.file.display().to_string(),
-            line: span.start.line,
-            column: span.start.column,
-        },
-        fields: glossary
-            .fields()
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
-        relations: relations_to_agent(glossary.relations()),
-    }
-}
-
-fn warning_to_agent_object(warning: &Warning, page_id: &str) -> AgentJsonObject {
-    let span = warning.span();
-    AgentJsonObject {
-        id: warning.id().as_str().to_string(),
-        kind: "warning".to_string(),
-        status: Some(warning.severity().as_str().to_string()),
-        body: warning.body().to_source(),
-        page_id: page_id.to_string(),
-        source_span: AgentJsonSourceSpan {
-            path: span.file.display().to_string(),
-            line: span.start.line,
-            column: span.start.column,
-        },
-        fields: warning
-            .fields()
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
-        relations: relations_to_agent(warning.relations()),
-    }
-}
-
-fn decision_to_agent_object(decision: &Decision, page_id: &str) -> AgentJsonObject {
-    let span = decision.span();
-    let fields = fields_for_decision(decision);
-    AgentJsonObject {
-        id: decision.id().as_str().to_string(),
-        kind: "decision".to_string(),
-        status: Some(decision.status().as_str().to_string()),
-        body: decision.body().to_source(),
+        id: knowledge_object.id().as_str().to_string(),
+        kind: knowledge_object.kind().as_str().to_string(),
+        status: object_status(knowledge_object),
+        body: knowledge_object.body().to_source(),
         page_id: page_id.to_string(),
         source_span: AgentJsonSourceSpan {
             path: span.file.display().to_string(),
@@ -116,43 +62,24 @@ fn decision_to_agent_object(decision: &Decision, page_id: &str) -> AgentJsonObje
             column: span.start.column,
         },
         fields,
-        relations: relations_to_agent(decision.relations()),
+        relations: relations_to_agent(knowledge_object.relations()),
     }
 }
 
-fn fields_for_decision(decision: &Decision) -> BTreeMap<String, String> {
+fn stored_metadata_fields(knowledge_object: &KnowledgeObject) -> BTreeMap<String, String> {
     let mut fields = BTreeMap::new();
-
-    for (key, value) in decision.fields().iter() {
-        fields.insert(key.clone(), value.clone());
-    }
-
-    if let Some(verdict) = decision.verdict() {
-        fields.insert(
-            DECIDED_BY_FIELD.to_string(),
-            verdict.decided_by().as_str().to_string(),
-        );
-    }
-
+    knowledge_object.visit_metadata_fields(&mut |key: &str, value: &str| {
+        fields.insert(key.to_string(), value.to_string());
+    });
     fields
 }
 
-fn claim_to_agent_object(claim: &Claim, page_id: &str) -> AgentJsonObject {
-    let span = claim.span();
-    let fields = fields_for_claim(claim);
-    AgentJsonObject {
-        id: claim.id().as_str().to_string(),
-        kind: "claim".to_string(),
-        status: Some(claim.status().as_str().to_string()),
-        body: claim.body().to_source(),
-        page_id: page_id.to_string(),
-        source_span: AgentJsonSourceSpan {
-            path: span.file.display().to_string(),
-            line: span.start.line,
-            column: span.start.column,
-        },
-        fields,
-        relations: relations_to_agent(claim.relations()),
+fn object_status(knowledge_object: &KnowledgeObject) -> Option<String> {
+    match knowledge_object {
+        KnowledgeObject::Claim(claim) => Some(claim.status().as_str().to_string()),
+        KnowledgeObject::Decision(decision) => Some(decision.status().as_str().to_string()),
+        KnowledgeObject::Glossary(_) => None,
+        KnowledgeObject::Warning(warning) => Some(warning.severity().as_str().to_string()),
     }
 }
 
@@ -171,38 +98,47 @@ fn relation_ids(targets: &[RelationTarget]) -> Vec<String> {
         .collect()
 }
 
-fn fields_for_claim(claim: &Claim) -> BTreeMap<String, String> {
-    let mut fields = BTreeMap::new();
-
-    for (key, value) in claim.fields().iter() {
-        fields.insert(key.clone(), value.clone());
-    }
-
-    if let Some(verification) = claim.verification() {
-        fields.insert(
-            OWNER_FIELD.to_string(),
-            verification.owner().as_str().to_string(),
-        );
-        fields.insert(
-            VERIFIED_AT_FIELD.to_string(),
-            verification.verified_at().as_str().to_string(),
-        );
-        for evidence in verification.evidence() {
-            match evidence {
-                Evidence::Source(value) => {
-                    fields.insert(SOURCE_FIELD.to_string(), value.as_str().to_string());
-                }
-                Evidence::Test(value) => {
-                    fields.insert(TEST_FIELD.to_string(), value.as_str().to_string());
-                }
-                Evidence::ReviewedBy(value) => {
-                    fields.insert(REVIEWED_BY_FIELD.to_string(), value.as_str().to_string());
+fn append_typed_metadata_fields(
+    knowledge_object: &KnowledgeObject,
+    fields: &mut BTreeMap<String, String>,
+) {
+    match knowledge_object {
+        KnowledgeObject::Claim(claim) => {
+            if let Some(verification) = claim.verification() {
+                fields.insert(
+                    OWNER_FIELD.to_string(),
+                    verification.owner().as_str().to_string(),
+                );
+                fields.insert(
+                    VERIFIED_AT_FIELD.to_string(),
+                    verification.verified_at().as_str().to_string(),
+                );
+                for evidence in verification.evidence() {
+                    match evidence {
+                        Evidence::Source(value) => {
+                            fields.insert(SOURCE_FIELD.to_string(), value.as_str().to_string());
+                        }
+                        Evidence::Test(value) => {
+                            fields.insert(TEST_FIELD.to_string(), value.as_str().to_string());
+                        }
+                        Evidence::ReviewedBy(value) => {
+                            fields
+                                .insert(REVIEWED_BY_FIELD.to_string(), value.as_str().to_string());
+                        }
+                    }
                 }
             }
         }
+        KnowledgeObject::Decision(decision) => {
+            if let Some(verdict) = decision.verdict() {
+                fields.insert(
+                    DECIDED_BY_FIELD.to_string(),
+                    verdict.decided_by().as_str().to_string(),
+                );
+            }
+        }
+        KnowledgeObject::Glossary(_) | KnowledgeObject::Warning(_) => {}
     }
-
-    fields
 }
 
 #[cfg(test)]

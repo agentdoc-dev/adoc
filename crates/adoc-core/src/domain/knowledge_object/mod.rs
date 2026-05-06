@@ -374,9 +374,194 @@ pub(crate) enum KnowledgeObject {
     Warning(Warning),
 }
 
+pub(crate) trait MetadataFieldVisitor {
+    fn visit_field(&mut self, key: &str, value: &str);
+}
+
+impl<F> MetadataFieldVisitor for F
+where
+    F: FnMut(&str, &str),
+{
+    fn visit_field(&mut self, key: &str, value: &str) {
+        self(key, value);
+    }
+}
+
+impl KnowledgeObject {
+    pub(crate) fn kind(&self) -> BlockKind {
+        match self {
+            Self::Claim(_) => BlockKind::Claim,
+            Self::Decision(_) => BlockKind::Decision,
+            Self::Glossary(_) => BlockKind::Glossary,
+            Self::Warning(_) => BlockKind::Warning,
+        }
+    }
+
+    pub(crate) fn id(&self) -> &ObjectId {
+        match self {
+            Self::Claim(claim) => claim.id(),
+            Self::Decision(decision) => decision.id(),
+            Self::Glossary(glossary) => glossary.id(),
+            Self::Warning(warning) => warning.id(),
+        }
+    }
+
+    pub(crate) fn span(&self) -> &SourceSpan {
+        match self {
+            Self::Claim(claim) => claim.span(),
+            Self::Decision(decision) => decision.span(),
+            Self::Glossary(glossary) => glossary.span(),
+            Self::Warning(warning) => warning.span(),
+        }
+    }
+
+    pub(crate) fn body(&self) -> &Body {
+        match self {
+            Self::Claim(claim) => claim.body(),
+            Self::Decision(decision) => decision.body(),
+            Self::Glossary(glossary) => glossary.body(),
+            Self::Warning(warning) => warning.body(),
+        }
+    }
+
+    pub(crate) fn body_mut(&mut self) -> &mut Body {
+        match self {
+            Self::Claim(claim) => claim.body_mut(),
+            Self::Decision(decision) => decision.body_mut(),
+            Self::Glossary(glossary) => glossary.body_mut(),
+            Self::Warning(warning) => warning.body_mut(),
+        }
+    }
+
+    pub(crate) fn relations(&self) -> &Relations {
+        match self {
+            Self::Claim(claim) => claim.relations(),
+            Self::Decision(decision) => decision.relations(),
+            Self::Glossary(glossary) => glossary.relations(),
+            Self::Warning(warning) => warning.relations(),
+        }
+    }
+
+    pub(crate) fn fields(&self) -> &crate::domain::values::OptionalFields {
+        match self {
+            Self::Claim(claim) => claim.fields(),
+            Self::Decision(decision) => decision.fields(),
+            Self::Glossary(glossary) => glossary.fields(),
+            Self::Warning(warning) => warning.fields(),
+        }
+    }
+
+    pub(crate) fn visit_metadata_fields<V: MetadataFieldVisitor + ?Sized>(&self, visitor: &mut V) {
+        for (key, value) in self.fields().iter() {
+            visitor.visit_field(key, value);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+
     use super::*;
+    use crate::domain::diagnostic::{SourcePosition, SourceSpan};
+    use crate::domain::inline::InlineSegment;
+    use crate::domain::knowledge_object::claim::{
+        Claim, Evidence, NonEmpty, Owner, Verification, VerifiedAt,
+    };
+    use crate::domain::knowledge_object::decision::{AcceptedVerdict, DecidedBy, Decision};
+    use crate::domain::knowledge_object::glossary::Glossary;
+    use crate::domain::knowledge_object::warning::Warning;
+
+    fn span(file: &str, line: u32, column: u32) -> SourceSpan {
+        SourceSpan {
+            file: PathBuf::from(file),
+            start: SourcePosition {
+                line,
+                column,
+                offset: 0,
+            },
+            end: SourcePosition {
+                line,
+                column: column + 20,
+                offset: 20,
+            },
+        }
+    }
+
+    fn claim_object() -> KnowledgeObject {
+        KnowledgeObject::Claim(
+            Claim::try_new(
+                "billing.credits",
+                Some("plain"),
+                "Claim body.",
+                BTreeMap::from([("audience".to_string(), "support".to_string())]),
+                None,
+                span("claim.adoc", 3, 1),
+            )
+            .expect("valid claim"),
+        )
+    }
+
+    fn decision_object() -> KnowledgeObject {
+        KnowledgeObject::Decision(
+            Decision::try_new(
+                "billing.policy",
+                Some("accepted"),
+                "Decision body.",
+                BTreeMap::from([("audience".to_string(), "ops".to_string())]),
+                Some(AcceptedVerdict::new(
+                    DecidedBy::try_new("architecture").expect("decided_by"),
+                )),
+                span("decision.adoc", 5, 1),
+            )
+            .expect("valid decision"),
+        )
+    }
+
+    fn glossary_object() -> KnowledgeObject {
+        KnowledgeObject::Glossary(
+            Glossary::try_new(
+                "billing.ledger",
+                "Glossary body.",
+                BTreeMap::from([("owner".to_string(), "team-billing".to_string())]),
+                span("glossary.adoc", 7, 1),
+            )
+            .expect("valid glossary"),
+        )
+    }
+
+    fn warning_object() -> KnowledgeObject {
+        KnowledgeObject::Warning(
+            Warning::try_new(
+                "auth.session",
+                Some("high"),
+                "Warning body.",
+                BTreeMap::from([("owner".to_string(), "platform".to_string())]),
+                span("warning.adoc", 11, 1),
+            )
+            .expect("valid warning"),
+        )
+    }
+
+    fn verified_claim_object() -> KnowledgeObject {
+        KnowledgeObject::Claim(
+            Claim::try_new(
+                "billing.verified",
+                Some("verified"),
+                "Verified claim body.",
+                BTreeMap::from([("audience".to_string(), "support".to_string())]),
+                Some(Verification::new(
+                    Owner::try_new("team-billing").expect("owner"),
+                    VerifiedAt::try_new("2026-05-06").expect("verified_at"),
+                    NonEmpty::from_vec(vec![Evidence::source("ledger").expect("evidence")])
+                        .expect("non-empty evidence"),
+                )),
+                span("claim.adoc", 13, 1),
+            )
+            .expect("valid verified claim"),
+        )
+    }
 
     #[test]
     fn block_kind_labels_match_source_fence_words() {
@@ -431,5 +616,112 @@ mod tests {
         assert_eq!(RelationField::DependsOn.as_str(), "depends_on");
         assert_eq!(RelationField::Supersedes.as_str(), "supersedes");
         assert_eq!(RelationField::RelatedTo.as_str(), "related_to");
+    }
+
+    #[test]
+    fn knowledge_object_common_accessors_report_aggregate_basics_for_each_variant() {
+        let cases = [
+            (
+                claim_object(),
+                BlockKind::Claim,
+                "billing.credits",
+                "Claim body.",
+                "claim.adoc",
+                3,
+                "audience",
+            ),
+            (
+                decision_object(),
+                BlockKind::Decision,
+                "billing.policy",
+                "Decision body.",
+                "decision.adoc",
+                5,
+                "audience",
+            ),
+            (
+                glossary_object(),
+                BlockKind::Glossary,
+                "billing.ledger",
+                "Glossary body.",
+                "glossary.adoc",
+                7,
+                "owner",
+            ),
+            (
+                warning_object(),
+                BlockKind::Warning,
+                "auth.session",
+                "Warning body.",
+                "warning.adoc",
+                11,
+                "owner",
+            ),
+        ];
+
+        for (mut object, kind, id, body, file, line, metadata_key) in cases {
+            assert_eq!(object.kind(), kind);
+            assert_eq!(object.id().as_str(), id);
+            assert_eq!(object.body().to_source(), body);
+            assert_eq!(object.span().file, PathBuf::from(file));
+            assert_eq!(object.span().start.line, line);
+            assert!(object.relations().is_empty());
+            assert_eq!(
+                object
+                    .fields()
+                    .iter()
+                    .next()
+                    .map(|(key, _value)| key.as_str()),
+                Some(metadata_key)
+            );
+
+            object
+                .body_mut()
+                .inlines_mut()
+                .push(InlineSegment::Text(" Extended.".to_string()));
+
+            assert_eq!(object.body().to_source(), format!("{body} Extended."));
+        }
+    }
+
+    #[test]
+    fn knowledge_object_metadata_visitor_walks_stored_fields_only_in_sorted_order() {
+        let glossary = KnowledgeObject::Glossary(
+            Glossary::try_new(
+                "billing.terms",
+                "Terms body.",
+                BTreeMap::from([
+                    ("zeta".to_string(), "last".to_string()),
+                    ("alpha".to_string(), "first".to_string()),
+                ]),
+                span("glossary.adoc", 17, 1),
+            )
+            .expect("valid glossary"),
+        );
+
+        let mut visited = Vec::new();
+        glossary.visit_metadata_fields(&mut |key: &str, value: &str| {
+            visited.push((key.to_string(), value.to_string()));
+        });
+
+        assert_eq!(
+            visited,
+            vec![
+                ("alpha".to_string(), "first".to_string()),
+                ("zeta".to_string(), "last".to_string()),
+            ]
+        );
+
+        let verified_claim = verified_claim_object();
+        let mut visited = Vec::new();
+        verified_claim.visit_metadata_fields(&mut |key: &str, value: &str| {
+            visited.push((key.to_string(), value.to_string()));
+        });
+
+        assert_eq!(
+            visited,
+            vec![("audience".to_string(), "support".to_string())],
+            "visitor must not reproject typed verification metadata"
+        );
     }
 }
