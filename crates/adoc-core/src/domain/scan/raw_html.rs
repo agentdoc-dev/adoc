@@ -118,7 +118,7 @@ fn has_matching_closing_tag(value: &str, opening_tag: RawHtmlTag) -> bool {
         }
 
         let closing_name = &candidate[closing_tag.name_start..closing_tag.name_end];
-        if opening_name.eq_ignore_ascii_case(closing_name) {
+        if opening_name == closing_name {
             return true;
         }
     }
@@ -154,6 +154,11 @@ mod tests {
     #[test]
     fn returns_none_for_inline_less_than() {
         assert!(find_raw_html("Vec<String>").is_none());
+    }
+
+    #[test]
+    fn returns_none_for_generic_prose_with_mismatched_case_closing_tag() {
+        assert!(find_raw_html("Vec<String>x</string>").is_none());
     }
 
     #[test]
