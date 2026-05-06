@@ -20,10 +20,8 @@ impl InMemorySourceProvider {
     }
 
     pub(crate) fn with_error(mut self, path: PathBuf, message: impl Into<String>) -> Self {
-        self.results.push(Err(SourceLoadError {
-            path,
-            message: message.into(),
-        }));
+        self.results
+            .push(Err(SourceLoadError::unreadable(path, message)));
         self
     }
 }

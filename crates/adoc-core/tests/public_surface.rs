@@ -75,6 +75,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::IdInvalid;
     let _ = DiagnosticCode::RefBroken;
     let _ = DiagnosticCode::IoUnreadableFile;
+    let _ = DiagnosticCode::IoUnsupportedSourceExtension;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
     assert_eq!(
@@ -114,5 +115,9 @@ fn public_surface_compiles_with_only_documented_imports() {
     assert_eq!(
         DiagnosticCode::ParseMalformedOpenFence.as_str(),
         "parse.malformed_open_fence"
+    );
+    assert_eq!(
+        DiagnosticCode::IoUnsupportedSourceExtension.as_str(),
+        "io.unsupported_source_extension"
     );
 }

@@ -14,11 +14,36 @@ pub(crate) trait SourceProvider {
 
 /// Reported by a [`SourceProvider`] when a single source cannot be loaded.
 ///
-/// `compile_workspace` translates each error into an `io.unreadable_file`
-/// diagnostic; the original I/O message is preserved verbatim so the CLI
-/// surface stays unchanged.
+/// `compile_workspace` translates each error into an I/O diagnostic; ordinary
+/// read failures remain `io.unreadable_file`, while provider-classified source
+/// contract failures can map to a narrower diagnostic code.
 #[derive(Debug, Clone)]
 pub(crate) struct SourceLoadError {
     pub path: PathBuf,
     pub message: String,
+    pub kind: SourceLoadErrorKind,
+}
+
+impl SourceLoadError {
+    pub(crate) fn unreadable(path: PathBuf, message: impl Into<String>) -> Self {
+        Self {
+            path,
+            message: message.into(),
+            kind: SourceLoadErrorKind::Unreadable,
+        }
+    }
+
+    pub(crate) fn unsupported_source_extension(path: PathBuf) -> Self {
+        Self {
+            path,
+            message: "unsupported source extension; expected a .adoc file".to_string(),
+            kind: SourceLoadErrorKind::UnsupportedSourceExtension,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SourceLoadErrorKind {
+    Unreadable,
+    UnsupportedSourceExtension,
 }

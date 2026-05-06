@@ -551,6 +551,50 @@ fn compile_workspace_ignores_non_adoc_files_during_directory_scan() {
 }
 
 #[test]
+fn compile_workspace_rejects_single_file_with_non_adoc_extension() {
+    let workspace = TestWorkspace::new("reject-single-md-file");
+    let source = workspace.write(
+        "notes.md",
+        "# Notes\n\n<div>This must not compile as AgentDoc Source.</div>\n",
+    );
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(
+        result.has_errors(),
+        "unsupported source extensions must fail compilation"
+    );
+    assert!(result.artifacts.is_none(), "errors must block artifacts");
+    assert_eq!(result.diagnostics.len(), 1);
+    let diagnostic = &result.diagnostics[0];
+    assert_eq!(
+        diagnostic.code,
+        DiagnosticCode::IoUnsupportedSourceExtension
+    );
+    assert!(
+        diagnostic.message.contains(".adoc"),
+        "diagnostic should tell callers the supported extension: {}",
+        diagnostic.message
+    );
+}
+
+#[test]
+fn compile_workspace_reports_missing_root_as_unreadable_file() {
+    let workspace = TestWorkspace::new("missing-root-is-unreadable");
+    let anchor = workspace.write("anchor.adoc", "# Anchor\n");
+    let source = anchor
+        .parent()
+        .expect("anchor has parent")
+        .join("missing.md");
+
+    let result = compile_workspace(CompileInput { root: source });
+
+    assert!(result.has_errors(), "missing roots must fail compilation");
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(result.diagnostics[0].code, DiagnosticCode::IoUnreadableFile);
+}
+
+#[test]
 fn compile_workspace_links_references_in_heading_and_list_item() {
     let workspace = TestWorkspace::new("heading-list-prose-refs");
     let source = workspace.write(
