@@ -88,7 +88,7 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
                 };
                 match kind {
                     BlockKind::Claim => {
-                        if let Some(claim) = Claim::build_from_parsed(&parsed, diagnostics) {
+                        if let Some(claim) = Claim::build_from_parsed(parsed, diagnostics) {
                             new_blocks.push(BlockAst::KnowledgeObject(Box::new(
                                 KnowledgeObject::Claim(claim),
                             )));
@@ -96,7 +96,7 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
                         // failure → block dropped; diagnostics already emitted above
                     }
                     BlockKind::Decision => {
-                        if let Some(decision) = Decision::build_from_parsed(&parsed, diagnostics) {
+                        if let Some(decision) = Decision::build_from_parsed(parsed, diagnostics) {
                             new_blocks.push(BlockAst::KnowledgeObject(Box::new(
                                 KnowledgeObject::Decision(decision),
                             )));
@@ -104,7 +104,7 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
                         // failure → block dropped; diagnostics already emitted above
                     }
                     BlockKind::Glossary => {
-                        if let Some(glossary) = Glossary::build_from_parsed(&parsed, diagnostics) {
+                        if let Some(glossary) = Glossary::build_from_parsed(parsed, diagnostics) {
                             new_blocks.push(BlockAst::KnowledgeObject(Box::new(
                                 KnowledgeObject::Glossary(glossary),
                             )));
@@ -112,7 +112,7 @@ fn resolve_page(page: &mut PageAst, diagnostics: &mut Vec<Diagnostic>) {
                         // failure → block dropped; diagnostics already emitted above
                     }
                     BlockKind::Warning => {
-                        if let Some(warning) = Warning::build_from_parsed(&parsed, diagnostics) {
+                        if let Some(warning) = Warning::build_from_parsed(parsed, diagnostics) {
                             new_blocks.push(BlockAst::KnowledgeObject(Box::new(
                                 KnowledgeObject::Warning(warning),
                             )));

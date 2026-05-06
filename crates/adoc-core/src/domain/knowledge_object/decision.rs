@@ -38,26 +38,22 @@ pub(crate) enum DecisionError {
 
 impl Decision {
     pub(crate) fn build_from_parsed(
-        parsed: &ParsedTypedBlock,
+        mut parsed: ParsedTypedBlock,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
-        if super::reject_duplicate_fields(parsed, "decision", diagnostics) {
+        if super::reject_duplicate_fields(&parsed, "decision", diagnostics) {
             return None;
         }
 
-        let status_text = parsed.raw_fields.get(STATUS_FIELD).map(String::as_str);
-        let fields_and_relations = super::extract_relations(parsed, diagnostics);
-        let optional_fields: BTreeMap<String, String> = fields_and_relations
-            .fields
-            .iter()
-            .filter(|(key, _)| key.as_str() != STATUS_FIELD)
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect();
+        let relations = super::extract_relations(&mut parsed, diagnostics);
+        let status_text = parsed.raw_fields.remove(STATUS_FIELD);
+        let optional_fields = std::mem::take(&mut parsed.raw_fields);
+        let status_text = status_text.as_deref();
 
-        let (id, status, body) = match Self::parse_basics_from_parsed(parsed, status_text) {
+        let (id, status, body) = match Self::parse_basics_from_parsed(&parsed, status_text) {
             Ok(basics) => basics,
             Err(error) => {
-                emit_decision_error(parsed, error, diagnostics);
+                emit_decision_error(&parsed, error, diagnostics);
                 return None;
             }
         };
@@ -67,7 +63,7 @@ impl Decision {
                 .get(DECIDED_BY_FIELD)
                 .and_then(|value| DecidedBy::try_new(value))
             else {
-                diagnostics.push(missing_decided_by_diagnostic(parsed));
+                diagnostics.push(missing_decided_by_diagnostic(&parsed));
                 return None;
             };
             let mut storage_fields = optional_fields;
@@ -83,7 +79,7 @@ impl Decision {
             body,
             optional_fields,
             verdict,
-            fields_and_relations.relations,
+            relations,
             parsed.span.clone(),
         ) {
             Ok(decision) => Some(decision),
@@ -91,7 +87,7 @@ impl Decision {
                 unreachable!("decision builder constructs verdict to match status")
             }
             Err(error) => {
-                emit_decision_error(parsed, error, diagnostics);
+                emit_decision_error(&parsed, error, diagnostics);
                 None
             }
         }
@@ -496,7 +492,7 @@ mod tests {
         );
         let mut diagnostics = Vec::new();
 
-        let decision = Decision::build_from_parsed(&parsed, &mut diagnostics);
+        let decision = Decision::build_from_parsed(parsed, &mut diagnostics);
 
         assert!(decision.is_none());
         assert_eq!(diagnostics.len(), 1);

@@ -41,38 +41,34 @@ pub(crate) enum ClaimError {
 
 impl Claim {
     pub(crate) fn build_from_parsed(
-        parsed: &ParsedTypedBlock,
+        mut parsed: ParsedTypedBlock,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
-        if super::reject_duplicate_fields(parsed, "claim", diagnostics) {
+        if super::reject_duplicate_fields(&parsed, "claim", diagnostics) {
             return None;
         }
 
-        let status_text = parsed.raw_fields.get(STATUS_FIELD).map(String::as_str);
-        let fields_and_relations = super::extract_relations(parsed, diagnostics);
-        let optional_fields: BTreeMap<String, String> = fields_and_relations
-            .fields
-            .iter()
-            .filter(|(key, _)| key.as_str() != STATUS_FIELD)
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect();
+        let relations = super::extract_relations(&mut parsed, diagnostics);
+        let status_text = parsed.raw_fields.remove(STATUS_FIELD);
+        let optional_fields = std::mem::take(&mut parsed.raw_fields);
+        let status_text = status_text.as_deref();
 
         let status_is_exact_verified = status_text.map(trim_ascii_edges) == Some(VERIFIED_STATUS);
 
         if status_is_exact_verified {
             return Self::build_verified_from_parsed(
-                parsed,
+                &parsed,
                 status_text,
                 optional_fields,
-                fields_and_relations.relations,
+                relations,
                 diagnostics,
             );
         }
 
-        let (id, status, body) = match Self::parse_basics_from_parsed(parsed, status_text) {
+        let (id, status, body) = match Self::parse_basics_from_parsed(&parsed, status_text) {
             Ok(basics) => basics,
             Err(error) => {
-                emit_claim_error(parsed, error, diagnostics);
+                emit_claim_error(&parsed, error, diagnostics);
                 return None;
             }
         };
@@ -83,17 +79,17 @@ impl Claim {
             body,
             optional_fields,
             None,
-            fields_and_relations.relations,
+            relations,
             parsed.span.clone(),
         ) {
             Ok(claim) => {
                 if claim.status().is_verified_ascii_case_variant() {
-                    diagnostics.push(status_casing_diagnostic(parsed, claim.status().as_str()));
+                    diagnostics.push(status_casing_diagnostic(&parsed, claim.status().as_str()));
                 }
                 Some(claim)
             }
             Err(error) => {
-                emit_claim_error(parsed, error, diagnostics);
+                emit_claim_error(&parsed, error, diagnostics);
                 None
             }
         }
@@ -822,7 +818,7 @@ mod tests {
             "body",
         );
 
-        let claim = Claim::build_from_parsed(&parsed, &mut diagnostics);
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics);
 
         assert!(claim.is_none());
         assert_eq!(diagnostics.len(), 1);
