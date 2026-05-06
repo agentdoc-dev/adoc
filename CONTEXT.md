@@ -124,6 +124,42 @@ _Avoid_: public plug-in API, dynamic adapter registry
 The directory passed to `adoc build --out`; the CLI creates it when missing and fails if the path exists as a file.
 _Avoid_: manual pre-created output directory
 
+**V1 Local Retrieval**:
+The first post-compiler milestone. Adds `adoc explain` and `adoc search` over compiled artifacts, ships per-Knowledge-Object embeddings as a first-class build output, and ranks results via a parameter-free hybrid of BM25 and cosine similarity.
+_Avoid_: V1 hosted RAG service, V1 agent server, V1 graph database
+
+**V1 Build Artifacts**:
+The V1 compiler outputs: `dist/docs.html`, `dist/docs.agent.json`, and `dist/docs.search.json`. The first two preserve their V0 contracts; the third is new in V1.
+_Avoid_: SQLite graph artifact, RAG ndjson, separate diagnostics artifact
+
+**Search Artifact**:
+The new V1 build output, `dist/docs.search.json`, with schema version `adoc.search.v0`. Carries one `{ id, content_hash, vector }` entry per Knowledge Object, a `model: { id, provider, dim }` header, and an `agent_artifact_hash` for drift detection.
+_Avoid_: per-chunk embedding store, vectors embedded in `docs.agent.json`, binary sidecar in V1
+
+**Embedding Provider**:
+The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the `InMemoryProvider` adapter is used in every hermetic test.
+_Avoid_: hosted-only embedding pipeline, public plug-in registry, per-call API key configuration
+
+**Embedding Composition**:
+The canonical input string each Knowledge Object is reduced to before embedding: `{kind}: {body_plain_text}\n[id: {id}] [status: {status}] [owner: {owner}]`. Part of the `adoc.search.v0` contract; changing it requires a schema-version bump.
+_Avoid_: per-field separate embeddings in V1, relations folded into embedding input, freeform composition
+
+**Hybrid Retrieval**:
+The V1 default search ranking: Reciprocal Rank Fusion over a BM25 lexical index and a brute-force cosine vector index, with exact and prefix Object ID matches pinned above the fused list. Implemented as `HybridRanker` in `domain/retrieval/`.
+_Avoid_: tunable score weights in V1, multi-factor PRD §19.3 scoring in V1, ANN libraries in V1
+
+**Retrieval Record**:
+The stable JSON shape returned by `adoc explain --format json` and `adoc search --format json`. Contained inside an `adoc.retrieval.v0` envelope. A projection of `AgentJsonObject` plus a small `match` block carrying `mode`, ranks, and (when relevant) `cosine_score`.
+_Avoid_: vectors in the retrieval envelope, per-record permissions in V1
+
+**Retrieval Session**:
+The immutable value the V1 application layer assembles from a loaded agent artifact, an optional loaded search artifact, and built indexes. CLI commands construct one session per invocation; there is no global retrieval state.
+_Avoid_: long-lived retrieval daemon in V1, mutable shared session
+
+**Pilot Retrieval Set**:
+The V1.6 evaluation harness: `examples/billing-pilot/retrieval-set.yaml` carries 15-20 manually authored queries with `expected_ids` and `must_appear_in_top` thresholds, complemented by a property-based suite that asserts verbatim-body and Object-ID invariants. Both suites run in CI and gate ranking changes.
+_Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
+
 ## Relationships
 
 - **AgentDoc Source** contains prose and typed blocks that compile into **Knowledge Objects**.
@@ -156,6 +192,15 @@ _Avoid_: manual pre-created output directory
 - **Workspace Rule** is a validation rule that operates on the whole **WorkspaceAst** aggregate rather than a single page; future cross-page invariants (e.g. duplicate **Object IDs**, broken link targets) land as workspace rules without changing the orchestrator.
 - An **Internal Port** stays `pub(crate)` until a concrete external consumer (LSP, web preview, semantic diff) needs it.
 - **Build Output Directory** is created by the CLI when missing.
+- **V1 Local Retrieval** reads compiled artifacts only; it never re-runs `compile_workspace()`.
+- **V1 Build Artifacts** add a **Search Artifact** to the V0 pair without changing the existing **Agent-Facing Artifact** contract.
+- A **Search Artifact** is keyed by **Object ID** and is invalidated by model mismatch, schema-version mismatch, or per-object content-hash drift.
+- An **Embedding Provider** is an **Internal Port** under ADR-0006; it stays `pub(crate)` until a concrete external consumer needs it.
+- **Embedding Composition** is the reduction from a Knowledge Object aggregate to a single canonical input string; relations stay filter targets, not semantic signal.
+- **Hybrid Retrieval** combines lexical and vector ranks via RRF; lifecycle, freshness, and authority remain filter targets in V1, not score modifiers.
+- A **Retrieval Record** is a projection of an `AgentJsonObject` plus a small `match` block; it never carries vectors.
+- A **Retrieval Session** is constructed per CLI invocation and dropped at command exit.
+- The **Pilot Retrieval Set** gates every later ranking, embedding-composition, or model change.
 
 ## Example dialogue
 
@@ -190,3 +235,9 @@ _Avoid_: manual pre-created output directory
 - "Object ID grammar" could mean arbitrary unique strings - resolved: use strict **Object ID** grammar.
 - "Diagnostic code format" could mean compact numeric codes like `ADOC001` - resolved: use semantic **Diagnostic Code** values in v0.
 - "Build output behavior" could require users to create `dist` manually - resolved: create the **Build Output Directory** when missing.
+- "V1 retrieval staging" could mean shipping lexical search first and embeddings later - resolved: V1 ships **Hybrid Retrieval** with embeddings as a first-class build output, gated behind the **Embedding Provider** port.
+- "Embedding compute" could mean a hosted embeddings API in V1 - resolved: the V1 default **Embedding Provider** is local (`fastembed-rs` + `bge-small-en-v1.5`); a hosted adapter is deferred behind the same port.
+- "Vector storage shape" could mean SQLite, an embedded ANN library, or a binary sidecar in V1 - resolved: V1 uses a sidecar JSON (**Search Artifact**) with `adoc.search.v0` as schema version.
+- "Embedding granularity" could mean per-paragraph or per-chunk embeddings - resolved: V1 is one embedding per **Knowledge Object**; chunked retrieval is deferred.
+- "Search ranking" could mean a multi-factor weighted score from the PRD - resolved: V1 uses **Hybrid Retrieval** via parameter-free RRF; lifecycle, freshness, and authority remain filters, not score modifiers.
+- "Agent surface" could mean an MCP/JSON-RPC retrieval server in V1 - resolved: V1 ships only CLI commands plus a stable `--format json` envelope (`adoc.retrieval.v0`); a server is deferred.

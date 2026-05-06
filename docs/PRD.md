@@ -2180,6 +2180,8 @@ Patch validation:
 
 # 19. Search, Retrieval, and RAG
 
+> **V1 commitments.** Section 19 describes the full retrieval surface AgentDoc aims at. The V1 milestone delivers a deliberate subset: object-based retrieval (§19.1), the retrieval record shape (§19.2) shipped as the `adoc.retrieval.v0` envelope, a parameter-free hybrid of BM25 and vector ranks (a small subset of §19.3), and four filters - kind, status, owner, source-path (a small subset of §19.4). Multi-factor scoring, the wider filter set, and the retrieval modes in §19.5 are deferred. See [V1-DESIGN.md](V1-DESIGN.md) and [adr/0010-v1-retrieval-architecture.md](adr/0010-v1-retrieval-architecture.md) for the implementation contract.
+
 ## 19.1 Retrieval Philosophy
 
 AgentDoc retrieval should be object-based, not chunk-based.
@@ -2377,6 +2379,8 @@ The review lens shows:
 ---
 
 # 21. CLI Product Surface
+
+> **V1 commitments.** Section 21 lists the full target CLI. V1 ships four commands: `adoc check` and `adoc build` (V0, unchanged) plus `adoc explain` (§21.5) and `adoc search` reading the V1 retrieval surface. `adoc init`, `adoc graph`, `adoc impacted-by`, `adoc patch`, `adoc render`, `adoc migrate`, `adoc schema`, `adoc verify`, and `adoc doctor` are deferred to later milestones. `adoc build` in V1 emits a third artifact, `dist/docs.search.json`, alongside the V0 outputs. See [V1-DESIGN.md](V1-DESIGN.md).
 
 ## 21.1 CLI Overview
 

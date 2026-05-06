@@ -234,151 +234,202 @@ Deferred:
 - Hosted preview.
 - Team workflows.
 
-## V1: Local Retrieval
+## V1: Local Retrieval with Embeddings
 
-V1 makes the flat agent artifact useful as a local retrieval surface. This is the next work after V0.
+V1 makes the V0 build outputs useful as a local retrieval surface for humans and for any agent that already knows Object IDs from the agent artifact. V1 ships embeddings as a first-class build output rather than deferring them past lexical search; the V0 thesis is that agents retrieve typed Knowledge Objects, and only semantic recall delivers on that thesis once paraphrased queries enter the picture.
 
-V1 is not the full PRD MVP by itself. It is the first post-compiler milestone: humans and agents should be able to look up compiled Knowledge Objects by ID, search locally, and cite stable object IDs without introducing a graph database, embeddings, hosted storage, or an agent API server.
+V1 is not the full PRD MVP by itself. It is the first post-compiler milestone, sized to add hybrid lexical + vector retrieval with no tunable score weights, no graph artifact, no hosted storage, and no agent server. The V1 implementation contract lives in [V1-DESIGN.md](V1-DESIGN.md). The architecture decisions that gate V1 are recorded in [adr/0010-v1-retrieval-architecture.md](adr/0010-v1-retrieval-architecture.md).
 
-### V1.0: Agent Artifact Read Contract
+V1 product surface:
 
-Goal: treat `dist/docs.agent.json` as a supported read model, not just a build byproduct.
+- `adoc build` produces a third artifact, `dist/docs.search.json`, alongside `dist/docs.html` and `dist/docs.agent.json`.
+- `adoc explain <object-id>` reads the agent artifact only and prints a structured object explanation.
+- `adoc search "<query>"` reads both artifacts and ranks Knowledge Objects via Reciprocal Rank Fusion over BM25 and brute-force cosine, with exact and prefix Object ID matches pinned to the top.
+- Both new commands accept `--format text|json`. The `adoc.retrieval.v0` JSON envelope is the wire format any future MCP wrapper consumes.
 
-Suggested tracer-bullet slices:
+V1 hard rules:
 
-- Define the V1-compatible agent artifact contract around the existing flat object list.
-- Keep `schema_version: adoc.agent.v0` as the initial supported schema version unless the artifact shape must break.
-- Add an artifact reader that validates required top-level fields before commands use the file.
-- Add clear diagnostics for missing artifact, unreadable artifact, malformed JSON, unsupported schema version, missing object list, and duplicate object IDs inside the artifact.
-- Build an in-memory object lookup by ID from the flat artifact.
-- Preserve the source of truth rule: `.adoc` source remains canonical; V1 retrieval commands read the latest built artifact.
+- Retrieval is read-only over compiled artifacts. `adoc explain` and `adoc search` never re-run `compile_workspace()`. A missing or stale build is the user's responsibility, surfaced via fix-oriented diagnostics that point at `adoc build`.
+- The default embedding provider is local: `fastembed-rs` with `bge-small-en-v1.5`. First run downloads weights; subsequent runs are offline. A hosted adapter is explicitly possible later without port churn but is not in V1.
+- The search artifact is a sidecar JSON with a model header, an agent-artifact hash for drift detection, and one `{ id, content_hash, vector }` entry per Knowledge Object. SQLite, embedded ANN libraries, and binary sidecars are deferred until pilot data shows the JSON shape is the bottleneck.
+- Filters in V1 are `--kind`, `--status`, `--owner`, and `--source-path`. PRD §19's wider filter set requires upstream contracts that do not exist yet.
+- Lifecycle, freshness, evidence quality, and authority are filter targets in V1, never score modifiers. RRF stays parameter-free.
 
-Minimum V1 artifact contract:
+### V1.1: `adoc explain <object-id>`
 
-- top-level `schema_version`
-- top-level `objects`
-- top-level `diagnostics` when present
-- per-object `id`, `kind`, `body`, and source location when available
-- per-object `status`, `owner`, evidence fields, relation fields, and metadata fields when present
+Goal: make Object IDs immediately useful for humans and any agent that has already learned IDs from the agent artifact.
 
-Acceptance:
+Scope:
 
-- A valid V0 `docs.agent.json` can be loaded and queried by object ID.
-- A missing or malformed artifact fails with a fix-oriented message that tells the user to run `adoc build <path> --out dist`.
-- Unsupported schema versions fail closed.
-- Artifact loading is covered by unit tests and CLI-level tests.
-
-Deferred:
-
-- Separate search index files.
-- Graph artifacts.
-- Artifact migration across incompatible versions.
-- Source recompilation inside retrieval commands.
-
-### V1.1: `adoc explain`
-
-Goal: make object IDs immediately useful to humans and agents.
-
-Suggested tracer-bullet slices:
-
-- Implement `adoc explain <object-id>`.
-- Read `dist/docs.agent.json` by default.
-- Support an explicit artifact path such as `--artifact <path>` so examples and tests do not depend on the default output directory.
-- Print kind, ID, status, owner, body, evidence, source location, and relations.
-- Show all preserved metadata fields in deterministic order.
-- Return a distinct not-found error when the artifact loads but the object ID does not exist.
-- Keep the first implementation artifact-backed only.
+- Treat `dist/docs.agent.json` as a supported read model. Add an artifact reader that validates `schema_version: adoc.agent.v0`, top-level `objects`, and the in-artifact uniqueness of every Object ID.
+- Add `LookupIndex` keyed by Object ID.
+- Add diagnostics: `io.artifact_missing`, `io.artifact_unreadable`, `io.artifact_malformed`, `schema.unsupported_version`, `id.duplicate_in_artifact`, `retrieval.object_not_found`.
+- Implement `adoc explain <id>` with `--artifact <path>` and `--format text|json`.
+- Pretty text output mirrors PRD §21.5: kind, status, owner, verified date, body, evidence, source, relations.
+- `--format json` emits an `adoc.retrieval.v0` envelope with one record.
 
 Acceptance:
 
-- `adoc explain billing.credits.decrement-after-success --artifact dist/docs.agent.json` prints a concise object explanation.
+- A valid V0 `docs.agent.json` can be loaded and queried by Object ID.
 - Verified claims show verification metadata and V0 evidence fields.
-- Decisions show `decided_by` when available.
-- Warnings and glossary entries render with their kind-specific fields.
-- Unknown IDs fail without suggesting that the source is invalid.
+- Decisions show `decided_by` when available; warnings and glossary entries render with their kind-specific fields.
+- Unknown IDs exit `3` with a fix-oriented message that does not implicate the source.
+- Missing or malformed artifact exits `2` with guidance to run `adoc build`.
 
-Deferred:
+Deferred to later slices:
 
-- Health score.
-- Relation traversal.
-- Recompiling source before explain.
-- Permission-aware redaction.
+- Search.
+- Embeddings.
+- Hybrid ranking.
+- Pilot evaluation harness.
 
-### V1.2: `adoc search`
+### V1.2: `adoc search` (lexical-only)
 
-Goal: provide useful exact local search before introducing ranking infrastructure.
+Goal: ship structured search before introducing the embedding pipeline so that the filter UX, ranking determinism, and JSON envelope are settled in isolation.
 
-Suggested tracer-bullet slices:
+Scope:
 
-- Implement `adoc search <query>`.
-- Read `dist/docs.agent.json` by default and support `--artifact <path>`.
-- Search object ID, kind, status, owner, body, relation IDs, and metadata field values.
-- Support `--kind <kind>` and `--status <status>` filters first.
-- Rank deterministically with simple rules: exact ID match, ID prefix/substring match, body match, then metadata match.
-- Print object ID, kind, status, source location, and a short snippet or matched field.
-- Keep output stable enough for tests and future CI summaries.
+- Add a BM25 `LexicalIndex` rebuilt at session load over `body`, `id`, `kind`, `owner`.
+- Add filters: `--kind`, `--status`, `--owner`, `--source-path`.
+- Implement `adoc search "<query>"` with all CLI flags except `--semantic` and `--search-artifact`.
+- Pin exact Object ID and ID-prefix matches above the BM25 list.
+- Stable lex tie-breaker. Empty result is a `0` exit with `(no matches)`.
+- `--format json` reuses the V1.1 envelope, plus `match.mode = "lexical"` and `match.lexical_rank`.
 
 Acceptance:
 
-- Search can find a verified claim by body text, ID fragment, owner, and evidence path.
-- `--kind claim` and `--status verified` narrow the result set.
-- Empty result sets are explicit and not treated as command errors.
-- Invalid filters fail with supported values.
+- Lexical queries against the billing pilot return obvious matches in the top three for every benchmark query authored alongside this slice.
+- All filter combinations resolve correctly; unknown filter values produce a fix-oriented error and exit `1`.
 
 Deferred:
 
 - Embeddings.
-- BM25 or fuzzy ranking.
-- `docs.search.json`.
-- Relation traversal.
-- Scope, owner, evidence-type, freshness, or permission filters.
+- Hybrid ranking.
+- Search-artifact diagnostics.
+- Scope, evidence-type, changed-since, and permission filters.
 
-### V1.3: Retrieval Pilot and Documentation
+### V1.3: Embedding Build Pipeline
 
-Goal: prove the local retrieval loop on the V0 pilot.
+Goal: make `adoc build` produce a deterministic, content-hashed search artifact.
 
-Suggested tracer-bullet slices:
+Scope:
 
-- Build `examples/billing-pilot` into `dist/docs.html` and `dist/docs.agent.json`.
-- Run `adoc explain` against representative claims, decisions, warnings, and glossary terms.
-- Run `adoc search` against product behavior, owner names, evidence paths, and relation IDs.
-- Add documentation for the local workflow: `adoc build`, `adoc explain`, `adoc search`.
-- Document the citation pattern agents should use: cite object ID, status, owner, and evidence when present.
+- Add the `EmbeddingProvider` internal port (governed by ADR-0006).
+- Add `FastEmbedProvider` (`fastembed-rs` + `bge-small-en-v1.5`) as the default adapter; first-run weights cached locally; subsequent runs are offline.
+- Add `InMemoryProvider` as a deterministic test adapter mirroring the role of `InMemorySourceProvider`.
+- Extend the application pipeline so `compile_with_provider` accepts an `EmbeddingProvider`; `compile_workspace()` defaults to `FastEmbedProvider`.
+- Emit `dist/docs.search.json` with the schema documented in V1-DESIGN: `{ schema_version: "adoc.search.v0", model: { id, provider, dim }, agent_artifact_hash, embeddings: [{ id, content_hash, vector }] }`.
+- Add per-Object-ID embedding cache: when prior content hash matches, the prior vector is reused.
+- Add `--no-embeddings` to `adoc build`. Add diagnostics: `embed.model_load_failed`, `embed.compute_failed`, `embed.unexpected_dim`, `build.embeddings_skipped`.
+- Hermetic `cargo test` uses `InMemoryProvider` by default. The fastembed path runs under a gated feature flag (`cargo test --features fastembed-it`).
 
 Acceptance:
 
-- The billing pilot can answer simple lookup questions using only `explain` and `search`.
-- The workflow is understandable without reading compiler internals.
-- The docs make clear that search is exact local retrieval, not RAG infrastructure.
+- `adoc build examples/billing-pilot --out examples/billing-pilot/dist` produces all three artifacts.
+- A second `adoc build` with no source changes reuses every prior vector.
+- `--no-embeddings` skips the search artifact, leaves any prior search artifact untouched, and emits `build.embeddings_skipped`.
+- Model load failures emit a fix-oriented diagnostic and a non-zero exit.
 
-Design guidance:
+Deferred:
 
-- Prefer reading the existing flat artifact before introducing a new index.
-- Do not add embeddings until exact search and filters are useful.
-- Keep citation by object ID as the center of the workflow.
-- Treat this version as local retrieval, not RAG infrastructure.
-- Keep source parsing, validation, and artifact emission behind the existing compiler path.
-- Avoid config-file assumptions until a project initializer exists.
+- Semantic queries.
+- Hybrid ranking.
+- Pilot evaluation harness.
+- Hosted embedding adapters.
+
+### V1.4: `adoc search --semantic`
+
+Goal: surface semantic recall behind an explicit flag before changing default ranking behavior.
+
+Scope:
+
+- Add a brute-force cosine `VectorIndex`.
+- Load the search artifact at session start; missing artifact emits `search.artifact_missing` (warn) and disables semantic mode.
+- Add `search.model_mismatch` (error) and `search.hash_drift` (warn).
+- Implement `--semantic` on `adoc search`. JSON output adds `match.vector_rank` and `match.cosine_score`.
+
+Acceptance:
+
+- A paraphrase query that fails under `--lexical` succeeds in the top three under `--semantic` for at least three pilot examples.
+- A search artifact built with a different model is rejected with `search.model_mismatch` and exit `2`.
+- A stale search artifact (drifted from the agent artifact) emits `search.hash_drift` but still serves results.
+
+Deferred:
+
+- Making hybrid the default.
+- Pilot evaluation harness.
+- Multi-factor scoring.
+
+### V1.5: Hybrid Default
+
+Goal: make `adoc search` hybrid by default, with `--lexical` and `--semantic` as escape hatches.
+
+Scope:
+
+- Add `HybridRanker` (Reciprocal Rank Fusion, `k = 60`).
+- Default mode for `adoc search` becomes hybrid when both indexes are available; degrades to lexical-only with one warning when the search artifact is absent.
+- ID-prefix pin moves into `HybridRanker` so it applies in every mode.
+- Filters apply post-rank in hybrid mode; pre-rank in lexical and semantic modes.
+
+Acceptance:
+
+- Benchmark queries from V1.2 and V1.4 still pass; new hybrid-only queries (where neither lexical nor semantic alone suffices) exist and pass.
+- Removing `dist/docs.search.json` reduces search to lexical with one warning, with no other behavior change.
+
+Deferred:
+
+- Pilot evaluation harness.
+- Multi-factor scoring.
+- Agent-server surface.
+
+### V1.6: Pilot Evaluation Harness
+
+Goal: prove V1 retrieval is good and stays good.
+
+Scope:
+
+- Grow `examples/billing-pilot` to at least 30 Knowledge Objects across all four V0 kinds, with a meaningful share of verified claims.
+- Add `examples/billing-pilot/retrieval-set.yaml` with 15-20 manually authored queries (`expected_ids`, `must_appear_in_top`) covering paraphrase, exact ID, owner, kind filter, evidence path, broken filter, and empty cases.
+- Add a property-based test suite over the artifact: every body verbatim → top 1 lexical, every Object ID → top 1 lexical, every owner query covers every claim with that owner.
+- Both suites run in CI on the pilot.
+- Document the workflow in `docs/v1-retrieval.md`: build, explain, search, citation pattern, hybrid versus lexical versus semantic, model swap consequences.
+
+Acceptance:
+
+- The retrieval-set integration test passes deterministically against `InMemoryProvider`.
+- The same test passes against `FastEmbedProvider` under the gated CI run.
+- The property suite passes against both providers.
+- Future ranking, embedding-composition, or model changes must keep both suites green or update them with a recorded rationale.
+
+V1-wide design guidance:
+
+- Prefer reading the existing flat artifact before adding new index files. The search artifact is the only new build output in V1.
+- Keep citation by Object ID as the center of the workflow; the retrieval record is a projection of the agent JSON object plus a small `match` block.
+- Treat V1 as local retrieval, not RAG infrastructure: no chunking, no scope-based retrieval, no permissions.
+- Keep source parsing, validation, and artifact emission behind the existing compiler path. Retrieval is a pure read of compiled outputs.
+- Avoid config-file assumptions until V1.5+ creates a project initializer.
 
 Resolved V1 decisions:
 
-- `adoc explain` and `adoc search` require a prior build in V1.
-- The default artifact path is `dist/docs.agent.json`.
-- Both commands should support `--artifact <path>`.
-- V1 reads artifacts only; source-aware retrieval can wait until config or LSP work creates a real need.
+- `adoc explain` and `adoc search` require a prior build.
+- Default agent artifact path is `dist/docs.agent.json`; default search artifact path is `dist/docs.search.json`.
+- Both commands support `--artifact <path>`; `adoc search` additionally supports `--search-artifact <path>`.
+- V1 reads artifacts only; source-aware retrieval waits until config and LSP work create a real need.
+- Embeddings ship in V1, not V2. The default provider is local. The hosted adapter is deferred behind a stable internal port.
+- The hybrid default ranks via parameter-free RRF over BM25 and cosine, with ID and ID-prefix pins above the fused list.
 
 ## V1.5: Local Project Ergonomics and MVP Gap Closure
 
-V1.5 closes small local-tooling gaps before migration and team workflows expand the product surface.
+V1.5 closes small local-tooling gaps before migration and team workflows expand the product surface. The search artifact already ships in V1, so V1.5 focuses on author ergonomics: an initializer, a minimal config, and the first lifecycle diagnostic.
 
 Suggested tracer-bullet slices:
 
 - Add `adoc init` only after the no-config V1 workflow is proven.
-- Introduce a minimal `agentdoc.config.yaml` with strict mode, docs path, and output paths.
+- Introduce a minimal `agentdoc.config.yaml` with strict mode, docs path, output paths, and the embedding provider selection.
 - Keep custom schemas, remote sources, permissions, and team ownership out of the first config version.
-- Let `adoc check` and `adoc build` use config defaults when no path is passed.
+- Let `adoc check`, `adoc build`, and the V1 retrieval commands use config defaults when no path is passed.
 - Add basic stale-by-expiration diagnostics for objects that carry `expires_at`.
-- Consider emitting `docs.search.json` only after `adoc search` has proven the local read model and result shape.
+- Add a hosted `EmbeddingProvider` adapter behind a feature flag once an external user has asked for one; until then the local default remains the only shipped provider.
 - Update docs and examples around the default local workflow.
 
 Design guidance:
