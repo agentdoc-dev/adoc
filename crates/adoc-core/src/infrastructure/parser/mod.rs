@@ -659,9 +659,9 @@ mod tests {
     }
 
     // Slice C: pin that parse.malformed_page_annotation never carries
-    // object_id or help — no usable token exists for a truncated annotation.
+    // object_id; no usable token exists for a truncated annotation.
     #[test]
-    fn parse_page_malformed_annotation_has_no_object_id_and_no_help() {
+    fn parse_page_malformed_annotation_has_no_object_id_and_default_help() {
         let (_page, diagnostics) = parse_source("# Heading @doc(\n\nContent.\n");
 
         assert_eq!(diagnostics.len(), 1);
@@ -673,9 +673,9 @@ mod tests {
             diagnostics[0].object_id.is_none(),
             "malformed_page_annotation must not carry object_id"
         );
-        assert!(
-            diagnostics[0].help.is_none(),
-            "malformed_page_annotation must not carry help"
+        assert_eq!(
+            diagnostics[0].help.as_deref(),
+            Some(DiagnosticCode::ParseMalformedPageAnnotation.default_help())
         );
     }
 

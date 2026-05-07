@@ -17,6 +17,6 @@
       }
     },
     "object_id": null,
-    "help": null
+    "help": "Open typed blocks with `::kind object.id`, using a supported kind and valid Object ID."
   }
 ]

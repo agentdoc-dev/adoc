@@ -7,5 +7,6 @@ exit-success: false
 ---stdout---
 claim_id_duplicate_same_page.adoc:9:1: error[id.duplicate] duplicate claim id `billing.credits`; previously defined at claim_id_duplicate_same_page.adoc:3:1
   object_id: billing.credits
+  help: Give each object a unique ID across the compiled workspace.
 1 errors, 0 warnings
 ---stderr---

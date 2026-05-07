@@ -17,6 +17,6 @@
       }
     },
     "object_id": "billing.credits",
-    "help": null
+    "help": "Give each object a unique ID across the compiled workspace."
   }
 ]
