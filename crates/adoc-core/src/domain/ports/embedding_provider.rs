@@ -5,6 +5,7 @@ pub(crate) struct ModelId {
 }
 
 impl ModelId {
+    #[cfg_attr(not(any(test, feature = "embeddings")), allow(dead_code))]
     pub(crate) fn new(id: impl Into<String>, provider: impl Into<String>) -> Self {
         Self {
             id: id.into(),
@@ -16,6 +17,7 @@ impl ModelId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum EmbeddingError {
     ModelLoad(String),
+    #[cfg_attr(not(any(test, feature = "embeddings")), allow(dead_code))]
     Compute(String),
     #[allow(dead_code)]
     DimensionMismatch {

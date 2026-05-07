@@ -1,8 +1,9 @@
+#[cfg(feature = "embeddings")]
 pub(crate) mod fastembed;
 #[cfg(any(test, feature = "test-embedding-provider"))]
 pub(crate) mod in_memory;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "embeddings"))]
 mod tests {
     use crate::domain::ports::embedding_provider::EmbeddingProvider;
     use crate::infrastructure::embedding::fastembed::FastEmbedProvider;

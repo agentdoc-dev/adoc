@@ -206,7 +206,7 @@ impl DiagnosticCode {
                 "Change or remove the filter so it matches at least one object field in the artifact."
             }
             DiagnosticCode::EmbedModelLoadFailed => {
-                "Check network access for the first model download, verify the local model cache is readable, then rerun `adoc build`."
+                "Check network access for the first model download, verify the local model cache is readable, ensure the binary was built with the `embeddings` feature, or rerun `adoc build --no-embeddings`."
             }
             DiagnosticCode::EmbedComputeFailed => {
                 "Retry `adoc build`; if the error repeats, rebuild with `--no-embeddings` while investigating the embedding provider."

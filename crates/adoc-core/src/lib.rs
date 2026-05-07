@@ -40,9 +40,19 @@ fn default_embedding_provider() -> Result<
         ));
     }
 
-    infrastructure::embedding::fastembed::FastEmbedProvider::try_new().map(|provider| {
-        Box::new(provider) as Box<dyn domain::ports::embedding_provider::EmbeddingProvider>
-    })
+    #[cfg(feature = "embeddings")]
+    {
+        infrastructure::embedding::fastembed::FastEmbedProvider::try_new().map(|provider| {
+            Box::new(provider) as Box<dyn domain::ports::embedding_provider::EmbeddingProvider>
+        })
+    }
+
+    #[cfg(not(feature = "embeddings"))]
+    {
+        Err(domain::ports::embedding_provider::EmbeddingError::ModelLoad(
+            "embedding support is disabled; rebuild with the `embeddings` feature or run with --no-embeddings".to_string(),
+        ))
+    }
 }
 
 fn build_workspace_with_embedding_provider_factory<F>(
@@ -168,6 +178,36 @@ mod tests {
                 .diagnostics
                 .iter()
                 .any(|diagnostic| diagnostic.code == DiagnosticCode::ParseRawHtml)
+        );
+    }
+
+    #[cfg(not(feature = "embeddings"))]
+    #[test]
+    fn build_workspace_enabled_without_embeddings_feature_reports_model_load_failure() {
+        let workspace = tempfile::tempdir().expect("temp workspace");
+
+        let result = build_workspace(BuildInput {
+            root: workspace.path().to_path_buf(),
+            embeddings: BuildEmbeddingMode::Enabled,
+            prior_search_artifact_path: None,
+        });
+
+        assert!(result.has_errors());
+        let diagnostic = result
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::EmbedModelLoadFailed)
+            .expect("model load diagnostic");
+        assert!(
+            diagnostic.message.contains("`embeddings` feature"),
+            "diagnostic should explain the missing feature: {diagnostic:?}"
+        );
+        assert!(
+            diagnostic
+                .help
+                .as_deref()
+                .expect("help")
+                .contains("--no-embeddings")
         );
     }
 }
