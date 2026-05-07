@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider, ModelId};
 
 #[derive(Debug, Clone)]
