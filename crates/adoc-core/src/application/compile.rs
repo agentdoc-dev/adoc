@@ -129,15 +129,7 @@ fn run_compile_pipeline<P: SourceProvider>(
     }
     let artifact_result =
         build_artifacts_for_build(&workspace, &diagnostics, build_options.as_mut());
-    let artifacts = if artifact_result
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.severity == Severity::Error)
-    {
-        None
-    } else {
-        artifact_result.artifacts
-    };
+    let artifacts = artifact_result.artifacts;
     diagnostics.extend(artifact_result.diagnostics);
     sort_diagnostics_by_source(&mut diagnostics);
     CompileResult {
@@ -263,6 +255,7 @@ fn build_artifacts_for_build(
         };
     }
 
+    let html = HtmlRenderer.render(&workspace.pages);
     let agent_json = AgentJsonArtifact.build(&workspace.pages, diagnostics);
     let prior_search_artifact_path = build_options
         .as_ref()
@@ -281,7 +274,11 @@ fn build_artifacts_for_build(
             Ok(search_artifact) => Some(search_artifact),
             Err(diagnostics) => {
                 return ArtifactBuildResult {
-                    artifacts: None,
+                    artifacts: Some(BuildArtifacts {
+                        html,
+                        agent_json,
+                        search_json: None,
+                    }),
                     diagnostics,
                 };
             }
@@ -291,7 +288,11 @@ fn build_artifacts_for_build(
                 Ok(provider) => provider,
                 Err(error) => {
                     return ArtifactBuildResult {
-                        artifacts: None,
+                        artifacts: Some(BuildArtifacts {
+                            html,
+                            agent_json,
+                            search_json: None,
+                        }),
                         diagnostics: vec![embedding_error_diagnostic(error)],
                     };
                 }
@@ -305,7 +306,11 @@ fn build_artifacts_for_build(
                 Ok(search_artifact) => Some(search_artifact),
                 Err(diagnostics) => {
                     return ArtifactBuildResult {
-                        artifacts: None,
+                        artifacts: Some(BuildArtifacts {
+                            html,
+                            agent_json,
+                            search_json: None,
+                        }),
                         diagnostics,
                     };
                 }
@@ -316,7 +321,7 @@ fn build_artifacts_for_build(
 
     ArtifactBuildResult {
         artifacts: Some(BuildArtifacts {
-            html: HtmlRenderer.render(&workspace.pages),
+            html,
             agent_json,
             search_json,
         }),
@@ -1060,9 +1065,13 @@ mod tests {
             "build should fail: {:?}",
             result.diagnostics
         );
+        let artifacts = result
+            .artifacts
+            .as_ref()
+            .expect("embedding failures preserve V0 artifacts");
         assert!(
-            result.artifacts.is_none(),
-            "embedding failures must block all artifacts"
+            artifacts.search_json.is_none(),
+            "embedding failures must suppress only search artifacts"
         );
         let diagnostic = result
             .diagnostics

@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use adoc_core::{
-    AgentJsonDocument, BuildEmbeddingMode, BuildInput, CompileInput, Diagnostic, DiagnosticCode,
-    ExplainResult, JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput,
-    RetrievalLoadResult, SearchArtifactDocument, SearchFilters, SearchMode, SearchQuery,
-    SearchResult, Severity, TextRetrievalFormatter, build_workspace, compile_workspace,
-    explain_object, load_retrieval_session, search,
+    AgentJsonDocument, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult, Diagnostic,
+    DiagnosticCode, ExplainResult, JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter,
+    RetrievalInput, RetrievalLoadResult, SearchArtifactDocument, SearchFilters, SearchMode,
+    SearchQuery, SearchResult, Severity, TextRetrievalFormatter, build_workspace,
+    compile_workspace, explain_object, load_retrieval_session, search,
 };
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
@@ -141,21 +141,25 @@ fn build(path: PathBuf, out: PathBuf, no_embeddings: bool) -> i32 {
     print_diagnostics(&result.diagnostics);
     print_summary(&result.diagnostics);
 
-    if result.has_errors() {
-        return 1;
-    }
+    finish_build_result(result, &out)
+}
+
+fn finish_build_result(result: CompileResult, out: &Path) -> i32 {
+    let has_errors = result.has_errors();
 
     let artifacts = match result.artifacts {
         Some(artifacts) => artifacts,
+        None if has_errors => return 1,
         None => return report(CliError::BuildMissingArtifacts),
     };
 
     match write_artifacts(
-        &out,
+        out,
         &artifacts.html,
         &artifacts.agent_json,
         artifacts.search_json.as_ref(),
     ) {
+        Ok(()) if has_errors => 1,
         Ok(()) => 0,
         Err(error) => report(error),
     }
@@ -484,10 +488,71 @@ impl RetrievalOutputFormat {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    use adoc_core::{AgentJsonRelations, RetrievalRecord, RetrievalSource};
+    use adoc_core::{
+        AgentJsonDocument, AgentJsonRelations, BuildArtifacts, CompileResult, RetrievalRecord,
+        RetrievalSource,
+    };
 
     use super::*;
+
+    #[test]
+    fn finish_build_result_writes_v0_artifacts_and_preserves_prior_search_on_embedding_error() {
+        let output_directory = unique_temp_dir("embedding-error-output");
+        fs::create_dir_all(&output_directory).expect("output directory can be created");
+        fs::write(
+            output_directory.join("docs.search.json"),
+            "prior search artifact",
+        )
+        .expect("prior search artifact can be written");
+        let result = CompileResult {
+            diagnostics: vec![Diagnostic {
+                code: DiagnosticCode::EmbedComputeFailed,
+                severity: Severity::Error,
+                message: "embedding computation failed: encoder failed".to_string(),
+                span: None,
+                object_id: None,
+                help: None,
+            }],
+            artifacts: Some(BuildArtifacts {
+                html: "<h1>Guide</h1>".to_string(),
+                agent_json: AgentJsonDocument {
+                    schema_version: "adoc.agent.v0".to_string(),
+                    pages: Vec::new(),
+                    objects: Vec::new(),
+                    diagnostics: Vec::new(),
+                },
+                search_json: None,
+            }),
+        };
+
+        let exit_code = finish_build_result(result, &output_directory);
+
+        assert_eq!(exit_code, 1);
+        assert_eq!(
+            fs::read_to_string(output_directory.join("docs.html")).expect("HTML is written"),
+            "<h1>Guide</h1>"
+        );
+        assert!(
+            fs::read_to_string(output_directory.join("docs.agent.json"))
+                .expect("agent JSON is written")
+                .contains("\"schema_version\": \"adoc.agent.v0\"")
+        );
+        assert_eq!(
+            fs::read_to_string(output_directory.join("docs.search.json"))
+                .expect("prior search artifact remains readable"),
+            "prior search artifact"
+        );
+    }
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time after Unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("adoc-cli-{name}-{}-{nanos}", std::process::id()))
+    }
 
     #[test]
     fn explain_exit_code_allows_warning_diagnostics_when_record_is_present() {
