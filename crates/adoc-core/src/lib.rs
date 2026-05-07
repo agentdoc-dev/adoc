@@ -34,7 +34,7 @@ fn default_embedding_provider() -> Result<
     domain::ports::embedding_provider::EmbeddingError,
 > {
     #[cfg(feature = "test-embedding-provider")]
-    if std::env::var("ADOC_TEST_EMBEDDING_PROVIDER").as_deref() != Ok("fastembed") {
+    if use_in_memory_test_embedding_provider() {
         return Ok(Box::new(
             infrastructure::embedding::in_memory::InMemoryProvider::new(384),
         ));
@@ -53,6 +53,11 @@ fn default_embedding_provider() -> Result<
             "embedding support is disabled; rebuild with the `embeddings` feature or run with --no-embeddings".to_string(),
         ))
     }
+}
+
+#[cfg(feature = "test-embedding-provider")]
+fn use_in_memory_test_embedding_provider() -> bool {
+    std::env::var("ADOC_TEST_EMBEDDING_PROVIDER").as_deref() == Ok("in-memory")
 }
 
 fn build_workspace_with_embedding_provider_factory<F>(
@@ -209,5 +214,49 @@ mod tests {
                 .expect("help")
                 .contains("--no-embeddings")
         );
+    }
+
+    #[cfg(feature = "test-embedding-provider")]
+    #[test]
+    fn test_embedding_provider_env_uses_in_memory_only_when_explicitly_requested() {
+        temp_env_remove("ADOC_TEST_EMBEDDING_PROVIDER", || {
+            assert!(!use_in_memory_test_embedding_provider());
+        });
+        temp_env_set("ADOC_TEST_EMBEDDING_PROVIDER", "fastembed", || {
+            assert!(!use_in_memory_test_embedding_provider());
+        });
+        temp_env_set("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory", || {
+            assert!(use_in_memory_test_embedding_provider());
+        });
+    }
+
+    #[cfg(feature = "test-embedding-provider")]
+    fn temp_env_remove(name: &str, test: impl FnOnce()) {
+        let previous = std::env::var_os(name);
+        unsafe {
+            std::env::remove_var(name);
+        }
+        test();
+        restore_env(name, previous);
+    }
+
+    #[cfg(feature = "test-embedding-provider")]
+    fn temp_env_set(name: &str, value: &str, test: impl FnOnce()) {
+        let previous = std::env::var_os(name);
+        unsafe {
+            std::env::set_var(name, value);
+        }
+        test();
+        restore_env(name, previous);
+    }
+
+    #[cfg(feature = "test-embedding-provider")]
+    fn restore_env(name: &str, value: Option<std::ffi::OsString>) {
+        unsafe {
+            match value {
+                Some(value) => std::env::set_var(name, value),
+                None => std::env::remove_var(name),
+            }
+        }
     }
 }
