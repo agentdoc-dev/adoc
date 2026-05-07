@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use adoc_core::{
@@ -108,7 +109,7 @@ fn lexical_query(text: &str, top: usize, filters: SearchFilters) -> SearchQuery 
         text: text.to_string(),
         mode: SearchMode::Lexical,
         filters,
-        top,
+        top: NonZeroUsize::new(top).expect("test search top is non-zero"),
     }
 }
 
@@ -703,7 +704,7 @@ fn search_returns_invalid_filter_diagnostics_without_records() {
 }
 
 #[test]
-fn search_returns_empty_without_diagnostics_for_empty_artifact_no_matches_and_zero_top() {
+fn search_returns_empty_without_diagnostics_for_empty_artifact_and_no_matches() {
     let empty_session = load_session_from_objects(Vec::new());
     let empty_result = search(
         &empty_session,
@@ -726,15 +727,9 @@ fn search_returns_empty_without_diagnostics_for_empty_artifact_no_matches_and_ze
         &populated_session,
         lexical_query("refunds", 10, SearchFilters::default()),
     );
-    let zero_top = search(
-        &populated_session,
-        lexical_query("credits", 0, SearchFilters::default()),
-    );
 
     assert!(no_match.records.is_empty());
     assert!(no_match.diagnostics.is_empty());
-    assert!(zero_top.records.is_empty());
-    assert!(zero_top.diagnostics.is_empty());
 }
 
 #[test]

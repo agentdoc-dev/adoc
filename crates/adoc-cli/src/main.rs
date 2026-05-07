@@ -234,7 +234,7 @@ fn search_command(
             text: query,
             mode: SearchMode::Lexical,
             filters,
-            top: top.get(),
+            top,
         },
     );
     let search_result = SearchResult {

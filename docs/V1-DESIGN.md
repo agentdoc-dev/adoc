@@ -99,7 +99,7 @@ pub struct RetrievalLoadResult {
 pub struct SearchQuery {
     pub text: String,
     pub mode: SearchMode,             // Hybrid | Lexical | Semantic
-    pub top: usize,                   // default 10
+    pub top: std::num::NonZeroUsize,  // default 10
     pub filters: SearchFilters,
 }
 
