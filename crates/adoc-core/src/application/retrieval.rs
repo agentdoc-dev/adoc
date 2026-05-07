@@ -5,7 +5,7 @@ use crate::domain::artifact::{AgentJsonDocument, AgentJsonObject};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
 use crate::domain::ports::artifact_reader::ArtifactReader;
-use crate::domain::retrieval::RetrievalRecord;
+use crate::domain::retrieval::{RetrievalRecord, SearchMode};
 
 pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v0";
 
@@ -31,6 +31,22 @@ pub struct ExplainResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchQuery {
+    pub text: String,
+    pub mode: SearchMode,
+    pub filters: SearchFilters,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SearchFilters {}
+
+#[derive(Debug, Clone)]
+pub struct SearchResult {
+    pub records: Vec<RetrievalRecord>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RetrievalEnvelope {
     pub schema_version: &'static str,
@@ -50,6 +66,12 @@ impl RetrievalEnvelope {
 
 impl From<ExplainResult> for RetrievalEnvelope {
     fn from(result: ExplainResult) -> Self {
+        Self::new(result.records, result.diagnostics)
+    }
+}
+
+impl From<SearchResult> for RetrievalEnvelope {
+    fn from(result: SearchResult) -> Self {
         Self::new(result.records, result.diagnostics)
     }
 }

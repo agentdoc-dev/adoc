@@ -25,6 +25,29 @@ pub struct RetrievalRecord {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub fields: BTreeMap<String, String>,
     pub relations: AgentJsonRelations,
+    #[serde(rename = "match", skip_serializing_if = "Option::is_none")]
+    pub search_match: Option<RetrievalMatch>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RetrievalMatch {
+    pub mode: SearchMode,
+    pub lexical_rank: u32,
+}
+
+impl RetrievalMatch {
+    pub fn lexical(rank: u32) -> Self {
+        Self {
+            mode: SearchMode::Lexical,
+            lexical_rank: rank,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchMode {
+    Lexical,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -36,6 +59,19 @@ pub struct RetrievalSource {
 
 impl From<&AgentJsonObject> for RetrievalRecord {
     fn from(object: &AgentJsonObject) -> Self {
+        Self::from_object_with_optional_match(object, None)
+    }
+}
+
+impl RetrievalRecord {
+    pub fn from_object_with_match(object: &AgentJsonObject, search_match: RetrievalMatch) -> Self {
+        Self::from_object_with_optional_match(object, Some(search_match))
+    }
+
+    fn from_object_with_optional_match(
+        object: &AgentJsonObject,
+        search_match: Option<RetrievalMatch>,
+    ) -> Self {
         let mut evidence = BTreeMap::new();
         let mut fields = BTreeMap::new();
 
@@ -62,6 +98,7 @@ impl From<&AgentJsonObject> for RetrievalRecord {
             evidence,
             fields,
             relations: object.relations.clone(),
+            search_match,
         }
     }
 }

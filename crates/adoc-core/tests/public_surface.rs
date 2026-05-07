@@ -11,8 +11,9 @@ use adoc_core::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, BuildArtifacts,
     CompileInput, CompileResult, Diagnostic, DiagnosticCode, ExplainResult, JsonRetrievalFormatter,
     RetrievalEnvelope, RetrievalFormatError, RetrievalFormatter, RetrievalInput,
-    RetrievalLoadResult, RetrievalRecord, RetrievalSession, RetrievalSource, Severity,
-    TextRetrievalFormatter, compile_workspace, explain_object, load_retrieval_session,
+    RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalSession, RetrievalSource,
+    SearchFilters, SearchMode, SearchQuery, SearchResult, Severity, TextRetrievalFormatter,
+    compile_workspace, explain_object, load_retrieval_session,
 };
 
 #[test]
@@ -190,8 +191,23 @@ fn public_surface_compiles_with_only_documented_imports() {
         evidence: std::collections::BTreeMap::new(),
         fields: std::collections::BTreeMap::new(),
         relations: AgentJsonRelations::default(),
+        search_match: None,
     };
     let _: RetrievalRecord = record;
+
+    let _: SearchMode = SearchMode::Lexical;
+    let _: SearchFilters = SearchFilters::default();
+    let _: SearchQuery = SearchQuery {
+        text: String::from("credits"),
+        mode: SearchMode::Lexical,
+        filters: SearchFilters::default(),
+    };
+    let _: RetrievalMatch = RetrievalMatch::lexical(1);
+    let search_result = SearchResult {
+        records: Vec::new(),
+        diagnostics: Vec::new(),
+    };
+    let _: RetrievalEnvelope = RetrievalEnvelope::from(search_result);
 
     let explain_result = ExplainResult {
         records: Vec::new(),
