@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use adoc_core::{
     AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, DiagnosticCode,
     JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput, RetrievalMatch,
-    RetrievalRecord, RetrievalSource, SearchResult, TextRetrievalFormatter, explain_object,
-    load_retrieval_session,
+    RetrievalRecord, RetrievalSource, SearchFilters, SearchResult, TextRetrievalFormatter,
+    explain_object, load_retrieval_session,
 };
 
 fn fixture_path(relative: &str) -> PathBuf {
@@ -22,6 +22,144 @@ fn write_temp_artifact(name: &str, contents: &str) -> tempfile::NamedTempFile {
         .expect("temp artifact can be created");
     std::fs::write(artifact.path(), contents).expect("temp artifact can be written");
     artifact
+}
+
+fn retrieval_filter_object(
+    id: &str,
+    kind: &str,
+    status: Option<&str>,
+    owner: Option<&str>,
+    source_path: &str,
+) -> AgentJsonObject {
+    let mut fields = std::collections::BTreeMap::new();
+    if let Some(owner) = owner {
+        fields.insert("owner".to_string(), owner.to_string());
+    }
+
+    AgentJsonObject {
+        id: id.to_string(),
+        kind: kind.to_string(),
+        status: status.map(str::to_string),
+        body: "Filter fixture body.".to_string(),
+        page_id: "team.page".to_string(),
+        source_span: AgentJsonSourceSpan {
+            path: source_path.to_string(),
+            line: 1,
+            column: 1,
+        },
+        fields,
+        relations: AgentJsonRelations::default(),
+    }
+}
+
+#[test]
+fn search_filter_matches_case_insensitive_substrings_on_object_metadata() {
+    let object = retrieval_filter_object(
+        "billing.verified-credits",
+        "claim",
+        Some("verified"),
+        Some("Team-Billing"),
+        "docs/billing/credits.adoc",
+    );
+    let filters = SearchFilters {
+        kind: Some("CLA".to_string()),
+        status: Some("VERI".to_string()),
+        owner: Some("billing".to_string()),
+        source_path: Some("CREDITS.ADOC".to_string()),
+    };
+
+    assert!(filters.matches(&object));
+}
+
+#[test]
+fn search_filter_rejects_missing_status_or_owner_when_filter_is_supplied() {
+    let object = retrieval_filter_object(
+        "glossary.credit",
+        "glossary",
+        None,
+        None,
+        "docs/glossary.adoc",
+    );
+
+    assert!(
+        !SearchFilters {
+            kind: None,
+            status: Some("verified".to_string()),
+            owner: None,
+            source_path: None,
+        }
+        .matches(&object)
+    );
+    assert!(
+        !SearchFilters {
+            kind: None,
+            status: None,
+            owner: Some("team".to_string()),
+            source_path: None,
+        }
+        .matches(&object)
+    );
+}
+
+#[test]
+fn search_filter_validation_checks_each_supplied_filter_independently() {
+    let objects = vec![
+        retrieval_filter_object(
+            "billing.claim",
+            "claim",
+            Some("draft"),
+            Some("team-a"),
+            "docs/billing.adoc",
+        ),
+        retrieval_filter_object(
+            "architecture.decision",
+            "decision",
+            Some("accepted"),
+            Some("team-b"),
+            "docs/architecture.adoc",
+        ),
+    ];
+    let filters = SearchFilters {
+        kind: Some("claim".to_string()),
+        status: None,
+        owner: Some("team-b".to_string()),
+        source_path: None,
+    };
+
+    assert!(filters.validate_against(&objects).is_empty());
+    assert!(objects.iter().all(|object| !filters.matches(object)));
+}
+
+#[test]
+fn search_filter_validation_reports_each_supplied_filter_with_no_independent_match() {
+    let objects = vec![retrieval_filter_object(
+        "billing.claim",
+        "claim",
+        Some("draft"),
+        Some("team-a"),
+        "docs/billing.adoc",
+    )];
+    let filters = SearchFilters {
+        kind: Some("decision".to_string()),
+        status: Some("verified".to_string()),
+        owner: Some("team-b".to_string()),
+        source_path: Some("architecture".to_string()),
+    };
+
+    let diagnostics = filters.validate_against(&objects);
+
+    assert_eq!(diagnostics.len(), 4);
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.code == DiagnosticCode::SearchInvalidFilter)
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.help.as_deref()
+                == Some(DiagnosticCode::SearchInvalidFilter.default_help()))
+    );
 }
 
 #[test]

@@ -5,6 +5,7 @@ use crate::domain::artifact::{AgentJsonDocument, AgentJsonObject};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
 use crate::domain::ports::artifact_reader::ArtifactReader;
+pub use crate::domain::retrieval::SearchFilters;
 use crate::domain::retrieval::{RetrievalRecord, SearchMode};
 
 pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v0";
@@ -37,9 +38,6 @@ pub struct SearchQuery {
     pub mode: SearchMode,
     pub filters: SearchFilters,
 }
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct SearchFilters {}
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
