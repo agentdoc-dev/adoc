@@ -1,4 +1,5 @@
 pub(crate) mod agent_json;
+pub(crate) mod search_json;
 
 pub(crate) use agent_json::AgentJsonArtifact;
 

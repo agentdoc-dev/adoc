@@ -66,8 +66,33 @@ pub struct AgentJsonRelations {
     pub related_to: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SearchArtifactDocument;
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SearchArtifactDocument {
+    pub schema_version: String,
+    pub model: SearchModelHeader,
+    pub agent_artifact_hash: String,
+    pub embeddings: Vec<SearchEmbedding>,
+}
+
+impl SearchArtifactDocument {
+    pub fn to_pretty_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchModelHeader {
+    pub id: String,
+    pub provider: String,
+    pub dim: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SearchEmbedding {
+    pub id: String,
+    pub content_hash: String,
+    pub vector: Vec<f32>,
+}
 
 #[cfg(test)]
 mod tests {
@@ -130,6 +155,38 @@ mod tests {
         assert!(
             value.get("status").is_none(),
             "absent status must be omitted from agent JSON"
+        );
+    }
+
+    #[test]
+    fn search_artifact_serializes_with_v1_3_shape() {
+        let artifact = SearchArtifactDocument {
+            schema_version: "adoc.search.v0".to_string(),
+            model: SearchModelHeader {
+                id: "bge-small-en-v1.5".to_string(),
+                provider: "fastembed".to_string(),
+                dim: 384,
+            },
+            agent_artifact_hash: "sha256:agent".to_string(),
+            embeddings: vec![SearchEmbedding {
+                id: "billing.credits".to_string(),
+                content_hash: "sha256:content".to_string(),
+                vector: vec![0.25, -0.5],
+            }],
+        };
+
+        let value = serde_json::to_value(&artifact).expect("search artifact serializes");
+
+        assert_eq!(value["schema_version"], "adoc.search.v0");
+        assert_eq!(value["model"]["id"], "bge-small-en-v1.5");
+        assert_eq!(value["model"]["provider"], "fastembed");
+        assert_eq!(value["model"]["dim"], 384);
+        assert_eq!(value["agent_artifact_hash"], "sha256:agent");
+        assert_eq!(value["embeddings"][0]["id"], "billing.credits");
+        assert_eq!(value["embeddings"][0]["content_hash"], "sha256:content");
+        assert_eq!(
+            value["embeddings"][0]["vector"],
+            serde_json::json!([0.25, -0.5])
         );
     }
 }
