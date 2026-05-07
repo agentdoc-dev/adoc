@@ -120,6 +120,12 @@ pub(crate) fn to_source(segments: &[InlineSegment]) -> String {
     buffer
 }
 
+pub(crate) fn embedding_plain_text(segments: &[InlineSegment]) -> String {
+    let mut buffer = String::new();
+    append_embedding_plain_text(segments, &mut buffer);
+    buffer
+}
+
 fn append_source(segments: &[InlineSegment], buffer: &mut String) {
     for segment in segments {
         match segment {
@@ -146,6 +152,28 @@ fn append_source(segments: &[InlineSegment], buffer: &mut String) {
                 buffer.push_str(url);
                 buffer.push(')');
             }
+            InlineSegment::ObjectReferencePending { raw_id, .. } => {
+                buffer.push_str("[[");
+                buffer.push_str(raw_id);
+                buffer.push_str("]]");
+            }
+            InlineSegment::ObjectReference { id, .. } => {
+                buffer.push_str("[[");
+                buffer.push_str(id.as_str());
+                buffer.push_str("]]");
+            }
+        }
+    }
+}
+
+fn append_embedding_plain_text(segments: &[InlineSegment], buffer: &mut String) {
+    for segment in segments {
+        match segment {
+            InlineSegment::Text(text) | InlineSegment::Code(text) => buffer.push_str(text),
+            InlineSegment::Emphasis(inner) | InlineSegment::Strong(inner) => {
+                append_embedding_plain_text(inner, buffer)
+            }
+            InlineSegment::Link { text, .. } => append_embedding_plain_text(text, buffer),
             InlineSegment::ObjectReferencePending { raw_id, .. } => {
                 buffer.push_str("[[");
                 buffer.push_str(raw_id);
