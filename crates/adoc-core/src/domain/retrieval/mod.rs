@@ -1,3 +1,3 @@
 mod retrieval_record;
 
-pub use retrieval_record::{RetrievalRecord, RetrievalSource};
+pub use retrieval_record::{RetrievalMatch, RetrievalRecord, RetrievalSource, SearchMode};

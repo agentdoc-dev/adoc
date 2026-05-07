@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
 use adoc_core::{
-    AgentJsonRelations, DiagnosticCode, JsonRetrievalFormatter, RetrievalEnvelope,
-    RetrievalFormatter, RetrievalInput, RetrievalRecord, RetrievalSource, TextRetrievalFormatter,
-    explain_object, load_retrieval_session,
+    AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, DiagnosticCode,
+    JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput, RetrievalMatch,
+    RetrievalRecord, RetrievalSource, SearchResult, TextRetrievalFormatter, explain_object,
+    load_retrieval_session,
 };
 
 fn fixture_path(relative: &str) -> PathBuf {
@@ -99,6 +100,68 @@ fn retrieval_envelope_serializes_stable_schema_with_records_and_diagnostics() {
 }
 
 #[test]
+fn retrieval_record_serializes_lexical_search_match_contract() {
+    let object = AgentJsonObject {
+        id: "billing.verified-credits".to_string(),
+        kind: "claim".to_string(),
+        status: Some("verified".to_string()),
+        body: "Credits are verified.".to_string(),
+        page_id: "team.billing".to_string(),
+        source_span: AgentJsonSourceSpan {
+            path: "billing.adoc".to_string(),
+            line: 5,
+            column: 1,
+        },
+        fields: std::collections::BTreeMap::new(),
+        relations: AgentJsonRelations::default(),
+    };
+
+    let record = RetrievalRecord::from_object_with_match(&object, RetrievalMatch::lexical(1));
+    let value = serde_json::to_value(&record).expect("record serializes");
+
+    assert_eq!(
+        value["match"],
+        serde_json::json!({
+            "mode": "lexical",
+            "lexical_rank": 1
+        })
+    );
+    assert!(value.get("retrieval").is_none());
+}
+
+#[test]
+fn retrieval_envelope_can_be_created_from_search_result() {
+    let record = RetrievalRecord {
+        id: "billing.credits".to_string(),
+        kind: "claim".to_string(),
+        status: Some("verified".to_string()),
+        owner: None,
+        verified_at: None,
+        body: "Credits decrement after successful payment.".to_string(),
+        source: RetrievalSource {
+            path: "docs/billing.adoc".to_string(),
+            line: 9,
+            column: 1,
+        },
+        evidence: std::collections::BTreeMap::new(),
+        fields: std::collections::BTreeMap::new(),
+        relations: AgentJsonRelations::default(),
+        search_match: Some(RetrievalMatch::lexical(1)),
+    };
+    let result = SearchResult {
+        records: vec![record],
+        diagnostics: Vec::new(),
+    };
+
+    let value = serde_json::to_value(RetrievalEnvelope::from(result)).expect("envelope serializes");
+
+    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["records"][0]["match"]["mode"], "lexical");
+    assert_eq!(value["records"][0]["match"]["lexical_rank"], 1);
+    assert_eq!(value["diagnostics"], serde_json::json!([]));
+}
+
+#[test]
 fn explain_object_reports_unknown_id_without_loading_source() {
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: fixture_path(
@@ -191,6 +254,7 @@ fn text_retrieval_formatter_renders_statement_body_and_sorted_fields() {
                 ("decided_by".to_string(), "architecture".to_string()),
             ]),
             relations: AgentJsonRelations::default(),
+            search_match: None,
         }],
         Vec::new(),
     );
@@ -251,6 +315,7 @@ fn text_retrieval_formatter_renders_each_relation_target_on_its_own_line() {
                     "billing.credits.reconciliation".to_string(),
                 ],
             },
+            search_match: None,
         }],
         Vec::new(),
     );
@@ -297,6 +362,7 @@ fn text_retrieval_formatter_renders_glossary_kind_metadata() {
                 "billing credit".to_string(),
             )]),
             relations: AgentJsonRelations::default(),
+            search_match: None,
         }],
         Vec::new(),
     );
@@ -332,6 +398,7 @@ fn text_retrieval_formatter_renders_unknown_evidence_keys_after_known_order() {
             ]),
             fields: std::collections::BTreeMap::new(),
             relations: AgentJsonRelations::default(),
+            search_match: None,
         }],
         Vec::new(),
     );
@@ -367,6 +434,7 @@ fn json_retrieval_formatter_preserves_envelope_shape() {
             evidence: std::collections::BTreeMap::new(),
             fields: std::collections::BTreeMap::new(),
             relations: AgentJsonRelations::default(),
+            search_match: None,
         }],
         Vec::new(),
     );

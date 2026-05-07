@@ -309,6 +309,7 @@ mod tests {
                 evidence: BTreeMap::new(),
                 fields: BTreeMap::new(),
                 relations: AgentJsonRelations::default(),
+                search_match: None,
             }],
             diagnostics: vec![Diagnostic {
                 code: DiagnosticCode::ClaimStatusCasing,
