@@ -94,12 +94,20 @@ where
         }
     };
 
-    let exact_lookup = match build_exact_lookup(document.objects) {
+    let AgentJsonDocument {
+        objects,
+        diagnostics: document_diagnostics,
+        ..
+    } = document;
+
+    let exact_lookup = match build_exact_lookup(objects) {
         Ok(exact_lookup) => exact_lookup,
-        Err(diagnostics) => {
+        Err(mut diagnostics) => {
+            let mut all_diagnostics = document_diagnostics;
+            all_diagnostics.append(&mut diagnostics);
             return RetrievalLoadResult {
                 session: None,
-                diagnostics,
+                diagnostics: all_diagnostics,
             };
         }
     };
@@ -110,7 +118,7 @@ where
             exact_lookup,
             lexical_index,
         }),
-        diagnostics: Vec::new(),
+        diagnostics: document_diagnostics,
     }
 }
 
@@ -340,5 +348,30 @@ mod tests {
 
         assert_eq!(explained.records.len(), 1);
         assert_eq!(explained.records[0].id, "billing.reader-port");
+    }
+
+    #[test]
+    fn retrieval_session_load_preserves_document_diagnostics_on_success() {
+        let mut document = document_with_object("billing.reader-port");
+        document.diagnostics.push(Diagnostic {
+            code: DiagnosticCode::ParseRawHtml,
+            severity: crate::domain::diagnostic::Severity::Warning,
+            message: "artifact carries source warning".to_string(),
+            span: None,
+            object_id: None,
+            help: None,
+        });
+        let reader = StubArtifactReader { document };
+
+        let result = load_retrieval_session_with_reader(
+            RetrievalInput {
+                artifact_path: PathBuf::from("ignored.agent.json"),
+            },
+            &reader,
+        );
+
+        assert!(result.session.is_some());
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(result.diagnostics[0].code, DiagnosticCode::ParseRawHtml);
     }
 }

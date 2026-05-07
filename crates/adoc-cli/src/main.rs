@@ -7,9 +7,9 @@ use std::process::ExitCode;
 
 use adoc_core::{
     AgentJsonDocument, CompileInput, Diagnostic, DiagnosticCode, ExplainResult,
-    JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput, SearchFilters,
-    SearchMode, SearchQuery, SearchResult, Severity, TextRetrievalFormatter, compile_workspace,
-    explain_object, load_retrieval_session, search,
+    JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput,
+    RetrievalLoadResult, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity,
+    TextRetrievalFormatter, compile_workspace, explain_object, load_retrieval_session, search,
 };
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
@@ -144,22 +144,36 @@ fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact,
     });
-    let session = match load_result.session {
+    let RetrievalLoadResult {
+        session,
+        diagnostics: load_diagnostics,
+    } = load_result;
+    let session = match session {
         Some(session) => session,
         None => {
             if format.is_json() {
-                return print_explain_json(&RetrievalEnvelope::new(
-                    Vec::new(),
-                    load_result.diagnostics,
-                ))
-                .map_or_else(report, |()| 2);
+                return print_explain_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
+                    .map_or_else(report, |()| 2);
             }
-            eprint_diagnostics(&load_result.diagnostics);
+            eprint_diagnostics(&load_diagnostics);
             return 2;
         }
     };
 
+    if diagnostics_have_errors(&load_diagnostics) {
+        if format.is_json() {
+            return print_explain_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
+                .map_or_else(report, |()| 2);
+        }
+        eprint_diagnostics(&load_diagnostics);
+        return 2;
+    }
+
     let explain_result = explain_object(&session, &object_id);
+    let explain_result = ExplainResult {
+        records: explain_result.records,
+        diagnostics: merge_diagnostics(load_diagnostics, explain_result.diagnostics),
+    };
     let exit_code = explain_exit_code(&explain_result);
 
     if format.is_json() {
@@ -170,6 +184,10 @@ fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
     if exit_code != 0 {
         eprint_diagnostics(&explain_result.diagnostics);
         return exit_code;
+    }
+
+    if !explain_result.diagnostics.is_empty() {
+        eprint_diagnostics(&explain_result.diagnostics);
     }
 
     print_explain_text(&RetrievalEnvelope::from(explain_result)).map_or_else(report, |()| 0)
@@ -185,20 +203,30 @@ fn search_command(
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact,
     });
-    let session = match load_result.session {
+    let RetrievalLoadResult {
+        session,
+        diagnostics: load_diagnostics,
+    } = load_result;
+    let session = match session {
         Some(session) => session,
         None => {
             if format.is_json() {
-                return print_explain_json(&RetrievalEnvelope::new(
-                    Vec::new(),
-                    load_result.diagnostics,
-                ))
-                .map_or_else(report, |()| 2);
+                return print_explain_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
+                    .map_or_else(report, |()| 2);
             }
-            eprint_diagnostics(&load_result.diagnostics);
+            eprint_diagnostics(&load_diagnostics);
             return 2;
         }
     };
+
+    if diagnostics_have_errors(&load_diagnostics) {
+        if format.is_json() {
+            return print_explain_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
+                .map_or_else(report, |()| 2);
+        }
+        eprint_diagnostics(&load_diagnostics);
+        return 2;
+    }
 
     let search_result = search(
         &session,
@@ -209,6 +237,10 @@ fn search_command(
             top: top.get(),
         },
     );
+    let search_result = SearchResult {
+        records: search_result.records,
+        diagnostics: merge_diagnostics(load_diagnostics, search_result.diagnostics),
+    };
     let exit_code = search_exit_code(&search_result);
 
     if format.is_json() {
@@ -222,6 +254,9 @@ fn search_command(
     }
 
     let envelope = RetrievalEnvelope::from(search_result);
+    if !envelope.diagnostics.is_empty() {
+        eprint_diagnostics(&envelope.diagnostics);
+    }
     if envelope.records.is_empty() {
         println!("(no matches)");
         return 0;
@@ -272,6 +307,20 @@ fn search_exit_code(result: &SearchResult) -> i32 {
         return 2;
     }
     0
+}
+
+fn diagnostics_have_errors(diagnostics: &[Diagnostic]) -> bool {
+    diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == Severity::Error)
+}
+
+fn merge_diagnostics(
+    mut load_diagnostics: Vec<Diagnostic>,
+    mut command_diagnostics: Vec<Diagnostic>,
+) -> Vec<Diagnostic> {
+    load_diagnostics.append(&mut command_diagnostics);
+    load_diagnostics
 }
 
 fn print_explain_text(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
