@@ -16,8 +16,6 @@ pub(crate) struct LexicalSearchHit {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct LexicalIndex {
     documents: Vec<IndexedDocument>,
-    document_frequencies: BTreeMap<String, usize>,
-    average_document_len: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -30,24 +28,15 @@ struct IndexedDocument {
 impl LexicalIndex {
     pub(crate) fn from_objects<'a>(objects: impl IntoIterator<Item = &'a AgentJsonObject>) -> Self {
         let mut documents = Vec::new();
-        let mut document_frequencies = BTreeMap::new();
-        let mut total_document_len = 0usize;
 
         for object in objects {
             let tokens = indexed_tokens(object);
             let token_count = tokens.len();
-            total_document_len += token_count;
 
             let mut term_frequencies = BTreeMap::new();
-            let mut seen_terms = BTreeSet::new();
 
             for token in tokens {
-                *term_frequencies.entry(token.clone()).or_insert(0) += 1;
-                seen_terms.insert(token);
-            }
-
-            for term in seen_terms {
-                *document_frequencies.entry(term).or_insert(0) += 1;
+                *term_frequencies.entry(token).or_insert(0) += 1;
             }
 
             documents.push(IndexedDocument {
@@ -57,30 +46,69 @@ impl LexicalIndex {
             });
         }
 
-        let average_document_len = if documents.is_empty() {
-            0.0
-        } else {
-            total_document_len as f64 / documents.len() as f64
-        };
-
-        Self {
-            documents,
-            document_frequencies,
-            average_document_len,
-        }
+        Self { documents }
     }
 
+    #[cfg(test)]
     pub(crate) fn search(&self, query: &str) -> Vec<LexicalSearchHit> {
         let query_terms = tokenize(query);
         if query_terms.is_empty() || self.documents.is_empty() {
             return Vec::new();
         }
 
-        let mut hits: Vec<_> = self
+        self.search_documents(query_terms, self.documents.iter().collect())
+    }
+
+    pub(crate) fn search_candidates<'a>(
+        &self,
+        query: &str,
+        candidate_ids: impl IntoIterator<Item = &'a str>,
+    ) -> Vec<LexicalSearchHit> {
+        let query_terms = tokenize(query);
+        if query_terms.is_empty() || self.documents.is_empty() {
+            return Vec::new();
+        }
+
+        let candidate_ids: BTreeSet<&str> = candidate_ids.into_iter().collect();
+        if candidate_ids.is_empty() {
+            return Vec::new();
+        }
+
+        let documents = self
             .documents
             .iter()
+            .filter(|document| candidate_ids.contains(document.id.as_str()))
+            .collect();
+
+        self.search_documents(query_terms, documents)
+    }
+
+    fn search_documents(
+        &self,
+        query_terms: Vec<String>,
+        documents: Vec<&IndexedDocument>,
+    ) -> Vec<LexicalSearchHit> {
+        if documents.is_empty() {
+            return Vec::new();
+        }
+
+        let average_document_len = documents
+            .iter()
+            .map(|document| document.token_count)
+            .sum::<usize>() as f64
+            / documents.len() as f64;
+        let document_frequencies = document_frequencies_for_terms(&documents, &query_terms);
+
+        let mut hits: Vec<_> = documents
+            .iter()
             .filter_map(|document| {
-                let score = self.score_document(document, &query_terms);
+                let score = score_document(
+                    document,
+                    &query_terms,
+                    documents.len(),
+                    average_document_len,
+                    &document_frequencies,
+                );
                 (score > 0.0).then(|| LexicalSearchHit {
                     id: document.id.clone(),
                     lexical_rank: 0,
@@ -102,37 +130,75 @@ impl LexicalIndex {
 
         hits
     }
+}
 
-    fn score_document(&self, document: &IndexedDocument, query_terms: &[String]) -> f64 {
-        query_terms
+fn document_frequencies_for_terms(
+    documents: &[&IndexedDocument],
+    query_terms: &[String],
+) -> BTreeMap<String, usize> {
+    let mut document_frequencies = BTreeMap::new();
+
+    for term in query_terms {
+        let frequency = documents
             .iter()
-            .map(|term| self.score_term(document, term))
-            .sum()
+            .filter(|document| document.term_frequencies.contains_key(term))
+            .count();
+        if frequency > 0 {
+            document_frequencies.insert(term.clone(), frequency);
+        }
     }
 
-    fn score_term(&self, document: &IndexedDocument, term: &str) -> f64 {
-        let Some(&term_frequency) = document.term_frequencies.get(term) else {
-            return 0.0;
-        };
-        let Some(&document_frequency) = self.document_frequencies.get(term) else {
-            return 0.0;
-        };
+    document_frequencies
+}
 
-        let document_count = self.documents.len() as f64;
-        let term_frequency = term_frequency as f64;
-        let document_frequency = document_frequency as f64;
-        let document_len = document.token_count as f64;
-        let length_norm = if self.average_document_len == 0.0 {
-            0.0
-        } else {
-            document_len / self.average_document_len
-        };
-        let idf =
-            ((document_count - document_frequency + 0.5) / (document_frequency + 0.5) + 1.0).ln();
-        let denominator = term_frequency + BM25_K1 * (1.0 - BM25_B + BM25_B * length_norm);
+fn score_document(
+    document: &IndexedDocument,
+    query_terms: &[String],
+    document_count: usize,
+    average_document_len: f64,
+    document_frequencies: &BTreeMap<String, usize>,
+) -> f64 {
+    query_terms
+        .iter()
+        .map(|term| {
+            score_term(
+                document,
+                term,
+                document_count,
+                average_document_len,
+                document_frequencies,
+            )
+        })
+        .sum()
+}
 
-        idf * (term_frequency * (BM25_K1 + 1.0)) / denominator
-    }
+fn score_term(
+    document: &IndexedDocument,
+    term: &str,
+    document_count: usize,
+    average_document_len: f64,
+    document_frequencies: &BTreeMap<String, usize>,
+) -> f64 {
+    let Some(&term_frequency) = document.term_frequencies.get(term) else {
+        return 0.0;
+    };
+    let Some(&document_frequency) = document_frequencies.get(term) else {
+        return 0.0;
+    };
+
+    let document_count = document_count as f64;
+    let term_frequency = term_frequency as f64;
+    let document_frequency = document_frequency as f64;
+    let document_len = document.token_count as f64;
+    let length_norm = if average_document_len == 0.0 {
+        0.0
+    } else {
+        document_len / average_document_len
+    };
+    let idf = ((document_count - document_frequency + 0.5) / (document_frequency + 0.5) + 1.0).ln();
+    let denominator = term_frequency + BM25_K1 * (1.0 - BM25_B + BM25_B * length_norm);
+
+    idf * (term_frequency * (BM25_K1 + 1.0)) / denominator
 }
 
 fn indexed_tokens(object: &AgentJsonObject) -> Vec<String> {

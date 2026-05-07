@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
 use adoc_core::{
-    AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, DiagnosticCode,
+    AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, DiagnosticCode,
     JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput, RetrievalMatch,
-    RetrievalRecord, RetrievalSource, SearchFilters, SearchResult, TextRetrievalFormatter,
-    explain_object, load_retrieval_session,
+    RetrievalRecord, RetrievalSession, RetrievalSource, SearchFilters, SearchMode, SearchQuery,
+    SearchResult, TextRetrievalFormatter, explain_object, load_retrieval_session, search,
 };
 
 fn fixture_path(relative: &str) -> PathBuf {
@@ -22,6 +22,31 @@ fn write_temp_artifact(name: &str, contents: &str) -> tempfile::NamedTempFile {
         .expect("temp artifact can be created");
     std::fs::write(artifact.path(), contents).expect("temp artifact can be written");
     artifact
+}
+
+fn load_session_from_objects(objects: Vec<AgentJsonObject>) -> RetrievalSession {
+    let document = AgentJsonDocument {
+        schema_version: "adoc.agent.v0".to_string(),
+        pages: Vec::new(),
+        objects,
+        diagnostics: Vec::new(),
+    };
+    let artifact = write_temp_artifact(
+        "search",
+        &document
+            .to_pretty_json()
+            .expect("search fixture serializes to agent JSON"),
+    );
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+    });
+
+    assert!(
+        result.diagnostics.is_empty(),
+        "expected clean search fixture load, got {:?}",
+        result.diagnostics
+    );
+    result.session.expect("search fixture session loads")
 }
 
 fn retrieval_filter_object(
@@ -52,6 +77,50 @@ fn retrieval_filter_object(
     }
 }
 
+fn retrieval_search_object(
+    id: &str,
+    kind: &str,
+    status: Option<&str>,
+    owner: Option<&str>,
+    source_path: &str,
+    body: &str,
+) -> AgentJsonObject {
+    let mut object = retrieval_filter_object(id, kind, status, owner, source_path);
+    object.body = body.to_string();
+    object
+}
+
+fn lexical_query(text: &str, top: usize, filters: SearchFilters) -> SearchQuery {
+    SearchQuery {
+        text: text.to_string(),
+        mode: SearchMode::Lexical,
+        filters,
+        top,
+    }
+}
+
+fn search_ids(result: &SearchResult) -> Vec<&str> {
+    result
+        .records
+        .iter()
+        .map(|record| record.id.as_str())
+        .collect()
+}
+
+fn search_ranks(result: &SearchResult) -> Vec<u32> {
+    result
+        .records
+        .iter()
+        .map(|record| {
+            record
+                .search_match
+                .as_ref()
+                .expect("search result records include lexical match metadata")
+                .lexical_rank
+        })
+        .collect()
+}
+
 #[test]
 fn search_filter_matches_case_insensitive_substrings_on_object_metadata() {
     let object = retrieval_filter_object(
@@ -69,6 +138,352 @@ fn search_filter_matches_case_insensitive_substrings_on_object_metadata() {
     };
 
     assert!(filters.matches(&object));
+}
+
+#[test]
+fn search_pins_exact_object_id_as_rank_one() {
+    let session = load_session_from_objects(vec![
+        retrieval_search_object(
+            "billing.credits",
+            "claim",
+            Some("verified"),
+            Some("team-billing"),
+            "docs/billing.adoc",
+            "Short exact ID body.",
+        ),
+        retrieval_search_object(
+            "support.credits-heavy",
+            "claim",
+            Some("verified"),
+            Some("team-support"),
+            "docs/support.adoc",
+            "billing credits billing credits billing credits billing credits",
+        ),
+    ]);
+
+    let result = search(
+        &session,
+        lexical_query("billing.credits", 5, SearchFilters::default()),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(result.records[0].id, "billing.credits");
+    assert_eq!(
+        result.records[0].search_match,
+        Some(RetrievalMatch::lexical(1))
+    );
+}
+
+#[test]
+fn search_pins_id_prefix_matches_by_length_then_lexical_before_bm25() {
+    let session = load_session_from_objects(vec![
+        retrieval_search_object(
+            "billing.credits.b",
+            "claim",
+            None,
+            None,
+            "docs/billing.adoc",
+            "Prefix match beta.",
+        ),
+        retrieval_search_object(
+            "support.heavy",
+            "claim",
+            None,
+            None,
+            "docs/support.adoc",
+            "billing credit billing credit billing credit billing credit billing credit",
+        ),
+        retrieval_search_object(
+            "billing.credit",
+            "claim",
+            None,
+            None,
+            "docs/billing.adoc",
+            "Prefix match exact.",
+        ),
+        retrieval_search_object(
+            "billing.credits.a",
+            "claim",
+            None,
+            None,
+            "docs/billing.adoc",
+            "Prefix match alpha.",
+        ),
+        retrieval_search_object(
+            "billing.credits",
+            "claim",
+            None,
+            None,
+            "docs/billing.adoc",
+            "Prefix match plural.",
+        ),
+    ]);
+
+    let result = search(
+        &session,
+        lexical_query("billing.credit", 5, SearchFilters::default()),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(
+        search_ids(&result),
+        [
+            "billing.credit",
+            "billing.credits",
+            "billing.credits.a",
+            "billing.credits.b",
+            "support.heavy"
+        ]
+    );
+    assert_eq!(search_ranks(&result), [1, 2, 3, 4, 5]);
+}
+
+#[test]
+fn search_is_deterministic_when_repeated_on_same_session() {
+    let session = load_session_from_objects(vec![
+        retrieval_search_object(
+            "billing.credits.depth",
+            "claim",
+            None,
+            None,
+            "docs/billing.adoc",
+            "credits credits ledger",
+        ),
+        retrieval_search_object(
+            "billing.credits.single",
+            "claim",
+            None,
+            None,
+            "docs/billing.adoc",
+            "credits",
+        ),
+        retrieval_search_object(
+            "support.credits",
+            "claim",
+            None,
+            None,
+            "docs/support.adoc",
+            "credits support",
+        ),
+    ]);
+    let query = lexical_query("credits", 3, SearchFilters::default());
+
+    let first = search(&session, query.clone());
+    let second = search(&session, query);
+
+    assert!(first.diagnostics.is_empty());
+    assert_eq!(first.records, second.records);
+    assert_eq!(first.diagnostics, second.diagnostics);
+}
+
+#[test]
+fn search_applies_filters_individually_and_combined_before_ranking() {
+    let session = load_session_from_objects(vec![
+        retrieval_search_object(
+            "billing.verified-credits",
+            "claim",
+            Some("verified"),
+            Some("team-billing"),
+            "docs/billing.adoc",
+            "credits billing verified",
+        ),
+        retrieval_search_object(
+            "billing.draft-credits",
+            "claim",
+            Some("draft"),
+            Some("team-billing"),
+            "docs/billing.adoc",
+            "credits billing draft",
+        ),
+        retrieval_search_object(
+            "architecture.credit-decision",
+            "decision",
+            Some("accepted"),
+            Some("team-architecture"),
+            "docs/architecture.adoc",
+            "credits architecture decision",
+        ),
+        retrieval_search_object(
+            "support.credit-warning",
+            "warning",
+            Some("high"),
+            Some("team-support"),
+            "docs/support.adoc",
+            "credits support warning",
+        ),
+    ]);
+
+    let by_kind = search(
+        &session,
+        lexical_query(
+            "credits",
+            10,
+            SearchFilters {
+                kind: Some("claim".to_string()),
+                ..SearchFilters::default()
+            },
+        ),
+    );
+    let by_status = search(
+        &session,
+        lexical_query(
+            "credits",
+            10,
+            SearchFilters {
+                status: Some("verified".to_string()),
+                ..SearchFilters::default()
+            },
+        ),
+    );
+    let by_owner = search(
+        &session,
+        lexical_query(
+            "credits",
+            10,
+            SearchFilters {
+                owner: Some("architecture".to_string()),
+                ..SearchFilters::default()
+            },
+        ),
+    );
+    let by_source = search(
+        &session,
+        lexical_query(
+            "credits",
+            10,
+            SearchFilters {
+                source_path: Some("support".to_string()),
+                ..SearchFilters::default()
+            },
+        ),
+    );
+    let combined = search(
+        &session,
+        lexical_query(
+            "credits",
+            10,
+            SearchFilters {
+                kind: Some("claim".to_string()),
+                status: Some("draft".to_string()),
+                owner: Some("team-billing".to_string()),
+                source_path: Some("billing.adoc".to_string()),
+            },
+        ),
+    );
+
+    assert_eq!(
+        search_ids(&by_kind),
+        ["billing.draft-credits", "billing.verified-credits"]
+    );
+    assert_eq!(search_ids(&by_status), ["billing.verified-credits"]);
+    assert_eq!(search_ids(&by_owner), ["architecture.credit-decision"]);
+    assert_eq!(search_ids(&by_source), ["support.credit-warning"]);
+    assert_eq!(search_ids(&combined), ["billing.draft-credits"]);
+    assert!(combined.diagnostics.is_empty());
+}
+
+#[test]
+fn search_returns_empty_without_diagnostics_for_valid_filters_with_empty_intersection() {
+    let session = load_session_from_objects(vec![
+        retrieval_search_object(
+            "billing.credits",
+            "claim",
+            Some("verified"),
+            Some("team-billing"),
+            "docs/billing.adoc",
+            "credits billing",
+        ),
+        retrieval_search_object(
+            "architecture.credits",
+            "decision",
+            Some("accepted"),
+            Some("team-architecture"),
+            "docs/architecture.adoc",
+            "credits architecture",
+        ),
+    ]);
+
+    let result = search(
+        &session,
+        lexical_query(
+            "credits",
+            10,
+            SearchFilters {
+                kind: Some("claim".to_string()),
+                owner: Some("team-architecture".to_string()),
+                ..SearchFilters::default()
+            },
+        ),
+    );
+
+    assert!(result.records.is_empty());
+    assert!(result.diagnostics.is_empty());
+}
+
+#[test]
+fn search_returns_invalid_filter_diagnostics_without_records() {
+    let session = load_session_from_objects(vec![retrieval_search_object(
+        "billing.credits",
+        "claim",
+        Some("verified"),
+        Some("team-billing"),
+        "docs/billing.adoc",
+        "credits billing",
+    )]);
+
+    let result = search(
+        &session,
+        lexical_query(
+            "credits",
+            10,
+            SearchFilters {
+                kind: Some("decision".to_string()),
+                ..SearchFilters::default()
+            },
+        ),
+    );
+
+    assert!(result.records.is_empty());
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SearchInvalidFilter
+    );
+}
+
+#[test]
+fn search_returns_empty_without_diagnostics_for_empty_artifact_no_matches_and_zero_top() {
+    let empty_session = load_session_from_objects(Vec::new());
+    let empty_result = search(
+        &empty_session,
+        lexical_query("credits", 10, SearchFilters::default()),
+    );
+
+    assert!(empty_result.records.is_empty());
+    assert!(empty_result.diagnostics.is_empty());
+
+    let populated_session = load_session_from_objects(vec![retrieval_search_object(
+        "billing.credits",
+        "claim",
+        None,
+        None,
+        "docs/billing.adoc",
+        "credits billing",
+    )]);
+
+    let no_match = search(
+        &populated_session,
+        lexical_query("refunds", 10, SearchFilters::default()),
+    );
+    let zero_top = search(
+        &populated_session,
+        lexical_query("credits", 0, SearchFilters::default()),
+    );
+
+    assert!(no_match.records.is_empty());
+    assert!(no_match.diagnostics.is_empty());
+    assert!(zero_top.records.is_empty());
+    assert!(zero_top.diagnostics.is_empty());
 }
 
 #[test]

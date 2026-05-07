@@ -1,5 +1,4 @@
 mod filter;
-#[allow(dead_code)]
 pub(crate) mod lexical_index;
 mod retrieval_record;
 
