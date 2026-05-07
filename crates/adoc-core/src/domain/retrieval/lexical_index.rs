@@ -16,6 +16,9 @@ pub(crate) struct LexicalSearchHit {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct LexicalIndex {
     documents: Vec<IndexedDocument>,
+    document_count: usize,
+    average_document_len: f64,
+    document_frequencies: BTreeMap<String, usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -46,7 +49,24 @@ impl LexicalIndex {
             });
         }
 
-        Self { documents }
+        let document_count = documents.len();
+        let average_document_len = if document_count == 0 {
+            0.0
+        } else {
+            documents
+                .iter()
+                .map(|document| document.token_count)
+                .sum::<usize>() as f64
+                / document_count as f64
+        };
+        let document_frequencies = document_frequencies_for_documents(&documents);
+
+        Self {
+            documents,
+            document_count,
+            average_document_len,
+            document_frequencies,
+        }
     }
 
     #[cfg(test)]
@@ -92,22 +112,15 @@ impl LexicalIndex {
             return Vec::new();
         }
 
-        let average_document_len = documents
-            .iter()
-            .map(|document| document.token_count)
-            .sum::<usize>() as f64
-            / documents.len() as f64;
-        let document_frequencies = document_frequencies_for_terms(&documents, &query_terms);
-
         let mut hits: Vec<_> = documents
             .iter()
             .filter_map(|document| {
                 let score = score_document(
                     document,
                     &query_terms,
-                    documents.len(),
-                    average_document_len,
-                    &document_frequencies,
+                    self.document_count,
+                    self.average_document_len,
+                    &self.document_frequencies,
                 );
                 (score > 0.0).then(|| LexicalSearchHit {
                     id: document.id.clone(),
@@ -132,19 +145,12 @@ impl LexicalIndex {
     }
 }
 
-fn document_frequencies_for_terms(
-    documents: &[&IndexedDocument],
-    query_terms: &[String],
-) -> BTreeMap<String, usize> {
+fn document_frequencies_for_documents(documents: &[IndexedDocument]) -> BTreeMap<String, usize> {
     let mut document_frequencies = BTreeMap::new();
 
-    for term in query_terms {
-        let frequency = documents
-            .iter()
-            .filter(|document| document.term_frequencies.contains_key(term))
-            .count();
-        if frequency > 0 {
-            document_frequencies.insert(term.clone(), frequency);
+    for document in documents {
+        for term in document.term_frequencies.keys() {
+            *document_frequencies.entry(term.clone()).or_insert(0) += 1;
         }
     }
 
@@ -337,6 +343,33 @@ mod tests {
         assert_eq!(hit_ids(&index.search("billing")), ["billing-policy"]);
         assert_eq!(hit_ids(&index.search("decision")), ["finance.audit"]);
         assert_eq!(hit_ids(&index.search("ledger")), ["finance.audit"]);
+    }
+
+    #[test]
+    fn lexical_index_uses_global_corpus_stats_when_searching_candidates() {
+        let mut objects = vec![
+            object(
+                "global.alpha-heavy",
+                "claim",
+                None,
+                "alpha alpha alpha alpha alpha alpha alpha alpha alpha alpha",
+            ),
+            object("global.beta-light", "claim", None, "beta"),
+        ];
+        for index in 0..10 {
+            objects.push(object(
+                &format!("outside.alpha-{index}"),
+                "claim",
+                None,
+                "alpha",
+            ));
+        }
+        let index = LexicalIndex::from_objects(&objects);
+
+        let hits =
+            index.search_candidates("alpha beta", ["global.alpha-heavy", "global.beta-light"]);
+
+        assert_eq!(hit_ids(&hits), ["global.beta-light", "global.alpha-heavy"]);
     }
 
     fn hit_ids(hits: &[LexicalSearchHit]) -> Vec<&str> {
