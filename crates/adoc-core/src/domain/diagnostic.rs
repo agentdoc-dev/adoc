@@ -48,6 +48,7 @@ pub enum DiagnosticCode {
     SchemaUnsupportedVersion,
     IdDuplicateInArtifact,
     RetrievalObjectNotFound,
+    SearchInvalidFilter,
 }
 
 impl DiagnosticCode {
@@ -78,6 +79,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaUnsupportedVersion,
             DiagnosticCode::IdDuplicateInArtifact,
             DiagnosticCode::RetrievalObjectNotFound,
+            DiagnosticCode::SearchInvalidFilter,
         ]
     }
 
@@ -108,6 +110,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaUnsupportedVersion => "schema.unsupported_version",
             DiagnosticCode::IdDuplicateInArtifact => "id.duplicate_in_artifact",
             DiagnosticCode::RetrievalObjectNotFound => "retrieval.object_not_found",
+            DiagnosticCode::SearchInvalidFilter => "search.invalid_filter",
         }
     }
 
@@ -184,6 +187,9 @@ impl DiagnosticCode {
             DiagnosticCode::RetrievalObjectNotFound => {
                 "Use an object ID present in the loaded retrieval artifact."
             }
+            DiagnosticCode::SearchInvalidFilter => {
+                "Change or remove the filter so it matches at least one object field in the artifact."
+            }
         }
     }
 
@@ -241,6 +247,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.unsupported_version",
     "id.duplicate_in_artifact",
     "retrieval.object_not_found",
+    "search.invalid_filter",
 ];
 
 impl Diagnostic {
@@ -410,6 +417,23 @@ mod tests {
             );
             assert_eq!(DiagnosticCode::from_str(code.as_str()), Some(*code));
         }
+    }
+
+    #[test]
+    fn search_invalid_filter_code_roundtrips_through_wire_string() {
+        let value = serde_json::to_value(DiagnosticCode::SearchInvalidFilter)
+            .expect("diagnostic code serializes");
+
+        assert_eq!(value, "search.invalid_filter");
+        assert_eq!(
+            serde_json::from_value::<DiagnosticCode>(value).expect("diagnostic code deserializes"),
+            DiagnosticCode::SearchInvalidFilter
+        );
+        assert!(
+            DiagnosticCode::SearchInvalidFilter
+                .default_help()
+                .contains("filter")
+        );
     }
 
     #[cfg(unix)]

@@ -87,6 +87,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::SchemaUnsupportedVersion;
     let _ = DiagnosticCode::IdDuplicateInArtifact;
     let _ = DiagnosticCode::RetrievalObjectNotFound;
+    let _ = DiagnosticCode::SearchInvalidFilter;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
     let _: &'static str = DiagnosticCode::ParseRawHtml.default_help();
@@ -164,6 +165,10 @@ fn public_surface_compiles_with_only_documented_imports() {
         DiagnosticCode::RetrievalObjectNotFound.as_str(),
         "retrieval.object_not_found"
     );
+    assert_eq!(
+        DiagnosticCode::SearchInvalidFilter.as_str(),
+        "search.invalid_filter"
+    );
 
     let _: fn(RetrievalInput) -> RetrievalLoadResult = load_retrieval_session;
     let _: RetrievalInput = RetrievalInput {
@@ -196,7 +201,12 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _: RetrievalRecord = record;
 
     let _: SearchMode = SearchMode::Lexical;
-    let _: SearchFilters = SearchFilters::default();
+    let _: SearchFilters = SearchFilters {
+        kind: None,
+        status: None,
+        owner: None,
+        source_path: None,
+    };
     let _: SearchQuery = SearchQuery {
         text: String::from("credits"),
         mode: SearchMode::Lexical,
