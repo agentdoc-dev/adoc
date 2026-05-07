@@ -8,6 +8,7 @@ The current implementation is a pre-release Rust CLI named `adoc`. It compiles n
 
 - `docs.html` for humans
 - `docs.agent.json` for agents and tooling
+- `docs.search.json` for local embedding-backed retrieval
 - source-located diagnostics for invalid input
 
 It also provides local, read-only retrieval over `docs.agent.json` with `adoc explain` and lexical-only `adoc search`.
@@ -31,7 +32,15 @@ AgentDoc is pre-release compiler and retrieval infrastructure. The source-to-art
 - relation fields `depends_on`, `supersedes`, and `related_to`
 - strict diagnostics for raw HTML, unsafe links, unclosed fenced code blocks, malformed typed blocks, malformed page annotations, invalid or duplicate Object IDs, invalid verified claims, broken references, and unsupported single-file source extensions
 - diagnostic metadata with source location, severity, code, message, and `object_id`/`help` when available
-- HTML and agent JSON artifact emission when no error diagnostics exist
+- HTML, agent JSON, and search artifact emission when no error diagnostics exist
+
+V1.3 build embeddings support:
+
+- `adoc build <path> --out <directory>` emits `docs.search.json` by default
+- local FastEmbed embeddings using `bge-small-en-v1.5` (`provider: "fastembed"`, `dim: 384`)
+- first-run model download through `fastembed-rs`, then local cache reuse on later builds
+- per-Object-ID vector reuse when the model header and content hash match the prior `docs.search.json`
+- `--no-embeddings` to skip search artifact generation and leave any prior `docs.search.json` untouched
 
 V1.2 local retrieval supports:
 
@@ -40,7 +49,7 @@ V1.2 local retrieval supports:
 - text and JSON retrieval output
 - search filters for kind, status, owner, and source path
 
-V1.2 search is lexical-only. It reads `docs.agent.json` only; it does not read `docs.search.json`, build or load embeddings, run semantic mode, or perform hybrid ranking yet.
+V1.2 search is lexical-only. It reads `docs.agent.json` only; it does not read `docs.search.json`, run semantic mode, or perform hybrid ranking yet.
 
 Config files, includes, custom schemas, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, a web app, and permissioned governance are deferred beyond the current V0 compiler loop. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -106,6 +115,7 @@ Inspect the generated files:
 ls -la /tmp/adoc-example/dist
 cat /tmp/adoc-example/dist/docs.html
 cat /tmp/adoc-example/dist/docs.agent.json
+cat /tmp/adoc-example/dist/docs.search.json
 ```
 
 Expected files:
@@ -113,6 +123,7 @@ Expected files:
 ```text
 docs.html
 docs.agent.json
+docs.search.json
 ```
 
 ### Try The Billing Pilot
@@ -131,6 +142,7 @@ Expected files:
 ```text
 docs.html
 docs.agent.json
+docs.search.json
 ```
 
 ### Install Locally
@@ -152,7 +164,7 @@ adoc build /tmp/adoc-example/guide.adoc --out /tmp/adoc-example/dist
 
 ```bash
 adoc check <path>
-adoc build <path> --out <directory>
+adoc build <path> --out <directory> [--no-embeddings]
 adoc explain <object-id> [--artifact <path>] [--format text|json]
 adoc search <query> [--artifact <path>] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--top <n>] [--format text|json]
 ```
@@ -174,7 +186,10 @@ adoc search <query> [--artifact <path>] [--kind <value>] [--status <value>] [--o
 - runs the same compile path as `check`
 - creates the output directory when it does not exist
 - fails if the output path exists as a file
-- writes `docs.html` and `docs.agent.json` only when there are no errors
+- writes `docs.html`, `docs.agent.json`, and `docs.search.json` only when there are no errors
+- loads the local FastEmbed `bge-small-en-v1.5` model by default; first run may download model weights into the platform cache
+- reads the prior output directory's `docs.search.json` when present and reuses vectors whose model header and content hash still match
+- accepts `--no-embeddings` to skip model loading and search artifact writes; any existing `docs.search.json` is left untouched and an info diagnostic `build.embeddings_skipped` is emitted
 
 `adoc explain`:
 
@@ -193,7 +208,7 @@ adoc search <query> [--artifact <path>] [--kind <value>] [--status <value>] [--o
 - limits results with `--top`, defaulting to `10`
 - supports `--format text|json`
 
-V1.2 `adoc search` does not use `docs.search.json`, embeddings, semantic search, or hybrid ranking.
+V1.2 `adoc search` does not use `docs.search.json`, semantic search, or hybrid ranking.
 
 ## AgentDoc Source
 
@@ -283,7 +298,7 @@ fn main() {}
 Current limitations:
 
 - `adoc search` is lexical-only and reads `docs.agent.json` only
-- `adoc init`, custom schemas, includes, config files, search index artifacts, embeddings, semantic search, hybrid ranking, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, web app, and permissions are deferred
+- `adoc init`, custom schemas, includes, config files, semantic search, hybrid ranking, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, web app, and permissions are deferred
 
 ## Diagnostics
 
@@ -299,7 +314,7 @@ Examples:
 - unreadable directories emit `error[io.unreadable_directory]`
 - unsupported single-file source extensions emit `error[io.unsupported_source_extension]`
 
-`adoc build` writes `docs.html` and `docs.agent.json` only when there are no error diagnostics.
+`adoc build` writes `docs.html`, `docs.agent.json`, and `docs.search.json` only when there are no error diagnostics. Embedding failures emit `embed.model_load_failed`, `embed.compute_failed`, or `embed.unexpected_dim` and block artifact writes.
 
 ## Smoke Tests
 
@@ -333,6 +348,7 @@ Expected:
 - `build` exits `0`
 - `docs.html` exists
 - `docs.agent.json` exists
+- `docs.search.json` exists
 - agent JSON includes `schema_version`, `pages`, `"objects": []`, and `"diagnostics": []`
 
 Run strict-mode failure checks:
@@ -420,6 +436,12 @@ cargo run -p adoc-cli --bin adoc -- check <path>
 cargo run -p adoc-cli --bin adoc -- build <path> --out dist
 ```
 
+Hermetic CLI/core tests use the deterministic in-memory embedding provider through the `test-embedding-provider` feature. FastEmbed end-to-end coverage is gated behind `fastembed-it` so default tests do not download model weights:
+
+```bash
+cargo test -p adoc-core --features fastembed-it --no-run --locked
+```
+
 Format code before committing:
 
 ```bash
@@ -465,6 +487,7 @@ The public Rust API is deliberately small:
 
 ```rust
 pub fn compile_workspace(input: CompileInput) -> CompileResult;
+pub fn build_workspace(input: BuildInput) -> CompileResult;
 ```
 
 Parser, validation, renderer, and artifact internals stay private until another real consumer needs lower-level APIs.
@@ -491,8 +514,9 @@ Current V1 retrieval focuses on the existing flat agent artifact:
 - support `adoc explain <object-id>` for object lookup and citation
 - support `adoc search <query>` for deterministic lexical local search
 - prove retrieval against the billing pilot
+- build `docs.search.json` with local FastEmbed embeddings for the next semantic retrieval slice
 
-Later milestones cover `docs.search.json`, embeddings, semantic and hybrid search, project ergonomics, migration, review workflows, patch safety, expanded schema, graph exports, composition, and team surfaces.
+Later milestones cover semantic and hybrid search, project ergonomics, migration, review workflows, patch safety, expanded schema, graph exports, composition, and team surfaces.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full sequence.
 

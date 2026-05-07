@@ -491,6 +491,7 @@ fixtures/
 Test guidance:
 
 - Hermetic by default: every unit and integration test uses `InMemoryProvider`. The fastembed path runs only under `cargo test --features fastembed-it`.
+- CLI tests that need the production `build_workspace()` boundary without model downloads enable the test-only `test-embedding-provider` feature and set `ADOC_TEST_EMBEDDING_PROVIDER=in-memory`. Production builds do not use this seam.
 - Golden-test the JSON envelope produced by `--format json` for both `explain` and `search`. Schema regressions must update the golden file plus the schema version explicitly.
 - Property suite generated from any agent artifact: every body verbatim → top 1 lexical, every Object ID → top 1 lexical, every owner query covers every claim with that owner.
 
