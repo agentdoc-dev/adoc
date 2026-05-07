@@ -17,6 +17,6 @@
       }
     },
     "object_id": null,
-    "help": null
+    "help": "Remove raw HTML or replace it with supported Markdown/ADoc syntax."
   }
 ]

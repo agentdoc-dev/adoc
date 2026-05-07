@@ -1,9 +1,11 @@
 ---
 source: crates/adoc-cli/tests/snapshots_cli.rs
+assertion_line: 65
 expression: combined
 ---
 exit-success: false
 ---stdout---
 list_with_html_in_second_item.adoc:9:19: error[parse.raw_html] Raw HTML is not allowed in strict mode; write AgentDoc Source prose instead
+  help: Remove raw HTML or replace it with supported Markdown/ADoc syntax.
 1 errors, 0 warnings
 ---stderr---

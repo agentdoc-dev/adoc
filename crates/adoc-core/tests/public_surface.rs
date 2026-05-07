@@ -88,9 +88,14 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::RetrievalObjectNotFound;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
+    let _: &'static str = DiagnosticCode::ParseRawHtml.default_help();
     assert_eq!(
         DiagnosticCode::SchemaMissingField.as_str(),
         "schema.missing_field"
+    );
+    assert_eq!(
+        DiagnosticCode::IdDuplicate.default_help(),
+        "Give each object a unique ID across the compiled workspace."
     );
     assert_eq!(
         DiagnosticCode::SchemaDuplicateField.as_str(),

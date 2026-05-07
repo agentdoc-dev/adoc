@@ -51,6 +51,36 @@ pub enum DiagnosticCode {
 }
 
 impl DiagnosticCode {
+    fn all() -> &'static [Self] {
+        &[
+            DiagnosticCode::ParseRawHtml,
+            DiagnosticCode::ParseUnsafeLink,
+            DiagnosticCode::ParseUnclosedFence,
+            DiagnosticCode::ParseMalformedPageAnnotation,
+            DiagnosticCode::ParseNestedTypedBlock,
+            DiagnosticCode::ParseMalformedField,
+            DiagnosticCode::ParseMalformedOpenFence,
+            DiagnosticCode::SchemaUnknownKind,
+            DiagnosticCode::SchemaMissingField,
+            DiagnosticCode::SchemaDuplicateField,
+            DiagnosticCode::SchemaInvalidStatus,
+            DiagnosticCode::ClaimVerifiedMissingEvidence,
+            DiagnosticCode::ClaimStatusCasing,
+            DiagnosticCode::IdDuplicate,
+            DiagnosticCode::IdInvalid,
+            DiagnosticCode::RefBroken,
+            DiagnosticCode::IoUnreadableFile,
+            DiagnosticCode::IoUnreadableDirectory,
+            DiagnosticCode::IoUnsupportedSourceExtension,
+            DiagnosticCode::IoArtifactMissing,
+            DiagnosticCode::IoArtifactUnreadable,
+            DiagnosticCode::IoArtifactMalformed,
+            DiagnosticCode::SchemaUnsupportedVersion,
+            DiagnosticCode::IdDuplicateInArtifact,
+            DiagnosticCode::RetrievalObjectNotFound,
+        ]
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             DiagnosticCode::ParseRawHtml => "parse.raw_html",
@@ -81,35 +111,87 @@ impl DiagnosticCode {
         }
     }
 
-    fn from_str(value: &str) -> Option<Self> {
-        match value {
-            "parse.raw_html" => Some(DiagnosticCode::ParseRawHtml),
-            "parse.unsafe_link" => Some(DiagnosticCode::ParseUnsafeLink),
-            "parse.unclosed_fence" => Some(DiagnosticCode::ParseUnclosedFence),
-            "parse.malformed_page_annotation" => Some(DiagnosticCode::ParseMalformedPageAnnotation),
-            "parse.nested_typed_block" => Some(DiagnosticCode::ParseNestedTypedBlock),
-            "parse.malformed_field" => Some(DiagnosticCode::ParseMalformedField),
-            "parse.malformed_open_fence" => Some(DiagnosticCode::ParseMalformedOpenFence),
-            "schema.unknown_kind" => Some(DiagnosticCode::SchemaUnknownKind),
-            "schema.missing_field" => Some(DiagnosticCode::SchemaMissingField),
-            "schema.duplicate_field" => Some(DiagnosticCode::SchemaDuplicateField),
-            "schema.invalid_status" => Some(DiagnosticCode::SchemaInvalidStatus),
-            "claim.verified_missing_evidence" => Some(DiagnosticCode::ClaimVerifiedMissingEvidence),
-            "claim.status_casing" => Some(DiagnosticCode::ClaimStatusCasing),
-            "id.duplicate" => Some(DiagnosticCode::IdDuplicate),
-            "id.invalid" => Some(DiagnosticCode::IdInvalid),
-            "ref.broken" => Some(DiagnosticCode::RefBroken),
-            "io.unreadable_file" => Some(DiagnosticCode::IoUnreadableFile),
-            "io.unreadable_directory" => Some(DiagnosticCode::IoUnreadableDirectory),
-            "io.unsupported_source_extension" => Some(DiagnosticCode::IoUnsupportedSourceExtension),
-            "io.artifact_missing" => Some(DiagnosticCode::IoArtifactMissing),
-            "io.artifact_unreadable" => Some(DiagnosticCode::IoArtifactUnreadable),
-            "io.artifact_malformed" => Some(DiagnosticCode::IoArtifactMalformed),
-            "schema.unsupported_version" => Some(DiagnosticCode::SchemaUnsupportedVersion),
-            "id.duplicate_in_artifact" => Some(DiagnosticCode::IdDuplicateInArtifact),
-            "retrieval.object_not_found" => Some(DiagnosticCode::RetrievalObjectNotFound),
-            _ => None,
+    pub fn default_help(self) -> &'static str {
+        match self {
+            DiagnosticCode::ParseRawHtml => {
+                "Remove raw HTML or replace it with supported Markdown/ADoc syntax."
+            }
+            DiagnosticCode::ParseUnsafeLink => {
+                "Use a safe link scheme such as https, http, mailto, or a relative path."
+            }
+            DiagnosticCode::ParseUnclosedFence => {
+                "Close the typed block with a matching fence before the end of the file."
+            }
+            DiagnosticCode::ParseMalformedPageAnnotation => {
+                "Use a page annotation in the form `@doc(object.id)` with a valid Object ID."
+            }
+            DiagnosticCode::ParseNestedTypedBlock => {
+                "Move nested typed blocks out of the current block body or field value."
+            }
+            DiagnosticCode::ParseMalformedField => {
+                "Write typed block fields as `key: value` lines before the block body."
+            }
+            DiagnosticCode::ParseMalformedOpenFence => {
+                "Open typed blocks with `::kind object.id`, using a supported kind and valid Object ID."
+            }
+            DiagnosticCode::SchemaUnknownKind => {
+                "Use a supported object kind or update the schema before compiling."
+            }
+            DiagnosticCode::SchemaMissingField => "Add the required field with a non-empty value.",
+            DiagnosticCode::SchemaDuplicateField => {
+                "Keep only one value for each field inside the object."
+            }
+            DiagnosticCode::SchemaInvalidStatus => {
+                "Use one of the allowed status values for this object kind."
+            }
+            DiagnosticCode::ClaimVerifiedMissingEvidence => {
+                "Add evidence entries before marking the claim as verified."
+            }
+            DiagnosticCode::ClaimStatusCasing => "Use the canonical lowercase claim status value.",
+            DiagnosticCode::IdDuplicate => {
+                "Give each object a unique ID across the compiled workspace."
+            }
+            DiagnosticCode::IdInvalid => {
+                "Use a valid Object ID with lowercase segments separated by dots."
+            }
+            DiagnosticCode::RefBroken => {
+                "Update the reference to an existing object ID or remove the reference."
+            }
+            DiagnosticCode::IoUnreadableFile => {
+                "Check that the source path exists and can be read by the current user."
+            }
+            DiagnosticCode::IoUnreadableDirectory => {
+                "Check that the source directory exists and can be read by the current user."
+            }
+            DiagnosticCode::IoUnsupportedSourceExtension => {
+                "Use supported source files with the `.adoc` extension."
+            }
+            DiagnosticCode::IoArtifactMissing => {
+                "Build docs.agent.json before loading the retrieval artifact."
+            }
+            DiagnosticCode::IoArtifactUnreadable => {
+                "Check that docs.agent.json exists and can be read by the current user."
+            }
+            DiagnosticCode::IoArtifactMalformed => {
+                "Rebuild docs.agent.json from valid source documents."
+            }
+            DiagnosticCode::SchemaUnsupportedVersion => {
+                "Regenerate the artifact with a schema version supported by this binary."
+            }
+            DiagnosticCode::IdDuplicateInArtifact => {
+                "Rebuild the artifact after removing duplicate object IDs from the source."
+            }
+            DiagnosticCode::RetrievalObjectNotFound => {
+                "Use an object ID present in the loaded retrieval artifact."
+            }
         }
+    }
+
+    fn from_str(value: &str) -> Option<Self> {
+        Self::all()
+            .iter()
+            .copied()
+            .find(|code| code.as_str() == value)
     }
 }
 
@@ -169,7 +251,7 @@ impl Diagnostic {
             message: message.into(),
             span: None,
             object_id: None,
-            help: None,
+            help: Some(code.default_help().to_string()),
         }
     }
 
@@ -180,7 +262,7 @@ impl Diagnostic {
             message: message.into(),
             span: None,
             object_id: None,
-            help: None,
+            help: Some(code.default_help().to_string()),
         }
     }
 
@@ -295,6 +377,39 @@ mod tests {
         let diagnostic =
             Diagnostic::error(DiagnosticCode::IdInvalid, "bad id").with_help("fix your id");
         assert_eq!(diagnostic.help.as_deref(), Some("fix your id"));
+    }
+
+    #[test]
+    fn constructors_attach_default_help() {
+        let error = Diagnostic::error(DiagnosticCode::ParseRawHtml, "raw html is not allowed");
+        let warning = Diagnostic::warning(DiagnosticCode::ClaimStatusCasing, "status casing");
+
+        assert_eq!(
+            error.help.as_deref(),
+            Some(DiagnosticCode::ParseRawHtml.default_help())
+        );
+        assert_eq!(
+            warning.help.as_deref(),
+            Some(DiagnosticCode::ClaimStatusCasing.default_help())
+        );
+    }
+
+    #[test]
+    fn default_help_is_complete_for_every_wire_code() {
+        let codes = DiagnosticCode::all();
+        let wire_codes: Vec<&str> = codes.iter().map(|code| code.as_str()).collect();
+
+        assert_eq!(wire_codes, DIAGNOSTIC_CODE_VARIANTS);
+
+        for code in codes {
+            let help = code.default_help();
+            assert!(
+                !help.trim().is_empty(),
+                "{} should have non-empty default help",
+                code
+            );
+            assert_eq!(DiagnosticCode::from_str(code.as_str()), Some(*code));
+        }
     }
 
     #[cfg(unix)]
