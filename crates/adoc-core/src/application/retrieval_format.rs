@@ -141,16 +141,13 @@ fn render_relations(output: &mut String, relations: &AgentJsonRelations) {
 
     output.push('\n');
     output.push_str("Relations:\n");
-    if !relations.depends_on.is_empty() {
-        writeln!(output, "- depends_on: {}", relations.depends_on.join(", "))
-            .expect("writing to String cannot fail");
-    }
-    if !relations.supersedes.is_empty() {
-        writeln!(output, "- supersedes: {}", relations.supersedes.join(", "))
-            .expect("writing to String cannot fail");
-    }
-    if !relations.related_to.is_empty() {
-        writeln!(output, "- related_to: {}", relations.related_to.join(", "))
-            .expect("writing to String cannot fail");
+    render_relation_targets(output, "depends_on", &relations.depends_on);
+    render_relation_targets(output, "supersedes", &relations.supersedes);
+    render_relation_targets(output, "related_to", &relations.related_to);
+}
+
+fn render_relation_targets(output: &mut String, relation: &str, targets: &[String]) {
+    for target in targets {
+        writeln!(output, "- {relation}: {target}").expect("writing to String cannot fail");
     }
 }

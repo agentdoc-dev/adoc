@@ -221,6 +221,62 @@ fn text_retrieval_formatter_renders_statement_body_and_sorted_fields() {
 }
 
 #[test]
+fn text_retrieval_formatter_renders_each_relation_target_on_its_own_line() {
+    let envelope = RetrievalEnvelope::new(
+        vec![RetrievalRecord {
+            id: "billing.policy".to_string(),
+            kind: "decision".to_string(),
+            status: Some("accepted".to_string()),
+            owner: None,
+            verified_at: None,
+            body: "Refund policy is ledger-backed.".to_string(),
+            source: RetrievalSource {
+                path: "docs/decisions.adoc".to_string(),
+                line: 7,
+                column: 1,
+            },
+            evidence: std::collections::BTreeMap::new(),
+            fields: std::collections::BTreeMap::new(),
+            relations: AgentJsonRelations {
+                depends_on: vec![
+                    "billing.credits.ledger-source".to_string(),
+                    "billing.refunds.audit-required".to_string(),
+                ],
+                supersedes: vec![
+                    "billing.refunds.manual-credit".to_string(),
+                    "billing.refunds.email-approval".to_string(),
+                ],
+                related_to: vec![
+                    "billing.credits.decrement-after-success".to_string(),
+                    "billing.credits.reconciliation".to_string(),
+                ],
+            },
+        }],
+        Vec::new(),
+    );
+
+    let text = TextRetrievalFormatter
+        .render(&envelope)
+        .expect("text retrieval render succeeds");
+    let relations = text
+        .split_once("Relations:\n")
+        .expect("relations block is rendered")
+        .1;
+
+    assert_eq!(
+        relations,
+        concat!(
+            "- depends_on: billing.credits.ledger-source\n",
+            "- depends_on: billing.refunds.audit-required\n",
+            "- supersedes: billing.refunds.manual-credit\n",
+            "- supersedes: billing.refunds.email-approval\n",
+            "- related_to: billing.credits.decrement-after-success\n",
+            "- related_to: billing.credits.reconciliation\n",
+        )
+    );
+}
+
+#[test]
 fn text_retrieval_formatter_renders_glossary_kind_metadata() {
     let envelope = RetrievalEnvelope::new(
         vec![RetrievalRecord {
