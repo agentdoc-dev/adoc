@@ -260,6 +260,7 @@ fn build_artifacts_for_build(
     let prior_search_artifact_path = build_options
         .as_ref()
         .and_then(|options| options.prior_search_artifact_path.clone());
+    let mut artifact_diagnostics = Vec::new();
     let search_json = match build_options
         .as_mut()
         .map(|options| &mut options.embeddings)
@@ -271,7 +272,13 @@ fn build_artifacts_for_build(
             *provider,
             prior_search_artifact_path.as_ref(),
         ) {
-            Ok(search_artifact) => Some(search_artifact),
+            Ok(search_build) => {
+                artifact_diagnostics.push(cache_count_diagnostic(
+                    search_build.cached_count,
+                    search_build.computed_count,
+                ));
+                Some(search_build.document)
+            }
             Err(diagnostics) => {
                 return ArtifactBuildResult {
                     artifacts: Some(BuildArtifacts {
@@ -303,7 +310,13 @@ fn build_artifacts_for_build(
                 provider.as_ref(),
                 prior_search_artifact_path.as_ref(),
             ) {
-                Ok(search_artifact) => Some(search_artifact),
+                Ok(search_build) => {
+                    artifact_diagnostics.push(cache_count_diagnostic(
+                        search_build.cached_count,
+                        search_build.computed_count,
+                    ));
+                    Some(search_build.document)
+                }
                 Err(diagnostics) => {
                     return ArtifactBuildResult {
                         artifacts: Some(BuildArtifacts {
@@ -325,8 +338,14 @@ fn build_artifacts_for_build(
             agent_json,
             search_json,
         }),
-        diagnostics: Vec::new(),
+        diagnostics: artifact_diagnostics,
     }
+}
+
+struct SearchArtifactBuild {
+    document: SearchArtifactDocument,
+    cached_count: usize,
+    computed_count: usize,
 }
 
 fn build_search_artifact(
@@ -334,7 +353,7 @@ fn build_search_artifact(
     agent_json: &AgentJsonDocument,
     provider: &dyn EmbeddingProvider,
     prior_search_artifact_path: Option<&PathBuf>,
-) -> Result<SearchArtifactDocument, Vec<Diagnostic>> {
+) -> Result<SearchArtifactBuild, Vec<Diagnostic>> {
     let model = search_model_header(provider);
     let cached_embeddings = load_matching_search_cache(prior_search_artifact_path, &model);
     let agent_artifact_hash = sha256_prefixed(
@@ -345,6 +364,7 @@ fn build_search_artifact(
     );
     let mut embeddings = Vec::new();
     let mut misses = Vec::new();
+    let mut cached_count = 0;
 
     for knowledge_object in workspace_knowledge_objects(workspace) {
         let input = knowledge_object.embedding_input();
@@ -355,6 +375,7 @@ fn build_search_artifact(
             && cached.vector.len() == provider.dim()
         {
             embeddings.push(cached.clone());
+            cached_count += 1;
             continue;
         }
 
@@ -367,6 +388,7 @@ fn build_search_artifact(
         misses.push((index, input));
     }
 
+    let computed_count = misses.len();
     if !misses.is_empty() {
         let inputs: Vec<String> = misses.iter().map(|(_, input)| input.clone()).collect();
         let vectors = provider
@@ -378,12 +400,23 @@ fn build_search_artifact(
         }
     }
 
-    Ok(SearchArtifactDocument {
-        schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
-        model,
-        agent_artifact_hash,
-        embeddings,
+    Ok(SearchArtifactBuild {
+        document: SearchArtifactDocument {
+            schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
+            model,
+            agent_artifact_hash,
+            embeddings,
+        },
+        cached_count,
+        computed_count,
     })
+}
+
+fn cache_count_diagnostic(cached_count: usize, computed_count: usize) -> Diagnostic {
+    Diagnostic::info(
+        DiagnosticCode::BuildEmbeddingsCached,
+        format!("embeddings: cached {cached_count}, computed {computed_count}"),
+    )
 }
 
 fn validate_embedding_vectors(
@@ -937,8 +970,10 @@ mod tests {
         );
         let second_search = second_result
             .artifacts
+            .as_ref()
             .expect("second artifacts")
             .search_json
+            .as_ref()
             .expect("second search artifact");
         let recorded_inputs = second_provider.recorded_inputs();
         assert_eq!(
@@ -960,6 +995,75 @@ mod tests {
             second_search.embeddings[1].vector, first_search.embeddings[1].vector,
             "changed object vector should be recomputed"
         );
+        assert_cache_count_diagnostic(&second_result, 1, 1);
+    }
+
+    #[test]
+    fn build_with_provider_reports_all_cached_vectors_when_sources_are_unchanged() {
+        let first_source = InMemorySourceProvider::new().with_source(source_file(
+            "billing.adoc",
+            &two_claim_source(
+                "Credits apply after successful payment.",
+                "Refunds require audit review.",
+            ),
+        ));
+        let first_provider = RecordingEmbeddingProvider::new(4);
+        let first_result = build_with_provider(
+            &first_source,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &first_provider,
+                },
+                prior_search_artifact_path: None,
+            },
+        );
+        let first_search = first_result
+            .artifacts
+            .expect("first artifacts")
+            .search_json
+            .expect("first search artifact");
+        let prior = tempfile::Builder::new()
+            .prefix("adoc-cache-")
+            .suffix(".search.json")
+            .tempfile()
+            .expect("cache file");
+        fs::write(
+            prior.path(),
+            first_search
+                .to_pretty_json()
+                .expect("search artifact serializes"),
+        )
+        .expect("cache write");
+
+        let second_source = InMemorySourceProvider::new().with_source(source_file(
+            "billing.adoc",
+            &two_claim_source(
+                "Credits apply after successful payment.",
+                "Refunds require audit review.",
+            ),
+        ));
+        let second_provider = RecordingEmbeddingProvider::new(4);
+
+        let second_result = build_with_provider(
+            &second_source,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &second_provider,
+                },
+                prior_search_artifact_path: Some(prior.path().to_path_buf()),
+            },
+        );
+
+        assert!(
+            !second_result.has_errors(),
+            "second build should pass: {:?}",
+            second_result.diagnostics
+        );
+        assert!(
+            second_provider.recorded_inputs().is_empty(),
+            "unchanged objects should be served entirely from cache"
+        );
+        assert_cache_count_diagnostic(&second_result, 2, 0);
     }
 
     #[test]
@@ -1079,6 +1183,23 @@ mod tests {
             .find(|diagnostic| diagnostic.code == expected_code)
             .expect("expected embedding diagnostic");
         assert_eq!(diagnostic.severity, Severity::Error);
+    }
+
+    fn assert_cache_count_diagnostic(
+        result: &CompileResult,
+        expected_cached: usize,
+        expected_computed: usize,
+    ) {
+        let diagnostic = result
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::BuildEmbeddingsCached)
+            .expect("cache count diagnostic");
+        assert_eq!(diagnostic.severity, Severity::Info);
+        assert_eq!(
+            diagnostic.message,
+            format!("embeddings: cached {expected_cached}, computed {expected_computed}")
+        );
     }
 
     fn one_claim_source() -> String {
