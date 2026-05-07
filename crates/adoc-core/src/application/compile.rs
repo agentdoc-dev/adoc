@@ -14,7 +14,7 @@ use crate::domain::ast::{BlockAst, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::knowledge_object::KnowledgeObject;
 use crate::domain::ports::artifact_writer::ArtifactWriter;
-use crate::domain::ports::embedding_provider::EmbeddingProvider;
+use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::ports::renderer::Renderer;
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
 use crate::domain::source::SourceFile;
@@ -259,12 +259,20 @@ fn build_artifacts_for_build(
 
     let agent_json = AgentJsonArtifact.build(&workspace.pages, diagnostics);
     let search_json = match build_options.map(|options| options.embeddings) {
-        Some(BuildEmbeddingBehavior::Enabled { provider }) => Some(build_search_artifact(
+        Some(BuildEmbeddingBehavior::Enabled { provider }) => match build_search_artifact(
             workspace,
             &agent_json,
             provider,
             build_options.and_then(|options| options.prior_search_artifact_path.as_ref()),
-        )),
+        ) {
+            Ok(search_artifact) => Some(search_artifact),
+            Err(diagnostics) => {
+                return ArtifactBuildResult {
+                    artifacts: None,
+                    diagnostics,
+                };
+            }
+        },
         Some(BuildEmbeddingBehavior::Skipped) | None => None,
     };
 
@@ -283,7 +291,7 @@ fn build_search_artifact(
     agent_json: &AgentJsonDocument,
     provider: &dyn EmbeddingProvider,
     prior_search_artifact_path: Option<&PathBuf>,
-) -> SearchArtifactDocument {
+) -> Result<SearchArtifactDocument, Vec<Diagnostic>> {
     let model = search_model_header(provider);
     let cached_embeddings = load_matching_search_cache(prior_search_artifact_path, &model);
     let agent_artifact_hash = sha256_prefixed(
@@ -320,22 +328,65 @@ fn build_search_artifact(
         let inputs: Vec<String> = misses.iter().map(|(_, input)| input.clone()).collect();
         let vectors = provider
             .embed_passages(&inputs)
-            .expect("embedding diagnostics are mapped in a later tracer");
-        assert_eq!(
-            vectors.len(),
-            misses.len(),
-            "embedding provider returned an unexpected vector count"
-        );
+            .map_err(|error| vec![embedding_error_diagnostic(error)])?;
+        validate_embedding_vectors(&vectors, misses.len(), provider.dim())?;
         for ((index, _), vector) in misses.into_iter().zip(vectors) {
             embeddings[index].vector = vector;
         }
     }
 
-    SearchArtifactDocument {
+    Ok(SearchArtifactDocument {
         schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
         model,
         agent_artifact_hash,
         embeddings,
+    })
+}
+
+fn validate_embedding_vectors(
+    vectors: &[Vec<f32>],
+    expected_count: usize,
+    expected_dim: usize,
+) -> Result<(), Vec<Diagnostic>> {
+    if vectors.len() != expected_count {
+        return Err(vec![Diagnostic::error(
+            DiagnosticCode::EmbedUnexpectedDimension,
+            format!(
+                "embedding provider returned {} vectors for {expected_count} inputs",
+                vectors.len()
+            ),
+        )]);
+    }
+
+    for (index, vector) in vectors.iter().enumerate() {
+        if vector.len() != expected_dim {
+            return Err(vec![Diagnostic::error(
+                DiagnosticCode::EmbedUnexpectedDimension,
+                format!(
+                    "embedding provider returned vector {index} with dimension {}; expected {expected_dim}",
+                    vector.len()
+                ),
+            )]);
+        }
+    }
+
+    Ok(())
+}
+
+fn embedding_error_diagnostic(error: EmbeddingError) -> Diagnostic {
+    match error {
+        EmbeddingError::ModelLoad(message) => Diagnostic::error(
+            DiagnosticCode::EmbedModelLoadFailed,
+            format!("embedding model could not be loaded: {message}"),
+        ),
+        EmbeddingError::Compute(message) => Diagnostic::error(
+            DiagnosticCode::EmbedComputeFailed,
+            format!("embedding computation failed: {message}"),
+        ),
+        EmbeddingError::DimensionMismatch { expected, actual } => Diagnostic::error(
+            DiagnosticCode::EmbedUnexpectedDimension,
+            format!("embedding provider returned dimension {actual}; expected {expected}"),
+        ),
     }
 }
 
@@ -824,6 +875,134 @@ mod tests {
         );
     }
 
+    #[test]
+    fn build_with_provider_maps_embedding_compute_error_and_blocks_artifacts() {
+        let source_provider = InMemorySourceProvider::new()
+            .with_source(source_file("billing.adoc", &one_claim_source()));
+        let embedding_provider = ControlledEmbeddingProvider::new(
+            4,
+            Err(EmbeddingError::Compute("encoder failed".to_string())),
+        );
+
+        let result = build_with_provider(
+            &source_provider,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &embedding_provider,
+                },
+                prior_search_artifact_path: None,
+            },
+        );
+
+        assert_embedding_error_result(&result, DiagnosticCode::EmbedComputeFailed);
+    }
+
+    #[test]
+    fn build_with_provider_maps_embedding_model_load_error_and_blocks_artifacts() {
+        let source_provider = InMemorySourceProvider::new()
+            .with_source(source_file("billing.adoc", &one_claim_source()));
+        let embedding_provider = ControlledEmbeddingProvider::new(
+            4,
+            Err(EmbeddingError::ModelLoad(
+                "model cache unavailable".to_string(),
+            )),
+        );
+
+        let result = build_with_provider(
+            &source_provider,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &embedding_provider,
+                },
+                prior_search_artifact_path: None,
+            },
+        );
+
+        assert_embedding_error_result(&result, DiagnosticCode::EmbedModelLoadFailed);
+        let diagnostic = result
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::EmbedModelLoadFailed)
+            .expect("model load diagnostic");
+        assert!(
+            diagnostic
+                .help
+                .as_deref()
+                .expect("help")
+                .contains("adoc build"),
+            "model load help should tell user how to retry/fix"
+        );
+    }
+
+    #[test]
+    fn build_with_provider_rejects_wrong_embedding_vector_count_and_blocks_artifacts() {
+        let source_provider = InMemorySourceProvider::new()
+            .with_source(source_file("billing.adoc", &one_claim_source()));
+        let embedding_provider = ControlledEmbeddingProvider::new(4, Ok(Vec::new()));
+
+        let result = build_with_provider(
+            &source_provider,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &embedding_provider,
+                },
+                prior_search_artifact_path: None,
+            },
+        );
+
+        assert_embedding_error_result(&result, DiagnosticCode::EmbedUnexpectedDimension);
+    }
+
+    #[test]
+    fn build_with_provider_rejects_bad_embedding_vector_dim_and_blocks_artifacts() {
+        let source_provider = InMemorySourceProvider::new()
+            .with_source(source_file("billing.adoc", &one_claim_source()));
+        let embedding_provider = ControlledEmbeddingProvider::new(4, Ok(vec![vec![1.0, 2.0, 3.0]]));
+
+        let result = build_with_provider(
+            &source_provider,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &embedding_provider,
+                },
+                prior_search_artifact_path: None,
+            },
+        );
+
+        assert_embedding_error_result(&result, DiagnosticCode::EmbedUnexpectedDimension);
+    }
+
+    fn assert_embedding_error_result(result: &CompileResult, expected_code: DiagnosticCode) {
+        assert!(
+            result.has_errors(),
+            "build should fail: {:?}",
+            result.diagnostics
+        );
+        assert!(
+            result.artifacts.is_none(),
+            "embedding failures must block all artifacts"
+        );
+        let diagnostic = result
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == expected_code)
+            .expect("expected embedding diagnostic");
+        assert_eq!(diagnostic.severity, Severity::Error);
+    }
+
+    fn one_claim_source() -> String {
+        concat!(
+            "# Billing @doc(team.billing)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "--\n",
+            "Credits apply after successful payment.\n",
+            "::\n",
+        )
+        .to_string()
+    }
+
     fn two_claim_source(credits_body: &str, refunds_body: &str) -> String {
         format!(
             concat!(
@@ -844,6 +1023,41 @@ mod tests {
             credits_body = credits_body,
             refunds_body = refunds_body
         )
+    }
+
+    #[derive(Debug)]
+    struct ControlledEmbeddingProvider {
+        model_id: ModelId,
+        dim: usize,
+        result: Result<Vec<Vec<f32>>, EmbeddingError>,
+    }
+
+    impl ControlledEmbeddingProvider {
+        fn new(dim: usize, result: Result<Vec<Vec<f32>>, EmbeddingError>) -> Self {
+            Self {
+                model_id: ModelId::new("controlled", "test"),
+                dim,
+                result,
+            }
+        }
+    }
+
+    impl EmbeddingProvider for ControlledEmbeddingProvider {
+        fn model_id(&self) -> &ModelId {
+            &self.model_id
+        }
+
+        fn dim(&self) -> usize {
+            self.dim
+        }
+
+        fn embed_passages(&self, _inputs: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+            self.result.clone()
+        }
+
+        fn embed_query(&self, _query: &str) -> Result<Vec<f32>, EmbeddingError> {
+            Ok(vec![0.0; self.dim])
+        }
     }
 
     #[derive(Debug)]
