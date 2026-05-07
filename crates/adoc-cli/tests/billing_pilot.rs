@@ -1,31 +1,11 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
-struct TestWorkspace {
-    root: PathBuf,
-}
+mod support;
 
-impl TestWorkspace {
-    fn new(name: &str) -> Self {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock is after epoch")
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("adoc-{name}-{nonce}"));
-        fs::create_dir_all(&root).expect("test workspace can be created");
-        Self { root }
-    }
-}
-
-impl Drop for TestWorkspace {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.root);
-    }
-}
+use support::TestWorkspace;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

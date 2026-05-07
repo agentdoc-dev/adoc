@@ -2,6 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[allow(dead_code)]
 pub(crate) fn fixture_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -24,6 +25,7 @@ impl TestWorkspace {
         Self { root }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn write(&self, relative_path: &str, contents: &str) -> PathBuf {
         let path = self.root.join(relative_path);
         if let Some(parent) = path.parent() {
