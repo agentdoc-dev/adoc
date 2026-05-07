@@ -3,7 +3,7 @@ mod support;
 use std::fs;
 use std::process::Command;
 
-use support::{TestWorkspace, fixture_path};
+use support::{TestWorkspace, fixture_path, workspace_fixture_path};
 
 fn copy_search_artifact(workspace: &TestWorkspace, relative_path: &str) {
     let artifact = fs::read_to_string(fixture_path("v1_1_explain/valid_artifact.agent.json"))
@@ -12,14 +12,14 @@ fn copy_search_artifact(workspace: &TestWorkspace, relative_path: &str) {
 }
 
 fn pilot_subset_artifact() -> String {
-    fixture_path("v1_2_search/pilot_subset.agent.json")
+    workspace_fixture_path("v1_2_search/pilot_subset.agent.json")
         .to_str()
         .expect("fixture path is UTF-8")
         .to_string()
 }
 
 fn empty_search_artifact() -> String {
-    fixture_path("v1_2_search/empty.agent.json")
+    workspace_fixture_path("v1_2_search/empty.agent.json")
         .to_str()
         .expect("fixture path is UTF-8")
         .to_string()
