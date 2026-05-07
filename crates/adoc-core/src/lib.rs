@@ -6,7 +6,7 @@ pub use application::compile::{BuildArtifacts, CompileInput, CompileResult};
 pub use application::retrieval::{
     ExplainResult, RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput,
     RetrievalLoadResult, RetrievalSession, SearchFilters, SearchQuery, SearchResult,
-    explain_object,
+    explain_object, search,
 };
 pub use application::retrieval_format::{
     JsonRetrievalFormatter, RetrievalFormatError, RetrievalFormatter, TextRetrievalFormatter,

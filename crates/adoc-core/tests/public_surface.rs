@@ -13,7 +13,7 @@ use adoc_core::{
     RetrievalEnvelope, RetrievalFormatError, RetrievalFormatter, RetrievalInput,
     RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalSession, RetrievalSource,
     SearchFilters, SearchMode, SearchQuery, SearchResult, Severity, TextRetrievalFormatter,
-    compile_workspace, explain_object, load_retrieval_session,
+    compile_workspace, explain_object, load_retrieval_session, search,
 };
 
 #[test]
@@ -211,6 +211,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         text: String::from("credits"),
         mode: SearchMode::Lexical,
         filters: SearchFilters::default(),
+        top: 10,
     };
     let _: RetrievalMatch = RetrievalMatch::lexical(1);
     let search_result = SearchResult {
@@ -227,6 +228,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _explain_diagnostics: Vec<Diagnostic> = explain_result.diagnostics;
 
     let _: fn(&RetrievalSession, &str) -> ExplainResult = explain_object;
+    let _: fn(&RetrievalSession, SearchQuery) -> SearchResult = search;
 
     let envelope = RetrievalEnvelope::new(Vec::new(), Vec::new());
     let text_formatter = TextRetrievalFormatter;

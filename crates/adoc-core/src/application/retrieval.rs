@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, btree_map::Entry};
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use std::path::PathBuf;
 
 use crate::domain::artifact::{AgentJsonDocument, AgentJsonObject};
@@ -6,7 +6,8 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
 use crate::domain::ports::artifact_reader::ArtifactReader;
 pub use crate::domain::retrieval::SearchFilters;
-use crate::domain::retrieval::{RetrievalRecord, SearchMode};
+use crate::domain::retrieval::lexical_index::LexicalIndex;
+use crate::domain::retrieval::{RetrievalMatch, RetrievalRecord, SearchMode};
 
 pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v0";
 
@@ -24,6 +25,7 @@ pub struct RetrievalLoadResult {
 #[derive(Debug, Clone)]
 pub struct RetrievalSession {
     exact_lookup: BTreeMap<ObjectId, AgentJsonObject>,
+    lexical_index: LexicalIndex,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +39,7 @@ pub struct SearchQuery {
     pub text: String,
     pub mode: SearchMode,
     pub filters: SearchFilters,
+    pub top: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -100,9 +103,13 @@ where
             };
         }
     };
+    let lexical_index = LexicalIndex::from_objects(exact_lookup.values());
 
     RetrievalLoadResult {
-        session: Some(RetrievalSession { exact_lookup }),
+        session: Some(RetrievalSession {
+            exact_lookup,
+            lexical_index,
+        }),
         diagnostics: Vec::new(),
     }
 }
@@ -129,6 +136,94 @@ pub fn explain_object(session: &RetrievalSession, id: &str) -> ExplainResult {
             ),
         ],
     }
+}
+
+pub fn search(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
+    if query.top == 0 {
+        return SearchResult {
+            records: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+    }
+
+    match query.mode {
+        SearchMode::Lexical => search_lexical(session, query),
+    }
+}
+
+fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
+    let diagnostics = query
+        .filters
+        .validate_against(session.exact_lookup.values());
+    if !diagnostics.is_empty() {
+        return SearchResult {
+            records: Vec::new(),
+            diagnostics,
+        };
+    }
+
+    let candidates: Vec<_> = session
+        .exact_lookup
+        .values()
+        .filter(|object| query.filters.matches(object))
+        .collect();
+    if candidates.is_empty() {
+        return SearchResult {
+            records: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+    }
+
+    let candidate_ids: Vec<_> = candidates.iter().map(|object| object.id.as_str()).collect();
+    let mut result_ids = pinned_candidate_ids(&query.text, &candidate_ids);
+    let mut seen_ids: BTreeSet<_> = result_ids.iter().cloned().collect();
+
+    for hit in session
+        .lexical_index
+        .search_candidates(&query.text, candidate_ids.iter().copied())
+    {
+        if seen_ids.insert(hit.id.clone()) {
+            result_ids.push(hit.id);
+        }
+        if result_ids.len() >= query.top {
+            break;
+        }
+    }
+
+    result_ids.truncate(query.top);
+    SearchResult {
+        records: result_ids
+            .into_iter()
+            .enumerate()
+            .map(|(index, id)| {
+                let object_id = ObjectId::new_unchecked(id.clone());
+                let object = session
+                    .exact_lookup
+                    .get(&object_id)
+                    .expect("search result IDs must come from the loaded retrieval session");
+                RetrievalRecord::from_object_with_match(
+                    object,
+                    RetrievalMatch::lexical((index + 1) as u32),
+                )
+            })
+            .collect(),
+        diagnostics: Vec::new(),
+    }
+}
+
+fn pinned_candidate_ids(query_text: &str, candidate_ids: &[&str]) -> Vec<String> {
+    if query_text.is_empty() {
+        return Vec::new();
+    }
+
+    let mut pinned_ids: Vec<_> = candidate_ids
+        .iter()
+        .copied()
+        .filter(|id| id.starts_with(query_text))
+        .map(str::to_string)
+        .collect();
+    pinned_ids.sort_by(|left, right| left.len().cmp(&right.len()).then_with(|| left.cmp(right)));
+    pinned_ids
 }
 
 fn build_exact_lookup(
