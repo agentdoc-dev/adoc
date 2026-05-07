@@ -353,6 +353,7 @@ fn search_cli_json_success_includes_envelope_records_diagnostics_and_match_metad
     assert_eq!(value["diagnostics"], serde_json::json!([]));
     assert_eq!(value["records"][0]["id"], "billing.refunds.issue-credit");
     assert_eq!(value["records"][0]["match"]["mode"], "lexical");
+    assert_eq!(value["records"][0]["match"]["result_rank"], 1);
     assert_eq!(value["records"][0]["match"]["lexical_rank"], 1);
 }
 

@@ -294,7 +294,7 @@ Scope:
 - Implement `adoc search "<query>"` with all CLI flags except `--semantic` and `--search-artifact`.
 - Pin exact Object ID and ID-prefix matches above the BM25 list.
 - Stable lex tie-breaker. Empty result is a `0` exit with `(no matches)`.
-- `--format json` reuses the V1.1 envelope, plus `match.mode = "lexical"` and `match.lexical_rank`.
+- `--format json` reuses the V1.1 envelope, plus `match.mode = "lexical"`, `match.result_rank`, and `match.lexical_rank` when the record has a BM25 hit.
 
 Acceptance:
 

@@ -285,6 +285,7 @@ Rules:
   "match": {
     "mode": "hybrid",
     "rrf_score": 0.0312,
+    "result_rank": 1,
     "lexical_rank": 2,
     "vector_rank": 1
   }
@@ -367,7 +368,7 @@ Scope:
 - ID-prefix exact match pinned to top.
 - Stable lex tie-breaker.
 - Empty result is `0` exit with `(no matches)` line.
-- `--format json` envelope identical to V1.1's, plus a `match.mode = "lexical"` and `match.lexical_rank` field.
+- `--format json` envelope identical to V1.1's, plus `match.mode = "lexical"`, `match.result_rank`, and `match.lexical_rank` when the record has a BM25 hit.
 - Integration tests cover ranking determinism, every filter, exact ID pin, empty results, and invalid filters.
 
 Acceptance:
