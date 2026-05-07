@@ -7,6 +7,9 @@ pub use application::retrieval::{
     ExplainResult, RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput,
     RetrievalLoadResult, RetrievalSession, explain_object,
 };
+pub use application::retrieval_format::{
+    JsonRetrievalFormatter, RetrievalFormatError, RetrievalFormatter, TextRetrievalFormatter,
+};
 pub use domain::artifact::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan,
 };

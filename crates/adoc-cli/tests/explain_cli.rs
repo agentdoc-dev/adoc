@@ -36,7 +36,7 @@ fn explain_defaults_to_dist_agent_json_and_text_format() {
     assert!(stdout.contains("Owner: team-billing"));
     assert!(stdout.contains("Verified: 2026-05-06"));
     assert!(
-        stdout.contains("Statement: Refund credits are issued from the ledger after approval.")
+        stdout.contains("Statement:\nRefund credits are issued from the ledger after approval.")
     );
     assert!(stdout.contains("Evidence:"));
     assert!(stdout.contains("- source: ledger-export"));
@@ -81,8 +81,9 @@ fn explain_uses_explicit_artifact_and_omits_unavailable_fields() {
     assert!(stdout.contains("Kind: warning"));
     assert!(stdout.contains("Severity: high"));
     assert!(
-        stdout
-            .contains("Statement: Refund attempts above the risk threshold require manual review.")
+        stdout.contains(
+            "Statement:\nRefund attempts above the risk threshold require manual review."
+        )
     );
     assert!(stdout.contains("Evidence:"));
     assert!(stdout.contains("- source: risk-runbook"));
@@ -91,6 +92,45 @@ fn explain_uses_explicit_artifact_and_omits_unavailable_fields() {
     assert!(!stdout.contains("Owner:"));
     assert!(!stdout.contains("Verified:"));
     assert!(!stdout.contains("Relations:"));
+}
+
+#[test]
+fn explain_text_renders_decision_and_glossary_metadata() {
+    let workspace = TestWorkspace::new("explain-decision-glossary");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+
+    let decision_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["explain", "billing.refunds.policy"])
+        .output()
+        .expect("adoc explain decision runs");
+
+    assert!(
+        decision_output.status.success(),
+        "expected decision explain to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&decision_output.stdout),
+        String::from_utf8_lossy(&decision_output.stderr)
+    );
+    let decision_stdout = String::from_utf8_lossy(&decision_output.stdout);
+    assert!(decision_stdout.contains("Kind: decision"));
+    assert!(decision_stdout.contains("Fields:\n- decided_by: architecture\n- scope: refunds"));
+    assert!(decision_stdout.contains("Statement:\nRefund credits are issued only after approval."));
+
+    let glossary_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["explain", "billing.refunds.credit"])
+        .output()
+        .expect("adoc explain glossary runs");
+
+    assert!(
+        glossary_output.status.success(),
+        "expected glossary explain to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&glossary_output.stdout),
+        String::from_utf8_lossy(&glossary_output.stderr)
+    );
+    let glossary_stdout = String::from_utf8_lossy(&glossary_output.stdout);
+    assert!(glossary_stdout.contains("Kind: glossary"));
+    assert!(glossary_stdout.contains("Fields:\n- canonical: refund credit"));
 }
 
 #[test]

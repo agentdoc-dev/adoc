@@ -9,9 +9,10 @@ use std::path::PathBuf;
 
 use adoc_core::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, BuildArtifacts,
-    CompileInput, CompileResult, Diagnostic, DiagnosticCode, ExplainResult, RetrievalInput,
+    CompileInput, CompileResult, Diagnostic, DiagnosticCode, ExplainResult, JsonRetrievalFormatter,
+    RetrievalEnvelope, RetrievalFormatError, RetrievalFormatter, RetrievalInput,
     RetrievalLoadResult, RetrievalRecord, RetrievalSession, RetrievalSource, Severity,
-    compile_workspace, explain_object, load_retrieval_session,
+    TextRetrievalFormatter, compile_workspace, explain_object, load_retrieval_session,
 };
 
 #[test]
@@ -195,4 +196,10 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _explain_diagnostics: Vec<Diagnostic> = explain_result.diagnostics;
 
     let _: fn(&RetrievalSession, &str) -> ExplainResult = explain_object;
+
+    let envelope = RetrievalEnvelope::new(Vec::new(), Vec::new());
+    let text_formatter = TextRetrievalFormatter;
+    let json_formatter = JsonRetrievalFormatter;
+    let _: Result<String, RetrievalFormatError> = text_formatter.render(&envelope);
+    let _: Result<String, RetrievalFormatError> = json_formatter.render(&envelope);
 }

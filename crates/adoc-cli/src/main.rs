@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use adoc_core::{
-    AgentJsonDocument, AgentJsonRelations, CompileInput, Diagnostic, DiagnosticCode, ExplainResult,
-    RetrievalEnvelope, RetrievalInput, RetrievalRecord, Severity, compile_workspace,
-    explain_object, load_retrieval_session,
+    AgentJsonDocument, CompileInput, Diagnostic, DiagnosticCode, ExplainResult,
+    JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput, Severity,
+    TextRetrievalFormatter, compile_workspace, explain_object, load_retrieval_session,
 };
 
 use crate::error::CliError;
@@ -71,7 +71,7 @@ fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
         Some(session) => session,
         None => {
             if format.is_json() {
-                return print_explain_json(RetrievalEnvelope::new(
+                return print_explain_json(&RetrievalEnvelope::new(
                     Vec::new(),
                     load_result.diagnostics,
                 ))
@@ -86,7 +86,7 @@ fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
     let exit_code = explain_exit_code(&explain_result);
 
     if format.is_json() {
-        return print_explain_json(RetrievalEnvelope::from(explain_result))
+        return print_explain_json(&RetrievalEnvelope::from(explain_result))
             .map_or_else(report, |()| exit_code);
     }
 
@@ -95,11 +95,15 @@ fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
         return exit_code;
     }
 
-    for record in &explain_result.records {
-        print_explain_text(record);
-    }
+    print_explain_text(&RetrievalEnvelope::from(explain_result)).map_or_else(report, |()| 0)
+}
 
-    0
+fn print_explain_json(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
+    let text = JsonRetrievalFormatter
+        .render(envelope)
+        .map_err(|source| CliError::RetrievalFormat { source })?;
+    println!("{text}");
+    Ok(())
 }
 
 fn explain_exit_code(result: &ExplainResult) -> i32 {
@@ -116,10 +120,11 @@ fn explain_exit_code(result: &ExplainResult) -> i32 {
     0
 }
 
-fn print_explain_json(envelope: RetrievalEnvelope) -> Result<(), CliError> {
-    let text = serde_json::to_string_pretty(&envelope)
-        .map_err(|source| CliError::RetrievalJsonSerialize { source })?;
-    println!("{text}");
+fn print_explain_text(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
+    let text = TextRetrievalFormatter
+        .render(envelope)
+        .map_err(|source| CliError::RetrievalFormat { source })?;
+    print!("{text}");
     Ok(())
 }
 
@@ -223,68 +228,6 @@ fn print_summary(diagnostics: &[Diagnostic]) {
         .count();
 
     println!("{errors} errors, {warnings} warnings");
-}
-
-fn print_explain_text(record: &RetrievalRecord) {
-    println!("Object: {}", record.id);
-    println!("Kind: {}", record.kind);
-    if let Some(status) = &record.status {
-        if record.kind == "warning" {
-            println!("Severity: {status}");
-        } else {
-            println!("Status: {status}");
-        }
-    }
-    if let Some(owner) = &record.owner {
-        println!("Owner: {owner}");
-    }
-    if let Some(verified_at) = &record.verified_at {
-        println!("Verified: {verified_at}");
-    }
-    println!("Statement: {}", record.body);
-    print_evidence(record);
-    println!(
-        "Source: {}:{}:{}",
-        record.source.path, record.source.line, record.source.column
-    );
-    print_relations(&record.relations);
-}
-
-fn print_evidence(record: &RetrievalRecord) {
-    let evidence_fields = ["source", "test", "reviewed_by"];
-    if !evidence_fields
-        .iter()
-        .any(|field| record.evidence.contains_key(*field))
-    {
-        return;
-    }
-
-    println!("Evidence:");
-    for field in evidence_fields {
-        if let Some(value) = record.evidence.get(field) {
-            println!("- {field}: {value}");
-        }
-    }
-}
-
-fn print_relations(relations: &AgentJsonRelations) {
-    if relations.depends_on.is_empty()
-        && relations.supersedes.is_empty()
-        && relations.related_to.is_empty()
-    {
-        return;
-    }
-
-    println!("Relations:");
-    if !relations.depends_on.is_empty() {
-        println!("- depends_on: {}", relations.depends_on.join(", "));
-    }
-    if !relations.supersedes.is_empty() {
-        println!("- supersedes: {}", relations.supersedes.join(", "));
-    }
-    if !relations.related_to.is_empty() {
-        println!("- related_to: {}", relations.related_to.join(", "));
-    }
 }
 
 enum Command {
