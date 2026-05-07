@@ -1,2 +1,3 @@
 /target/
 examples/*/dist/
+.fastembed_cache/
