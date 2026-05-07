@@ -303,11 +303,22 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
     let workspace = TestWorkspace::new("build-writes-artifacts");
     let source = workspace.write(
         "guide.adoc",
-        "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
+        concat!(
+            "# Getting Started @doc(docs.getting-started)\n",
+            "\n",
+            "AgentDoc keeps knowledge readable.\n",
+            "\n",
+            "::claim docs.search-ready\n",
+            "status: draft\n",
+            "--\n",
+            "Default build writes a search artifact.\n",
+            "::\n",
+        ),
     );
     let output_directory = workspace.root.join("dist");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),
@@ -334,12 +345,22 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
         .expect("agent JSON is written");
     assert!(agent_json.contains("\"schema_version\": \"adoc.agent.v0\""));
     assert!(agent_json.contains("\"pages\""));
-    assert!(agent_json.contains("\"objects\": []"));
+    assert!(agent_json.contains("\"id\": \"docs.search-ready\""));
     assert!(agent_json.contains("\"diagnostics\": []"));
+
+    let search_json_text = fs::read_to_string(output_directory.join("docs.search.json"))
+        .expect("search JSON is written");
+    let search_json: serde_json::Value =
+        serde_json::from_str(&search_json_text).expect("search JSON is valid");
+    assert_eq!(search_json["schema_version"], "adoc.search.v0");
+    assert_eq!(search_json["model"]["id"], "in-memory");
+    assert_eq!(search_json["model"]["provider"], "test");
+    assert_eq!(search_json["model"]["dim"], 384);
+    assert_eq!(search_json["embeddings"][0]["id"], "docs.search-ready");
 }
 
 #[test]
-fn build_no_embeddings_emits_info_and_skips_search_artifact() {
+fn build_no_embeddings_emits_info_and_leaves_prior_search_artifact_untouched() {
     let workspace = TestWorkspace::new("build-no-embeddings");
     let source = workspace.write(
         "guide.adoc",
@@ -353,17 +374,18 @@ fn build_no_embeddings_emits_info_and_skips_search_artifact() {
             "::\n",
         ),
     );
+    let output_directory = workspace.root.join("dist");
+    fs::create_dir_all(&output_directory).expect("output directory can be created");
+    let search_artifact_path = output_directory.join("docs.search.json");
+    fs::write(&search_artifact_path, "existing search artifact")
+        .expect("prior search artifact can be written");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),
             "--out",
-            workspace
-                .root
-                .join("dist")
-                .to_str()
-                .expect("output path is utf-8"),
+            output_directory.to_str().expect("output path is utf-8"),
             "--no-embeddings",
         ])
         .output()
@@ -382,10 +404,77 @@ fn build_no_embeddings_emits_info_and_skips_search_artifact() {
     );
     assert!(workspace.root.join("dist/docs.html").is_file());
     assert!(workspace.root.join("dist/docs.agent.json").is_file());
-    assert!(
-        !workspace.root.join("dist/docs.search.json").exists(),
-        "--no-embeddings must not write docs.search.json"
+    assert_eq!(
+        fs::read_to_string(search_artifact_path).expect("prior search artifact remains readable"),
+        "existing search artifact",
+        "--no-embeddings must leave prior docs.search.json untouched"
     );
+}
+
+#[test]
+fn build_reuses_search_artifact_cache_for_unchanged_source() {
+    let workspace = TestWorkspace::new("build-search-cache");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "--\n",
+            "Credits apply after successful payment.\n",
+            "::\n",
+        ),
+    );
+    let output_directory = workspace.root.join("dist");
+
+    for _ in 0..2 {
+        let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+            .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+            .args([
+                "build",
+                source.to_str().expect("source path is utf-8"),
+                "--out",
+                output_directory.to_str().expect("output path is utf-8"),
+            ])
+            .output()
+            .expect("adoc build runs");
+
+        assert!(
+            output.status.success(),
+            "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let first_search: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(output_directory.join("docs.search.json"))
+            .expect("search artifact is readable"),
+    )
+    .expect("search artifact is valid");
+    let first_vector = first_search["embeddings"][0]["vector"].clone();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+        .args([
+            "build",
+            source.to_str().expect("source path is utf-8"),
+            "--out",
+            output_directory.to_str().expect("output path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+    assert!(output.status.success());
+
+    let second_search: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(output_directory.join("docs.search.json"))
+            .expect("search artifact is readable"),
+    )
+    .expect("search artifact is valid");
+
+    assert_eq!(second_search["embeddings"][0]["id"], "billing.credits");
+    assert_eq!(second_search["embeddings"][0]["vector"], first_vector);
 }
 
 #[test]

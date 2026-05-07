@@ -26,10 +26,22 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
 }
 
 pub fn build_workspace(input: BuildInput) -> CompileResult {
-    build_workspace_with_embedding_provider_factory(input, || {
-        infrastructure::embedding::fastembed::FastEmbedProvider::try_new().map(|provider| {
-            Box::new(provider) as Box<dyn domain::ports::embedding_provider::EmbeddingProvider>
-        })
+    build_workspace_with_embedding_provider_factory(input, default_embedding_provider)
+}
+
+fn default_embedding_provider() -> Result<
+    Box<dyn domain::ports::embedding_provider::EmbeddingProvider>,
+    domain::ports::embedding_provider::EmbeddingError,
+> {
+    #[cfg(feature = "test-embedding-provider")]
+    if std::env::var("ADOC_TEST_EMBEDDING_PROVIDER").as_deref() != Ok("fastembed") {
+        return Ok(Box::new(
+            infrastructure::embedding::in_memory::InMemoryProvider::new(384),
+        ));
+    }
+
+    infrastructure::embedding::fastembed::FastEmbedProvider::try_new().map(|provider| {
+        Box::new(provider) as Box<dyn domain::ports::embedding_provider::EmbeddingProvider>
     })
 }
 
