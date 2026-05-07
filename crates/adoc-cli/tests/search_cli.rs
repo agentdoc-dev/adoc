@@ -11,6 +11,151 @@ fn copy_search_artifact(workspace: &TestWorkspace, relative_path: &str) {
     workspace.write(relative_path, &artifact);
 }
 
+fn pilot_subset_artifact() -> String {
+    fixture_path("v1_2_search/pilot_subset.agent.json")
+        .to_str()
+        .expect("fixture path is UTF-8")
+        .to_string()
+}
+
+fn empty_search_artifact() -> String {
+    fixture_path("v1_2_search/empty.agent.json")
+        .to_str()
+        .expect("fixture path is UTF-8")
+        .to_string()
+}
+
+fn search_object_ids(stdout: &[u8]) -> Vec<String> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .filter_map(|line| line.strip_prefix("Object: ").map(str::to_string))
+        .collect()
+}
+
+fn assert_search_top_3_contains(query: &str, expected_id: &str) {
+    let artifact = pilot_subset_artifact();
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["search", query, "--artifact", &artifact, "--top", "3"])
+        .output()
+        .expect("adoc search runs");
+
+    assert!(
+        output.status.success(),
+        "expected search to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    let ids = search_object_ids(&output.stdout);
+    assert!(
+        ids.iter().any(|id| id == expected_id),
+        "expected {expected_id} in top 3 for {query:?}, got {ids:?}"
+    );
+}
+
+#[test]
+fn search_cli_billing_pilot_subset_returns_benchmark_matches_in_top_3() {
+    assert_search_top_3_contains("credit ledger", "billing.credits.ledger-source");
+    assert_search_top_3_contains("refund audit", "billing.refunds.audit-required");
+    assert_search_top_3_contains(
+        "entitlement payment",
+        "billing.entitlements.sync-after-payment",
+    );
+}
+
+#[test]
+fn search_cli_billing_pilot_subset_supports_exact_id_prefix_id_and_filters() {
+    let artifact = pilot_subset_artifact();
+
+    let exact = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "search",
+            "billing.credits.decrement-after-success",
+            "--artifact",
+            &artifact,
+            "--top",
+            "1",
+        ])
+        .output()
+        .expect("adoc search runs");
+    assert!(exact.status.success());
+    assert_eq!(
+        search_object_ids(&exact.stdout),
+        ["billing.credits.decrement-after-success"]
+    );
+
+    let prefix = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "search",
+            "billing.credits",
+            "--artifact",
+            &artifact,
+            "--top",
+            "3",
+        ])
+        .output()
+        .expect("adoc search runs");
+    assert!(prefix.status.success());
+    assert_eq!(
+        search_object_ids(&prefix.stdout),
+        [
+            "billing.credits",
+            "billing.credits.nonnegative",
+            "billing.credits.ledger-source"
+        ]
+    );
+
+    let filtered = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "search",
+            "ledger",
+            "--artifact",
+            &artifact,
+            "--kind",
+            "decision",
+            "--status",
+            "accepted",
+            "--owner",
+            "team-billing",
+            "--source-path",
+            "03-decisions.adoc",
+            "--top",
+            "1",
+        ])
+        .output()
+        .expect("adoc search runs");
+    assert!(filtered.status.success());
+    assert_eq!(
+        search_object_ids(&filtered.stdout),
+        ["billing.decision.ledger-first"]
+    );
+}
+
+#[test]
+fn search_cli_empty_fixture_prints_no_matches() {
+    let artifact = empty_search_artifact();
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "search",
+            "credit ledger",
+            "--artifact",
+            &artifact,
+            "--top",
+            "3",
+        ])
+        .output()
+        .expect("adoc search runs");
+
+    assert!(
+        output.status.success(),
+        "expected empty search to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "(no matches)\n");
+}
+
 #[test]
 fn search_cli_defaults_to_dist_agent_json_and_text_format() {
     let workspace = TestWorkspace::new("search-defaults");
