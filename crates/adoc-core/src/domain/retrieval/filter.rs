@@ -26,52 +26,123 @@ impl SearchFilters {
         &self,
         objects: impl IntoIterator<Item = &'a AgentJsonObject>,
     ) -> Vec<Diagnostic> {
-        let mut kind_valid = self.kind.is_none();
-        let mut status_valid = self.status.is_none();
-        let mut owner_valid = self.owner.is_none();
-        let mut source_path_valid = self.source_path.is_none();
+        self.filter_state_against(objects).diagnostics()
+    }
+
+    pub(crate) fn validate_and_match<'a>(
+        &self,
+        objects: impl IntoIterator<Item = &'a AgentJsonObject>,
+    ) -> Result<Vec<&'a AgentJsonObject>, Vec<Diagnostic>> {
+        let mut candidates = Vec::new();
+        let mut state = FilterValidationState::new(self);
 
         for object in objects {
-            if !kind_valid && matches_required(&object.kind, self.kind.as_deref()) {
-                kind_valid = true;
-            }
-            if !status_valid && matches_optional(object.status.as_deref(), self.status.as_deref()) {
-                status_valid = true;
-            }
-            if !owner_valid
-                && matches_optional(
-                    object.fields.get(OWNER_FIELD).map(String::as_str),
-                    self.owner.as_deref(),
-                )
-            {
-                owner_valid = true;
-            }
-            if !source_path_valid
-                && matches_required(&object.source_span.path, self.source_path.as_deref())
-            {
-                source_path_valid = true;
+            state.update(object);
+            if self.matches(object) {
+                candidates.push(object);
             }
         }
 
+        let diagnostics = state.diagnostics();
+        if diagnostics.is_empty() {
+            Ok(candidates)
+        } else {
+            Err(diagnostics)
+        }
+    }
+
+    fn filter_state_against<'a>(
+        &self,
+        objects: impl IntoIterator<Item = &'a AgentJsonObject>,
+    ) -> FilterValidationState<'_> {
+        let mut state = FilterValidationState::new(self);
+
+        for object in objects {
+            if state.all_valid() {
+                break;
+            }
+            state.update(object);
+        }
+
+        state
+    }
+}
+
+struct FilterValidationState<'a> {
+    filters: &'a SearchFilters,
+    kind_valid: bool,
+    status_valid: bool,
+    owner_valid: bool,
+    source_path_valid: bool,
+}
+
+impl<'a> FilterValidationState<'a> {
+    fn new(filters: &'a SearchFilters) -> Self {
+        Self {
+            filters,
+            kind_valid: filters.kind.is_none(),
+            status_valid: filters.status.is_none(),
+            owner_valid: filters.owner.is_none(),
+            source_path_valid: filters.source_path.is_none(),
+        }
+    }
+
+    fn update(&mut self, object: &AgentJsonObject) {
+        if !self.kind_valid && matches_required(&object.kind, self.filters.kind.as_deref()) {
+            self.kind_valid = true;
+        }
+        if !self.status_valid
+            && matches_optional(object.status.as_deref(), self.filters.status.as_deref())
+        {
+            self.status_valid = true;
+        }
+        if !self.owner_valid
+            && matches_optional(
+                object.fields.get(OWNER_FIELD).map(String::as_str),
+                self.filters.owner.as_deref(),
+            )
+        {
+            self.owner_valid = true;
+        }
+        if !self.source_path_valid
+            && matches_required(
+                &object.source_span.path,
+                self.filters.source_path.as_deref(),
+            )
+        {
+            self.source_path_valid = true;
+        }
+    }
+
+    fn all_valid(&self) -> bool {
+        self.kind_valid && self.status_valid && self.owner_valid && self.source_path_valid
+    }
+
+    fn diagnostics(&self) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
-        push_invalid_filter(&mut diagnostics, "kind", self.kind.as_deref(), kind_valid);
+        push_invalid_filter(
+            &mut diagnostics,
+            "kind",
+            self.filters.kind.as_deref(),
+            self.kind_valid,
+        );
         push_invalid_filter(
             &mut diagnostics,
             "status",
-            self.status.as_deref(),
-            status_valid,
+            self.filters.status.as_deref(),
+            self.status_valid,
         );
         push_invalid_filter(
             &mut diagnostics,
             "owner",
-            self.owner.as_deref(),
-            owner_valid,
+            self.filters.owner.as_deref(),
+            self.owner_valid,
         );
         push_invalid_filter(
             &mut diagnostics,
             "source_path",
-            self.source_path.as_deref(),
-            source_path_valid,
+            self.filters.source_path.as_deref(),
+            self.source_path_valid,
         );
         diagnostics
     }

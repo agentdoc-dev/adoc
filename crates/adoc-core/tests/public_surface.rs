@@ -5,6 +5,7 @@
 //! new `pub use` that nobody reviewed. Both are signals to update ADR-0005
 //! before merging.
 
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use adoc_core::{
@@ -211,7 +212,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         text: String::from("credits"),
         mode: SearchMode::Lexical,
         filters: SearchFilters::default(),
-        top: 10,
+        top: NonZeroUsize::new(10).expect("non-zero top"),
     };
     let _: RetrievalMatch = RetrievalMatch::lexical(1, Some(1));
     let search_result = SearchResult {

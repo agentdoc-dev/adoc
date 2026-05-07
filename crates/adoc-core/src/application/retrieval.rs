@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use crate::domain::artifact::{AgentJsonDocument, AgentJsonObject};
@@ -39,7 +40,7 @@ pub struct SearchQuery {
     pub text: String,
     pub mode: SearchMode,
     pub filters: SearchFilters,
-    pub top: usize,
+    pub top: NonZeroUsize,
 }
 
 #[derive(Debug, Clone)]
@@ -147,34 +148,24 @@ pub fn explain_object(session: &RetrievalSession, id: &str) -> ExplainResult {
 }
 
 pub fn search(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
-    if query.top == 0 {
-        return SearchResult {
-            records: Vec::new(),
-            diagnostics: Vec::new(),
-        };
-    }
-
     match query.mode {
         SearchMode::Lexical => search_lexical(session, query),
     }
 }
 
 fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
-    let diagnostics = query
+    let candidates = match query
         .filters
-        .validate_against(session.exact_lookup.values());
-    if !diagnostics.is_empty() {
-        return SearchResult {
-            records: Vec::new(),
-            diagnostics,
-        };
-    }
-
-    let candidates: Vec<_> = session
-        .exact_lookup
-        .values()
-        .filter(|object| query.filters.matches(object))
-        .collect();
+        .validate_and_match(session.exact_lookup.values())
+    {
+        Ok(candidates) => candidates,
+        Err(diagnostics) => {
+            return SearchResult {
+                records: Vec::new(),
+                diagnostics,
+            };
+        }
+    };
     if candidates.is_empty() {
         return SearchResult {
             records: Vec::new(),
@@ -207,12 +198,12 @@ fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResul
         if seen_ids.insert(hit.id.clone()) {
             result_hits.push((hit.id, Some(hit.lexical_rank)));
         }
-        if result_hits.len() >= query.top {
+        if result_hits.len() >= query.top.get() {
             break;
         }
     }
 
-    result_hits.truncate(query.top);
+    result_hits.truncate(query.top.get());
     SearchResult {
         records: result_hits
             .into_iter()
