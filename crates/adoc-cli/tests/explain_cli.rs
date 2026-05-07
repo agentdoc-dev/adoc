@@ -279,3 +279,103 @@ fn explain_format_json_artifact_errors_exit_2_with_envelope() {
         assert_eq!(value["diagnostics"][0]["code"], expected_code);
     }
 }
+
+#[test]
+fn top_level_help_exits_0_and_lists_commands() {
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .arg("--help")
+        .output()
+        .expect("adoc --help runs");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stderr.is_empty(),
+        "help should render to stdout, stderr was:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Usage: adoc <COMMAND>"));
+    assert!(stdout.contains("check"));
+    assert!(stdout.contains("build"));
+    assert!(stdout.contains("explain"));
+}
+
+#[test]
+fn top_level_version_exits_0_and_prints_version() {
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .arg("--version")
+        .output()
+        .expect("adoc --version runs");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stderr.is_empty(),
+        "version should render to stdout, stderr was:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn explain_help_exits_0_and_lists_defaults() {
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["explain", "--help"])
+        .output()
+        .expect("adoc explain --help runs");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stderr.is_empty(),
+        "command help should render to stdout, stderr was:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Usage: adoc explain [OPTIONS] <OBJECT_ID>"));
+    assert!(stdout.contains("--artifact <ARTIFACT>"));
+    assert!(stdout.contains("dist/docs.agent.json"));
+    assert!(stdout.contains("--format <FORMAT>"));
+    assert!(stdout.contains("text"));
+    assert!(stdout.contains("json"));
+}
+
+#[test]
+fn explain_unsupported_format_exits_1_with_parse_error() {
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "explain",
+            "billing.refunds.issue-credit",
+            "--format",
+            "yaml",
+        ])
+        .output()
+        .expect("adoc explain runs");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "parse errors should render to stderr, stdout was:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("invalid value 'yaml'"));
+    assert!(stderr.contains("possible values: text, json"));
+}
+
+#[test]
+fn explain_missing_object_id_exits_1_with_parse_error() {
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .arg("explain")
+        .output()
+        .expect("adoc explain runs");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "parse errors should render to stderr, stdout was:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("required arguments were not provided"));
+    assert!(stderr.contains("<OBJECT_ID>"));
+}
