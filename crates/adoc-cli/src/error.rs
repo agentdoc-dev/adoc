@@ -28,38 +28,17 @@ pub(crate) enum CliError {
     #[error("build did not produce artifacts")]
     BuildMissingArtifacts,
 
-    #[error("invalid build usage: build requires <path> --out <directory>")]
-    InvalidBuildUsage,
-
-    #[error(
-        "invalid explain usage: explain requires <object-id> [--artifact <path>] [--format text|json]"
-    )]
-    InvalidExplainUsage,
-
-    #[error("unsupported explain format: {format}")]
-    UnsupportedExplainFormat { format: String },
-
     #[error("error[retrieval.format] could not format retrieval output: {source}")]
     RetrievalFormat {
         #[source]
         source: adoc_core::RetrievalFormatError,
     },
-
-    #[error("missing command")]
-    MissingCommand,
-
-    #[error("unknown or invalid command: {command}")]
-    UnknownCommand { command: String },
 }
 
 impl CliError {
     pub(crate) fn exit_code(&self) -> i32 {
         match self {
-            CliError::InvalidExplainUsage | CliError::UnsupportedExplainFormat { .. } => 1,
             CliError::RetrievalFormat { .. } => 2,
-            CliError::InvalidBuildUsage
-            | CliError::MissingCommand
-            | CliError::UnknownCommand { .. } => 2,
             _ => 1,
         }
     }

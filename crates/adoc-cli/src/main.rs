@@ -9,30 +9,67 @@ use adoc_core::{
     JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput, Severity,
     TextRetrievalFormatter, compile_workspace, explain_object, load_retrieval_session,
 };
+use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
 use crate::error::CliError;
 
 fn main() -> ExitCode {
-    ExitCode::from(run(std::env::args().skip(1).collect()) as u8)
+    ExitCode::from(run(std::env::args()) as u8)
 }
 
-fn run(arguments: Vec<String>) -> i32 {
-    match parse_command(arguments) {
-        Ok(Command::Check { path }) => check(path),
-        Ok(Command::Build { path, out }) => build(path, out),
-        Ok(Command::Explain {
-            object_id,
-            artifact,
-            format,
-        }) => explain(object_id, artifact, format),
-        Err(error) => {
-            eprintln!("{error}");
-            eprintln!("usage: adoc check <path>");
-            eprintln!("       adoc build <path> --out <directory>");
-            eprintln!("       adoc explain <object-id> [--artifact <path>] [--format text|json]");
-            error.exit_code()
-        }
+fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
+    match Cli::try_parse_from(arguments) {
+        Ok(cli) => match cli.command {
+            Commands::Check { path } => check(path),
+            Commands::Build { path, out } => build(path, out),
+            Commands::Explain {
+                object_id,
+                artifact,
+                format,
+            } => explain(object_id, artifact, format),
+        },
+        Err(error) => report_parse_error(error),
     }
+}
+
+fn report_parse_error(error: clap::Error) -> i32 {
+    let exit_code = match error.kind() {
+        ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => 0,
+        _ => 1,
+    };
+
+    if let Err(source) = error.print() {
+        eprintln!("error[cli.output] could not print command line output: {source}");
+        return 1;
+    }
+
+    exit_code
+}
+
+#[derive(Parser)]
+#[command(name = "adoc", version)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    Check {
+        path: PathBuf,
+    },
+    Build {
+        path: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    Explain {
+        object_id: String,
+        #[arg(long, default_value = "dist/docs.agent.json")]
+        artifact: PathBuf,
+        #[arg(long, value_enum, default_value = "text")]
+        format: ExplainFormat,
+    },
 }
 
 fn check(path: PathBuf) -> i32 {
@@ -230,21 +267,7 @@ fn print_summary(diagnostics: &[Diagnostic]) {
     println!("{errors} errors, {warnings} warnings");
 }
 
-enum Command {
-    Check {
-        path: PathBuf,
-    },
-    Build {
-        path: PathBuf,
-        out: PathBuf,
-    },
-    Explain {
-        object_id: String,
-        artifact: PathBuf,
-        format: ExplainFormat,
-    },
-}
-
+#[derive(Clone, Copy, ValueEnum)]
 enum ExplainFormat {
     Text,
     Json,
@@ -254,70 +277,4 @@ impl ExplainFormat {
     fn is_json(&self) -> bool {
         matches!(self, Self::Json)
     }
-}
-
-fn parse_command(arguments: Vec<String>) -> Result<Command, CliError> {
-    match arguments.as_slice() {
-        [command, path] if command == "check" => Ok(Command::Check {
-            path: PathBuf::from(path),
-        }),
-        [command, path, out_flag, out] if command == "build" && out_flag == "--out" => {
-            Ok(Command::Build {
-                path: PathBuf::from(path),
-                out: PathBuf::from(out),
-            })
-        }
-        [command, arguments @ ..] if command == "explain" => parse_explain_command(arguments),
-        [] => Err(CliError::MissingCommand),
-        [command, ..] if command == "build" => Err(CliError::InvalidBuildUsage),
-        [command, ..] => Err(CliError::UnknownCommand {
-            command: command.clone(),
-        }),
-    }
-}
-
-fn parse_explain_command(arguments: &[String]) -> Result<Command, CliError> {
-    let Some((object_id, rest)) = arguments.split_first() else {
-        return Err(CliError::InvalidExplainUsage);
-    };
-    if object_id.starts_with("--") {
-        return Err(CliError::InvalidExplainUsage);
-    }
-
-    let mut artifact = PathBuf::from("dist/docs.agent.json");
-    let mut format = ExplainFormat::Text;
-    let mut index = 0;
-    while index < rest.len() {
-        match rest[index].as_str() {
-            "--artifact" => {
-                let Some(path) = rest.get(index + 1) else {
-                    return Err(CliError::InvalidExplainUsage);
-                };
-                artifact = PathBuf::from(path);
-                index += 2;
-            }
-            "--format" => {
-                let Some(value) = rest.get(index + 1) else {
-                    return Err(CliError::InvalidExplainUsage);
-                };
-                format = match value.as_str() {
-                    "text" => ExplainFormat::Text,
-                    "json" => ExplainFormat::Json,
-                    unsupported => {
-                        return Err(CliError::UnsupportedExplainFormat {
-                            format: unsupported.to_string(),
-                        });
-                    }
-                };
-                index += 2;
-            }
-            _ => return Err(CliError::InvalidExplainUsage),
-        }
-    }
-
-    Ok(Command::Explain {
-        object_id: object_id.clone(),
-        artifact,
-        format,
-    })
 }

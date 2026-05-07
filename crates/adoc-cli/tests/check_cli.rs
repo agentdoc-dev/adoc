@@ -339,7 +339,7 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
 }
 
 #[test]
-fn build_invalid_usage_missing_out_exits_2_with_build_specific_message() {
+fn build_missing_out_exits_1_with_parse_error() {
     let workspace = TestWorkspace::new("build-invalid-usage-missing-out");
     let source = workspace.write(
         "guide.adoc",
@@ -351,20 +351,25 @@ fn build_invalid_usage_missing_out_exits_2_with_build_specific_message() {
         .output()
         .expect("adoc build runs");
 
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "parse errors should render to stderr, stdout was:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("build requires <path> --out <directory>"),
-        "expected build-specific usage message, got:\n{stderr}"
+        stderr.contains("required arguments were not provided"),
+        "expected required-argument parse error, got:\n{stderr}"
     );
     assert!(
-        !stderr.contains("unknown or invalid command: build"),
-        "build arity errors should not be reported as unknown commands:\n{stderr}"
+        stderr.contains("--out <OUT>"),
+        "expected missing --out in parse error, got:\n{stderr}"
     );
 }
 
 #[test]
-fn build_invalid_usage_wrong_out_flag_exits_2_with_build_specific_message() {
+fn build_unknown_out_flag_exits_1_with_parse_error() {
     let workspace = TestWorkspace::new("build-invalid-usage-wrong-out-flag");
     let source = workspace.write(
         "guide.adoc",
@@ -381,15 +386,20 @@ fn build_invalid_usage_wrong_out_flag_exits_2_with_build_specific_message() {
         .output()
         .expect("adoc build runs");
 
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "parse errors should render to stderr, stdout was:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("build requires <path> --out <directory>"),
-        "expected build-specific usage message, got:\n{stderr}"
+        stderr.contains("unexpected argument '--output'"),
+        "expected unknown-flag parse error, got:\n{stderr}"
     );
     assert!(
-        !stderr.contains("unknown or invalid command: build"),
-        "build flag errors should not be reported as unknown commands:\n{stderr}"
+        stderr.contains("similar argument exists: '--out'"),
+        "expected --out suggestion, got:\n{stderr}"
     );
 }
 
