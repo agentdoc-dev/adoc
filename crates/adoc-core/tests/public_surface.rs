@@ -213,7 +213,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         filters: SearchFilters::default(),
         top: 10,
     };
-    let _: RetrievalMatch = RetrievalMatch::lexical(1);
+    let _: RetrievalMatch = RetrievalMatch::lexical(1, Some(1));
     let search_result = SearchResult {
         records: Vec::new(),
         diagnostics: Vec::new(),

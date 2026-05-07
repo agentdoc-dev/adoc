@@ -32,14 +32,17 @@ pub struct RetrievalRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RetrievalMatch {
     pub mode: SearchMode,
-    pub lexical_rank: u32,
+    pub result_rank: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lexical_rank: Option<u32>,
 }
 
 impl RetrievalMatch {
-    pub fn lexical(rank: u32) -> Self {
+    pub fn lexical(result_rank: u32, lexical_rank: Option<u32>) -> Self {
         Self {
             mode: SearchMode::Lexical,
-            lexical_rank: rank,
+            result_rank,
+            lexical_rank,
         }
     }
 }

@@ -175,27 +175,41 @@ fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResul
     }
 
     let candidate_ids: Vec<_> = candidates.iter().map(|object| object.id.as_str()).collect();
-    let mut result_ids = pinned_candidate_ids(&query.text, &candidate_ids);
-    let mut seen_ids: BTreeSet<_> = result_ids.iter().cloned().collect();
-
-    for hit in session
+    let lexical_hits = session
         .lexical_index
-        .search_candidates(&query.text, candidate_ids.iter().copied())
-    {
+        .search_candidates(&query.text, candidate_ids.iter().copied());
+    let lexical_ranks_by_id: BTreeMap<_, _> = lexical_hits
+        .iter()
+        .map(|hit| (hit.id.as_str(), hit.lexical_rank))
+        .collect();
+
+    let mut result_hits: Vec<_> = pinned_candidate_ids(&query.text, &candidate_ids)
+        .into_iter()
+        .map(|id| {
+            let lexical_rank = lexical_ranks_by_id.get(id.as_str()).copied();
+            (id, lexical_rank)
+        })
+        .collect();
+    let mut seen_ids: BTreeSet<_> = result_hits
+        .iter()
+        .map(|(id, _lexical_rank)| id.clone())
+        .collect();
+
+    for hit in lexical_hits {
         if seen_ids.insert(hit.id.clone()) {
-            result_ids.push(hit.id);
+            result_hits.push((hit.id, Some(hit.lexical_rank)));
         }
-        if result_ids.len() >= query.top {
+        if result_hits.len() >= query.top {
             break;
         }
     }
 
-    result_ids.truncate(query.top);
+    result_hits.truncate(query.top);
     SearchResult {
-        records: result_ids
+        records: result_hits
             .into_iter()
             .enumerate()
-            .map(|(index, id)| {
+            .map(|(index, (id, lexical_rank))| {
                 let object_id = ObjectId::new_unchecked(id.clone());
                 let object = session
                     .exact_lookup
@@ -203,7 +217,7 @@ fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResul
                     .expect("search result IDs must come from the loaded retrieval session");
                 RetrievalRecord::from_object_with_match(
                     object,
-                    RetrievalMatch::lexical((index + 1) as u32),
+                    RetrievalMatch::lexical((index + 1) as u32, lexical_rank),
                 )
             })
             .collect(),

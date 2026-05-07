@@ -129,6 +129,20 @@ fn search_ranks(result: &SearchResult) -> Vec<u32> {
                 .search_match
                 .as_ref()
                 .expect("search result records include lexical match metadata")
+                .result_rank
+        })
+        .collect()
+}
+
+fn search_lexical_ranks(result: &SearchResult) -> Vec<Option<u32>> {
+    result
+        .records
+        .iter()
+        .map(|record| {
+            record
+                .search_match
+                .as_ref()
+                .expect("search result records include lexical match metadata")
                 .lexical_rank
         })
         .collect()
@@ -294,7 +308,7 @@ fn search_pins_exact_object_id_as_rank_one() {
     assert_eq!(result.records[0].id, "billing.credits");
     assert_eq!(
         result.records[0].search_match,
-        Some(RetrievalMatch::lexical(1))
+        Some(RetrievalMatch::lexical(1, Some(2)))
     );
 }
 
@@ -360,6 +374,35 @@ fn search_pins_id_prefix_matches_by_length_then_lexical_before_bm25() {
         ]
     );
     assert_eq!(search_ranks(&result), [1, 2, 3, 4, 5]);
+}
+
+#[test]
+fn search_result_rank_tracks_pins_while_lexical_rank_is_omitted_for_pinned_only_hits() {
+    let session = load_session_from_objects(vec![
+        retrieval_search_object(
+            "billing.credits",
+            "claim",
+            None,
+            None,
+            "docs/billing.adoc",
+            "No matching prefix token.",
+        ),
+        retrieval_search_object(
+            "support.heavy",
+            "claim",
+            None,
+            None,
+            "docs/support.adoc",
+            "billing billing billing",
+        ),
+    ]);
+
+    let result = search(&session, lexical_query("bil", 2, SearchFilters::default()));
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), ["billing.credits"]);
+    assert_eq!(search_ranks(&result), [1]);
+    assert_eq!(search_lexical_ranks(&result), [None]);
 }
 
 #[test]
@@ -793,13 +836,15 @@ fn retrieval_record_serializes_lexical_search_match_contract() {
         relations: AgentJsonRelations::default(),
     };
 
-    let record = RetrievalRecord::from_object_with_match(&object, RetrievalMatch::lexical(1));
+    let record =
+        RetrievalRecord::from_object_with_match(&object, RetrievalMatch::lexical(1, Some(1)));
     let value = serde_json::to_value(&record).expect("record serializes");
 
     assert_eq!(
         value["match"],
         serde_json::json!({
             "mode": "lexical",
+            "result_rank": 1,
             "lexical_rank": 1
         })
     );
@@ -823,7 +868,7 @@ fn retrieval_envelope_can_be_created_from_search_result() {
         evidence: std::collections::BTreeMap::new(),
         fields: std::collections::BTreeMap::new(),
         relations: AgentJsonRelations::default(),
-        search_match: Some(RetrievalMatch::lexical(1)),
+        search_match: Some(RetrievalMatch::lexical(1, Some(1))),
     };
     let result = SearchResult {
         records: vec![record],
@@ -834,6 +879,7 @@ fn retrieval_envelope_can_be_created_from_search_result() {
 
     assert_eq!(value["schema_version"], "adoc.retrieval.v0");
     assert_eq!(value["records"][0]["match"]["mode"], "lexical");
+    assert_eq!(value["records"][0]["match"]["result_rank"], 1);
     assert_eq!(value["records"][0]["match"]["lexical_rank"], 1);
     assert_eq!(value["diagnostics"], serde_json::json!([]));
 }
