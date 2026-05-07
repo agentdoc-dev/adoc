@@ -151,7 +151,11 @@ fn explain_exit_code(result: &ExplainResult) -> i32 {
     {
         return 3;
     }
-    if !result.diagnostics.is_empty() {
+    if result
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == Severity::Error)
+    {
         return 2;
     }
     0
@@ -276,5 +280,46 @@ enum ExplainFormat {
 impl ExplainFormat {
     fn is_json(&self) -> bool {
         matches!(self, Self::Json)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use adoc_core::{AgentJsonRelations, RetrievalRecord, RetrievalSource};
+
+    use super::*;
+
+    #[test]
+    fn explain_exit_code_allows_warning_diagnostics_when_record_is_present() {
+        let result = ExplainResult {
+            records: vec![RetrievalRecord {
+                id: "billing.credits".to_string(),
+                kind: "claim".to_string(),
+                status: Some("verified".to_string()),
+                owner: None,
+                verified_at: None,
+                body: "Credits decrement after payment succeeds.".to_string(),
+                source: RetrievalSource {
+                    path: "docs/billing.adoc".to_string(),
+                    line: 1,
+                    column: 1,
+                },
+                evidence: BTreeMap::new(),
+                fields: BTreeMap::new(),
+                relations: AgentJsonRelations::default(),
+            }],
+            diagnostics: vec![Diagnostic {
+                code: DiagnosticCode::ClaimStatusCasing,
+                severity: Severity::Warning,
+                message: "status casing".to_string(),
+                span: None,
+                object_id: None,
+                help: None,
+            }],
+        };
+
+        assert_eq!(explain_exit_code(&result), 0);
     }
 }
