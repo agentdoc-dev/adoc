@@ -25,6 +25,24 @@ fn empty_search_artifact() -> String {
         .to_string()
 }
 
+fn artifact_with_diagnostic(severity: &str) -> String {
+    let artifact = fs::read_to_string(fixture_path("v1_1_explain/valid_artifact.agent.json"))
+        .expect("fixture artifact is readable");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&artifact).expect("fixture artifact is JSON");
+    value["diagnostics"] = serde_json::json!([
+        {
+            "code": "parse.raw_html",
+            "severity": severity,
+            "message": "artifact carried diagnostic",
+            "span": null,
+            "object_id": null,
+            "help": "inspect source"
+        }
+    ]);
+    serde_json::to_string_pretty(&value).expect("artifact serializes")
+}
+
 fn search_object_ids(stdout: &[u8]) -> Vec<String> {
     String::from_utf8_lossy(stdout)
         .lines()
@@ -383,4 +401,63 @@ fn search_cli_json_invalid_filter_exits_1_with_envelope_diagnostics_and_no_stder
             .expect("diagnostic message is a string")
             .contains("kind=runbook")
     );
+}
+
+#[test]
+fn search_cli_json_success_includes_loaded_artifact_warnings() {
+    let workspace = TestWorkspace::new("search-json-artifact-warning");
+    workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("warning"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["search", "ledger", "--format", "json"])
+        .output()
+        .expect("adoc search runs");
+
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
+    assert_eq!(value["diagnostics"][0]["severity"], "warning");
+    assert_eq!(value["diagnostics"][0]["code"], "parse.raw_html");
+    assert!(
+        !value["records"]
+            .as_array()
+            .expect("records array")
+            .is_empty()
+    );
+}
+
+#[test]
+fn search_cli_text_success_prints_loaded_artifact_warnings_to_stderr() {
+    let workspace = TestWorkspace::new("search-text-artifact-warning");
+    workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("warning"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["search", "ledger"])
+        .output()
+        .expect("adoc search runs");
+
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Object:"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("warning[parse.raw_html]"));
+}
+
+#[test]
+fn search_cli_loaded_artifact_errors_exit_2() {
+    let workspace = TestWorkspace::new("search-artifact-error");
+    workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("error"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["search", "ledger", "--format", "json"])
+        .output()
+        .expect("adoc search runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
+    assert_eq!(value["records"], serde_json::json!([]));
+    assert_eq!(value["diagnostics"][0]["severity"], "error");
+    assert_eq!(value["diagnostics"][0]["code"], "parse.raw_html");
 }
