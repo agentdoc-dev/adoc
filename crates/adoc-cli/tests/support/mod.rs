@@ -10,6 +10,16 @@ pub(crate) fn fixture_path(relative: &str) -> PathBuf {
         .join(relative)
 }
 
+#[allow(dead_code)]
+pub(crate) fn workspace_fixture_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("tests")
+        .join("fixtures")
+        .join(relative)
+}
+
 pub(crate) struct TestWorkspace {
     pub(crate) root: PathBuf,
 }

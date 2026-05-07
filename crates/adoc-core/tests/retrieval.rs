@@ -15,6 +15,15 @@ fn fixture_path(relative: &str) -> PathBuf {
         .join(relative)
 }
 
+fn workspace_fixture_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("tests")
+        .join("fixtures")
+        .join(relative)
+}
+
 fn write_temp_artifact(name: &str, contents: &str) -> tempfile::NamedTempFile {
     let artifact = tempfile::Builder::new()
         .prefix(&format!("adoc-retrieval-{name}-"))
@@ -50,9 +59,9 @@ fn load_session_from_objects(objects: Vec<AgentJsonObject>) -> RetrievalSession 
     result.session.expect("search fixture session loads")
 }
 
-fn load_fixture_session(relative: &str) -> RetrievalSession {
+fn load_workspace_fixture_session(relative: &str) -> RetrievalSession {
     let result = load_retrieval_session(RetrievalInput {
-        artifact_path: fixture_path(relative),
+        artifact_path: workspace_fixture_path(relative),
     });
 
     assert!(
@@ -166,7 +175,7 @@ fn assert_top_3_contains(session: &RetrievalSession, query: &str, expected_id: &
 
 #[test]
 fn retrieval_search_billing_pilot_subset_returns_benchmark_matches_in_top_3() {
-    let session = load_fixture_session("v1_2_search/pilot_subset.agent.json");
+    let session = load_workspace_fixture_session("v1_2_search/pilot_subset.agent.json");
 
     assert_top_3_contains(&session, "credit ledger", "billing.credits.ledger-source");
     assert_top_3_contains(&session, "refund audit", "billing.refunds.audit-required");
@@ -179,7 +188,7 @@ fn retrieval_search_billing_pilot_subset_returns_benchmark_matches_in_top_3() {
 
 #[test]
 fn retrieval_search_billing_pilot_subset_pins_exact_and_prefix_ids() {
-    let session = load_fixture_session("v1_2_search/pilot_subset.agent.json");
+    let session = load_workspace_fixture_session("v1_2_search/pilot_subset.agent.json");
 
     let exact = search(
         &session,
@@ -214,7 +223,7 @@ fn retrieval_search_billing_pilot_subset_pins_exact_and_prefix_ids() {
 
 #[test]
 fn retrieval_search_billing_pilot_subset_covers_filters_and_tie_ordering() {
-    let session = load_fixture_session("v1_2_search/pilot_subset.agent.json");
+    let session = load_workspace_fixture_session("v1_2_search/pilot_subset.agent.json");
 
     let filtered = search(
         &session,
@@ -249,7 +258,7 @@ fn retrieval_search_billing_pilot_subset_covers_filters_and_tie_ordering() {
 
 #[test]
 fn retrieval_search_empty_fixture_returns_no_matches_without_diagnostics() {
-    let session = load_fixture_session("v1_2_search/empty.agent.json");
+    let session = load_workspace_fixture_session("v1_2_search/empty.agent.json");
 
     let result = search(
         &session,
