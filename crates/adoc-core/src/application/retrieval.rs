@@ -1,9 +1,11 @@
+use std::collections::{BTreeMap, btree_map::Entry};
 use std::path::PathBuf;
 
-use crate::domain::artifact::AgentJsonDocument;
+use crate::domain::artifact::{AgentJsonDocument, AgentJsonObject};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::domain::retrieval::{LookupIndex, RetrievalRecord};
-use crate::infrastructure::artifact::agent_json::read_agent_json_document;
+use crate::domain::identity::ObjectId;
+use crate::domain::ports::artifact_reader::ArtifactReader;
+use crate::domain::retrieval::RetrievalRecord;
 
 pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v0";
 
@@ -20,8 +22,7 @@ pub struct RetrievalLoadResult {
 
 #[derive(Debug, Clone)]
 pub struct RetrievalSession {
-    document: AgentJsonDocument,
-    lookup: LookupIndex,
+    exact_lookup: BTreeMap<ObjectId, AgentJsonObject>,
 }
 
 #[derive(Debug, Clone)]
@@ -53,8 +54,14 @@ impl From<ExplainResult> for RetrievalEnvelope {
     }
 }
 
-pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {
-    let document = match read_agent_json_document(&input.artifact_path) {
+pub(crate) fn load_retrieval_session_with_reader<R>(
+    input: RetrievalInput,
+    reader: &R,
+) -> RetrievalLoadResult
+where
+    R: ArtifactReader<Output = AgentJsonDocument>,
+{
+    let document = match reader.read(&input.artifact_path) {
         Ok(document) => document,
         Err(diagnostics) => {
             return RetrievalLoadResult {
@@ -64,8 +71,8 @@ pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {
         }
     };
 
-    let lookup = match LookupIndex::build(&document.objects) {
-        Ok(lookup) => lookup,
+    let exact_lookup = match build_exact_lookup(document.objects) {
+        Ok(exact_lookup) => exact_lookup,
         Err(diagnostics) => {
             return RetrievalLoadResult {
                 session: None,
@@ -75,13 +82,14 @@ pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {
     };
 
     RetrievalLoadResult {
-        session: Some(RetrievalSession { document, lookup }),
+        session: Some(RetrievalSession { exact_lookup }),
         diagnostics: Vec::new(),
     }
 }
 
 pub fn explain_object(session: &RetrievalSession, id: &str) -> ExplainResult {
-    if let Some(object) = session.lookup.get(&session.document.objects, id) {
+    let object_id = ObjectId::new_unchecked(id);
+    if let Some(object) = session.exact_lookup.get(&object_id) {
         return ExplainResult {
             records: vec![RetrievalRecord::from(object)],
             diagnostics: Vec::new(),
@@ -100,5 +108,108 @@ pub fn explain_object(session: &RetrievalSession, id: &str) -> ExplainResult {
                 "Run `adoc build` if the source was changed after the artifact was generated.",
             ),
         ],
+    }
+}
+
+fn build_exact_lookup(
+    objects: Vec<AgentJsonObject>,
+) -> Result<BTreeMap<ObjectId, AgentJsonObject>, Vec<Diagnostic>> {
+    let mut exact_lookup = BTreeMap::new();
+    let mut diagnostics = Vec::new();
+
+    for object in objects {
+        // Retrieval preserves the artifact's exact wire ID as the lookup key.
+        // The artifact read path validates schema shape; exact ID lookups still
+        // behave as misses rather than validation errors for arbitrary queries.
+        let object_id_text = object.id.clone();
+        let object_id = ObjectId::new_unchecked(object_id_text.clone());
+        match exact_lookup.entry(object_id) {
+            Entry::Vacant(entry) => {
+                entry.insert(object);
+            }
+            Entry::Occupied(_) => {
+                diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::IdDuplicateInArtifact,
+                        format!("duplicate Object ID `{object_id_text}` in agent artifact"),
+                    )
+                    .with_object_id(object_id_text)
+                    .with_help(
+                        "Run `adoc build` to regenerate docs.agent.json from validated AgentDoc Source.",
+                    ),
+                );
+            }
+        }
+    }
+
+    if diagnostics.is_empty() {
+        Ok(exact_lookup)
+    } else {
+        Err(diagnostics)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::path::Path;
+
+    use super::*;
+    use crate::domain::artifact::{AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan};
+    use crate::domain::ports::artifact_reader::ArtifactReader;
+
+    struct StubArtifactReader {
+        document: AgentJsonDocument,
+    }
+
+    impl ArtifactReader for StubArtifactReader {
+        type Output = AgentJsonDocument;
+
+        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+            Ok(self.document.clone())
+        }
+    }
+
+    fn document_with_object(id: &str) -> AgentJsonDocument {
+        AgentJsonDocument {
+            schema_version: "adoc.agent.v0".to_string(),
+            pages: Vec::new(),
+            objects: vec![AgentJsonObject {
+                id: id.to_string(),
+                kind: "claim".to_string(),
+                status: Some("draft".to_string()),
+                body: "Body.".to_string(),
+                page_id: "team.page".to_string(),
+                source_span: AgentJsonSourceSpan {
+                    path: "docs/page.adoc".to_string(),
+                    line: 1,
+                    column: 1,
+                },
+                fields: BTreeMap::new(),
+                relations: AgentJsonRelations::default(),
+            }],
+            diagnostics: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn retrieval_session_loads_through_artifact_reader_port() {
+        let reader = StubArtifactReader {
+            document: document_with_object("billing.reader-port"),
+        };
+
+        let result = load_retrieval_session_with_reader(
+            RetrievalInput {
+                artifact_path: PathBuf::from("ignored.agent.json"),
+            },
+            &reader,
+        );
+
+        assert!(result.diagnostics.is_empty());
+        let session = result.session.expect("session loads from reader port");
+        let explained = explain_object(&session, "billing.reader-port");
+
+        assert_eq!(explained.records.len(), 1);
+        assert_eq!(explained.records[0].id, "billing.reader-port");
     }
 }

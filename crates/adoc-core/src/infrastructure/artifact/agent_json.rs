@@ -11,15 +11,13 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::knowledge_object::{
     KnowledgeObject, RelationField, RelationTarget, Relations, projection::MetadataField,
 };
-use crate::domain::ports::artifact_writer::ArtifactWriter;
+use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::ArtifactWriter};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct AgentJsonArtifact;
 
-#[allow(dead_code)]
-const SUPPORTED_AGENT_JSON_SCHEMA_VERSION: &str = "adoc.agent.v0";
+pub(crate) const SUPPORTED_AGENT_JSON_SCHEMA_VERSION: &str = "adoc.agent.v0";
 
-#[allow(dead_code)]
 pub(crate) fn read_agent_json_document(path: &Path) -> Result<AgentJsonDocument, Vec<Diagnostic>> {
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
@@ -58,7 +56,6 @@ pub(crate) fn read_agent_json_document(path: &Path) -> Result<AgentJsonDocument,
     Ok(document)
 }
 
-#[allow(dead_code)]
 fn read_error_diagnostic(path: &Path, error: io::Error) -> Diagnostic {
     let code = if error.kind() == io::ErrorKind::NotFound {
         DiagnosticCode::IoArtifactMissing
@@ -69,6 +66,14 @@ fn read_error_diagnostic(path: &Path, error: io::Error) -> Diagnostic {
         code,
         format!("Unable to read artifact '{}': {error}", path.display()),
     )
+}
+
+impl ArtifactReader for AgentJsonArtifact {
+    type Output = AgentJsonDocument;
+
+    fn read(&self, path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+        read_agent_json_document(path)
+    }
 }
 
 impl ArtifactWriter for AgentJsonArtifact {
@@ -89,7 +94,7 @@ impl ArtifactWriter for AgentJsonArtifact {
             }
         }
         AgentJsonDocument {
-            schema_version: "adoc.agent.v0".to_string(),
+            schema_version: SUPPORTED_AGENT_JSON_SCHEMA_VERSION.to_string(),
             pages: pages.iter().map(AgentJsonPage::from).collect(),
             objects,
             diagnostics: diagnostics.to_vec(),
