@@ -788,6 +788,50 @@ mod tests {
     }
 
     #[test]
+    fn build_with_provider_matches_v1_3_in_memory_search_fixture() {
+        let source_text = fs::read_to_string(repo_fixture_path("v1_3_embed/input.adoc"))
+            .expect("fixture source is readable");
+        let source_provider = InMemorySourceProvider::new()
+            .with_source(source_file("v1_3_embed/input.adoc", &source_text));
+        let embedding_provider = InMemoryProvider::new(4);
+
+        let result = build_with_provider(
+            &source_provider,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &embedding_provider,
+                },
+                prior_search_artifact_path: None,
+            },
+        );
+
+        assert!(
+            !result.has_errors(),
+            "fixture build should pass: {:?}",
+            result.diagnostics
+        );
+        let actual = result
+            .artifacts
+            .expect("artifacts are built")
+            .search_json
+            .expect("search artifact is built");
+        let actual_json = actual.to_pretty_json().expect("actual serializes");
+        let expected_text = fs::read_to_string(repo_fixture_path(
+            "v1_3_embed/in_memory_baseline.search.json",
+        ))
+        .expect("baseline fixture is readable");
+        let expected: SearchArtifactDocument =
+            serde_json::from_str(&expected_text).unwrap_or_else(|error| {
+                panic!("baseline fixture parse failed: {error}\nactual:\n{actual_json}")
+            });
+
+        assert_eq!(
+            actual, expected,
+            "in-memory search artifact fixture drifted"
+        );
+    }
+
+    #[test]
     fn build_with_provider_reuses_cached_vectors_by_model_id_and_content_hash() {
         let first_source = InMemorySourceProvider::new().with_source(source_file(
             "billing.adoc",
@@ -1023,6 +1067,13 @@ mod tests {
             credits_body = credits_body,
             refunds_body = refunds_body
         )
+    }
+
+    fn repo_fixture_path(relative: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("tests/fixtures")
+            .join(relative)
     }
 
     #[derive(Debug)]

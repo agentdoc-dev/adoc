@@ -1,0 +1,13 @@
+# Embed Fixture @doc(fixtures.embed)
+
+::claim billing.credits
+status: draft
+owner: team-billing
+--
+Credits apply after successful payment.
+::
+
+::glossary billing.ledger
+--
+Ledger records billing balance movements.
+::
