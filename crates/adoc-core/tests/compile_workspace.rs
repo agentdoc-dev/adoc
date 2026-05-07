@@ -1,7 +1,67 @@
 mod support;
 
-use adoc_core::{AgentJsonObject, CompileInput, DiagnosticCode, Severity, compile_workspace};
+use adoc_core::{
+    AgentJsonObject, BuildEmbeddingMode, BuildInput, CompileInput, DiagnosticCode, Severity,
+    build_workspace, compile_workspace,
+};
 use support::TestWorkspace;
+
+#[test]
+fn build_workspace_skips_embeddings_without_affecting_check_path() {
+    let workspace = TestWorkspace::new("build-workspace-skip-embeddings");
+    let source = workspace.write(
+        "billing.adoc",
+        concat!(
+            "# Billing Guide @doc(team.billing)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "--\n",
+            "Credits apply after successful payment.\n",
+            "::\n",
+        ),
+    );
+
+    let check_result = compile_workspace(CompileInput {
+        root: source.clone(),
+    });
+    assert!(
+        !check_result
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == DiagnosticCode::BuildEmbeddingsSkipped),
+        "check must not emit build-only embedding diagnostics"
+    );
+
+    let build_result = build_workspace(BuildInput {
+        root: source,
+        embeddings: BuildEmbeddingMode::Skipped,
+        prior_search_artifact_path: None,
+    });
+
+    assert!(
+        !build_result.has_errors(),
+        "skipping embeddings should not fail build: {:?}",
+        build_result.diagnostics
+    );
+    assert!(
+        build_result
+            .diagnostics
+            .iter()
+            .any(
+                |diagnostic| diagnostic.code == DiagnosticCode::BuildEmbeddingsSkipped
+                    && diagnostic.severity == Severity::Info
+            ),
+        "skipped embeddings should be reported as info"
+    );
+    let artifacts = build_result
+        .artifacts
+        .expect("build artifacts are produced");
+    assert!(
+        artifacts.search_json.is_none(),
+        "skipping embeddings must omit the search artifact"
+    );
+}
 
 #[test]
 fn compile_workspace_returns_mixed_validation_diagnostics_in_source_order() {

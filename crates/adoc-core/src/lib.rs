@@ -2,7 +2,9 @@ mod application;
 mod domain;
 mod infrastructure;
 
-pub use application::compile::{BuildArtifacts, CompileInput, CompileResult};
+pub use application::compile::{
+    BuildArtifacts, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult,
+};
 pub use application::retrieval::{
     ExplainResult, RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput,
     RetrievalLoadResult, RetrievalSession, SearchFilters, SearchQuery, SearchResult,
@@ -13,6 +15,7 @@ pub use application::retrieval_format::{
 };
 pub use domain::artifact::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan,
+    SearchArtifactDocument,
 };
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::retrieval::{RetrievalMatch, RetrievalRecord, RetrievalSource, SearchMode};
@@ -20,6 +23,17 @@ pub use domain::retrieval::{RetrievalMatch, RetrievalRecord, RetrievalSource, Se
 pub fn compile_workspace(input: CompileInput) -> CompileResult {
     let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
     application::compile::compile_with_provider(&provider)
+}
+
+pub fn build_workspace(input: BuildInput) -> CompileResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
+    application::compile::build_with_provider(
+        &provider,
+        application::compile::BuildOptions {
+            embeddings: input.embeddings,
+            prior_search_artifact_path: input.prior_search_artifact_path,
+        },
+    )
 }
 
 pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {

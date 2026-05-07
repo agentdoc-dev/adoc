@@ -6,10 +6,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use adoc_core::{
-    AgentJsonDocument, CompileInput, Diagnostic, DiagnosticCode, ExplainResult,
-    JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput,
+    AgentJsonDocument, BuildEmbeddingMode, BuildInput, CompileInput, Diagnostic, DiagnosticCode,
+    ExplainResult, JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput,
     RetrievalLoadResult, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity,
-    TextRetrievalFormatter, compile_workspace, explain_object, load_retrieval_session, search,
+    TextRetrievalFormatter, build_workspace, compile_workspace, explain_object,
+    load_retrieval_session, search,
 };
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
@@ -23,7 +24,11 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
     match Cli::try_parse_from(arguments) {
         Ok(cli) => match cli.command {
             Commands::Check { path } => check(path),
-            Commands::Build { path, out } => build(path, out),
+            Commands::Build {
+                path,
+                out,
+                no_embeddings,
+            } => build(path, out, no_embeddings),
             Commands::Explain {
                 object_id,
                 artifact,
@@ -85,6 +90,8 @@ enum Commands {
         path: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        #[arg(long)]
+        no_embeddings: bool,
     },
     Explain {
         object_id: String,
@@ -120,8 +127,16 @@ fn check(path: PathBuf) -> i32 {
     if result.has_errors() { 1 } else { 0 }
 }
 
-fn build(path: PathBuf, out: PathBuf) -> i32 {
-    let result = compile_workspace(CompileInput { root: path });
+fn build(path: PathBuf, out: PathBuf, no_embeddings: bool) -> i32 {
+    let result = if no_embeddings {
+        build_workspace(BuildInput {
+            root: path,
+            embeddings: BuildEmbeddingMode::Skipped,
+            prior_search_artifact_path: Some(out.join("docs.search.json")),
+        })
+    } else {
+        compile_workspace(CompileInput { root: path })
+    };
     print_diagnostics(&result.diagnostics);
     print_summary(&result.diagnostics);
 

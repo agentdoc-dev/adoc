@@ -49,6 +49,7 @@ pub enum DiagnosticCode {
     IdDuplicateInArtifact,
     RetrievalObjectNotFound,
     SearchInvalidFilter,
+    BuildEmbeddingsSkipped,
 }
 
 impl DiagnosticCode {
@@ -80,6 +81,7 @@ impl DiagnosticCode {
             DiagnosticCode::IdDuplicateInArtifact,
             DiagnosticCode::RetrievalObjectNotFound,
             DiagnosticCode::SearchInvalidFilter,
+            DiagnosticCode::BuildEmbeddingsSkipped,
         ]
     }
 
@@ -111,6 +113,7 @@ impl DiagnosticCode {
             DiagnosticCode::IdDuplicateInArtifact => "id.duplicate_in_artifact",
             DiagnosticCode::RetrievalObjectNotFound => "retrieval.object_not_found",
             DiagnosticCode::SearchInvalidFilter => "search.invalid_filter",
+            DiagnosticCode::BuildEmbeddingsSkipped => "build.embeddings_skipped",
         }
     }
 
@@ -190,6 +193,9 @@ impl DiagnosticCode {
             DiagnosticCode::SearchInvalidFilter => {
                 "Change or remove the filter so it matches at least one object field in the artifact."
             }
+            DiagnosticCode::BuildEmbeddingsSkipped => {
+                "Run `adoc build` without `--no-embeddings` to emit docs.search.json."
+            }
         }
     }
 
@@ -248,6 +254,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "id.duplicate_in_artifact",
     "retrieval.object_not_found",
     "search.invalid_filter",
+    "build.embeddings_skipped",
 ];
 
 impl Diagnostic {
@@ -266,6 +273,17 @@ impl Diagnostic {
         Self {
             code,
             severity: Severity::Warning,
+            message: message.into(),
+            span: None,
+            object_id: None,
+            help: Some(code.default_help().to_string()),
+        }
+    }
+
+    pub(crate) fn info(code: DiagnosticCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            severity: Severity::Info,
             message: message.into(),
             span: None,
             object_id: None,
