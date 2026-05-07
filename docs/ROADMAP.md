@@ -315,13 +315,14 @@ Goal: make `adoc build` produce a deterministic, content-hashed search artifact.
 Scope:
 
 - Add the `EmbeddingProvider` internal port (governed by ADR-0006).
-- Add `FastEmbedProvider` (`fastembed-rs` + `bge-small-en-v1.5`) as the default adapter; first-run weights cached locally; subsequent runs are offline.
-- Add `InMemoryProvider` as a deterministic test adapter mirroring the role of `InMemorySourceProvider`.
+- Add `FastEmbedProvider` (`fastembed-rs` + `bge-small-en-v1.5`) as the default adapter behind the default-on `embeddings` feature; first-run weights cached locally; subsequent runs are offline.
+- Add `InMemoryProvider` as a deterministic test adapter mirroring the role of `InMemorySourceProvider`; tests select it explicitly with `ADOC_TEST_EMBEDDING_PROVIDER=in-memory`.
 - Extend the application pipeline so `compile_with_provider` accepts an `EmbeddingProvider`; `compile_workspace()` defaults to `FastEmbedProvider`.
 - Emit `dist/docs.search.json` with the schema documented in V1-DESIGN: `{ schema_version: "adoc.search.v0", model: { id, provider, dim }, agent_artifact_hash, embeddings: [{ id, content_hash, vector }] }`.
-- Add per-Object-ID embedding cache: when prior content hash matches, the prior vector is reused.
+- Add per-Object-ID embedding cache: when prior content hash matches, the prior vector is reused and reported with `build.embeddings_cached` (`embeddings: cached N, computed M`).
 - Add `--no-embeddings` to `adoc build`. Add diagnostics: `embed.model_load_failed`, `embed.compute_failed`, `embed.unexpected_dim`, `build.embeddings_skipped`.
-- Hermetic `cargo test` uses `InMemoryProvider` by default. The fastembed path runs under a gated feature flag (`cargo test --features fastembed-it`).
+- Embedding failures after clean source compilation preserve `docs.html` and `docs.agent.json`, omit a new `docs.search.json`, leave any prior search sidecar untouched, and exit `1`.
+- FastEmbed is the default test-provider path when `test-embedding-provider` is enabled but `ADOC_TEST_EMBEDDING_PROVIDER` is unset. The FastEmbed integration path runs under a gated feature flag (`cargo test --features fastembed-it`).
 
 Acceptance:
 

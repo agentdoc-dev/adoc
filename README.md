@@ -186,9 +186,10 @@ adoc search <query> [--artifact <path>] [--kind <value>] [--status <value>] [--o
 - runs the same compile path as `check`
 - creates the output directory when it does not exist
 - fails if the output path exists as a file
-- writes `docs.html`, `docs.agent.json`, and `docs.search.json` only when there are no errors
-- loads the local FastEmbed `bge-small-en-v1.5` model by default; first run may download model weights into the platform cache
-- reads the prior output directory's `docs.search.json` when present and reuses vectors whose model header and content hash still match
+- writes `docs.html` and `docs.agent.json` when source compilation is clean
+- loads the local FastEmbed `bge-small-en-v1.5` model by default through the default-on `embeddings` feature; first run may download model weights into the platform cache
+- reads the prior output directory's `docs.search.json` when present and reuses vectors whose model header and content hash still match, reported as `info[build.embeddings_cached] embeddings: cached N, computed M`
+- if embedding model load, compute, or dimension validation fails after clean source compilation, exits `1`, still writes `docs.html` and `docs.agent.json`, omits a new `docs.search.json`, and leaves any prior `docs.search.json` untouched
 - accepts `--no-embeddings` to skip model loading and search artifact writes; any existing `docs.search.json` is left untouched and an info diagnostic `build.embeddings_skipped` is emitted
 
 `adoc explain`:
@@ -314,7 +315,7 @@ Examples:
 - unreadable directories emit `error[io.unreadable_directory]`
 - unsupported single-file source extensions emit `error[io.unsupported_source_extension]`
 
-`adoc build` writes `docs.html`, `docs.agent.json`, and `docs.search.json` only when there are no error diagnostics. Embedding failures emit `embed.model_load_failed`, `embed.compute_failed`, or `embed.unexpected_dim` and block artifact writes.
+`adoc build` writes nothing when source compilation has error diagnostics. Embedding failures do not block `docs.html` or `docs.agent.json`: they emit `embed.model_load_failed`, `embed.compute_failed`, or `embed.unexpected_dim`, omit the new search sidecar, preserve any prior `docs.search.json`, and exit `1`.
 
 ## Smoke Tests
 
@@ -436,7 +437,9 @@ cargo run -p adoc-cli --bin adoc -- check <path>
 cargo run -p adoc-cli --bin adoc -- build <path> --out dist
 ```
 
-Hermetic CLI/core tests use the deterministic in-memory embedding provider through the `test-embedding-provider` feature. FastEmbed end-to-end coverage is gated behind `fastembed-it` so default tests do not download model weights:
+The `embeddings` feature is default-on and enables the FastEmbed dependency. Build without it with `cargo test -p adoc-core --no-default-features` or equivalent no-default build commands when embedding support is intentionally excluded.
+
+Hermetic CLI/core tests use the deterministic in-memory embedding provider through the `test-embedding-provider` feature only when `ADOC_TEST_EMBEDDING_PROVIDER=in-memory` is set. With that feature enabled, unset `ADOC_TEST_EMBEDDING_PROVIDER` and `ADOC_TEST_EMBEDDING_PROVIDER=fastembed` both use FastEmbed. FastEmbed end-to-end coverage is gated behind `fastembed-it`:
 
 ```bash
 cargo test -p adoc-core --features fastembed-it --no-run --locked

@@ -144,7 +144,9 @@ adoc search "<query>"
 
 Behavior:
 
-- `adoc build` writes `dist/docs.html`, `dist/docs.agent.json`, and `dist/docs.search.json`. With `--no-embeddings`, the search artifact is skipped and a `build.embeddings_skipped` info diagnostic is emitted.
+- `adoc build` writes `dist/docs.html` and `dist/docs.agent.json` after clean source compilation. It writes `dist/docs.search.json` only when embedding-enabled search artifact construction succeeds.
+- Embedding failures after clean source compilation emit `embed.model_load_failed`, `embed.compute_failed`, or `embed.unexpected_dim`, return/emit V0 artifacts, set `search_json` to `None`, leave any prior `dist/docs.search.json` untouched, and exit `1`.
+- Successful embedding-enabled search builds emit `build.embeddings_cached` with `embeddings: cached N, computed M`. With `--no-embeddings`, the search artifact is skipped and a `build.embeddings_skipped` info diagnostic is emitted.
 - `adoc explain` reads only the agent artifact. It exits `0` on success, `1` on argument errors, `2` on artifact errors, and `3` on object not found.
 - `adoc search` reads both artifacts. Empty result sets exit `0` with an explicit `(no matches)` line; argument errors exit `1`; artifact errors exit `2`. There is no separate "no results" exit code.
 - `--format json` emits a stable JSON envelope: `{ "schema_version": "adoc.retrieval.v0", "records": [...], "diagnostics": [...] }`. This is the wire format a future MCP wrapper consumes; it must not change shape inside V1.
@@ -225,8 +227,8 @@ Rules:
 
 - The port stays `pub(crate)` per ADR-0006. Promoted to `pub` only when an external consumer (LSP, MCP server, alternate CLI) exists.
 - `embed_passages` and `embed_query` are split because most modern embedding models distinguish passage and query encoding (asymmetric retrieval). For models that do not, a single implementation can dispatch both.
-- The default adapter is `FastEmbedProvider` wrapping `fastembed-rs` with `bge-small-en-v1.5`. First run downloads weights via the crate's built-in HF fetcher; subsequent runs read the cached file.
-- `InMemoryProvider` produces deterministic pseudo-embeddings via a small hashing scheme. It is the only provider used in unit and integration tests so the test suite remains hermetic and the bge weights are not pulled in CI.
+- The default adapter is `FastEmbedProvider` wrapping `fastembed-rs` with `bge-small-en-v1.5`. First run downloads weights via the crate's built-in HF fetcher; subsequent runs read the cached file. The dependency is behind the default-on `embeddings` feature; no-default builds that request embeddings return `embed.model_load_failed` with help to enable the feature or use `--no-embeddings`.
+- `InMemoryProvider` produces deterministic pseudo-embeddings via a small hashing scheme. It is selected only in tests that enable `test-embedding-provider` and set `ADOC_TEST_EMBEDDING_PROVIDER=in-memory`; unset or `fastembed` uses FastEmbed when the `embeddings` feature is available.
 - Adding a hosted provider later means adding one file in `infrastructure/embedding/` and one CLI flag (`--embedding-provider hosted`); the port does not change.
 
 ## Retrieval Pipeline
@@ -490,7 +492,7 @@ fixtures/
 
 Test guidance:
 
-- Hermetic by default: every unit and integration test uses `InMemoryProvider`. The fastembed path runs only under `cargo test --features fastembed-it`.
+- Hermetic tests opt into `InMemoryProvider` explicitly with `ADOC_TEST_EMBEDDING_PROVIDER=in-memory`. The fastembed path is the default when the test feature is enabled but the env var is unset, and end-to-end FastEmbed coverage runs under `cargo test --features fastembed-it`.
 - CLI tests that need the production `build_workspace()` boundary without model downloads enable the test-only `test-embedding-provider` feature and set `ADOC_TEST_EMBEDDING_PROVIDER=in-memory`. Production builds do not use this seam.
 - Golden-test the JSON envelope produced by `--format json` for both `explain` and `search`. Schema regressions must update the golden file plus the schema version explicitly.
 - Property suite generated from any agent artifact: every body verbatim → top 1 lexical, every Object ID → top 1 lexical, every owner query covers every claim with that owner.
