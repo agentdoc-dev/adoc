@@ -406,6 +406,90 @@ fn search_result_rank_tracks_pins_while_lexical_rank_is_omitted_for_pinned_only_
 }
 
 #[test]
+fn search_id_prefix_pins_are_case_sensitive_raw_prefix_matches() {
+    let session = load_session_from_objects(vec![
+        retrieval_search_object(
+            "billing.credits",
+            "claim",
+            None,
+            None,
+            "docs/billing.adoc",
+            "Prefix target.",
+        ),
+        retrieval_search_object(
+            "support.heavy",
+            "claim",
+            None,
+            None,
+            "docs/support.adoc",
+            "billing credits billing credits billing credits billing credits",
+        ),
+    ]);
+
+    let lowercase = search(
+        &session,
+        lexical_query("billing.credits", 2, SearchFilters::default()),
+    );
+    let uppercase = search(
+        &session,
+        lexical_query("Billing.Credits", 2, SearchFilters::default()),
+    );
+
+    assert!(lowercase.diagnostics.is_empty());
+    assert!(uppercase.diagnostics.is_empty());
+    assert_eq!(
+        search_ids(&lowercase).first().copied(),
+        Some("billing.credits")
+    );
+    assert_eq!(
+        search_ids(&uppercase).first().copied(),
+        Some("support.heavy")
+    );
+}
+
+#[test]
+fn search_id_prefix_pins_namespace_queries_before_bm25_hits() {
+    let session = load_session_from_objects(vec![
+        retrieval_search_object(
+            "billing.refunds",
+            "claim",
+            None,
+            None,
+            "docs/billing.adoc",
+            "Prefix target refunds.",
+        ),
+        retrieval_search_object(
+            "billing.credits",
+            "claim",
+            None,
+            None,
+            "docs/billing.adoc",
+            "Prefix target credits.",
+        ),
+        retrieval_search_object(
+            "support.heavy",
+            "claim",
+            None,
+            None,
+            "docs/support.adoc",
+            "billing billing billing billing",
+        ),
+    ]);
+
+    let result = search(
+        &session,
+        lexical_query("billing.", 3, SearchFilters::default()),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(
+        search_ids(&result),
+        ["billing.credits", "billing.refunds", "support.heavy"]
+    );
+    assert_eq!(search_ranks(&result), [1, 2, 3]);
+}
+
+#[test]
 fn search_is_deterministic_when_repeated_on_same_session() {
     let session = load_session_from_objects(vec![
         retrieval_search_object(

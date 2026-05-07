@@ -188,6 +188,7 @@ adoc search <query> [--artifact <path>] [--kind <value>] [--status <value>] [--o
 - reads a compiled agent artifact; it does not compile source
 - defaults to `--artifact dist/docs.agent.json`
 - runs deterministic lexical search over `docs.agent.json`
+- pins exact Object ID and raw case-sensitive ID-prefix query matches above BM25 results
 - supports `--kind`, `--status`, `--owner`, and `--source-path` filters
 - limits results with `--top`, defaulting to `10`
 - supports `--format text|json`
