@@ -13,16 +13,14 @@ fn fixture_path(relative: &str) -> PathBuf {
         .join(relative)
 }
 
-fn write_temp_artifact(name: &str, contents: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!(
-        "adoc-retrieval-{name}-{}.agent.json",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("clock is after epoch")
-            .as_nanos()
-    ));
-    std::fs::write(&path, contents).expect("temp artifact can be written");
-    path
+fn write_temp_artifact(name: &str, contents: &str) -> tempfile::NamedTempFile {
+    let artifact = tempfile::Builder::new()
+        .prefix(&format!("adoc-retrieval-{name}-"))
+        .suffix(".agent.json")
+        .tempfile()
+        .expect("temp artifact can be created");
+    std::fs::write(artifact.path(), contents).expect("temp artifact can be written");
+    artifact
 }
 
 #[test]
@@ -125,7 +123,7 @@ fn explain_object_reports_unknown_id_without_loading_source() {
 
 #[test]
 fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
-    let path = write_temp_artifact(
+    let artifact = write_temp_artifact(
         "duplicate",
         r#"{
           "schema_version": "adoc.agent.v0",
@@ -157,10 +155,9 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
     );
 
     let result = load_retrieval_session(RetrievalInput {
-        artifact_path: path.clone(),
+        artifact_path: artifact.path().to_path_buf(),
     });
 
-    std::fs::remove_file(path).expect("temp artifact removed");
     assert!(result.session.is_none());
     assert_eq!(result.diagnostics.len(), 1);
     assert_eq!(
