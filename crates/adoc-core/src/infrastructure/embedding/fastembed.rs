@@ -7,6 +7,7 @@ use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider
 const MODEL_ID: &str = "bge-small-en-v1.5";
 const PROVIDER_ID: &str = "fastembed";
 const DIM: usize = 384;
+const QUERY_INSTRUCTION: &str = "Represent this sentence for searching relevant passages: ";
 
 pub(crate) struct FastEmbedProvider {
     model_id: ModelId,
@@ -85,16 +86,23 @@ impl EmbeddingProvider for FastEmbedProvider {
     }
 
     fn embed_query(&self, query: &str) -> Result<Vec<f32>, EmbeddingError> {
-        let vectors =
-            self.validate_vector_dimensions(self.embed_texts(vec![query.to_string()])?)?;
-        vectors
-            .into_iter()
-            .next()
-            .ok_or(EmbeddingError::DimensionMismatch {
-                expected: 1,
-                actual: 0,
-            })
+        let query = format_query_for_passage_search(query);
+        let vectors = self.validate_vector_dimensions(self.embed_texts(vec![query])?)?;
+        query_vector_from_fastembed_response(vectors)
     }
+}
+
+fn format_query_for_passage_search(query: &str) -> String {
+    format!("{QUERY_INSTRUCTION}{query}")
+}
+
+fn query_vector_from_fastembed_response(
+    vectors: Vec<Vec<f32>>,
+) -> Result<Vec<f32>, EmbeddingError> {
+    vectors
+        .into_iter()
+        .next()
+        .ok_or_else(|| EmbeddingError::Compute("fastembed returned no vectors".to_string()))
 }
 
 #[cfg(all(test, feature = "fastembed-it"))]
@@ -112,5 +120,31 @@ mod fastembed_it_tests {
 
         assert_eq!(vectors.len(), 1);
         assert_eq!(vectors[0].len(), provider.dim());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::domain::ports::embedding_provider::EmbeddingError;
+    use crate::infrastructure::embedding::fastembed::{
+        format_query_for_passage_search, query_vector_from_fastembed_response,
+    };
+
+    #[test]
+    fn format_query_for_passage_search_uses_bge_search_instruction() {
+        assert_eq!(
+            format_query_for_passage_search("refund policy"),
+            "Represent this sentence for searching relevant passages: refund policy"
+        );
+    }
+
+    #[test]
+    fn query_vector_from_fastembed_response_maps_empty_response_to_compute_error() {
+        let error = query_vector_from_fastembed_response(Vec::new()).expect_err("empty response");
+
+        assert_eq!(
+            error,
+            EmbeddingError::Compute("fastembed returned no vectors".to_string())
+        );
     }
 }
