@@ -28,7 +28,6 @@ pub(crate) enum BlockAst {
     /// Resolved typed block. Produced by `resolve_knowledge_objects` from a
     /// `KnowledgeObjectPending`. Boxed so this large variant doesn't bloat
     /// the enum's stack footprint for the common prose blocks above.
-    #[allow(dead_code)]
     KnowledgeObject(Box<KnowledgeObject>),
     /// Transient parser output: a typed Knowledge Object block that has been
     /// read but not yet validated into an aggregate. The resolver stage

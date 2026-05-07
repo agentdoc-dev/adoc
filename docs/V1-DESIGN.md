@@ -234,7 +234,7 @@ Rules:
 ```text
 adoc.agent.json -+
                  +--> ArtifactReader --> RetrievalSession {
-                 |        LookupIndex,                       (id -> object)
+                 |        exact_lookup,                      (id -> object)
                  |        LexicalIndex,                      (BM25, rebuilt on load)
                  |        VectorIndex (when search.json ok)  (cosine, brute-force)
                  +-> [filters]
@@ -340,7 +340,7 @@ Scope:
 
 - Add `domain/retrieval/retrieval_record.rs` and `application/retrieval.rs` skeleton.
 - Add `infrastructure/artifact/agent_json.rs` reader (currently the file only contains a writer).
-- Add `LookupIndex` keyed by Object ID with duplicate detection inside the artifact.
+- Add a `RetrievalSession`-owned exact lookup keyed by Object ID with duplicate detection inside the artifact.
 - Add diagnostics: `io.artifact_missing`, `io.artifact_unreadable`, `io.artifact_malformed`, `schema.unsupported_version`, `id.duplicate_in_artifact`, `retrieval.object_not_found`.
 - Implement `adoc explain <id>` with `--artifact <path>` and `--format text|json`.
 - Pretty text output mirrors PRD §21.5: kind, status, owner, verified date, body, evidence, source, relations.

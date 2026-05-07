@@ -262,7 +262,7 @@ Goal: make Object IDs immediately useful for humans and any agent that has alrea
 Scope:
 
 - Treat `dist/docs.agent.json` as a supported read model. Add an artifact reader that validates `schema_version: adoc.agent.v0`, top-level `objects`, and the in-artifact uniqueness of every Object ID.
-- Add `LookupIndex` keyed by Object ID.
+- Add a `RetrievalSession`-owned exact lookup keyed by Object ID.
 - Add diagnostics: `io.artifact_missing`, `io.artifact_unreadable`, `io.artifact_malformed`, `schema.unsupported_version`, `id.duplicate_in_artifact`, `retrieval.object_not_found`.
 - Implement `adoc explain <id>` with `--artifact <path>` and `--format text|json`.
 - Pretty text output mirrors PRD §21.5: kind, status, owner, verified date, body, evidence, source, relations.
