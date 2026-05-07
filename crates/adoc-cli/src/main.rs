@@ -91,7 +91,7 @@ enum Commands {
         #[arg(long, default_value = "dist/docs.agent.json")]
         artifact: PathBuf,
         #[arg(long, value_enum, default_value = "text")]
-        format: ExplainFormat,
+        format: RetrievalOutputFormat,
     },
     Search {
         query: String,
@@ -108,7 +108,7 @@ enum Commands {
         #[arg(long, default_value = "10")]
         top: NonZeroUsize,
         #[arg(long, value_enum, default_value = "text")]
-        format: ExplainFormat,
+        format: RetrievalOutputFormat,
     },
 }
 
@@ -140,7 +140,7 @@ fn build(path: PathBuf, out: PathBuf) -> i32 {
     }
 }
 
-fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
+fn explain(object_id: String, artifact: PathBuf, format: RetrievalOutputFormat) -> i32 {
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact,
     });
@@ -152,7 +152,7 @@ fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
         Some(session) => session,
         None => {
             if format.is_json() {
-                return print_explain_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
+                return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
                     .map_or_else(report, |()| 2);
             }
             eprint_diagnostics(&load_diagnostics);
@@ -162,7 +162,7 @@ fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
 
     if diagnostics_have_errors(&load_diagnostics) {
         if format.is_json() {
-            return print_explain_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
+            return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
                 .map_or_else(report, |()| 2);
         }
         eprint_diagnostics(&load_diagnostics);
@@ -177,7 +177,7 @@ fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
     let exit_code = explain_exit_code(&explain_result);
 
     if format.is_json() {
-        return print_explain_json(&RetrievalEnvelope::from(explain_result))
+        return print_retrieval_json(&RetrievalEnvelope::from(explain_result))
             .map_or_else(report, |()| exit_code);
     }
 
@@ -190,7 +190,7 @@ fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
         eprint_diagnostics(&explain_result.diagnostics);
     }
 
-    print_explain_text(&RetrievalEnvelope::from(explain_result)).map_or_else(report, |()| 0)
+    print_retrieval_text(&RetrievalEnvelope::from(explain_result)).map_or_else(report, |()| 0)
 }
 
 fn search_command(
@@ -198,7 +198,7 @@ fn search_command(
     artifact: PathBuf,
     filters: SearchFilters,
     top: NonZeroUsize,
-    format: ExplainFormat,
+    format: RetrievalOutputFormat,
 ) -> i32 {
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact,
@@ -211,7 +211,7 @@ fn search_command(
         Some(session) => session,
         None => {
             if format.is_json() {
-                return print_explain_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
+                return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
                     .map_or_else(report, |()| 2);
             }
             eprint_diagnostics(&load_diagnostics);
@@ -221,7 +221,7 @@ fn search_command(
 
     if diagnostics_have_errors(&load_diagnostics) {
         if format.is_json() {
-            return print_explain_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
+            return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
                 .map_or_else(report, |()| 2);
         }
         eprint_diagnostics(&load_diagnostics);
@@ -244,7 +244,7 @@ fn search_command(
     let exit_code = search_exit_code(&search_result);
 
     if format.is_json() {
-        return print_explain_json(&RetrievalEnvelope::from(search_result))
+        return print_retrieval_json(&RetrievalEnvelope::from(search_result))
             .map_or_else(report, |()| exit_code);
     }
 
@@ -262,10 +262,10 @@ fn search_command(
         return 0;
     }
 
-    print_explain_text(&envelope).map_or_else(report, |()| 0)
+    print_retrieval_text(&envelope).map_or_else(report, |()| 0)
 }
 
-fn print_explain_json(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
+fn print_retrieval_json(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
     let text = JsonRetrievalFormatter
         .render(envelope)
         .map_err(|source| CliError::RetrievalFormat { source })?;
@@ -292,21 +292,20 @@ fn explain_exit_code(result: &ExplainResult) -> i32 {
 }
 
 fn search_exit_code(result: &SearchResult) -> i32 {
-    if result
+    result
         .diagnostics
         .iter()
-        .any(|diagnostic| diagnostic.code == DiagnosticCode::SearchInvalidFilter)
-    {
-        return 1;
+        .filter_map(search_diagnostic_exit_code)
+        .min()
+        .unwrap_or(0)
+}
+
+fn search_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
+    match (diagnostic.code, diagnostic.severity) {
+        (DiagnosticCode::SearchInvalidFilter, _) => Some(1),
+        (_, Severity::Error) => Some(2),
+        _ => None,
     }
-    if result
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.severity == Severity::Error)
-    {
-        return 2;
-    }
-    0
 }
 
 fn diagnostics_have_errors(diagnostics: &[Diagnostic]) -> bool {
@@ -323,7 +322,7 @@ fn merge_diagnostics(
     load_diagnostics
 }
 
-fn print_explain_text(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
+fn print_retrieval_text(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
     let text = TextRetrievalFormatter
         .render(envelope)
         .map_err(|source| CliError::RetrievalFormat { source })?;
@@ -434,12 +433,12 @@ fn print_summary(diagnostics: &[Diagnostic]) {
 }
 
 #[derive(Clone, Copy, ValueEnum)]
-enum ExplainFormat {
+enum RetrievalOutputFormat {
     Text,
     Json,
 }
 
-impl ExplainFormat {
+impl RetrievalOutputFormat {
     fn is_json(&self) -> bool {
         matches!(self, Self::Json)
     }
@@ -484,5 +483,49 @@ mod tests {
         };
 
         assert_eq!(explain_exit_code(&result), 0);
+    }
+
+    #[test]
+    fn search_exit_code_prioritizes_invalid_filters_over_generic_errors() {
+        let result = SearchResult {
+            records: Vec::new(),
+            diagnostics: vec![
+                Diagnostic {
+                    code: DiagnosticCode::IoArtifactMalformed,
+                    severity: Severity::Error,
+                    message: "artifact error".to_string(),
+                    span: None,
+                    object_id: None,
+                    help: None,
+                },
+                Diagnostic {
+                    code: DiagnosticCode::SearchInvalidFilter,
+                    severity: Severity::Error,
+                    message: "invalid filter".to_string(),
+                    span: None,
+                    object_id: None,
+                    help: None,
+                },
+            ],
+        };
+
+        assert_eq!(search_exit_code(&result), 1);
+    }
+
+    #[test]
+    fn search_exit_code_returns_one_for_invalid_filter_without_artifact_error() {
+        let result = SearchResult {
+            records: Vec::new(),
+            diagnostics: vec![Diagnostic {
+                code: DiagnosticCode::SearchInvalidFilter,
+                severity: Severity::Error,
+                message: "invalid filter".to_string(),
+                span: None,
+                object_id: None,
+                help: None,
+            }],
+        };
+
+        assert_eq!(search_exit_code(&result), 1);
     }
 }
