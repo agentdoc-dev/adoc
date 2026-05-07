@@ -8,6 +8,12 @@ use std::process::Command;
 
 use support::{TestWorkspace, fixture_path};
 
+fn adoc_command() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
+    command.env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory");
+    command
+}
+
 fn write_fixture_to_workspace(
     workspace: &TestWorkspace,
     fixture_relative: &str,
@@ -28,7 +34,7 @@ fn assert_fixture_build_matches_golden(
     let workspace = TestWorkspace::new(workspace_name);
     write_fixture_to_workspace(&workspace, fixture_relative, source_file);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", source_file, "--out", "dist"])
         .output()
@@ -87,7 +93,7 @@ fn assert_fixture_directory_build_matches_golden(
     let workspace = TestWorkspace::new(workspace_name);
     copy_fixture_directory_to_workspace(&workspace, fixture_relative, source_dir);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", source_dir, "--out", "dist"])
         .output()
@@ -116,7 +122,7 @@ fn assert_fixture_directory_build_matches_golden(
 fn check_accepts_v0_1_prose_fixture_with_all_inline_syntax() {
     let fixture = fixture_path("v0_1/prose_page.adoc");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", fixture.to_str().expect("fixture path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -141,7 +147,7 @@ fn check_unclosed_fence_diagnostic_surfaces_all_six_fields() {
         .expect("unclosed_fence fixture is readable");
     let source = workspace.write("unclosed_fence.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -177,7 +183,7 @@ fn check_rejects_unsafe_link_with_source_location() {
         .expect("unsafe_link fixture is readable");
     let source = workspace.write("unsafe_link.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -211,7 +217,7 @@ fn build_renders_v0_1_prose_fixture_to_golden_agent_json() {
 
     // Run with cwd=workspace so the recorded source_path is "prose_page.adoc"
     // rather than a host-specific absolute path.
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "prose_page.adoc", "--out", "dist"])
         .output()
@@ -242,7 +248,7 @@ fn build_renders_v0_1_prose_fixture_to_golden_html() {
     let fixture = fixture_path("v0_1/prose_page.adoc");
     let output_directory = workspace.root.join("dist");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "build",
             fixture.to_str().expect("fixture path is utf-8"),
@@ -281,7 +287,7 @@ fn check_accepts_minimal_prose_page() {
         "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -317,7 +323,7 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
     );
     let output_directory = workspace.root.join("dist");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
         .args([
             "build",
@@ -380,7 +386,7 @@ fn build_no_embeddings_emits_info_and_leaves_prior_search_artifact_untouched() {
     fs::write(&search_artifact_path, "existing search artifact")
         .expect("prior search artifact can be written");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),
@@ -429,7 +435,7 @@ fn build_reuses_search_artifact_cache_for_unchanged_source() {
     let output_directory = workspace.root.join("dist");
 
     for _ in 0..2 {
-        let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        let output = adoc_command()
             .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
             .args([
                 "build",
@@ -455,7 +461,7 @@ fn build_reuses_search_artifact_cache_for_unchanged_source() {
     .expect("search artifact is valid");
     let first_vector = first_search["embeddings"][0]["vector"].clone();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
         .args([
             "build",
@@ -485,7 +491,7 @@ fn build_missing_out_exits_1_with_parse_error() {
         "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["build", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc build runs");
@@ -515,7 +521,7 @@ fn build_unknown_out_flag_exits_1_with_parse_error() {
         "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),
@@ -551,7 +557,7 @@ fn build_groups_contiguous_list_items_by_list_kind() {
     );
     let output_directory = workspace.root.join("dist");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),
@@ -584,7 +590,7 @@ fn build_derives_distinct_page_ids_from_directory_relative_paths() {
     workspace.write("b/guide.adoc", "# Beta Guide\n\nBeta content.\n");
     let output_directory = workspace.root.join("dist");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "build",
             workspace.root.to_str().expect("workspace path is utf-8"),
@@ -622,7 +628,7 @@ fn build_keeps_page_identity_from_first_heading_annotation() {
     );
     let output_directory = workspace.root.join("dist");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),
@@ -660,7 +666,7 @@ fn build_uses_first_top_level_heading_annotation_for_page_identity() {
     );
     let output_directory = workspace.root.join("dist");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),
@@ -698,7 +704,7 @@ fn build_fails_clearly_when_output_path_is_a_file() {
     );
     let output_path = workspace.write("dist", "not a directory");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),
@@ -727,7 +733,7 @@ fn check_rejects_raw_html_with_source_location() {
         "# Unsafe Input @doc(docs.unsafe-input)\n\n<div>raw html</div>\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -748,7 +754,7 @@ fn check_rejects_unknown_raw_html_tag() {
         "# Unsafe Input @doc(docs.unsafe-input)\n\n<foo>bar</foo>\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -771,7 +777,7 @@ fn check_rejects_custom_element_tag() {
         "# Unsafe Input @doc(docs.unsafe-input)\n\n<my-component>x</my-component>\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -793,7 +799,7 @@ fn check_does_not_flag_angle_brackets_in_prose() {
         "# Technical Prose @doc(docs.technical-prose)\n\nUse Vec<String> for a list.\n\nSet x < 5 here.\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -816,7 +822,7 @@ fn check_rejects_adjacent_inline_raw_html_tag() {
         "# Unsafe Input @doc(docs.unsafe-input)\n\nKeep<span>raw html</span> out.\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -837,7 +843,7 @@ fn check_rejects_single_file_with_non_adoc_extension() {
         "# Guide\n\n<div>This must not compile as AgentDoc Source.</div>\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -867,7 +873,7 @@ fn build_rejects_inline_raw_html_and_writes_no_artifacts() {
     );
     let output_directory = workspace.root.join("dist");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),
@@ -901,7 +907,7 @@ fn duplicate_claim_ids_fail_check_and_block_build_artifacts() {
         "# Billing Extra @doc(billing.extra-page)\n\n::claim billing.credits.foo\nstatus: draft\n--\nCredits are also described here.\n::\n",
     );
 
-    let check_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let check_output = adoc_command()
         .args([
             "check",
             workspace.root.to_str().expect("root path is utf-8"),
@@ -921,7 +927,7 @@ fn duplicate_claim_ids_fail_check_and_block_build_artifacts() {
     assert!(check_stdout.contains("1 errors"));
 
     let output_directory = workspace.root.join("dist");
-    let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let build_output = adoc_command()
         .args([
             "build",
             workspace.root.to_str().expect("root path is utf-8"),
@@ -954,7 +960,7 @@ fn broken_prose_reference_fails_check_and_blocks_build_artifacts() {
         "# Guide @doc(team.guide)\n\nSee [[missing.object]] for details.\n",
     );
 
-    let check_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let check_output = adoc_command()
         .args([
             "check",
             workspace.root.to_str().expect("root path is utf-8"),
@@ -973,7 +979,7 @@ fn broken_prose_reference_fails_check_and_blocks_build_artifacts() {
     );
 
     let output_directory = workspace.root.join("dist");
-    let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let build_output = adoc_command()
         .args([
             "build",
             workspace.root.to_str().expect("root path is utf-8"),
@@ -1001,7 +1007,7 @@ fn check_allows_raw_html_inside_closed_fenced_code_block() {
         "# Fenced HTML Sample @doc(docs.fenced-html)\n\n```html\n<div>example</div>\n<script>alert(1)</script>\n```\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -1029,7 +1035,7 @@ fn build_writes_artifacts_for_raw_html_inside_fenced_code_block() {
     );
     let output_directory = workspace.root.join("dist");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),
@@ -1063,7 +1069,7 @@ fn check_rejects_unclosed_fenced_code_with_source_location() {
         "# Broken Code @doc(docs.broken-code)\n\n```rust\nfn main() {}\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -1087,7 +1093,7 @@ fn check_rejects_malformed_page_annotation_with_source_location() {
         "# Broken Annotation @doc(broken-page\n\nContent.\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -1108,7 +1114,7 @@ fn check_reports_malformed_annotation_with_indented_heading() {
     let workspace = TestWorkspace::new("check-reports-malformed-annotation-indented");
     let source = workspace.write("guide.adoc", "  # Broken @doc(\n\nContent.\n");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -1134,7 +1140,7 @@ fn check_reports_trailing_content_malformed_with_indent() {
         "   # Notes (per @doc(thing) sidebar)\n\nContent.\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args(["check", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc check runs");
@@ -1159,7 +1165,7 @@ fn check_accepts_at_doc_without_parentheses_as_heading_text() {
         "# Broken Annotation @doc product.area\n\nContent.\n",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "check",
             workspace.root.to_str().expect("workspace path is utf-8"),
@@ -1184,7 +1190,7 @@ fn check_accepts_v0_2_claim_fixture() {
         .expect("claim_basic fixture is readable");
     workspace.write("claim_basic.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "claim_basic.adoc"])
         .output()
@@ -1210,7 +1216,7 @@ fn check_rejects_claim_with_missing_status() {
         .expect("claim_missing_status fixture is readable");
     workspace.write("claim_missing_status.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "claim_missing_status.adoc"])
         .output()
@@ -1250,7 +1256,7 @@ fn build_renders_v0_2_claim_fixture_to_golden_html() {
         .expect("claim_basic fixture is readable");
     workspace.write("claim_basic.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "claim_basic.adoc", "--out", "dist"])
         .output()
@@ -1282,7 +1288,7 @@ fn build_renders_v0_2_claim_fixture_to_golden_agent_json() {
         .expect("claim_basic fixture is readable");
     workspace.write("claim_basic.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "claim_basic.adoc", "--out", "dist"])
         .output()
@@ -1314,7 +1320,7 @@ fn check_accepts_v0_3_verified_claims_pilot_fixture() {
         .expect("verified pilot fixture is readable");
     workspace.write("verified_claims_pilot.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "verified_claims_pilot.adoc"])
         .output()
@@ -1341,7 +1347,7 @@ fn check_rejects_verified_claim_without_evidence() {
             .expect("verified missing evidence fixture is readable");
     workspace.write("verified_claim_missing_evidence.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "verified_claim_missing_evidence.adoc"])
         .output()
@@ -1369,7 +1375,7 @@ fn build_renders_v0_3_verified_claims_pilot_to_golden_html() {
         .expect("verified pilot fixture is readable");
     workspace.write("verified_claims_pilot.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "verified_claims_pilot.adoc", "--out", "dist"])
         .output()
@@ -1400,7 +1406,7 @@ fn build_renders_v0_3_verified_claims_pilot_to_golden_agent_json() {
         .expect("verified pilot fixture is readable");
     workspace.write("verified_claims_pilot.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "verified_claims_pilot.adoc", "--out", "dist"])
         .output()
@@ -1431,7 +1437,7 @@ fn check_accepts_v0_4_proposed_decision_fixture() {
         .expect("decision_proposed fixture is readable");
     workspace.write("decision_proposed.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "decision_proposed.adoc"])
         .output()
@@ -1457,7 +1463,7 @@ fn build_renders_v0_4_proposed_decision_to_golden_html() {
         .expect("decision_proposed fixture is readable");
     workspace.write("decision_proposed.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "decision_proposed.adoc", "--out", "dist"])
         .output()
@@ -1488,7 +1494,7 @@ fn build_renders_v0_4_proposed_decision_to_golden_agent_json() {
         .expect("decision_proposed fixture is readable");
     workspace.write("decision_proposed.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "decision_proposed.adoc", "--out", "dist"])
         .output()
@@ -1519,7 +1525,7 @@ fn build_renders_v0_4_accepted_decision_to_golden_html() {
         .expect("decision_accepted fixture is readable");
     workspace.write("decision_accepted.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "decision_accepted.adoc", "--out", "dist"])
         .output()
@@ -1558,7 +1564,7 @@ fn build_renders_v0_4_accepted_decision_to_golden_agent_json() {
         .expect("decision_accepted fixture is readable");
     workspace.write("decision_accepted.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "decision_accepted.adoc", "--out", "dist"])
         .output()
@@ -1593,7 +1599,7 @@ fn check_accepts_v0_4_warning_fixture() {
         .expect("warning_basic fixture is readable");
     workspace.write("warning_basic.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "warning_basic.adoc"])
         .output()
@@ -1619,7 +1625,7 @@ fn build_renders_v0_4_warning_to_golden_html() {
         .expect("warning_basic fixture is readable");
     workspace.write("warning_basic.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "warning_basic.adoc", "--out", "dist"])
         .output()
@@ -1654,7 +1660,7 @@ fn build_renders_v0_4_warning_to_golden_agent_json() {
         .expect("warning_basic fixture is readable");
     workspace.write("warning_basic.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "warning_basic.adoc", "--out", "dist"])
         .output()
@@ -1693,7 +1699,7 @@ fn check_accepts_v0_4_glossary_fixture() {
         .expect("glossary_basic fixture is readable");
     workspace.write("glossary_basic.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "glossary_basic.adoc"])
         .output()
@@ -1719,7 +1725,7 @@ fn build_renders_v0_4_glossary_to_golden_html() {
         .expect("glossary_basic fixture is readable");
     workspace.write("glossary_basic.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "glossary_basic.adoc", "--out", "dist"])
         .output()
@@ -1754,7 +1760,7 @@ fn build_renders_v0_4_glossary_to_golden_agent_json() {
         .expect("glossary_basic fixture is readable");
     workspace.write("glossary_basic.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "glossary_basic.adoc", "--out", "dist"])
         .output()
@@ -1793,7 +1799,7 @@ fn check_accepts_v0_4_core_object_set_fixture() {
         .expect("core_object_set fixture is readable");
     workspace.write("core_object_set.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "core_object_set.adoc"])
         .output()
@@ -1819,7 +1825,7 @@ fn build_renders_v0_4_core_object_set_to_golden_html() {
         .expect("core_object_set fixture is readable");
     workspace.write("core_object_set.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "core_object_set.adoc", "--out", "dist"])
         .output()
@@ -1867,7 +1873,7 @@ fn build_renders_v0_4_core_object_set_to_golden_agent_json() {
         .expect("core_object_set fixture is readable");
     workspace.write("core_object_set.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["build", "core_object_set.adoc", "--out", "dist"])
         .output()
@@ -1982,7 +1988,7 @@ fn check_rejects_v0_5_broken_relation_fixture() {
         "relation_broken.adoc",
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "relation_broken.adoc"])
         .output()
@@ -2056,7 +2062,7 @@ fn check_rejects_v0_6_duplicate_id_across_files() {
     let workspace = TestWorkspace::new("check-rejects-v0-6-duplicate-id");
     copy_fixture_directory_to_workspace(&workspace, "v0_6/duplicate_id", "duplicate_id");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "duplicate_id"])
         .output()
@@ -2088,7 +2094,7 @@ fn check_rejects_unknown_typed_block_kind() {
         .expect("unknown_kind fixture is readable");
     workspace.write("unknown_kind.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "unknown_kind.adoc"])
         .output()
@@ -2121,7 +2127,7 @@ fn check_rejects_unknown_typed_block_kind_without_field_cascade() {
         .expect("unknown_kind_freeform fixture is readable");
     workspace.write("unknown_kind_freeform.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "unknown_kind_freeform.adoc"])
         .output()
@@ -2155,7 +2161,7 @@ fn check_rejects_nested_typed_block_in_fields() {
             .expect("nested fields fixture is readable");
     workspace.write("nested_typed_block_in_fields.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "nested_typed_block_in_fields.adoc"])
         .output()
@@ -2184,7 +2190,7 @@ fn check_rejects_nested_typed_block_in_body() {
         .expect("nested body fixture is readable");
     workspace.write("nested_typed_block_in_body.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "nested_typed_block_in_body.adoc"])
         .output()
@@ -2213,7 +2219,7 @@ fn check_rejects_glossary_with_missing_body() {
         .expect("glossary_missing_body fixture is readable");
     workspace.write("glossary_missing_body.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "glossary_missing_body.adoc"])
         .output()
@@ -2241,7 +2247,7 @@ fn check_rejects_warning_with_missing_severity() {
         .expect("warning_missing_severity fixture is readable");
     workspace.write("warning_missing_severity.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "warning_missing_severity.adoc"])
         .output()
@@ -2269,7 +2275,7 @@ fn check_rejects_warning_with_missing_body() {
         .expect("warning_missing_body fixture is readable");
     workspace.write("warning_missing_body.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "warning_missing_body.adoc"])
         .output()
@@ -2297,7 +2303,7 @@ fn check_rejects_warning_with_invalid_severity() {
         .expect("warning_invalid_severity fixture is readable");
     workspace.write("warning_invalid_severity.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "warning_invalid_severity.adoc"])
         .output()
@@ -2325,7 +2331,7 @@ fn check_rejects_warning_with_severity_casing() {
         .expect("warning_severity_casing fixture is readable");
     workspace.write("warning_severity_casing.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "warning_severity_casing.adoc"])
         .output()
@@ -2353,7 +2359,7 @@ fn check_rejects_decision_with_missing_status() {
         .expect("decision_missing_status fixture is readable");
     workspace.write("decision_missing_status.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "decision_missing_status.adoc"])
         .output()
@@ -2390,7 +2396,7 @@ fn check_rejects_accepted_decision_with_missing_decided_by() {
         &fixture_contents,
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "decision_accepted_missing_decided_by.adoc"])
         .output()
@@ -2419,7 +2425,7 @@ fn check_rejects_accepted_decision_with_empty_decided_by() {
             .expect("decision_accepted_empty_decided_by fixture is readable");
     workspace.write("decision_accepted_empty_decided_by.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "decision_accepted_empty_decided_by.adoc"])
         .output()
@@ -2447,7 +2453,7 @@ fn check_rejects_decision_with_invalid_status() {
         .expect("decision_invalid_status fixture is readable");
     workspace.write("decision_invalid_status.adoc", &fixture_contents);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .current_dir(&workspace.root)
         .args(["check", "decision_invalid_status.adoc"])
         .output()
@@ -2479,7 +2485,7 @@ fn check_reports_unreadable_source_path() {
     permissions.set_mode(0o000);
     fs::set_permissions(&source, permissions).expect("source can be made unreadable");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let output = adoc_command()
         .args([
             "check",
             workspace.root.to_str().expect("root path is utf-8"),
