@@ -86,21 +86,25 @@ pub(crate) fn build_with_provider<P: SourceProvider>(
     run_compile_pipeline(provider, Some(options))
 }
 
-#[derive(Clone)]
 pub(crate) struct BuildOptions<'a> {
     pub(crate) embeddings: BuildEmbeddingBehavior<'a>,
     pub(crate) prior_search_artifact_path: Option<PathBuf>,
 }
 
-#[derive(Clone, Copy)]
 pub(crate) enum BuildEmbeddingBehavior<'a> {
-    Enabled { provider: &'a dyn EmbeddingProvider },
+    #[cfg(test)]
+    Enabled {
+        provider: &'a dyn EmbeddingProvider,
+    },
+    EnabledFactory {
+        provider_factory: &'a mut dyn FnMut() -> Result<Box<dyn EmbeddingProvider>, EmbeddingError>,
+    },
     Skipped,
 }
 
 fn run_compile_pipeline<P: SourceProvider>(
     provider: &P,
-    build_options: Option<BuildOptions<'_>>,
+    mut build_options: Option<BuildOptions<'_>>,
 ) -> CompileResult {
     // Pipeline stages: load → validate-source-pages → resolve-KOs →
     // resolve-object-references → validate-resolved-pages → assemble →
@@ -124,7 +128,7 @@ fn run_compile_pipeline<P: SourceProvider>(
         diagnostics.extend(build_embedding_diagnostics(options));
     }
     let artifact_result =
-        build_artifacts_for_build(&workspace, &diagnostics, build_options.as_ref());
+        build_artifacts_for_build(&workspace, &diagnostics, build_options.as_mut());
     let artifacts = if artifact_result
         .diagnostics
         .iter()
@@ -145,7 +149,9 @@ fn run_compile_pipeline<P: SourceProvider>(
 fn build_embedding_diagnostics(options: &BuildOptions<'_>) -> Vec<Diagnostic> {
     let _prior_search_artifact_path = &options.prior_search_artifact_path;
     match options.embeddings {
+        #[cfg(test)]
         BuildEmbeddingBehavior::Enabled { .. } => Vec::new(),
+        BuildEmbeddingBehavior::EnabledFactory { .. } => Vec::new(),
         BuildEmbeddingBehavior::Skipped => vec![Diagnostic::info(
             DiagnosticCode::BuildEmbeddingsSkipped,
             "Embedding generation skipped; docs.search.json was not written.",
@@ -245,7 +251,7 @@ struct ArtifactBuildResult {
 fn build_artifacts_for_build(
     workspace: &WorkspaceAst,
     diagnostics: &[Diagnostic],
-    build_options: Option<&BuildOptions<'_>>,
+    mut build_options: Option<&mut BuildOptions<'_>>,
 ) -> ArtifactBuildResult {
     if diagnostics
         .iter()
@@ -258,12 +264,19 @@ fn build_artifacts_for_build(
     }
 
     let agent_json = AgentJsonArtifact.build(&workspace.pages, diagnostics);
-    let search_json = match build_options.map(|options| options.embeddings) {
+    let prior_search_artifact_path = build_options
+        .as_ref()
+        .and_then(|options| options.prior_search_artifact_path.clone());
+    let search_json = match build_options
+        .as_mut()
+        .map(|options| &mut options.embeddings)
+    {
+        #[cfg(test)]
         Some(BuildEmbeddingBehavior::Enabled { provider }) => match build_search_artifact(
             workspace,
             &agent_json,
-            provider,
-            build_options.and_then(|options| options.prior_search_artifact_path.as_ref()),
+            *provider,
+            prior_search_artifact_path.as_ref(),
         ) {
             Ok(search_artifact) => Some(search_artifact),
             Err(diagnostics) => {
@@ -273,6 +286,31 @@ fn build_artifacts_for_build(
                 };
             }
         },
+        Some(BuildEmbeddingBehavior::EnabledFactory { provider_factory }) => {
+            let provider = match provider_factory() {
+                Ok(provider) => provider,
+                Err(error) => {
+                    return ArtifactBuildResult {
+                        artifacts: None,
+                        diagnostics: vec![embedding_error_diagnostic(error)],
+                    };
+                }
+            };
+            match build_search_artifact(
+                workspace,
+                &agent_json,
+                provider.as_ref(),
+                prior_search_artifact_path.as_ref(),
+            ) {
+                Ok(search_artifact) => Some(search_artifact),
+                Err(diagnostics) => {
+                    return ArtifactBuildResult {
+                        artifacts: None,
+                        diagnostics,
+                    };
+                }
+            }
+        }
         Some(BuildEmbeddingBehavior::Skipped) | None => None,
     };
 

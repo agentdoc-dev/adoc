@@ -47,36 +47,25 @@ fn default_embedding_provider() -> Result<
 
 fn build_workspace_with_embedding_provider_factory<F>(
     input: BuildInput,
-    provider_factory: F,
+    mut provider_factory: F,
 ) -> CompileResult
 where
-    F: FnOnce() -> Result<
+    F: FnMut() -> Result<
         Box<dyn domain::ports::embedding_provider::EmbeddingProvider>,
         domain::ports::embedding_provider::EmbeddingError,
     >,
 {
     let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
     match input.embeddings {
-        BuildEmbeddingMode::Enabled => {
-            let embedding_provider = match provider_factory() {
-                Ok(provider) => provider,
-                Err(error) => {
-                    return CompileResult {
-                        diagnostics: vec![application::compile::embedding_error_diagnostic(error)],
-                        artifacts: None,
-                    };
-                }
-            };
-            application::compile::build_with_provider(
-                &provider,
-                application::compile::BuildOptions {
-                    embeddings: application::compile::BuildEmbeddingBehavior::Enabled {
-                        provider: embedding_provider.as_ref(),
-                    },
-                    prior_search_artifact_path: input.prior_search_artifact_path,
+        BuildEmbeddingMode::Enabled => application::compile::build_with_provider(
+            &provider,
+            application::compile::BuildOptions {
+                embeddings: application::compile::BuildEmbeddingBehavior::EnabledFactory {
+                    provider_factory: &mut provider_factory,
                 },
-            )
-        }
+                prior_search_artifact_path: input.prior_search_artifact_path,
+            },
+        ),
         BuildEmbeddingMode::Skipped => application::compile::build_with_provider(
             &provider,
             application::compile::BuildOptions {
@@ -141,5 +130,38 @@ mod tests {
 
         assert!(!constructed.get());
         assert!(!result.has_errors(), "skipped build should pass");
+    }
+
+    #[test]
+    fn build_workspace_enabled_does_not_construct_embedding_provider_when_source_has_errors() {
+        let workspace = tempfile::tempdir().expect("temp workspace");
+        std::fs::write(
+            workspace.path().join("guide.adoc"),
+            "# Guide @doc(team.guide)\n\n<div>raw</div>\n",
+        )
+        .expect("source can be written");
+        let constructed = Cell::new(false);
+
+        let result = build_workspace_with_embedding_provider_factory(
+            BuildInput {
+                root: workspace.path().to_path_buf(),
+                embeddings: BuildEmbeddingMode::Enabled,
+                prior_search_artifact_path: None,
+            },
+            || -> Result<Box<dyn EmbeddingProvider>, EmbeddingError> {
+                constructed.set(true);
+                panic!("source errors must not construct embedding provider")
+            },
+        );
+
+        assert!(!constructed.get());
+        assert!(result.has_errors(), "raw HTML should produce an error");
+        assert!(result.artifacts.is_none());
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::ParseRawHtml)
+        );
     }
 }
