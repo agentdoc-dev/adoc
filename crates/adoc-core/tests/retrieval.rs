@@ -49,6 +49,19 @@ fn load_session_from_objects(objects: Vec<AgentJsonObject>) -> RetrievalSession 
     result.session.expect("search fixture session loads")
 }
 
+fn load_fixture_session(relative: &str) -> RetrievalSession {
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: fixture_path(relative),
+    });
+
+    assert!(
+        result.diagnostics.is_empty(),
+        "expected clean fixture load, got {:?}",
+        result.diagnostics
+    );
+    result.session.expect("fixture retrieval session loads")
+}
+
 fn retrieval_filter_object(
     id: &str,
     kind: &str,
@@ -119,6 +132,117 @@ fn search_ranks(result: &SearchResult) -> Vec<u32> {
                 .lexical_rank
         })
         .collect()
+}
+
+fn assert_top_3_contains(session: &RetrievalSession, query: &str, expected_id: &str) {
+    let result = search(session, lexical_query(query, 3, SearchFilters::default()));
+
+    assert!(
+        result.diagnostics.is_empty(),
+        "expected clean search for {query:?}, got {:?}",
+        result.diagnostics
+    );
+    let ids = search_ids(&result);
+    assert!(
+        ids.contains(&expected_id),
+        "expected {expected_id} in top 3 for {query:?}, got {ids:?}"
+    );
+}
+
+#[test]
+fn retrieval_search_billing_pilot_subset_returns_benchmark_matches_in_top_3() {
+    let session = load_fixture_session("v1_2_search/pilot_subset.agent.json");
+
+    assert_top_3_contains(&session, "credit ledger", "billing.credits.ledger-source");
+    assert_top_3_contains(&session, "refund audit", "billing.refunds.audit-required");
+    assert_top_3_contains(
+        &session,
+        "entitlement payment",
+        "billing.entitlements.sync-after-payment",
+    );
+}
+
+#[test]
+fn retrieval_search_billing_pilot_subset_pins_exact_and_prefix_ids() {
+    let session = load_fixture_session("v1_2_search/pilot_subset.agent.json");
+
+    let exact = search(
+        &session,
+        lexical_query(
+            "billing.credits.decrement-after-success",
+            3,
+            SearchFilters::default(),
+        ),
+    );
+    assert!(exact.diagnostics.is_empty());
+    assert_eq!(
+        search_ids(&exact).first().copied(),
+        Some("billing.credits.decrement-after-success")
+    );
+
+    let prefix = search(
+        &session,
+        lexical_query("billing.credits", 4, SearchFilters::default()),
+    );
+    assert!(prefix.diagnostics.is_empty());
+    assert_eq!(
+        search_ids(&prefix),
+        [
+            "billing.credits",
+            "billing.credits.nonnegative",
+            "billing.credits.ledger-source",
+            "billing.credits.decrement-after-success"
+        ]
+    );
+    assert_eq!(search_ranks(&prefix), [1, 2, 3, 4]);
+}
+
+#[test]
+fn retrieval_search_billing_pilot_subset_covers_filters_and_tie_ordering() {
+    let session = load_fixture_session("v1_2_search/pilot_subset.agent.json");
+
+    let filtered = search(
+        &session,
+        lexical_query(
+            "ledger",
+            3,
+            SearchFilters {
+                kind: Some("decision".to_string()),
+                status: Some("accepted".to_string()),
+                owner: Some("team-billing".to_string()),
+                source_path: Some("03-decisions.adoc".to_string()),
+            },
+        ),
+    );
+    assert!(filtered.diagnostics.is_empty());
+    assert_eq!(
+        search_ids(&filtered).first().copied(),
+        Some("billing.decision.ledger-first")
+    );
+
+    let ties = search(
+        &session,
+        lexical_query("tie rank", 3, SearchFilters::default()),
+    );
+    assert!(ties.diagnostics.is_empty());
+    assert_eq!(
+        search_ids(&ties),
+        ["billing.tie.alpha", "billing.tie.beta", "billing.tie.gamma"]
+    );
+    assert_eq!(search_ranks(&ties), [1, 2, 3]);
+}
+
+#[test]
+fn retrieval_search_empty_fixture_returns_no_matches_without_diagnostics() {
+    let session = load_fixture_session("v1_2_search/empty.agent.json");
+
+    let result = search(
+        &session,
+        lexical_query("credit ledger", 3, SearchFilters::default()),
+    );
+
+    assert!(result.records.is_empty());
+    assert!(result.diagnostics.is_empty());
 }
 
 #[test]
