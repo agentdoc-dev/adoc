@@ -39,10 +39,10 @@ pub(crate) enum CliError {
     #[error("unsupported explain format: {format}")]
     UnsupportedExplainFormat { format: String },
 
-    #[error("error[retrieval.json_serialize] could not serialize retrieval JSON: {source}")]
-    RetrievalJsonSerialize {
+    #[error("error[retrieval.format] could not format retrieval output: {source}")]
+    RetrievalFormat {
         #[source]
-        source: serde_json::Error,
+        source: adoc_core::RetrievalFormatError,
     },
 
     #[error("missing command")]
@@ -56,7 +56,7 @@ impl CliError {
     pub(crate) fn exit_code(&self) -> i32 {
         match self {
             CliError::InvalidExplainUsage | CliError::UnsupportedExplainFormat { .. } => 1,
-            CliError::RetrievalJsonSerialize { .. } => 2,
+            CliError::RetrievalFormat { .. } => 2,
             CliError::InvalidBuildUsage
             | CliError::MissingCommand
             | CliError::UnknownCommand { .. } => 2,

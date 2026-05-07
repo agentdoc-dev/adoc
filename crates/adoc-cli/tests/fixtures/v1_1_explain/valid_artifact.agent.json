@@ -57,6 +57,47 @@
         "supersedes": [],
         "related_to": []
       }
+    },
+    {
+      "id": "billing.refunds.policy",
+      "kind": "decision",
+      "status": "accepted",
+      "body": "Refund credits are issued only after approval.",
+      "page_id": "billing.refunds",
+      "source_span": {
+        "path": "docs/refunds.adoc",
+        "line": 42,
+        "column": 1
+      },
+      "fields": {
+        "decided_by": "architecture",
+        "scope": "refunds"
+      },
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    },
+    {
+      "id": "billing.refunds.credit",
+      "kind": "glossary",
+      "status": null,
+      "body": "Refund credit means a ledger-backed customer balance adjustment.",
+      "page_id": "billing.refunds",
+      "source_span": {
+        "path": "docs/refunds.adoc",
+        "line": 55,
+        "column": 1
+      },
+      "fields": {
+        "canonical": "refund credit"
+      },
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
     }
   ],
   "diagnostics": []
