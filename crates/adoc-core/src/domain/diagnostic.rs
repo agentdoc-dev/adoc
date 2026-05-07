@@ -49,6 +49,9 @@ pub enum DiagnosticCode {
     IdDuplicateInArtifact,
     RetrievalObjectNotFound,
     SearchInvalidFilter,
+    EmbedModelLoadFailed,
+    EmbedComputeFailed,
+    EmbedUnexpectedDimension,
     BuildEmbeddingsSkipped,
 }
 
@@ -81,6 +84,9 @@ impl DiagnosticCode {
             DiagnosticCode::IdDuplicateInArtifact,
             DiagnosticCode::RetrievalObjectNotFound,
             DiagnosticCode::SearchInvalidFilter,
+            DiagnosticCode::EmbedModelLoadFailed,
+            DiagnosticCode::EmbedComputeFailed,
+            DiagnosticCode::EmbedUnexpectedDimension,
             DiagnosticCode::BuildEmbeddingsSkipped,
         ]
     }
@@ -113,6 +119,9 @@ impl DiagnosticCode {
             DiagnosticCode::IdDuplicateInArtifact => "id.duplicate_in_artifact",
             DiagnosticCode::RetrievalObjectNotFound => "retrieval.object_not_found",
             DiagnosticCode::SearchInvalidFilter => "search.invalid_filter",
+            DiagnosticCode::EmbedModelLoadFailed => "embed.model_load_failed",
+            DiagnosticCode::EmbedComputeFailed => "embed.compute_failed",
+            DiagnosticCode::EmbedUnexpectedDimension => "embed.unexpected_dim",
             DiagnosticCode::BuildEmbeddingsSkipped => "build.embeddings_skipped",
         }
     }
@@ -193,6 +202,15 @@ impl DiagnosticCode {
             DiagnosticCode::SearchInvalidFilter => {
                 "Change or remove the filter so it matches at least one object field in the artifact."
             }
+            DiagnosticCode::EmbedModelLoadFailed => {
+                "Check network access for the first model download, verify the local model cache is readable, then rerun `adoc build`."
+            }
+            DiagnosticCode::EmbedComputeFailed => {
+                "Retry `adoc build`; if the error repeats, rebuild with `--no-embeddings` while investigating the embedding provider."
+            }
+            DiagnosticCode::EmbedUnexpectedDimension => {
+                "Use an embedding provider that returns exactly one vector per input and the configured vector dimension."
+            }
             DiagnosticCode::BuildEmbeddingsSkipped => {
                 "Run `adoc build` without `--no-embeddings` to emit docs.search.json."
             }
@@ -254,6 +272,9 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "id.duplicate_in_artifact",
     "retrieval.object_not_found",
     "search.invalid_filter",
+    "embed.model_load_failed",
+    "embed.compute_failed",
+    "embed.unexpected_dim",
     "build.embeddings_skipped",
 ];
 
