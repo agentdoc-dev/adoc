@@ -25,6 +25,12 @@ pub(crate) enum CliError {
         source: serde_json::Error,
     },
 
+    #[error("error[artifact.search_json] could not serialize search JSON: {source}")]
+    SearchJsonSerialize {
+        #[source]
+        source: serde_json::Error,
+    },
+
     #[error("build did not produce artifacts")]
     BuildMissingArtifacts,
 

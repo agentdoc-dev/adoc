@@ -8,9 +8,9 @@ use std::process::ExitCode;
 use adoc_core::{
     AgentJsonDocument, BuildEmbeddingMode, BuildInput, CompileInput, Diagnostic, DiagnosticCode,
     ExplainResult, JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput,
-    RetrievalLoadResult, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity,
-    TextRetrievalFormatter, build_workspace, compile_workspace, explain_object,
-    load_retrieval_session, search,
+    RetrievalLoadResult, SearchArtifactDocument, SearchFilters, SearchMode, SearchQuery,
+    SearchResult, Severity, TextRetrievalFormatter, build_workspace, compile_workspace,
+    explain_object, load_retrieval_session, search,
 };
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
@@ -128,15 +128,16 @@ fn check(path: PathBuf) -> i32 {
 }
 
 fn build(path: PathBuf, out: PathBuf, no_embeddings: bool) -> i32 {
-    let result = if no_embeddings {
-        build_workspace(BuildInput {
-            root: path,
-            embeddings: BuildEmbeddingMode::Skipped,
-            prior_search_artifact_path: Some(out.join("docs.search.json")),
-        })
+    let embedding_mode = if no_embeddings {
+        BuildEmbeddingMode::Skipped
     } else {
-        compile_workspace(CompileInput { root: path })
+        BuildEmbeddingMode::Enabled
     };
+    let result = build_workspace(BuildInput {
+        root: path,
+        embeddings: embedding_mode,
+        prior_search_artifact_path: Some(out.join("docs.search.json")),
+    });
     print_diagnostics(&result.diagnostics);
     print_summary(&result.diagnostics);
 
@@ -149,7 +150,12 @@ fn build(path: PathBuf, out: PathBuf, no_embeddings: bool) -> i32 {
         None => return report(CliError::BuildMissingArtifacts),
     };
 
-    match write_artifacts(&out, &artifacts.html, &artifacts.agent_json) {
+    match write_artifacts(
+        &out,
+        &artifacts.html,
+        &artifacts.agent_json,
+        artifacts.search_json.as_ref(),
+    ) {
         Ok(()) => 0,
         Err(error) => report(error),
     }
@@ -350,7 +356,12 @@ fn report(error: CliError) -> i32 {
     error.exit_code()
 }
 
-fn write_artifacts(out: &Path, html: &str, agent_json: &AgentJsonDocument) -> Result<(), CliError> {
+fn write_artifacts(
+    out: &Path,
+    html: &str,
+    agent_json: &AgentJsonDocument,
+    search_json: Option<&SearchArtifactDocument>,
+) -> Result<(), CliError> {
     if out.exists() && !out.is_dir() {
         return Err(CliError::OutputPathIsFile {
             path: out.to_path_buf(),
@@ -376,6 +387,17 @@ fn write_artifacts(out: &Path, html: &str, agent_json: &AgentJsonDocument) -> Re
         path: agent_json_path,
         source,
     })?;
+
+    if let Some(search_json) = search_json {
+        let search_json_text = search_json
+            .to_pretty_json()
+            .map_err(|source| CliError::SearchJsonSerialize { source })?;
+        let search_json_path = out.join("docs.search.json");
+        fs::write(&search_json_path, search_json_text).map_err(|source| CliError::WriteFailed {
+            path: search_json_path,
+            source,
+        })?;
+    }
 
     Ok(())
 }

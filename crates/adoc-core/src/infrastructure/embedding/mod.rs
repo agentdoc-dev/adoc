@@ -1,5 +1,5 @@
 pub(crate) mod fastembed;
-#[cfg(test)]
+#[cfg(any(test, feature = "test-embedding-provider"))]
 pub(crate) mod in_memory;
 
 #[cfg(test)]
