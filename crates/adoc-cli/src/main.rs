@@ -1,13 +1,15 @@
 mod error;
 
 use std::fs;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use adoc_core::{
     AgentJsonDocument, CompileInput, Diagnostic, DiagnosticCode, ExplainResult,
-    JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput, Severity,
-    TextRetrievalFormatter, compile_workspace, explain_object, load_retrieval_session,
+    JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter, RetrievalInput, SearchFilters,
+    SearchMode, SearchQuery, SearchResult, Severity, TextRetrievalFormatter, compile_workspace,
+    explain_object, load_retrieval_session, search,
 };
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
@@ -27,6 +29,27 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                 artifact,
                 format,
             } => explain(object_id, artifact, format),
+            Commands::Search {
+                query,
+                artifact,
+                kind,
+                status,
+                owner,
+                source_path,
+                top,
+                format,
+            } => search_command(
+                query,
+                artifact,
+                SearchFilters {
+                    kind,
+                    status,
+                    owner,
+                    source_path,
+                },
+                top,
+                format,
+            ),
         },
         Err(error) => report_parse_error(error),
     }
@@ -67,6 +90,23 @@ enum Commands {
         object_id: String,
         #[arg(long, default_value = "dist/docs.agent.json")]
         artifact: PathBuf,
+        #[arg(long, value_enum, default_value = "text")]
+        format: ExplainFormat,
+    },
+    Search {
+        query: String,
+        #[arg(long, default_value = "dist/docs.agent.json")]
+        artifact: PathBuf,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long)]
+        owner: Option<String>,
+        #[arg(long)]
+        source_path: Option<String>,
+        #[arg(long, default_value = "10")]
+        top: NonZeroUsize,
         #[arg(long, value_enum, default_value = "text")]
         format: ExplainFormat,
     },
@@ -135,6 +175,61 @@ fn explain(object_id: String, artifact: PathBuf, format: ExplainFormat) -> i32 {
     print_explain_text(&RetrievalEnvelope::from(explain_result)).map_or_else(report, |()| 0)
 }
 
+fn search_command(
+    query: String,
+    artifact: PathBuf,
+    filters: SearchFilters,
+    top: NonZeroUsize,
+    format: ExplainFormat,
+) -> i32 {
+    let load_result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact,
+    });
+    let session = match load_result.session {
+        Some(session) => session,
+        None => {
+            if format.is_json() {
+                return print_explain_json(&RetrievalEnvelope::new(
+                    Vec::new(),
+                    load_result.diagnostics,
+                ))
+                .map_or_else(report, |()| 2);
+            }
+            eprint_diagnostics(&load_result.diagnostics);
+            return 2;
+        }
+    };
+
+    let search_result = search(
+        &session,
+        SearchQuery {
+            text: query,
+            mode: SearchMode::Lexical,
+            filters,
+            top: top.get(),
+        },
+    );
+    let exit_code = search_exit_code(&search_result);
+
+    if format.is_json() {
+        return print_explain_json(&RetrievalEnvelope::from(search_result))
+            .map_or_else(report, |()| exit_code);
+    }
+
+    if exit_code != 0 {
+        eprint_diagnostics(&search_result.diagnostics);
+        return exit_code;
+    }
+
+    let envelope = RetrievalEnvelope::from(search_result);
+    if envelope.records.is_empty() {
+        println!("(no matches)");
+        return 0;
+    }
+
+    print_explain_text(&envelope).map_or_else(report, |()| 0)
+}
+
 fn print_explain_json(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
     let text = JsonRetrievalFormatter
         .render(envelope)
@@ -150,6 +245,24 @@ fn explain_exit_code(result: &ExplainResult) -> i32 {
         .any(|diagnostic| diagnostic.code == DiagnosticCode::RetrievalObjectNotFound)
     {
         return 3;
+    }
+    if result
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == Severity::Error)
+    {
+        return 2;
+    }
+    0
+}
+
+fn search_exit_code(result: &SearchResult) -> i32 {
+    if result
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == DiagnosticCode::SearchInvalidFilter)
+    {
+        return 1;
     }
     if result
         .diagnostics
