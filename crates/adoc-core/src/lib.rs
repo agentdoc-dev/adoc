@@ -27,13 +27,28 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
 
 pub fn build_workspace(input: BuildInput) -> CompileResult {
     let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
-    application::compile::build_with_provider(
-        &provider,
-        application::compile::BuildOptions {
-            embeddings: input.embeddings,
-            prior_search_artifact_path: input.prior_search_artifact_path,
-        },
-    )
+    match input.embeddings {
+        BuildEmbeddingMode::Enabled => {
+            let embedding_provider =
+                infrastructure::embedding::in_memory::InMemoryProvider::new(384);
+            application::compile::build_with_provider(
+                &provider,
+                application::compile::BuildOptions {
+                    embeddings: application::compile::BuildEmbeddingBehavior::Enabled {
+                        provider: &embedding_provider,
+                    },
+                    prior_search_artifact_path: input.prior_search_artifact_path,
+                },
+            )
+        }
+        BuildEmbeddingMode::Skipped => application::compile::build_with_provider(
+            &provider,
+            application::compile::BuildOptions {
+                embeddings: application::compile::BuildEmbeddingBehavior::Skipped,
+                prior_search_artifact_path: input.prior_search_artifact_path,
+            },
+        ),
+    }
 }
 
 pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {

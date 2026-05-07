@@ -74,7 +74,6 @@ impl MetadataField<'_> {
 }
 
 impl KnowledgeObject {
-    #[allow(dead_code)]
     pub(crate) fn embedding_input(&self) -> String {
         let metadata = self.metadata_projection();
         let status = metadata

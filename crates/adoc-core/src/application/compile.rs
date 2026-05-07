@@ -1,23 +1,33 @@
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use crate::application::resolve_knowledge_objects::{
     resolve_knowledge_objects, suppress_unknown_kind_shape_diagnostics,
 };
 use crate::application::resolve_object_references::resolve_object_references;
-use crate::domain::artifact::{AgentJsonDocument, SearchArtifactDocument};
-use crate::domain::ast::{PageAst, WorkspaceAst};
+use crate::domain::artifact::{
+    AgentJsonDocument, SearchArtifactDocument, SearchEmbedding, SearchModelHeader,
+};
+use crate::domain::ast::{BlockAst, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
+use crate::domain::knowledge_object::KnowledgeObject;
 use crate::domain::ports::artifact_writer::ArtifactWriter;
+use crate::domain::ports::embedding_provider::EmbeddingProvider;
 use crate::domain::ports::renderer::Renderer;
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
 use crate::domain::source::SourceFile;
 use crate::infrastructure::artifact::AgentJsonArtifact;
+use crate::infrastructure::artifact::search_json::{
+    SUPPORTED_SEARCH_SCHEMA_VERSION, read_search_artifact_document,
+};
 use crate::infrastructure::parser::parse_page;
 use crate::infrastructure::render::HtmlRenderer;
 use crate::infrastructure::validate::{
     validate_resolved_page, validate_source_page, validate_workspace,
 };
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone)]
 pub struct CompileInput {
@@ -71,20 +81,26 @@ pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileR
 
 pub(crate) fn build_with_provider<P: SourceProvider>(
     provider: &P,
-    options: BuildOptions,
+    options: BuildOptions<'_>,
 ) -> CompileResult {
     run_compile_pipeline(provider, Some(options))
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct BuildOptions {
-    pub(crate) embeddings: BuildEmbeddingMode,
+#[derive(Clone)]
+pub(crate) struct BuildOptions<'a> {
+    pub(crate) embeddings: BuildEmbeddingBehavior<'a>,
     pub(crate) prior_search_artifact_path: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum BuildEmbeddingBehavior<'a> {
+    Enabled { provider: &'a dyn EmbeddingProvider },
+    Skipped,
 }
 
 fn run_compile_pipeline<P: SourceProvider>(
     provider: &P,
-    build_options: Option<BuildOptions>,
+    build_options: Option<BuildOptions<'_>>,
 ) -> CompileResult {
     // Pipeline stages: load → validate-source-pages → resolve-KOs →
     // resolve-object-references → validate-resolved-pages → assemble →
@@ -104,22 +120,33 @@ fn run_compile_pipeline<P: SourceProvider>(
     diagnostics.extend(validate_resolved_pages(&parsed));
     let workspace = assemble_workspace(parsed);
     diagnostics.extend(validate_workspace(&workspace));
-    if let Some(options) = build_options {
-        diagnostics.extend(build_embedding_diagnostics(&options));
+    if let Some(options) = &build_options {
+        diagnostics.extend(build_embedding_diagnostics(options));
     }
+    let artifact_result =
+        build_artifacts_for_build(&workspace, &diagnostics, build_options.as_ref());
+    let artifacts = if artifact_result
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == Severity::Error)
+    {
+        None
+    } else {
+        artifact_result.artifacts
+    };
+    diagnostics.extend(artifact_result.diagnostics);
     sort_diagnostics_by_source(&mut diagnostics);
-    let artifacts = build_artifacts(&workspace, &diagnostics);
     CompileResult {
         diagnostics,
         artifacts,
     }
 }
 
-fn build_embedding_diagnostics(options: &BuildOptions) -> Vec<Diagnostic> {
+fn build_embedding_diagnostics(options: &BuildOptions<'_>) -> Vec<Diagnostic> {
     let _prior_search_artifact_path = &options.prior_search_artifact_path;
     match options.embeddings {
-        BuildEmbeddingMode::Enabled => Vec::new(),
-        BuildEmbeddingMode::Skipped => vec![Diagnostic::info(
+        BuildEmbeddingBehavior::Enabled { .. } => Vec::new(),
+        BuildEmbeddingBehavior::Skipped => vec![Diagnostic::info(
             DiagnosticCode::BuildEmbeddingsSkipped,
             "Embedding generation skipped; docs.search.json was not written.",
         )],
@@ -205,15 +232,167 @@ fn assemble_workspace(parsed: Vec<(SourceFile, PageAst)>) -> WorkspaceAst {
 /// Gate artifacts on diagnostic severity: produce an HTML + agent JSON pair
 /// only when no diagnostic has `Severity::Error`. Renderer and ArtifactWriter
 /// ports are statically dispatched per ADR-0006.
+#[cfg(test)]
 fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Option<BuildArtifacts> {
-    diagnostics
+    build_artifacts_for_build(workspace, diagnostics, None).artifacts
+}
+
+struct ArtifactBuildResult {
+    artifacts: Option<BuildArtifacts>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+fn build_artifacts_for_build(
+    workspace: &WorkspaceAst,
+    diagnostics: &[Diagnostic],
+    build_options: Option<&BuildOptions<'_>>,
+) -> ArtifactBuildResult {
+    if diagnostics
         .iter()
-        .all(|diagnostic| diagnostic.severity != Severity::Error)
-        .then(|| BuildArtifacts {
+        .any(|diagnostic| diagnostic.severity == Severity::Error)
+    {
+        return ArtifactBuildResult {
+            artifacts: None,
+            diagnostics: Vec::new(),
+        };
+    }
+
+    let agent_json = AgentJsonArtifact.build(&workspace.pages, diagnostics);
+    let search_json = match build_options.map(|options| options.embeddings) {
+        Some(BuildEmbeddingBehavior::Enabled { provider }) => Some(build_search_artifact(
+            workspace,
+            &agent_json,
+            provider,
+            build_options.and_then(|options| options.prior_search_artifact_path.as_ref()),
+        )),
+        Some(BuildEmbeddingBehavior::Skipped) | None => None,
+    };
+
+    ArtifactBuildResult {
+        artifacts: Some(BuildArtifacts {
             html: HtmlRenderer.render(&workspace.pages),
-            agent_json: AgentJsonArtifact.build(&workspace.pages, diagnostics),
-            search_json: None,
+            agent_json,
+            search_json,
+        }),
+        diagnostics: Vec::new(),
+    }
+}
+
+fn build_search_artifact(
+    workspace: &WorkspaceAst,
+    agent_json: &AgentJsonDocument,
+    provider: &dyn EmbeddingProvider,
+    prior_search_artifact_path: Option<&PathBuf>,
+) -> SearchArtifactDocument {
+    let model = search_model_header(provider);
+    let cached_embeddings = load_matching_search_cache(prior_search_artifact_path, &model);
+    let agent_artifact_hash = sha256_prefixed(
+        agent_json
+            .to_pretty_json()
+            .expect("agent artifact serialization should not fail")
+            .as_bytes(),
+    );
+    let mut embeddings = Vec::new();
+    let mut misses = Vec::new();
+
+    for knowledge_object in workspace_knowledge_objects(workspace) {
+        let input = knowledge_object.embedding_input();
+        let content_hash = sha256_prefixed(input.as_bytes());
+        let id = knowledge_object.id().as_str().to_string();
+        if let Some(cached) = cached_embeddings.get(&id)
+            && cached.content_hash == content_hash
+            && cached.vector.len() == provider.dim()
+        {
+            embeddings.push(cached.clone());
+            continue;
+        }
+
+        let index = embeddings.len();
+        embeddings.push(SearchEmbedding {
+            id,
+            content_hash,
+            vector: Vec::new(),
+        });
+        misses.push((index, input));
+    }
+
+    if !misses.is_empty() {
+        let inputs: Vec<String> = misses.iter().map(|(_, input)| input.clone()).collect();
+        let vectors = provider
+            .embed_passages(&inputs)
+            .expect("embedding diagnostics are mapped in a later tracer");
+        assert_eq!(
+            vectors.len(),
+            misses.len(),
+            "embedding provider returned an unexpected vector count"
+        );
+        for ((index, _), vector) in misses.into_iter().zip(vectors) {
+            embeddings[index].vector = vector;
+        }
+    }
+
+    SearchArtifactDocument {
+        schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
+        model,
+        agent_artifact_hash,
+        embeddings,
+    }
+}
+
+fn search_model_header(provider: &dyn EmbeddingProvider) -> SearchModelHeader {
+    SearchModelHeader {
+        id: provider.model_id().id.clone(),
+        provider: provider.model_id().provider.clone(),
+        dim: provider.dim(),
+    }
+}
+
+fn load_matching_search_cache(
+    path: Option<&PathBuf>,
+    model: &SearchModelHeader,
+) -> BTreeMap<String, SearchEmbedding> {
+    let Some(path) = path else {
+        return BTreeMap::new();
+    };
+    if !path.exists() {
+        return BTreeMap::new();
+    }
+    let Ok(document) = read_search_artifact_document(path) else {
+        return BTreeMap::new();
+    };
+    if document.model != *model {
+        return BTreeMap::new();
+    }
+
+    document
+        .embeddings
+        .into_iter()
+        .map(|embedding| (embedding.id.clone(), embedding))
+        .collect()
+}
+
+fn workspace_knowledge_objects(workspace: &WorkspaceAst) -> impl Iterator<Item = &KnowledgeObject> {
+    workspace
+        .pages
+        .iter()
+        .flat_map(|page| page.blocks.iter())
+        .filter_map(|block| match block {
+            BlockAst::KnowledgeObject(knowledge_object) => Some(knowledge_object.as_ref()),
+            BlockAst::KnowledgeObjectPending(_) => unreachable!(
+                "resolver must replace pending knowledge objects before artifact emission"
+            ),
+            _ => None,
         })
+}
+
+fn sha256_prefixed(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut output = String::with_capacity("sha256:".len() + digest.len() * 2);
+    output.push_str("sha256:");
+    for byte in digest {
+        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    output
 }
 
 fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
@@ -233,8 +412,13 @@ fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
 mod tests {
     use super::*;
     use crate::domain::ast::BlockAst;
+    use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider, ModelId};
     use crate::domain::source::SourceFile;
+    use crate::infrastructure::artifact::search_json::SUPPORTED_SEARCH_SCHEMA_VERSION;
+    use crate::infrastructure::embedding::in_memory::InMemoryProvider;
     use crate::infrastructure::source::in_memory::InMemorySourceProvider;
+    use std::cell::RefCell;
+    use std::fs;
 
     fn source_file(identity: &str, text: &str) -> SourceFile {
         SourceFile::new_with_identity_path(
@@ -496,5 +680,220 @@ mod tests {
             DiagnosticCode::SchemaMissingField,
             "expected SchemaMissingField"
         );
+    }
+
+    #[test]
+    fn build_with_provider_embeds_knowledge_objects_into_search_artifact() {
+        let source_provider = InMemorySourceProvider::new().with_source(source_file(
+            "billing.adoc",
+            concat!(
+                "# Billing @doc(team.billing)\n",
+                "\n",
+                "::claim billing.credits\n",
+                "status: draft\n",
+                "owner: team-billing\n",
+                "--\n",
+                "Credits apply after successful payment.\n",
+                "::\n",
+            ),
+        ));
+        let embedding_provider = InMemoryProvider::new(4);
+
+        let result = build_with_provider(
+            &source_provider,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &embedding_provider,
+                },
+                prior_search_artifact_path: None,
+            },
+        );
+
+        assert!(
+            !result.has_errors(),
+            "embedding build should pass: {:?}",
+            result.diagnostics
+        );
+        let artifacts = result.artifacts.expect("artifacts are built");
+        let search = artifacts.search_json.expect("search artifact is built");
+        let expected_vector = embedding_provider
+            .embed_passages(&[concat!(
+                "claim: Credits apply after successful payment.\n",
+                "[id: billing.credits] [status: draft] [owner: team-billing]"
+            )
+            .to_string()])
+            .expect("test embedding succeeds")
+            .remove(0);
+
+        assert_eq!(search.schema_version, SUPPORTED_SEARCH_SCHEMA_VERSION);
+        assert_eq!(search.model.id, "in-memory");
+        assert_eq!(search.model.provider, "test");
+        assert_eq!(search.model.dim, 4);
+        assert!(search.agent_artifact_hash.starts_with("sha256:"));
+        assert_eq!(search.embeddings.len(), 1);
+        assert_eq!(search.embeddings[0].id, "billing.credits");
+        assert!(search.embeddings[0].content_hash.starts_with("sha256:"));
+        assert_eq!(search.embeddings[0].vector, expected_vector);
+    }
+
+    #[test]
+    fn build_with_provider_reuses_cached_vectors_by_model_id_and_content_hash() {
+        let first_source = InMemorySourceProvider::new().with_source(source_file(
+            "billing.adoc",
+            &two_claim_source(
+                "Credits apply after successful payment.",
+                "Refunds require audit review.",
+            ),
+        ));
+        let first_provider = RecordingEmbeddingProvider::new(4);
+        let first_result = build_with_provider(
+            &first_source,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &first_provider,
+                },
+                prior_search_artifact_path: None,
+            },
+        );
+        let first_search = first_result
+            .artifacts
+            .expect("first artifacts")
+            .search_json
+            .expect("first search artifact");
+        let prior = tempfile::Builder::new()
+            .prefix("adoc-cache-")
+            .suffix(".search.json")
+            .tempfile()
+            .expect("cache file");
+        fs::write(
+            prior.path(),
+            first_search
+                .to_pretty_json()
+                .expect("search artifact serializes"),
+        )
+        .expect("cache write");
+
+        let second_source = InMemorySourceProvider::new().with_source(source_file(
+            "billing.adoc",
+            &two_claim_source(
+                "Credits apply after successful payment.",
+                "Refunds require manual audit review.",
+            ),
+        ));
+        let second_provider = RecordingEmbeddingProvider::new(4);
+
+        let second_result = build_with_provider(
+            &second_source,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &second_provider,
+                },
+                prior_search_artifact_path: Some(prior.path().to_path_buf()),
+            },
+        );
+
+        assert!(
+            !second_result.has_errors(),
+            "second build should pass: {:?}",
+            second_result.diagnostics
+        );
+        let second_search = second_result
+            .artifacts
+            .expect("second artifacts")
+            .search_json
+            .expect("second search artifact");
+        let recorded_inputs = second_provider.recorded_inputs();
+        assert_eq!(
+            recorded_inputs,
+            vec![
+                concat!(
+                    "claim: Refunds require manual audit review.\n",
+                    "[id: billing.refunds] [status: draft] [owner: unknown]"
+                )
+                .to_string()
+            ],
+            "only the changed object should be embedded"
+        );
+        assert_eq!(
+            second_search.embeddings[0].vector, first_search.embeddings[0].vector,
+            "unchanged object vector should be reused"
+        );
+        assert_ne!(
+            second_search.embeddings[1].vector, first_search.embeddings[1].vector,
+            "changed object vector should be recomputed"
+        );
+    }
+
+    fn two_claim_source(credits_body: &str, refunds_body: &str) -> String {
+        format!(
+            concat!(
+                "# Billing @doc(team.billing)\n",
+                "\n",
+                "::claim billing.credits\n",
+                "status: draft\n",
+                "--\n",
+                "{credits_body}\n",
+                "::\n",
+                "\n",
+                "::claim billing.refunds\n",
+                "status: draft\n",
+                "--\n",
+                "{refunds_body}\n",
+                "::\n",
+            ),
+            credits_body = credits_body,
+            refunds_body = refunds_body
+        )
+    }
+
+    #[derive(Debug)]
+    struct RecordingEmbeddingProvider {
+        model_id: ModelId,
+        dim: usize,
+        recorded_inputs: RefCell<Vec<String>>,
+    }
+
+    impl RecordingEmbeddingProvider {
+        fn new(dim: usize) -> Self {
+            Self {
+                model_id: ModelId::new("recording", "test"),
+                dim,
+                recorded_inputs: RefCell::new(Vec::new()),
+            }
+        }
+
+        fn recorded_inputs(&self) -> Vec<String> {
+            self.recorded_inputs.borrow().clone()
+        }
+    }
+
+    impl EmbeddingProvider for RecordingEmbeddingProvider {
+        fn model_id(&self) -> &ModelId {
+            &self.model_id
+        }
+
+        fn dim(&self) -> usize {
+            self.dim
+        }
+
+        fn embed_passages(&self, inputs: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+            self.recorded_inputs
+                .borrow_mut()
+                .extend(inputs.iter().cloned());
+            Ok(inputs
+                .iter()
+                .map(|input| {
+                    (0..self.dim)
+                        .map(|index| (input.len() + index) as f32)
+                        .collect()
+                })
+                .collect())
+        }
+
+        fn embed_query(&self, query: &str) -> Result<Vec<f32>, EmbeddingError> {
+            Ok((0..self.dim)
+                .map(|index| (query.len() + index) as f32)
+                .collect())
+        }
     }
 }
