@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModelId {
     pub(crate) id: String,
@@ -19,12 +17,17 @@ impl ModelId {
 pub(crate) enum EmbeddingError {
     ModelLoad(String),
     Compute(String),
-    DimensionMismatch { expected: usize, actual: usize },
+    #[allow(dead_code)]
+    DimensionMismatch {
+        expected: usize,
+        actual: usize,
+    },
 }
 
 pub(crate) trait EmbeddingProvider {
     fn model_id(&self) -> &ModelId;
     fn dim(&self) -> usize;
     fn embed_passages(&self, inputs: &[String]) -> Result<Vec<Vec<f32>>, EmbeddingError>;
+    #[allow(dead_code)]
     fn embed_query(&self, query: &str) -> Result<Vec<f32>, EmbeddingError>;
 }

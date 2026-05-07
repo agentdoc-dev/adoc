@@ -373,7 +373,7 @@ fn validate_embedding_vectors(
     Ok(())
 }
 
-fn embedding_error_diagnostic(error: EmbeddingError) -> Diagnostic {
+pub(crate) fn embedding_error_diagnostic(error: EmbeddingError) -> Diagnostic {
     match error {
         EmbeddingError::ModelLoad(message) => Diagnostic::error(
             DiagnosticCode::EmbedModelLoadFailed,

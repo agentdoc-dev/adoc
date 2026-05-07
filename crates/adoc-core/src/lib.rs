@@ -26,16 +26,40 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
 }
 
 pub fn build_workspace(input: BuildInput) -> CompileResult {
+    build_workspace_with_embedding_provider_factory(input, || {
+        infrastructure::embedding::fastembed::FastEmbedProvider::try_new().map(|provider| {
+            Box::new(provider) as Box<dyn domain::ports::embedding_provider::EmbeddingProvider>
+        })
+    })
+}
+
+fn build_workspace_with_embedding_provider_factory<F>(
+    input: BuildInput,
+    provider_factory: F,
+) -> CompileResult
+where
+    F: FnOnce() -> Result<
+        Box<dyn domain::ports::embedding_provider::EmbeddingProvider>,
+        domain::ports::embedding_provider::EmbeddingError,
+    >,
+{
     let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
     match input.embeddings {
         BuildEmbeddingMode::Enabled => {
-            let embedding_provider =
-                infrastructure::embedding::in_memory::InMemoryProvider::new(384);
+            let embedding_provider = match provider_factory() {
+                Ok(provider) => provider,
+                Err(error) => {
+                    return CompileResult {
+                        diagnostics: vec![application::compile::embedding_error_diagnostic(error)],
+                        artifacts: None,
+                    };
+                }
+            };
             application::compile::build_with_provider(
                 &provider,
                 application::compile::BuildOptions {
                     embeddings: application::compile::BuildEmbeddingBehavior::Enabled {
-                        provider: &embedding_provider,
+                        provider: embedding_provider.as_ref(),
                     },
                     prior_search_artifact_path: input.prior_search_artifact_path,
                 },
@@ -56,4 +80,54 @@ pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {
         input,
         &infrastructure::artifact::AgentJsonArtifact,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+    use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
+
+    #[test]
+    fn build_workspace_enabled_maps_default_embedding_provider_load_failure() {
+        let workspace = tempfile::tempdir().expect("temp workspace");
+        let result = build_workspace_with_embedding_provider_factory(
+            BuildInput {
+                root: workspace.path().to_path_buf(),
+                embeddings: BuildEmbeddingMode::Enabled,
+                prior_search_artifact_path: None,
+            },
+            || Err(EmbeddingError::ModelLoad("model unavailable".to_string())),
+        );
+
+        assert!(result.has_errors());
+        assert!(result.artifacts.is_none());
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::EmbedModelLoadFailed)
+        );
+    }
+
+    #[test]
+    fn build_workspace_skipped_does_not_construct_default_embedding_provider() {
+        let workspace = tempfile::tempdir().expect("temp workspace");
+        let constructed = Cell::new(false);
+        let result = build_workspace_with_embedding_provider_factory(
+            BuildInput {
+                root: workspace.path().to_path_buf(),
+                embeddings: BuildEmbeddingMode::Skipped,
+                prior_search_artifact_path: None,
+            },
+            || -> Result<Box<dyn EmbeddingProvider>, EmbeddingError> {
+                constructed.set(true);
+                panic!("skipped build must not construct embedding provider")
+            },
+        );
+
+        assert!(!constructed.get());
+        assert!(!result.has_errors(), "skipped build should pass");
+    }
 }
