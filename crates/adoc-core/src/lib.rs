@@ -103,7 +103,13 @@ mod tests {
         );
 
         assert!(result.has_errors());
-        assert!(result.artifacts.is_none());
+        let artifacts = result
+            .artifacts
+            .expect("clean source still returns V0 artifacts on embedding failure");
+        assert!(
+            artifacts.search_json.is_none(),
+            "failed embedding build should not return a search artifact"
+        );
         assert!(
             result
                 .diagnostics
