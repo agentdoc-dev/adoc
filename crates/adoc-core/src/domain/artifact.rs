@@ -66,6 +66,9 @@ pub struct AgentJsonRelations {
     pub related_to: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchArtifactDocument;
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;

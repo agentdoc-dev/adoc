@@ -5,7 +5,7 @@ use crate::application::resolve_knowledge_objects::{
     resolve_knowledge_objects, suppress_unknown_kind_shape_diagnostics,
 };
 use crate::application::resolve_object_references::resolve_object_references;
-use crate::domain::artifact::AgentJsonDocument;
+use crate::domain::artifact::{AgentJsonDocument, SearchArtifactDocument};
 use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::ports::artifact_writer::ArtifactWriter;
@@ -27,6 +27,24 @@ pub struct CompileInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct BuildInput {
+    /// Input path for compilation: either one `.adoc` file or a directory that
+    /// will be scanned recursively for `.adoc` files.
+    pub root: PathBuf,
+    /// Build-time embedding behavior. `adoc check` never uses this path.
+    pub embeddings: BuildEmbeddingMode,
+    /// Existing `docs.search.json` from the output directory, used by later
+    /// embedding slices for vector reuse.
+    pub prior_search_artifact_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildEmbeddingMode {
+    Enabled,
+    Skipped,
+}
+
+#[derive(Debug, Clone)]
 pub struct CompileResult {
     pub diagnostics: Vec<Diagnostic>,
     pub artifacts: Option<BuildArtifacts>,
@@ -44,9 +62,30 @@ impl CompileResult {
 pub struct BuildArtifacts {
     pub html: String,
     pub agent_json: AgentJsonDocument,
+    pub search_json: Option<SearchArtifactDocument>,
 }
 
 pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
+    run_compile_pipeline(provider, None)
+}
+
+pub(crate) fn build_with_provider<P: SourceProvider>(
+    provider: &P,
+    options: BuildOptions,
+) -> CompileResult {
+    run_compile_pipeline(provider, Some(options))
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct BuildOptions {
+    pub(crate) embeddings: BuildEmbeddingMode,
+    pub(crate) prior_search_artifact_path: Option<PathBuf>,
+}
+
+fn run_compile_pipeline<P: SourceProvider>(
+    provider: &P,
+    build_options: Option<BuildOptions>,
+) -> CompileResult {
     // Pipeline stages: load → validate-source-pages → resolve-KOs →
     // resolve-object-references → validate-resolved-pages → assemble →
     // validate-workspace → build. Each stage is a separate function below so
@@ -65,11 +104,25 @@ pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileR
     diagnostics.extend(validate_resolved_pages(&parsed));
     let workspace = assemble_workspace(parsed);
     diagnostics.extend(validate_workspace(&workspace));
+    if let Some(options) = build_options {
+        diagnostics.extend(build_embedding_diagnostics(&options));
+    }
     sort_diagnostics_by_source(&mut diagnostics);
     let artifacts = build_artifacts(&workspace, &diagnostics);
     CompileResult {
         diagnostics,
         artifacts,
+    }
+}
+
+fn build_embedding_diagnostics(options: &BuildOptions) -> Vec<Diagnostic> {
+    let _prior_search_artifact_path = &options.prior_search_artifact_path;
+    match options.embeddings {
+        BuildEmbeddingMode::Enabled => Vec::new(),
+        BuildEmbeddingMode::Skipped => vec![Diagnostic::info(
+            DiagnosticCode::BuildEmbeddingsSkipped,
+            "Embedding generation skipped; docs.search.json was not written.",
+        )],
     }
 }
 
@@ -159,6 +212,7 @@ fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Opti
         .then(|| BuildArtifacts {
             html: HtmlRenderer.render(&workspace.pages),
             agent_json: AgentJsonArtifact.build(&workspace.pages, diagnostics),
+            search_json: None,
         })
 }
 

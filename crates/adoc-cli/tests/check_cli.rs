@@ -339,6 +339,56 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
 }
 
 #[test]
+fn build_no_embeddings_emits_info_and_skips_search_artifact() {
+    let workspace = TestWorkspace::new("build-no-embeddings");
+    let source = workspace.write(
+        "guide.adoc",
+        concat!(
+            "# Guide @doc(team.guide)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "--\n",
+            "Credits apply after successful payment.\n",
+            "::\n",
+        ),
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "build",
+            source.to_str().expect("source path is utf-8"),
+            "--out",
+            workspace
+                .root
+                .join("dist")
+                .to_str()
+                .expect("output path is utf-8"),
+            "--no-embeddings",
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("info[build.embeddings_skipped]"),
+        "expected skipped embedding info diagnostic in stdout:\n{stdout}"
+    );
+    assert!(workspace.root.join("dist/docs.html").is_file());
+    assert!(workspace.root.join("dist/docs.agent.json").is_file());
+    assert!(
+        !workspace.root.join("dist/docs.search.json").exists(),
+        "--no-embeddings must not write docs.search.json"
+    );
+}
+
+#[test]
 fn build_missing_out_exits_1_with_parse_error() {
     let workspace = TestWorkspace::new("build-invalid-usage-missing-out");
     let source = workspace.write(
