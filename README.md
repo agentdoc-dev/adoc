@@ -4,19 +4,19 @@
 
 AgentDoc is a human-readable documentation system for teams that need documentation to behave like maintained, agent-safe knowledge.
 
-The current implementation is a pre-release Rust CLI named `adoc`. V0 is complete for the local compiler loop: it compiles native AgentDoc Source (`.adoc`) into:
+The current implementation is a pre-release Rust CLI named `adoc`. It compiles native AgentDoc Source (`.adoc`) into:
 
 - `docs.html` for humans
 - `docs.agent.json` for agents and tooling
 - source-located diagnostics for invalid input
 
-V1 is planned to add local retrieval over the generated agent artifact, starting with `adoc explain` and `adoc search`.
+It also provides local, read-only retrieval over `docs.agent.json` with `adoc explain` and lexical-only `adoc search`.
 
 AgentDoc is not AsciiDoc, even though the source extension is `.adoc`.
 
 ## Status
 
-AgentDoc is pre-release compiler infrastructure. The V0 compiler is complete for the source-to-artifact loop and supports:
+AgentDoc is pre-release compiler and retrieval infrastructure. The source-to-artifact loop supports:
 
 - `adoc check <path>`
 - `adoc build <path> --out <directory>`
@@ -33,7 +33,14 @@ AgentDoc is pre-release compiler infrastructure. The V0 compiler is complete for
 - diagnostic metadata with source location, severity, code, message, and `object_id`/`help` when available
 - HTML and agent JSON artifact emission when no error diagnostics exist
 
-V1 local retrieval is next. Planned V1 commands include artifact-backed `adoc explain` and `adoc search` over `dist/docs.agent.json`; they are not implemented yet.
+V1.2 local retrieval supports:
+
+- `adoc explain <object-id>` over a compiled `docs.agent.json`
+- `adoc search <query>` over the same agent artifact
+- text and JSON retrieval output
+- search filters for kind, status, owner, and source path
+
+V1.2 search is lexical-only. It reads `docs.agent.json` only; it does not read `docs.search.json`, build or load embeddings, run semantic mode, or perform hybrid ranking yet.
 
 Config files, includes, custom schemas, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, a web app, and permissioned governance are deferred beyond the current V0 compiler loop. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -146,6 +153,8 @@ adoc build /tmp/adoc-example/guide.adoc --out /tmp/adoc-example/dist
 ```bash
 adoc check <path>
 adoc build <path> --out <directory>
+adoc explain <object-id> [--artifact <path>] [--format text|json]
+adoc search <query> [--artifact <path>] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--top <n>] [--format text|json]
 ```
 
 `<path>` can be:
@@ -166,6 +175,24 @@ adoc build <path> --out <directory>
 - creates the output directory when it does not exist
 - fails if the output path exists as a file
 - writes `docs.html` and `docs.agent.json` only when there are no errors
+
+`adoc explain`:
+
+- reads a compiled agent artifact; it does not compile source
+- defaults to `--artifact dist/docs.agent.json`
+- prints the matching Knowledge Object with source and relation metadata
+- supports `--format text|json`
+
+`adoc search`:
+
+- reads a compiled agent artifact; it does not compile source
+- defaults to `--artifact dist/docs.agent.json`
+- runs deterministic lexical search over `docs.agent.json`
+- supports `--kind`, `--status`, `--owner`, and `--source-path` filters
+- limits results with `--top`, defaulting to `10`
+- supports `--format text|json`
+
+V1.2 `adoc search` does not use `docs.search.json`, embeddings, semantic search, or hybrid ranking.
 
 ## AgentDoc Source
 
@@ -254,8 +281,8 @@ fn main() {}
 
 Current limitations:
 
-- `adoc explain`, `adoc search`, and `adoc init` are planned after V0
-- custom schemas, includes, config files, search index artifacts, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, web app, and permissions are deferred
+- `adoc search` is lexical-only and reads `docs.agent.json` only
+- `adoc init`, custom schemas, includes, config files, search index artifacts, embeddings, semantic search, hybrid ranking, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, web app, and permissions are deferred
 
 ## Diagnostics
 
@@ -443,7 +470,7 @@ Parser, validation, renderer, and artifact internals stay private until another 
 
 ## Roadmap
 
-V0 is complete for the local source-to-artifact compiler loop. Implemented V0 milestones include:
+V0 is complete for the local source-to-artifact compiler loop. Implemented milestones include:
 
 - richer page identity and source diagnostics
 - common prose rendering for inline code, emphasis, and links
@@ -454,15 +481,17 @@ V0 is complete for the local source-to-artifact compiler loop. Implemented V0 mi
 - multi-file project behavior
 - standardized diagnostics and production-usable fixtures
 - a realistic billing pilot
+- artifact-backed `adoc explain <object-id>`
+- lexical-only `adoc search <query>` over `docs.agent.json`
 
-V1 focuses on local retrieval over the existing flat agent artifact:
+Current V1 retrieval focuses on the existing flat agent artifact:
 
 - define the supported `docs.agent.json` read contract
-- add `adoc explain <object-id>` for object lookup and citation
-- add `adoc search <query>` for deterministic exact local search
+- support `adoc explain <object-id>` for object lookup and citation
+- support `adoc search <query>` for deterministic lexical local search
 - prove retrieval against the billing pilot
 
-Later milestones cover project ergonomics, migration, review workflows, patch safety, expanded schema, graph exports, composition, and team surfaces.
+Later milestones cover `docs.search.json`, embeddings, semantic and hybrid search, project ergonomics, migration, review workflows, patch safety, expanded schema, graph exports, composition, and team surfaces.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full sequence.
 
