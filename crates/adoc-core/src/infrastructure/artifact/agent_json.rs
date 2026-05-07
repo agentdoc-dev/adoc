@@ -162,7 +162,6 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
     use crate::domain::ast::PageAst;
@@ -178,12 +177,14 @@ mod tests {
     };
     use crate::domain::ports::artifact_writer::ArtifactWriter;
 
-    fn temp_path(name: &str) -> PathBuf {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time after epoch")
-            .as_nanos();
-        std::env::temp_dir().join(format!("adoc-core-{name}-{suffix}"))
+    fn temp_agent_artifact(contents: &str) -> tempfile::NamedTempFile {
+        let artifact = tempfile::Builder::new()
+            .prefix("adoc-core-")
+            .suffix(".agent.json")
+            .tempfile()
+            .expect("create temp artifact");
+        fs::write(artifact.path(), contents).expect("write temp artifact");
+        artifact
     }
 
     fn span() -> SourceSpan {
@@ -488,7 +489,8 @@ mod tests {
 
     #[test]
     fn read_agent_json_document_reports_missing_artifact() {
-        let path = temp_path("missing.agent.json");
+        let temp_dir = tempfile::tempdir().expect("create temp directory");
+        let path = temp_dir.path().join("missing.agent.json");
 
         let diagnostics = read_agent_json_document(&path).expect_err("missing artifact must fail");
 
@@ -499,58 +501,51 @@ mod tests {
 
     #[test]
     fn read_agent_json_document_reports_unreadable_artifact() {
-        let path = temp_path("artifact-dir");
-        fs::create_dir(&path).expect("create temp directory");
+        let temp_dir = tempfile::tempdir().expect("create temp directory");
+        let path = temp_dir.path();
 
-        let diagnostics = read_agent_json_document(&path).expect_err("directory must not load");
+        let diagnostics = read_agent_json_document(path).expect_err("directory must not load");
 
-        fs::remove_dir(&path).expect("remove temp directory");
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactUnreadable);
     }
 
     #[test]
     fn read_agent_json_document_reports_malformed_json() {
-        let path = temp_path("malformed.agent.json");
-        fs::write(&path, "{").expect("write malformed json");
+        let artifact = temp_agent_artifact("{");
 
-        let diagnostics = read_agent_json_document(&path).expect_err("malformed JSON must fail");
+        let diagnostics =
+            read_agent_json_document(artifact.path()).expect_err("malformed JSON must fail");
 
-        fs::remove_file(&path).expect("remove temp file");
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactMalformed);
     }
 
     #[test]
     fn read_agent_json_document_reports_malformed_top_level_object() {
-        let path = temp_path("array.agent.json");
-        fs::write(&path, "[]").expect("write top-level array");
+        let artifact = temp_agent_artifact("[]");
 
-        let diagnostics = read_agent_json_document(&path).expect_err("top-level array must fail");
+        let diagnostics =
+            read_agent_json_document(artifact.path()).expect_err("top-level array must fail");
 
-        fs::remove_file(&path).expect("remove temp file");
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactMalformed);
     }
 
     #[test]
     fn read_agent_json_document_reports_unsupported_schema_version() {
-        let path = temp_path("unsupported.agent.json");
-        fs::write(
-            &path,
+        let artifact = temp_agent_artifact(
             r#"{
               "schema_version": "adoc.agent.v9",
               "pages": [],
               "objects": [],
               "diagnostics": []
             }"#,
-        )
-        .expect("write unsupported artifact");
+        );
 
         let diagnostics =
-            read_agent_json_document(&path).expect_err("unsupported version must fail");
+            read_agent_json_document(artifact.path()).expect_err("unsupported version must fail");
 
-        fs::remove_file(&path).expect("remove temp file");
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(
             diagnostics[0].code,
