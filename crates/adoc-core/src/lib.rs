@@ -95,7 +95,17 @@ pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {
     application::retrieval::load_retrieval_session_with_reader(
         input,
         &infrastructure::artifact::AgentJsonArtifact,
+        active_search_model_header(),
     )
+}
+
+fn active_search_model_header() -> Option<domain::artifact::SearchModelHeader> {
+    let provider = default_embedding_provider().ok()?;
+    Some(domain::artifact::SearchModelHeader {
+        id: provider.model_id().id.clone(),
+        provider: provider.model_id().provider.clone(),
+        dim: provider.dim(),
+    })
 }
 
 #[cfg(test)]

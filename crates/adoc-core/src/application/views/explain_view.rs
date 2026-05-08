@@ -47,7 +47,7 @@ pub struct RenderMeta {
 /// Slice 3 populates `record` and `related_statuses`.  Later slices add fields
 /// (expires rendering in slice 6, timing footer in slice 8) without changing
 /// the service signature.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExplainView {
     /// The primary record resolved from the artifact.
     pub record: RetrievalRecord,

@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use crate::application::hashing::sha256_prefixed;
 use crate::application::resolve_knowledge_objects::{
     resolve_knowledge_objects, suppress_unknown_kind_shape_diagnostics,
 };
@@ -27,7 +27,6 @@ use crate::infrastructure::render::HtmlRenderer;
 use crate::infrastructure::validate::{
     validate_resolved_page, validate_source_page, validate_workspace,
 };
-use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone)]
 pub struct CompileInput {
@@ -584,16 +583,6 @@ fn workspace_knowledge_objects(workspace: &WorkspaceAst) -> impl Iterator<Item =
             ),
             _ => None,
         })
-}
-
-fn sha256_prefixed(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    let mut output = String::with_capacity("sha256:".len() + digest.len() * 2);
-    output.push_str("sha256:");
-    for byte in digest {
-        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
-    }
-    output
 }
 
 fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {

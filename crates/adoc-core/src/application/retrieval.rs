@@ -2,12 +2,13 @@ use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
-use crate::domain::artifact::{AgentJsonDocument, AgentJsonObject};
+use crate::domain::artifact::{AgentJsonDocument, AgentJsonObject, SearchModelHeader};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
 use crate::domain::ports::artifact_reader::ArtifactReader;
 pub use crate::domain::retrieval::SearchFilters;
 use crate::domain::retrieval::lexical_index::LexicalIndex;
+use crate::domain::retrieval::vector_index::VectorIndex;
 use crate::domain::retrieval::{RetrievalMatch, RetrievalRecord, SearchMode};
 
 pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v0";
@@ -15,6 +16,7 @@ pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v0";
 #[derive(Debug, Clone)]
 pub struct RetrievalInput {
     pub artifact_path: PathBuf,
+    pub search_artifact_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -27,9 +29,26 @@ pub struct RetrievalLoadResult {
 pub struct RetrievalSession {
     exact_lookup: BTreeMap<ObjectId, AgentJsonObject>,
     lexical_index: LexicalIndex,
+    vector_index: Option<VectorIndex>,
+    search_model: Option<SearchModelHeader>,
 }
 
 impl RetrievalSession {
+    /// Returns `true` if a vector index was successfully loaded.
+    pub fn has_semantic_index(&self) -> bool {
+        self.vector_index.is_some()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn vector_index(&self) -> Option<&VectorIndex> {
+        self.vector_index.as_ref()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn search_model(&self) -> Option<&SearchModelHeader> {
+        self.search_model.as_ref()
+    }
+
     /// Returns all records from this session as a `Vec`.
     ///
     /// Intended for use by `ArtifactRecordResolver` in `adoc-cli` to populate
@@ -95,6 +114,7 @@ impl From<SearchResult> for RetrievalEnvelope {
 pub(crate) fn load_retrieval_session_with_reader<R>(
     input: RetrievalInput,
     reader: &R,
+    active_model: Option<SearchModelHeader>,
 ) -> RetrievalLoadResult
 where
     R: ArtifactReader<Output = AgentJsonDocument>,
@@ -108,6 +128,12 @@ where
             };
         }
     };
+
+    // Hash before consuming the document into exact_lookup.
+    let canonical_bytes = document
+        .to_pretty_json()
+        .expect("agent artifact serialization should not fail")
+        .into_bytes();
 
     let AgentJsonDocument {
         objects,
@@ -128,12 +154,86 @@ where
     };
     let lexical_index = LexicalIndex::from_objects(exact_lookup.values());
 
+    let mut diagnostics = document_diagnostics;
+    let mut vector_index: Option<VectorIndex> = None;
+    let mut search_model_out: Option<SearchModelHeader> = None;
+
+    if let Some(search_path) = input.search_artifact_path.as_ref() {
+        match crate::infrastructure::artifact::search_json::read_search_artifact_document(
+            search_path,
+        ) {
+            Err(diags) => {
+                let was_missing = diags
+                    .iter()
+                    .any(|d| d.code == DiagnosticCode::IoArtifactMissing);
+                if was_missing {
+                    diagnostics.push(Diagnostic::warning(
+                        DiagnosticCode::SearchArtifactMissing,
+                        format!(
+                            "Search artifact `{}` is missing; semantic search disabled.",
+                            search_path.display()
+                        ),
+                    ));
+                } else {
+                    diagnostics.extend(diags);
+                }
+            }
+            Ok(doc) => {
+                let mut artifact_unloadable = false;
+                if let Some(active) = active_model.as_ref()
+                    && active != &doc.model
+                {
+                    diagnostics.push(Diagnostic::error(
+                        DiagnosticCode::SearchModelMismatch,
+                        format!(
+                            "Search artifact `{}` was built with model `{}/{}` (dim {}); active provider is `{}/{}` (dim {}).",
+                            search_path.display(),
+                            doc.model.provider,
+                            doc.model.id,
+                            doc.model.dim,
+                            active.provider,
+                            active.id,
+                            active.dim,
+                        ),
+                    ));
+                    artifact_unloadable = true;
+                }
+
+                if !artifact_unloadable {
+                    let actual_hash =
+                        crate::application::hashing::sha256_prefixed(&canonical_bytes);
+                    if actual_hash != doc.agent_artifact_hash {
+                        diagnostics.push(Diagnostic::warning(
+                            DiagnosticCode::SearchHashDrift,
+                            format!(
+                                "Search artifact `{}` references agent_artifact_hash `{}` but the loaded agent artifact hashes to `{}`.",
+                                search_path.display(),
+                                doc.agent_artifact_hash,
+                                actual_hash,
+                            ),
+                        ));
+                    }
+
+                    vector_index = Some(VectorIndex::new(
+                        doc.embeddings
+                            .into_iter()
+                            .map(|e| (e.id, e.vector))
+                            .collect(),
+                    ));
+                    search_model_out = Some(doc.model);
+                }
+            }
+        }
+    }
+
     RetrievalLoadResult {
         session: Some(RetrievalSession {
             exact_lookup,
             lexical_index,
+            vector_index,
+            search_model: search_model_out,
         }),
-        diagnostics: document_diagnostics,
+        diagnostics,
     }
 }
 
@@ -164,6 +264,7 @@ pub fn explain_object(session: &RetrievalSession, id: &str) -> ExplainResult {
 pub fn search(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
     match query.mode {
         SearchMode::Lexical => search_lexical(session, query),
+        SearchMode::Semantic => search_lexical(session, query),
     }
 }
 
@@ -343,8 +444,10 @@ mod tests {
         let result = load_retrieval_session_with_reader(
             RetrievalInput {
                 artifact_path: PathBuf::from("ignored.agent.json"),
+                search_artifact_path: None,
             },
             &reader,
+            None,
         );
 
         assert!(result.diagnostics.is_empty());
@@ -371,8 +474,10 @@ mod tests {
         let result = load_retrieval_session_with_reader(
             RetrievalInput {
                 artifact_path: PathBuf::from("ignored.agent.json"),
+                search_artifact_path: None,
             },
             &reader,
+            None,
         );
 
         assert!(result.session.is_some());

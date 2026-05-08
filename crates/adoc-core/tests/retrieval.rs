@@ -49,6 +49,7 @@ fn load_session_from_objects(objects: Vec<AgentJsonObject>) -> RetrievalSession 
     );
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
     });
 
     assert!(
@@ -62,6 +63,7 @@ fn load_session_from_objects(objects: Vec<AgentJsonObject>) -> RetrievalSession 
 fn load_workspace_fixture_session(relative: &str) -> RetrievalSession {
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: workspace_fixture_path(relative),
+        search_artifact_path: None,
     });
 
     assert!(
@@ -838,6 +840,7 @@ fn explain_object_returns_record_for_id_in_loaded_agent_artifact() {
         artifact_path: fixture_path(
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
         ),
+        search_artifact_path: None,
     });
 
     assert!(
@@ -877,6 +880,7 @@ fn explain_object_serializes_record_without_search_match_block() {
         artifact_path: fixture_path(
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
         ),
+        search_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
 
@@ -893,6 +897,7 @@ fn retrieval_envelope_serializes_stable_schema_with_records_and_diagnostics() {
         artifact_path: fixture_path(
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
         ),
+        search_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
     let explained = explain_object(&session, "billing.verified-credits");
@@ -978,6 +983,7 @@ fn explain_object_reports_unknown_id_without_loading_source() {
         artifact_path: fixture_path(
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
         ),
+        search_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
 
@@ -1030,6 +1036,7 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
 
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
     });
 
     assert!(result.session.is_none());

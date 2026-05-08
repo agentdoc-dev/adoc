@@ -1,0 +1,16 @@
+{
+  "schema_version": "adoc.search.v0",
+  "model": {
+    "id": "in-memory",
+    "provider": "test",
+    "dim": 384
+  },
+  "agent_artifact_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "embeddings": [
+    {
+      "id": "billing.first",
+      "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "vector": [0.0, 0.0, 0.0]
+    }
+  ]
+}

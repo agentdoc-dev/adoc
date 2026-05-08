@@ -1,0 +1,10 @@
+{
+  "schema_version": "adoc.search.v0",
+  "model": {
+    "id": "bge-large-en-v1.5",
+    "provider": "fastembed",
+    "dim": 1024
+  },
+  "agent_artifact_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "embeddings": []
+}

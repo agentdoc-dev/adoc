@@ -8,7 +8,7 @@ const OWNER_FIELD: &str = "owner";
 const VERIFIED_AT_FIELD: &str = "verified_at";
 const EVIDENCE_FIELDS: [&str; 3] = ["source", "test", "reviewed_by"];
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RetrievalRecord {
     pub id: String,
     pub kind: String,
@@ -29,12 +29,16 @@ pub struct RetrievalRecord {
     pub search_match: Option<RetrievalMatch>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RetrievalMatch {
     pub mode: SearchMode,
     pub result_rank: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lexical_rank: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vector_rank: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cosine_score: Option<f32>,
 }
 
 impl RetrievalMatch {
@@ -43,6 +47,18 @@ impl RetrievalMatch {
             mode: SearchMode::Lexical,
             result_rank,
             lexical_rank,
+            vector_rank: None,
+            cosine_score: None,
+        }
+    }
+
+    pub fn semantic(result_rank: u32, vector_rank: u32, cosine_score: f32) -> Self {
+        Self {
+            mode: SearchMode::Semantic,
+            result_rank,
+            lexical_rank: None,
+            vector_rank: Some(vector_rank),
+            cosine_score: Some(cosine_score),
         }
     }
 }
@@ -51,6 +67,7 @@ impl RetrievalMatch {
 #[serde(rename_all = "snake_case")]
 pub enum SearchMode {
     Lexical,
+    Semantic,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

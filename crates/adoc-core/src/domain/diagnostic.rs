@@ -55,6 +55,9 @@ pub enum DiagnosticCode {
     BuildEmbeddingsCached,
     BuildEmbeddingsCacheIgnored,
     BuildEmbeddingsSkipped,
+    SearchArtifactMissing,
+    SearchModelMismatch,
+    SearchHashDrift,
 }
 
 impl DiagnosticCode {
@@ -92,6 +95,9 @@ impl DiagnosticCode {
             DiagnosticCode::BuildEmbeddingsCached,
             DiagnosticCode::BuildEmbeddingsCacheIgnored,
             DiagnosticCode::BuildEmbeddingsSkipped,
+            DiagnosticCode::SearchArtifactMissing,
+            DiagnosticCode::SearchModelMismatch,
+            DiagnosticCode::SearchHashDrift,
         ]
     }
 
@@ -129,6 +135,9 @@ impl DiagnosticCode {
             DiagnosticCode::BuildEmbeddingsCached => "build.embeddings_cached",
             DiagnosticCode::BuildEmbeddingsCacheIgnored => "build.embeddings_cache_ignored",
             DiagnosticCode::BuildEmbeddingsSkipped => "build.embeddings_skipped",
+            DiagnosticCode::SearchArtifactMissing => "search.artifact_missing",
+            DiagnosticCode::SearchModelMismatch => "search.model_mismatch",
+            DiagnosticCode::SearchHashDrift => "search.hash_drift",
         }
     }
 
@@ -226,6 +235,15 @@ impl DiagnosticCode {
             DiagnosticCode::BuildEmbeddingsSkipped => {
                 "Run `adoc build` without `--no-embeddings` to emit docs.search.json."
             }
+            DiagnosticCode::SearchArtifactMissing => {
+                "Run `adoc build` to generate dist/docs.search.json before requesting --semantic."
+            }
+            DiagnosticCode::SearchModelMismatch => {
+                "Rebuild dist/docs.search.json with the active embedding provider, or switch providers to match the artifact's model header."
+            }
+            DiagnosticCode::SearchHashDrift => {
+                "Re-run `adoc build` to regenerate dist/docs.search.json from the current agent artifact."
+            }
         }
     }
 
@@ -290,6 +308,9 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "build.embeddings_cached",
     "build.embeddings_cache_ignored",
     "build.embeddings_skipped",
+    "search.artifact_missing",
+    "search.model_mismatch",
+    "search.hash_drift",
 ];
 
 impl Diagnostic {
@@ -529,6 +550,50 @@ mod tests {
                 .default_help()
                 .contains("filter")
         );
+    }
+
+    #[test]
+    fn search_artifact_missing_code_roundtrips_through_wire_string() {
+        let value = serde_json::to_value(DiagnosticCode::SearchArtifactMissing)
+            .expect("diagnostic code serializes");
+        assert_eq!(value, "search.artifact_missing");
+        assert_eq!(
+            serde_json::from_value::<DiagnosticCode>(value).expect("diagnostic code deserializes"),
+            DiagnosticCode::SearchArtifactMissing
+        );
+        assert!(
+            !DiagnosticCode::SearchArtifactMissing
+                .default_help()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn search_model_mismatch_code_roundtrips_through_wire_string() {
+        let value = serde_json::to_value(DiagnosticCode::SearchModelMismatch)
+            .expect("diagnostic code serializes");
+        assert_eq!(value, "search.model_mismatch");
+        assert_eq!(
+            serde_json::from_value::<DiagnosticCode>(value).expect("diagnostic code deserializes"),
+            DiagnosticCode::SearchModelMismatch
+        );
+        assert!(
+            !DiagnosticCode::SearchModelMismatch
+                .default_help()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn search_hash_drift_code_roundtrips_through_wire_string() {
+        let value = serde_json::to_value(DiagnosticCode::SearchHashDrift)
+            .expect("diagnostic code serializes");
+        assert_eq!(value, "search.hash_drift");
+        assert_eq!(
+            serde_json::from_value::<DiagnosticCode>(value).expect("diagnostic code deserializes"),
+            DiagnosticCode::SearchHashDrift
+        );
+        assert!(!DiagnosticCode::SearchHashDrift.default_help().is_empty());
     }
 
     #[test]
