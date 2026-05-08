@@ -60,6 +60,10 @@ impl ProjectConfig {
                 return Self::read(&candidate).map(Some);
             }
 
+            if is_git_boundary(&current_dir) {
+                return Ok(None);
+            }
+
             if !current_dir.pop() {
                 return Ok(None);
             }
@@ -148,4 +152,8 @@ fn resolve_config_path(config_dir: &Path, path: PathBuf) -> PathBuf {
     } else {
         config_dir.join(path)
     }
+}
+
+fn is_git_boundary(path: &Path) -> bool {
+    path.join(".git").exists()
 }

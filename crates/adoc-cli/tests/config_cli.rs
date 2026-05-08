@@ -58,6 +58,48 @@ fn config_check_without_path_uses_nearest_docs_path_resolved_from_config_dir() {
 }
 
 #[test]
+fn config_discovery_stops_at_git_boundary_before_parent_config() {
+    for git_boundary in ["directory", "file"] {
+        let workspace = TestWorkspace::new(&format!("config-git-boundary-{git_boundary}"));
+        write_valid_source(&workspace, "parent-docs/index.adoc");
+        workspace.write(
+            "agentdoc.config.yaml",
+            "version: 1\nmode: strict\ndocs_path: parent-docs\noutputs:\n  dir: dist\nembeddings:\n  provider: local\n",
+        );
+
+        match git_boundary {
+            "directory" => fs::create_dir_all(workspace.root.join("nested/repo/.git"))
+                .expect(".git directory can be created"),
+            "file" => {
+                workspace.write("nested/repo/.git", "gitdir: ../.git/worktrees/repo\n");
+            }
+            _ => unreachable!("covered git boundary cases"),
+        }
+        fs::create_dir_all(workspace.root.join("nested/repo/deeper"))
+            .expect("nested repo cwd can be created");
+
+        let output = adoc_command()
+            .current_dir(workspace.root.join("nested/repo/deeper"))
+            .args(["check"])
+            .output()
+            .expect("adoc check runs");
+
+        assert_eq!(
+            output.status.code(),
+            Some(1),
+            "check should not use parent config across .git {git_boundary}\nstdout:\n{}\nstderr:\n{}",
+            stdout(&output),
+            stderr(&output)
+        );
+        assert!(
+            stderr(&output).contains("error[config.missing]"),
+            "expected config.missing when no config exists inside repo boundary, got:\n{}",
+            stderr(&output)
+        );
+    }
+}
+
+#[test]
 fn config_build_uses_exact_output_paths_and_dir_fills_omitted_paths() {
     let workspace = TestWorkspace::new("config-build-output-paths");
     write_valid_source(&workspace, "docs/index.adoc");
