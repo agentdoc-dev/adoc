@@ -30,7 +30,6 @@ pub struct RetrievalSession {
     exact_lookup: BTreeMap<ObjectId, AgentJsonObject>,
     lexical_index: LexicalIndex,
     vector_index: Option<VectorIndex>,
-    search_model: Option<SearchModelHeader>,
 }
 
 impl RetrievalSession {
@@ -39,14 +38,8 @@ impl RetrievalSession {
         self.vector_index.is_some()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn vector_index(&self) -> Option<&VectorIndex> {
         self.vector_index.as_ref()
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn search_model(&self) -> Option<&SearchModelHeader> {
-        self.search_model.as_ref()
     }
 
     /// Returns all records from this session as a `Vec`.
@@ -157,7 +150,6 @@ where
 
     let mut diagnostics = document_diagnostics;
     let mut vector_index: Option<VectorIndex> = None;
-    let mut search_model_out: Option<SearchModelHeader> = None;
 
     if let Some(search_path) = input.search_artifact_path.as_ref() {
         match crate::infrastructure::artifact::search_json::read_search_artifact_document(
@@ -221,7 +213,6 @@ where
                             .map(|e| (e.id, e.vector))
                             .collect(),
                     ));
-                    search_model_out = Some(doc.model);
                 }
             }
         }
@@ -232,7 +223,6 @@ where
             exact_lookup,
             lexical_index,
             vector_index,
-            search_model: search_model_out,
         }),
         diagnostics,
     }
