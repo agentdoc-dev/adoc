@@ -3,6 +3,7 @@ mod support;
 use std::fs;
 use std::process::Command;
 
+use chrono::{Local, Months};
 use support::TestWorkspace;
 
 fn adoc_command() -> Command {
@@ -29,10 +30,15 @@ fn assert_success(command: &str, output: &std::process::Output) {
 }
 
 fn write_valid_source(workspace: &TestWorkspace, relative_path: &str, object_id: &str) {
+    let verified_at = Local::now().date_naive();
+    let expires_at = verified_at
+        .checked_add_months(Months::new(12))
+        .expect("verified_at plus 12 months is valid");
+
     workspace.write(
         relative_path,
         &format!(
-            "# Billing Guide @doc({object_id}.doc)\n\n::claim {object_id}\nstatus: verified\nowner: team-docs\nverified_at: 2026-05-08\nsource: test\nexpires_at: 2027-05-08\n--\nBilling docs are ready for local workflow validation.\n::\n"
+            "# Billing Guide @doc({object_id}.doc)\n\n::claim {object_id}\nstatus: verified\nowner: team-docs\nverified_at: {verified_at}\nsource: test\nexpires_at: {expires_at}\n--\nBilling docs are ready for local workflow validation.\n::\n"
         ),
     );
 }
