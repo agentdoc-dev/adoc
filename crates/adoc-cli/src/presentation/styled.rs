@@ -4,11 +4,12 @@ use std::io;
 use adoc_core::ExplainView;
 use owo_colors::OwoColorize as _;
 
-use super::plain::{evidence_items, fields_items, has_evidence, has_fields, has_relations};
+use super::plain::{has_evidence, has_fields, has_relations};
 use super::port::ExplainPresenter;
 use super::style::chip::status_chip;
 use super::style::footer::render_footer;
 use super::style::humanise;
+use super::style::key::cyan_key;
 use super::style::kv::faint_label;
 use super::style::palette::status_color;
 use super::style::relations::relation_chip;
@@ -108,13 +109,32 @@ fn render_styled(output: &mut String, view: &ExplainView) {
     if has_evidence(record) {
         output.push('\n');
         writeln!(output, "{}", faint_label("Evidence:")).expect("writing to String cannot fail");
-        evidence_items(output, record);
+        // Known keys rendered first in a fixed order, then any remaining keys
+        // in BTreeMap (alphabetical) order — mirrors plain::evidence_items.
+        let known = ["source", "test", "reviewed_by"];
+        for field in known {
+            if let Some(value) = record.evidence.get(field) {
+                writeln!(output, "- {}: {value}", cyan_key(field))
+                    .expect("writing to String cannot fail");
+            }
+        }
+        for (field, value) in &record.evidence {
+            if !known.contains(&field.as_str()) {
+                writeln!(output, "- {}: {value}", cyan_key(field))
+                    .expect("writing to String cannot fail");
+            }
+        }
     }
 
     if has_fields(record) {
         output.push('\n');
         writeln!(output, "{}", faint_label("Fields:")).expect("writing to String cannot fail");
-        fields_items(output, record);
+        // BTreeMap iterates in sorted (alphabetical) key order — mirrors
+        // plain::fields_items.
+        for (field, value) in &record.fields {
+            writeln!(output, "- {}: {value}", cyan_key(field))
+                .expect("writing to String cannot fail");
+        }
     }
 
     output.push('\n');
@@ -137,6 +157,7 @@ fn render_styled(output: &mut String, view: &ExplainView) {
             ("related_to", &record.relations.related_to),
         ];
         for (kind, targets) in kinds {
+            let cyan_kind = cyan_key(kind);
             for target in targets {
                 let status_opt: Option<&str> = view
                     .related_statuses
@@ -144,10 +165,11 @@ fn render_styled(output: &mut String, view: &ExplainView) {
                     .and_then(|opt| opt.as_deref());
                 let palette = status_color(status_opt);
                 if let Some(chip) = relation_chip(palette) {
-                    writeln!(output, "- {kind}: {target} {chip}")
+                    writeln!(output, "- {cyan_kind}: {target} {chip}")
                         .expect("writing to String cannot fail");
                 } else {
-                    writeln!(output, "- {kind}: {target}").expect("writing to String cannot fail");
+                    writeln!(output, "- {cyan_kind}: {target}")
+                        .expect("writing to String cannot fail");
                 }
             }
         }
@@ -525,12 +547,16 @@ mod tests {
             Some("contradicted".to_string()),
         );
         let out = render(&view);
-        // line shape: "- supersedes: billing.credits.old-rule \x1b[30;41m[CONTRADICTED]\x1b[0m\n"
+        // The CONTRADICTED chip must appear in the raw output after the target.
         assert!(
-            out.contains(
-                "- supersedes: billing.credits.old-rule \u{1b}[30;41m[CONTRADICTED]\u{1b}[0m"
-            ),
+            out.contains("billing.credits.old-rule \u{1b}[30;41m[CONTRADICTED]\u{1b}[0m"),
             "expected CONTRADICTED chip after supersedes target, got: {out:?}"
+        );
+        // The visible text (stripped) must contain the target id on the line.
+        let stripped = strip_ansi(&out);
+        assert!(
+            stripped.contains("- supersedes: billing.credits.old-rule"),
+            "stripped output must show supersedes line, got: {stripped:?}"
         );
     }
 
@@ -546,7 +572,9 @@ mod tests {
         let out = render(&view);
         assert!(!out.contains("[CONTRADICTED]"));
         assert!(!out.contains("[DEPRECATED]"));
-        assert!(out.contains("- depends_on: billing.credits.ledger"));
+        // Check visible text via stripped output (kind is cyan in raw).
+        let stripped = strip_ansi(&out);
+        assert!(stripped.contains("- depends_on: billing.credits.ledger"));
     }
 
     #[test]
@@ -559,7 +587,9 @@ mod tests {
         let out = render(&view);
         assert!(!out.contains("[CONTRADICTED]"));
         assert!(!out.contains("[DEPRECATED]"));
-        assert!(out.contains("- related_to: billing.credits.ghost"));
+        // Check visible text via stripped output (kind is cyan in raw).
+        let stripped = strip_ansi(&out);
+        assert!(stripped.contains("- related_to: billing.credits.ghost"));
     }
 
     #[test]
@@ -643,6 +673,162 @@ mod tests {
         assert!(
             stripped.contains("\n\n✓"),
             "footer must be preceded by a blank line, got: {stripped:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Slice 9: cyan keys for evidence, fields, and relation kinds
+    // -----------------------------------------------------------------------
+
+    /// The per-item key names in the Evidence section must be wrapped in cyan
+    /// ANSI codes (`ESC[36m…ESC[39m`) in styled mode.
+    #[test]
+    fn styled_evidence_keys_render_in_cyan() {
+        let record = RetrievalRecord {
+            id: "billing.credits".to_string(),
+            kind: "claim".to_string(),
+            status: Some("verified".to_string()),
+            owner: None,
+            verified_at: None,
+            body: "Credits.".to_string(),
+            source: RetrievalSource {
+                path: "docs/billing.adoc".to_string(),
+                line: 1,
+                column: 1,
+            },
+            evidence: BTreeMap::from([
+                ("source".to_string(), "ledger".to_string()),
+                ("test".to_string(), "cargo test credits".to_string()),
+                ("reviewed_by".to_string(), "risk".to_string()),
+            ]),
+            fields: BTreeMap::new(),
+            relations: AgentJsonRelations::default(),
+            search_match: None,
+        };
+        let view = view_for(record);
+        let raw = render(&view);
+
+        // Each known key must appear cyan-wrapped followed by colon.
+        assert!(
+            raw.contains("\u{1b}[36msource\u{1b}[39m:"),
+            "evidence 'source' key must be cyan; raw={raw:?}"
+        );
+        assert!(
+            raw.contains("\u{1b}[36mtest\u{1b}[39m:"),
+            "evidence 'test' key must be cyan; raw={raw:?}"
+        );
+        assert!(
+            raw.contains("\u{1b}[36mreviewed_by\u{1b}[39m:"),
+            "evidence 'reviewed_by' key must be cyan; raw={raw:?}"
+        );
+
+        // Visible text (stripped) must preserve the plain layout (no extra indent).
+        let stripped = strip_ansi(&raw);
+        assert!(stripped.contains("- source: ledger\n"));
+        assert!(stripped.contains("- test: cargo test credits\n"));
+        assert!(stripped.contains("- reviewed_by: risk\n"));
+    }
+
+    /// Custom evidence keys (not in the known set) must also be cyan-wrapped.
+    #[test]
+    fn styled_fields_keys_render_in_cyan() {
+        let record = RetrievalRecord {
+            id: "billing.credits".to_string(),
+            kind: "glossary".to_string(),
+            status: None,
+            owner: None,
+            verified_at: None,
+            body: "Credits are balance units.".to_string(),
+            source: RetrievalSource {
+                path: "docs/glossary.adoc".to_string(),
+                line: 4,
+                column: 1,
+            },
+            evidence: BTreeMap::new(),
+            fields: BTreeMap::from([("canonical".to_string(), "billing credit".to_string())]),
+            relations: AgentJsonRelations::default(),
+            search_match: None,
+        };
+        let view = view_for(record);
+        let raw = render(&view);
+
+        assert!(
+            raw.contains("\u{1b}[36mcanonical\u{1b}[39m:"),
+            "fields 'canonical' key must be cyan; raw={raw:?}"
+        );
+
+        // Visible text preserved.
+        let stripped = strip_ansi(&raw);
+        assert!(stripped.contains("- canonical: billing credit\n"));
+    }
+
+    /// All three relation kind names must be rendered in cyan.
+    #[test]
+    fn styled_relations_kinds_render_in_cyan() {
+        let record = RetrievalRecord {
+            id: "billing.policy".to_string(),
+            kind: "decision".to_string(),
+            status: Some("accepted".to_string()),
+            owner: None,
+            verified_at: None,
+            body: "Policy body.".to_string(),
+            source: RetrievalSource {
+                path: "docs/decisions.adoc".to_string(),
+                line: 7,
+                column: 1,
+            },
+            evidence: BTreeMap::new(),
+            fields: BTreeMap::new(),
+            relations: AgentJsonRelations {
+                depends_on: vec!["billing.credits.ledger-source".to_string()],
+                supersedes: vec!["billing.refunds.manual-credit".to_string()],
+                related_to: vec!["billing.credits.decrement-after-success".to_string()],
+            },
+            search_match: None,
+        };
+        let view = view_for(record);
+        let raw = render(&view);
+
+        assert!(
+            raw.contains("\u{1b}[36mdepends_on\u{1b}[39m:"),
+            "relation kind 'depends_on' must be cyan; raw={raw:?}"
+        );
+        assert!(
+            raw.contains("\u{1b}[36msupersedes\u{1b}[39m:"),
+            "relation kind 'supersedes' must be cyan; raw={raw:?}"
+        );
+        assert!(
+            raw.contains("\u{1b}[36mrelated_to\u{1b}[39m:"),
+            "relation kind 'related_to' must be cyan; raw={raw:?}"
+        );
+
+        // Visible layout preserved.
+        let stripped = strip_ansi(&raw);
+        assert!(stripped.contains("- depends_on: billing.credits.ledger-source\n"));
+        assert!(stripped.contains("- supersedes: billing.refunds.manual-credit\n"));
+        assert!(stripped.contains("- related_to: billing.credits.decrement-after-success\n"));
+    }
+
+    /// Cyan kind name must be rendered independently of the CONTRADICTED chip:
+    /// a target that is NOT contradicted (so no chip is appended) must still
+    /// have its kind rendered in cyan.
+    #[test]
+    fn styled_no_chip_for_verified_target_still_uses_cyan_kind() {
+        let mut record = make_record("billing.credits", "claim");
+        record.relations.depends_on = vec!["billing.credits.ledger".to_string()];
+        let mut view = view_for(record);
+        view.related_statuses.insert(
+            "billing.credits.ledger".to_string(),
+            Some("verified".to_string()),
+        );
+        let raw = render(&view);
+
+        // No chip.
+        assert!(!raw.contains("[CONTRADICTED]"));
+        // But kind is still cyan.
+        assert!(
+            raw.contains("\u{1b}[36mdepends_on\u{1b}[39m:"),
+            "kind must be cyan even without a chip; raw={raw:?}"
         );
     }
 }
