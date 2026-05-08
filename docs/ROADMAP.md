@@ -2,7 +2,7 @@
 
 This roadmap converts the broad PRD into small tracer-bullet milestones. A milestone is not complete just because one subsystem exists; it is complete when a user can start with `.adoc` source, run the `adoc` CLI, receive useful diagnostics, and get both human HTML and agent JSON outputs.
 
-The initial product is a local CLI for native AgentDoc authoring in Git repositories. Web app, Markdown migration, compatibility mode, config files, graph exports, nested blocks, includes, custom schemas, enterprise governance, and agent patching are intentionally deferred until the compiler loop proves itself.
+The initial product is a local CLI for native AgentDoc authoring in Git repositories. A minimal local config now exists for `adoc init`, default docs paths, output paths, and embedding provider selection. Web app, Markdown migration, compatibility mode, graph exports, nested blocks, includes, custom schemas, enterprise governance, hosted embedding adapters, and agent patching remain intentionally deferred until the local compiler and retrieval loop proves itself.
 
 V0 implementation stack: Rust for the `adoc` CLI, parser, validator, compiler, HTML renderer, and agent JSON emitter. The Rust project starts as a Cargo workspace with `crates/adoc-cli` for command-line behavior and `crates/adoc-core` for reusable compiler behavior. Future editor, web, and agent integrations should consume the compiled artifacts or core library rather than own the source grammar.
 
@@ -182,8 +182,11 @@ Acceptance:
 Deferred:
 
 - `@include`.
-- Config files.
 - Ignore patterns.
+
+Closed later in V1.5:
+
+- Minimal config defaults.
 - Project initializer.
 
 ### V0.7: Diagnostics and Fixtures Slice
@@ -245,7 +248,7 @@ V1 product surface:
 - `adoc build` produces a third artifact, `dist/docs.search.json`, alongside `dist/docs.html` and `dist/docs.agent.json`.
 - `adoc explain <object-id>` reads the agent artifact only and prints a structured object explanation.
 - `adoc search "<query>"` reads both artifacts and ranks Knowledge Objects via Reciprocal Rank Fusion over BM25 and brute-force cosine, with exact and prefix Object ID matches pinned to the top.
-- Both new commands accept `--format text|json`. The `adoc.retrieval.v0` JSON envelope is the wire format any future MCP wrapper consumes.
+- Both new commands accept `--format auto|plain|styled|json`. The `adoc.retrieval.v0` JSON envelope is the wire format any future MCP wrapper consumes.
 
 V1 hard rules:
 
@@ -264,7 +267,7 @@ Scope:
 - Treat `dist/docs.agent.json` as a supported read model. Add an artifact reader that validates `schema_version: adoc.agent.v0`, top-level `objects`, and the in-artifact uniqueness of every Object ID.
 - Add a `RetrievalSession`-owned exact lookup keyed by Object ID.
 - Add diagnostics: `io.artifact_missing`, `io.artifact_unreadable`, `io.artifact_malformed`, `schema.unsupported_version`, `id.duplicate_in_artifact`, `retrieval.object_not_found`.
-- Implement `adoc explain <id>` with `--artifact <path>` and `--format text|json`.
+- Implement `adoc explain <id>` with `--artifact <path>` and `--format auto|plain|styled|json`.
 - Pretty text output mirrors PRD §21.5: kind, status, owner, verified date, body, evidence, source, relations.
 - `--format json` emits an `adoc.retrieval.v0` envelope with one record.
 
@@ -408,7 +411,7 @@ V1-wide design guidance:
 - Keep citation by Object ID as the center of the workflow; the retrieval record is a projection of the agent JSON object plus a small `match` block.
 - Treat V1 as local retrieval, not RAG infrastructure: no chunking, no scope-based retrieval, no permissions.
 - Keep source parsing, validation, and artifact emission behind the existing compiler path. Retrieval is a pure read of compiled outputs.
-- Avoid config-file assumptions until V1.5+ creates a project initializer.
+- Keep V1 retrieval artifact-first; config-backed source defaults start in V1.5.
 
 Resolved V1 decisions:
 
@@ -423,14 +426,14 @@ Resolved V1 decisions:
 
 V1.5 closes small local-tooling gaps before migration and team workflows expand the product surface. The search artifact already ships in V1, so V1.5 focuses on author ergonomics: an initializer, a minimal config, and the first lifecycle diagnostic.
 
-Suggested tracer-bullet slices:
+Implemented tracer-bullet slices:
 
-- Add `adoc init` only after the no-config V1 workflow is proven.
+- Add `adoc init` after the no-config V1 workflow is proven.
 - Introduce a minimal `agentdoc.config.yaml` with strict mode, docs path, output paths, and the embedding provider selection.
 - Keep custom schemas, remote sources, permissions, and team ownership out of the first config version.
-- Let `adoc check`, `adoc build`, and the V1 retrieval commands use config defaults when no path is passed.
-- Add basic stale-by-expiration diagnostics for objects that carry `expires_at`.
-- Add a hosted `EmbeddingProvider` adapter behind a feature flag once an external user has asked for one; until then the local default remains the only shipped provider.
+- Let `adoc check` and `adoc build` use config defaults when no source path is passed; let retrieval commands use config artifact paths when artifact flags are omitted.
+- Add basic stale-by-expiration diagnostics for objects that carry parseable past `expires_at` dates.
+- Keep hosted `EmbeddingProvider` adapters deferred until an external user asks for one; the local provider remains the only shipped provider.
 - Update docs and examples around the default local workflow.
 
 Design guidance:
@@ -444,7 +447,7 @@ Acceptance:
 
 - A user can run `adoc init`, edit the generated example, run `adoc check`, run `adoc build`, then run `adoc explain` and `adoc search`.
 - Existing explicit `adoc check <path>` and `adoc build <path> --out <directory>` workflows continue to work.
-- Expired verified claims produce useful diagnostics without mutating source.
+- Expired Knowledge Objects produce useful warning diagnostics without mutating source.
 
 ## V2: Migration and Compatibility
 
@@ -636,25 +639,21 @@ The currently resolved and implemented first cut is:
 - Build output directory: created automatically when missing.
 - Source extension: `.adoc`.
 - Authoring workflow: native AgentDoc Source first.
-- Commands: `adoc check`, `adoc build`.
+- Commands: `adoc init`, `adoc check`, `adoc build`, `adoc explain`, `adoc search`.
 - Modes: strict mode only.
-- Config: none.
+- Config: minimal `agentdoc.config.yaml` for local docs path, outputs, and `embeddings.provider: local|none`.
 - Initial objects: `claim`, `decision`, `warning`, `glossary`.
 - Verified support: verified claims only.
 - V0 evidence: `source`, `test`, `reviewed_by`.
 - Relations: `depends_on`, `supersedes`, `related_to`.
 - Block structure: top-level typed blocks only.
 - Composition: scan files directly, no includes.
-- Outputs: `dist/docs.html`, `dist/docs.agent.json`.
+- Outputs: `dist/docs.html`, `dist/docs.agent.json`, `dist/docs.search.json`.
 - Agent JSON shape: flat object list plus diagnostics.
 
 ## Explicitly Deferred From V0
 
 - Markdown migration and compatibility mode.
-- `adoc init`.
-- Config files.
-- Search and explain commands.
-- Search index artifacts such as `docs.search.json`.
 - Graph artifacts and graph traversal.
 - Nested typed blocks.
 - Includes.
