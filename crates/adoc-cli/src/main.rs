@@ -37,9 +37,6 @@ mode: strict
 docs_path: docs
 outputs:
   dir: dist
-  html: dist/docs.html
-  agent_json: dist/docs.agent.json
-  search: dist/docs.search.json
 embeddings:
   provider: local
 ";

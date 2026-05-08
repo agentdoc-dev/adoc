@@ -18,11 +18,9 @@ struct InitConfig {
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 struct InitOutputs {
     dir: String,
-    html: String,
-    agent_json: String,
-    search: String,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -78,9 +76,9 @@ fn init_creates_config_and_example_docs_in_current_directory() {
     assert!(config_text.contains("docs_path: docs"));
     assert!(config_text.contains("outputs:"));
     assert!(config_text.contains("  dir: dist"));
-    assert!(config_text.contains("  html: dist/docs.html"));
-    assert!(config_text.contains("  agent_json: dist/docs.agent.json"));
-    assert!(config_text.contains("  search: dist/docs.search.json"));
+    assert!(!config_text.contains("  html:"));
+    assert!(!config_text.contains("  agent_json:"));
+    assert!(!config_text.contains("  search:"));
     assert!(config_text.contains("embeddings:"));
     assert!(config_text.contains("  provider: local"));
 
@@ -94,9 +92,6 @@ fn init_creates_config_and_example_docs_in_current_directory() {
             docs_path: "docs".to_string(),
             outputs: InitOutputs {
                 dir: "dist".to_string(),
-                html: "dist/docs.html".to_string(),
-                agent_json: "dist/docs.agent.json".to_string(),
-                search: "dist/docs.search.json".to_string(),
             },
             embeddings: InitEmbeddings {
                 provider: "local".to_string(),
