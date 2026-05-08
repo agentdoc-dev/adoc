@@ -47,24 +47,27 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     artifact,
                     search_artifact,
                     semantic,
-                    lexical: _,
+                    lexical,
                     kind,
                     status,
                     owner,
                     source_path,
                     top,
                 } => search_command(
-                    query,
-                    artifact,
-                    search_artifact,
-                    semantic,
-                    SearchFilters {
-                        kind,
-                        status,
-                        owner,
-                        source_path,
+                    SearchCommandInput {
+                        query,
+                        artifact,
+                        search_artifact,
+                        semantic,
+                        lexical,
+                        filters: SearchFilters {
+                            kind,
+                            status,
+                            owner,
+                            source_path,
+                        },
+                        top,
                     },
-                    top,
                     resolved,
                 ),
             }
@@ -325,27 +328,32 @@ fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i3
     }
 }
 
-fn search_command(
+struct SearchCommandInput {
     query: String,
     artifact: PathBuf,
     search_artifact: PathBuf,
     semantic: bool,
+    lexical: bool,
     filters: SearchFilters,
     top: NonZeroUsize,
-    resolved: ResolvedFormat,
-) -> i32 {
-    // Only attempt to load the search artifact when semantic mode is requested.
-    // For lexical searches the vector index is never consulted, so we avoid
-    // emitting a spurious SearchArtifactMissing warning when the user has not
-    // yet run `adoc build` with embeddings.
-    let search_artifact_path = if semantic {
-        Some(search_artifact)
+}
+
+fn search_command(input: SearchCommandInput, resolved: ResolvedFormat) -> i32 {
+    let requested_mode = if input.semantic {
+        SearchMode::Semantic
+    } else if input.lexical {
+        SearchMode::Lexical
     } else {
-        None
+        SearchMode::Hybrid
+    };
+
+    let search_artifact_path = match requested_mode {
+        SearchMode::Lexical => None,
+        SearchMode::Hybrid | SearchMode::Semantic => Some(input.search_artifact),
     };
 
     let load_result = load_retrieval_session(RetrievalInput {
-        artifact_path: artifact,
+        artifact_path: input.artifact,
         search_artifact_path,
     });
     let RetrievalLoadResult {
@@ -379,11 +387,10 @@ fn search_command(
         return 2;
     }
 
-    // Guard: if the caller asked for semantic search but no vector index was
-    // loaded (e.g. the search artifact is missing or failed its hash check),
-    // surface the already-emitted warning and exit before paying the
-    // embedding-model load cost.
-    if semantic && !session.has_semantic_index() {
+    // Explicit semantic mode cannot run without a vector index. Hybrid mode
+    // degrades to lexical below so missing embeddings do not pay model-load
+    // cost just to fall back.
+    if requested_mode == SearchMode::Semantic && !session.has_semantic_index() {
         let envelope = RetrievalEnvelope::new(Vec::new(), load_diagnostics);
         if resolved == ResolvedFormat::Json {
             return json_presentation::write_envelope_json(&envelope, &mut std::io::stdout())
@@ -393,25 +400,30 @@ fn search_command(
         return 2;
     }
 
-    // Determine search mode and build the query vector for semantic search.
-    let mode = if semantic {
-        SearchMode::Semantic
-    } else {
-        SearchMode::Lexical
+    let mode = match requested_mode {
+        SearchMode::Hybrid if session.has_semantic_index() => SearchMode::Hybrid,
+        SearchMode::Hybrid => SearchMode::Lexical,
+        mode => mode,
     };
 
-    let query_vector = if semantic {
-        match embed_query(&query) {
+    let needs_query_vector = matches!(mode, SearchMode::Hybrid | SearchMode::Semantic);
+    let query_vector = if needs_query_vector {
+        match embed_query(&input.query) {
             Ok(vector) => Some(vector),
             Err(embed_error) => {
+                let mode_label = match mode {
+                    SearchMode::Hybrid => "hybrid search",
+                    SearchMode::Semantic => "semantic search",
+                    SearchMode::Lexical => "lexical search",
+                };
                 let (code, message) = match &embed_error {
                     EmbedQueryError::ModelLoad(msg) => (
                         DiagnosticCode::EmbedModelLoadFailed,
-                        format!("--semantic requested but embedding model failed to load: {msg}"),
+                        format!("{mode_label} requested but embedding model failed to load: {msg}"),
                     ),
                     EmbedQueryError::Compute(msg) => (
                         DiagnosticCode::EmbedComputeFailed,
-                        format!("--semantic requested but query embedding failed: {msg}"),
+                        format!("{mode_label} requested but query embedding failed: {msg}"),
                     ),
                 };
                 let diagnostic = Diagnostic {
@@ -440,10 +452,10 @@ fn search_command(
     let search_result = search(
         &session,
         SearchQuery {
-            text: query,
+            text: input.query,
             mode,
-            filters,
-            top,
+            filters: input.filters,
+            top: input.top,
             query_vector,
         },
     );

@@ -2,7 +2,10 @@ pub mod v1_4;
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static WORKSPACE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[allow(dead_code)]
 pub(crate) fn fixture_path(relative: &str) -> PathBuf {
@@ -32,7 +35,11 @@ impl TestWorkspace {
             .duration_since(UNIX_EPOCH)
             .expect("clock is after epoch")
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("adoc-{name}-{nonce}"));
+        let counter = WORKSPACE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "adoc-{name}-{}-{counter}-{nonce}",
+            std::process::id()
+        ));
         fs::create_dir_all(&root).expect("test workspace can be created");
         Self { root }
     }

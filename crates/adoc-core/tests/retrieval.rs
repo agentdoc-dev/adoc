@@ -206,6 +206,21 @@ fn hybrid_query(
     }
 }
 
+fn semantic_query(
+    text: &str,
+    query_vector: Vec<f32>,
+    top: usize,
+    filters: SearchFilters,
+) -> SearchQuery {
+    SearchQuery {
+        text: text.to_string(),
+        mode: SearchMode::Semantic,
+        filters,
+        top: NonZeroUsize::new(top).expect("test search top is non-zero"),
+        query_vector: Some(query_vector),
+    }
+}
+
 fn search_ids(result: &SearchResult) -> Vec<&str> {
     result
         .records
@@ -430,6 +445,83 @@ fn lexical_search_indexes_v0_evidence_fields() {
 
     assert!(result.diagnostics.is_empty());
     assert_eq!(search_ids(&result), ["billing.evidence"]);
+}
+
+#[test]
+fn semantic_search_pins_id_prefix_matches_before_vector_hits() {
+    let session = load_session_from_objects_with_vectors(
+        vec![
+            retrieval_search_object(
+                "billing.credits",
+                "claim",
+                None,
+                Some("team-billing"),
+                "docs/billing.adoc",
+                "Prefix target.",
+            ),
+            retrieval_search_object(
+                "support.vector",
+                "claim",
+                None,
+                Some("team-support"),
+                "docs/support.adoc",
+                "Vector winner.",
+            ),
+        ],
+        vec![
+            ("billing.credits", vec![0.0, 1.0]),
+            ("support.vector", vec![1.0, 0.0]),
+        ],
+    );
+
+    let result = search(
+        &session,
+        semantic_query(
+            "billing.credits",
+            vec![1.0, 0.0],
+            1,
+            SearchFilters::default(),
+        ),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), ["billing.credits"]);
+    let search_match = result.records[0].search_match.as_ref().unwrap();
+    assert_eq!(search_match.mode, SearchMode::Semantic);
+    assert_eq!(search_match.vector_rank, Some(2));
+}
+
+#[test]
+fn hybrid_search_requires_query_vector_when_vector_index_is_loaded() {
+    let session = load_session_from_objects_with_vectors(
+        vec![retrieval_search_object(
+            "billing.vector",
+            "claim",
+            None,
+            Some("team-billing"),
+            "docs/billing.adoc",
+            "target",
+        )],
+        vec![("billing.vector", vec![1.0, 0.0])],
+    );
+
+    let result = search(
+        &session,
+        SearchQuery {
+            text: "target".to_string(),
+            mode: SearchMode::Hybrid,
+            filters: SearchFilters::default(),
+            top: NonZeroUsize::new(1).unwrap(),
+            query_vector: None,
+        },
+    );
+
+    assert!(result.records.is_empty());
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::EmbedComputeFailed
+    );
 }
 
 #[test]
