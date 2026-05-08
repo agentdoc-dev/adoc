@@ -1,7 +1,7 @@
 use std::fmt::Write as FmtWrite;
 use std::io;
 
-use adoc_core::RetrievalEnvelope;
+use adoc_core::ExplainView;
 use adoc_core::{AgentJsonRelations, RetrievalRecord};
 
 use super::port::ExplainPresenter;
@@ -12,16 +12,9 @@ use super::port::ExplainPresenter;
 pub(crate) struct PlainPresenter;
 
 impl ExplainPresenter for PlainPresenter {
-    fn present(&self, envelope: &RetrievalEnvelope, out: &mut dyn io::Write) -> io::Result<()> {
+    fn present(&self, view: &ExplainView, out: &mut dyn io::Write) -> io::Result<()> {
         let mut buf = String::new();
-
-        for (index, record) in envelope.records.iter().enumerate() {
-            if index > 0 {
-                buf.push('\n');
-            }
-            render_record(&mut buf, record);
-        }
-
+        render_record(&mut buf, &view.record);
         out.write_all(buf.as_bytes())
     }
 }
@@ -121,7 +114,7 @@ fn render_relation_targets(output: &mut String, relation: &str, targets: &[Strin
 mod tests {
     use std::collections::BTreeMap;
 
-    use adoc_core::{AgentJsonRelations, RetrievalEnvelope, RetrievalRecord, RetrievalSource};
+    use adoc_core::{AgentJsonRelations, ExplainView, RetrievalRecord, RetrievalSource};
 
     use super::*;
 
@@ -145,17 +138,24 @@ mod tests {
         }
     }
 
-    fn render(envelope: &RetrievalEnvelope) -> String {
+    fn view_for(record: RetrievalRecord) -> ExplainView {
+        ExplainView {
+            record,
+            related_statuses: BTreeMap::new(),
+        }
+    }
+
+    fn render(view: &ExplainView) -> String {
         let mut buf = Vec::new();
-        PlainPresenter.present(envelope, &mut buf).unwrap();
+        PlainPresenter.present(view, &mut buf).unwrap();
         String::from_utf8(buf).unwrap()
     }
 
     #[test]
     fn plain_presenter_renders_record() {
         let record = make_record("team.id", "claim");
-        let envelope = RetrievalEnvelope::new(vec![record], Vec::new());
-        let text = render(&envelope);
+        let view = view_for(record);
+        let text = render(&view);
 
         assert!(text.contains("Object: team.id"));
         assert!(text.contains("Kind: claim"));
@@ -167,8 +167,8 @@ mod tests {
     fn plain_presenter_uses_severity_label_for_warnings() {
         let mut record = make_record("team.warn", "warning");
         record.status = Some("high".to_string());
-        let envelope = RetrievalEnvelope::new(vec![record], Vec::new());
-        let text = render(&envelope);
+        let view = view_for(record);
+        let text = render(&view);
 
         assert!(text.contains("Severity: high"));
         assert!(!text.contains("Status:"));
@@ -196,8 +196,8 @@ mod tests {
             relations: AgentJsonRelations::default(),
             search_match: None,
         };
-        let envelope = RetrievalEnvelope::new(vec![record], Vec::new());
-        let text = render(&envelope);
+        let view = view_for(record);
+        let text = render(&view);
 
         assert_eq!(
             text,
@@ -252,8 +252,8 @@ mod tests {
             },
             search_match: None,
         };
-        let envelope = RetrievalEnvelope::new(vec![record], Vec::new());
-        let text = render(&envelope);
+        let view = view_for(record);
+        let text = render(&view);
         let relations = text
             .split_once("Relations:\n")
             .expect("relations block is rendered")
@@ -291,8 +291,8 @@ mod tests {
             relations: AgentJsonRelations::default(),
             search_match: None,
         };
-        let envelope = RetrievalEnvelope::new(vec![record], Vec::new());
-        let text = render(&envelope);
+        let view = view_for(record);
+        let text = render(&view);
 
         assert!(text.contains("Kind: glossary\n"));
         assert!(text.contains("Fields:\n- canonical: billing credit\n"));
@@ -322,8 +322,8 @@ mod tests {
             relations: AgentJsonRelations::default(),
             search_match: None,
         };
-        let envelope = RetrievalEnvelope::new(vec![record], Vec::new());
-        let text = render(&envelope);
+        let view = view_for(record);
+        let text = render(&view);
 
         assert!(text.contains(concat!(
             "Evidence:\n",

@@ -1,19 +1,24 @@
+mod adapters;
 mod error;
 mod presentation;
 
+use std::fmt::Write as FmtWrite;
 use std::fs;
+use std::io::Write as _;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use adoc_core::{
-    AgentJsonDocument, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult, Diagnostic,
-    DiagnosticCode, ExplainResult, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
-    SearchArtifactDocument, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity,
-    build_workspace, compile_workspace, explain_object, load_retrieval_session, search,
+    AgentJsonDocument, AgentJsonRelations, BuildEmbeddingMode, BuildInput, CompileInput,
+    CompileResult, Diagnostic, DiagnosticCode, ExplainError, RetrievalEnvelope, RetrievalInput,
+    RetrievalLoadResult, RetrievalRecord, SearchArtifactDocument, SearchFilters, SearchMode,
+    SearchQuery, SearchResult, Severity, all_records, build_workspace, compile_workspace,
+    load_retrieval_session, search,
 };
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
+use crate::adapters::{ArtifactRecordResolver, SystemClock};
 use crate::error::CliError;
 use crate::presentation::{
     ColorChoice, ExplainPresenter as _, FormatChoice, ResolvedFormat, make_presenter, terminal,
@@ -224,7 +229,7 @@ fn finish_build_result(result: CompileResult, out: &Path) -> i32 {
 
 fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i32 {
     let load_result = load_retrieval_session(RetrievalInput {
-        artifact_path: artifact,
+        artifact_path: artifact.clone(),
     });
     let RetrievalLoadResult {
         session,
@@ -251,34 +256,65 @@ fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i3
         return 2;
     }
 
-    let explain_result = explain_object(&session, &object_id);
-    let explain_result = ExplainResult {
-        records: explain_result.records,
-        diagnostics: merge_diagnostics(load_diagnostics, explain_result.diagnostics),
-    };
-    let exit_code = explain_exit_code(&explain_result);
+    // Build the application service with the full record set from the session
+    // so that relation targets can be resolved for `related_statuses`.
+    let resolver = ArtifactRecordResolver::new(all_records(&session));
+    let service = adoc_core::ExplainService::new(resolver, SystemClock, artifact);
 
-    if resolved == ResolvedFormat::Json {
-        return print_retrieval_json(&RetrievalEnvelope::from(explain_result))
-            .map_or_else(report, |()| exit_code);
+    match service.execute(&object_id) {
+        Ok(view) => {
+            if !load_diagnostics.is_empty() {
+                eprint_diagnostics(&load_diagnostics);
+            }
+
+            if resolved == ResolvedFormat::Json {
+                let presenter = presentation::JsonPresenter;
+                return presenter
+                    .present(&view, &mut std::io::stdout())
+                    .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0);
+            }
+
+            let presenter = make_presenter(resolved);
+            presenter
+                .present(&view, &mut std::io::stdout())
+                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
+        }
+        Err(ExplainError::NotFound(id)) => {
+            let diagnostic = Diagnostic {
+                code: DiagnosticCode::RetrievalObjectNotFound,
+                severity: Severity::Error,
+                message: format!("Object ID `{id}` was not found in the agent artifact."),
+                span: None,
+                object_id: Some(id),
+                help: Some(
+                    "Run `adoc build` if the source was changed after the artifact was generated."
+                        .to_string(),
+                ),
+            };
+            if resolved == ResolvedFormat::Json {
+                return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), vec![diagnostic]))
+                    .map_or_else(report, |()| 3);
+            }
+            eprint_diagnostics(&[diagnostic]);
+            3
+        }
+        Err(ExplainError::Resolver(source)) => {
+            let diagnostic = Diagnostic {
+                code: DiagnosticCode::IoArtifactMalformed,
+                severity: Severity::Error,
+                message: format!("resolver error: {source}"),
+                span: None,
+                object_id: None,
+                help: None,
+            };
+            if resolved == ResolvedFormat::Json {
+                return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), vec![diagnostic]))
+                    .map_or_else(report, |()| 2);
+            }
+            eprint_diagnostics(&[diagnostic]);
+            2
+        }
     }
-
-    if exit_code != 0 {
-        eprint_diagnostics(&explain_result.diagnostics);
-        return exit_code;
-    }
-
-    if !explain_result.diagnostics.is_empty() {
-        eprint_diagnostics(&explain_result.diagnostics);
-    }
-
-    let presenter = make_presenter(resolved);
-    presenter
-        .present(
-            &RetrievalEnvelope::from(explain_result),
-            &mut std::io::stdout(),
-        )
-        .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
 }
 
 fn search_command(
@@ -350,35 +386,121 @@ fn search_command(
         return 0;
     }
 
-    let presenter = make_presenter(resolved);
-    presenter
-        .present(&envelope, &mut std::io::stdout())
-        .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
+    // Search renders multiple records; use the plain text render helper
+    // directly rather than the single-record ExplainPresenter trait.
+    let mut buf = String::new();
+    for (index, record) in envelope.records.iter().enumerate() {
+        if index > 0 {
+            buf.push('\n');
+        }
+        render_record_plain(&mut buf, record);
+    }
+    if let Err(source) = std::io::Write::write_all(&mut std::io::stdout(), buf.as_bytes()) {
+        return report(CliError::RetrievalIo { source });
+    }
+    0
+}
+
+/// Renders a single [`RetrievalRecord`] as plain text into `output`.
+///
+/// Shared between search (multi-record) rendering and unit tests.  The
+/// single-record explain path uses [`PlainPresenter`] instead.
+fn render_record_plain(output: &mut String, record: &RetrievalRecord) {
+    writeln!(output, "Object: {}", record.id).expect("writing to String cannot fail");
+    writeln!(output, "Kind: {}", record.kind).expect("writing to String cannot fail");
+    if let Some(status) = &record.status {
+        if record.kind == "warning" {
+            writeln!(output, "Severity: {status}").expect("writing to String cannot fail");
+        } else {
+            writeln!(output, "Status: {status}").expect("writing to String cannot fail");
+        }
+    }
+    if let Some(owner) = &record.owner {
+        writeln!(output, "Owner: {owner}").expect("writing to String cannot fail");
+    }
+    if let Some(verified_at) = &record.verified_at {
+        writeln!(output, "Verified: {verified_at}").expect("writing to String cannot fail");
+    }
+
+    output.push('\n');
+    output.push_str("Statement:\n");
+    output.push_str(&record.body);
+    if !record.body.ends_with('\n') {
+        output.push('\n');
+    }
+
+    render_evidence_plain(output, record);
+    render_fields_plain(output, record);
+
+    output.push('\n');
+    writeln!(
+        output,
+        "Source: {}:{}:{}",
+        record.source.path, record.source.line, record.source.column
+    )
+    .expect("writing to String cannot fail");
+
+    render_relations_plain(output, &record.relations);
+}
+
+fn render_evidence_plain(output: &mut String, record: &RetrievalRecord) {
+    let evidence_fields = ["source", "test", "reviewed_by"];
+    if record.evidence.is_empty() {
+        return;
+    }
+
+    output.push('\n');
+    output.push_str("Evidence:\n");
+    for field in evidence_fields {
+        if let Some(value) = record.evidence.get(field) {
+            writeln!(output, "- {field}: {value}").expect("writing to String cannot fail");
+        }
+    }
+    for (field, value) in &record.evidence {
+        if !evidence_fields.contains(&field.as_str()) {
+            writeln!(output, "- {field}: {value}").expect("writing to String cannot fail");
+        }
+    }
+}
+
+fn render_fields_plain(output: &mut String, record: &RetrievalRecord) {
+    if record.fields.is_empty() {
+        return;
+    }
+
+    output.push('\n');
+    output.push_str("Fields:\n");
+    for (field, value) in &record.fields {
+        writeln!(output, "- {field}: {value}").expect("writing to String cannot fail");
+    }
+}
+
+fn render_relations_plain(output: &mut String, relations: &AgentJsonRelations) {
+    if relations.depends_on.is_empty()
+        && relations.supersedes.is_empty()
+        && relations.related_to.is_empty()
+    {
+        return;
+    }
+
+    output.push('\n');
+    output.push_str("Relations:\n");
+    for target in &relations.depends_on {
+        writeln!(output, "- depends_on: {target}").expect("writing to String cannot fail");
+    }
+    for target in &relations.supersedes {
+        writeln!(output, "- supersedes: {target}").expect("writing to String cannot fail");
+    }
+    for target in &relations.related_to {
+        writeln!(output, "- related_to: {target}").expect("writing to String cannot fail");
+    }
 }
 
 fn print_retrieval_json(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
-    use crate::presentation::JsonPresenter;
-    JsonPresenter
-        .present(envelope, &mut std::io::stdout())
-        .map_err(|source| CliError::RetrievalIo { source })
-}
-
-fn explain_exit_code(result: &ExplainResult) -> i32 {
-    if result
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == DiagnosticCode::RetrievalObjectNotFound)
-    {
-        return 3;
-    }
-    if result
-        .diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.severity == Severity::Error)
-    {
-        return 2;
-    }
-    0
+    let text = serde_json::to_string_pretty(envelope).map_err(|e| CliError::RetrievalIo {
+        source: std::io::Error::other(e),
+    })?;
+    writeln!(std::io::stdout(), "{text}").map_err(|source| CliError::RetrievalIo { source })
 }
 
 fn search_exit_code(result: &SearchResult) -> i32 {
@@ -532,13 +654,9 @@ fn print_summary(diagnostics: &[Diagnostic]) {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use adoc_core::{
-        AgentJsonDocument, AgentJsonRelations, BuildArtifacts, CompileResult, RetrievalRecord,
-        RetrievalSource,
-    };
+    use adoc_core::{AgentJsonDocument, BuildArtifacts, CompileResult};
 
     use super::*;
 
@@ -597,39 +715,6 @@ mod tests {
             .expect("system time after Unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("adoc-cli-{name}-{}-{nanos}", std::process::id()))
-    }
-
-    #[test]
-    fn explain_exit_code_allows_warning_diagnostics_when_record_is_present() {
-        let result = ExplainResult {
-            records: vec![RetrievalRecord {
-                id: "billing.credits".to_string(),
-                kind: "claim".to_string(),
-                status: Some("verified".to_string()),
-                owner: None,
-                verified_at: None,
-                body: "Credits decrement after payment succeeds.".to_string(),
-                source: RetrievalSource {
-                    path: "docs/billing.adoc".to_string(),
-                    line: 1,
-                    column: 1,
-                },
-                evidence: BTreeMap::new(),
-                fields: BTreeMap::new(),
-                relations: AgentJsonRelations::default(),
-                search_match: None,
-            }],
-            diagnostics: vec![Diagnostic {
-                code: DiagnosticCode::ClaimStatusCasing,
-                severity: Severity::Warning,
-                message: "status casing".to_string(),
-                span: None,
-                object_id: None,
-                help: None,
-            }],
-        };
-
-        assert_eq!(explain_exit_code(&result), 0);
     }
 
     #[test]
