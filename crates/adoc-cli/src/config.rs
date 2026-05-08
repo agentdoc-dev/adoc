@@ -29,6 +29,7 @@ pub(crate) enum EmbeddingsProvider {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawProjectConfig {
     version: u32,
     mode: String,
@@ -38,6 +39,7 @@ struct RawProjectConfig {
 }
 
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 struct RawOutputs {
     dir: Option<PathBuf>,
     html: Option<PathBuf>,
@@ -46,6 +48,7 @@ struct RawOutputs {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RawEmbeddings {
     provider: String,
 }

@@ -488,3 +488,53 @@ fn config_invalid_mode_provider_and_version_exit_with_config_errors() {
         );
     }
 }
+
+#[test]
+fn config_rejects_unknown_config_fields() {
+    let cases = [
+        (
+            "top-level-typo",
+            "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembedings:\n  provider: none\n",
+            ["check"].as_slice(),
+            "embedings",
+        ),
+        (
+            "outputs-typo",
+            "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dyr: dist\nembeddings:\n  provider: none\n",
+            ["build"].as_slice(),
+            "dyr",
+        ),
+        (
+            "embeddings-extra",
+            "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n  mode: local\n",
+            ["check"].as_slice(),
+            "mode",
+        ),
+    ];
+
+    for (name, config, args, expected_field) in cases {
+        let workspace = TestWorkspace::new(&format!("config-unknown-{name}"));
+        write_valid_source(&workspace, "docs/index.adoc");
+        workspace.write("agentdoc.config.yaml", config);
+
+        let output = adoc_command()
+            .current_dir(&workspace.root)
+            .args(args)
+            .output()
+            .expect("adoc command runs");
+
+        assert!(
+            !output.status.success(),
+            "expected unknown config field to fail for {name}"
+        );
+        let stderr = stderr(&output);
+        assert!(
+            stderr.contains("error[config.parse]"),
+            "expected parse error for {name}, got:\n{stderr}"
+        );
+        assert!(
+            stderr.contains(expected_field),
+            "expected parse error to name {expected_field:?} for {name}, got:\n{stderr}"
+        );
+    }
+}
