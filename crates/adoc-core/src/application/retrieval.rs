@@ -457,6 +457,23 @@ fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResul
         };
     }
 
+    if query.text.trim().is_empty() {
+        return SearchResult {
+            records: candidates
+                .into_iter()
+                .take(query.top.get())
+                .enumerate()
+                .map(|(index, object)| {
+                    RetrievalRecord::from_object_with_match(
+                        object,
+                        RetrievalMatch::lexical((index + 1) as u32, None),
+                    )
+                })
+                .collect(),
+            diagnostics: Vec::new(),
+        };
+    }
+
     let candidate_ids: Vec<_> = candidates.iter().map(|object| object.id.as_str()).collect();
     let lexical_hits = session
         .lexical_index
