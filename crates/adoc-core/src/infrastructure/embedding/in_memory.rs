@@ -14,6 +14,17 @@ impl InMemoryProvider {
         }
     }
 
+    /// Returns the in-memory provider's `SearchModelHeader` without
+    /// constructing an instance.
+    #[allow(dead_code)]
+    pub(crate) fn metadata_header(dim: usize) -> crate::domain::artifact::SearchModelHeader {
+        crate::domain::artifact::SearchModelHeader {
+            id: "in-memory".to_string(),
+            provider: "test".to_string(),
+            dim,
+        }
+    }
+
     fn embed_text(&self, text: &str) -> Vec<f32> {
         (0..self.dim)
             .map(|index| stable_component(text.as_bytes(), index as u64))

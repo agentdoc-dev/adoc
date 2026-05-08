@@ -29,6 +29,18 @@ impl FastEmbedProvider {
         ModelId::new(MODEL_ID, PROVIDER_ID)
     }
 
+    /// Returns the active provider's `SearchModelHeader` without loading the
+    /// underlying model. Used by `load_retrieval_session` to validate a search
+    /// artifact's model header against the configured provider without paying
+    /// the model-download cost.
+    pub(crate) fn metadata_header() -> crate::domain::artifact::SearchModelHeader {
+        crate::domain::artifact::SearchModelHeader {
+            id: MODEL_ID.to_string(),
+            provider: PROVIDER_ID.to_string(),
+            dim: DIM,
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn metadata_only_for_test() -> Self {
         Self {
