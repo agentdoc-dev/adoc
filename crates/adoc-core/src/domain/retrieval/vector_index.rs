@@ -40,6 +40,13 @@ impl VectorIndex {
         )
     }
 
+    /// Brute-force scoring over `self.entries`, filtered by the candidate set.
+    ///
+    /// Cost is O(N · log K) where N is the corpus size and K is the candidate
+    /// count — full-scan is intentional at V1's 10k-object pilot scope (ADR-0010).
+    /// When `--hybrid` lands and pre-rank filters meaningfully shrink the
+    /// candidate pool, swap in a `BTreeMap<&str, &VectorEntry>` lookup so cost
+    /// becomes O(K · log N).
     pub(crate) fn rank_among<'a, I>(
         &self,
         query: &[f32],
