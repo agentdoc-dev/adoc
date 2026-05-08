@@ -176,6 +176,8 @@ enum Commands {
         search_artifact: PathBuf,
         #[arg(long, conflicts_with = "lexical")]
         semantic: bool,
+        /// Reserved for the V1.5/V1.6 hybrid slice; today this is the default
+        /// when neither --semantic nor --lexical is set, so the flag is a no-op.
         #[arg(long, conflicts_with = "semantic")]
         lexical: bool,
         #[arg(long)]
