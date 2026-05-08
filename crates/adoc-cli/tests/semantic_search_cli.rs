@@ -79,6 +79,14 @@ fn semantic_search_without_artifact_errors_out() {
             .any(|d| d["code"] == "search.artifact_missing"),
         "expected search.artifact_missing; got {envelope}"
     );
+    assert!(
+        envelope["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "search.artifact_missing" && d["severity"] == "error"),
+        "expected error search.artifact_missing; got {envelope}"
+    );
 }
 
 #[test]
