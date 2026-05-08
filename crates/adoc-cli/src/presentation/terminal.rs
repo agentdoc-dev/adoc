@@ -23,13 +23,13 @@ use super::{ColorChoice, FormatChoice, ResolvedFormat};
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// # use adoc_cli::presentation::{ColorChoice, FormatChoice, ResolvedFormat};
 /// # use adoc_cli::presentation::terminal::resolve;
 /// let resolved = resolve(FormatChoice::Auto, ColorChoice::Auto, true, false);
 /// assert_eq!(resolved, ResolvedFormat::Styled);
 /// ```
-pub fn resolve(
+pub(crate) fn resolve(
     format: FormatChoice,
     color: ColorChoice,
     is_stdout_tty: bool,
@@ -63,7 +63,7 @@ fn resolve_auto(color: ColorChoice, is_stdout_tty: bool, no_color_env: bool) -> 
 ///
 /// Reads `is_terminal` from `std::io::stdout()` and checks for the
 /// `NO_COLOR` environment variable.
-pub fn detect(format: FormatChoice, color: ColorChoice) -> ResolvedFormat {
+pub(crate) fn detect(format: FormatChoice, color: ColorChoice) -> ResolvedFormat {
     let is_stdout_tty = std::io::stdout().is_terminal();
     let no_color_env = std::env::var_os("NO_COLOR").is_some();
     resolve(format, color, is_stdout_tty, no_color_env)

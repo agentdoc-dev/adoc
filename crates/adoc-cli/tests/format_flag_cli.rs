@@ -13,7 +13,11 @@ fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
 }
 
 fn adoc() -> Command {
-    Command::cargo_bin("adoc").expect("adoc binary is available")
+    let mut cmd = Command::cargo_bin("adoc").expect("adoc binary is available");
+    cmd.env_remove("NO_COLOR")
+        .env_remove("CLICOLOR")
+        .env_remove("CLICOLOR_FORCE");
+    cmd
 }
 
 // ----------------------------------------------------------------- piped → plain
