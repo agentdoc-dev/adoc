@@ -48,8 +48,17 @@ pub(crate) fn render_record(output: &mut String, record: &RetrievalRecord) {
         output.push('\n');
     }
 
-    render_evidence(output, record);
-    render_fields(output, record);
+    if has_evidence(record) {
+        output.push('\n');
+        output.push_str("Evidence:\n");
+        evidence_items(output, record);
+    }
+
+    if has_fields(record) {
+        output.push('\n');
+        output.push_str("Fields:\n");
+        fields_items(output, record);
+    }
 
     output.push('\n');
     writeln!(
@@ -59,17 +68,42 @@ pub(crate) fn render_record(output: &mut String, record: &RetrievalRecord) {
     )
     .expect("writing to String cannot fail");
 
-    render_relations(output, &record.relations);
+    if has_relations(&record.relations) {
+        output.push('\n');
+        output.push_str("Relations:\n");
+        relations_items(output, &record.relations);
+    }
 }
 
-pub(crate) fn render_evidence(output: &mut String, record: &RetrievalRecord) {
-    let evidence_fields = ["source", "test", "reviewed_by"];
-    if record.evidence.is_empty() {
-        return;
-    }
+// ---------------------------------------------------------------------------
+// Section predicates — callers use these to decide whether to emit a header.
+// ---------------------------------------------------------------------------
 
-    output.push('\n');
-    output.push_str("Evidence:\n");
+/// Returns `true` when the record has at least one evidence entry.
+pub(crate) fn has_evidence(record: &RetrievalRecord) -> bool {
+    !record.evidence.is_empty()
+}
+
+/// Returns `true` when the record has at least one custom field entry.
+pub(crate) fn has_fields(record: &RetrievalRecord) -> bool {
+    !record.fields.is_empty()
+}
+
+/// Returns `true` when the record has at least one relation in any category.
+pub(crate) fn has_relations(relations: &AgentJsonRelations) -> bool {
+    !relations.depends_on.is_empty()
+        || !relations.supersedes.is_empty()
+        || !relations.related_to.is_empty()
+}
+
+// ---------------------------------------------------------------------------
+// Section body helpers — emit only the list items, no leading blank or header.
+// ---------------------------------------------------------------------------
+
+/// Appends evidence list items to `output`.  Does not emit a leading blank
+/// line or the `Evidence:` header; the caller owns those.
+pub(crate) fn evidence_items(output: &mut String, record: &RetrievalRecord) {
+    let evidence_fields = ["source", "test", "reviewed_by"];
     for field in evidence_fields {
         if let Some(value) = record.evidence.get(field) {
             writeln!(output, "- {field}: {value}").expect("writing to String cannot fail");
@@ -82,28 +116,17 @@ pub(crate) fn render_evidence(output: &mut String, record: &RetrievalRecord) {
     }
 }
 
-pub(crate) fn render_fields(output: &mut String, record: &RetrievalRecord) {
-    if record.fields.is_empty() {
-        return;
-    }
-
-    output.push('\n');
-    output.push_str("Fields:\n");
+/// Appends fields list items to `output`.  Does not emit a leading blank line
+/// or the `Fields:` header; the caller owns those.
+pub(crate) fn fields_items(output: &mut String, record: &RetrievalRecord) {
     for (field, value) in &record.fields {
         writeln!(output, "- {field}: {value}").expect("writing to String cannot fail");
     }
 }
 
-pub(crate) fn render_relations(output: &mut String, relations: &AgentJsonRelations) {
-    if relations.depends_on.is_empty()
-        && relations.supersedes.is_empty()
-        && relations.related_to.is_empty()
-    {
-        return;
-    }
-
-    output.push('\n');
-    output.push_str("Relations:\n");
+/// Appends relation list items to `output`.  Does not emit a leading blank
+/// line or the `Relations:` header; the caller owns those.
+pub(crate) fn relations_items(output: &mut String, relations: &AgentJsonRelations) {
     render_relation_targets(output, "depends_on", &relations.depends_on);
     render_relation_targets(output, "supersedes", &relations.supersedes);
     render_relation_targets(output, "related_to", &relations.related_to);
