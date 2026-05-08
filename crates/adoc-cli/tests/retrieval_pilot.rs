@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use serde::Deserialize;
 use serde_json::Value;
 use support::TestWorkspace;
 
@@ -17,7 +18,8 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 enum RetrievalMode {
     #[default]
     Hybrid,
@@ -25,7 +27,8 @@ enum RetrievalMode {
     Semantic,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 enum CaseFormat {
     #[default]
     Json,
@@ -53,7 +56,8 @@ impl EmbeddingBackend {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CaseFilters {
     kind: Option<String>,
     status: Option<String>,
@@ -61,18 +65,29 @@ struct CaseFilters {
     source_path: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RetrievalCase {
+    #[serde(default)]
     name: String,
     query: String,
+    #[serde(default)]
     mode: RetrievalMode,
+    #[serde(default)]
     format: CaseFormat,
+    #[serde(default)]
     filters: CaseFilters,
+    #[serde(default)]
     expected_ids: Vec<String>,
+    #[serde(default)]
     expected_diagnostics: Vec<String>,
+    #[serde(default)]
     expected_evidence: BTreeMap<String, String>,
+    #[serde(default)]
     expect_stdout_contains: Option<String>,
+    #[serde(default)]
     expected_exit: i32,
+    #[serde(default = "default_must_appear_in_top")]
     must_appear_in_top: usize,
 }
 
@@ -83,64 +98,8 @@ struct PilotBuild {
     agent_json: Value,
 }
 
-#[derive(Debug, Clone)]
-struct RetrievalCaseBuilder {
-    name: Option<String>,
-    query: Option<String>,
-    mode: RetrievalMode,
-    format: CaseFormat,
-    filters: CaseFilters,
-    expected_ids: Vec<String>,
-    expected_diagnostics: Vec<String>,
-    expected_evidence: BTreeMap<String, String>,
-    expect_stdout_contains: Option<String>,
-    expected_exit: i32,
-    must_appear_in_top: usize,
-}
-
-impl Default for RetrievalCaseBuilder {
-    fn default() -> Self {
-        Self {
-            name: None,
-            query: None,
-            mode: RetrievalMode::Hybrid,
-            format: CaseFormat::Json,
-            filters: CaseFilters::default(),
-            expected_ids: Vec::new(),
-            expected_diagnostics: Vec::new(),
-            expected_evidence: BTreeMap::new(),
-            expect_stdout_contains: None,
-            expected_exit: 0,
-            must_appear_in_top: 5,
-        }
-    }
-}
-
-impl RetrievalCaseBuilder {
-    fn finish(self, index: usize) -> Result<RetrievalCase, String> {
-        let query = self
-            .query
-            .ok_or_else(|| format!("retrieval case {index} is missing query"))?;
-        Ok(RetrievalCase {
-            name: self.name.unwrap_or_else(|| format!("case-{index}")),
-            query,
-            mode: self.mode,
-            format: self.format,
-            filters: self.filters,
-            expected_ids: self.expected_ids,
-            expected_diagnostics: self.expected_diagnostics,
-            expected_evidence: self.expected_evidence,
-            expect_stdout_contains: self.expect_stdout_contains,
-            expected_exit: self.expected_exit,
-            must_appear_in_top: self.must_appear_in_top,
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NestedSection {
-    Filters,
-    ExpectedEvidence,
+fn default_must_appear_in_top() -> usize {
+    5
 }
 
 #[test]
@@ -604,153 +563,41 @@ fn assert_expected_evidence(case: &RetrievalCase, envelope: &Value) {
 }
 
 fn parse_retrieval_set(input: &str) -> Result<Vec<RetrievalCase>, String> {
-    let mut cases = Vec::new();
-    let mut current: Option<RetrievalCaseBuilder> = None;
-    let mut section: Option<NestedSection> = None;
-
-    for (line_index, raw_line) in input.lines().enumerate() {
-        let line_number = line_index + 1;
-        let line_without_comment = raw_line.split_once('#').map_or(raw_line, |(line, _)| line);
-        if line_without_comment.trim().is_empty() {
-            continue;
+    let mut cases: Vec<RetrievalCase> = serde_saphyr::from_str(input)
+        .map_err(|error| format!("retrieval-set.yaml parse error: {error}"))?;
+    for (index, case) in cases.iter_mut().enumerate() {
+        if case.name.is_empty() {
+            case.name = format!("case-{}", index + 1);
         }
-        let indent = line_without_comment
-            .chars()
-            .take_while(|character| *character == ' ')
-            .count();
-        let line = line_without_comment.trim();
-
-        if let Some(rest) = line.strip_prefix("- ") {
-            if let Some(builder) = current.take() {
-                let index = cases.len() + 1;
-                cases.push(builder.finish(index)?);
-            }
-            let mut builder = RetrievalCaseBuilder::default();
-            parse_case_key_value(&mut builder, rest, line_number)?;
-            current = Some(builder);
-            section = None;
-            continue;
-        }
-
-        let builder = current
-            .as_mut()
-            .ok_or_else(|| format!("line {line_number}: expected a list item"))?;
-        if indent == 2 && line.ends_with(':') {
-            section = Some(match line.trim_end_matches(':') {
-                "filters" => NestedSection::Filters,
-                "expected_evidence" => NestedSection::ExpectedEvidence,
-                key => return Err(format!("line {line_number}: unknown section `{key}`")),
-            });
-            continue;
-        }
-
-        match (indent, section) {
-            (2, _) => {
-                section = None;
-                parse_case_key_value(builder, line, line_number)?;
-            }
-            (4.., Some(NestedSection::Filters)) => {
-                parse_filter_key_value(&mut builder.filters, line, line_number)?;
-            }
-            (4.., Some(NestedSection::ExpectedEvidence)) => {
-                let (key, value) = parse_key_value(line, line_number)?;
-                builder.expected_evidence.insert(key, parse_scalar(value));
-            }
-            _ => return Err(format!("line {line_number}: invalid indentation")),
-        }
-    }
-
-    if let Some(builder) = current.take() {
-        let index = cases.len() + 1;
-        cases.push(builder.finish(index)?);
     }
     Ok(cases)
 }
 
-fn parse_case_key_value(
-    builder: &mut RetrievalCaseBuilder,
-    line: &str,
-    line_number: usize,
-) -> Result<(), String> {
-    let (key, value) = parse_key_value(line, line_number)?;
-    match key.as_str() {
-        "name" => builder.name = Some(parse_scalar(value)),
-        "query" => builder.query = Some(parse_scalar(value)),
-        "mode" => {
-            builder.mode = match parse_scalar(value).as_str() {
-                "hybrid" => RetrievalMode::Hybrid,
-                "lexical" => RetrievalMode::Lexical,
-                "semantic" => RetrievalMode::Semantic,
-                mode => return Err(format!("line {line_number}: unknown mode `{mode}`")),
-            };
-        }
-        "format" => {
-            builder.format = match parse_scalar(value).as_str() {
-                "json" => CaseFormat::Json,
-                "plain" => CaseFormat::Plain,
-                format => return Err(format!("line {line_number}: unknown format `{format}`")),
-            };
-        }
-        "expected_ids" => builder.expected_ids = parse_inline_list(value, line_number)?,
-        "expected_diagnostics" => {
-            builder.expected_diagnostics = parse_inline_list(value, line_number)?
-        }
-        "expected_exit" => {
-            builder.expected_exit = parse_scalar(value)
-                .parse::<i32>()
-                .map_err(|error| format!("line {line_number}: invalid expected_exit: {error}"))?;
-        }
-        "must_appear_in_top" => {
-            builder.must_appear_in_top = parse_scalar(value).parse::<usize>().map_err(|error| {
-                format!("line {line_number}: invalid must_appear_in_top: {error}")
-            })?;
-        }
-        "expect_stdout_contains" => builder.expect_stdout_contains = Some(parse_scalar(value)),
-        key => return Err(format!("line {line_number}: unknown key `{key}`")),
-    }
-    Ok(())
-}
+#[test]
+fn retrieval_set_parser_accepts_yaml_scalars_and_block_lists() {
+    let cases = parse_retrieval_set(
+        r#"
+- query: "key: value # literal"
+  expected_ids:
+    - billing.example
+  expected_evidence:
+    source: "runbook: v3 # literal"
+  filters:
+    source_path: "docs:billing.adoc"
+"#,
+    )
+    .expect("retrieval set YAML parses");
 
-fn parse_filter_key_value(
-    filters: &mut CaseFilters,
-    line: &str,
-    line_number: usize,
-) -> Result<(), String> {
-    let (key, value) = parse_key_value(line, line_number)?;
-    let value = Some(parse_scalar(value));
-    match key.as_str() {
-        "kind" => filters.kind = value,
-        "status" => filters.status = value,
-        "owner" => filters.owner = value,
-        "source_path" => filters.source_path = value,
-        key => return Err(format!("line {line_number}: unknown filter `{key}`")),
-    }
-    Ok(())
-}
-
-fn parse_key_value(line: &str, line_number: usize) -> Result<(String, &str), String> {
-    let (key, value) = line
-        .split_once(':')
-        .ok_or_else(|| format!("line {line_number}: expected key: value"))?;
-    Ok((key.trim().to_string(), value.trim()))
-}
-
-fn parse_inline_list(value: &str, line_number: usize) -> Result<Vec<String>, String> {
-    let value = value.trim();
-    let inner = value
-        .strip_prefix('[')
-        .and_then(|value| value.strip_suffix(']'))
-        .ok_or_else(|| format!("line {line_number}: expected inline list"))?;
-    if inner.trim().is_empty() {
-        return Ok(Vec::new());
-    }
-    Ok(inner.split(',').map(parse_scalar).collect())
-}
-
-fn parse_scalar(value: &str) -> String {
-    value
-        .trim()
-        .trim_matches('"')
-        .trim_matches('\'')
-        .to_string()
+    assert_eq!(cases.len(), 1);
+    assert_eq!(cases[0].name, "case-1");
+    assert_eq!(cases[0].query, "key: value # literal");
+    assert_eq!(cases[0].expected_ids, ["billing.example"]);
+    assert_eq!(
+        cases[0].expected_evidence["source"],
+        "runbook: v3 # literal"
+    );
+    assert_eq!(
+        cases[0].filters.source_path.as_deref(),
+        Some("docs:billing.adoc")
+    );
 }
