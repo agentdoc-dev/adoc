@@ -2,8 +2,34 @@ use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CliError {
+    #[error("error[io.current_dir] could not read current directory: {source}")]
+    CurrentDir {
+        #[source]
+        source: std::io::Error,
+    },
+
     #[error("error[init.already_exists] target already exists: {}", path.display())]
     InitTargetExists { path: PathBuf },
+
+    #[error("error[config.read] could not read config {}: {source}", path.display())]
+    ConfigRead {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("error[config.parse] could not parse config {}: {source}", path.display())]
+    ConfigParse {
+        path: PathBuf,
+        #[source]
+        source: Box<serde_saphyr::Error>,
+    },
+
+    #[error("error[config.invalid] invalid config {}: {message}", path.display())]
+    ConfigInvalid { path: PathBuf, message: String },
+
+    #[error("error[config.missing] {message}")]
+    ConfigMissing { message: String },
 
     #[error("error[io.output_not_directory] output path exists as a file: {}", path.display())]
     OutputPathIsFile { path: PathBuf },

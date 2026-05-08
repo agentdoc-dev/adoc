@@ -1,4 +1,5 @@
 mod adapters;
+mod config;
 mod error;
 mod presentation;
 
@@ -17,6 +18,7 @@ use adoc_core::{
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
 use crate::adapters::{ArtifactRecordResolver, SystemClock};
+use crate::config::{EmbeddingsProvider, ProjectConfig};
 use crate::error::CliError;
 use crate::presentation::{
     ColorChoice, FormatChoice, ResolvedFormat, json as json_presentation, make_presenter,
@@ -25,6 +27,8 @@ use crate::presentation::{
 
 const INIT_CONFIG_PATH: &str = "agentdoc.config.yaml";
 const INIT_INDEX_PATH: &str = "docs/index.adoc";
+const DEFAULT_AGENT_ARTIFACT_PATH: &str = "dist/docs.agent.json";
+const DEFAULT_SEARCH_ARTIFACT_PATH: &str = "dist/docs.search.json";
 const INIT_CONFIG_TEMPLATE: &str = "\
 version: 1
 mode: strict
@@ -189,26 +193,35 @@ struct Cli {
 enum Commands {
     Init,
     Check {
-        path: PathBuf,
+        path: Option<PathBuf>,
     },
     Build {
-        path: PathBuf,
+        path: Option<PathBuf>,
         #[arg(long)]
-        out: PathBuf,
+        out: Option<PathBuf>,
         #[arg(long)]
         no_embeddings: bool,
     },
     Explain {
         object_id: String,
-        #[arg(long, default_value = "dist/docs.agent.json")]
-        artifact: PathBuf,
+        #[arg(
+            long,
+            help = "Agent JSON artifact path (default: config outputs.agent_json, then dist/docs.agent.json)"
+        )]
+        artifact: Option<PathBuf>,
     },
     Search {
         query: String,
-        #[arg(long, default_value = "dist/docs.agent.json")]
-        artifact: PathBuf,
-        #[arg(long, default_value = "dist/docs.search.json")]
-        search_artifact: PathBuf,
+        #[arg(
+            long,
+            help = "Agent JSON artifact path (default: config outputs.agent_json, then dist/docs.agent.json)"
+        )]
+        artifact: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "Search artifact path (default: config outputs.search, then dist/docs.search.json)"
+        )]
+        search_artifact: Option<PathBuf>,
         #[arg(long, conflicts_with = "lexical")]
         semantic: bool,
         /// Reserved for the V1.5/V1.6 hybrid slice; today this is the default
@@ -266,7 +279,12 @@ fn write_init_files() -> Result<(), CliError> {
     Ok(())
 }
 
-fn check(path: PathBuf) -> i32 {
+fn check(path: Option<PathBuf>) -> i32 {
+    let path = match resolve_docs_path(path) {
+        Ok(path) => path,
+        Err(error) => return report(error),
+    };
+
     let result = compile_workspace(CompileInput { root: path });
     print_diagnostics(&result.diagnostics);
     print_summary(&result.diagnostics);
@@ -274,12 +292,30 @@ fn check(path: PathBuf) -> i32 {
     if result.has_errors() { 1 } else { 0 }
 }
 
-fn build(path: PathBuf, out: PathBuf, no_embeddings: bool) -> i32 {
-    let embedding_mode = if no_embeddings {
-        BuildEmbeddingMode::Skipped
-    } else {
-        BuildEmbeddingMode::Enabled
+fn build(path: Option<PathBuf>, out: Option<PathBuf>, no_embeddings: bool) -> i32 {
+    let config = match ProjectConfig::discover() {
+        Ok(config) => config,
+        Err(error) => return report(error),
     };
+    let path = match resolve_docs_path_with_config(path, config.as_ref()) {
+        Ok(path) => path,
+        Err(error) => return report(error),
+    };
+    let embedding_mode = resolve_embedding_mode(config.as_ref(), no_embeddings);
+
+    match out {
+        Some(out) => build_to_dir(path, out, embedding_mode),
+        None => {
+            let output_paths = match resolve_build_output_paths(config.as_ref()) {
+                Ok(paths) => paths,
+                Err(error) => return report(error),
+            };
+            build_to_paths(path, output_paths, embedding_mode)
+        }
+    }
+}
+
+fn build_to_dir(path: PathBuf, out: PathBuf, embedding_mode: BuildEmbeddingMode) -> i32 {
     let result = build_workspace(BuildInput {
         root: path,
         embeddings: embedding_mode,
@@ -289,6 +325,115 @@ fn build(path: PathBuf, out: PathBuf, no_embeddings: bool) -> i32 {
     print_summary(&result.diagnostics);
 
     finish_build_result(result, &out)
+}
+
+fn build_to_paths(
+    path: PathBuf,
+    output_paths: BuildOutputPaths,
+    embedding_mode: BuildEmbeddingMode,
+) -> i32 {
+    let result = build_workspace(BuildInput {
+        root: path,
+        embeddings: embedding_mode,
+        prior_search_artifact_path: Some(output_paths.search.clone()),
+    });
+    print_diagnostics(&result.diagnostics);
+    print_summary(&result.diagnostics);
+
+    finish_build_result_at_paths(result, &output_paths)
+}
+
+#[derive(Debug, Clone)]
+struct BuildOutputPaths {
+    html: PathBuf,
+    agent_json: PathBuf,
+    search: PathBuf,
+}
+
+fn resolve_docs_path(path: Option<PathBuf>) -> Result<PathBuf, CliError> {
+    if let Some(path) = path {
+        return Ok(path);
+    }
+
+    let config = ProjectConfig::discover()?;
+    resolve_docs_path_with_config(path, config.as_ref())
+}
+
+fn resolve_docs_path_with_config(
+    path: Option<PathBuf>,
+    config: Option<&ProjectConfig>,
+) -> Result<PathBuf, CliError> {
+    path.or_else(|| config.map(|config| config.docs_path.clone()))
+        .ok_or_else(|| CliError::ConfigMissing {
+            message: "adoc check/build requires a path or agentdoc.config.yaml with docs_path"
+                .to_string(),
+        })
+}
+
+fn resolve_embedding_mode(
+    config: Option<&ProjectConfig>,
+    no_embeddings: bool,
+) -> BuildEmbeddingMode {
+    if no_embeddings
+        || config
+            .map(|config| config.embeddings_provider == EmbeddingsProvider::None)
+            .unwrap_or(false)
+    {
+        BuildEmbeddingMode::Skipped
+    } else {
+        BuildEmbeddingMode::Enabled
+    }
+}
+
+fn resolve_build_output_paths(
+    config: Option<&ProjectConfig>,
+) -> Result<BuildOutputPaths, CliError> {
+    let Some(config) = config else {
+        return Err(CliError::ConfigMissing {
+            message: "adoc build requires --out or agentdoc.config.yaml outputs".to_string(),
+        });
+    };
+
+    match (
+        config.outputs.html.clone(),
+        config.outputs.agent_json.clone(),
+        config.outputs.search.clone(),
+    ) {
+        (Some(html), Some(agent_json), Some(search)) => Ok(BuildOutputPaths {
+            html,
+            agent_json,
+            search,
+        }),
+        _ => Err(CliError::ConfigMissing {
+            message:
+                "adoc build requires outputs.dir or exact html, agent_json, and search outputs"
+                    .to_string(),
+        }),
+    }
+}
+
+fn resolve_agent_artifact_path(path: Option<PathBuf>) -> Result<PathBuf, CliError> {
+    if let Some(path) = path {
+        return Ok(path);
+    }
+
+    let config = ProjectConfig::discover()?;
+    Ok(config
+        .as_ref()
+        .and_then(|config| config.outputs.agent_json.clone())
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_AGENT_ARTIFACT_PATH)))
+}
+
+fn resolve_search_artifact_path(path: Option<PathBuf>) -> Result<PathBuf, CliError> {
+    if let Some(path) = path {
+        return Ok(path);
+    }
+
+    let config = ProjectConfig::discover()?;
+    Ok(config
+        .as_ref()
+        .and_then(|config| config.outputs.search.clone())
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_SEARCH_ARTIFACT_PATH)))
 }
 
 fn finish_build_result(result: CompileResult, out: &Path) -> i32 {
@@ -312,7 +457,32 @@ fn finish_build_result(result: CompileResult, out: &Path) -> i32 {
     }
 }
 
-fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i32 {
+fn finish_build_result_at_paths(result: CompileResult, paths: &BuildOutputPaths) -> i32 {
+    let has_errors = result.has_errors();
+
+    let artifacts = match result.artifacts {
+        Some(artifacts) => artifacts,
+        None if has_errors => return 1,
+        None => return report(CliError::BuildMissingArtifacts),
+    };
+
+    match write_artifacts_to_paths(
+        paths,
+        &artifacts.html,
+        &artifacts.agent_json,
+        artifacts.search_json.as_ref(),
+    ) {
+        Ok(()) if has_errors => 1,
+        Ok(()) => 0,
+        Err(error) => report(error),
+    }
+}
+
+fn explain(object_id: String, artifact: Option<PathBuf>, resolved: ResolvedFormat) -> i32 {
+    let artifact = match resolve_agent_artifact_path(artifact) {
+        Ok(path) => path,
+        Err(error) => return report(error),
+    };
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.clone(),
         search_artifact_path: None,
@@ -400,8 +570,8 @@ fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i3
 
 struct SearchCommandInput {
     query: String,
-    artifact: PathBuf,
-    search_artifact: PathBuf,
+    artifact: Option<PathBuf>,
+    search_artifact: Option<PathBuf>,
     semantic: bool,
     lexical: bool,
     filters: SearchFilters,
@@ -417,13 +587,22 @@ fn search_command(input: SearchCommandInput, resolved: ResolvedFormat) -> i32 {
         SearchMode::Hybrid
     };
 
+    let artifact = match resolve_agent_artifact_path(input.artifact) {
+        Ok(path) => path,
+        Err(error) => return report(error),
+    };
     let search_artifact_path = match requested_mode {
         SearchMode::Lexical => None,
-        SearchMode::Hybrid | SearchMode::Semantic => Some(input.search_artifact),
+        SearchMode::Hybrid | SearchMode::Semantic => {
+            match resolve_search_artifact_path(input.search_artifact) {
+                Ok(path) => Some(path),
+                Err(error) => return report(error),
+            }
+        }
     };
 
     let load_result = load_retrieval_session(RetrievalInput {
-        artifact_path: input.artifact,
+        artifact_path: artifact,
         search_artifact_path,
     });
     let RetrievalLoadResult {
@@ -668,6 +847,46 @@ fn write_artifacts(
     }
 
     Ok(())
+}
+
+fn write_artifacts_to_paths(
+    paths: &BuildOutputPaths,
+    html: &str,
+    agent_json: &AgentJsonDocument,
+    search_json: Option<&SearchArtifactDocument>,
+) -> Result<(), CliError> {
+    write_file_with_parents(&paths.html, html.as_bytes())?;
+
+    let agent_json_text = agent_json
+        .to_pretty_json()
+        .map_err(|source| CliError::AgentJsonSerialize { source })?;
+    write_file_with_parents(&paths.agent_json, agent_json_text.as_bytes())?;
+
+    if let Some(search_json) = search_json {
+        let search_json_text = search_json
+            .to_pretty_json()
+            .map_err(|source| CliError::SearchJsonSerialize { source })?;
+        write_file_with_parents(&paths.search, search_json_text.as_bytes())?;
+    }
+
+    Ok(())
+}
+
+fn write_file_with_parents(path: &Path, contents: &[u8]) -> Result<(), CliError> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|source| CliError::CreateOutputDirectory {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+
+    fs::write(path, contents).map_err(|source| CliError::WriteFailed {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 fn print_diagnostics(diagnostics: &[Diagnostic]) {
