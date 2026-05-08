@@ -76,6 +76,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::SchemaInvalidStatus;
     let _ = DiagnosticCode::ClaimVerifiedMissingEvidence;
     let _ = DiagnosticCode::ClaimStatusCasing;
+    let _ = DiagnosticCode::LifecycleExpired;
     let _ = DiagnosticCode::IdDuplicate;
     let _ = DiagnosticCode::IdInvalid;
     let _ = DiagnosticCode::RefBroken;
@@ -116,6 +117,10 @@ fn public_surface_compiles_with_only_documented_imports() {
     assert_eq!(
         DiagnosticCode::ClaimStatusCasing.as_str(),
         "claim.status_casing"
+    );
+    assert_eq!(
+        DiagnosticCode::LifecycleExpired.as_str(),
+        "lifecycle.expired"
     );
     assert_eq!(DiagnosticCode::IdDuplicate.as_str(), "id.duplicate");
     assert_eq!(DiagnosticCode::RefBroken.as_str(), "ref.broken");

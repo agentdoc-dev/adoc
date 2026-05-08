@@ -14,11 +14,14 @@
 //! needed.
 
 mod knowledge_object_body_unsafe_links_forbidden;
+mod knowledge_object_lifecycle;
 mod knowledge_object_unique_ids;
 mod raw_html_forbidden;
 mod unsafe_link_forbidden;
 
+use chrono::NaiveDate;
 use knowledge_object_body_unsafe_links_forbidden::KnowledgeObjectBodyUnsafeLinksForbidden;
+use knowledge_object_lifecycle::KnowledgeObjectLifecycle;
 use knowledge_object_unique_ids::KnowledgeObjectUniqueIds;
 use raw_html_forbidden::RawHtmlForbidden;
 use unsafe_link_forbidden::UnsafeLinkForbidden;
@@ -32,10 +35,6 @@ use crate::domain::source::SourceFile;
 /// Objects are resolved. They are allowed to inspect parser-owned source spans.
 const SOURCE_PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLinkForbidden];
 
-/// Resolved-page rules run after pending Knowledge Objects have been converted
-/// into typed aggregates.
-const RESOLVED_PAGE_RULES: &[&dyn ValidationRule] = &[&KnowledgeObjectBodyUnsafeLinksForbidden];
-
 /// Workspace-level rules, applied in registration order after knowledge object
 /// resolution and workspace assembly.
 const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[&KnowledgeObjectUniqueIds];
@@ -48,8 +47,14 @@ pub(crate) fn validate_source_page(page: &PageAst, source: &SourceFile) -> Vec<D
 
 /// Run every resolved-page rule against `page` after Knowledge Object
 /// resolution.
-pub(crate) fn validate_resolved_page(page: &PageAst, source: &SourceFile) -> Vec<Diagnostic> {
-    validate_page_with_rules(page, source, RESOLVED_PAGE_RULES)
+pub(crate) fn validate_resolved_page(
+    page: &PageAst,
+    source: &SourceFile,
+    today: NaiveDate,
+) -> Vec<Diagnostic> {
+    let lifecycle = KnowledgeObjectLifecycle::new(today);
+    let rules: [&dyn ValidationRule; 2] = [&KnowledgeObjectBodyUnsafeLinksForbidden, &lifecycle];
+    validate_page_with_rules(page, source, &rules)
 }
 
 fn validate_page_with_rules(

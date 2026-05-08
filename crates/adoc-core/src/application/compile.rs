@@ -2,6 +2,8 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use chrono::NaiveDate;
+
 use crate::application::hashing::sha256_prefixed;
 use crate::application::resolve_knowledge_objects::{
     resolve_knowledge_objects, suppress_unknown_kind_shape_diagnostics,
@@ -75,14 +77,21 @@ pub struct BuildArtifacts {
 }
 
 pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
-    run_compile_pipeline(provider, None)
+    compile_with_provider_for_date(provider, local_today())
+}
+
+pub(crate) fn compile_with_provider_for_date<P: SourceProvider>(
+    provider: &P,
+    today: NaiveDate,
+) -> CompileResult {
+    run_compile_pipeline(provider, None, today)
 }
 
 pub(crate) fn build_with_provider<P: SourceProvider>(
     provider: &P,
     options: BuildOptions<'_>,
 ) -> CompileResult {
-    run_compile_pipeline(provider, Some(options))
+    run_compile_pipeline(provider, Some(options), local_today())
 }
 
 pub(crate) struct BuildOptions<'a> {
@@ -104,6 +113,7 @@ pub(crate) enum BuildEmbeddingBehavior<'a> {
 fn run_compile_pipeline<P: SourceProvider>(
     provider: &P,
     mut build_options: Option<BuildOptions<'_>>,
+    today: NaiveDate,
 ) -> CompileResult {
     // Pipeline stages: load → validate-source-pages → resolve-KOs →
     // resolve-object-references → validate-resolved-pages → assemble →
@@ -120,7 +130,7 @@ fn run_compile_pipeline<P: SourceProvider>(
         &mut parsed,
         &resolved_knowledge_objects.declared_ids,
     ));
-    diagnostics.extend(validate_resolved_pages(&parsed));
+    diagnostics.extend(validate_resolved_pages(&parsed, today));
     let workspace = assemble_workspace(parsed);
     diagnostics.extend(validate_workspace(&workspace));
     if let Some(options) = &build_options {
@@ -135,6 +145,10 @@ fn run_compile_pipeline<P: SourceProvider>(
         diagnostics,
         artifacts,
     }
+}
+
+fn local_today() -> NaiveDate {
+    chrono::Local::now().date_naive()
 }
 
 fn build_embedding_diagnostics(options: &BuildOptions<'_>) -> Vec<Diagnostic> {
@@ -210,10 +224,10 @@ fn validate_source_pages(parsed: &[(SourceFile, PageAst)]) -> Vec<Diagnostic> {
 
 /// Run every resolved-page rule after Knowledge Object resolution. Rules in
 /// this phase can rely on typed aggregate data instead of pending parser shells.
-fn validate_resolved_pages(parsed: &[(SourceFile, PageAst)]) -> Vec<Diagnostic> {
+fn validate_resolved_pages(parsed: &[(SourceFile, PageAst)], today: NaiveDate) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for (source, page) in parsed {
-        diagnostics.extend(validate_resolved_page(page, source));
+        diagnostics.extend(validate_resolved_page(page, source, today));
     }
     diagnostics
 }
@@ -607,6 +621,7 @@ mod tests {
     use crate::infrastructure::artifact::search_json::SUPPORTED_SEARCH_SCHEMA_VERSION;
     use crate::infrastructure::embedding::in_memory::InMemoryProvider;
     use crate::infrastructure::source::in_memory::InMemorySourceProvider;
+    use chrono::NaiveDate;
     use std::cell::RefCell;
     use std::fs;
 
@@ -616,6 +631,10 @@ mod tests {
             text.to_string(),
             PathBuf::from(identity),
         )
+    }
+
+    fn fixed_today() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 5, 8).expect("valid test date")
     }
 
     #[test]
@@ -676,6 +695,69 @@ mod tests {
         assert!(!result.has_errors());
         let artifacts = result.artifacts.expect("empty workspace still builds");
         assert!(artifacts.agent_json.pages.is_empty());
+    }
+
+    #[test]
+    fn lifecycle_expired_warning_is_emitted_for_parseable_past_expires_at() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\n::claim billing.credits\nstatus: draft\nexpires_at: 2026-05-07\n--\nCredits expire before today.\n::\n",
+        ));
+
+        let result = compile_with_provider_for_date(&provider, fixed_today());
+
+        assert!(
+            !result.has_errors(),
+            "expiry warning must not block compile"
+        );
+        assert!(
+            result.artifacts.is_some(),
+            "warning diagnostics must not block artifact generation"
+        );
+        let diagnostic = result
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::LifecycleExpired)
+            .expect("expected lifecycle.expired warning");
+        assert_eq!(diagnostic.severity, Severity::Warning);
+        assert_eq!(diagnostic.object_id.as_deref(), Some("billing.credits"));
+        assert_eq!(
+            diagnostic.span.as_ref().map(|span| (
+                span.file.as_path(),
+                span.start.line,
+                span.start.column
+            )),
+            Some((std::path::Path::new("/work/guide.adoc"), 3, 1))
+        );
+        assert!(
+            diagnostic.message.contains("billing.credits")
+                && diagnostic.message.contains("2026-05-07")
+                && diagnostic.message.contains("expired"),
+            "message should name the object, date, and expiry: {}",
+            diagnostic.message
+        );
+    }
+
+    #[test]
+    fn lifecycle_expired_warning_ignores_today_future_and_invalid_expires_at() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\n::claim billing.today\nstatus: draft\nexpires_at: 2026-05-08\n--\nToday is still valid.\n::\n\n::claim billing.future\nstatus: draft\nexpires_at: 2026-05-09\n--\nFuture is still valid.\n::\n\n::claim billing.invalid\nstatus: draft\nexpires_at: not-a-date\n--\nInvalid dates are ignored in this slice.\n::\n",
+        ));
+
+        let result = compile_with_provider_for_date(&provider, fixed_today());
+
+        assert!(
+            !result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::LifecycleExpired),
+            "today, future, and invalid expires_at values must not warn"
+        );
+        assert!(
+            result.artifacts.is_some(),
+            "ignored lifecycle fields must not block artifact generation"
+        );
     }
 
     // --- stage-level pipeline tests (TB-7) ---
@@ -745,7 +827,7 @@ mod tests {
         ));
 
         let (parsed, _) = load_pages(&provider);
-        let diagnostics = validate_resolved_pages(&parsed);
+        let diagnostics = validate_resolved_pages(&parsed, fixed_today());
 
         assert!(diagnostics.is_empty());
     }
