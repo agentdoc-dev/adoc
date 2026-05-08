@@ -23,6 +23,36 @@ use crate::presentation::{
     plain as plain_presentation, terminal,
 };
 
+const INIT_CONFIG_PATH: &str = "agentdoc.config.yaml";
+const INIT_INDEX_PATH: &str = "docs/index.adoc";
+const INIT_CONFIG_TEMPLATE: &str = "\
+version: 1
+mode: strict
+docs_path: docs
+outputs:
+  dir: dist
+  html: dist/docs.html
+  agent_json: dist/docs.agent.json
+  search: dist/docs.search.json
+embeddings:
+  provider: local
+";
+const INIT_INDEX_TEMPLATE: &str = "\
+# AgentDoc Project @doc(project.index)
+
+This project was initialized with AgentDoc.
+
+::claim project.initialized
+status: verified
+owner: team-docs
+verified_at: 2026-05-08
+source: adoc init template
+expires_at: 2027-05-08
+--
+The project has an initialized AgentDoc source tree.
+::
+";
+
 fn main() -> ExitCode {
     ExitCode::from(run(std::env::args()) as u8)
 }
@@ -32,6 +62,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
         Ok(cli) => {
             let resolved = terminal::detect(cli.format.into(), cli.color.into());
             match cli.command {
+                Commands::Init => init(),
                 Commands::Check { path } => check(path),
                 Commands::Build {
                     path,
@@ -156,6 +187,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    Init,
     Check {
         path: PathBuf,
     },
@@ -194,6 +226,44 @@ enum Commands {
         #[arg(long, default_value = "10")]
         top: NonZeroUsize,
     },
+}
+
+fn init() -> i32 {
+    match write_init_files() {
+        Ok(()) => 0,
+        Err(error) => report(error),
+    }
+}
+
+fn write_init_files() -> Result<(), CliError> {
+    let config_path = PathBuf::from(INIT_CONFIG_PATH);
+    let index_path = PathBuf::from(INIT_INDEX_PATH);
+
+    for target in [&config_path, &index_path] {
+        if target.exists() {
+            return Err(CliError::InitTargetExists {
+                path: target.to_path_buf(),
+            });
+        }
+    }
+
+    if let Some(parent) = index_path.parent() {
+        fs::create_dir_all(parent).map_err(|source| CliError::CreateOutputDirectory {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+
+    fs::write(&config_path, INIT_CONFIG_TEMPLATE).map_err(|source| CliError::WriteFailed {
+        path: config_path,
+        source,
+    })?;
+    fs::write(&index_path, INIT_INDEX_TEMPLATE).map_err(|source| CliError::WriteFailed {
+        path: index_path,
+        source,
+    })?;
+
+    Ok(())
 }
 
 fn check(path: PathBuf) -> i32 {

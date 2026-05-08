@@ -2,6 +2,9 @@ use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CliError {
+    #[error("error[init.already_exists] target already exists: {}", path.display())]
+    InitTargetExists { path: PathBuf },
+
     #[error("error[io.output_not_directory] output path exists as a file: {}", path.display())]
     OutputPathIsFile { path: PathBuf },
 
