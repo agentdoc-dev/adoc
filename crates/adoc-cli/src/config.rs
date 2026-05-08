@@ -54,14 +54,23 @@ impl ProjectConfig {
     pub(crate) fn discover() -> Result<Option<Self>, CliError> {
         let mut current_dir =
             std::env::current_dir().map_err(|source| CliError::CurrentDir { source })?;
+        let home_boundary = home_boundary();
 
         loop {
+            if current_dir.parent().is_none() {
+                return Ok(None);
+            }
+
             let candidate = current_dir.join(CONFIG_FILE_NAME);
             if candidate.exists() {
                 return Self::read(&candidate).map(Some);
             }
 
             if is_git_boundary(&current_dir) {
+                return Ok(None);
+            }
+
+            if home_boundary.as_deref() == Some(current_dir.as_path()) {
                 return Ok(None);
             }
 
@@ -158,4 +167,15 @@ fn resolve_config_path(config_dir: &Path, path: PathBuf) -> PathBuf {
 
 fn is_git_boundary(path: &Path) -> bool {
     path.join(".git").exists()
+}
+
+fn home_boundary() -> Option<PathBuf> {
+    std::env::var_os("HOME").and_then(|home| {
+        let home = PathBuf::from(home);
+        if home.as_os_str().is_empty() {
+            None
+        } else {
+            Some(fs::canonicalize(&home).unwrap_or(home))
+        }
+    })
 }

@@ -100,6 +100,65 @@ fn config_discovery_stops_at_git_boundary_before_parent_config() {
 }
 
 #[test]
+fn config_discovery_stops_at_home_boundary_before_parent_config() {
+    let workspace = TestWorkspace::new("config-home-boundary");
+    let home = workspace.root.join("home");
+    write_valid_source(&workspace, "parent-docs/index.adoc");
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: parent-docs\noutputs:\n  dir: dist\nembeddings:\n  provider: local\n",
+    );
+    fs::create_dir_all(home.join("nested/deeper")).expect("nested cwd can be created");
+
+    let output = adoc_command()
+        .current_dir(home.join("nested/deeper"))
+        .env("HOME", &home)
+        .args(["check"])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "check should not use config above HOME\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        stderr(&output).contains("error[config.missing]"),
+        "expected config.missing when no config exists before HOME boundary, got:\n{}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn config_discovery_allows_config_at_home_boundary() {
+    let workspace = TestWorkspace::new("config-home-boundary-config");
+    let home = workspace.root.join("home");
+    write_valid_source(&workspace, "home/docs/index.adoc");
+    workspace.write(
+        "home/agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: local\n",
+    );
+    fs::create_dir_all(home.join("nested/deeper")).expect("nested cwd can be created");
+
+    let output = adoc_command()
+        .current_dir(home.join("nested/deeper"))
+        .env("HOME", &home)
+        .args(["check"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        output.status.success(),
+        "expected config at HOME boundary to pass\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(stdout(&output).contains("0 errors"));
+}
+
+#[test]
 fn config_build_uses_exact_output_paths_and_dir_fills_omitted_paths() {
     let workspace = TestWorkspace::new("config-build-output-paths");
     write_valid_source(&workspace, "docs/index.adoc");
