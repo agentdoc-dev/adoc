@@ -228,6 +228,7 @@ fn finish_build_result(result: CompileResult, out: &Path) -> i32 {
 fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i32 {
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.clone(),
+        search_artifact_path: None,
     });
     let RetrievalLoadResult {
         session,
@@ -319,6 +320,7 @@ fn search_command(
 ) -> i32 {
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact,
+        search_artifact_path: None,
     });
     let RetrievalLoadResult {
         session,

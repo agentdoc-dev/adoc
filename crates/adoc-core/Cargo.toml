@@ -21,3 +21,7 @@ thiserror = "1"
 
 [dev-dependencies]
 tempfile = "3"
+
+[[test]]
+name = "v1_4_semantic_load"
+required-features = ["test-embedding-provider"]
