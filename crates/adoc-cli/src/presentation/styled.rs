@@ -15,7 +15,7 @@ use super::style::palette::status_color;
 use super::style::relations::relation_chip;
 use super::style::wikilink::highlight;
 
-/// Styled presenter.  Produces the same line layout as [`PlainPresenter`] but
+/// Styled presenter.  Produces the same line layout as [`crate::presentation::PlainPresenter`] but
 /// with ANSI decoration:
 ///
 /// - All labels (`Object:`, `Kind:`, etc.) are rendered **faint** (dim).
