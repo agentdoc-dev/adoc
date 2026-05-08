@@ -1,0 +1,131 @@
+- name: hybrid exact claim id
+  query: "billing.credits.decrement-after-success"
+  mode: hybrid
+  expected_ids: [billing.credits.decrement-after-success]
+  must_appear_in_top: 1
+
+- name: hybrid id prefix fans out to credit objects
+  query: "billing.credits"
+  mode: hybrid
+  expected_ids: [billing.credits, billing.credits.ledger-source]
+  must_appear_in_top: 3
+
+- name: hybrid paraphrase adjustment rationale
+  query: "manual adjustment reason"
+  mode: hybrid
+  expected_ids: [billing.adjustments.require-reason]
+  must_appear_in_top: 1
+
+- name: hybrid paraphrase settlement idempotency
+  query: "settlement posts once"
+  mode: hybrid
+  expected_ids: [billing.settlement.posts-once]
+  must_appear_in_top: 6
+
+- name: semantic exact settlement pin
+  query: "billing.settlement"
+  mode: semantic
+  expected_ids: [billing.settlement]
+  must_appear_in_top: 1
+
+- name: lexical exact refund claim id
+  query: "billing.refunds.audit-required"
+  mode: lexical
+  expected_ids: [billing.refunds.audit-required]
+  must_appear_in_top: 1
+
+- name: lexical refund id prefix
+  query: "billing.refunds"
+  mode: lexical
+  expected_ids: [billing.refunds.issue-credit, billing.refunds.audit-required]
+  must_appear_in_top: 3
+
+- name: lexical evidence source query
+  query: "refund operations runbook"
+  mode: lexical
+  expected_ids: [billing.refunds.audit-required]
+  must_appear_in_top: 1
+  expected_evidence:
+    source: "refund operations runbook v3"
+
+- name: lexical evidence test query
+  query: "cargo test adjustment_requires_reason_code"
+  mode: lexical
+  expected_ids: [billing.adjustments.require-reason]
+  must_appear_in_top: 1
+  expected_evidence:
+    test: "cargo test adjustment_requires_reason_code"
+
+- name: lexical owner team access
+  query: "entitlement"
+  mode: lexical
+  expected_ids: [billing.entitlement, billing.entitlements.sync-after-payment]
+  must_appear_in_top: 3
+  filters:
+    owner: team-access
+
+- name: lexical owner finance ops
+  query: "finance reason"
+  mode: lexical
+  expected_ids: [billing.adjustments.require-reason]
+  must_appear_in_top: 1
+  filters:
+    owner: finance-ops
+
+- name: lexical kind decision
+  query: "ledger first"
+  mode: lexical
+  expected_ids: [billing.decision.ledger-first]
+  must_appear_in_top: 1
+  filters:
+    kind: decision
+
+- name: lexical kind warning
+  query: "tax adjustment"
+  mode: lexical
+  expected_ids: [billing.warning.tax-adjustment]
+  must_appear_in_top: 1
+  filters:
+    kind: warning
+
+- name: lexical verified claim status
+  query: "credit"
+  mode: lexical
+  expected_ids: [billing.credits.nonnegative, billing.credits.decrement-after-success]
+  must_appear_in_top: 2
+  filters:
+    kind: claim
+    status: verified
+
+- name: lexical draft status
+  query: "credit memo invoice"
+  mode: lexical
+  expected_ids: [billing.invoices.credit-memo-link]
+  must_appear_in_top: 1
+  filters:
+    status: draft
+
+- name: lexical source path filter
+  query: "settlement"
+  mode: lexical
+  expected_ids: [billing.decision.settlement-idempotency]
+  must_appear_in_top: 1
+  filters:
+    source_path: 03-decisions.adoc
+
+- name: lexical empty result stays successful
+  query: "chargeback reversal"
+  mode: lexical
+  format: plain
+  expected_ids: []
+  expected_exit: 0
+  expect_stdout_contains: "(no matches)"
+
+- name: lexical broken kind filter fails
+  query: "ledger"
+  mode: lexical
+  expected_ids: []
+  expected_exit: 1
+  expected_diagnostics: [search.invalid_filter]
+  filters:
+    kind: runbook
