@@ -492,6 +492,48 @@ fn semantic_search_pins_id_prefix_matches_before_vector_hits() {
 }
 
 #[test]
+fn semantic_search_pins_id_prefix_matches_without_vector_hit() {
+    let session = load_session_from_objects_with_vectors(
+        vec![
+            retrieval_search_object(
+                "billing.new-object",
+                "claim",
+                None,
+                Some("team-billing"),
+                "docs/billing.adoc",
+                "New object missing from partial search sidecar.",
+            ),
+            retrieval_search_object(
+                "support.vector",
+                "claim",
+                None,
+                Some("team-support"),
+                "docs/support.adoc",
+                "Vector winner.",
+            ),
+        ],
+        vec![("support.vector", vec![1.0, 0.0])],
+    );
+
+    let result = search(
+        &session,
+        semantic_query(
+            "billing.new-object",
+            vec![1.0, 0.0],
+            1,
+            SearchFilters::default(),
+        ),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), ["billing.new-object"]);
+    let search_match = result.records[0].search_match.as_ref().unwrap();
+    assert_eq!(search_match.mode, SearchMode::Semantic);
+    assert_eq!(search_match.vector_rank, None);
+    assert_eq!(search_match.cosine_score, None);
+}
+
+#[test]
 fn hybrid_search_requires_query_vector_when_vector_index_is_loaded() {
     let session = load_session_from_objects_with_vectors(
         vec![retrieval_search_object(
