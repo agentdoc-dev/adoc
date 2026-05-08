@@ -391,7 +391,20 @@ fn search_command(input: SearchCommandInput, resolved: ResolvedFormat) -> i32 {
     // degrades to lexical below so missing embeddings do not pay model-load
     // cost just to fall back.
     if requested_mode == SearchMode::Semantic && !session.has_semantic_index() {
-        let envelope = RetrievalEnvelope::new(Vec::new(), load_diagnostics);
+        let mut diagnostics = load_diagnostics;
+        diagnostics.push(Diagnostic {
+            code: DiagnosticCode::SearchArtifactMissing,
+            severity: Severity::Error,
+            message: "Semantic search requested but no search artifact is loaded.".to_string(),
+            span: None,
+            object_id: None,
+            help: Some(
+                DiagnosticCode::SearchArtifactMissing
+                    .default_help()
+                    .to_string(),
+            ),
+        });
+        let envelope = RetrievalEnvelope::new(Vec::new(), diagnostics);
         if resolved == ResolvedFormat::Json {
             return json_presentation::write_envelope_json(&envelope, &mut std::io::stdout())
                 .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
