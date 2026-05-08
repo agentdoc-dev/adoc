@@ -40,10 +40,9 @@ pub(crate) enum ResolvedFormat {
     Json,
 }
 
-/// Build a boxed presenter for the resolved output format.
+/// Returns a presenter for the resolved format.
 ///
-/// For [`ResolvedFormat::Styled`] a [`PlainPresenter`] is returned for now.
-/// // TODO(slice-4): swap for StyledPresenter
+/// `Styled` currently aliases `Plain`; a real `StyledPresenter` arrives in slice 4.
 pub(crate) fn make_presenter(resolved: ResolvedFormat) -> Box<dyn ExplainPresenter> {
     match resolved {
         ResolvedFormat::Plain | ResolvedFormat::Styled => Box::new(PlainPresenter),
