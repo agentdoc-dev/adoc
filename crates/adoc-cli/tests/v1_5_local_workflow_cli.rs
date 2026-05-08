@@ -61,7 +61,7 @@ fn v1_5_init_check_build_explain_and_search_use_config_defaults_end_to_end() {
         .output()
         .expect("adoc check runs");
     assert_success("adoc check", &check);
-    assert!(stdout(&check).contains("0 errors"));
+    assert!(stdout(&check).contains("0 errors, 0 warnings"));
 
     let build = adoc_command()
         .current_dir(&workspace.root)
@@ -107,7 +107,7 @@ fn v1_5_explicit_check_path_and_build_out_ignore_config_defaults() {
         .output()
         .expect("adoc check explicit path runs");
     assert_success("adoc check explicit", &check);
-    assert!(stdout(&check).contains("0 errors"));
+    assert!(stdout(&check).contains("0 errors, 0 warnings"));
 
     let build = adoc_command()
         .current_dir(&workspace.root)
