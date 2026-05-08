@@ -484,8 +484,8 @@ fn build_reuses_search_artifact_cache_for_unchanged_source() {
 }
 
 #[test]
-fn build_missing_out_exits_1_with_parse_error() {
-    let workspace = TestWorkspace::new("build-invalid-usage-missing-out");
+fn build_missing_out_without_config_exits_1_with_config_error() {
+    let workspace = TestWorkspace::new("build-missing-out-without-config");
     let source = workspace.write(
         "guide.adoc",
         "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
@@ -499,17 +499,13 @@ fn build_missing_out_exits_1_with_parse_error() {
     assert_eq!(output.status.code(), Some(1));
     assert!(
         output.stdout.is_empty(),
-        "parse errors should render to stderr, stdout was:\n{}",
+        "config errors should render to stderr, stdout was:\n{}",
         String::from_utf8_lossy(&output.stdout)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("required arguments were not provided"),
-        "expected required-argument parse error, got:\n{stderr}"
-    );
-    assert!(
-        stderr.contains("--out <OUT>"),
-        "expected missing --out in parse error, got:\n{stderr}"
+        stderr.contains("error[config.missing]"),
+        "expected config-missing error, got:\n{stderr}"
     );
 }
 
