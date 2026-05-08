@@ -33,3 +33,11 @@ related_to: billing.invoices.tax-before-credit
 --
 Tax adjustment explanations may be incomplete when a corrected invoice receives credit after finalization.
 ::
+
+::warning billing.warning.adjustment-without-reason
+severity: medium
+owner: finance-ops
+depends_on: billing.adjustments.require-reason
+--
+Manual adjustments without a reason code make invoice balance changes difficult to reconcile during finance review.
+::

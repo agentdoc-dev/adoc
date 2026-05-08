@@ -85,8 +85,8 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
         .expect("agent JSON objects is an array");
 
     assert!(
-        objects.len() >= 20,
-        "expected at least 20 Knowledge Objects, got {}",
+        objects.len() >= 30,
+        "expected at least 30 Knowledge Objects, got {}",
         objects.len()
     );
     for kind in ["claim", "decision", "warning", "glossary"] {
@@ -101,8 +101,8 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
         .filter(|object| object["kind"] == "claim" && object["status"] == "verified")
         .count();
     assert!(
-        verified_claim_count >= 5,
-        "expected at least 5 verified claims, got {verified_claim_count}"
+        verified_claim_count >= 8,
+        "expected at least 8 verified claims, got {verified_claim_count}"
     );
 
     let refund_claim = objects

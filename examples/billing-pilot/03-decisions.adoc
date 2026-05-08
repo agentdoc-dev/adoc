@@ -36,3 +36,12 @@ related_to: billing.entitlement
 --
 Entitlement updates should move to billing settlement events instead of polling invoice state.
 ::
+
+::decision billing.decision.settlement-idempotency
+status: accepted
+decided_by: billing-architecture
+owner: team-billing
+depends_on: [billing.settlement.posts-once, billing.decision.ledger-first]
+--
+Settlement handlers use processor event IDs as idempotency keys before writing [[billing.ledger]] movements.
+::

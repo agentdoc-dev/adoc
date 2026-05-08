@@ -103,3 +103,36 @@ related_to: billing.invoice
 --
 Tax calculation should run before credit application so invoice tax records remain explainable during finance review.
 ::
+
+::claim billing.settlement.posts-once
+status: verified
+owner: team-billing
+verified_at: 2026-05-06
+source: settlement service idempotency report 2026-05-05
+test: cargo test settlement_posts_once_per_capture
+reviewed_by: qa-billing
+depends_on: billing.ledger
+related_to: billing.settlement
+--
+Each captured payment settlement writes exactly one [[billing.ledger]] movement before downstream invoice or entitlement updates run.
+::
+
+::claim billing.adjustments.require-reason
+status: verified
+owner: finance-ops
+verified_at: 2026-05-06
+source: finance adjustment policy v2
+test: cargo test adjustment_requires_reason_code
+reviewed_by: finance-controller
+related_to: billing.adjustment
+--
+Every manual [[billing.adjustment]] must include a reason code so finance can reconcile the balance change later.
+::
+
+::claim billing.invoices.credit-memo-link
+status: draft
+owner: finance-ops
+related_to: billing.invoice
+--
+Credit memo exports should link back to the invoice and ledger movement that created the customer-visible adjustment.
+::
