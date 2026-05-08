@@ -37,6 +37,7 @@ pub enum DiagnosticCode {
     ClaimVerifiedMissingEvidence,
     ClaimStatusCasing,
     LifecycleExpired,
+    LifecycleInvalidExpiresAt,
     IdDuplicate,
     IdInvalid,
     RefBroken,
@@ -78,6 +79,7 @@ impl DiagnosticCode {
             DiagnosticCode::ClaimVerifiedMissingEvidence,
             DiagnosticCode::ClaimStatusCasing,
             DiagnosticCode::LifecycleExpired,
+            DiagnosticCode::LifecycleInvalidExpiresAt,
             DiagnosticCode::IdDuplicate,
             DiagnosticCode::IdInvalid,
             DiagnosticCode::RefBroken,
@@ -119,6 +121,7 @@ impl DiagnosticCode {
             DiagnosticCode::ClaimVerifiedMissingEvidence => "claim.verified_missing_evidence",
             DiagnosticCode::ClaimStatusCasing => "claim.status_casing",
             DiagnosticCode::LifecycleExpired => "lifecycle.expired",
+            DiagnosticCode::LifecycleInvalidExpiresAt => "lifecycle.invalid_expires_at",
             DiagnosticCode::IdDuplicate => "id.duplicate",
             DiagnosticCode::IdInvalid => "id.invalid",
             DiagnosticCode::RefBroken => "ref.broken",
@@ -183,6 +186,9 @@ impl DiagnosticCode {
             DiagnosticCode::ClaimStatusCasing => "Use the canonical lowercase claim status value.",
             DiagnosticCode::LifecycleExpired => {
                 "Update `expires_at` or remove it if this Knowledge Object is still valid."
+            }
+            DiagnosticCode::LifecycleInvalidExpiresAt => {
+                "Use `YYYY-MM-DD` for `expires_at`, or remove the field."
             }
             DiagnosticCode::IdDuplicate => {
                 "Give each object a unique ID across the compiled workspace."
@@ -296,6 +302,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "claim.verified_missing_evidence",
     "claim.status_casing",
     "lifecycle.expired",
+    "lifecycle.invalid_expires_at",
     "id.duplicate",
     "id.invalid",
     "ref.broken",

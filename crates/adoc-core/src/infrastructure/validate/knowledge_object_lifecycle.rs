@@ -32,16 +32,27 @@ impl ValidationRule for KnowledgeObjectLifecycle {
                 continue;
             };
 
-            let Ok(expires_at) = NaiveDate::parse_from_str(expires_at, "%Y-%m-%d") else {
+            let Ok(expires_at_date) = NaiveDate::parse_from_str(expires_at, "%Y-%m-%d") else {
+                let object_id = knowledge_object.id().as_str();
+                sink.push(
+                    Diagnostic::warning(
+                        DiagnosticCode::LifecycleInvalidExpiresAt,
+                        format!(
+                            "Knowledge Object `{object_id}` has invalid expires_at `{expires_at}`; expected YYYY-MM-DD."
+                        ),
+                    )
+                    .with_span(knowledge_object.span().clone())
+                    .with_object_id(object_id),
+                );
                 continue;
             };
 
-            if expires_at < self.today {
+            if expires_at_date < self.today {
                 let object_id = knowledge_object.id().as_str();
                 sink.push(
                     Diagnostic::warning(
                         DiagnosticCode::LifecycleExpired,
-                        format!("Knowledge Object `{object_id}` expired on {expires_at}."),
+                        format!("Knowledge Object `{object_id}` expired on {expires_at_date}."),
                     )
                     .with_span(knowledge_object.span().clone())
                     .with_object_id(object_id),
