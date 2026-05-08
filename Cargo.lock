@@ -18,6 +18,7 @@ dependencies = [
  "clap",
  "insta",
  "is-terminal",
+ "owo-colors",
  "predicates",
  "serde_json",
  "strip-ansi-escapes",
@@ -1966,6 +1967,12 @@ dependencies = [
  "lzma-rust2",
  "ureq",
 ]
+
+[[package]]
+name = "owo-colors"
+version = "4.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d"
 
 [[package]]
 name = "paste"

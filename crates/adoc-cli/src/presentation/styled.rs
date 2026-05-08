@@ -1,0 +1,220 @@
+use std::fmt::Write as FmtWrite;
+use std::io;
+
+use adoc_core::ExplainView;
+
+use super::plain::{render_evidence, render_fields, render_relations};
+use super::port::ExplainPresenter;
+use super::style::chip::status_chip;
+use super::style::kv::faint_label;
+
+/// Styled presenter.  Produces the same line layout as [`PlainPresenter`] but
+/// with ANSI decoration:
+///
+/// - All labels (`Object:`, `Kind:`, etc.) are rendered **faint** (dim).
+/// - The `Status:` (or `Severity:`) value is wrapped in a coloured pill chip.
+///
+/// Body text, evidence, fields, source and relations are rendered as plain
+/// text in this slice.  Wikilink highlighting and relation chips are added in
+/// later slices.
+///
+/// # Factoring note
+///
+/// This file renders lines inline (same ordering as `plain.rs`) rather than
+/// introducing a closure-based abstraction.  The approach keeps this slice
+/// self-contained without touching `plain.rs`.  Only the four shared
+/// `render_*` helpers from `plain.rs` (evidence, fields, source prefix, and
+/// relations) are reused to avoid duplication of their iteration logic.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct StyledPresenter;
+
+impl ExplainPresenter for StyledPresenter {
+    fn present(&self, view: &ExplainView, out: &mut dyn io::Write) -> io::Result<()> {
+        let mut buf = String::new();
+        render_styled(&mut buf, view);
+        out.write_all(buf.as_bytes())
+    }
+}
+
+fn render_styled(output: &mut String, view: &ExplainView) {
+    let record = &view.record;
+
+    writeln!(output, "{} {}", faint_label("Object:"), record.id)
+        .expect("writing to String cannot fail");
+    writeln!(output, "{} {}", faint_label("Kind:"), record.kind)
+        .expect("writing to String cannot fail");
+
+    if let Some(status) = &record.status {
+        if record.kind == "warning" {
+            // Warnings use "Severity:" label but still get a chip.
+            writeln!(
+                output,
+                "{} {}",
+                faint_label("Severity:"),
+                status_chip(Some(status))
+            )
+            .expect("writing to String cannot fail");
+        } else {
+            writeln!(
+                output,
+                "{} {}",
+                faint_label("Status:"),
+                status_chip(Some(status))
+            )
+            .expect("writing to String cannot fail");
+        }
+    }
+
+    if let Some(owner) = &record.owner {
+        writeln!(output, "{} {owner}", faint_label("Owner:"))
+            .expect("writing to String cannot fail");
+    }
+    if let Some(verified_at) = &record.verified_at {
+        writeln!(output, "{} {verified_at}", faint_label("Verified:"))
+            .expect("writing to String cannot fail");
+    }
+
+    output.push('\n');
+    writeln!(output, "{}", faint_label("Statement:")).expect("writing to String cannot fail");
+    output.push_str(&record.body);
+    if !record.body.ends_with('\n') {
+        output.push('\n');
+    }
+
+    render_evidence(output, record);
+    render_fields(output, record);
+
+    output.push('\n');
+    writeln!(
+        output,
+        "{} {}:{}:{}",
+        faint_label("Source:"),
+        record.source.path,
+        record.source.line,
+        record.source.column
+    )
+    .expect("writing to String cannot fail");
+
+    render_relations(output, &record.relations);
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use adoc_core::{AgentJsonRelations, ExplainView, RetrievalRecord, RetrievalSource};
+
+    use super::*;
+
+    fn make_record(id: &str, kind: &str) -> RetrievalRecord {
+        RetrievalRecord {
+            id: id.to_string(),
+            kind: kind.to_string(),
+            status: None,
+            owner: None,
+            verified_at: None,
+            body: "Body text.".to_string(),
+            source: RetrievalSource {
+                path: "docs/test.adoc".to_string(),
+                line: 1,
+                column: 1,
+            },
+            evidence: BTreeMap::new(),
+            fields: BTreeMap::new(),
+            relations: AgentJsonRelations::default(),
+            search_match: None,
+        }
+    }
+
+    fn view_for(record: RetrievalRecord) -> ExplainView {
+        ExplainView {
+            record,
+            related_statuses: BTreeMap::new(),
+        }
+    }
+
+    fn render(view: &ExplainView) -> String {
+        let mut buf = Vec::new();
+        StyledPresenter.present(view, &mut buf).unwrap();
+        String::from_utf8(buf).unwrap()
+    }
+
+    fn strip_ansi(s: &str) -> String {
+        strip_ansi_escapes::strip_str(s)
+    }
+
+    #[test]
+    fn styled_visible_text_matches_plain_layout() {
+        let record = RetrievalRecord {
+            id: "billing.policy".to_string(),
+            kind: "decision".to_string(),
+            status: Some("accepted".to_string()),
+            owner: Some("architecture".to_string()),
+            verified_at: None,
+            body: "Refund policy is ledger-backed.\nManual credits are exceptions.".to_string(),
+            source: RetrievalSource {
+                path: "docs/decisions.adoc".to_string(),
+                line: 7,
+                column: 1,
+            },
+            evidence: BTreeMap::new(),
+            fields: BTreeMap::from([
+                ("scope".to_string(), "refunds".to_string()),
+                ("decided_by".to_string(), "architecture".to_string()),
+            ]),
+            relations: AgentJsonRelations::default(),
+            search_match: None,
+        };
+        let view = view_for(record);
+        let text = strip_ansi(&render(&view));
+
+        assert_eq!(
+            text,
+            concat!(
+                "Object: billing.policy\n",
+                "Kind: decision\n",
+                "Status: [accepted]\n",
+                "Owner: architecture\n",
+                "\n",
+                "Statement:\n",
+                "Refund policy is ledger-backed.\n",
+                "Manual credits are exceptions.\n",
+                "\n",
+                "Fields:\n",
+                "- decided_by: architecture\n",
+                "- scope: refunds\n",
+                "\n",
+                "Source: docs/decisions.adoc:7:1\n",
+            )
+        );
+    }
+
+    #[test]
+    fn styled_uses_severity_label_for_warnings() {
+        let mut record = make_record("team.warn", "warning");
+        record.status = Some("high".to_string());
+        let view = view_for(record);
+        let text = strip_ansi(&render(&view));
+
+        assert!(text.contains("Severity: [high]"));
+        assert!(!text.contains("Status:"));
+    }
+
+    #[test]
+    fn styled_status_line_contains_ansi_codes() {
+        let mut record = make_record("billing.claim", "claim");
+        record.status = Some("verified".to_string());
+        let view = view_for(record);
+        let raw = render(&view);
+
+        // Raw output must contain at least one ANSI escape sequence.
+        assert!(
+            raw.contains('\x1b'),
+            "expected ANSI escapes in styled output"
+        );
+        // Stripped output must not.
+        let stripped = strip_ansi(&raw);
+        assert!(!stripped.contains('\x1b'));
+        assert!(stripped.contains("Status: [verified]"));
+    }
+}
