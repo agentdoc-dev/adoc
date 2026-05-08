@@ -10,10 +10,11 @@ use std::path::PathBuf;
 
 use adoc_core::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, BuildArtifacts,
-    CompileInput, CompileResult, Diagnostic, DiagnosticCode, ExplainResult, RetrievalEnvelope,
-    RetrievalInput, RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalSession,
-    RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity,
-    compile_workspace, explain_object, load_retrieval_session, search,
+    Clock, CompileInput, CompileResult, Diagnostic, DiagnosticCode, ExpiresInfo, ExplainError,
+    ExplainResult, ExplainService, ExplainView, RecordResolver, RenderMeta, ResolverError,
+    RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, RetrievalMatch, RetrievalRecord,
+    RetrievalSession, RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult,
+    Severity, compile_workspace, explain_object, load_retrieval_session, search,
 };
 
 #[test]
@@ -236,4 +237,98 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _: fn(&RetrievalSession, SearchQuery) -> SearchResult = search;
 
     let _: RetrievalEnvelope = RetrievalEnvelope::new(Vec::new(), Vec::new());
+}
+
+// ---------------------------------------------------------------------------
+// Minimal stubs used only by exercises_explain_public_surface below.
+// ---------------------------------------------------------------------------
+
+struct FakeClock;
+
+impl Clock for FakeClock {
+    fn today(&self) -> chrono::NaiveDate {
+        chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
+    }
+
+    fn now_instant(&self) -> std::time::Instant {
+        std::time::Instant::now()
+    }
+}
+
+struct FakeResolver;
+
+impl RecordResolver for FakeResolver {
+    fn resolve(&self, _id: &str) -> Result<Option<RetrievalRecord>, ResolverError> {
+        Err(ResolverError::Io("stub".to_string()))
+    }
+}
+
+#[test]
+fn exercises_explain_public_surface() {
+    // ExplainService construction — no filesystem access needed.
+    let _service = ExplainService::new(FakeResolver, FakeClock, PathBuf::from("/tmp/x"));
+
+    // Traits are dyn-compatible; lock that property.
+    let _r: &dyn RecordResolver = &FakeResolver;
+    let _c: &dyn Clock = &FakeClock;
+
+    // ExpiresInfo — all fields are pub.
+    let info = ExpiresInfo {
+        date: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+        days_until: 0,
+    };
+    let _: chrono::NaiveDate = info.date;
+    let _: i64 = info.days_until;
+
+    // RenderMeta — all fields are pub.
+    let meta = RenderMeta {
+        artifact: PathBuf::from("/tmp/docs.agent.json"),
+        trust: Some("team".to_string()),
+        duration: std::time::Duration::from_secs(0),
+    };
+    let _: PathBuf = meta.artifact;
+    let _: Option<String> = meta.trust;
+    let _: std::time::Duration = meta.duration;
+
+    // ExplainView — all fields are pub.
+    let view = ExplainView {
+        record: RetrievalRecord {
+            id: String::new(),
+            kind: String::new(),
+            status: None,
+            owner: None,
+            verified_at: None,
+            body: String::new(),
+            source: RetrievalSource {
+                path: String::new(),
+                line: 0,
+                column: 0,
+            },
+            evidence: std::collections::BTreeMap::new(),
+            fields: std::collections::BTreeMap::new(),
+            relations: AgentJsonRelations::default(),
+            search_match: None,
+        },
+        related_statuses: std::collections::BTreeMap::new(),
+        expires: None,
+        render_meta: RenderMeta {
+            artifact: PathBuf::from("/tmp/docs.agent.json"),
+            trust: None,
+            duration: std::time::Duration::from_secs(0),
+        },
+    };
+    let _: &RetrievalRecord = &view.record;
+
+    // ExplainError — lock both discriminants.
+    let err = ExplainError::NotFound("adr-0001".to_string());
+    let _ = match err {
+        ExplainError::NotFound(_) => 0,
+        ExplainError::Resolver(_) => 1,
+    };
+
+    // ResolverError — lock the Io discriminant.
+    let resolver_err = ResolverError::Io("disk failure".to_string());
+    let _ = match resolver_err {
+        ResolverError::Io(_) => 0,
+    };
 }
