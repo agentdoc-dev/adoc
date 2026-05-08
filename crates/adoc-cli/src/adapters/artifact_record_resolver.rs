@@ -14,7 +14,7 @@ impl ArtifactRecordResolver {
     /// Builds the resolver from all records in the loaded session.
     ///
     /// Accepts any `IntoIterator<Item = RetrievalRecord>`, including the
-    /// `Vec<RetrievalRecord>` returned by [`RetrievalSession::records`].
+    /// `Vec<RetrievalRecord>` returned by [`adoc_core::RetrievalSession::records`].
     ///
     /// When the iterator contains duplicate ids the **last** record wins
     /// (matching the parse-order of the underlying artifact).
