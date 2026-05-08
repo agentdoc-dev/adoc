@@ -157,6 +157,60 @@ fn styled_flag_with_color_always_emits_ansi_codes() {
         .stdout(predicate::str::contains("[verified]"));
 }
 
+// ----------------------------------------- --color=never overrides --format
+
+/// `--format styled --color never` must emit no ANSI escape codes.
+/// This pins the cargo/git/ripgrep convention: `--color=never` wins over
+/// any explicit format choice (except JSON).
+#[test]
+fn format_styled_with_color_never_emits_no_ansi_codes() {
+    let workspace = TestWorkspace::new("format-flag-styled-color-never");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+
+    adoc()
+        .current_dir(&workspace.root)
+        .args([
+            "explain",
+            "billing.refunds.issue-credit",
+            "--format",
+            "styled",
+            "--color",
+            "never",
+        ])
+        .assert()
+        .success()
+        // No ANSI escapes despite --format=styled.
+        .stdout(predicate::str::contains("\x1b[").not())
+        // Visible content must still be present.
+        .stdout(predicate::str::contains("billing.refunds.issue-credit"));
+}
+
+/// `--format plain --color always` must emit ANSI escape codes.
+/// This pins the same convention from the other direction: `--color=always`
+/// wins over an explicit `--format=plain`.
+#[test]
+fn format_plain_with_color_always_emits_ansi_codes() {
+    let workspace = TestWorkspace::new("format-flag-plain-color-always");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+
+    adoc()
+        .current_dir(&workspace.root)
+        .args([
+            "explain",
+            "billing.refunds.issue-credit",
+            "--format",
+            "plain",
+            "--color",
+            "always",
+        ])
+        .assert()
+        .success()
+        // Must contain ANSI escape codes despite --format=plain.
+        .stdout(predicate::str::contains("\x1b["))
+        // Visible content must still be present.
+        .stdout(predicate::str::contains("billing.refunds.issue-credit"));
+}
+
 // ------------------------------------------------- invalid --format value
 
 #[test]
