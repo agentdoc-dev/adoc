@@ -1,7 +1,8 @@
-/// Returns the ANSI cyan-wrapped rendering of `key`.
+/// Returns the ANSI bright-cyan-wrapped rendering of `key`.
 ///
-/// The colour is the same accent used for wikilink ids: `ESC[36m` (cyan fg)
-/// with `ESC[39m` (fg reset) on either side.  This function is intentionally
+/// Bright cyan (`ESC[96m`) is used as the accent identifier colour for evidence
+/// keys, field keys, and relation kind names — matching wikilink id highlighting.
+/// `ESC[39m` (fg reset) follows the text.  This function is intentionally
 /// pure — it performs no I/O and does not inspect any terminal capability flag.
 /// The caller (styled presenter) decides when to invoke it.
 ///
@@ -10,7 +11,7 @@
 /// # Examples
 ///
 /// ```ignore
-/// assert_eq!(cyan_key("source"), "\u{1b}[36msource\u{1b}[39m");
+/// assert_eq!(cyan_key("source"), "\u{1b}[96msource\u{1b}[39m");
 /// assert_eq!(cyan_key(""), "");
 /// ```
 pub(crate) fn cyan_key(key: &str) -> String {
@@ -18,22 +19,22 @@ pub(crate) fn cyan_key(key: &str) -> String {
     if key.is_empty() {
         return String::new();
     }
-    key.cyan().to_string()
+    key.bright_cyan().to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Pin test: owo-colors 4.x emits `ESC[36m` (cyan fg) … `ESC[39m` (fg
-    /// reset).  If the dependency is swapped or the colour role changes, this
-    /// literal-byte assertion will fail, making the regression visible.
+    /// Pin test: owo-colors 4.x emits `ESC[96m` (bright cyan fg) … `ESC[39m`
+    /// (fg reset).  If the dependency is swapped or the colour role changes,
+    /// this literal-byte assertion will fail, making the regression visible.
     #[test]
     fn cyan_key_source_emits_literal_bytes() {
         assert_eq!(
             cyan_key("source"),
-            "\u{1b}[36msource\u{1b}[39m",
-            "expected owo-colors 4.x cyan fg/reset around 'source'"
+            "\u{1b}[96msource\u{1b}[39m",
+            "expected owo-colors 4.x bright-cyan fg/reset around 'source'"
         );
     }
 
@@ -50,6 +51,6 @@ mod tests {
     /// Cross-check: a multi-character key also wraps correctly.
     #[test]
     fn cyan_key_reviewed_by_emits_literal_bytes() {
-        assert_eq!(cyan_key("reviewed_by"), "\u{1b}[36mreviewed_by\u{1b}[39m",);
+        assert_eq!(cyan_key("reviewed_by"), "\u{1b}[96mreviewed_by\u{1b}[39m",);
     }
 }
