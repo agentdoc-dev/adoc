@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use adoc_core::{AgentJsonRelations, RetrievalRecord, RetrievalSource};
+use adoc_core::{AgentJsonRelations, ExpiresInfo, RetrievalRecord, RetrievalSource};
 use adoc_core::{Clock, ExplainError, ExplainService, RecordResolver, ResolverError};
 use chrono::NaiveDate;
 use std::time::Instant;
@@ -218,5 +218,77 @@ fn execute_handles_missing_relation_targets_as_unknown() {
         view.related_statuses.get("missing.target"),
         Some(&None),
         "missing relation target maps to None, not an error"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Expires tests (slice 6)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn execute_populates_expires_when_field_is_parseable_iso_date() {
+    let mut record = make_record("billing.credits");
+    record
+        .fields
+        .insert("expires_at".to_string(), "2026-08-04".to_string());
+    let svc = service(FakeResolver::new().with_record(record));
+
+    let view = svc.execute("billing.credits").expect("view returned");
+
+    assert_eq!(
+        view.expires,
+        Some(ExpiresInfo {
+            date: NaiveDate::from_ymd_opt(2026, 8, 4).unwrap(),
+            days_until: 88,
+        }),
+        "expires should be populated with correct date and days_until"
+    );
+}
+
+#[test]
+fn execute_leaves_expires_none_when_field_is_missing() {
+    let record = make_record("billing.credits");
+    let svc = service(FakeResolver::new().with_record(record));
+
+    let view = svc.execute("billing.credits").expect("view returned");
+
+    assert_eq!(
+        view.expires, None,
+        "expires should be None when field absent"
+    );
+}
+
+#[test]
+fn execute_leaves_expires_none_when_field_is_unparseable() {
+    let mut record = make_record("billing.credits");
+    record
+        .fields
+        .insert("expires_at".to_string(), "not-a-date".to_string());
+    let svc = service(FakeResolver::new().with_record(record));
+
+    let view = svc.execute("billing.credits").expect("view returned");
+
+    assert_eq!(
+        view.expires, None,
+        "expires should be None when field is unparseable"
+    );
+}
+
+#[test]
+fn execute_handles_expired_dates_with_negative_days_until() {
+    let mut record = make_record("billing.credits");
+    // 2026-04-30 is 8 days before FakeClock today (2026-05-08)
+    record
+        .fields
+        .insert("expires_at".to_string(), "2026-04-30".to_string());
+    let svc = service(FakeResolver::new().with_record(record));
+
+    let view = svc.execute("billing.credits").expect("view returned");
+
+    let expires = view.expires.expect("expires should be populated");
+    assert_eq!(expires.date, NaiveDate::from_ymd_opt(2026, 4, 30).unwrap());
+    assert_eq!(
+        expires.days_until, -8,
+        "days_until should be negative for past date"
     );
 }

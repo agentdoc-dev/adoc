@@ -2,12 +2,14 @@ use std::fmt::Write as FmtWrite;
 use std::io;
 
 use adoc_core::ExplainView;
+use owo_colors::OwoColorize as _;
 
 use super::plain::{
     evidence_items, fields_items, has_evidence, has_fields, has_relations, relations_items,
 };
 use super::port::ExplainPresenter;
 use super::style::chip::status_chip;
+use super::style::humanise::format_diff;
 use super::style::kv::faint_label;
 use super::style::palette::status_color;
 use super::style::wikilink::highlight;
@@ -64,9 +66,44 @@ fn render_styled(output: &mut String, view: &ExplainView) {
         writeln!(output, "{} {owner}", faint_label("Owner:"))
             .expect("writing to String cannot fail");
     }
-    if let Some(verified_at) = &record.verified_at {
-        writeln!(output, "{} {verified_at}", faint_label("Verified:"))
+    match (&record.verified_at, &view.expires) {
+        (Some(verified_at), Some(info)) => {
+            let humanised = format_diff(info.days_until);
+            let paren = format!("({humanised})");
+            let coloured_paren = if info.days_until < 0 {
+                paren.red().to_string()
+            } else {
+                paren
+            };
+            writeln!(
+                output,
+                "{} {verified_at} · expires {} {coloured_paren}",
+                faint_label("Verified:"),
+                info.date
+            )
             .expect("writing to String cannot fail");
+        }
+        (Some(verified_at), None) => {
+            writeln!(output, "{} {verified_at}", faint_label("Verified:"))
+                .expect("writing to String cannot fail");
+        }
+        (None, Some(info)) => {
+            let humanised = format_diff(info.days_until);
+            let paren = format!("({humanised})");
+            let coloured_paren = if info.days_until < 0 {
+                paren.red().to_string()
+            } else {
+                paren
+            };
+            writeln!(
+                output,
+                "{} {} {coloured_paren}",
+                faint_label("Expires:"),
+                info.date
+            )
+            .expect("writing to String cannot fail");
+        }
+        (None, None) => {}
     }
 
     output.push('\n');
@@ -144,7 +181,10 @@ fn indent_body(body: &str, indent: &str) -> String {
 mod tests {
     use std::collections::BTreeMap;
 
-    use adoc_core::{AgentJsonRelations, ExplainView, RetrievalRecord, RetrievalSource};
+    use adoc_core::{
+        AgentJsonRelations, ExpiresInfo, ExplainView, RetrievalRecord, RetrievalSource,
+    };
+    use chrono::NaiveDate;
 
     use super::*;
 
@@ -172,6 +212,7 @@ mod tests {
         ExplainView {
             record,
             related_statuses: BTreeMap::new(),
+            expires: None,
         }
     }
 
@@ -371,5 +412,87 @@ mod tests {
         assert!(stripped.contains("Evidence:\n- source: ledger\n"));
         assert!(stripped.contains("Fields:\n- scope: credits\n"));
         assert!(stripped.contains("Relations:\n- depends_on: billing.ledger\n"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Expires rendering tests (slice 6)
+    // -----------------------------------------------------------------------
+
+    fn expires_info(date: NaiveDate, days_until: i64) -> ExpiresInfo {
+        ExpiresInfo { date, days_until }
+    }
+
+    #[test]
+    fn styled_renders_verified_and_expires_suffix_when_both_present() {
+        let mut record = make_record("billing.credits", "claim");
+        record.verified_at = Some("2026-05-06".to_string());
+        let mut view = view_for(record);
+        view.expires = Some(expires_info(
+            NaiveDate::from_ymd_opt(2026, 8, 4).unwrap(),
+            88,
+        ));
+        let raw = render(&view);
+        let stripped = strip_ansi(&raw);
+        assert!(
+            stripped.contains("Verified: 2026-05-06 · expires 2026-08-04 (in 88d)\n"),
+            "expected combined verified+expires line in stripped output, got: {stripped:?}"
+        );
+    }
+
+    #[test]
+    fn styled_renders_standalone_expires_line_when_only_expires_present() {
+        let record = make_record("billing.credits", "claim");
+        let mut view = view_for(record);
+        view.expires = Some(expires_info(
+            NaiveDate::from_ymd_opt(2026, 8, 4).unwrap(),
+            88,
+        ));
+        let raw = render(&view);
+        let stripped = strip_ansi(&raw);
+        assert!(
+            stripped.contains("Expires: 2026-08-04 (in 88d)\n"),
+            "expected standalone expires line, got: {stripped:?}"
+        );
+        assert!(
+            !stripped.contains("Verified:"),
+            "should not contain Verified: label when verified_at absent"
+        );
+    }
+
+    #[test]
+    fn styled_renders_expired_parenthetical_in_red() {
+        let mut record = make_record("billing.credits", "claim");
+        record.verified_at = Some("2026-05-06".to_string());
+        let mut view = view_for(record);
+        view.expires = Some(expires_info(
+            NaiveDate::from_ymd_opt(2026, 4, 30).unwrap(),
+            -8,
+        ));
+        let raw = render(&view);
+        // The parenthetical "(8d ago)" must be wrapped in red ANSI: ESC[31m…ESC[39m
+        assert!(
+            raw.contains("\u{1b}[31m(8d ago)\u{1b}[39m"),
+            "expired parenthetical must be rendered in red; raw={raw:?}"
+        );
+    }
+
+    #[test]
+    fn styled_renders_future_expires_parenthetical_in_default_colour() {
+        let mut record = make_record("billing.credits", "claim");
+        record.verified_at = Some("2026-05-06".to_string());
+        let mut view = view_for(record);
+        view.expires = Some(expires_info(
+            NaiveDate::from_ymd_opt(2026, 8, 4).unwrap(),
+            88,
+        ));
+        let raw = render(&view);
+        // Future expires must NOT contain red escape around the parenthetical.
+        assert!(
+            !raw.contains("\u{1b}[31m(in 88d)\u{1b}[39m"),
+            "future parenthetical must not be in red; raw={raw:?}"
+        );
+        // The stripped text must still contain the parenthetical.
+        let stripped = strip_ansi(&raw);
+        assert!(stripped.contains("(in 88d)"));
     }
 }

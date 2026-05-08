@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use chrono::NaiveDate;
+
 use crate::application::ports::{Clock, RecordResolver, ResolverError};
-use crate::application::views::ExplainView;
+use crate::application::views::{ExpiresInfo, ExplainView};
 use crate::domain::artifact::AgentJsonRelations;
 
 /// Errors that [`ExplainService::execute`] can return.
@@ -72,9 +74,20 @@ impl<R: RecordResolver, C: Clock> ExplainService<R, C> {
             related_statuses.insert(target.to_string(), status);
         }
 
+        let expires = record
+            .fields
+            .get("expires_at")
+            .and_then(|v| NaiveDate::parse_from_str(v, "%Y-%m-%d").ok())
+            .map(|date| {
+                let today = self.clock.today();
+                let days_until = (date - today).num_days();
+                ExpiresInfo { date, days_until }
+            });
+
         Ok(ExplainView {
             record,
             related_statuses,
+            expires,
         })
     }
 
