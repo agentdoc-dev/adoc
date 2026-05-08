@@ -161,6 +161,46 @@ fn search_lexical_ranks(result: &SearchResult) -> Vec<Option<u32>> {
         .collect()
 }
 
+#[test]
+fn hybrid_match_serializes_rrf_score_and_omits_missing_rank_fields() {
+    let record = RetrievalRecord {
+        id: "billing.hybrid".to_string(),
+        kind: "claim".to_string(),
+        status: Some("verified".to_string()),
+        owner: None,
+        verified_at: None,
+        body: "Hybrid result.".to_string(),
+        source: RetrievalSource {
+            path: "docs/billing.adoc".to_string(),
+            line: 1,
+            column: 1,
+        },
+        evidence: std::collections::BTreeMap::new(),
+        fields: std::collections::BTreeMap::new(),
+        relations: AgentJsonRelations::default(),
+        search_match: Some(RetrievalMatch::hybrid(1, 0.0312, Some(2), None)),
+    };
+
+    let value = serde_json::to_value(RetrievalEnvelope::new(vec![record], Vec::new()))
+        .expect("retrieval envelope serializes");
+    let search_match = value["records"][0]["match"]
+        .as_object()
+        .expect("match block is an object");
+
+    assert_eq!(search_match["mode"], "hybrid");
+    assert_eq!(search_match["result_rank"], 1);
+    assert_eq!(search_match["rrf_score"], 0.0312);
+    assert_eq!(search_match["lexical_rank"], 2);
+    assert!(
+        !search_match.contains_key("vector_rank"),
+        "missing rank fields must be omitted, got {search_match:?}"
+    );
+    assert!(
+        !search_match.contains_key("cosine_score"),
+        "hybrid records must not include cosine_score, got {search_match:?}"
+    );
+}
+
 fn assert_top_3_contains(session: &RetrievalSession, query: &str, expected_id: &str) {
     let result = search(session, lexical_query(query, 3, SearchFilters::default()));
 

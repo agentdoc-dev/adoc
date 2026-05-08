@@ -254,6 +254,7 @@ pub fn explain_object(session: &RetrievalSession, id: &str) -> ExplainResult {
 
 pub fn search(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
     match query.mode {
+        SearchMode::Hybrid => search_lexical(session, query),
         SearchMode::Lexical => search_lexical(session, query),
         SearchMode::Semantic => search_semantic(session, query),
     }

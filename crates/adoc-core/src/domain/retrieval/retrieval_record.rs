@@ -34,6 +34,8 @@ pub struct RetrievalMatch {
     pub mode: SearchMode,
     pub result_rank: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub rrf_score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lexical_rank: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vector_rank: Option<u32>,
@@ -46,6 +48,7 @@ impl RetrievalMatch {
         Self {
             mode: SearchMode::Lexical,
             result_rank,
+            rrf_score: None,
             lexical_rank,
             vector_rank: None,
             cosine_score: None,
@@ -56,9 +59,26 @@ impl RetrievalMatch {
         Self {
             mode: SearchMode::Semantic,
             result_rank,
+            rrf_score: None,
             lexical_rank: None,
             vector_rank: Some(vector_rank),
             cosine_score: Some(cosine_score),
+        }
+    }
+
+    pub fn hybrid(
+        result_rank: u32,
+        rrf_score: f64,
+        lexical_rank: Option<u32>,
+        vector_rank: Option<u32>,
+    ) -> Self {
+        Self {
+            mode: SearchMode::Hybrid,
+            result_rank,
+            rrf_score: Some(rrf_score),
+            lexical_rank,
+            vector_rank,
+            cosine_score: None,
         }
     }
 }
@@ -66,6 +86,7 @@ impl RetrievalMatch {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchMode {
+    Hybrid,
     Lexical,
     Semantic,
 }
