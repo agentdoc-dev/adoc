@@ -5,6 +5,7 @@ use crate::domain::artifact::AgentJsonObject;
 const BM25_K1: f64 = 1.2;
 const BM25_B: f64 = 0.75;
 const OWNER_FIELD: &str = "owner";
+const EVIDENCE_FIELDS: [&str; 3] = ["source", "test", "reviewed_by"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LexicalSearchHit {
@@ -213,6 +214,11 @@ fn indexed_tokens(object: &AgentJsonObject) -> Vec<String> {
     tokens.extend(tokenize(&object.kind));
     if let Some(owner) = object.fields.get(OWNER_FIELD) {
         tokens.extend(tokenize(owner));
+    }
+    for evidence_field in EVIDENCE_FIELDS {
+        if let Some(value) = object.fields.get(evidence_field) {
+            tokens.extend(tokenize(value));
+        }
     }
     tokens
 }
