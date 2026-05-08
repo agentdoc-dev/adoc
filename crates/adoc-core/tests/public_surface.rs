@@ -219,6 +219,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         mode: SearchMode::Lexical,
         filters: SearchFilters::default(),
         top: NonZeroUsize::new(10).expect("non-zero top"),
+        query_vector: None,
     };
     let _: RetrievalMatch = RetrievalMatch::lexical(1, Some(1));
     let search_result = SearchResult {

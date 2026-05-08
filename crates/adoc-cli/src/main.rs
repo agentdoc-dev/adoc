@@ -9,9 +9,10 @@ use std::process::ExitCode;
 
 use adoc_core::{
     AgentJsonDocument, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult, Diagnostic,
-    DiagnosticCode, ExplainError, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
-    SearchArtifactDocument, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity,
-    build_workspace, compile_workspace, load_retrieval_session, search,
+    DiagnosticCode, EmbedQueryError, ExplainError, RetrievalEnvelope, RetrievalInput,
+    RetrievalLoadResult, SearchArtifactDocument, SearchFilters, SearchMode, SearchQuery,
+    SearchResult, Severity, build_workspace, compile_workspace, embed_query,
+    load_retrieval_session, search,
 };
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
@@ -44,6 +45,9 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                 Commands::Search {
                     query,
                     artifact,
+                    search_artifact,
+                    semantic,
+                    lexical: _,
                     kind,
                     status,
                     owner,
@@ -52,6 +56,8 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                 } => search_command(
                     query,
                     artifact,
+                    search_artifact,
+                    semantic,
                     SearchFilters {
                         kind,
                         status,
@@ -166,6 +172,12 @@ enum Commands {
         query: String,
         #[arg(long, default_value = "dist/docs.agent.json")]
         artifact: PathBuf,
+        #[arg(long, default_value = "dist/docs.search.json")]
+        search_artifact: PathBuf,
+        #[arg(long, conflicts_with = "lexical")]
+        semantic: bool,
+        #[arg(long, conflicts_with = "semantic")]
+        lexical: bool,
         #[arg(long)]
         kind: Option<String>,
         #[arg(long)]
@@ -314,13 +326,25 @@ fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i3
 fn search_command(
     query: String,
     artifact: PathBuf,
+    search_artifact: PathBuf,
+    semantic: bool,
     filters: SearchFilters,
     top: NonZeroUsize,
     resolved: ResolvedFormat,
 ) -> i32 {
+    // Only attempt to load the search artifact when semantic mode is requested.
+    // For lexical searches the vector index is never consulted, so we avoid
+    // emitting a spurious SearchArtifactMissing warning when the user has not
+    // yet run `adoc build` with embeddings.
+    let search_artifact_path = if semantic {
+        Some(search_artifact)
+    } else {
+        None
+    };
+
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact,
-        search_artifact_path: None,
+        search_artifact_path,
     });
     let RetrievalLoadResult {
         session,
@@ -353,13 +377,58 @@ fn search_command(
         return 2;
     }
 
+    // Determine search mode and build the query vector for semantic search.
+    let mode = if semantic {
+        SearchMode::Semantic
+    } else {
+        SearchMode::Lexical
+    };
+
+    let query_vector = if semantic {
+        match embed_query(&query) {
+            Ok(vector) => Some(vector),
+            Err(embed_error) => {
+                let (code, message) = match &embed_error {
+                    EmbedQueryError::ModelLoad(msg) => (
+                        DiagnosticCode::EmbedModelLoadFailed,
+                        format!("--semantic requested but embedding model failed to load: {msg}"),
+                    ),
+                    EmbedQueryError::Compute(msg) => (
+                        DiagnosticCode::EmbedComputeFailed,
+                        format!("--semantic requested but query embedding failed: {msg}"),
+                    ),
+                };
+                let diagnostic = Diagnostic {
+                    code,
+                    severity: Severity::Error,
+                    message,
+                    span: None,
+                    object_id: None,
+                    help: None,
+                };
+                if resolved == ResolvedFormat::Json {
+                    return json_presentation::write_envelope_json(
+                        &RetrievalEnvelope::new(Vec::new(), vec![diagnostic]),
+                        &mut std::io::stdout(),
+                    )
+                    .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
+                }
+                eprint_diagnostics(&[diagnostic]);
+                return 2;
+            }
+        }
+    } else {
+        None
+    };
+
     let search_result = search(
         &session,
         SearchQuery {
             text: query,
-            mode: SearchMode::Lexical,
+            mode,
             filters,
             top,
+            query_vector,
         },
     );
     let search_result = SearchResult {

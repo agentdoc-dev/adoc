@@ -20,6 +20,37 @@ pub use domain::artifact::{
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::retrieval::{RetrievalMatch, RetrievalRecord, RetrievalSource, SearchMode};
 
+/// Error returned by [`embed_query`].
+#[derive(Debug)]
+pub enum EmbedQueryError {
+    /// The embedding model could not be loaded.
+    ModelLoad(String),
+    /// The query vector could not be computed.
+    Compute(String),
+}
+
+impl std::fmt::Display for EmbedQueryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EmbedQueryError::ModelLoad(msg) => write!(f, "embedding provider unavailable: {msg}"),
+            EmbedQueryError::Compute(msg) => write!(f, "query embedding failed: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for EmbedQueryError {}
+
+/// Embed a query string using the default embedding provider.
+///
+/// Returns the query vector as a `Vec<f32>`.
+pub fn embed_query(query: &str) -> Result<Vec<f32>, EmbedQueryError> {
+    let provider =
+        default_embedding_provider().map_err(|e| EmbedQueryError::ModelLoad(format!("{e:?}")))?;
+    provider
+        .embed_query(query)
+        .map_err(|e| EmbedQueryError::Compute(format!("{e:?}")))
+}
+
 pub fn compile_workspace(input: CompileInput) -> CompileResult {
     let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
     application::compile::compile_with_provider(&provider)
@@ -92,20 +123,39 @@ where
 }
 
 pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {
+    // Only resolve the active provider's model header when a search-artifact
+    // path is provided; lexical-only callers must not pay the embedding-model
+    // metadata lookup. Resolution itself is metadata-only — no model download.
+    let active_model = if input.search_artifact_path.is_some() {
+        active_search_model_header()
+    } else {
+        None
+    };
     application::retrieval::load_retrieval_session_with_reader(
         input,
         &infrastructure::artifact::AgentJsonArtifact,
-        active_search_model_header(),
+        active_model,
     )
 }
 
+/// Resolves the active embedding provider's `SearchModelHeader` without
+/// loading the underlying model. Returns `None` when the binary was built
+/// without the `embeddings` feature.
 fn active_search_model_header() -> Option<domain::artifact::SearchModelHeader> {
-    let provider = default_embedding_provider().ok()?;
-    Some(domain::artifact::SearchModelHeader {
-        id: provider.model_id().id.clone(),
-        provider: provider.model_id().provider.clone(),
-        dim: provider.dim(),
-    })
+    #[cfg(feature = "test-embedding-provider")]
+    if use_in_memory_test_embedding_provider() {
+        return Some(infrastructure::embedding::in_memory::InMemoryProvider::metadata_header(384));
+    }
+
+    #[cfg(feature = "embeddings")]
+    {
+        Some(infrastructure::embedding::fastembed::FastEmbedProvider::metadata_header())
+    }
+
+    #[cfg(not(feature = "embeddings"))]
+    {
+        None
+    }
 }
 
 #[cfg(test)]

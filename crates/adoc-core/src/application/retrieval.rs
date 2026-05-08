@@ -68,12 +68,13 @@ pub struct ExplainResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SearchQuery {
     pub text: String,
     pub mode: SearchMode,
     pub filters: SearchFilters,
     pub top: NonZeroUsize,
+    pub query_vector: Option<Vec<f32>>,
 }
 
 #[derive(Debug, Clone)]
@@ -264,7 +265,63 @@ pub fn explain_object(session: &RetrievalSession, id: &str) -> ExplainResult {
 pub fn search(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
     match query.mode {
         SearchMode::Lexical => search_lexical(session, query),
-        SearchMode::Semantic => search_lexical(session, query),
+        SearchMode::Semantic => search_semantic(session, query),
+    }
+}
+
+fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
+    let Some(index) = session.vector_index() else {
+        return SearchResult {
+            records: Vec::new(),
+            diagnostics: vec![Diagnostic::error(
+                DiagnosticCode::SearchArtifactMissing,
+                "Semantic search requested but no search artifact is loaded.",
+            )],
+        };
+    };
+
+    let candidates = match query
+        .filters
+        .validate_and_match(session.exact_lookup.values())
+    {
+        Ok(candidates) => candidates,
+        Err(diagnostics) => {
+            return SearchResult {
+                records: Vec::new(),
+                diagnostics,
+            };
+        }
+    };
+    if candidates.is_empty() {
+        return SearchResult {
+            records: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+    }
+
+    let query_vector = query.query_vector.as_deref().unwrap_or(&[]);
+    let candidate_ids: Vec<&str> = candidates.iter().map(|object| object.id.as_str()).collect();
+    let hits = index.rank_among(query_vector, candidate_ids.iter().copied(), query.top.get());
+
+    let records = hits
+        .into_iter()
+        .enumerate()
+        .map(|(idx, hit)| {
+            let object_id = ObjectId::new_unchecked(hit.id.clone());
+            let object = session
+                .exact_lookup
+                .get(&object_id)
+                .expect("hit must exist in exact lookup");
+            RetrievalRecord::from_object_with_match(
+                object,
+                RetrievalMatch::semantic((idx + 1) as u32, hit.vector_rank, hit.cosine_score),
+            )
+        })
+        .collect();
+
+    SearchResult {
+        records,
+        diagnostics: Vec::new(),
     }
 }
 

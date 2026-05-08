@@ -121,6 +121,7 @@ fn lexical_query(text: &str, top: usize, filters: SearchFilters) -> SearchQuery 
         mode: SearchMode::Lexical,
         filters,
         top: NonZeroUsize::new(top).expect("test search top is non-zero"),
+        query_vector: None,
     }
 }
 
