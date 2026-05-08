@@ -5,6 +5,11 @@ use std::process::Command;
 
 use support::{TestWorkspace, fixture_path};
 
+/// Strip ANSI escape codes from a byte slice and return the visible text.
+fn strip_ansi(bytes: &[u8]) -> String {
+    strip_ansi_escapes::strip_str(String::from_utf8_lossy(bytes).as_ref())
+}
+
 fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
     let artifact = fs::read_to_string(fixture_path("v1_1_explain/valid_artifact.agent.json"))
         .expect("fixture artifact is readable");
@@ -349,4 +354,61 @@ fn explain_missing_object_id_exits_1_with_parse_error() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("required arguments were not provided"));
     assert!(stderr.contains("<OBJECT_ID>"));
+}
+
+/// Verify that styled output has the same structural layout as plain output
+/// when ANSI escape codes are stripped.  The status value differs visually
+/// (plain: `verified`, styled: `[verified]`) but the line structure, field
+/// order, and all other content are identical.
+///
+/// This test also creates the `explain_styled` snapshot which locks the
+/// visible structure of styled output independently of colour codes.
+#[test]
+fn explain_styled_layout_matches_plain_after_ansi_stripping() {
+    let workspace = TestWorkspace::new("explain-styled-layout");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        // --color=always forces styled even when stdout is not a TTY.
+        .args([
+            "explain",
+            "billing.refunds.issue-credit",
+            "--format",
+            "styled",
+            "--color",
+            "always",
+        ])
+        .output()
+        .expect("adoc explain --format=styled runs");
+
+    assert!(
+        output.status.success(),
+        "expected styled explain to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let visible = strip_ansi(&output.stdout);
+
+    // Lock the stripped structure as a snapshot.
+    insta::assert_snapshot!("explain_styled", visible);
+
+    // The visible text must not contain any residual escape characters.
+    assert!(
+        !visible.contains('\x1b'),
+        "strip_ansi should have removed all escape sequences"
+    );
+
+    // Structural checks mirroring the plain snapshot layout.
+    assert!(visible.contains("Object: billing.refunds.issue-credit"));
+    assert!(visible.contains("Kind: claim"));
+    // Status chip adds brackets but value is preserved.
+    assert!(visible.contains("Status: [verified]"));
+    assert!(visible.contains("Owner: team-billing"));
+    assert!(visible.contains("Verified: 2026-05-06"));
+    assert!(visible.contains("Statement:"));
+    assert!(visible.contains("Evidence:"));
+    assert!(visible.contains("Source: docs/refunds.adoc:12:3"));
+    assert!(visible.contains("Relations:"));
 }

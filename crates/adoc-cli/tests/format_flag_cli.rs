@@ -129,41 +129,32 @@ fn explicit_plain_flag_produces_plain_output() {
 
 // --------------------------------------------------------- --format=styled
 
-/// `--format styled` is an alias for plain in this slice: the bytes must be
-/// identical to `--format plain`.
+/// `--format styled` with `--color=always` emits ANSI codes.  The output
+/// contains the same record fields as plain but with escape sequences for
+/// faint labels and a status chip.
 #[test]
-fn styled_flag_bytes_are_identical_to_plain() {
+fn styled_flag_with_color_always_emits_ansi_codes() {
     let workspace = TestWorkspace::new("format-flag-styled");
     copy_valid_artifact(&workspace, "dist/docs.agent.json");
 
-    let plain_output = adoc()
-        .current_dir(&workspace.root)
-        .args([
-            "explain",
-            "billing.refunds.issue-credit",
-            "--format",
-            "plain",
-        ])
-        .output()
-        .expect("plain run succeeds");
-
-    let styled_output = adoc()
+    adoc()
         .current_dir(&workspace.root)
         .args([
             "explain",
             "billing.refunds.issue-credit",
             "--format",
             "styled",
+            "--color",
+            "always",
         ])
-        .output()
-        .expect("styled run succeeds");
-
-    assert!(plain_output.status.success());
-    assert!(styled_output.status.success());
-    assert_eq!(
-        plain_output.stdout, styled_output.stdout,
-        "--format styled must produce byte-identical output to --format plain in slice 2"
-    );
+        .assert()
+        .success()
+        // Must contain ANSI escape codes.
+        .stdout(predicate::str::contains("\x1b["))
+        // Must still contain the object id in the visible text.
+        .stdout(predicate::str::contains("billing.refunds.issue-credit"))
+        // Status chip text has brackets.
+        .stdout(predicate::str::contains("[verified]"));
 }
 
 // ------------------------------------------------- invalid --format value

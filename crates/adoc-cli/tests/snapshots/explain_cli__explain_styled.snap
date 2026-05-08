@@ -1,0 +1,25 @@
+---
+source: crates/adoc-cli/tests/explain_cli.rs
+assertion_line: 395
+expression: visible
+---
+Object: billing.refunds.issue-credit
+Kind: claim
+Status: [verified]
+Owner: team-billing
+Verified: 2026-05-06
+
+Statement:
+Refund credits are issued from the ledger after approval.
+
+Evidence:
+- source: ledger-export
+- test: cargo test refunds
+- reviewed_by: risk-team
+
+Source: docs/refunds.adoc:12:3
+
+Relations:
+- depends_on: billing.credits.ledger-source
+- supersedes: billing.refunds.manual-credit
+- related_to: billing.refunds.audit-required
