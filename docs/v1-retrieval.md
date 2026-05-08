@@ -22,6 +22,31 @@ is the sidecar vector index. By default it uses the local FastEmbed
 `bge-small-en-v1.5` provider. The first build may download model weights through
 `fastembed-rs`; later builds reuse the local model cache.
 
+With `agentdoc.config.yaml`, the same workflow can omit paths:
+
+```bash
+adoc init
+adoc check
+adoc build
+```
+
+`check` and `build` use config `docs_path` when no source path is passed.
+`build` uses config outputs when `--out` is omitted. Config paths are resolved
+relative to the config file; `outputs.dir` fills `docs.html`,
+`docs.agent.json`, and `docs.search.json` unless exact output paths override
+them.
+
+Config embedding mode is:
+
+```yaml
+embeddings:
+  provider: local # or none
+```
+
+Missing `embeddings` defaults to `local`. `none` is equivalent to skipping
+embedding generation for config-backed builds. Hosted embedding adapters remain
+deferred; the shipped provider is local.
+
 Use `--no-embeddings` when you only need HTML and agent JSON:
 
 ```bash
@@ -29,6 +54,10 @@ adoc build examples/billing-pilot --out dist --no-embeddings
 ```
 
 That skips model loading and leaves any prior `docs.search.json` untouched.
+
+If a Knowledge Object has a parseable `expires_at` date before the local build
+date, `check` and `build` emit warning `lifecycle.expired`. The warning does
+not block artifacts and does not mutate source.
 
 ## Explain
 

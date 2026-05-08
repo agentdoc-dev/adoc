@@ -19,9 +19,11 @@ AgentDoc is not AsciiDoc, even though the source extension is `.adoc`.
 
 AgentDoc is pre-release compiler and retrieval infrastructure. The source-to-artifact loop supports:
 
-- `adoc check <path>`
-- `adoc build <path> --out <directory>`
+- `adoc init`
+- `adoc check [path]`
+- `adoc build [path] [--out <directory>]`
 - one file or a directory of `.adoc` files as input
+- config-backed defaults from `agentdoc.config.yaml` for `docs_path`, outputs, and embedding mode
 - page headings with optional `@doc(id)` page identity
 - path-derived page identity when no annotation exists
 - headings, paragraphs, unordered lists, ordered lists, and fenced code blocks
@@ -33,14 +35,19 @@ AgentDoc is pre-release compiler and retrieval infrastructure. The source-to-art
 - strict diagnostics for raw HTML, unsafe links, unclosed fenced code blocks, malformed typed blocks, malformed page annotations, invalid or duplicate Object IDs, invalid verified claims, broken references, and unsupported single-file source extensions
 - diagnostic metadata with source location, severity, code, message, and `object_id`/`help` when available
 - HTML, agent JSON, and search artifact emission when no error diagnostics exist
+- warning-only `lifecycle.expired` diagnostics for Knowledge Objects with parseable past `expires_at` dates; source files are not mutated
 
-V1.3 build embeddings support:
+V1.5 local workflow supports:
 
-- `adoc build <path> --out <directory>` emits `docs.search.json` by default
-- local FastEmbed embeddings using `bge-small-en-v1.5` (`provider: "fastembed"`, `dim: 384`)
+- `adoc init` creates `agentdoc.config.yaml` and `docs/index.adoc`
+- omitted `check` and `build` paths use config `docs_path`
+- omitted `build --out` uses config outputs
+- `embeddings.provider: local|none`; missing `embeddings` defaults to `local`
+- `local` uses FastEmbed `bge-small-en-v1.5` (`provider: "fastembed"`, `dim: 384`)
 - first-run model download through `fastembed-rs`, then local cache reuse on later builds
 - per-Object-ID vector reuse when the model header and content hash match the prior `docs.search.json`
 - `--no-embeddings` to skip search artifact generation and leave any prior `docs.search.json` untouched
+- hosted embedding adapters remain deferred; the shipped default provider is local
 
 V1 local retrieval supports:
 
@@ -52,7 +59,7 @@ V1 local retrieval supports:
 - exact Object ID and ID-prefix pins in all search modes
 - search filters for kind, status, owner, and source path
 
-Config files, includes, custom schemas, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, a web app, and permissioned governance are deferred beyond the current V0 compiler loop. See [docs/ROADMAP.md](docs/ROADMAP.md).
+Includes, custom schemas, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, a web app, hosted embedding adapters, and permissioned governance are deferred beyond the current local CLI workflow. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Quick Start
 
@@ -70,32 +77,29 @@ rustup toolchain install --no-self-update
 
 ### Run From Source
 
-Create a small AgentDoc Source file:
+Build the CLI, then initialize a local AgentDoc project:
 
 ````bash
+cargo build -p adoc-cli
+ADOC_BIN="$(pwd)/target/debug/adoc"
+
 mkdir -p /tmp/adoc-example
+cd /tmp/adoc-example
 
-cat > /tmp/adoc-example/guide.adoc <<'EOF'
-# Getting Started @doc(docs.getting-started)
-
-AgentDoc keeps knowledge readable.
-
-- Write source
-- Run check
-- Build artifacts
-
-```rust
-fn main() {
-    println!("hello from AgentDoc");
-}
-```
-EOF
+"$ADOC_BIN" init
 ````
 
-Check the source:
+`adoc init` writes:
+
+```text
+agentdoc.config.yaml
+docs/index.adoc
+```
+
+Check the source using the config default `docs_path`:
 
 ```bash
-cargo run -p adoc-cli --bin adoc -- check /tmp/adoc-example/guide.adoc
+"$ADOC_BIN" check
 ```
 
 Expected output:
@@ -104,19 +108,19 @@ Expected output:
 0 errors, 0 warnings
 ```
 
-Build artifacts:
+Build artifacts using the config output defaults:
 
 ```bash
-cargo run -p adoc-cli --bin adoc -- build /tmp/adoc-example/guide.adoc --out /tmp/adoc-example/dist
+"$ADOC_BIN" build
 ```
 
 Inspect the generated files:
 
 ```bash
-ls -la /tmp/adoc-example/dist
-cat /tmp/adoc-example/dist/docs.html
-cat /tmp/adoc-example/dist/docs.agent.json
-cat /tmp/adoc-example/dist/docs.search.json
+ls -la dist
+cat dist/docs.html
+cat dist/docs.agent.json
+cat dist/docs.search.json
 ```
 
 Expected files:
@@ -125,6 +129,13 @@ Expected files:
 docs.html
 docs.agent.json
 docs.search.json
+```
+
+Explicit paths still work and override config defaults where provided:
+
+```bash
+"$ADOC_BIN" check docs/index.adoc
+"$ADOC_BIN" build docs/index.adoc --out /tmp/adoc-example/explicit-dist
 ```
 
 ### Try The Billing Pilot
@@ -146,6 +157,14 @@ docs.agent.json
 docs.search.json
 ```
 
+The pilot also has [agentdoc.config.yaml](examples/billing-pilot/agentdoc.config.yaml), so config-backed local commands work from the example directory:
+
+```bash
+cd examples/billing-pilot
+cargo run -p adoc-cli --manifest-path ../../Cargo.toml --bin adoc -- check
+cargo run -p adoc-cli --manifest-path ../../Cargo.toml --bin adoc -- build
+```
+
 ### Install Locally
 
 To install the `adoc` binary from this checkout:
@@ -157,17 +176,21 @@ cargo install --path crates/adoc-cli --locked
 Then run:
 
 ```bash
-adoc check /tmp/adoc-example/guide.adoc
-adoc build /tmp/adoc-example/guide.adoc --out /tmp/adoc-example/dist
+mkdir -p /tmp/adoc-example
+cd /tmp/adoc-example
+adoc init
+adoc check
+adoc build
 ```
 
 ## CLI Usage
 
 ```bash
-adoc check <path>
-adoc build <path> --out <directory> [--no-embeddings]
-adoc explain <object-id> [--artifact <path>] [--format text|json]
-adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | --semantic] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--top <n>] [--format text|json]
+adoc init
+adoc check [path]
+adoc build [path] [--out <directory>] [--no-embeddings]
+adoc explain <object-id> [--artifact <path>] [--format auto|plain|styled|json]
+adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | --semantic] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--top <n>] [--format auto|plain|styled|json]
 ```
 
 `<path>` can be:
@@ -175,8 +198,16 @@ adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | 
 - a single `.adoc` file
 - a directory, scanned recursively for `.adoc` files
 
+`adoc init`:
+
+- creates `agentdoc.config.yaml` and `docs/index.adoc` in the current directory
+- refuses to overwrite either target if it already exists
+- configures strict mode, `docs_path: docs`, `outputs.dir: dist`, exact default artifact paths, and `embeddings.provider: local`
+
 `adoc check`:
 
+- uses explicit `[path]` when passed
+- otherwise discovers the nearest `agentdoc.config.yaml` from the current directory upward and uses `docs_path`
 - compiles the input in strict mode
 - prints diagnostics and a summary
 - exits `0` when there are no errors
@@ -184,6 +215,10 @@ adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | 
 
 `adoc build`:
 
+- uses explicit `[path]` and `--out` when passed
+- otherwise discovers config defaults; without `--out`, config must provide `outputs.dir` or exact `outputs.html`, `outputs.agent_json`, and `outputs.search`
+- with `--out <directory>`, writes `<directory>/docs.html`, `<directory>/docs.agent.json`, and, when embeddings are enabled, `<directory>/docs.search.json`
+- with config outputs, paths are resolved relative to the config file; `outputs.dir` fills omitted artifact paths as `docs.html`, `docs.agent.json`, and `docs.search.json`; exact artifact paths override the `outputs.dir` defaults
 - runs the same compile path as `check`
 - creates the output directory when it does not exist
 - fails if the output path exists as a file
@@ -192,19 +227,20 @@ adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | 
 - reads the prior output directory's `docs.search.json` when present and reuses vectors whose model header and content hash still match, reported as `info[build.embeddings_cached] embeddings: cached N, computed M`
 - if embedding model load, compute, or dimension validation fails after clean source compilation, exits `1`, still writes `docs.html` and `docs.agent.json`, omits a new `docs.search.json`, and leaves any prior `docs.search.json` untouched
 - accepts `--no-embeddings` to skip model loading and search artifact writes; any existing `docs.search.json` is left untouched and an info diagnostic `build.embeddings_skipped` is emitted
+- also skips embeddings when config sets `embeddings.provider: none`; config `local` and missing `embeddings` both enable the shipped local provider
 
 `adoc explain`:
 
 - reads a compiled agent artifact; it does not compile source
-- defaults to `--artifact dist/docs.agent.json`
+- defaults to config `outputs.agent_json`, then `dist/docs.agent.json`
 - prints the matching Knowledge Object with source and relation metadata
-- supports `--format text|json`
+- supports `--format auto|plain|styled|json`
 
 `adoc search`:
 
 - reads compiled artifacts; it does not compile source
-- defaults to `--artifact dist/docs.agent.json`
-- defaults to `--search-artifact dist/docs.search.json`
+- defaults to config `outputs.agent_json`, then `dist/docs.agent.json`
+- defaults to config `outputs.search`, then `dist/docs.search.json`
 - runs hybrid search by default when the search artifact loads
 - degrades to lexical search with one `search.artifact_missing` warning when the search artifact is absent
 - accepts `--lexical` for deterministic text search over `docs.agent.json`
@@ -213,7 +249,7 @@ adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | 
 - supports `--kind`, `--status`, `--owner`, and `--source-path` filters
 - treats an empty lexical query plus filters as a deterministic listing of matching objects
 - limits results with `--top`, defaulting to `10`
-- supports `--format text|json`
+- supports `--format auto|plain|styled|json`
 
 See [docs/v1-retrieval.md](docs/v1-retrieval.md) for retrieval workflow, citation guidance, model-swap behavior, and retrieval-set maintenance.
 
@@ -304,8 +340,8 @@ fn main() {}
 
 Current limitations:
 
-- `adoc search` is lexical-only and reads `docs.agent.json` only
-- `adoc init`, custom schemas, includes, config files, semantic search, hybrid ranking, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, web app, and permissions are deferred
+- custom schemas, includes, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, hosted embedding adapters, web app, and permissions are deferred
+- config is intentionally minimal: strict mode only, one `docs_path`, output paths, and `embeddings.provider: local|none`
 
 ## Diagnostics
 
@@ -318,6 +354,7 @@ Examples:
 - raw HTML emits `error[parse.raw_html]`
 - unsafe links emit `error[parse.unsafe_link]`
 - broken object references and relation targets emit `error[ref.broken]`
+- parseable past `expires_at` values emit warning `lifecycle.expired`; the CLI reports only and does not edit source status or fields
 - unreadable directories emit `error[io.unreadable_directory]`
 - unsupported single-file source extensions emit `error[io.unsupported_source_extension]`
 
@@ -515,17 +552,18 @@ V0 is complete for the local source-to-artifact compiler loop. Implemented miles
 - standardized diagnostics and production-usable fixtures
 - a realistic billing pilot
 - artifact-backed `adoc explain <object-id>`
-- lexical-only `adoc search <query>` over `docs.agent.json`
+- hybrid `adoc search <query>` over `docs.agent.json` and `docs.search.json`
+- `adoc init` and minimal `agentdoc.config.yaml`
 
-Current V1 retrieval focuses on the existing flat agent artifact:
+Current local retrieval focuses on the existing flat agent artifact:
 
 - define the supported `docs.agent.json` read contract
 - support `adoc explain <object-id>` for object lookup and citation
-- support `adoc search <query>` for deterministic lexical local search
+- support `adoc search <query>` for deterministic lexical and local embedding-backed search
 - prove retrieval against the billing pilot
-- build `docs.search.json` with local FastEmbed embeddings for the next semantic retrieval slice
+- build `docs.search.json` with local FastEmbed embeddings
 
-Later milestones cover semantic and hybrid search, project ergonomics, migration, review workflows, patch safety, expanded schema, graph exports, composition, and team surfaces.
+Later milestones cover migration, review workflows, patch safety, expanded schema, graph exports, composition, hosted embedding adapters, and team surfaces.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full sequence.
 
