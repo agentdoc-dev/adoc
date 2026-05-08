@@ -11,7 +11,7 @@
   must_appear_in_top: 3
 
 - name: hybrid paraphrase adjustment rationale
-  query: "manual adjustment reason"
+  query: "manual adjustment requires reason code"
   mode: hybrid
   expected_ids: [billing.adjustments.require-reason]
   must_appear_in_top: 1
