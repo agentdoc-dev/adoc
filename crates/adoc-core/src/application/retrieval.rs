@@ -164,7 +164,7 @@ where
                     diagnostics.push(Diagnostic::warning(
                         DiagnosticCode::SearchArtifactMissing,
                         format!(
-                            "Search artifact `{}` is missing; semantic search disabled.",
+                            "Search artifact `{}` is missing; vector search disabled.",
                             search_path.display()
                         ),
                     ));
@@ -265,6 +265,9 @@ fn search_hybrid(session: &RetrievalSession, query: SearchQuery) -> SearchResult
     let Some(vector_index) = session.vector_index() else {
         return search_lexical(session, query);
     };
+    if query.query_vector.is_none() {
+        return missing_query_vector_result(SearchMode::Hybrid);
+    }
 
     let diagnostics = query
         .filters
@@ -347,6 +350,9 @@ fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResu
             )],
         };
     };
+    if query.query_vector.is_none() {
+        return missing_query_vector_result(SearchMode::Semantic);
+    }
 
     let candidates = match query
         .filters
@@ -369,9 +375,32 @@ fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResu
 
     let query_vector = query.query_vector.as_deref().unwrap_or(&[]);
     let candidate_ids: Vec<&str> = candidates.iter().map(|object| object.id.as_str()).collect();
-    let hits = index.rank_among(query_vector, candidate_ids.iter().copied(), query.top.get());
+    let hits = index.rank_among(
+        query_vector,
+        candidate_ids.iter().copied(),
+        candidate_ids.len(),
+    );
+    let hits_by_id: BTreeMap<_, _> = hits.iter().map(|hit| (hit.id.as_str(), hit)).collect();
 
-    let records = hits
+    let ranker = HybridRanker;
+    let mut result_hits: Vec<_> = ranker
+        .pinned_candidate_ids(&query.text, &candidate_ids)
+        .into_iter()
+        .filter_map(|id| hits_by_id.get(id.as_str()).copied().cloned())
+        .collect();
+    let mut seen_ids: BTreeSet<_> = result_hits.iter().map(|hit| hit.id.clone()).collect();
+
+    for hit in hits {
+        if seen_ids.insert(hit.id.clone()) {
+            result_hits.push(hit);
+        }
+        if result_hits.len() >= query.top.get() {
+            break;
+        }
+    }
+    result_hits.truncate(query.top.get());
+
+    let records = result_hits
         .into_iter()
         .enumerate()
         .map(|(idx, hit)| {
@@ -390,6 +419,21 @@ fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResu
     SearchResult {
         records,
         diagnostics: Vec::new(),
+    }
+}
+
+fn missing_query_vector_result(mode: SearchMode) -> SearchResult {
+    let mode_name = match mode {
+        SearchMode::Hybrid => "hybrid",
+        SearchMode::Semantic => "semantic",
+        SearchMode::Lexical => "lexical",
+    };
+    SearchResult {
+        records: Vec::new(),
+        diagnostics: vec![Diagnostic::error(
+            DiagnosticCode::EmbedComputeFailed,
+            format!("{mode_name} search requires a query vector."),
+        )],
     }
 }
 
@@ -422,7 +466,9 @@ fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResul
         .map(|hit| (hit.id.as_str(), hit.lexical_rank))
         .collect();
 
-    let mut result_hits: Vec<_> = pinned_candidate_ids(&query.text, &candidate_ids)
+    let ranker = HybridRanker;
+    let mut result_hits: Vec<_> = ranker
+        .pinned_candidate_ids(&query.text, &candidate_ids)
         .into_iter()
         .map(|id| {
             let lexical_rank = lexical_ranks_by_id.get(id.as_str()).copied();
@@ -462,21 +508,6 @@ fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResul
             .collect(),
         diagnostics: Vec::new(),
     }
-}
-
-fn pinned_candidate_ids(query_text: &str, candidate_ids: &[&str]) -> Vec<String> {
-    if query_text.is_empty() {
-        return Vec::new();
-    }
-
-    let mut pinned_ids: Vec<_> = candidate_ids
-        .iter()
-        .copied()
-        .filter(|id| id.starts_with(query_text))
-        .map(str::to_string)
-        .collect();
-    pinned_ids.sort_by(|left, right| left.len().cmp(&right.len()).then_with(|| left.cmp(right)));
-    pinned_ids
 }
 
 fn build_exact_lookup(

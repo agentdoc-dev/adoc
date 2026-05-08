@@ -236,7 +236,7 @@ impl DiagnosticCode {
                 "Run `adoc build` without `--no-embeddings` to emit docs.search.json."
             }
             DiagnosticCode::SearchArtifactMissing => {
-                "Run `adoc build` to generate dist/docs.search.json before requesting --semantic."
+                "Run `adoc build` to generate dist/docs.search.json for hybrid or semantic search."
             }
             DiagnosticCode::SearchModelMismatch => {
                 "Rebuild dist/docs.search.json with the active embedding provider, or switch providers to match the artifact's model header."

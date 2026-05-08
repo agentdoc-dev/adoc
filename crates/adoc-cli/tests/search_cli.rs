@@ -53,7 +53,15 @@ fn search_object_ids(stdout: &[u8]) -> Vec<String> {
 fn assert_search_top_3_contains(query: &str, expected_id: &str) {
     let artifact = pilot_subset_artifact();
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
-        .args(["search", query, "--artifact", &artifact, "--top", "3"])
+        .args([
+            "search",
+            query,
+            "--artifact",
+            &artifact,
+            "--lexical",
+            "--top",
+            "3",
+        ])
         .output()
         .expect("adoc search runs");
 
@@ -91,6 +99,7 @@ fn search_cli_billing_pilot_subset_supports_exact_id_prefix_id_and_filters() {
             "billing.credits.decrement-after-success",
             "--artifact",
             &artifact,
+            "--lexical",
             "--top",
             "1",
         ])
@@ -108,6 +117,7 @@ fn search_cli_billing_pilot_subset_supports_exact_id_prefix_id_and_filters() {
             "billing.credits",
             "--artifact",
             &artifact,
+            "--lexical",
             "--top",
             "3",
         ])
@@ -129,6 +139,7 @@ fn search_cli_billing_pilot_subset_supports_exact_id_prefix_id_and_filters() {
             "ledger",
             "--artifact",
             &artifact,
+            "--lexical",
             "--kind",
             "decision",
             "--status",
@@ -158,6 +169,7 @@ fn search_cli_empty_fixture_prints_no_matches() {
             "credit ledger",
             "--artifact",
             &artifact,
+            "--lexical",
             "--top",
             "3",
         ])
@@ -191,9 +203,11 @@ fn search_cli_defaults_to_dist_agent_json_and_text_format() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(
-        output.stderr.is_empty(),
-        "successful text search should not emit diagnostics"
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        stderr.matches("search.artifact_missing").count(),
+        1,
+        "default hybrid fallback should emit one search.artifact_missing warning, stderr:\n{stderr}"
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Object: billing.refunds.issue-credit"));
@@ -215,6 +229,7 @@ fn search_cli_uses_explicit_artifact_path() {
             "risk",
             "--artifact",
             "custom/docs.agent.json",
+            "--lexical",
             "--format",
             "plain",
         ])
@@ -295,7 +310,7 @@ fn search_cli_empty_result_exits_0_and_prints_no_matches() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["search", "chargebacks"])
+        .args(["search", "chargebacks", "--lexical"])
         .output()
         .expect("adoc search runs");
 
@@ -316,7 +331,7 @@ fn search_cli_invalid_filter_exits_1_and_prints_stderr_in_text_mode() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["search", "ledger", "--kind", "runbook"])
+        .args(["search", "ledger", "--kind", "runbook", "--lexical"])
         .output()
         .expect("adoc search runs");
 
@@ -340,6 +355,7 @@ fn search_cli_json_success_includes_envelope_records_diagnostics_and_match_metad
         .args([
             "search",
             "ledger",
+            "--lexical",
             "--format",
             "json",
             "--kind",
@@ -382,7 +398,15 @@ fn search_cli_json_invalid_filter_exits_1_with_envelope_diagnostics_and_no_stder
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["search", "ledger", "--kind", "runbook", "--format", "json"])
+        .args([
+            "search",
+            "ledger",
+            "--kind",
+            "runbook",
+            "--lexical",
+            "--format",
+            "json",
+        ])
         .output()
         .expect("adoc search runs");
 
@@ -410,7 +434,7 @@ fn search_cli_json_success_includes_loaded_artifact_warnings() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["search", "ledger", "--format", "json"])
+        .args(["search", "ledger", "--lexical", "--format", "json"])
         .output()
         .expect("adoc search runs");
 
@@ -434,7 +458,7 @@ fn search_cli_text_success_prints_loaded_artifact_warnings_to_stderr() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["search", "ledger"])
+        .args(["search", "ledger", "--lexical"])
         .output()
         .expect("adoc search runs");
 
@@ -450,7 +474,7 @@ fn search_cli_loaded_artifact_errors_exit_2() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["search", "ledger", "--format", "json"])
+        .args(["search", "ledger", "--lexical", "--format", "json"])
         .output()
         .expect("adoc search runs");
 

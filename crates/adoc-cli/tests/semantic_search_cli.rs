@@ -118,20 +118,45 @@ fn semantic_search_without_artifact_does_not_pay_embed_model_load_cost() {
 }
 
 #[test]
-fn lexical_default_unchanged_when_search_artifact_present() {
+fn default_search_is_hybrid_when_search_artifact_is_present() {
     let pilot = build_v1_4_pilot();
     let envelope = run_search_json(&pilot, "credits", false);
     let first = &envelope["records"][0];
-    assert_eq!(first["match"]["mode"], "lexical");
+    assert_eq!(first["match"]["mode"], "hybrid");
     let m = first["match"].as_object().unwrap();
     assert!(
-        m.get("vector_rank").is_none_or(|v| v.is_null()),
-        "vector_rank should be absent or null for lexical: {first}"
+        m["rrf_score"].is_number(),
+        "rrf_score should be present for hybrid: {first}"
     );
     assert!(
         m.get("cosine_score").is_none_or(|v| v.is_null()),
-        "cosine_score should be absent or null for lexical: {first}"
+        "cosine_score should be absent or null for hybrid: {first}"
     );
+}
+
+#[test]
+fn lexical_flag_remains_escape_hatch_when_search_artifact_is_present() {
+    let pilot = build_v1_4_pilot();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "search",
+            "credits",
+            "--artifact",
+            pilot.agent_path.to_str().unwrap(),
+            "--search-artifact",
+            pilot.search_path.to_str().unwrap(),
+            "--lexical",
+            "--format",
+            "json",
+            "--top",
+            "5",
+        ])
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+        .output()
+        .expect("adoc search runs");
+    assert_eq!(output.status.code(), Some(0));
+    let envelope: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(envelope["records"][0]["match"]["mode"], "lexical");
 }
 
 /// Smoke check on JSON envelope serialization stability for the in-memory
