@@ -1,0 +1,105 @@
+{
+  "schema_version": "adoc.agent.v0",
+  "pages": [
+    {
+      "id": "billing.refunds",
+      "title": "Refunds",
+      "source_path": "docs/refunds.adoc"
+    }
+  ],
+  "objects": [
+    {
+      "id": "billing.refunds.issue-credit",
+      "kind": "claim",
+      "status": "verified",
+      "body": "Refund credits are issued from the ledger after approval.",
+      "page_id": "billing.refunds",
+      "source_span": {
+        "path": "docs/refunds.adoc",
+        "line": 12,
+        "column": 3
+      },
+      "fields": {
+        "owner": "team-billing",
+        "reviewed_by": "risk-team",
+        "source": "ledger-export",
+        "test": "cargo test refunds",
+        "trust": "team",
+        "verified_at": "2026-05-06"
+      },
+      "relations": {
+        "depends_on": [
+          "billing.credits.ledger-source"
+        ],
+        "supersedes": [
+          "billing.refunds.manual-credit"
+        ],
+        "related_to": [
+          "billing.refunds.audit-required"
+        ]
+      }
+    },
+    {
+      "id": "billing.refunds.fraud-window",
+      "kind": "warning",
+      "status": "high",
+      "body": "Refund attempts above the risk threshold require manual review.",
+      "page_id": "billing.refunds",
+      "source_span": {
+        "path": "docs/refunds.adoc",
+        "line": 28,
+        "column": 1
+      },
+      "fields": {
+        "source": "risk-runbook"
+      },
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    },
+    {
+      "id": "billing.refunds.policy",
+      "kind": "decision",
+      "status": "accepted",
+      "body": "Refund credits are issued only after approval.",
+      "page_id": "billing.refunds",
+      "source_span": {
+        "path": "docs/refunds.adoc",
+        "line": 42,
+        "column": 1
+      },
+      "fields": {
+        "decided_by": "architecture",
+        "scope": "refunds"
+      },
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    },
+    {
+      "id": "billing.refunds.credit",
+      "kind": "glossary",
+      "status": null,
+      "body": "Refund credit means a ledger-backed customer balance adjustment.",
+      "page_id": "billing.refunds",
+      "source_span": {
+        "path": "docs/refunds.adoc",
+        "line": 55,
+        "column": 1
+      },
+      "fields": {
+        "canonical": "refund credit"
+      },
+      "relations": {
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+      }
+    }
+  ],
+  "diagnostics": []
+}

@@ -21,6 +21,6 @@ thiserror = "1"
 [dev-dependencies]
 adoc-core = { path = "../adoc-core", features = ["test-embedding-provider"] }
 assert_cmd = "2"
-insta = "1"
+insta = { version = "1", features = ["filters"] }
 predicates = "3"
 strip-ansi-escapes = "0.2"

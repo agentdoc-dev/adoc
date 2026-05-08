@@ -1,15 +1,49 @@
+use std::cell::Cell;
 use std::collections::BTreeMap;
+use std::time::{Duration, Instant};
 
 use adoc_core::{AgentJsonRelations, ExpiresInfo, RetrievalRecord, RetrievalSource};
 use adoc_core::{Clock, ExplainError, ExplainService, RecordResolver, ResolverError};
 use chrono::NaiveDate;
-use std::time::Instant;
 
 // ---------------------------------------------------------------------------
 // Fakes
 // ---------------------------------------------------------------------------
 
-struct FakeClock;
+/// Deterministic clock for service tests.
+///
+/// `today()` always returns 2026-05-08.
+///
+/// `now_instant()` returns successive instants spaced `step` apart.  A call
+/// counter is maintained in a `Cell` so the fake can be used behind a shared
+/// reference, matching the `Clock` trait which takes `&self`.
+///
+/// The implementation uses a real `Instant::now()` baseline captured once at
+/// construction time, then adds multiples of `step` on each call.  This keeps
+/// `Instant` opaque (no public constructor) while still being deterministic in
+/// terms of *elapsed duration between calls*.
+struct FakeClock {
+    baseline: Instant,
+    step: Duration,
+    call_count: Cell<u32>,
+}
+
+impl FakeClock {
+    /// Construct a clock whose `now_instant()` advances by `step` per call.
+    fn with_step(step: Duration) -> Self {
+        Self {
+            baseline: Instant::now(),
+            step,
+            call_count: Cell::new(0),
+        }
+    }
+
+    /// Construct a clock with zero-advance (both snapshots return the same
+    /// instant, so `duration` will be `Duration::ZERO`).
+    fn zero() -> Self {
+        Self::with_step(Duration::ZERO)
+    }
+}
 
 impl Clock for FakeClock {
     fn today(&self) -> NaiveDate {
@@ -17,7 +51,11 @@ impl Clock for FakeClock {
     }
 
     fn now_instant(&self) -> Instant {
-        Instant::now()
+        let count = self.call_count.get();
+        self.call_count.set(count + 1);
+        // Return baseline + count * step so successive calls are monotonically
+        // increasing by exactly `step`.
+        self.baseline + self.step * count
     }
 }
 
@@ -102,8 +140,19 @@ fn make_record_with_expires(id: &str, expires_at: &str) -> RetrievalRecord {
 fn service(resolver: FakeResolver) -> ExplainService<FakeResolver, FakeClock> {
     ExplainService::new(
         resolver,
-        FakeClock,
+        FakeClock::zero(),
         std::path::PathBuf::from("docs.agent.json"),
+    )
+}
+
+fn service_with_clock(
+    resolver: FakeResolver,
+    clock: FakeClock,
+) -> ExplainService<FakeResolver, FakeClock> {
+    ExplainService::new(
+        resolver,
+        clock,
+        std::path::PathBuf::from("/tmp/adoc/docs.agent.json"),
     )
 }
 
@@ -312,4 +361,74 @@ fn execute_populates_expires_with_zero_days_until_when_target_is_today() {
     let expires = view.expires.expect("expires should be Some");
     assert_eq!(expires.days_until, 0);
     assert_eq!(expires.date, NaiveDate::from_ymd_opt(2026, 5, 8).unwrap());
+}
+
+// ---------------------------------------------------------------------------
+// RenderMeta tests (slice 8)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn render_meta_artifact_matches_service_artifact_path() {
+    let record = make_record("billing.credits");
+    let clock = FakeClock::zero();
+    let svc = service_with_clock(FakeResolver::new().with_record(record), clock);
+
+    let view = svc.execute("billing.credits").expect("view returned");
+
+    assert_eq!(
+        view.render_meta.artifact,
+        std::path::PathBuf::from("/tmp/adoc/docs.agent.json"),
+        "render_meta.artifact must equal the path passed to ExplainService::new"
+    );
+}
+
+#[test]
+fn render_meta_trust_is_some_when_fields_trust_present() {
+    let mut record = make_record("billing.credits");
+    record
+        .fields
+        .insert("trust".to_string(), "team".to_string());
+    let clock = FakeClock::zero();
+    let svc = service_with_clock(FakeResolver::new().with_record(record), clock);
+
+    let view = svc.execute("billing.credits").expect("view returned");
+
+    assert_eq!(
+        view.render_meta.trust,
+        Some("team".to_string()),
+        "render_meta.trust must be Some(\"team\") when fields[\"trust\"] == \"team\""
+    );
+}
+
+#[test]
+fn render_meta_trust_is_none_when_fields_trust_absent() {
+    let record = make_record("billing.credits");
+    let clock = FakeClock::zero();
+    let svc = service_with_clock(FakeResolver::new().with_record(record), clock);
+
+    let view = svc.execute("billing.credits").expect("view returned");
+
+    assert_eq!(
+        view.render_meta.trust, None,
+        "render_meta.trust must be None when fields[\"trust\"] is absent"
+    );
+}
+
+#[test]
+fn render_meta_duration_reflects_clock_delta() {
+    // FakeClock::with_step(60ms) returns:
+    //   1st call (started) = baseline + 0ms
+    //   2nd call (ended)   = baseline + 60ms
+    // So duration = 60ms.
+    let record = make_record("billing.credits");
+    let clock = FakeClock::with_step(Duration::from_millis(60));
+    let svc = service_with_clock(FakeResolver::new().with_record(record), clock);
+
+    let view = svc.execute("billing.credits").expect("view returned");
+
+    assert_eq!(
+        view.render_meta.duration,
+        Duration::from_millis(60),
+        "render_meta.duration must equal the delta between the two clock snapshots"
+    );
 }

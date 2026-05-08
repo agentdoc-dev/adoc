@@ -28,10 +28,23 @@ fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
     workspace.write(relative_path, &artifact);
 }
 
+/// Copy the fixture that includes `fields["trust"] = "team"` on
+/// `billing.refunds.issue-credit`.  Used exclusively by the plain and styled
+/// snapshot tests (slice 8) so the JSON snapshot remains byte-identical to its
+/// pre-slice-8 state.
+fn copy_trust_artifact(workspace: &TestWorkspace, relative_path: &str) {
+    let artifact = fs::read_to_string(fixture_path(
+        "v1_1_explain/valid_artifact_with_trust.agent.json",
+    ))
+    .expect("trust fixture artifact is readable");
+    workspace.write(relative_path, &artifact);
+}
+
 #[test]
 fn explain_defaults_to_dist_agent_json_and_text_format() {
     let workspace = TestWorkspace::new("explain-defaults");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    // Use the trust-augmented fixture so the footer shows `trust: team`.
+    copy_trust_artifact(&workspace, "dist/docs.agent.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -47,7 +60,11 @@ fn explain_defaults_to_dist_agent_json_and_text_format() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    insta::assert_snapshot!("explain_plain", stdout);
+    insta::with_settings!({
+        filters => vec![(r"\d+\.\d{2}s", "<duration>")]
+    }, {
+        insta::assert_snapshot!("explain_plain", stdout);
+    });
 }
 
 #[test]
@@ -378,7 +395,8 @@ fn explain_missing_object_id_exits_1_with_parse_error() {
 #[test]
 fn explain_styled_layout_matches_plain_after_ansi_stripping() {
     let workspace = TestWorkspace::new("explain-styled-layout");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    // Use the trust-augmented fixture so the footer shows `trust: team`.
+    copy_trust_artifact(&workspace, "dist/docs.agent.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -404,7 +422,11 @@ fn explain_styled_layout_matches_plain_after_ansi_stripping() {
     let visible = strip_ansi(&output.stdout);
 
     // Lock the stripped structure as a snapshot.
-    insta::assert_snapshot!("explain_styled", visible);
+    insta::with_settings!({
+        filters => vec![(r"\d+\.\d{2}s", "<duration>")]
+    }, {
+        insta::assert_snapshot!("explain_styled", visible);
+    });
 
     // The visible text must not contain any residual escape characters.
     assert!(

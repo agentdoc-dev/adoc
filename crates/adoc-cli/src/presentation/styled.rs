@@ -7,6 +7,7 @@ use owo_colors::OwoColorize as _;
 use super::plain::{evidence_items, fields_items, has_evidence, has_fields, has_relations};
 use super::port::ExplainPresenter;
 use super::style::chip::status_chip;
+use super::style::footer::render_footer;
 use super::style::humanise;
 use super::style::kv::faint_label;
 use super::style::palette::status_color;
@@ -36,6 +37,9 @@ impl ExplainPresenter for StyledPresenter {
     fn present(&self, view: &ExplainView, out: &mut dyn io::Write) -> io::Result<()> {
         let mut buf = String::new();
         render_styled(&mut buf, view);
+        // Footer: one blank line, then the provenance line (styled=true).
+        buf.push('\n');
+        render_footer(&mut buf, &view.render_meta, true);
         out.write_all(buf.as_bytes())
     }
 }
@@ -198,9 +202,11 @@ fn indent_body(body: &str, indent: &str) -> String {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::path::PathBuf;
+    use std::time::Duration;
 
     use adoc_core::{
-        AgentJsonRelations, ExpiresInfo, ExplainView, RetrievalRecord, RetrievalSource,
+        AgentJsonRelations, ExpiresInfo, ExplainView, RenderMeta, RetrievalRecord, RetrievalSource,
     };
     use chrono::NaiveDate;
 
@@ -226,11 +232,20 @@ mod tests {
         }
     }
 
+    fn default_meta() -> RenderMeta {
+        RenderMeta {
+            artifact: PathBuf::from("docs.agent.json"),
+            trust: None,
+            duration: Duration::ZERO,
+        }
+    }
+
     fn view_for(record: RetrievalRecord) -> ExplainView {
         ExplainView {
             record,
             related_statuses: BTreeMap::new(),
             expires: None,
+            render_meta: default_meta(),
         }
     }
 
@@ -331,6 +346,8 @@ mod tests {
                 "- scope: refunds\n",
                 "\n",
                 "Source: docs/decisions.adoc:7:1\n",
+                "\n",
+                "✓ rendered from docs.agent.json · 0.00s\n",
             )
         );
     }
@@ -579,5 +596,53 @@ mod tests {
         // The stripped text must still contain the parenthetical.
         let stripped = strip_ansi(&raw);
         assert!(stripped.contains("(in 88d)"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Footer rendering tests (slice 8)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn styled_footer_check_glyph_is_green() {
+        let record = make_record("billing.credits", "claim");
+        let mut view = view_for(record);
+        view.render_meta = RenderMeta {
+            artifact: PathBuf::from("/tmp/adoc-retrieval-dist/docs.agent.json"),
+            trust: Some("team".to_string()),
+            duration: Duration::from_millis(60),
+        };
+        let raw = render(&view);
+        // owo_colors emits ESC[32m for green fg and ESC[39m to reset.
+        assert!(
+            raw.contains("\u{1b}[32m✓\u{1b}[39m rendered from docs.agent.json"),
+            "styled footer must have green ✓; got: {raw:?}"
+        );
+    }
+
+    #[test]
+    fn styled_footer_visible_text_contains_trust_and_duration() {
+        let record = make_record("billing.credits", "claim");
+        let mut view = view_for(record);
+        view.render_meta = RenderMeta {
+            artifact: PathBuf::from("/tmp/docs.agent.json"),
+            trust: Some("team".to_string()),
+            duration: Duration::from_millis(60),
+        };
+        let stripped = strip_ansi(&render(&view));
+        assert!(
+            stripped.ends_with("\n✓ rendered from docs.agent.json · trust: team · 0.06s\n"),
+            "stripped styled footer must match plain shape; got: {stripped:?}"
+        );
+    }
+
+    #[test]
+    fn styled_footer_preceded_by_blank_line() {
+        let record = make_record("billing.credits", "claim");
+        let view = view_for(record);
+        let stripped = strip_ansi(&render(&view));
+        assert!(
+            stripped.contains("\n\n✓"),
+            "footer must be preceded by a blank line, got: {stripped:?}"
+        );
     }
 }

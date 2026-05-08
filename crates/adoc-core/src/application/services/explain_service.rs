@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use chrono::NaiveDate;
 
 use crate::application::ports::{Clock, RecordResolver, ResolverError};
-use crate::application::views::{ExpiresInfo, ExplainView};
+use crate::application::views::{ExpiresInfo, ExplainView, RenderMeta};
 use crate::domain::artifact::AgentJsonRelations;
 
 /// Errors that [`ExplainService::execute`] can return.
@@ -26,14 +26,12 @@ pub enum ExplainError {
 /// - `R` — a [`RecordResolver`] implementation that fetches records by id.
 /// - `C` — a [`Clock`] implementation used by later slices for date and timing.
 ///
-/// The `artifact` field is reserved for slice 8 (timing footer) and currently
-/// carries the path of the loaded artifact.
+/// The `artifact` field carries the path of the loaded artifact and is
+/// surfaced via [`RenderMeta`] in slice 8's timing footer.
 pub struct ExplainService<R: RecordResolver, C: Clock> {
     resolver: R,
     clock: C,
-    /// Path to the artifact file; currently unused in output, reserved for
-    /// slice 8's timing footer.
-    #[allow(dead_code)]
+    /// Path to the artifact file; surfaced in the footer via [`RenderMeta`].
     artifact: PathBuf,
 }
 
@@ -54,12 +52,16 @@ impl<R: RecordResolver, C: Clock> ExplainService<R, C> {
     ///    sorted and deduplicated), resolves the target record and extracts its
     ///    `status` field.  A missing target maps to `None` in
     ///    [`ExplainView::related_statuses`].
+    /// 3. Populates [`ExplainView::render_meta`] with the artifact path, the
+    ///    `trust` field value, and the wall-clock duration of the call.
     ///
     /// # Errors
     ///
     /// - [`ExplainError::NotFound`] when the primary id is absent.
     /// - [`ExplainError::Resolver`] on infrastructure failures.
     pub fn execute(&self, id: &str) -> Result<ExplainView, ExplainError> {
+        let started = self.clock.now_instant();
+
         let record = self
             .resolver
             .resolve(id)?
@@ -84,10 +86,21 @@ impl<R: RecordResolver, C: Clock> ExplainService<R, C> {
                 ExpiresInfo { date, days_until }
             });
 
+        let trust = record.fields.get("trust").cloned();
+        let ended = self.clock.now_instant();
+        let duration = ended.saturating_duration_since(started);
+
+        let render_meta = RenderMeta {
+            artifact: self.artifact.clone(),
+            trust,
+            duration,
+        };
+
         Ok(ExplainView {
             record,
             related_statuses,
             expires,
+            render_meta,
         })
     }
 
