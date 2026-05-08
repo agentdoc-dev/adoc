@@ -739,10 +739,10 @@ mod tests {
     }
 
     #[test]
-    fn lifecycle_expired_warning_ignores_today_future_and_invalid_expires_at() {
+    fn lifecycle_expired_warning_ignores_today_and_future_expires_at() {
         let provider = InMemorySourceProvider::new().with_source(source_file(
             "guide.adoc",
-            "# Guide @doc(team.guide)\n\n::claim billing.today\nstatus: draft\nexpires_at: 2026-05-08\n--\nToday is still valid.\n::\n\n::claim billing.future\nstatus: draft\nexpires_at: 2026-05-09\n--\nFuture is still valid.\n::\n\n::claim billing.invalid\nstatus: draft\nexpires_at: not-a-date\n--\nInvalid dates are ignored in this slice.\n::\n",
+            "# Guide @doc(team.guide)\n\n::claim billing.today\nstatus: draft\nexpires_at: 2026-05-08\n--\nToday is still valid.\n::\n\n::claim billing.future\nstatus: draft\nexpires_at: 2026-05-09\n--\nFuture is still valid.\n::\n",
         ));
 
         let result = compile_with_provider_for_date(&provider, fixed_today());
@@ -752,11 +752,52 @@ mod tests {
                 .diagnostics
                 .iter()
                 .any(|diagnostic| diagnostic.code == DiagnosticCode::LifecycleExpired),
-            "today, future, and invalid expires_at values must not warn"
+            "today and future expires_at values must not warn"
         );
         assert!(
             result.artifacts.is_some(),
-            "ignored lifecycle fields must not block artifact generation"
+            "valid lifecycle fields must not block artifact generation"
+        );
+    }
+
+    #[test]
+    fn lifecycle_invalid_expires_at_warning_is_emitted_for_unparseable_value() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\n::claim billing.invalid\nstatus: draft\nexpires_at: not-a-date\n--\nInvalid dates should be reported.\n::\n",
+        ));
+
+        let result = compile_with_provider_for_date(&provider, fixed_today());
+
+        assert!(
+            !result.has_errors(),
+            "invalid expires_at warning must not block compile"
+        );
+        assert!(
+            result.artifacts.is_some(),
+            "warning diagnostics must not block artifact generation"
+        );
+        let diagnostic = result
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::LifecycleInvalidExpiresAt)
+            .expect("expected lifecycle.invalid_expires_at warning");
+        assert_eq!(diagnostic.severity, Severity::Warning);
+        assert_eq!(diagnostic.object_id.as_deref(), Some("billing.invalid"));
+        assert_eq!(
+            diagnostic.span.as_ref().map(|span| (
+                span.file.as_path(),
+                span.start.line,
+                span.start.column
+            )),
+            Some((std::path::Path::new("/work/guide.adoc"), 3, 1))
+        );
+        assert!(
+            diagnostic.message.contains("billing.invalid")
+                && diagnostic.message.contains("not-a-date")
+                && diagnostic.message.contains("YYYY-MM-DD"),
+            "message should name the object, value, and expected format: {}",
+            diagnostic.message
         );
     }
 

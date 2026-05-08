@@ -11,3 +11,5 @@ V0.5 adds `DiagnosticCode::RefBroken` with wire code `ref.broken` for object ref
 V0.5 also adds `DiagnosticCode::IoUnsupportedSourceExtension` with wire code `io.unsupported_source_extension` for existing single-file compile roots whose extension is not exactly `.adoc`. Directory scans continue to ignore non-`.adoc` files silently; missing paths and ordinary read failures remain `io.unreadable_file`.
 
 V0.5 also adds `DiagnosticCode::IoUnreadableDirectory` with wire code `io.unreadable_directory` for directories that exist but cannot be traversed during recursive source discovery. Missing roots and ordinary file read failures remain `io.unreadable_file`.
+
+V1.5 adds `DiagnosticCode::LifecycleInvalidExpiresAt` with wire code `lifecycle.invalid_expires_at` for Knowledge Objects whose `expires_at` field is present but not parseable as `YYYY-MM-DD`.
