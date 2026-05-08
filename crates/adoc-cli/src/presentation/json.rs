@@ -37,9 +37,12 @@ pub(crate) fn write_envelope_json(
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::path::PathBuf;
+    use std::time::Duration;
 
     use adoc_core::{
-        AgentJsonRelations, ExplainView, RetrievalEnvelope, RetrievalRecord, RetrievalSource,
+        AgentJsonRelations, ExplainView, RenderMeta, RetrievalEnvelope, RetrievalRecord,
+        RetrievalSource,
     };
 
     use super::*;
@@ -49,6 +52,11 @@ mod tests {
             record,
             related_statuses: BTreeMap::new(),
             expires: None,
+            render_meta: RenderMeta {
+                artifact: PathBuf::from("docs.agent.json"),
+                trust: None,
+                duration: Duration::ZERO,
+            },
         }
     }
 

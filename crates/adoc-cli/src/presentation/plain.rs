@@ -5,6 +5,7 @@ use adoc_core::{AgentJsonRelations, RetrievalRecord};
 use adoc_core::{ExpiresInfo, ExplainView};
 
 use super::port::ExplainPresenter;
+use super::style::footer::render_footer;
 use super::style::humanise::format_diff;
 
 /// Plain-text presenter.  Produces the same byte-for-byte output as the
@@ -16,6 +17,9 @@ impl ExplainPresenter for PlainPresenter {
     fn present(&self, view: &ExplainView, out: &mut dyn io::Write) -> io::Result<()> {
         let mut buf = String::new();
         render_record(&mut buf, &view.record, view.expires.as_ref());
+        // Footer: one blank line, then the provenance line.
+        buf.push('\n');
+        render_footer(&mut buf, &view.render_meta, false);
         out.write_all(buf.as_bytes())
     }
 }
@@ -167,9 +171,11 @@ fn render_relation_targets(output: &mut String, relation: &str, targets: &[Strin
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::path::PathBuf;
+    use std::time::Duration;
 
     use adoc_core::{
-        AgentJsonRelations, ExpiresInfo, ExplainView, RetrievalRecord, RetrievalSource,
+        AgentJsonRelations, ExpiresInfo, ExplainView, RenderMeta, RetrievalRecord, RetrievalSource,
     };
     use chrono::NaiveDate;
 
@@ -195,11 +201,20 @@ mod tests {
         }
     }
 
+    fn default_meta() -> RenderMeta {
+        RenderMeta {
+            artifact: PathBuf::from("docs.agent.json"),
+            trust: None,
+            duration: Duration::ZERO,
+        }
+    }
+
     fn view_for(record: RetrievalRecord) -> ExplainView {
         ExplainView {
             record,
             related_statuses: BTreeMap::new(),
             expires: None,
+            render_meta: default_meta(),
         }
     }
 
@@ -274,6 +289,8 @@ mod tests {
                 "- scope: refunds\n",
                 "\n",
                 "Source: docs/decisions.adoc:7:1\n",
+                "\n",
+                "✓ rendered from docs.agent.json · 0.00s\n",
             )
         );
     }
@@ -326,6 +343,8 @@ mod tests {
                 "- supersedes: billing.refunds.email-approval\n",
                 "- related_to: billing.credits.decrement-after-success\n",
                 "- related_to: billing.credits.reconciliation\n",
+                "\n",
+                "✓ rendered from docs.agent.json · 0.00s\n",
             )
         );
     }
@@ -495,6 +514,57 @@ mod tests {
         assert!(
             text.contains("Verified: 2026-05-06 · expires 2026-05-08 (today)\n"),
             "expected today expiry, got: {text:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Footer rendering tests (slice 8)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn plain_footer_emits_check_basename_and_duration() {
+        let record = make_record("billing.credits", "claim");
+        let mut view = view_for(record);
+        view.render_meta = RenderMeta {
+            artifact: PathBuf::from("/tmp/adoc-retrieval-dist/docs.agent.json"),
+            trust: Some("team".to_string()),
+            duration: Duration::from_millis(60),
+        };
+        let text = render(&view);
+        assert!(
+            text.ends_with("\n✓ rendered from docs.agent.json · trust: team · 0.06s\n"),
+            "plain footer line must end the output with trust and duration, got: {text:?}"
+        );
+    }
+
+    #[test]
+    fn plain_footer_omits_trust_when_absent() {
+        let record = make_record("billing.credits", "claim");
+        let mut view = view_for(record);
+        view.render_meta = RenderMeta {
+            artifact: PathBuf::from("/tmp/docs.agent.json"),
+            trust: None,
+            duration: Duration::from_millis(60),
+        };
+        let text = render(&view);
+        assert!(
+            text.ends_with("\n✓ rendered from docs.agent.json · 0.06s\n"),
+            "plain footer must omit trust segment when trust is None, got: {text:?}"
+        );
+        assert!(
+            !text.contains("trust:"),
+            "footer must not contain 'trust:' when trust is None"
+        );
+    }
+
+    #[test]
+    fn plain_footer_preceded_by_blank_line() {
+        let record = make_record("billing.credits", "claim");
+        let view = view_for(record);
+        let text = render(&view);
+        assert!(
+            text.contains("\n\n✓"),
+            "footer must be preceded by a blank line, got: {text:?}"
         );
     }
 }

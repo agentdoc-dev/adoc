@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::time::Duration;
 
 use chrono::NaiveDate;
 
@@ -17,6 +19,27 @@ pub struct ExpiresInfo {
     /// Number of calendar days between `date` and the clock's today value.
     /// `(date - today).num_days()`.
     pub days_until: i64,
+}
+
+/// Provenance and timing metadata for the explain footer (slice 8).
+///
+/// Populated by [`crate::application::services::ExplainService::execute`] and
+/// consumed by the CLI presenters to render the one-line footer:
+///
+/// ```text
+/// ✓ rendered from docs.agent.json · trust: team · 0.06s
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderMeta {
+    /// Full path to the artifact file; the presenter takes `file_name()` as
+    /// the basename.
+    pub artifact: PathBuf,
+    /// Value of `record.fields["trust"]`, or `None` when the field is absent.
+    /// When `None`, the `· trust: …` segment is omitted from the footer.
+    pub trust: Option<String>,
+    /// Wall-clock duration of the `execute` call, measured via two
+    /// [`crate::application::ports::Clock::now_instant`] snapshots.
+    pub duration: Duration,
 }
 
 /// View-model returned by [`crate::application::services::ExplainService::execute`].
@@ -47,4 +70,10 @@ pub struct ExplainView {
     /// slice 6.  The presenter uses this to render the inline expiry suffix on
     /// the `Verified:` line.
     pub expires: Option<ExpiresInfo>,
+
+    /// Provenance and timing metadata for the footer line.
+    ///
+    /// Populated by [`crate::application::services::ExplainService`] in
+    /// slice 8.
+    pub render_meta: RenderMeta,
 }

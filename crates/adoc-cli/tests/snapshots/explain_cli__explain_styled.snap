@@ -16,9 +16,14 @@ Evidence:
 - test: cargo test refunds
 - reviewed_by: risk-team
 
+Fields:
+- trust: team
+
 Source: docs/refunds.adoc:12:3
 
 Relations:
 - depends_on: billing.credits.ledger-source
 - supersedes: billing.refunds.manual-credit
 - related_to: billing.refunds.audit-required
+
+✓ rendered from docs.agent.json · trust: team · <duration>
