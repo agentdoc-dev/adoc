@@ -187,6 +187,97 @@ fn config_build_uses_exact_output_paths_and_dir_fills_omitted_paths() {
 }
 
 #[test]
+fn config_build_provider_none_allows_exact_html_and_agent_json_without_search() {
+    let workspace = TestWorkspace::new("config-build-provider-none-no-search");
+    write_valid_source(&workspace, "docs/index.adoc");
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  agent_json: artifacts/agent.json\nembeddings:\n  provider: none\n",
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["build"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected config-backed skipped embedding build to pass\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        stdout(&output).contains("info[build.embeddings_skipped]"),
+        "expected skipped embedding info diagnostic in stdout:\n{}",
+        stdout(&output)
+    );
+    assert!(workspace.root.join("public/site.html").is_file());
+    assert!(workspace.root.join("artifacts/agent.json").is_file());
+    assert!(!workspace.root.join("docs.search.json").exists());
+}
+
+#[test]
+fn config_build_no_embeddings_allows_exact_html_and_agent_json_without_search() {
+    let workspace = TestWorkspace::new("config-build-no-embeddings-no-search");
+    write_valid_source(&workspace, "docs/index.adoc");
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  agent_json: artifacts/agent.json\nembeddings:\n  provider: local\n",
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["build", "--no-embeddings"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected config-backed --no-embeddings build to pass\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        stdout(&output).contains("info[build.embeddings_skipped]"),
+        "expected skipped embedding info diagnostic in stdout:\n{}",
+        stdout(&output)
+    );
+    assert!(workspace.root.join("public/site.html").is_file());
+    assert!(workspace.root.join("artifacts/agent.json").is_file());
+    assert!(!workspace.root.join("docs.search.json").exists());
+}
+
+#[test]
+fn config_build_enabled_embeddings_requires_search_output_path() {
+    let workspace = TestWorkspace::new("config-build-enabled-missing-search");
+    write_valid_source(&workspace, "docs/index.adoc");
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  agent_json: artifacts/agent.json\nembeddings:\n  provider: local\n",
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["build"])
+        .output()
+        .expect("adoc build runs");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = stderr(&output);
+    assert!(
+        stderr.contains("error[config.missing]"),
+        "expected config.missing, got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("html, agent_json, and search outputs"),
+        "expected missing search guidance, got:\n{stderr}"
+    );
+    assert!(!workspace.root.join("public/site.html").exists());
+    assert!(!workspace.root.join("artifacts/agent.json").exists());
+}
+
+#[test]
 fn config_build_explicit_path_and_out_ignore_config_outputs() {
     let workspace = TestWorkspace::new("config-build-explicit-wins");
     write_valid_source(&workspace, "configured/index.adoc");

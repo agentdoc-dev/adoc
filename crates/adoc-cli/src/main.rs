@@ -355,7 +355,7 @@ fn build(path: Option<PathBuf>, out: Option<PathBuf>, no_embeddings: bool) -> i3
     match out {
         Some(out) => build_to_dir(path, out, embedding_mode),
         None => {
-            let output_paths = match resolve_build_output_paths(config.as_ref()) {
+            let output_paths = match resolve_build_output_paths(config.as_ref(), embedding_mode) {
                 Ok(paths) => paths,
                 Err(error) => return report(error),
             };
@@ -384,7 +384,7 @@ fn build_to_paths(
     let result = build_workspace(BuildInput {
         root: path,
         embeddings: embedding_mode,
-        prior_search_artifact_path: Some(output_paths.search.clone()),
+        prior_search_artifact_path: output_paths.search.clone(),
     });
     print_diagnostics(&result.diagnostics);
     print_summary(&result.diagnostics);
@@ -396,7 +396,7 @@ fn build_to_paths(
 struct BuildOutputPaths {
     html: PathBuf,
     agent_json: PathBuf,
-    search: PathBuf,
+    search: Option<PathBuf>,
 }
 
 fn discover_project_config_if(needed: bool) -> Result<Option<ProjectConfig>, CliError> {
@@ -436,6 +436,7 @@ fn resolve_embedding_mode(
 
 fn resolve_build_output_paths(
     config: Option<&ProjectConfig>,
+    embedding_mode: BuildEmbeddingMode,
 ) -> Result<BuildOutputPaths, CliError> {
     let Some(config) = config else {
         return Err(CliError::ConfigMissing {
@@ -444,20 +445,29 @@ fn resolve_build_output_paths(
         });
     };
 
-    match (
-        config.outputs.html.clone(),
-        config.outputs.agent_json.clone(),
-        config.outputs.search.clone(),
-    ) {
-        (Some(html), Some(agent_json), Some(search)) => Ok(BuildOutputPaths {
+    let search_required = embedding_mode == BuildEmbeddingMode::Enabled;
+    let html = config.outputs.html.clone();
+    let agent_json = config.outputs.agent_json.clone();
+    let search = config.outputs.search.clone();
+
+    match (html, agent_json, search_required, search) {
+        (Some(html), Some(agent_json), true, Some(search)) => Ok(BuildOutputPaths {
+            html,
+            agent_json,
+            search: Some(search),
+        }),
+        (Some(html), Some(agent_json), false, search) => Ok(BuildOutputPaths {
             html,
             agent_json,
             search,
         }),
         _ => Err(CliError::ConfigMissing {
-            message:
+            message: if search_required {
                 "adoc build requires outputs.dir or exact html, agent_json, and search outputs"
-                    .to_string(),
+            } else {
+                "adoc build requires outputs.dir or exact html and agent_json outputs"
+            }
+            .to_string(),
             config_path: Some(config.path.clone()),
         }),
     }
@@ -918,11 +928,11 @@ fn write_artifacts_to_paths(
         .map_err(|source| CliError::AgentJsonSerialize { source })?;
     write_file_with_parents(&paths.agent_json, agent_json_text.as_bytes())?;
 
-    if let Some(search_json) = search_json {
+    if let (Some(search_json), Some(search_path)) = (search_json, paths.search.as_ref()) {
         let search_json_text = search_json
             .to_pretty_json()
             .map_err(|source| CliError::SearchJsonSerialize { source })?;
-        write_file_with_parents(&paths.search, search_json_text.as_bytes())?;
+        write_file_with_parents(search_path, search_json_text.as_bytes())?;
     }
 
     Ok(())
