@@ -53,6 +53,7 @@ pub enum DiagnosticCode {
     EmbedComputeFailed,
     EmbedUnexpectedDimension,
     BuildEmbeddingsCached,
+    BuildEmbeddingsCacheIgnored,
     BuildEmbeddingsSkipped,
 }
 
@@ -89,6 +90,7 @@ impl DiagnosticCode {
             DiagnosticCode::EmbedComputeFailed,
             DiagnosticCode::EmbedUnexpectedDimension,
             DiagnosticCode::BuildEmbeddingsCached,
+            DiagnosticCode::BuildEmbeddingsCacheIgnored,
             DiagnosticCode::BuildEmbeddingsSkipped,
         ]
     }
@@ -125,6 +127,7 @@ impl DiagnosticCode {
             DiagnosticCode::EmbedComputeFailed => "embed.compute_failed",
             DiagnosticCode::EmbedUnexpectedDimension => "embed.unexpected_dim",
             DiagnosticCode::BuildEmbeddingsCached => "build.embeddings_cached",
+            DiagnosticCode::BuildEmbeddingsCacheIgnored => "build.embeddings_cache_ignored",
             DiagnosticCode::BuildEmbeddingsSkipped => "build.embeddings_skipped",
         }
     }
@@ -217,6 +220,9 @@ impl DiagnosticCode {
             DiagnosticCode::BuildEmbeddingsCached => {
                 "No action is required; this reports search artifact embedding cache reuse."
             }
+            DiagnosticCode::BuildEmbeddingsCacheIgnored => {
+                "No action is required; the search cache will be recomputed for the current embedding model."
+            }
             DiagnosticCode::BuildEmbeddingsSkipped => {
                 "Run `adoc build` without `--no-embeddings` to emit docs.search.json."
             }
@@ -282,6 +288,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "embed.compute_failed",
     "embed.unexpected_dim",
     "build.embeddings_cached",
+    "build.embeddings_cache_ignored",
     "build.embeddings_skipped",
 ];
 
