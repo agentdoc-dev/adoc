@@ -98,6 +98,10 @@ impl HybridRanker {
         results
     }
 
+    /// Returns Object ID prefix matches before scored hits.
+    ///
+    /// Pinned matches use a two-stage deterministic order: shorter matching IDs
+    /// first, then lexicographic order for IDs with equal length.
     pub(crate) fn pinned_candidate_ids(
         &self,
         query_text: &str,

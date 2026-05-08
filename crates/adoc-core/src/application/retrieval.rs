@@ -291,10 +291,15 @@ fn search_hybrid(session: &RetrievalSession, query: SearchQuery) -> SearchResult
         };
     }
 
+    // Hybrid ranks the full candidate pool before applying filters so lexical
+    // and vector ranks stay comparable across both indexes.
     let lexical_hits = session
         .lexical_index
         .search_candidates(&query.text, candidate_ids.iter().copied());
-    let query_vector = query.query_vector.as_deref().unwrap_or(&[]);
+    let query_vector = query
+        .query_vector
+        .as_deref()
+        .expect("query_vector is checked above");
     let vector_hits = vector_index.rank_among(
         query_vector,
         candidate_ids.iter().copied(),
@@ -373,7 +378,10 @@ fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResu
         };
     }
 
-    let query_vector = query.query_vector.as_deref().unwrap_or(&[]);
+    let query_vector = query
+        .query_vector
+        .as_deref()
+        .expect("query_vector is checked above");
     let candidate_ids: Vec<&str> = candidates.iter().map(|object| object.id.as_str()).collect();
     let hits = index.rank_among(
         query_vector,
