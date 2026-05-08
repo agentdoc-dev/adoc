@@ -91,6 +91,14 @@ fn make_record_with_status(id: &str, status: Option<&str>) -> RetrievalRecord {
     }
 }
 
+fn make_record_with_expires(id: &str, expires_at: &str) -> RetrievalRecord {
+    let mut record = make_record(id);
+    record
+        .fields
+        .insert("expires_at".to_string(), expires_at.to_string());
+    record
+}
+
 fn service(resolver: FakeResolver) -> ExplainService<FakeResolver, FakeClock> {
     ExplainService::new(
         resolver,
@@ -291,4 +299,17 @@ fn execute_handles_expired_dates_with_negative_days_until() {
         expires.days_until, -8,
         "days_until should be negative for past date"
     );
+}
+
+#[test]
+fn execute_populates_expires_with_zero_days_until_when_target_is_today() {
+    // FakeClock::today() returns 2026-05-08; expires_at set to the same date.
+    let record = make_record_with_expires("billing.credits", "2026-05-08");
+    let svc = service(FakeResolver::new().with_record(record));
+
+    let view = svc.execute("billing.credits").expect("view returned");
+
+    let expires = view.expires.expect("expires should be Some");
+    assert_eq!(expires.days_until, 0);
+    assert_eq!(expires.date, NaiveDate::from_ymd_opt(2026, 5, 8).unwrap());
 }

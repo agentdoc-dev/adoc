@@ -9,7 +9,7 @@ use super::plain::{
 };
 use super::port::ExplainPresenter;
 use super::style::chip::status_chip;
-use super::style::humanise::format_diff;
+use super::style::humanise;
 use super::style::kv::faint_label;
 use super::style::palette::status_color;
 use super::style::wikilink::highlight;
@@ -68,13 +68,7 @@ fn render_styled(output: &mut String, view: &ExplainView) {
     }
     match (&record.verified_at, &view.expires) {
         (Some(verified_at), Some(info)) => {
-            let humanised = format_diff(info.days_until);
-            let paren = format!("({humanised})");
-            let coloured_paren = if info.days_until < 0 {
-                paren.red().to_string()
-            } else {
-                paren
-            };
+            let coloured_paren = coloured_paren(info);
             writeln!(
                 output,
                 "{} {verified_at} · expires {} {coloured_paren}",
@@ -88,13 +82,7 @@ fn render_styled(output: &mut String, view: &ExplainView) {
                 .expect("writing to String cannot fail");
         }
         (None, Some(info)) => {
-            let humanised = format_diff(info.days_until);
-            let paren = format!("({humanised})");
-            let coloured_paren = if info.days_until < 0 {
-                paren.red().to_string()
-            } else {
-                paren
-            };
+            let coloured_paren = coloured_paren(info);
             writeln!(
                 output,
                 "{} {} {coloured_paren}",
@@ -141,6 +129,18 @@ fn render_styled(output: &mut String, view: &ExplainView) {
         output.push('\n');
         writeln!(output, "{}", faint_label("Relations:")).expect("writing to String cannot fail");
         relations_items(output, &record.relations);
+    }
+}
+
+/// Format the expires parenthetical for `info`, colouring it red when the
+/// record has already expired (`days_until < 0`).
+fn coloured_paren(info: &adoc_core::ExpiresInfo) -> String {
+    let humanised = humanise::format_diff(info.days_until);
+    let paren = format!("({humanised})");
+    if info.days_until < 0 {
+        paren.red().to_string()
+    } else {
+        paren
     }
 }
 
@@ -473,6 +473,22 @@ mod tests {
         assert!(
             raw.contains("\u{1b}[31m(8d ago)\u{1b}[39m"),
             "expired parenthetical must be rendered in red; raw={raw:?}"
+        );
+    }
+
+    #[test]
+    fn styled_renders_no_verified_or_expires_line_when_neither_present() {
+        let mut record = make_record("billing.credits", "claim");
+        record.verified_at = None;
+        let view = view_for(record);
+        let stripped = strip_ansi(&render(&view));
+        assert!(
+            !stripped.contains("Verified:"),
+            "expected no Verified line, got: {stripped:?}"
+        );
+        assert!(
+            !stripped.contains("Expires:"),
+            "expected no Expires line, got: {stripped:?}"
         );
     }
 
