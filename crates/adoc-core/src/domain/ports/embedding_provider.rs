@@ -19,7 +19,7 @@ pub(crate) enum EmbeddingError {
     ModelLoad(String),
     #[cfg_attr(not(any(test, feature = "embeddings")), allow(dead_code))]
     Compute(String),
-    #[allow(dead_code)]
+    #[cfg_attr(not(any(test, feature = "embeddings")), allow(dead_code))]
     DimensionMismatch {
         expected: usize,
         actual: usize,

@@ -453,14 +453,13 @@ fn validate_embedding_vectors(
         )]);
     }
 
-    for (index, vector) in vectors.iter().enumerate() {
+    for vector in vectors {
         if vector.len() != expected_dim {
-            return Err(vec![Diagnostic::error(
-                DiagnosticCode::EmbedUnexpectedDimension,
-                format!(
-                    "embedding provider returned vector {index} with dimension {}; expected {expected_dim}",
-                    vector.len()
-                ),
+            return Err(vec![embedding_error_diagnostic(
+                EmbeddingError::DimensionMismatch {
+                    expected: expected_dim,
+                    actual: vector.len(),
+                },
             )]);
         }
     }
@@ -1399,6 +1398,15 @@ mod tests {
         );
 
         assert_embedding_error_result(&result, DiagnosticCode::EmbedUnexpectedDimension);
+        let diagnostic = result
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::EmbedUnexpectedDimension)
+            .expect("dimension diagnostic");
+        assert_eq!(
+            diagnostic.message,
+            "embedding provider returned dimension 3; expected 4"
+        );
     }
 
     fn assert_embedding_error_result(result: &CompileResult, expected_code: DiagnosticCode) {
