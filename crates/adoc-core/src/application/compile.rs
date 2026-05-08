@@ -273,6 +273,7 @@ fn build_artifacts_for_build(
             prior_search_artifact_path.as_ref(),
         ) {
             Ok(search_build) => {
+                artifact_diagnostics.extend(search_build.diagnostics);
                 artifact_diagnostics.push(cache_count_diagnostic(
                     search_build.cached_count,
                     search_build.computed_count,
@@ -311,6 +312,7 @@ fn build_artifacts_for_build(
                 prior_search_artifact_path.as_ref(),
             ) {
                 Ok(search_build) => {
+                    artifact_diagnostics.extend(search_build.diagnostics);
                     artifact_diagnostics.push(cache_count_diagnostic(
                         search_build.cached_count,
                         search_build.computed_count,
@@ -346,6 +348,21 @@ struct SearchArtifactBuild {
     document: SearchArtifactDocument,
     cached_count: usize,
     computed_count: usize,
+    diagnostics: Vec<Diagnostic>,
+}
+
+struct SearchCacheLoad {
+    embeddings: BTreeMap<String, SearchEmbedding>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+impl SearchCacheLoad {
+    fn empty() -> Self {
+        Self {
+            embeddings: BTreeMap::new(),
+            diagnostics: Vec::new(),
+        }
+    }
 }
 
 fn build_search_artifact(
@@ -355,7 +372,8 @@ fn build_search_artifact(
     prior_search_artifact_path: Option<&PathBuf>,
 ) -> Result<SearchArtifactBuild, Vec<Diagnostic>> {
     let model = search_model_header(provider);
-    let cached_embeddings = load_matching_search_cache(prior_search_artifact_path, &model);
+    let cache_load = load_matching_search_cache(prior_search_artifact_path, &model);
+    let cached_embeddings = cache_load.embeddings;
     let agent_artifact_hash = sha256_prefixed(
         agent_json
             .to_pretty_json()
@@ -409,6 +427,7 @@ fn build_search_artifact(
         },
         cached_count,
         computed_count,
+        diagnostics: cache_load.diagnostics,
     })
 }
 
@@ -477,25 +496,49 @@ fn search_model_header(provider: &dyn EmbeddingProvider) -> SearchModelHeader {
 fn load_matching_search_cache(
     path: Option<&PathBuf>,
     model: &SearchModelHeader,
-) -> BTreeMap<String, SearchEmbedding> {
+) -> SearchCacheLoad {
     let Some(path) = path else {
-        return BTreeMap::new();
+        return SearchCacheLoad::empty();
     };
     if !path.exists() {
-        return BTreeMap::new();
+        return SearchCacheLoad::empty();
     }
-    let Ok(document) = read_search_artifact_document(path) else {
-        return BTreeMap::new();
+    let document = match read_search_artifact_document(path) {
+        Ok(document) => document,
+        Err(diagnostics) => {
+            return SearchCacheLoad {
+                embeddings: BTreeMap::new(),
+                diagnostics: diagnostics
+                    .into_iter()
+                    .map(ignored_search_cache_read_diagnostic)
+                    .collect(),
+            };
+        }
     };
     if document.model != *model {
-        return BTreeMap::new();
+        return SearchCacheLoad::empty();
     }
 
-    document
+    let embeddings = document
         .embeddings
         .into_iter()
         .map(|embedding| (embedding.id.clone(), embedding))
-        .collect()
+        .collect();
+    SearchCacheLoad {
+        embeddings,
+        diagnostics: Vec::new(),
+    }
+}
+
+fn ignored_search_cache_read_diagnostic(mut diagnostic: Diagnostic) -> Diagnostic {
+    diagnostic.severity = Severity::Warning;
+    diagnostic.message = format!(
+        "Ignoring prior search artifact cache: {}",
+        diagnostic.message
+    );
+    diagnostic.help =
+        Some("The cache will be recomputed and rewritten if embedding generation succeeds.".into());
+    diagnostic
 }
 
 fn workspace_knowledge_objects(workspace: &WorkspaceAst) -> impl Iterator<Item = &KnowledgeObject> {
@@ -1067,6 +1110,106 @@ mod tests {
     }
 
     #[test]
+    fn build_with_provider_warns_and_recomputes_for_malformed_prior_search_cache() {
+        let source_provider = InMemorySourceProvider::new().with_source(source_file(
+            "billing.adoc",
+            &two_claim_source(
+                "Credits apply after successful payment.",
+                "Refunds require audit review.",
+            ),
+        ));
+        let prior = tempfile::Builder::new()
+            .prefix("adoc-cache-")
+            .suffix(".search.json")
+            .tempfile()
+            .expect("cache file");
+        fs::write(prior.path(), "{not valid json").expect("malformed cache write");
+        let embedding_provider = RecordingEmbeddingProvider::new(4);
+
+        let result = build_with_provider(
+            &source_provider,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &embedding_provider,
+                },
+                prior_search_artifact_path: Some(prior.path().to_path_buf()),
+            },
+        );
+
+        assert!(
+            !result.has_errors(),
+            "malformed prior cache should not fail build: {:?}",
+            result.diagnostics
+        );
+        assert_eq!(
+            embedding_provider.recorded_inputs().len(),
+            2,
+            "malformed cache should be ignored and all objects recomputed"
+        );
+        assert_cache_ignored_diagnostic(
+            &result,
+            DiagnosticCode::IoArtifactMalformed,
+            "Ignoring prior search artifact cache",
+        );
+        assert_cache_count_diagnostic(&result, 0, 2);
+    }
+
+    #[test]
+    fn build_with_provider_warns_and_recomputes_for_unsupported_prior_search_cache_schema() {
+        let source_provider = InMemorySourceProvider::new().with_source(source_file(
+            "billing.adoc",
+            &two_claim_source(
+                "Credits apply after successful payment.",
+                "Refunds require audit review.",
+            ),
+        ));
+        let prior = tempfile::Builder::new()
+            .prefix("adoc-cache-")
+            .suffix(".search.json")
+            .tempfile()
+            .expect("cache file");
+        fs::write(
+            prior.path(),
+            serde_json::json!({
+                "schema_version": "adoc.search.v99",
+                "model": { "id": "recording", "provider": "test", "dim": 4 },
+                "agent_artifact_hash": "sha256:agent",
+                "embeddings": []
+            })
+            .to_string(),
+        )
+        .expect("unsupported schema cache write");
+        let embedding_provider = RecordingEmbeddingProvider::new(4);
+
+        let result = build_with_provider(
+            &source_provider,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &embedding_provider,
+                },
+                prior_search_artifact_path: Some(prior.path().to_path_buf()),
+            },
+        );
+
+        assert!(
+            !result.has_errors(),
+            "unsupported prior cache schema should not fail build: {:?}",
+            result.diagnostics
+        );
+        assert_eq!(
+            embedding_provider.recorded_inputs().len(),
+            2,
+            "unsupported cache should be ignored and all objects recomputed"
+        );
+        assert_cache_ignored_diagnostic(
+            &result,
+            DiagnosticCode::SchemaUnsupportedVersion,
+            "Ignoring prior search artifact cache",
+        );
+        assert_cache_count_diagnostic(&result, 0, 2);
+    }
+
+    #[test]
     fn build_with_provider_maps_embedding_compute_error_and_blocks_artifacts() {
         let source_provider = InMemorySourceProvider::new()
             .with_source(source_file("billing.adoc", &one_claim_source()));
@@ -1199,6 +1342,32 @@ mod tests {
         assert_eq!(
             diagnostic.message,
             format!("embeddings: cached {expected_cached}, computed {expected_computed}")
+        );
+    }
+
+    fn assert_cache_ignored_diagnostic(
+        result: &CompileResult,
+        expected_code: DiagnosticCode,
+        expected_message: &str,
+    ) {
+        let diagnostic = result
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == expected_code)
+            .expect("cache ignored diagnostic");
+        assert_eq!(diagnostic.severity, Severity::Warning);
+        assert!(
+            diagnostic.message.contains(expected_message),
+            "message should explain ignored cache: {}",
+            diagnostic.message
+        );
+        assert!(
+            diagnostic
+                .help
+                .as_deref()
+                .expect("help")
+                .contains("recomputed"),
+            "help should explain recompute behavior"
         );
     }
 
