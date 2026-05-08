@@ -1,4 +1,5 @@
 mod filter;
+pub(crate) mod hybrid_ranker;
 pub(crate) mod lexical_index;
 mod retrieval_record;
 pub(crate) mod vector_index;
