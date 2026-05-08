@@ -305,6 +305,24 @@ mod tests {
         assert!(stripped.contains("Status: [verified]"));
     }
 
+    // -----------------------------------------------------------------------
+    // Prove `highlight` runs in the styled pipeline: a body with [[…]] must
+    // emit the cyan escape sequence in the raw (un-stripped) output.
+    // Deleting the `highlight` call from `render_styled` would break this test.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn styled_body_passes_through_wikilink_highlight() {
+        let mut record = make_record("billing.policy", "claim");
+        record.body = "See [[billing.ledger]] for details.\n".to_string();
+        let view = view_for(record);
+        let raw = render(&view);
+        assert!(
+            raw.contains("\u{1b}[36mbilling.ledger\u{1b}[39m"),
+            "expected cyan-wrapped id in styled output, got: {:?}",
+            raw
+        );
+    }
+
     #[test]
     fn styled_section_headers_contain_ansi_faint_codes() {
         let record = RetrievalRecord {
