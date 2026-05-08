@@ -377,6 +377,20 @@ fn search_command(
         return 2;
     }
 
+    // Guard: if the caller asked for semantic search but no vector index was
+    // loaded (e.g. the search artifact is missing or failed its hash check),
+    // surface the already-emitted warning and exit before paying the
+    // embedding-model load cost.
+    if semantic && !session.has_semantic_index() {
+        let envelope = RetrievalEnvelope::new(Vec::new(), load_diagnostics);
+        if resolved == ResolvedFormat::Json {
+            return json_presentation::write_envelope_json(&envelope, &mut std::io::stdout())
+                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
+        }
+        eprint_diagnostics(&envelope.diagnostics);
+        return 2;
+    }
+
     // Determine search mode and build the query vector for semantic search.
     let mode = if semantic {
         SearchMode::Semantic

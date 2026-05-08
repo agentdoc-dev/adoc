@@ -81,6 +81,15 @@ fn default_embedding_provider() -> Result<
         ));
     }
 
+    #[cfg(feature = "test-embedding-provider")]
+    if use_force_load_fail_test_embedding_provider() {
+        return Err(
+            domain::ports::embedding_provider::EmbeddingError::ModelLoad(
+                "forced load failure for tests".into(),
+            ),
+        );
+    }
+
     #[cfg(feature = "embeddings")]
     {
         infrastructure::embedding::fastembed::FastEmbedProvider::try_new().map(|provider| {
@@ -99,6 +108,11 @@ fn default_embedding_provider() -> Result<
 #[cfg(feature = "test-embedding-provider")]
 fn use_in_memory_test_embedding_provider() -> bool {
     std::env::var("ADOC_TEST_EMBEDDING_PROVIDER").as_deref() == Ok("in-memory")
+}
+
+#[cfg(feature = "test-embedding-provider")]
+fn use_force_load_fail_test_embedding_provider() -> bool {
+    std::env::var("ADOC_TEST_EMBEDDING_PROVIDER").as_deref() == Ok("force-load-fail")
 }
 
 fn build_workspace_with_embedding_provider_factory<F>(
