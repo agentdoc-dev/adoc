@@ -89,7 +89,7 @@ enum CliFormat {
     Auto,
     /// Plain uncoloured text.
     Plain,
-    /// Styled text (alias for plain until slice 4).
+    /// Styled text with ANSI colour codes.
     Styled,
     /// Machine-readable JSON.
     Json,

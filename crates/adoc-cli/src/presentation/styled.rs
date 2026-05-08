@@ -3,28 +3,30 @@ use std::io;
 
 use adoc_core::ExplainView;
 
-use super::plain::{render_evidence, render_fields, render_relations};
+use super::plain::{
+    evidence_items, fields_items, has_evidence, has_fields, has_relations, relations_items,
+};
 use super::port::ExplainPresenter;
 use super::style::chip::status_chip;
 use super::style::kv::faint_label;
+use super::style::palette::status_color;
 
 /// Styled presenter.  Produces the same line layout as [`PlainPresenter`] but
 /// with ANSI decoration:
 ///
 /// - All labels (`Object:`, `Kind:`, etc.) are rendered **faint** (dim).
 /// - The `Status:` (or `Severity:`) value is wrapped in a coloured pill chip.
+/// - Section headers (`Evidence:`, `Fields:`, `Relations:`) are also faint.
 ///
-/// Body text, evidence, fields, source and relations are rendered as plain
-/// text in this slice.  Wikilink highlighting and relation chips are added in
-/// later slices.
+/// Body text, evidence items, fields items, and relation items are rendered as
+/// plain text in this slice.  Wikilink highlighting and relation chips are
+/// added in later slices.
 ///
 /// # Factoring note
 ///
-/// This file renders lines inline (same ordering as `plain.rs`) rather than
-/// introducing a closure-based abstraction.  The approach keeps this slice
-/// self-contained without touching `plain.rs`.  Only the four shared
-/// `render_*` helpers from `plain.rs` (evidence, fields, source prefix, and
-/// relations) are reused to avoid duplication of their iteration logic.
+/// Section predicates and body-item helpers from `plain.rs` are reused to
+/// avoid duplicating iteration logic.  The presenter owns the leading blank
+/// line and the (faint) header for each section.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct StyledPresenter;
 
@@ -45,23 +47,15 @@ fn render_styled(output: &mut String, view: &ExplainView) {
         .expect("writing to String cannot fail");
 
     if let Some(status) = &record.status {
+        let palette = status_color(Some(status.as_str()));
+        let chip = status_chip(palette, status.as_str());
         if record.kind == "warning" {
             // Warnings use "Severity:" label but still get a chip.
-            writeln!(
-                output,
-                "{} {}",
-                faint_label("Severity:"),
-                status_chip(Some(status))
-            )
-            .expect("writing to String cannot fail");
+            writeln!(output, "{} {chip}", faint_label("Severity:"))
+                .expect("writing to String cannot fail");
         } else {
-            writeln!(
-                output,
-                "{} {}",
-                faint_label("Status:"),
-                status_chip(Some(status))
-            )
-            .expect("writing to String cannot fail");
+            writeln!(output, "{} {chip}", faint_label("Status:"))
+                .expect("writing to String cannot fail");
         }
     }
 
@@ -81,8 +75,17 @@ fn render_styled(output: &mut String, view: &ExplainView) {
         output.push('\n');
     }
 
-    render_evidence(output, record);
-    render_fields(output, record);
+    if has_evidence(record) {
+        output.push('\n');
+        writeln!(output, "{}", faint_label("Evidence:")).expect("writing to String cannot fail");
+        evidence_items(output, record);
+    }
+
+    if has_fields(record) {
+        output.push('\n');
+        writeln!(output, "{}", faint_label("Fields:")).expect("writing to String cannot fail");
+        fields_items(output, record);
+    }
 
     output.push('\n');
     writeln!(
@@ -95,7 +98,11 @@ fn render_styled(output: &mut String, view: &ExplainView) {
     )
     .expect("writing to String cannot fail");
 
-    render_relations(output, &record.relations);
+    if has_relations(&record.relations) {
+        output.push('\n');
+        writeln!(output, "{}", faint_label("Relations:")).expect("writing to String cannot fail");
+        relations_items(output, &record.relations);
+    }
 }
 
 #[cfg(test)]
@@ -216,5 +223,55 @@ mod tests {
         let stripped = strip_ansi(&raw);
         assert!(!stripped.contains('\x1b'));
         assert!(stripped.contains("Status: [verified]"));
+    }
+
+    #[test]
+    fn styled_section_headers_contain_ansi_faint_codes() {
+        let record = RetrievalRecord {
+            id: "billing.credits".to_string(),
+            kind: "claim".to_string(),
+            status: Some("verified".to_string()),
+            owner: None,
+            verified_at: None,
+            body: "Credits decrement.".to_string(),
+            source: RetrievalSource {
+                path: "docs/billing.adoc".to_string(),
+                line: 1,
+                column: 1,
+            },
+            evidence: BTreeMap::from([("source".to_string(), "ledger".to_string())]),
+            fields: BTreeMap::from([("scope".to_string(), "credits".to_string())]),
+            relations: AgentJsonRelations {
+                depends_on: vec!["billing.ledger".to_string()],
+                supersedes: vec![],
+                related_to: vec![],
+            },
+            search_match: None,
+        };
+        let view = view_for(record);
+        let raw = render(&view);
+
+        // ANSI faint is ESC[2m.  All three section headers must carry it.
+        let faint_evidence = "\x1b[2mEvidence:\x1b[0m";
+        let faint_fields = "\x1b[2mFields:\x1b[0m";
+        let faint_relations = "\x1b[2mRelations:\x1b[0m";
+        assert!(
+            raw.contains(faint_evidence),
+            "Evidence: header must be faint; raw={raw:?}"
+        );
+        assert!(
+            raw.contains(faint_fields),
+            "Fields: header must be faint; raw={raw:?}"
+        );
+        assert!(
+            raw.contains(faint_relations),
+            "Relations: header must be faint; raw={raw:?}"
+        );
+
+        // Stripped text must still read as plain layout.
+        let stripped = strip_ansi(&raw);
+        assert!(stripped.contains("Evidence:\n- source: ledger\n"));
+        assert!(stripped.contains("Fields:\n- scope: credits\n"));
+        assert!(stripped.contains("Relations:\n- depends_on: billing.ledger\n"));
     }
 }
