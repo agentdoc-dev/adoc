@@ -274,10 +274,12 @@ fn build_artifacts_for_build(
         ) {
             Ok(search_build) => {
                 artifact_diagnostics.extend(search_build.diagnostics);
-                artifact_diagnostics.push(cache_count_diagnostic(
-                    search_build.cached_count,
-                    search_build.computed_count,
-                ));
+                if search_build.cached_count != 0 || search_build.computed_count != 0 {
+                    artifact_diagnostics.push(cache_count_diagnostic(
+                        search_build.cached_count,
+                        search_build.computed_count,
+                    ));
+                }
                 Some(search_build.document)
             }
             Err(diagnostics) => {
@@ -313,10 +315,12 @@ fn build_artifacts_for_build(
             ) {
                 Ok(search_build) => {
                     artifact_diagnostics.extend(search_build.diagnostics);
-                    artifact_diagnostics.push(cache_count_diagnostic(
-                        search_build.cached_count,
-                        search_build.computed_count,
-                    ));
+                    if search_build.cached_count != 0 || search_build.computed_count != 0 {
+                        artifact_diagnostics.push(cache_count_diagnostic(
+                            search_build.cached_count,
+                            search_build.computed_count,
+                        ));
+                    }
                     Some(search_build.document)
                 }
                 Err(diagnostics) => {
@@ -978,6 +982,44 @@ mod tests {
     }
 
     #[test]
+    fn build_with_provider_omits_cache_count_diagnostic_when_no_knowledge_objects() {
+        let source_provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\nProse without Knowledge Objects.\n",
+        ));
+        let embedding_provider = RecordingEmbeddingProvider::new(4);
+
+        let result = build_with_provider(
+            &source_provider,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &embedding_provider,
+                },
+                prior_search_artifact_path: None,
+            },
+        );
+
+        assert!(
+            !result.has_errors(),
+            "build should pass: {:?}",
+            result.diagnostics
+        );
+        assert!(
+            embedding_provider.recorded_inputs().is_empty(),
+            "no Knowledge Objects should skip provider computation"
+        );
+        let search = result
+            .artifacts
+            .as_ref()
+            .expect("artifacts are built")
+            .search_json
+            .as_ref()
+            .expect("search artifact is built");
+        assert!(search.embeddings.is_empty());
+        assert_no_cache_count_diagnostic(&result);
+    }
+
+    #[test]
     fn build_with_provider_reuses_cached_vectors_by_model_id_and_content_hash() {
         let first_source = InMemorySourceProvider::new().with_source(source_file(
             "billing.adoc",
@@ -1445,6 +1487,17 @@ mod tests {
         assert_eq!(
             diagnostic.message,
             format!("embeddings: cached {expected_cached}, computed {expected_computed}")
+        );
+    }
+
+    fn assert_no_cache_count_diagnostic(result: &CompileResult) {
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::BuildEmbeddingsCached),
+            "cache count diagnostic should be omitted: {:?}",
+            result.diagnostics
         );
     }
 
