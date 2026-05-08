@@ -1,10 +1,11 @@
 use std::fmt::Write as FmtWrite;
 use std::io;
 
-use adoc_core::ExplainView;
 use adoc_core::{AgentJsonRelations, RetrievalRecord};
+use adoc_core::{ExpiresInfo, ExplainView};
 
 use super::port::ExplainPresenter;
+use super::style::humanise::format_diff;
 
 /// Plain-text presenter.  Produces the same byte-for-byte output as the
 /// former `TextRetrievalFormatter` in `adoc-core`.
@@ -14,7 +15,7 @@ pub(crate) struct PlainPresenter;
 impl ExplainPresenter for PlainPresenter {
     fn present(&self, view: &ExplainView, out: &mut dyn io::Write) -> io::Result<()> {
         let mut buf = String::new();
-        render_record(&mut buf, &view.record);
+        render_record(&mut buf, &view.record, view.expires.as_ref());
         out.write_all(buf.as_bytes())
     }
 }
@@ -24,7 +25,15 @@ impl ExplainPresenter for PlainPresenter {
 /// Shared between [`PlainPresenter`] (single-record explain path) and the
 /// search command (multi-record path) so that both callers produce identical
 /// bytes.
-pub(crate) fn render_record(output: &mut String, record: &RetrievalRecord) {
+///
+/// `expires` is `Some` when the record's `fields["expires_at"]` was parseable
+/// as a `YYYY-MM-DD` date (populated by [`adoc_core::ExplainService`]).  Pass
+/// `None` for the search path where no expiry computation is performed.
+pub(crate) fn render_record(
+    output: &mut String,
+    record: &RetrievalRecord,
+    expires: Option<&ExpiresInfo>,
+) {
     writeln!(output, "Object: {}", record.id).expect("writing to String cannot fail");
     writeln!(output, "Kind: {}", record.kind).expect("writing to String cannot fail");
     if let Some(status) = &record.status {
@@ -37,8 +46,25 @@ pub(crate) fn render_record(output: &mut String, record: &RetrievalRecord) {
     if let Some(owner) = &record.owner {
         writeln!(output, "Owner: {owner}").expect("writing to String cannot fail");
     }
-    if let Some(verified_at) = &record.verified_at {
-        writeln!(output, "Verified: {verified_at}").expect("writing to String cannot fail");
+    match (&record.verified_at, expires) {
+        (Some(verified_at), Some(info)) => {
+            let humanised = format_diff(info.days_until);
+            writeln!(
+                output,
+                "Verified: {verified_at} · expires {} ({humanised})",
+                info.date
+            )
+            .expect("writing to String cannot fail");
+        }
+        (Some(verified_at), None) => {
+            writeln!(output, "Verified: {verified_at}").expect("writing to String cannot fail");
+        }
+        (None, Some(info)) => {
+            let humanised = format_diff(info.days_until);
+            writeln!(output, "Expires: {} ({humanised})", info.date)
+                .expect("writing to String cannot fail");
+        }
+        (None, None) => {}
     }
 
     output.push('\n');
@@ -142,7 +168,10 @@ fn render_relation_targets(output: &mut String, relation: &str, targets: &[Strin
 mod tests {
     use std::collections::BTreeMap;
 
-    use adoc_core::{AgentJsonRelations, ExplainView, RetrievalRecord, RetrievalSource};
+    use adoc_core::{
+        AgentJsonRelations, ExpiresInfo, ExplainView, RetrievalRecord, RetrievalSource,
+    };
+    use chrono::NaiveDate;
 
     use super::*;
 
@@ -170,6 +199,7 @@ mod tests {
         ExplainView {
             record,
             related_statuses: BTreeMap::new(),
+            expires: None,
         }
     }
 
@@ -360,5 +390,111 @@ mod tests {
             "- artifact: ledger.csv\n",
             "- z_probe: trace\n",
         )));
+    }
+
+    // -----------------------------------------------------------------------
+    // Expires rendering tests (slice 6)
+    // -----------------------------------------------------------------------
+
+    fn expires_info(date: NaiveDate, days_until: i64) -> ExpiresInfo {
+        ExpiresInfo { date, days_until }
+    }
+
+    #[test]
+    fn plain_renders_verified_and_expires_suffix_when_both_present() {
+        let mut record = make_record("billing.credits", "claim");
+        record.verified_at = Some("2026-05-06".to_string());
+        let mut view = view_for(record);
+        view.expires = Some(expires_info(
+            NaiveDate::from_ymd_opt(2026, 8, 4).unwrap(),
+            88,
+        ));
+        let text = render(&view);
+        assert!(
+            text.contains("Verified: 2026-05-06 · expires 2026-08-04 (in 88d)\n"),
+            "expected combined verified+expires line, got: {text:?}"
+        );
+    }
+
+    #[test]
+    fn plain_renders_only_verified_when_expires_absent() {
+        let mut record = make_record("billing.credits", "claim");
+        record.verified_at = Some("2026-05-06".to_string());
+        let view = view_for(record);
+        let text = render(&view);
+        assert!(
+            text.contains("Verified: 2026-05-06\n"),
+            "expected bare verified line, got: {text:?}"
+        );
+        assert!(
+            !text.contains("expires"),
+            "should not contain expires when absent"
+        );
+    }
+
+    #[test]
+    fn plain_renders_standalone_expires_line_when_only_expires_present() {
+        let record = make_record("billing.credits", "claim");
+        let mut view = view_for(record);
+        view.expires = Some(expires_info(
+            NaiveDate::from_ymd_opt(2026, 8, 4).unwrap(),
+            88,
+        ));
+        let text = render(&view);
+        assert!(
+            text.contains("Expires: 2026-08-04 (in 88d)\n"),
+            "expected standalone expires line, got: {text:?}"
+        );
+        assert!(
+            !text.contains("Verified:"),
+            "should not contain Verified: when verified_at absent"
+        );
+    }
+
+    #[test]
+    fn plain_renders_no_expires_line_when_neither_present() {
+        let record = make_record("billing.credits", "claim");
+        let view = view_for(record);
+        let text = render(&view);
+        assert!(
+            !text.contains("Verified:"),
+            "should not contain Verified: line"
+        );
+        assert!(
+            !text.contains("Expires:"),
+            "should not contain Expires: line"
+        );
+    }
+
+    #[test]
+    fn plain_renders_expired_date_with_ago_suffix() {
+        let mut record = make_record("billing.credits", "claim");
+        record.verified_at = Some("2026-05-06".to_string());
+        let mut view = view_for(record);
+        view.expires = Some(expires_info(
+            NaiveDate::from_ymd_opt(2026, 4, 30).unwrap(),
+            -8,
+        ));
+        let text = render(&view);
+        assert!(
+            text.contains("Verified: 2026-05-06 · expires 2026-04-30 (8d ago)\n"),
+            "expected expired date with ago suffix, got: {text:?}"
+        );
+    }
+
+    #[test]
+    fn plain_renders_expires_today() {
+        let mut record = make_record("billing.credits", "claim");
+        record.verified_at = Some("2026-05-06".to_string());
+        let mut view = view_for(record);
+        view.expires = Some(expires_info(
+            NaiveDate::from_ymd_opt(2026, 5, 8).unwrap(),
+            0,
+        ));
+        let text = render(&view);
+        assert!(
+            text.contains("Verified: 2026-05-06 · expires 2026-05-08 (today)\n"),
+            "expected today expiry, got: {text:?}"
+        );
     }
 }

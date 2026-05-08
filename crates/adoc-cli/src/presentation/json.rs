@@ -48,6 +48,7 @@ mod tests {
         ExplainView {
             record,
             related_statuses: BTreeMap::new(),
+            expires: None,
         }
     }
 

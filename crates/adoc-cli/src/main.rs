@@ -398,7 +398,7 @@ fn search_command(
         if index > 0 {
             buf.push('\n');
         }
-        plain_presentation::render_record(&mut buf, record);
+        plain_presentation::render_record(&mut buf, record, None);
     }
     if let Err(source) = std::io::Write::write_all(&mut std::io::stdout(), buf.as_bytes()) {
         return report(CliError::RetrievalIo { source });

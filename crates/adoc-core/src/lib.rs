@@ -12,7 +12,7 @@ pub use application::retrieval::{
     explain_object, search,
 };
 pub use application::services::{ExplainError, ExplainService};
-pub use application::views::ExplainView;
+pub use application::views::{ExpiresInfo, ExplainView};
 pub use domain::artifact::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan,
     SearchArtifactDocument,
