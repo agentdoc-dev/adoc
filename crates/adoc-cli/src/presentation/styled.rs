@@ -10,6 +10,7 @@ use super::port::ExplainPresenter;
 use super::style::chip::status_chip;
 use super::style::kv::faint_label;
 use super::style::palette::status_color;
+use super::style::wikilink::highlight;
 
 /// Styled presenter.  Produces the same line layout as [`PlainPresenter`] but
 /// with ANSI decoration:
@@ -70,7 +71,8 @@ fn render_styled(output: &mut String, view: &ExplainView) {
 
     output.push('\n');
     writeln!(output, "{}", faint_label("Statement:")).expect("writing to String cannot fail");
-    output.push_str(&record.body);
+    let highlighted = highlight(&record.body);
+    output.push_str(&indent_body(&highlighted, "  "));
     if !record.body.ends_with('\n') {
         output.push('\n');
     }
@@ -103,6 +105,39 @@ fn render_styled(output: &mut String, view: &ExplainView) {
         writeln!(output, "{}", faint_label("Relations:")).expect("writing to String cannot fail");
         relations_items(output, &record.relations);
     }
+}
+
+/// Indent every line of `body` by `indent`.
+///
+/// A trailing newline on the original body is preserved; a body without one
+/// does not gain one.  A trailing empty segment that follows the terminal `\n`
+/// is NOT prefixed, to avoid producing a phantom indented blank line at the end.
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(indent_body("line1\nline2\n", "  "), "  line1\n  line2\n");
+/// assert_eq!(indent_body("line1", "  "), "  line1");
+/// assert_eq!(indent_body("", "  "), "");
+/// ```
+fn indent_body(body: &str, indent: &str) -> String {
+    if body.is_empty() {
+        return String::new();
+    }
+    let trailing_newline = body.ends_with('\n');
+    let trimmed = body.strip_suffix('\n').unwrap_or(body);
+    let mut out = String::with_capacity(body.len() + indent.len() * 4);
+    for (i, line) in trimmed.split('\n').enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        out.push_str(indent);
+        out.push_str(line);
+    }
+    if trailing_newline {
+        out.push('\n');
+    }
+    out
 }
 
 #[cfg(test)]
@@ -150,6 +185,51 @@ mod tests {
         strip_ansi_escapes::strip_str(s)
     }
 
+    // -----------------------------------------------------------------------
+    // indent_body unit tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn indent_body_empty_returns_empty() {
+        assert_eq!(indent_body("", "  "), "");
+    }
+
+    #[test]
+    fn indent_body_single_line_no_trailing_newline() {
+        assert_eq!(indent_body("hello", "  "), "  hello");
+    }
+
+    #[test]
+    fn indent_body_single_line_with_trailing_newline() {
+        assert_eq!(indent_body("hello\n", "  "), "  hello\n");
+    }
+
+    #[test]
+    fn indent_body_multi_line_with_trailing_newline() {
+        assert_eq!(indent_body("line1\nline2\n", "  "), "  line1\n  line2\n");
+    }
+
+    #[test]
+    fn indent_body_multi_line_without_trailing_newline() {
+        assert_eq!(indent_body("line1\nline2", "  "), "  line1\n  line2");
+    }
+
+    #[test]
+    fn indent_body_does_not_add_phantom_blank_line_after_terminal_newline() {
+        // A body ending with `\n` should produce exactly one trailing newline,
+        // not `  \n` (an indented empty line) after the last content line.
+        let result = indent_body("one\ntwo\n", "  ");
+        assert_eq!(result, "  one\n  two\n");
+        assert!(
+            !result.ends_with("  \n"),
+            "phantom indented blank line must not appear"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Styled presenter tests
+    // -----------------------------------------------------------------------
+
     #[test]
     fn styled_visible_text_matches_plain_layout() {
         let record = RetrievalRecord {
@@ -184,8 +264,8 @@ mod tests {
                 "Owner: architecture\n",
                 "\n",
                 "Statement:\n",
-                "Refund policy is ledger-backed.\n",
-                "Manual credits are exceptions.\n",
+                "  Refund policy is ledger-backed.\n",
+                "  Manual credits are exceptions.\n",
                 "\n",
                 "Fields:\n",
                 "- decided_by: architecture\n",

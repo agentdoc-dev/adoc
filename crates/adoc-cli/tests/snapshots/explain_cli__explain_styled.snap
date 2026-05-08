@@ -1,6 +1,5 @@
 ---
 source: crates/adoc-cli/tests/explain_cli.rs
-assertion_line: 395
 expression: visible
 ---
 Object: billing.refunds.issue-credit
@@ -10,7 +9,7 @@ Owner: team-billing
 Verified: 2026-05-06
 
 Statement:
-Refund credits are issued from the ledger after approval.
+  Refund credits are issued from the ledger after approval.
 
 Evidence:
 - source: ledger-export
