@@ -8,15 +8,11 @@ pub use application::compile::{
 pub use application::ports::{Clock, RecordResolver, ResolverError};
 pub use application::retrieval::{
     ExplainResult, RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput,
-    RetrievalLoadResult, RetrievalSession, SearchFilters, SearchQuery, SearchResult, all_records,
+    RetrievalLoadResult, RetrievalSession, SearchFilters, SearchQuery, SearchResult,
     explain_object, search,
 };
 pub use application::services::{ExplainError, ExplainService};
 pub use application::views::ExplainView;
-
-// Re-export the `explain_service` module path so integration tests can name
-// `ExplainService` via `adoc_core::explain_service::ExplainService`.
-pub use application::services as explain_service;
 pub use domain::artifact::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan,
     SearchArtifactDocument,

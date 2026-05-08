@@ -17,9 +17,21 @@ pub(crate) struct JsonPresenter;
 impl ExplainPresenter for JsonPresenter {
     fn present(&self, view: &ExplainView, out: &mut dyn io::Write) -> io::Result<()> {
         let envelope = RetrievalEnvelope::new(vec![view.record.clone()], Vec::new());
-        let text = serde_json::to_string_pretty(&envelope).map_err(io::Error::other)?;
-        writeln!(out, "{text}")
+        write_envelope_json(&envelope, out)
     }
+}
+
+/// Serialises `envelope` as pretty-printed JSON followed by a newline.
+///
+/// Shared between [`JsonPresenter`] (explain single-record path) and the
+/// search / error-emission paths in `main.rs` so that both callers produce
+/// byte-identical output.
+pub(crate) fn write_envelope_json(
+    envelope: &RetrievalEnvelope,
+    out: &mut dyn io::Write,
+) -> io::Result<()> {
+    let text = serde_json::to_string_pretty(envelope).map_err(io::Error::other)?;
+    writeln!(out, "{text}")
 }
 
 #[cfg(test)]

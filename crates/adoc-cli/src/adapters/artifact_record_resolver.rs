@@ -13,9 +13,12 @@ pub(crate) struct ArtifactRecordResolver {
 impl ArtifactRecordResolver {
     /// Builds the resolver from all records in the loaded session.
     ///
-    /// When the list contains duplicate ids the **last** record wins
+    /// Accepts any `IntoIterator<Item = RetrievalRecord>`, including the
+    /// `Vec<RetrievalRecord>` returned by [`RetrievalSession::records`].
+    ///
+    /// When the iterator contains duplicate ids the **last** record wins
     /// (matching the parse-order of the underlying artifact).
-    pub(crate) fn new(records: Vec<RetrievalRecord>) -> Self {
+    pub(crate) fn new(records: impl IntoIterator<Item = RetrievalRecord>) -> Self {
         let index = records.into_iter().map(|r| (r.id.clone(), r)).collect();
         Self { index }
     }

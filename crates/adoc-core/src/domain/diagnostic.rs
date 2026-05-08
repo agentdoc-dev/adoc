@@ -293,6 +293,38 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
 ];
 
 impl Diagnostic {
+    /// Constructs the `explain.not_found` diagnostic emitted when the
+    /// requested object id is absent from the loaded artifact.
+    pub fn not_found(object_id: impl Into<String>) -> Self {
+        let id = object_id.into();
+        Self {
+            code: DiagnosticCode::RetrievalObjectNotFound,
+            severity: Severity::Error,
+            message: format!("Object ID `{id}` was not found in the agent artifact."),
+            span: None,
+            object_id: Some(id),
+            help: Some(
+                "Run `adoc build` if the source was changed after the artifact was generated."
+                    .to_string(),
+            ),
+        }
+    }
+
+    /// Constructs the `explain.resolver` diagnostic emitted when the record
+    /// resolver encounters an infrastructure failure.
+    ///
+    /// The `message` is derived from the error's `Display` representation.
+    pub fn resolver(message: impl std::fmt::Display) -> Self {
+        Self {
+            code: DiagnosticCode::IoArtifactMalformed,
+            severity: Severity::Error,
+            message: format!("resolver error: {message}"),
+            span: None,
+            object_id: None,
+            help: None,
+        }
+    }
+
     pub(crate) fn error(code: DiagnosticCode, message: impl Into<String>) -> Self {
         Self {
             code,
