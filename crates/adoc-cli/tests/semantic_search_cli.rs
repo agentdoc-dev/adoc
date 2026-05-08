@@ -82,6 +82,42 @@ fn semantic_search_without_artifact_errors_out() {
 }
 
 #[test]
+fn semantic_search_without_artifact_does_not_pay_embed_model_load_cost() {
+    let pilot = build_v1_4_pilot();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "search",
+            "anything",
+            "--artifact",
+            pilot.agent_path.to_str().unwrap(),
+            "--search-artifact",
+            "/nonexistent.search.json",
+            "--semantic",
+            "--format",
+            "json",
+        ])
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "force-load-fail")
+        .output()
+        .expect("adoc runs");
+    assert_eq!(output.status.code(), Some(2));
+    let envelope: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let codes: Vec<&str> = envelope["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["code"].as_str().unwrap_or(""))
+        .collect();
+    assert!(
+        codes.contains(&"search.artifact_missing"),
+        "expected search.artifact_missing; got {codes:?}"
+    );
+    assert!(
+        !codes.contains(&"embed.model_load_failed"),
+        "gate must short-circuit before embed_query; got {codes:?}"
+    );
+}
+
+#[test]
 fn lexical_default_unchanged_when_search_artifact_present() {
     let pilot = build_v1_4_pilot();
     let envelope = run_search_json(&pilot, "credits", false);
