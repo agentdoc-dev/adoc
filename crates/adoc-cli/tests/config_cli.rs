@@ -161,6 +161,45 @@ fn config_build_explicit_path_and_out_ignore_config_outputs() {
 }
 
 #[test]
+fn config_build_fully_explicit_no_embeddings_ignores_malformed_config() {
+    let workspace = TestWorkspace::new("config-build-explicit-malformed-ignored");
+    write_valid_source(&workspace, "explicit/source.adoc");
+    workspace.write("agentdoc.config.yaml", "version: [\n");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "build",
+            "explicit/source.adoc",
+            "--out",
+            "explicit-dist",
+            "--no-embeddings",
+        ])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected fully explicit build to ignore malformed config\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(workspace.root.join("explicit-dist/docs.html").is_file());
+    assert!(
+        workspace
+            .root
+            .join("explicit-dist/docs.agent.json")
+            .is_file()
+    );
+    assert!(
+        !workspace
+            .root
+            .join("explicit-dist/docs.search.json")
+            .exists()
+    );
+}
+
+#[test]
 fn config_explain_and_search_use_configured_artifacts_unless_args_are_explicit() {
     let workspace = TestWorkspace::new("config-retrieval-artifacts");
     copy_valid_artifact(&workspace, "configured/docs.agent.json");

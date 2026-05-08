@@ -327,7 +327,11 @@ fn cleanup_init_paths<P: AsRef<Path>>(paths: impl IntoIterator<Item = P>) {
 }
 
 fn check(path: Option<PathBuf>) -> i32 {
-    let path = match resolve_docs_path(path) {
+    let config = match discover_project_config_if(path.is_none()) {
+        Ok(config) => config,
+        Err(error) => return report(error),
+    };
+    let path = match resolve_docs_path_with_config(path, config.as_ref()) {
         Ok(path) => path,
         Err(error) => return report(error),
     };
@@ -340,7 +344,8 @@ fn check(path: Option<PathBuf>) -> i32 {
 }
 
 fn build(path: Option<PathBuf>, out: Option<PathBuf>, no_embeddings: bool) -> i32 {
-    let config = match ProjectConfig::discover() {
+    let needs_config = path.is_none() || out.is_none() || !no_embeddings;
+    let config = match discover_project_config_if(needs_config) {
         Ok(config) => config,
         Err(error) => return report(error),
     };
@@ -397,13 +402,12 @@ struct BuildOutputPaths {
     search: PathBuf,
 }
 
-fn resolve_docs_path(path: Option<PathBuf>) -> Result<PathBuf, CliError> {
-    if let Some(path) = path {
-        return Ok(path);
+fn discover_project_config_if(needed: bool) -> Result<Option<ProjectConfig>, CliError> {
+    if needed {
+        ProjectConfig::discover()
+    } else {
+        Ok(None)
     }
-
-    let config = ProjectConfig::discover()?;
-    resolve_docs_path_with_config(path, config.as_ref())
 }
 
 fn resolve_docs_path_with_config(
@@ -459,28 +463,32 @@ fn resolve_build_output_paths(
     }
 }
 
-fn resolve_agent_artifact_path(path: Option<PathBuf>) -> Result<PathBuf, CliError> {
+fn resolve_agent_artifact_path_with_config(
+    path: Option<PathBuf>,
+    config: Option<&ProjectConfig>,
+) -> PathBuf {
     if let Some(path) = path {
-        return Ok(path);
+        return path;
     }
 
-    let config = ProjectConfig::discover()?;
-    Ok(config
+    config
         .as_ref()
         .and_then(|config| config.outputs.agent_json.clone())
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_AGENT_ARTIFACT_PATH)))
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_AGENT_ARTIFACT_PATH))
 }
 
-fn resolve_search_artifact_path(path: Option<PathBuf>) -> Result<PathBuf, CliError> {
+fn resolve_search_artifact_path_with_config(
+    path: Option<PathBuf>,
+    config: Option<&ProjectConfig>,
+) -> PathBuf {
     if let Some(path) = path {
-        return Ok(path);
+        return path;
     }
 
-    let config = ProjectConfig::discover()?;
-    Ok(config
+    config
         .as_ref()
         .and_then(|config| config.outputs.search.clone())
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_SEARCH_ARTIFACT_PATH)))
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_SEARCH_ARTIFACT_PATH))
 }
 
 fn finish_build_result(result: CompileResult, out: &Path) -> i32 {
@@ -526,10 +534,11 @@ fn finish_build_result_at_paths(result: CompileResult, paths: &BuildOutputPaths)
 }
 
 fn explain(object_id: String, artifact: Option<PathBuf>, resolved: ResolvedFormat) -> i32 {
-    let artifact = match resolve_agent_artifact_path(artifact) {
-        Ok(path) => path,
+    let config = match discover_project_config_if(artifact.is_none()) {
+        Ok(config) => config,
         Err(error) => return report(error),
     };
+    let artifact = resolve_agent_artifact_path_with_config(artifact, config.as_ref());
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.clone(),
         search_artifact_path: None,
@@ -634,18 +643,18 @@ fn search_command(input: SearchCommandInput, resolved: ResolvedFormat) -> i32 {
         SearchMode::Hybrid
     };
 
-    let artifact = match resolve_agent_artifact_path(input.artifact) {
-        Ok(path) => path,
+    let needs_search_config = matches!(requested_mode, SearchMode::Hybrid | SearchMode::Semantic)
+        && input.search_artifact.is_none();
+    let config = match discover_project_config_if(input.artifact.is_none() || needs_search_config) {
+        Ok(config) => config,
         Err(error) => return report(error),
     };
+    let artifact = resolve_agent_artifact_path_with_config(input.artifact, config.as_ref());
     let search_artifact_path = match requested_mode {
         SearchMode::Lexical => None,
-        SearchMode::Hybrid | SearchMode::Semantic => {
-            match resolve_search_artifact_path(input.search_artifact) {
-                Ok(path) => Some(path),
-                Err(error) => return report(error),
-            }
-        }
+        SearchMode::Hybrid | SearchMode::Semantic => Some(
+            resolve_search_artifact_path_with_config(input.search_artifact, config.as_ref()),
+        ),
     };
 
     let load_result = load_retrieval_session(RetrievalInput {
