@@ -6,7 +6,6 @@ pub(crate) struct VectorIndex {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct VectorEntry {
     id: String,
     vector: Vec<f32>,
@@ -14,14 +13,12 @@ struct VectorEntry {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub(crate) struct VectorHit {
     pub(crate) id: String,
     pub(crate) vector_rank: u32,
     pub(crate) cosine_score: f32,
 }
 
-#[allow(dead_code)]
 impl VectorIndex {
     pub(crate) fn new(items: Vec<(String, Vec<f32>)>) -> Self {
         let entries = items
@@ -34,16 +31,7 @@ impl VectorIndex {
         Self { entries }
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn dim(&self) -> Option<usize> {
-        self.entries.first().map(|entry| entry.vector.len())
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn len(&self) -> usize {
-        self.entries.len()
-    }
-
+    #[cfg(test)]
     pub(crate) fn rank(&self, query: &[f32], top: usize) -> Vec<VectorHit> {
         self.rank_among(
             query,
@@ -99,7 +87,6 @@ impl VectorIndex {
     }
 }
 
-#[allow(dead_code)]
 fn vector_norm(vector: &[f32]) -> f32 {
     vector.iter().map(|value| value * value).sum::<f32>().sqrt()
 }
