@@ -189,4 +189,22 @@ mod tests {
     fn empty_body_returns_empty_string() {
         assert_eq!(highlight(""), "");
     }
+
+    // -----------------------------------------------------------------------
+    // Pin test: literal ANSI byte sequence for cyan-wrapped id.
+    //
+    // owo-colors 4.x emits ESC[36m (cyan fg) … ESC[39m (fg reset).
+    // This test is intentionally NOT implemented in terms of the `cyan()`
+    // helper so that swapping the colour (e.g. to magenta) causes a failure.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn highlight_emits_cyan_ansi_around_id() {
+        let body = "See [[billing.ledger]].";
+        let out = highlight(body);
+        assert!(
+            out.contains("\u{1b}[36mbilling.ledger\u{1b}[39m"),
+            "expected cyan escape around id, got: {:?}",
+            out
+        );
+    }
 }
