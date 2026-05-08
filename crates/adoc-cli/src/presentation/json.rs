@@ -1,6 +1,6 @@
 use std::io;
 
-use adoc_core::{ExplainView, RetrievalEnvelope};
+use adoc_core::{Diagnostic, ExplainView, RetrievalEnvelope};
 
 use super::port::ExplainPresenter;
 
@@ -8,15 +8,25 @@ use super::port::ExplainPresenter;
 /// pretty-printed JSON, producing byte-identical output to the former
 /// `JsonRetrievalFormatter` in `adoc-core`.
 ///
-/// The envelope wraps the single primary record; `diagnostics` is empty on
-/// the success path (error envelopes are produced directly in `main.rs`
-/// before the presenter is reached).
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct JsonPresenter;
+/// The envelope wraps the single primary record.  Any non-fatal load
+/// diagnostics collected before the presenter is invoked are included in the
+/// `diagnostics` array so that JSON consumers receive them without needing to
+/// inspect stderr.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct JsonPresenter {
+    pub(crate) load_diagnostics: Vec<Diagnostic>,
+}
+
+impl JsonPresenter {
+    pub(crate) fn new(load_diagnostics: Vec<Diagnostic>) -> Self {
+        Self { load_diagnostics }
+    }
+}
 
 impl ExplainPresenter for JsonPresenter {
     fn present(&self, view: &ExplainView, out: &mut dyn io::Write) -> io::Result<()> {
-        let envelope = RetrievalEnvelope::new(vec![view.record.clone()], Vec::new());
+        let envelope =
+            RetrievalEnvelope::new(vec![view.record.clone()], self.load_diagnostics.clone());
         write_envelope_json(&envelope, out)
     }
 }
@@ -41,8 +51,8 @@ mod tests {
     use std::time::Duration;
 
     use adoc_core::{
-        AgentJsonRelations, ExplainView, RenderMeta, RetrievalEnvelope, RetrievalRecord,
-        RetrievalSource,
+        AgentJsonRelations, Diagnostic, DiagnosticCode, ExplainView, RenderMeta, RetrievalEnvelope,
+        RetrievalRecord, RetrievalSource, Severity,
     };
 
     use super::*;
@@ -60,10 +70,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn json_presenter_emits_valid_json_with_schema_version() {
-        let record = RetrievalRecord {
-            id: "test.id".to_string(),
+    fn minimal_record(id: &str) -> RetrievalRecord {
+        RetrievalRecord {
+            id: id.to_string(),
             kind: "claim".to_string(),
             status: None,
             owner: None,
@@ -78,10 +87,16 @@ mod tests {
             fields: BTreeMap::new(),
             relations: AgentJsonRelations::default(),
             search_match: None,
-        };
-        let view = make_view(record);
+        }
+    }
+
+    #[test]
+    fn json_presenter_emits_valid_json_with_schema_version() {
+        let view = make_view(minimal_record("test.id"));
         let mut buf = Vec::new();
-        JsonPresenter.present(&view, &mut buf).unwrap();
+        JsonPresenter::new(Vec::new())
+            .present(&view, &mut buf)
+            .unwrap();
         let text = String::from_utf8(buf).unwrap();
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(value["schema_version"], "adoc.retrieval.v0");
@@ -111,7 +126,9 @@ mod tests {
         let view = make_view(record.clone());
 
         let mut buf = Vec::new();
-        JsonPresenter.present(&view, &mut buf).unwrap();
+        JsonPresenter::new(Vec::new())
+            .present(&view, &mut buf)
+            .unwrap();
         let rendered = String::from_utf8(buf).unwrap();
 
         let envelope = RetrievalEnvelope::new(vec![record], Vec::new());
@@ -123,5 +140,38 @@ mod tests {
         assert_eq!(value["schema_version"], "adoc.retrieval.v0");
         assert!(value["records"][0].get("match").is_none());
         assert!(value["records"][0].get("retrieval").is_none());
+    }
+
+    #[test]
+    fn json_presenter_includes_load_diagnostics_in_envelope() {
+        let warning = Diagnostic {
+            code: DiagnosticCode::ParseRawHtml,
+            severity: Severity::Warning,
+            message: "artifact carried a source warning".to_string(),
+            span: None,
+            object_id: None,
+            help: Some("inspect source".to_string()),
+        };
+        let view = make_view(minimal_record("test.warn"));
+        let mut buf = Vec::new();
+        JsonPresenter::new(vec![warning])
+            .present(&view, &mut buf)
+            .unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+        assert_eq!(value["records"][0]["id"], "test.warn");
+        assert_eq!(
+            value["diagnostics"][0]["code"], "parse.raw_html",
+            "load diagnostic code must appear in envelope"
+        );
+        assert_eq!(
+            value["diagnostics"][0]["severity"], "warning",
+            "load diagnostic severity must appear in envelope"
+        );
+        assert_eq!(
+            value["diagnostics"][0]["message"],
+            "artifact carried a source warning"
+        );
     }
 }
