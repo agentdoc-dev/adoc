@@ -7,6 +7,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
 use crate::domain::ports::artifact_reader::ArtifactReader;
 pub use crate::domain::retrieval::SearchFilters;
+use crate::domain::retrieval::hybrid_ranker::HybridRanker;
 use crate::domain::retrieval::lexical_index::LexicalIndex;
 use crate::domain::retrieval::vector_index::VectorIndex;
 use crate::domain::retrieval::{RetrievalMatch, RetrievalRecord, SearchMode};
@@ -254,9 +255,85 @@ pub fn explain_object(session: &RetrievalSession, id: &str) -> ExplainResult {
 
 pub fn search(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
     match query.mode {
-        SearchMode::Hybrid => search_lexical(session, query),
+        SearchMode::Hybrid => search_hybrid(session, query),
         SearchMode::Lexical => search_lexical(session, query),
         SearchMode::Semantic => search_semantic(session, query),
+    }
+}
+
+fn search_hybrid(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
+    let Some(vector_index) = session.vector_index() else {
+        return search_lexical(session, query);
+    };
+
+    let diagnostics = query
+        .filters
+        .validate_against(session.exact_lookup.values());
+    if !diagnostics.is_empty() {
+        return SearchResult {
+            records: Vec::new(),
+            diagnostics,
+        };
+    }
+
+    let candidate_ids: Vec<_> = session
+        .exact_lookup
+        .values()
+        .map(|object| object.id.as_str())
+        .collect();
+    if candidate_ids.is_empty() {
+        return SearchResult {
+            records: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+    }
+
+    let lexical_hits = session
+        .lexical_index
+        .search_candidates(&query.text, candidate_ids.iter().copied());
+    let query_vector = query.query_vector.as_deref().unwrap_or(&[]);
+    let vector_hits = vector_index.rank_among(
+        query_vector,
+        candidate_ids.iter().copied(),
+        candidate_ids.len(),
+    );
+    let ranker = HybridRanker;
+    let ranked_hits = ranker.rank(
+        &query.text,
+        &candidate_ids,
+        &lexical_hits,
+        &vector_hits,
+        candidate_ids.len(),
+    );
+
+    let mut records = Vec::new();
+    for hit in ranked_hits {
+        let object_id = ObjectId::new_unchecked(hit.id.clone());
+        let object = session
+            .exact_lookup
+            .get(&object_id)
+            .expect("search result IDs must come from the loaded retrieval session");
+        if !query.filters.matches(object) {
+            continue;
+        }
+
+        records.push(RetrievalRecord::from_object_with_match(
+            object,
+            RetrievalMatch::hybrid(
+                records.len() as u32 + 1,
+                hit.rrf_score,
+                hit.lexical_rank,
+                hit.vector_rank,
+            ),
+        ));
+        if records.len() >= query.top.get() {
+            break;
+        }
+    }
+
+    SearchResult {
+        records,
+        diagnostics: Vec::new(),
     }
 }
 

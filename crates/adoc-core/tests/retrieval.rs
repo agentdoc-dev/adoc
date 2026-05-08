@@ -7,6 +7,7 @@ use adoc_core::{
     RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult, explain_object,
     load_retrieval_session, search,
 };
+use sha2::{Digest, Sha256};
 
 fn fixture_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -34,6 +35,16 @@ fn write_temp_artifact(name: &str, contents: &str) -> tempfile::NamedTempFile {
     artifact
 }
 
+fn write_temp_search_artifact(name: &str, contents: &str) -> tempfile::NamedTempFile {
+    let artifact = tempfile::Builder::new()
+        .prefix(&format!("adoc-retrieval-{name}-"))
+        .suffix(".search.json")
+        .tempfile()
+        .expect("temp search artifact can be created");
+    std::fs::write(artifact.path(), contents).expect("temp search artifact can be written");
+    artifact
+}
+
 fn load_session_from_objects(objects: Vec<AgentJsonObject>) -> RetrievalSession {
     let document = AgentJsonDocument {
         schema_version: "adoc.agent.v0".to_string(),
@@ -58,6 +69,61 @@ fn load_session_from_objects(objects: Vec<AgentJsonObject>) -> RetrievalSession 
         result.diagnostics
     );
     result.session.expect("search fixture session loads")
+}
+
+fn load_session_from_objects_with_vectors(
+    objects: Vec<AgentJsonObject>,
+    vectors: Vec<(&str, Vec<f32>)>,
+) -> RetrievalSession {
+    let document = AgentJsonDocument {
+        schema_version: "adoc.agent.v0".to_string(),
+        pages: Vec::new(),
+        objects,
+        diagnostics: Vec::new(),
+    };
+    let agent_json = document
+        .to_pretty_json()
+        .expect("search fixture serializes to agent JSON");
+    let artifact = write_temp_artifact("hybrid-agent", &agent_json);
+    let search_document = serde_json::json!({
+        "schema_version": "adoc.search.v0",
+        "model": {
+            "id": "bge-small-en-v1.5",
+            "provider": "fastembed",
+            "dim": 384
+        },
+        "agent_artifact_hash": sha256_prefixed(agent_json.as_bytes()),
+        "embeddings": vectors
+            .into_iter()
+            .map(|(id, vector)| serde_json::json!({
+                "id": id,
+                "content_hash": "sha256:test",
+                "vector": vector
+            }))
+            .collect::<Vec<_>>()
+    });
+    let search_artifact = write_temp_search_artifact(
+        "hybrid-search",
+        &serde_json::to_string_pretty(&search_document).expect("search fixture serializes"),
+    );
+
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: Some(search_artifact.path().to_path_buf()),
+    });
+
+    assert!(
+        result.diagnostics.is_empty(),
+        "expected clean hybrid fixture load, got {:?}",
+        result.diagnostics
+    );
+    result.session.expect("hybrid fixture session loads")
+}
+
+fn sha256_prefixed(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("sha256:{:x}", hasher.finalize())
 }
 
 fn load_workspace_fixture_session(relative: &str) -> RetrievalSession {
@@ -122,6 +188,21 @@ fn lexical_query(text: &str, top: usize, filters: SearchFilters) -> SearchQuery 
         filters,
         top: NonZeroUsize::new(top).expect("test search top is non-zero"),
         query_vector: None,
+    }
+}
+
+fn hybrid_query(
+    text: &str,
+    query_vector: Vec<f32>,
+    top: usize,
+    filters: SearchFilters,
+) -> SearchQuery {
+    SearchQuery {
+        text: text.to_string(),
+        mode: SearchMode::Hybrid,
+        filters,
+        top: NonZeroUsize::new(top).expect("test search top is non-zero"),
+        query_vector: Some(query_vector),
     }
 }
 
@@ -214,6 +295,141 @@ fn assert_top_3_contains(session: &RetrievalSession, query: &str, expected_id: &
         ids.contains(&expected_id),
         "expected {expected_id} in top 3 for {query:?}, got {ids:?}"
     );
+}
+
+#[test]
+fn hybrid_search_fuses_lexical_and_vector_results_and_reports_match_metadata() {
+    let session = load_session_from_objects_with_vectors(
+        vec![
+            retrieval_search_object(
+                "billing.lexical-only",
+                "claim",
+                None,
+                Some("team-billing"),
+                "docs/billing.adoc",
+                "target target target",
+            ),
+            retrieval_search_object(
+                "billing.blended",
+                "claim",
+                None,
+                Some("team-billing"),
+                "docs/billing.adoc",
+                "target",
+            ),
+            retrieval_search_object(
+                "billing.semantic-only",
+                "claim",
+                None,
+                Some("team-billing"),
+                "docs/billing.adoc",
+                "unrelated",
+            ),
+        ],
+        vec![
+            ("billing.lexical-only", vec![0.0, 1.0]),
+            ("billing.blended", vec![1.0, 0.0]),
+            ("billing.semantic-only", vec![1.0, 0.0]),
+        ],
+    );
+
+    let result = search(
+        &session,
+        hybrid_query("target", vec![1.0, 0.0], 3, SearchFilters::default()),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(
+        search_ids(&result).first().copied(),
+        Some("billing.blended")
+    );
+    let search_match = result.records[0]
+        .search_match
+        .as_ref()
+        .expect("hybrid result has match metadata");
+    assert_eq!(search_match.mode, SearchMode::Hybrid);
+    assert!(search_match.rrf_score.is_some());
+    assert_eq!(search_match.lexical_rank, Some(2));
+    assert_eq!(search_match.vector_rank, Some(1));
+    assert_eq!(search_match.cosine_score, None);
+}
+
+#[test]
+fn hybrid_search_filters_after_ranking_and_preserves_full_pool_ranks() {
+    let session = load_session_from_objects_with_vectors(
+        vec![
+            retrieval_search_object(
+                "billing.top",
+                "claim",
+                None,
+                Some("team-a"),
+                "docs/billing.adoc",
+                "target target target",
+            ),
+            retrieval_search_object(
+                "billing.keep",
+                "claim",
+                None,
+                Some("team-b"),
+                "docs/billing.adoc",
+                "target",
+            ),
+        ],
+        vec![
+            ("billing.top", vec![1.0, 0.0]),
+            ("billing.keep", vec![0.8, 0.2]),
+        ],
+    );
+
+    let result = search(
+        &session,
+        hybrid_query(
+            "target",
+            vec![1.0, 0.0],
+            1,
+            SearchFilters {
+                owner: Some("team-b".to_string()),
+                ..SearchFilters::default()
+            },
+        ),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), ["billing.keep"]);
+    let search_match = result.records[0].search_match.as_ref().unwrap();
+    assert_eq!(search_match.mode, SearchMode::Hybrid);
+    assert_eq!(search_match.lexical_rank, Some(2));
+    assert_eq!(search_match.vector_rank, Some(2));
+}
+
+#[test]
+fn lexical_search_indexes_v0_evidence_fields() {
+    let mut object = retrieval_search_object(
+        "billing.evidence",
+        "claim",
+        Some("verified"),
+        Some("team-billing"),
+        "docs/billing.adoc",
+        "Credits require review.",
+    );
+    object
+        .fields
+        .insert("source".to_string(), "refund runbook".to_string());
+    object
+        .fields
+        .insert("test".to_string(), "cargo test refunds".to_string());
+    object
+        .fields
+        .insert("reviewed_by".to_string(), "qa-billing".to_string());
+    let session = load_session_from_objects(vec![object]);
+
+    let result = search(
+        &session,
+        lexical_query("refund runbook", 1, SearchFilters::default()),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), ["billing.evidence"]);
 }
 
 #[test]
