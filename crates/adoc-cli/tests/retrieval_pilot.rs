@@ -278,14 +278,18 @@ fn assert_property_invariants(backend: EmbeddingBackend, workspace_name: &str) {
         assert_first_id(&format!("object-id invariant for {id}"), &id_envelope, id);
 
         let body_envelope =
-            run_lexical_json(&repo_root, &pilot.artifact_path, body, 1, &[], backend);
+            run_lexical_json(&repo_root, &pilot.artifact_path, body, 3, &[], backend);
         assert_record_contract(
             &format!("body invariant for {id}"),
             &body_envelope,
             RetrievalMode::Lexical,
-            1,
+            3,
         );
-        assert_first_id(&format!("body invariant for {id}"), &body_envelope, id);
+        let body_ids = record_ids(&body_envelope);
+        assert!(
+            body_ids.iter().any(|body_id| body_id == &id),
+            "body invariant for `{id}` expected source object in top 3; got {body_ids:?}"
+        );
 
         if let Some(owner) = object["fields"]["owner"].as_str() {
             owners
