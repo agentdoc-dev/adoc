@@ -313,12 +313,22 @@ impl Diagnostic {
     /// Constructs the `explain.resolver` diagnostic emitted when the record
     /// resolver encounters an infrastructure failure.
     ///
-    /// The `message` is derived from the error's `Display` representation.
-    pub fn resolver(message: impl std::fmt::Display) -> Self {
+    /// The diagnostic code and message are derived from the specific
+    /// [`crate::application::ports::record_resolver::ResolverError`] variant so
+    /// that the inner string is used directly without duplicating any prefix
+    /// that the error's `Display` impl already emits.
+    pub fn resolver(err: &crate::application::ports::ResolverError) -> Self {
+        use crate::application::ports::ResolverError;
+        let (code, message) = match err {
+            ResolverError::Io(inner) => (
+                DiagnosticCode::IoArtifactUnreadable,
+                format!("resolver error: {inner}"),
+            ),
+        };
         Self {
-            code: DiagnosticCode::IoArtifactMalformed,
+            code,
             severity: Severity::Error,
-            message: format!("resolver error: {message}"),
+            message,
             span: None,
             object_id: None,
             help: None,
@@ -519,6 +529,16 @@ mod tests {
                 .default_help()
                 .contains("filter")
         );
+    }
+
+    #[test]
+    fn resolver_diagnostic_uses_io_artifact_unreadable_and_does_not_double_print_prefix() {
+        use crate::application::ports::ResolverError;
+        let err = ResolverError::Io("disk gone".to_string());
+        let diag = Diagnostic::resolver(&err);
+        assert_eq!(diag.code, DiagnosticCode::IoArtifactUnreadable);
+        assert_eq!(diag.severity, Severity::Error);
+        assert_eq!(diag.message, "resolver error: disk gone");
     }
 
     #[cfg(unix)]
