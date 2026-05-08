@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::application::resolve_knowledge_objects::{
     resolve_knowledge_objects, suppress_unknown_kind_shape_diagnostics,
@@ -516,7 +516,14 @@ fn load_matching_search_cache(
         }
     };
     if document.model != *model {
-        return SearchCacheLoad::empty();
+        return SearchCacheLoad {
+            embeddings: BTreeMap::new(),
+            diagnostics: vec![ignored_search_cache_model_diagnostic(
+                path,
+                &document.model,
+                model,
+            )],
+        };
     }
 
     let embeddings = document
@@ -539,6 +546,27 @@ fn ignored_search_cache_read_diagnostic(mut diagnostic: Diagnostic) -> Diagnosti
     diagnostic.help =
         Some("The cache will be recomputed and rewritten if embedding generation succeeds.".into());
     diagnostic
+}
+
+fn ignored_search_cache_model_diagnostic(
+    path: &Path,
+    cached_model: &SearchModelHeader,
+    current_model: &SearchModelHeader,
+) -> Diagnostic {
+    Diagnostic::warning(
+        DiagnosticCode::BuildEmbeddingsCacheIgnored,
+        format!(
+            "Ignoring prior search artifact cache '{}': cache model {} differs from current model {}.",
+            path.display(),
+            format_search_model(cached_model),
+            format_search_model(current_model)
+        ),
+    )
+    .with_help("The cache will be recomputed and rewritten if embedding generation succeeds.")
+}
+
+fn format_search_model(model: &SearchModelHeader) -> String {
+    format!("{}:{}:{}", model.provider, model.id, model.dim)
 }
 
 fn workspace_knowledge_objects(workspace: &WorkspaceAst) -> impl Iterator<Item = &KnowledgeObject> {
@@ -1207,6 +1235,73 @@ mod tests {
             "Ignoring prior search artifact cache",
         );
         assert_cache_count_diagnostic(&result, 0, 2);
+    }
+
+    #[test]
+    fn build_with_provider_warns_and_recomputes_for_prior_search_cache_model_mismatch() {
+        let source_provider = InMemorySourceProvider::new().with_source(source_file(
+            "billing.adoc",
+            &two_claim_source(
+                "Credits apply after successful payment.",
+                "Refunds require audit review.",
+            ),
+        ));
+        let first_provider = RecordingEmbeddingProvider::new(4);
+        let first_result = build_with_provider(
+            &source_provider,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &first_provider,
+                },
+                prior_search_artifact_path: None,
+            },
+        );
+        let mut prior_search = first_result
+            .artifacts
+            .expect("first artifacts")
+            .search_json
+            .expect("first search artifact");
+        prior_search.model.id = "other-model".to_string();
+        let prior = tempfile::Builder::new()
+            .prefix("adoc-cache-")
+            .suffix(".search.json")
+            .tempfile()
+            .expect("cache file");
+        fs::write(
+            prior.path(),
+            prior_search
+                .to_pretty_json()
+                .expect("search artifact serializes"),
+        )
+        .expect("mismatched cache write");
+        let second_provider = RecordingEmbeddingProvider::new(4);
+
+        let second_result = build_with_provider(
+            &source_provider,
+            BuildOptions {
+                embeddings: BuildEmbeddingBehavior::Enabled {
+                    provider: &second_provider,
+                },
+                prior_search_artifact_path: Some(prior.path().to_path_buf()),
+            },
+        );
+
+        assert!(
+            !second_result.has_errors(),
+            "model-mismatched prior cache should not fail build: {:?}",
+            second_result.diagnostics
+        );
+        assert_eq!(
+            second_provider.recorded_inputs().len(),
+            2,
+            "model-mismatched cache should be ignored and all objects recomputed"
+        );
+        assert_cache_ignored_diagnostic(
+            &second_result,
+            DiagnosticCode::BuildEmbeddingsCacheIgnored,
+            "Ignoring prior search artifact cache",
+        );
+        assert_cache_count_diagnostic(&second_result, 0, 2);
     }
 
     #[test]

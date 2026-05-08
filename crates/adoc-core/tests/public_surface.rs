@@ -89,6 +89,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::IdDuplicateInArtifact;
     let _ = DiagnosticCode::RetrievalObjectNotFound;
     let _ = DiagnosticCode::SearchInvalidFilter;
+    let _ = DiagnosticCode::BuildEmbeddingsCacheIgnored;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
     let _: &'static str = DiagnosticCode::ParseRawHtml.default_help();
@@ -169,6 +170,10 @@ fn public_surface_compiles_with_only_documented_imports() {
     assert_eq!(
         DiagnosticCode::SearchInvalidFilter.as_str(),
         "search.invalid_filter"
+    );
+    assert_eq!(
+        DiagnosticCode::BuildEmbeddingsCacheIgnored.as_str(),
+        "build.embeddings_cache_ignored"
     );
 
     let _: fn(RetrievalInput) -> RetrievalLoadResult = load_retrieval_session;
