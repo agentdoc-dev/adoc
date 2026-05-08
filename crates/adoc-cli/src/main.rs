@@ -418,6 +418,7 @@ fn resolve_docs_path_with_config(
         .ok_or_else(|| CliError::ConfigMissing {
             message: "adoc check/build requires a path or agentdoc.config.yaml with docs_path"
                 .to_string(),
+            config_path: config.map(|config| config.path.clone()),
         })
 }
 
@@ -442,6 +443,7 @@ fn resolve_build_output_paths(
     let Some(config) = config else {
         return Err(CliError::ConfigMissing {
             message: "adoc build requires --out or agentdoc.config.yaml outputs".to_string(),
+            config_path: None,
         });
     };
 
@@ -459,6 +461,7 @@ fn resolve_build_output_paths(
             message:
                 "adoc build requires outputs.dir or exact html, agent_json, and search outputs"
                     .to_string(),
+            config_path: Some(config.path.clone()),
         }),
     }
 }

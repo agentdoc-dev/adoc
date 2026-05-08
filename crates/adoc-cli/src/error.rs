@@ -28,8 +28,11 @@ pub(crate) enum CliError {
     #[error("error[config.invalid] invalid config {}: {message}", path.display())]
     ConfigInvalid { path: PathBuf, message: String },
 
-    #[error("error[config.missing] {message}")]
-    ConfigMissing { message: String },
+    #[error("error[config.missing] {message}{}", format_config_path(config_path))]
+    ConfigMissing {
+        message: String,
+        config_path: Option<PathBuf>,
+    },
 
     #[error("error[io.output_not_directory] output path exists as a file: {}", path.display())]
     OutputPathIsFile { path: PathBuf },
@@ -68,6 +71,13 @@ pub(crate) enum CliError {
         #[source]
         source: std::io::Error,
     },
+}
+
+fn format_config_path(config_path: &Option<PathBuf>) -> String {
+    config_path
+        .as_ref()
+        .map(|path| format!(" in {}", path.display()))
+        .unwrap_or_default()
 }
 
 impl CliError {
