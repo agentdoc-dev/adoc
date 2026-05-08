@@ -16,7 +16,6 @@ use adoc_core::{
     SearchResult, Severity, build_workspace, compile_workspace, embed_query,
     load_retrieval_session, search,
 };
-use chrono::{Local, Months, NaiveDate};
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
 use crate::adapters::{ArtifactRecordResolver, SystemClock};
@@ -40,28 +39,18 @@ outputs:
 embeddings:
   provider: local
 ";
-fn init_index_template(verified_at: NaiveDate) -> String {
-    let expires_at = verified_at
-        .checked_add_months(Months::new(12))
-        .expect("current date plus 12 months is representable");
-
-    format!(
-        "\
+fn init_index_template() -> &'static str {
+    "\
 # AgentDoc Project @doc(project.index)
 
 This project was initialized with AgentDoc.
 
 ::claim project.initialized
-status: verified
-owner: team-docs
-verified_at: {verified_at}
-source: adoc init template
-expires_at: {expires_at}
+status: draft
 --
 The project has an initialized AgentDoc source tree.
 ::
 "
-    )
 }
 
 fn main() -> ExitCode {
@@ -278,7 +267,7 @@ fn write_init_files() -> Result<(), CliError> {
         })?;
     }
 
-    let index_template = init_index_template(Local::now().date_naive());
+    let index_template = init_index_template();
     write_new_file(&config_path, INIT_CONFIG_TEMPLATE.as_bytes())?;
     if let Err(error) = write_new_file(&index_path, index_template.as_bytes()) {
         cleanup_init_paths([&config_path]);

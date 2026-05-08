@@ -3,7 +3,6 @@ mod support;
 use std::fs;
 
 use assert_cmd::Command;
-use chrono::{Local, Months, NaiveDate};
 use predicates::prelude::*;
 use serde::Deserialize;
 use support::TestWorkspace;
@@ -42,17 +41,9 @@ fn stderr(output: &std::process::Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
-fn field_value<'a>(text: &'a str, field: &str) -> &'a str {
-    text.lines()
-        .find_map(|line| line.strip_prefix(field))
-        .unwrap_or_else(|| panic!("expected {field} in generated docs"))
-        .trim()
-}
-
 #[test]
 fn init_creates_config_and_example_docs_in_current_directory() {
     let workspace = TestWorkspace::new("init-creates-project");
-    let earliest_today = Local::now().date_naive();
 
     let init = adoc()
         .current_dir(&workspace.root)
@@ -65,7 +56,6 @@ fn init_creates_config_and_example_docs_in_current_directory() {
         stdout(&init),
         stderr(&init)
     );
-    let latest_today = Local::now().date_naive();
     assert!(stdout(&init).contains("Created agentdoc.config.yaml and docs/index.adoc"));
     assert!(stdout(&init).contains("Next: adoc check"));
 
@@ -103,24 +93,11 @@ fn init_creates_config_and_example_docs_in_current_directory() {
         fs::read_to_string(workspace.root.join("docs/index.adoc")).expect("example doc is written");
     assert!(docs_text.contains("# AgentDoc Project"));
     assert!(docs_text.contains("::claim project.initialized"));
-    assert!(docs_text.contains("status: verified"));
-    assert!(docs_text.contains("owner: team-docs"));
-    let verified_at =
-        NaiveDate::parse_from_str(field_value(&docs_text, "verified_at:"), "%Y-%m-%d")
-            .expect("verified_at is an ISO date");
-    assert!(
-        (earliest_today..=latest_today).contains(&verified_at),
-        "verified_at should be today's date, got {verified_at}"
-    );
-    assert!(docs_text.contains("source: adoc init template"));
-    let expires_at = NaiveDate::parse_from_str(field_value(&docs_text, "expires_at:"), "%Y-%m-%d")
-        .expect("expires_at is an ISO date");
-    assert_eq!(
-        expires_at,
-        verified_at
-            .checked_add_months(Months::new(12))
-            .expect("verified_at plus 12 months is valid")
-    );
+    assert!(docs_text.contains("status: draft"));
+    assert!(!docs_text.contains("owner:"));
+    assert!(!docs_text.contains("verified_at:"));
+    assert!(!docs_text.contains("source:"));
+    assert!(!docs_text.contains("expires_at:"));
 
     adoc()
         .current_dir(&workspace.root)
