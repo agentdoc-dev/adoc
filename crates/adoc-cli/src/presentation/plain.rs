@@ -273,6 +273,32 @@ mod tests {
     }
 
     #[test]
+    fn plain_presenter_renders_glossary_kind_metadata() {
+        let record = RetrievalRecord {
+            id: "billing.credits".to_string(),
+            kind: "glossary".to_string(),
+            status: None,
+            owner: None,
+            verified_at: None,
+            body: "Credits are account balance units.".to_string(),
+            source: RetrievalSource {
+                path: "docs/glossary.adoc".to_string(),
+                line: 4,
+                column: 1,
+            },
+            evidence: BTreeMap::new(),
+            fields: BTreeMap::from([("canonical".to_string(), "billing credit".to_string())]),
+            relations: AgentJsonRelations::default(),
+            search_match: None,
+        };
+        let envelope = RetrievalEnvelope::new(vec![record], Vec::new());
+        let text = render(&envelope);
+
+        assert!(text.contains("Kind: glossary\n"));
+        assert!(text.contains("Fields:\n- canonical: billing credit\n"));
+    }
+
+    #[test]
     fn plain_presenter_renders_unknown_evidence_keys_after_known_order() {
         let record = RetrievalRecord {
             id: "billing.credits".to_string(),
