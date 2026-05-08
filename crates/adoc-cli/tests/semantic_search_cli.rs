@@ -171,6 +171,38 @@ fn search_model_mismatch_disables_semantic_in_cli() {
     );
 }
 
+#[test]
+fn embed_failure_diagnostic_includes_default_help() {
+    let pilot = build_v1_4_pilot();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "search",
+            "anything",
+            "--artifact",
+            pilot.agent_path.to_str().unwrap(),
+            "--search-artifact",
+            pilot.search_path.to_str().unwrap(),
+            "--semantic",
+            "--format",
+            "json",
+        ])
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "force-load-fail")
+        .output()
+        .expect("adoc runs");
+    assert_eq!(output.status.code(), Some(2));
+    let envelope: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let embed_diag = envelope["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["code"] == "embed.model_load_failed")
+        .expect("embed.model_load_failed must surface when load fails after gate");
+    let help = embed_diag["help"]
+        .as_str()
+        .expect("manual CLI Diagnostic must include the per-code default help");
+    assert!(!help.is_empty(), "default_help must be a non-empty string");
+}
+
 #[cfg(feature = "fastembed-it")]
 mod paraphrase_recall {
     use super::*;

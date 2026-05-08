@@ -10,7 +10,7 @@ name = "adoc"
 path = "src/main.rs"
 
 [dependencies]
-adoc-core = { path = "../adoc-core" }
+adoc-core = { path = "../adoc-core", features = ["test-embedding-provider"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4", features = ["derive"] }
 is-terminal = "0.4"

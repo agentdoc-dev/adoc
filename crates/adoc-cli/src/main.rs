@@ -418,7 +418,7 @@ fn search_command(
                     message,
                     span: None,
                     object_id: None,
-                    help: None,
+                    help: Some(code.default_help().to_string()),
                 };
                 if resolved == ResolvedFormat::Json {
                     return json_presentation::write_envelope_json(
