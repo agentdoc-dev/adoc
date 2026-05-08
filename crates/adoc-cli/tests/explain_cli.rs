@@ -3,7 +3,19 @@ mod support;
 use std::fs;
 use std::process::Command;
 
+use assert_cmd::Command as AssertCmd;
 use support::{TestWorkspace, fixture_path};
+
+/// Return an `assert_cmd` command for the `adoc` binary with colour-control
+/// environment variables cleared so that `--color=always` is the sole source
+/// of colour state.
+fn adoc() -> AssertCmd {
+    let mut cmd = AssertCmd::cargo_bin("adoc").expect("adoc binary is available");
+    cmd.env_remove("NO_COLOR")
+        .env_remove("CLICOLOR")
+        .env_remove("CLICOLOR_FORCE");
+    cmd
+}
 
 /// Strip ANSI escape codes from a byte slice and return the visible text.
 fn strip_ansi(bytes: &[u8]) -> String {
@@ -411,4 +423,105 @@ fn explain_styled_layout_matches_plain_after_ansi_stripping() {
     assert!(visible.contains("Evidence:"));
     assert!(visible.contains("Source: docs/refunds.adoc:12:3"));
     assert!(visible.contains("Relations:"));
+}
+
+/// Verify that the styled presenter appends a `[CONTRADICTED]` chip (black on
+/// red ANSI) after a relation target whose status is `contradicted`.
+///
+/// Uses a purpose-built two-record fixture so the existing byte-frozen
+/// snapshots are never touched.
+#[test]
+fn explain_styled_shows_contradicted_chip_on_relation_target() {
+    let workspace = TestWorkspace::new("explain-slice7-chip");
+
+    // Build the fixture JSON inline — same schema_version as the existing
+    // valid_artifact.agent.json fixture.
+    let fixture = serde_json::json!({
+        "schema_version": "adoc.agent.v0",
+        "pages": [
+            {
+                "id": "slice7.page",
+                "title": "Slice 7",
+                "source_path": "docs/slice7.adoc"
+            }
+        ],
+        "objects": [
+            {
+                "id": "slice7.primary",
+                "kind": "claim",
+                "status": "verified",
+                "body": "Slice 7 primary.",
+                "page_id": "slice7.page",
+                "source_span": {
+                    "path": "docs/slice7.adoc",
+                    "line": 1,
+                    "column": 1
+                },
+                "fields": {},
+                "relations": {
+                    "depends_on": [],
+                    "supersedes": ["slice7.contradicted"],
+                    "related_to": []
+                }
+            },
+            {
+                "id": "slice7.contradicted",
+                "kind": "claim",
+                "status": "contradicted",
+                "body": "Slice 7 contradicted.",
+                "page_id": "slice7.page",
+                "source_span": {
+                    "path": "docs/slice7.adoc",
+                    "line": 2,
+                    "column": 1
+                },
+                "fields": {},
+                "relations": {
+                    "depends_on": [],
+                    "supersedes": [],
+                    "related_to": []
+                }
+            }
+        ],
+        "diagnostics": []
+    });
+
+    let artifact_path = workspace.write(
+        "slice7.agent.json",
+        &serde_json::to_string_pretty(&fixture).expect("fixture serialises"),
+    );
+
+    let output = adoc()
+        .args([
+            "explain",
+            "slice7.primary",
+            "--artifact",
+            artifact_path.to_str().expect("artifact path is UTF-8"),
+            "--color=always",
+        ])
+        .output()
+        .expect("adoc explain runs");
+
+    assert!(
+        output.status.success(),
+        "expected explain to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let raw = String::from_utf8_lossy(&output.stdout);
+
+    // The CONTRADICTED chip must appear immediately after the target id.
+    assert!(
+        raw.contains("slice7.contradicted \u{1b}[30;41m[CONTRADICTED]\u{1b}[0m"),
+        "expected CONTRADICTED chip after relation target, got: {raw:?}"
+    );
+
+    // The primary record's own status chip ([verified]) must NOT carry the
+    // CONTRADICTED text — the chip only appears on relation target lines.
+    let contradicted_count = raw.matches("[CONTRADICTED]").count();
+    assert_eq!(
+        contradicted_count, 1,
+        "CONTRADICTED chip must appear exactly once (on the supersedes line), got: {raw:?}"
+    );
 }

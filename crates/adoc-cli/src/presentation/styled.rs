@@ -4,14 +4,13 @@ use std::io;
 use adoc_core::ExplainView;
 use owo_colors::OwoColorize as _;
 
-use super::plain::{
-    evidence_items, fields_items, has_evidence, has_fields, has_relations, relations_items,
-};
+use super::plain::{evidence_items, fields_items, has_evidence, has_fields, has_relations};
 use super::port::ExplainPresenter;
 use super::style::chip::status_chip;
 use super::style::humanise;
 use super::style::kv::faint_label;
 use super::style::palette::status_color;
+use super::style::relations::relation_chip;
 use super::style::wikilink::highlight;
 
 /// Styled presenter.  Produces the same line layout as [`PlainPresenter`] but
@@ -128,7 +127,26 @@ fn render_styled(output: &mut String, view: &ExplainView) {
     if has_relations(&record.relations) {
         output.push('\n');
         writeln!(output, "{}", faint_label("Relations:")).expect("writing to String cannot fail");
-        relations_items(output, &record.relations);
+        let kinds: [(&str, &[String]); 3] = [
+            ("depends_on", &record.relations.depends_on),
+            ("supersedes", &record.relations.supersedes),
+            ("related_to", &record.relations.related_to),
+        ];
+        for (kind, targets) in kinds {
+            for target in targets {
+                let status_opt: Option<&str> = view
+                    .related_statuses
+                    .get(target)
+                    .and_then(|opt| opt.as_deref());
+                let palette = status_color(status_opt);
+                if let Some(chip) = relation_chip(palette) {
+                    writeln!(output, "- {kind}: {target} {chip}")
+                        .expect("writing to String cannot fail");
+                } else {
+                    writeln!(output, "- {kind}: {target}").expect("writing to String cannot fail");
+                }
+            }
+        }
     }
 }
 
@@ -474,6 +492,57 @@ mod tests {
             raw.contains("\u{1b}[31m(8d ago)\u{1b}[39m"),
             "expired parenthetical must be rendered in red; raw={raw:?}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Relation chip tests (slice 7)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn styled_relations_renders_contradicted_chip_after_supersedes_target() {
+        let mut record = make_record("billing.credits", "claim");
+        record.relations.supersedes = vec!["billing.credits.old-rule".to_string()];
+        let mut view = view_for(record);
+        view.related_statuses.insert(
+            "billing.credits.old-rule".to_string(),
+            Some("contradicted".to_string()),
+        );
+        let out = render(&view);
+        // line shape: "- supersedes: billing.credits.old-rule \x1b[30;41m[CONTRADICTED]\x1b[0m\n"
+        assert!(
+            out.contains(
+                "- supersedes: billing.credits.old-rule \u{1b}[30;41m[CONTRADICTED]\u{1b}[0m"
+            ),
+            "expected CONTRADICTED chip after supersedes target, got: {out:?}"
+        );
+    }
+
+    #[test]
+    fn styled_relations_omits_chip_for_verified_target() {
+        let mut record = make_record("billing.credits", "claim");
+        record.relations.depends_on = vec!["billing.credits.ledger".to_string()];
+        let mut view = view_for(record);
+        view.related_statuses.insert(
+            "billing.credits.ledger".to_string(),
+            Some("verified".to_string()),
+        );
+        let out = render(&view);
+        assert!(!out.contains("[CONTRADICTED]"));
+        assert!(!out.contains("[DEPRECATED]"));
+        assert!(out.contains("- depends_on: billing.credits.ledger"));
+    }
+
+    #[test]
+    fn styled_relations_omits_chip_for_unknown_target() {
+        let mut record = make_record("billing.credits", "claim");
+        record.relations.related_to = vec!["billing.credits.ghost".to_string()];
+        let mut view = view_for(record);
+        view.related_statuses
+            .insert("billing.credits.ghost".to_string(), None);
+        let out = render(&view);
+        assert!(!out.contains("[CONTRADICTED]"));
+        assert!(!out.contains("[DEPRECATED]"));
+        assert!(out.contains("- related_to: billing.credits.ghost"));
     }
 
     #[test]
