@@ -314,9 +314,9 @@ impl Diagnostic {
     /// resolver encounters an infrastructure failure.
     ///
     /// The diagnostic code and message are derived from the specific
-    /// [`crate::application::ports::record_resolver::ResolverError`] variant so
-    /// that the inner string is used directly without duplicating any prefix
-    /// that the error's `Display` impl already emits.
+    /// [`crate::application::ports::ResolverError`] variant so that the inner
+    /// string is used directly without duplicating any prefix that the error's
+    /// `Display` impl already emits.
     pub fn resolver(err: &crate::application::ports::ResolverError) -> Self {
         use crate::application::ports::ResolverError;
         let (code, message) = match err {
