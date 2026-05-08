@@ -44,11 +44,21 @@ impl std::error::Error for EmbedQueryError {}
 ///
 /// Returns the query vector as a `Vec<f32>`.
 pub fn embed_query(query: &str) -> Result<Vec<f32>, EmbedQueryError> {
-    let provider =
-        default_embedding_provider().map_err(|e| EmbedQueryError::ModelLoad(format!("{e:?}")))?;
-    provider
-        .embed_query(query)
-        .map_err(|e| EmbedQueryError::Compute(format!("{e:?}")))
+    let provider = default_embedding_provider().map_err(map_provider_error)?;
+    provider.embed_query(query).map_err(map_provider_error)
+}
+
+pub(crate) fn map_provider_error(
+    err: domain::ports::embedding_provider::EmbeddingError,
+) -> EmbedQueryError {
+    use domain::ports::embedding_provider::EmbeddingError;
+    match err {
+        EmbeddingError::ModelLoad(msg) => EmbedQueryError::ModelLoad(msg),
+        EmbeddingError::Compute(msg) => EmbedQueryError::Compute(msg),
+        EmbeddingError::DimensionMismatch { expected, actual } => EmbedQueryError::Compute(
+            format!("query vector dim {actual} does not match provider dim {expected}"),
+        ),
+    }
 }
 
 pub fn compile_workspace(input: CompileInput) -> CompileResult {
@@ -273,6 +283,75 @@ mod tests {
                 .as_deref()
                 .expect("help")
                 .contains("--no-embeddings")
+        );
+    }
+
+    #[test]
+    fn embed_query_compute_error_does_not_leak_debug_format() {
+        let err = map_provider_error(EmbeddingError::Compute("encoder failed".to_string()));
+        let msg = err.to_string();
+        assert!(
+            !msg.contains("Compute("),
+            "Debug variant name must not appear in user message: {msg}"
+        );
+        assert!(
+            !msg.contains('"'),
+            "Debug-style quotes must not appear in user message: {msg}"
+        );
+        assert!(
+            !msg.contains('{'),
+            "Debug-style braces must not appear in user message: {msg}"
+        );
+        assert!(
+            msg.contains("encoder failed"),
+            "Inner message must be preserved verbatim: {msg}"
+        );
+    }
+
+    #[test]
+    fn embed_query_model_load_error_does_not_leak_debug_format() {
+        let err = map_provider_error(EmbeddingError::ModelLoad("model unavailable".to_string()));
+        let msg = err.to_string();
+        assert!(
+            !msg.contains("ModelLoad("),
+            "Debug variant name must not appear in user message: {msg}"
+        );
+        assert!(
+            !msg.contains('"'),
+            "Debug-style quotes must not appear in user message: {msg}"
+        );
+        assert!(
+            !msg.contains('{'),
+            "Debug-style braces must not appear in user message: {msg}"
+        );
+        assert!(
+            msg.contains("model unavailable"),
+            "Inner message must be preserved verbatim: {msg}"
+        );
+    }
+
+    #[test]
+    fn embed_query_dimension_mismatch_maps_to_compute_with_dims() {
+        let err = map_provider_error(EmbeddingError::DimensionMismatch {
+            expected: 384,
+            actual: 512,
+        });
+        let msg = err.to_string();
+        assert!(
+            matches!(err, EmbedQueryError::Compute(_)),
+            "DimensionMismatch must map to Compute variant"
+        );
+        assert!(
+            msg.contains("384"),
+            "Expected dim must appear in message: {msg}"
+        );
+        assert!(
+            msg.contains("512"),
+            "Actual dim must appear in message: {msg}"
+        );
+        assert!(
+            !msg.contains("DimensionMismatch"),
+            "Debug variant name must not appear in user message: {msg}"
         );
     }
 
