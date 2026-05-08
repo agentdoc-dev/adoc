@@ -12,7 +12,7 @@ fastembed-it = ["embeddings"]
 test-embedding-provider = []
 
 [dependencies]
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono = { version = "0.4", default-features = false }
 fastembed = { version = "5", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
