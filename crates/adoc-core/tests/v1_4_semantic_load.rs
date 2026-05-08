@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use adoc_core::{DiagnosticCode, RetrievalInput, Severity, load_retrieval_session};
+use serial_test::serial;
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -9,11 +10,14 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 fn force_in_memory_provider() {
-    // SAFETY: test-only environment variable mutation; tests run in separate processes.
+    // Serialized via #[serial(env_provider)] on each test below; safe
+    // because no other test reads/writes ADOC_TEST_EMBEDDING_PROVIDER
+    // under the same lock.
     unsafe { std::env::set_var("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory") };
 }
 
 #[test]
+#[serial(env_provider)]
 fn missing_search_artifact_warns_and_disables_semantic() {
     force_in_memory_provider();
     let result = load_retrieval_session(RetrievalInput {
@@ -33,6 +37,7 @@ fn missing_search_artifact_warns_and_disables_semantic() {
 }
 
 #[test]
+#[serial(env_provider)]
 fn mismatched_model_emits_error_and_disables_semantic() {
     force_in_memory_provider();
     let result = load_retrieval_session(RetrievalInput {
@@ -53,6 +58,7 @@ fn mismatched_model_emits_error_and_disables_semantic() {
 }
 
 #[test]
+#[serial(env_provider)]
 fn hash_drift_warns_but_keeps_semantic_index_loaded() {
     force_in_memory_provider();
     let result = load_retrieval_session(RetrievalInput {
