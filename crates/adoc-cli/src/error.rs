@@ -34,7 +34,7 @@ pub(crate) enum CliError {
     #[error("build did not produce artifacts")]
     BuildMissingArtifacts,
 
-    #[error("error[retrieval.format] could not format retrieval output: {source}")]
+    #[error("error[retrieval.io] could not write retrieval output: {source}")]
     RetrievalIo {
         #[source]
         source: std::io::Error,
