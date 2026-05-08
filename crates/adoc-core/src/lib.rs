@@ -171,6 +171,15 @@ fn active_search_model_header() -> Option<domain::artifact::SearchModelHeader> {
         return Some(infrastructure::embedding::in_memory::InMemoryProvider::metadata_header(384));
     }
 
+    // When the test provider is set to force a load failure, return None so
+    // that the model-mismatch gate is bypassed.  The failure is then surfaced
+    // by `embed_query` itself, which is the code path the caller intends to
+    // exercise.
+    #[cfg(feature = "test-embedding-provider")]
+    if use_force_load_fail_test_embedding_provider() {
+        return None;
+    }
+
     #[cfg(feature = "embeddings")]
     {
         Some(infrastructure::embedding::fastembed::FastEmbedProvider::metadata_header())
