@@ -29,6 +29,20 @@ pub struct RetrievalSession {
     lexical_index: LexicalIndex,
 }
 
+impl RetrievalSession {
+    /// Returns all records from this session as a `Vec`.
+    ///
+    /// Intended for use by `ArtifactRecordResolver` in `adoc-cli` to populate
+    /// the full index so that relation targets in the primary record can be
+    /// resolved.
+    pub fn records(&self) -> Vec<RetrievalRecord> {
+        self.exact_lookup
+            .values()
+            .map(RetrievalRecord::from)
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ExplainResult {
     pub records: Vec<RetrievalRecord>,
@@ -121,18 +135,6 @@ where
         }),
         diagnostics: document_diagnostics,
     }
-}
-
-/// Returns all records from the session as a `Vec`.
-///
-/// Used by `ArtifactRecordResolver` in `adoc-cli` to populate the full index
-/// so that relation targets in the primary record can be resolved.
-pub fn all_records(session: &RetrievalSession) -> Vec<RetrievalRecord> {
-    session
-        .exact_lookup
-        .values()
-        .map(RetrievalRecord::from)
-        .collect()
 }
 
 pub fn explain_object(session: &RetrievalSession, id: &str) -> ExplainResult {

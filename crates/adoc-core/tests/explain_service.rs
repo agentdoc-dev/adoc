@@ -1,9 +1,7 @@
 use std::collections::BTreeMap;
 
 use adoc_core::{AgentJsonRelations, RetrievalRecord, RetrievalSource};
-use adoc_core::{
-    Clock, ExplainError, RecordResolver, ResolverError, explain_service::ExplainService,
-};
+use adoc_core::{Clock, ExplainError, ExplainService, RecordResolver, ResolverError};
 use chrono::NaiveDate;
 use std::time::Instant;
 

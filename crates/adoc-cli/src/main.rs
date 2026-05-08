@@ -2,26 +2,24 @@ mod adapters;
 mod error;
 mod presentation;
 
-use std::fmt::Write as FmtWrite;
 use std::fs;
-use std::io::Write as _;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use adoc_core::{
-    AgentJsonDocument, AgentJsonRelations, BuildEmbeddingMode, BuildInput, CompileInput,
-    CompileResult, Diagnostic, DiagnosticCode, ExplainError, RetrievalEnvelope, RetrievalInput,
-    RetrievalLoadResult, RetrievalRecord, SearchArtifactDocument, SearchFilters, SearchMode,
-    SearchQuery, SearchResult, Severity, all_records, build_workspace, compile_workspace,
-    load_retrieval_session, search,
+    AgentJsonDocument, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult, Diagnostic,
+    DiagnosticCode, ExplainError, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
+    SearchArtifactDocument, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity,
+    build_workspace, compile_workspace, load_retrieval_session, search,
 };
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
 use crate::adapters::{ArtifactRecordResolver, SystemClock};
 use crate::error::CliError;
 use crate::presentation::{
-    ColorChoice, ExplainPresenter as _, FormatChoice, ResolvedFormat, make_presenter, terminal,
+    ColorChoice, ExplainPresenter as _, FormatChoice, ResolvedFormat, json as json_presentation,
+    make_presenter, plain as plain_presentation, terminal,
 };
 
 fn main() -> ExitCode {
@@ -239,8 +237,11 @@ fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i3
         Some(session) => session,
         None => {
             if resolved == ResolvedFormat::Json {
-                return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
-                    .map_or_else(report, |()| 2);
+                return json_presentation::write_envelope_json(
+                    &RetrievalEnvelope::new(Vec::new(), load_diagnostics),
+                    &mut std::io::stdout(),
+                )
+                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
             }
             eprint_diagnostics(&load_diagnostics);
             return 2;
@@ -249,8 +250,11 @@ fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i3
 
     if diagnostics_have_errors(&load_diagnostics) {
         if resolved == ResolvedFormat::Json {
-            return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
-                .map_or_else(report, |()| 2);
+            return json_presentation::write_envelope_json(
+                &RetrievalEnvelope::new(Vec::new(), load_diagnostics),
+                &mut std::io::stdout(),
+            )
+            .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
         }
         eprint_diagnostics(&load_diagnostics);
         return 2;
@@ -258,7 +262,7 @@ fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i3
 
     // Build the application service with the full record set from the session
     // so that relation targets can be resolved for `related_statuses`.
-    let resolver = ArtifactRecordResolver::new(all_records(&session));
+    let resolver = ArtifactRecordResolver::new(session.records());
     let service = adoc_core::ExplainService::new(resolver, SystemClock, artifact);
 
     match service.execute(&object_id) {
@@ -280,36 +284,25 @@ fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i3
                 .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
         }
         Err(ExplainError::NotFound(id)) => {
-            let diagnostic = Diagnostic {
-                code: DiagnosticCode::RetrievalObjectNotFound,
-                severity: Severity::Error,
-                message: format!("Object ID `{id}` was not found in the agent artifact."),
-                span: None,
-                object_id: Some(id),
-                help: Some(
-                    "Run `adoc build` if the source was changed after the artifact was generated."
-                        .to_string(),
-                ),
-            };
+            let diagnostic = Diagnostic::not_found(id);
             if resolved == ResolvedFormat::Json {
-                return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), vec![diagnostic]))
-                    .map_or_else(report, |()| 3);
+                return json_presentation::write_envelope_json(
+                    &RetrievalEnvelope::new(Vec::new(), vec![diagnostic]),
+                    &mut std::io::stdout(),
+                )
+                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 3);
             }
             eprint_diagnostics(&[diagnostic]);
             3
         }
         Err(ExplainError::Resolver(source)) => {
-            let diagnostic = Diagnostic {
-                code: DiagnosticCode::IoArtifactMalformed,
-                severity: Severity::Error,
-                message: format!("resolver error: {source}"),
-                span: None,
-                object_id: None,
-                help: None,
-            };
+            let diagnostic = Diagnostic::resolver(&source);
             if resolved == ResolvedFormat::Json {
-                return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), vec![diagnostic]))
-                    .map_or_else(report, |()| 2);
+                return json_presentation::write_envelope_json(
+                    &RetrievalEnvelope::new(Vec::new(), vec![diagnostic]),
+                    &mut std::io::stdout(),
+                )
+                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
             }
             eprint_diagnostics(&[diagnostic]);
             2
@@ -335,8 +328,11 @@ fn search_command(
         Some(session) => session,
         None => {
             if resolved == ResolvedFormat::Json {
-                return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
-                    .map_or_else(report, |()| 2);
+                return json_presentation::write_envelope_json(
+                    &RetrievalEnvelope::new(Vec::new(), load_diagnostics),
+                    &mut std::io::stdout(),
+                )
+                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
             }
             eprint_diagnostics(&load_diagnostics);
             return 2;
@@ -345,8 +341,11 @@ fn search_command(
 
     if diagnostics_have_errors(&load_diagnostics) {
         if resolved == ResolvedFormat::Json {
-            return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
-                .map_or_else(report, |()| 2);
+            return json_presentation::write_envelope_json(
+                &RetrievalEnvelope::new(Vec::new(), load_diagnostics),
+                &mut std::io::stdout(),
+            )
+            .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
         }
         eprint_diagnostics(&load_diagnostics);
         return 2;
@@ -368,8 +367,14 @@ fn search_command(
     let exit_code = search_exit_code(&search_result);
 
     if resolved == ResolvedFormat::Json {
-        return print_retrieval_json(&RetrievalEnvelope::from(search_result))
-            .map_or_else(report, |()| exit_code);
+        return json_presentation::write_envelope_json(
+            &RetrievalEnvelope::from(search_result),
+            &mut std::io::stdout(),
+        )
+        .map_or_else(
+            |source| report(CliError::RetrievalIo { source }),
+            |()| exit_code,
+        );
     }
 
     if exit_code != 0 {
@@ -386,121 +391,19 @@ fn search_command(
         return 0;
     }
 
-    // Search renders multiple records; use the plain text render helper
-    // directly rather than the single-record ExplainPresenter trait.
+    // Search renders multiple records; delegate to the shared plain-text helper
+    // in the presentation layer so there is a single rendering path.
     let mut buf = String::new();
     for (index, record) in envelope.records.iter().enumerate() {
         if index > 0 {
             buf.push('\n');
         }
-        render_record_plain(&mut buf, record);
+        plain_presentation::render_record(&mut buf, record);
     }
     if let Err(source) = std::io::Write::write_all(&mut std::io::stdout(), buf.as_bytes()) {
         return report(CliError::RetrievalIo { source });
     }
     0
-}
-
-/// Renders a single [`RetrievalRecord`] as plain text into `output`.
-///
-/// Shared between search (multi-record) rendering and unit tests.  The
-/// single-record explain path uses [`PlainPresenter`] instead.
-fn render_record_plain(output: &mut String, record: &RetrievalRecord) {
-    writeln!(output, "Object: {}", record.id).expect("writing to String cannot fail");
-    writeln!(output, "Kind: {}", record.kind).expect("writing to String cannot fail");
-    if let Some(status) = &record.status {
-        if record.kind == "warning" {
-            writeln!(output, "Severity: {status}").expect("writing to String cannot fail");
-        } else {
-            writeln!(output, "Status: {status}").expect("writing to String cannot fail");
-        }
-    }
-    if let Some(owner) = &record.owner {
-        writeln!(output, "Owner: {owner}").expect("writing to String cannot fail");
-    }
-    if let Some(verified_at) = &record.verified_at {
-        writeln!(output, "Verified: {verified_at}").expect("writing to String cannot fail");
-    }
-
-    output.push('\n');
-    output.push_str("Statement:\n");
-    output.push_str(&record.body);
-    if !record.body.ends_with('\n') {
-        output.push('\n');
-    }
-
-    render_evidence_plain(output, record);
-    render_fields_plain(output, record);
-
-    output.push('\n');
-    writeln!(
-        output,
-        "Source: {}:{}:{}",
-        record.source.path, record.source.line, record.source.column
-    )
-    .expect("writing to String cannot fail");
-
-    render_relations_plain(output, &record.relations);
-}
-
-fn render_evidence_plain(output: &mut String, record: &RetrievalRecord) {
-    let evidence_fields = ["source", "test", "reviewed_by"];
-    if record.evidence.is_empty() {
-        return;
-    }
-
-    output.push('\n');
-    output.push_str("Evidence:\n");
-    for field in evidence_fields {
-        if let Some(value) = record.evidence.get(field) {
-            writeln!(output, "- {field}: {value}").expect("writing to String cannot fail");
-        }
-    }
-    for (field, value) in &record.evidence {
-        if !evidence_fields.contains(&field.as_str()) {
-            writeln!(output, "- {field}: {value}").expect("writing to String cannot fail");
-        }
-    }
-}
-
-fn render_fields_plain(output: &mut String, record: &RetrievalRecord) {
-    if record.fields.is_empty() {
-        return;
-    }
-
-    output.push('\n');
-    output.push_str("Fields:\n");
-    for (field, value) in &record.fields {
-        writeln!(output, "- {field}: {value}").expect("writing to String cannot fail");
-    }
-}
-
-fn render_relations_plain(output: &mut String, relations: &AgentJsonRelations) {
-    if relations.depends_on.is_empty()
-        && relations.supersedes.is_empty()
-        && relations.related_to.is_empty()
-    {
-        return;
-    }
-
-    output.push('\n');
-    output.push_str("Relations:\n");
-    for target in &relations.depends_on {
-        writeln!(output, "- depends_on: {target}").expect("writing to String cannot fail");
-    }
-    for target in &relations.supersedes {
-        writeln!(output, "- supersedes: {target}").expect("writing to String cannot fail");
-    }
-    for target in &relations.related_to {
-        writeln!(output, "- related_to: {target}").expect("writing to String cannot fail");
-    }
-}
-
-fn print_retrieval_json(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
-    let text = serde_json::to_string_pretty(envelope).map_err(|e| CliError::RetrievalIo {
-        source: std::io::Error::other(e),
-    })?;
-    writeln!(std::io::stdout(), "{text}").map_err(|source| CliError::RetrievalIo { source })
 }
 
 fn search_exit_code(result: &SearchResult) -> i32 {

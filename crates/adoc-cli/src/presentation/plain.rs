@@ -19,7 +19,12 @@ impl ExplainPresenter for PlainPresenter {
     }
 }
 
-fn render_record(output: &mut String, record: &RetrievalRecord) {
+/// Renders a single [`RetrievalRecord`] as plain text into `output`.
+///
+/// Shared between [`PlainPresenter`] (single-record explain path) and the
+/// search command (multi-record path) so that both callers produce identical
+/// bytes.
+pub(crate) fn render_record(output: &mut String, record: &RetrievalRecord) {
     writeln!(output, "Object: {}", record.id).expect("writing to String cannot fail");
     writeln!(output, "Kind: {}", record.kind).expect("writing to String cannot fail");
     if let Some(status) = &record.status {
@@ -57,7 +62,7 @@ fn render_record(output: &mut String, record: &RetrievalRecord) {
     render_relations(output, &record.relations);
 }
 
-fn render_evidence(output: &mut String, record: &RetrievalRecord) {
+pub(crate) fn render_evidence(output: &mut String, record: &RetrievalRecord) {
     let evidence_fields = ["source", "test", "reviewed_by"];
     if record.evidence.is_empty() {
         return;
@@ -77,7 +82,7 @@ fn render_evidence(output: &mut String, record: &RetrievalRecord) {
     }
 }
 
-fn render_fields(output: &mut String, record: &RetrievalRecord) {
+pub(crate) fn render_fields(output: &mut String, record: &RetrievalRecord) {
     if record.fields.is_empty() {
         return;
     }
@@ -89,7 +94,7 @@ fn render_fields(output: &mut String, record: &RetrievalRecord) {
     }
 }
 
-fn render_relations(output: &mut String, relations: &AgentJsonRelations) {
+pub(crate) fn render_relations(output: &mut String, relations: &AgentJsonRelations) {
     if relations.depends_on.is_empty()
         && relations.supersedes.is_empty()
         && relations.related_to.is_empty()
