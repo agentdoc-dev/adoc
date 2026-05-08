@@ -31,3 +31,15 @@ owner: team-access
 --
 An entitlement is the product access state granted by paid invoices, trials, credits, or account-level overrides.
 ::
+
+::glossary billing.settlement
+owner: team-billing
+--
+Settlement is the point when the payment processor confirms captured money can update account balance and entitlement state.
+::
+
+::glossary billing.adjustment
+owner: finance-ops
+--
+An adjustment is a manual or automated correction that changes invoice balance outside the normal payment or refund path.
+::
