@@ -383,36 +383,43 @@ fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResu
     let hits_by_id: BTreeMap<_, _> = hits.iter().map(|hit| (hit.id.as_str(), hit)).collect();
 
     let ranker = HybridRanker;
-    let mut result_hits: Vec<_> = ranker
+    let mut result_ids: Vec<_> = ranker
         .pinned_candidate_ids(&query.text, &candidate_ids)
         .into_iter()
-        .filter_map(|id| hits_by_id.get(id.as_str()).copied().cloned())
         .collect();
-    let mut seen_ids: BTreeSet<_> = result_hits.iter().map(|hit| hit.id.clone()).collect();
+    let mut seen_ids: BTreeSet<_> = result_ids.iter().cloned().collect();
 
-    for hit in hits {
+    for hit in &hits {
         if seen_ids.insert(hit.id.clone()) {
-            result_hits.push(hit);
+            result_ids.push(hit.id.clone());
         }
-        if result_hits.len() >= query.top.get() {
+        if result_ids.len() >= query.top.get() {
             break;
         }
     }
-    result_hits.truncate(query.top.get());
+    result_ids.truncate(query.top.get());
 
-    let records = result_hits
+    let records = result_ids
         .into_iter()
         .enumerate()
-        .map(|(idx, hit)| {
-            let object_id = ObjectId::new_unchecked(hit.id.clone());
+        .map(|(idx, id)| {
+            let object_id = ObjectId::new_unchecked(id.clone());
             let object = session
                 .exact_lookup
                 .get(&object_id)
                 .expect("hit must exist in exact lookup");
-            RetrievalRecord::from_object_with_match(
-                object,
-                RetrievalMatch::semantic((idx + 1) as u32, hit.vector_rank, hit.cosine_score),
-            )
+            let search_match = hits_by_id.get(id.as_str()).map_or_else(
+                || RetrievalMatch {
+                    mode: SearchMode::Semantic,
+                    result_rank: (idx + 1) as u32,
+                    rrf_score: None,
+                    lexical_rank: None,
+                    vector_rank: None,
+                    cosine_score: None,
+                },
+                |hit| RetrievalMatch::semantic((idx + 1) as u32, hit.vector_rank, hit.cosine_score),
+            );
+            RetrievalRecord::from_object_with_match(object, search_match)
         })
         .collect();
 
