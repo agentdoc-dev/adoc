@@ -10,6 +10,8 @@ pub(crate) use plain::PlainPresenter;
 pub(crate) use port::ExplainPresenter;
 pub(crate) use styled::StyledPresenter;
 
+use adoc_core::Diagnostic;
+
 /// The output format requested by the user via `--format`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FormatChoice {
@@ -43,10 +45,19 @@ pub(crate) enum ResolvedFormat {
 }
 
 /// Returns a presenter for the resolved format.
-pub(crate) fn make_presenter(resolved: ResolvedFormat) -> Box<dyn ExplainPresenter> {
+///
+/// `load_diagnostics` are forwarded to [`JsonPresenter`] so that non-fatal
+/// warnings collected during artifact loading round-trip into the JSON
+/// envelope's `diagnostics` array.  Pass `Vec::new()` for non-JSON formats
+/// (plain and styled emit load diagnostics to stderr before calling the
+/// presenter).
+pub(crate) fn make_presenter(
+    resolved: ResolvedFormat,
+    load_diagnostics: Vec<Diagnostic>,
+) -> Box<dyn ExplainPresenter> {
     match resolved {
         ResolvedFormat::Plain => Box::new(PlainPresenter),
         ResolvedFormat::Styled => Box::new(StyledPresenter),
-        ResolvedFormat::Json => Box::new(JsonPresenter),
+        ResolvedFormat::Json => Box::new(JsonPresenter::new(load_diagnostics)),
     }
 }

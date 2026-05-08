@@ -6,6 +6,26 @@ use std::process::Command;
 use assert_cmd::Command as AssertCmd;
 use support::{TestWorkspace, fixture_path};
 
+/// Build a copy of the valid artifact fixture with a single diagnostic entry
+/// injected into its `diagnostics` array at the given `severity`.
+fn artifact_with_diagnostic(severity: &str) -> String {
+    let artifact = fs::read_to_string(fixture_path("v1_1_explain/valid_artifact.agent.json"))
+        .expect("fixture artifact is readable");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&artifact).expect("fixture artifact is JSON");
+    value["diagnostics"] = serde_json::json!([
+        {
+            "code": "parse.raw_html",
+            "severity": severity,
+            "message": "artifact carried diagnostic",
+            "span": null,
+            "object_id": null,
+            "help": "inspect source"
+        }
+    ]);
+    serde_json::to_string_pretty(&value).expect("artifact serializes")
+}
+
 /// Return an `assert_cmd` command for the `adoc` binary with colour-control
 /// environment variables cleared so that `--color=always` is the sole source
 /// of colour state.
@@ -545,5 +565,93 @@ fn explain_styled_shows_contradicted_chip_on_relation_target() {
     assert_eq!(
         contradicted_count, 1,
         "CONTRADICTED chip must appear exactly once (on the supersedes line), got: {raw:?}"
+    );
+}
+
+/// Verify that a non-fatal warning baked into the artifact's `diagnostics`
+/// array is preserved in the JSON envelope's `diagnostics` field on the
+/// success path, and that nothing is emitted to stderr.
+///
+/// This guards the fix for the reviewer concern: previously, load-phase
+/// warnings were printed to stderr and the JSON envelope's `diagnostics` was
+/// always `[]`, losing them for machine-readable consumers.
+#[test]
+fn explain_format_json_preserves_load_warnings_in_envelope() {
+    let workspace = TestWorkspace::new("explain-json-load-warning");
+    workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("warning"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args([
+            "explain",
+            "billing.refunds.issue-credit",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc explain runs");
+
+    assert!(
+        output.status.success(),
+        "expected explain to pass with warning artifact\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "warnings must not leak to stderr in JSON mode; stderr was:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout must be valid JSON");
+    assert_eq!(
+        value["schema_version"], "adoc.retrieval.v0",
+        "envelope schema_version must be present"
+    );
+    assert_eq!(
+        value["records"][0]["id"], "billing.refunds.issue-credit",
+        "primary record must be present"
+    );
+    assert_eq!(
+        value["diagnostics"][0]["code"], "parse.raw_html",
+        "load warning code must round-trip into diagnostics array"
+    );
+    assert_eq!(
+        value["diagnostics"][0]["severity"], "warning",
+        "load warning severity must be 'warning'"
+    );
+}
+
+/// Verify that a non-fatal warning in the artifact produces stderr output in
+/// plain/text mode (not JSON mode).  This is the symmetric counterpart to the
+/// JSON test above and ensures the stderr path for non-JSON callers is intact.
+#[test]
+fn explain_plain_mode_emits_load_warnings_to_stderr() {
+    let workspace = TestWorkspace::new("explain-plain-load-warning");
+    workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("warning"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args([
+            "explain",
+            "billing.refunds.issue-credit",
+            "--format",
+            "plain",
+        ])
+        .output()
+        .expect("adoc explain runs");
+
+    assert!(
+        output.status.success(),
+        "expected plain explain to pass with warning artifact\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("warning[parse.raw_html]"),
+        "plain mode must emit load warnings to stderr; stderr was: {stderr:?}"
     );
 }

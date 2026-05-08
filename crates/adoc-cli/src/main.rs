@@ -18,8 +18,8 @@ use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 use crate::adapters::{ArtifactRecordResolver, SystemClock};
 use crate::error::CliError;
 use crate::presentation::{
-    ColorChoice, ExplainPresenter as _, FormatChoice, ResolvedFormat, json as json_presentation,
-    make_presenter, plain as plain_presentation, terminal,
+    ColorChoice, FormatChoice, ResolvedFormat, json as json_presentation, make_presenter,
+    plain as plain_presentation, terminal,
 };
 
 fn main() -> ExitCode {
@@ -266,23 +266,23 @@ fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i3
     let service = adoc_core::ExplainService::new(resolver, SystemClock, artifact);
 
     match service.execute(&object_id) {
-        Ok(view) => {
-            if !load_diagnostics.is_empty() {
-                eprint_diagnostics(&load_diagnostics);
-            }
-
-            if resolved == ResolvedFormat::Json {
-                let presenter = presentation::JsonPresenter;
-                return presenter
+        Ok(view) => match resolved {
+            ResolvedFormat::Json => {
+                let presenter = make_presenter(ResolvedFormat::Json, load_diagnostics);
+                presenter
                     .present(&view, &mut std::io::stdout())
-                    .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0);
+                    .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
             }
-
-            let presenter = make_presenter(resolved);
-            presenter
-                .present(&view, &mut std::io::stdout())
-                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
-        }
+            _ => {
+                if !load_diagnostics.is_empty() {
+                    eprint_diagnostics(&load_diagnostics);
+                }
+                let presenter = make_presenter(resolved, Vec::new());
+                presenter
+                    .present(&view, &mut std::io::stdout())
+                    .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
+            }
+        },
         Err(ExplainError::NotFound(id)) => {
             let diagnostic = Diagnostic::not_found(id);
             if resolved == ResolvedFormat::Json {
