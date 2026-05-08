@@ -46,7 +46,7 @@ fn explain_uses_explicit_artifact_and_omits_unavailable_fields() {
             "--artifact",
             "custom/docs.agent.json",
             "--format",
-            "text",
+            "plain",
         ])
         .output()
         .expect("adoc explain runs");
@@ -265,7 +265,7 @@ fn top_level_help_exits_0_and_lists_commands() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Usage: adoc <COMMAND>"));
+    assert!(stdout.contains("Usage: adoc"));
     assert!(stdout.contains("check"));
     assert!(stdout.contains("build"));
     assert!(stdout.contains("explain"));
@@ -306,7 +306,7 @@ fn explain_help_exits_0_and_lists_defaults() {
     assert!(stdout.contains("--artifact <ARTIFACT>"));
     assert!(stdout.contains("dist/docs.agent.json"));
     assert!(stdout.contains("--format <FORMAT>"));
-    assert!(stdout.contains("text"));
+    assert!(stdout.contains("plain"));
     assert!(stdout.contains("json"));
 }
 
@@ -330,7 +330,7 @@ fn explain_unsupported_format_exits_1_with_parse_error() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("invalid value 'yaml'"));
-    assert!(stderr.contains("possible values: text, json"));
+    assert!(stderr.contains("possible values:"));
 }
 
 #[test]

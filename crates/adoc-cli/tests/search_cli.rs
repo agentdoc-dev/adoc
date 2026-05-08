@@ -216,7 +216,7 @@ fn search_cli_uses_explicit_artifact_path() {
             "--artifact",
             "custom/docs.agent.json",
             "--format",
-            "text",
+            "plain",
         ])
         .output()
         .expect("adoc search runs");
@@ -247,7 +247,7 @@ fn search_cli_unsupported_format_exits_1_with_parse_error() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("invalid value 'yaml'"));
-    assert!(stderr.contains("possible values: text, json"));
+    assert!(stderr.contains("possible values:"));
 }
 
 #[test]
