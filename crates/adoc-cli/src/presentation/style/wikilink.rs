@@ -45,7 +45,7 @@ pub(crate) fn highlight(body: &str) -> String {
             } else {
                 // Valid wikilink: `[[` plain + cyan id + `]]` plain.
                 out.push_str("[[");
-                out.push_str(&id.bright_cyan().to_string());
+                out.push_str(&id.truecolor(100, 220, 255).to_string());
                 out.push_str("]]");
                 rest = &after_open[close_pos + 2..];
             }
@@ -75,9 +75,9 @@ mod tests {
         strip_ansi_escapes::strip_str(s)
     }
 
-    /// The ANSI bright-cyan sequence produced by owo-colors 4.x for a given text.
+    /// The truecolour cyan sequence produced by owo-colors 4.x for a given text.
     fn cyan(s: &str) -> String {
-        s.bright_cyan().to_string()
+        s.truecolor(100, 220, 255).to_string()
     }
 
     // -----------------------------------------------------------------------
@@ -193,7 +193,7 @@ mod tests {
     // -----------------------------------------------------------------------
     // Pin test: literal ANSI byte sequence for cyan-wrapped id.
     //
-    // owo-colors 4.x emits ESC[96m (bright cyan fg) … ESC[39m (fg reset).
+    // owo-colors 4.x emits ESC[38;2;100;220;255m (truecolour cyan fg) … ESC[39m (fg reset).
     // This test is intentionally NOT implemented in terms of the `cyan()`
     // helper so that swapping the colour (e.g. to magenta) causes a failure.
     // -----------------------------------------------------------------------
@@ -202,8 +202,8 @@ mod tests {
         let body = "See [[billing.ledger]].";
         let out = highlight(body);
         assert!(
-            out.contains("\u{1b}[96mbilling.ledger\u{1b}[39m"),
-            "expected bright-cyan escape around id, got: {:?}",
+            out.contains("\u{1b}[38;2;100;220;255mbilling.ledger\u{1b}[39m"),
+            "expected truecolour-cyan escape around id, got: {:?}",
             out
         );
     }
