@@ -123,6 +123,18 @@ where
     }
 }
 
+/// Returns all records from the session as a `Vec`.
+///
+/// Used by `ArtifactRecordResolver` in `adoc-cli` to populate the full index
+/// so that relation targets in the primary record can be resolved.
+pub fn all_records(session: &RetrievalSession) -> Vec<RetrievalRecord> {
+    session
+        .exact_lookup
+        .values()
+        .map(RetrievalRecord::from)
+        .collect()
+}
+
 pub fn explain_object(session: &RetrievalSession, id: &str) -> ExplainResult {
     let object_id = ObjectId::new_unchecked(id);
     if let Some(object) = session.exact_lookup.get(&object_id) {
