@@ -134,6 +134,9 @@ fn lexical_default_unchanged_when_search_artifact_present() {
     );
 }
 
+/// Smoke check on JSON envelope serialization stability for the in-memory
+/// provider. Determinism on the production fastembed path is asserted in
+/// `paraphrase_recall::fastembed_semantic_results_are_deterministic_across_two_runs`.
 #[test]
 fn semantic_results_are_deterministic_across_two_runs() {
     let pilot = build_v1_4_pilot();
@@ -237,6 +240,14 @@ mod paraphrase_recall {
                 String::from_utf8_lossy(&output.stderr)
             )
         })
+    }
+
+    #[test]
+    fn fastembed_semantic_results_are_deterministic_across_two_runs() {
+        let pilot = build_v1_4_pilot_with_fastembed();
+        let one = run_search_json_no_env(&pilot, "ledger entries for credits");
+        let two = run_search_json_no_env(&pilot, "ledger entries for credits");
+        assert_eq!(one["records"], two["records"]);
     }
 
     #[test]
