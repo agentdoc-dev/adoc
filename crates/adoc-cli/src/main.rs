@@ -1,4 +1,5 @@
 mod error;
+mod presentation;
 
 use std::fs;
 use std::num::NonZeroUsize;
@@ -7,14 +8,14 @@ use std::process::ExitCode;
 
 use adoc_core::{
     AgentJsonDocument, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult, Diagnostic,
-    DiagnosticCode, ExplainResult, JsonRetrievalFormatter, RetrievalEnvelope, RetrievalFormatter,
-    RetrievalInput, RetrievalLoadResult, SearchArtifactDocument, SearchFilters, SearchMode,
-    SearchQuery, SearchResult, Severity, TextRetrievalFormatter, build_workspace,
-    compile_workspace, explain_object, load_retrieval_session, search,
+    DiagnosticCode, ExplainResult, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
+    SearchArtifactDocument, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity,
+    build_workspace, compile_workspace, explain_object, load_retrieval_session, search,
 };
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
 use crate::error::CliError;
+use crate::presentation::{ExplainPresenter, JsonPresenter, PlainPresenter};
 
 fn main() -> ExitCode {
     ExitCode::from(run(std::env::args()) as u8)
@@ -291,11 +292,9 @@ fn search_command(
 }
 
 fn print_retrieval_json(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
-    let text = JsonRetrievalFormatter
-        .render(envelope)
-        .map_err(|source| CliError::RetrievalFormat { source })?;
-    println!("{text}");
-    Ok(())
+    JsonPresenter
+        .present(envelope, &mut std::io::stdout())
+        .map_err(|source| CliError::RetrievalIo { source })
 }
 
 fn explain_exit_code(result: &ExplainResult) -> i32 {
@@ -348,11 +347,9 @@ fn merge_diagnostics(
 }
 
 fn print_retrieval_text(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
-    let text = TextRetrievalFormatter
-        .render(envelope)
-        .map_err(|source| CliError::RetrievalFormat { source })?;
-    print!("{text}");
-    Ok(())
+    PlainPresenter
+        .present(envelope, &mut std::io::stdout())
+        .map_err(|source| CliError::RetrievalIo { source })
 }
 
 fn report(error: CliError) -> i32 {

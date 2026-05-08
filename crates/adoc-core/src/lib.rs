@@ -10,9 +10,6 @@ pub use application::retrieval::{
     RetrievalLoadResult, RetrievalSession, SearchFilters, SearchQuery, SearchResult,
     explain_object, search,
 };
-pub use application::retrieval_format::{
-    JsonRetrievalFormatter, RetrievalFormatError, RetrievalFormatter, TextRetrievalFormatter,
-};
 pub use domain::artifact::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan,
     SearchArtifactDocument,

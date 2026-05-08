@@ -18,3 +18,4 @@ thiserror = "1"
 [dev-dependencies]
 adoc-core = { path = "../adoc-core", features = ["test-embedding-provider"] }
 insta = "1"
+strip-ansi-escapes = "0.2"

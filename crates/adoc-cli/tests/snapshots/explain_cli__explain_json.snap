@@ -1,0 +1,40 @@
+---
+source: crates/adoc-cli/tests/explain_cli.rs
+assertion_line: 181
+expression: stdout
+---
+{
+  "schema_version": "adoc.retrieval.v0",
+  "records": [
+    {
+      "id": "billing.refunds.issue-credit",
+      "kind": "claim",
+      "status": "verified",
+      "owner": "team-billing",
+      "verified_at": "2026-05-06",
+      "body": "Refund credits are issued from the ledger after approval.",
+      "source": {
+        "path": "docs/refunds.adoc",
+        "line": 12,
+        "column": 3
+      },
+      "evidence": {
+        "reviewed_by": "risk-team",
+        "source": "ledger-export",
+        "test": "cargo test refunds"
+      },
+      "relations": {
+        "depends_on": [
+          "billing.credits.ledger-source"
+        ],
+        "supersedes": [
+          "billing.refunds.manual-credit"
+        ],
+        "related_to": [
+          "billing.refunds.audit-required"
+        ]
+      }
+    }
+  ],
+  "diagnostics": []
+}
