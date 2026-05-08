@@ -34,7 +34,8 @@ adoc build
 `build` uses config outputs when `--out` is omitted. Config paths are resolved
 relative to the config file; `outputs.dir` fills `docs.html`,
 `docs.agent.json`, and `docs.search.json` unless exact output paths override
-them.
+them. Exact config outputs need `html` and `agent_json`; `search` is required
+only when embeddings are enabled.
 
 Config embedding mode is:
 
@@ -54,6 +55,8 @@ adoc build examples/billing-pilot --out dist --no-embeddings
 ```
 
 That skips model loading and leaves any prior `docs.search.json` untouched.
+Config-backed skipped-embedding builds can omit `outputs.search` when exact
+HTML and agent JSON paths are configured.
 
 If a Knowledge Object has a parseable `expires_at` date before the local build
 date, `check` and `build` emit warning `lifecycle.expired`. The warning does

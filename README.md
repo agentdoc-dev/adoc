@@ -198,11 +198,16 @@ adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | 
 - a single `.adoc` file
 - a directory, scanned recursively for `.adoc` files
 
+Config discovery walks upward from the current directory, checks for
+`agentdoc.config.yaml` in each directory, and stops after checking the first
+ancestor containing `.git` or `$HOME`. It never treats `/agentdoc.config.yaml`
+as global config.
+
 `adoc init`:
 
 - creates `agentdoc.config.yaml` and `docs/index.adoc` in the current directory
 - refuses to overwrite either target if it already exists
-- configures strict mode, `docs_path: docs`, `outputs.dir: dist`, exact default artifact paths, and `embeddings.provider: local`
+- configures strict mode, `docs_path: docs`, `outputs.dir: dist`, and `embeddings.provider: local`
 
 `adoc check`:
 
@@ -216,7 +221,7 @@ adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | 
 `adoc build`:
 
 - uses explicit `[path]` and `--out` when passed
-- otherwise discovers config defaults; without `--out`, config must provide `outputs.dir` or exact `outputs.html`, `outputs.agent_json`, and `outputs.search`
+- otherwise discovers config defaults; without `--out`, config must provide `outputs.dir` or exact `outputs.html` and `outputs.agent_json`; `outputs.search` is also required when embeddings are enabled
 - with `--out <directory>`, writes `<directory>/docs.html`, `<directory>/docs.agent.json`, and, when embeddings are enabled, `<directory>/docs.search.json`
 - with config outputs, paths are resolved relative to the config file; `outputs.dir` fills omitted artifact paths as `docs.html`, `docs.agent.json`, and `docs.search.json`; exact artifact paths override the `outputs.dir` defaults
 - runs the same compile path as `check`
