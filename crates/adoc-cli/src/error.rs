@@ -35,16 +35,16 @@ pub(crate) enum CliError {
     BuildMissingArtifacts,
 
     #[error("error[retrieval.format] could not format retrieval output: {source}")]
-    RetrievalFormat {
+    RetrievalIo {
         #[source]
-        source: adoc_core::RetrievalFormatError,
+        source: std::io::Error,
     },
 }
 
 impl CliError {
     pub(crate) fn exit_code(&self) -> i32 {
         match self {
-            CliError::RetrievalFormat { .. } => 2,
+            CliError::RetrievalIo { .. } => 2,
             _ => 1,
         }
     }

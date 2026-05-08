@@ -30,25 +30,7 @@ fn explain_defaults_to_dist_agent_json_and_text_format() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Object: billing.refunds.issue-credit"));
-    assert!(stdout.contains("Kind: claim"));
-    assert!(stdout.contains("Status: verified"));
-    assert!(stdout.contains("Owner: team-billing"));
-    assert!(stdout.contains("Verified: 2026-05-06"));
-    assert!(
-        stdout.contains("Statement:\nRefund credits are issued from the ledger after approval.")
-    );
-    assert!(stdout.contains("Evidence:"));
-    assert!(stdout.contains("- source: ledger-export"));
-    assert!(stdout.contains("- test: cargo test refunds"));
-    assert!(stdout.contains("- reviewed_by: risk-team"));
-    assert!(!stdout.contains("  source: ledger-export"));
-    assert!(stdout.contains("Source: docs/refunds.adoc:12:3"));
-    assert!(stdout.contains("Relations:"));
-    assert!(stdout.contains("- depends_on: billing.credits.ledger-source"));
-    assert!(stdout.contains("- supersedes: billing.refunds.manual-credit"));
-    assert!(stdout.contains("- related_to: billing.refunds.audit-required"));
-    assert!(!stdout.contains("  depends_on: billing.credits.ledger-source"));
+    insta::assert_snapshot!("explain_plain", stdout);
 }
 
 #[test]
@@ -194,20 +176,9 @@ fn explain_format_json_emits_retrieval_envelope() {
         output.stderr.is_empty(),
         "success JSON mode should not emit stderr diagnostics"
     );
-    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
-    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
-    assert_eq!(value["diagnostics"], serde_json::json!([]));
-    assert_eq!(value["records"][0]["id"], "billing.refunds.issue-credit");
-    assert_eq!(value["records"][0]["kind"], "claim");
-    assert_eq!(value["records"][0]["status"], "verified");
-    assert_eq!(value["records"][0]["owner"], "team-billing");
-    assert_eq!(
-        value["records"][0]["body"],
-        "Refund credits are issued from the ledger after approval."
-    );
-    assert_eq!(value["records"][0]["source"]["path"], "docs/refunds.adoc");
-    assert!(value["records"][0].get("match").is_none());
-    assert!(value["records"][0].get("retrieval").is_none());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    insta::assert_snapshot!("explain_json", stdout);
 }
 
 #[test]

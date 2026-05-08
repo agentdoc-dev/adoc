@@ -10,10 +10,9 @@ use std::path::PathBuf;
 
 use adoc_core::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, BuildArtifacts,
-    CompileInput, CompileResult, Diagnostic, DiagnosticCode, ExplainResult, JsonRetrievalFormatter,
-    RetrievalEnvelope, RetrievalFormatError, RetrievalFormatter, RetrievalInput,
-    RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalSession, RetrievalSource,
-    SearchFilters, SearchMode, SearchQuery, SearchResult, Severity, TextRetrievalFormatter,
+    CompileInput, CompileResult, Diagnostic, DiagnosticCode, ExplainResult, RetrievalEnvelope,
+    RetrievalInput, RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalSession,
+    RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity,
     compile_workspace, explain_object, load_retrieval_session, search,
 };
 
@@ -236,9 +235,5 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _: fn(&RetrievalSession, &str) -> ExplainResult = explain_object;
     let _: fn(&RetrievalSession, SearchQuery) -> SearchResult = search;
 
-    let envelope = RetrievalEnvelope::new(Vec::new(), Vec::new());
-    let text_formatter = TextRetrievalFormatter;
-    let json_formatter = JsonRetrievalFormatter;
-    let _: Result<String, RetrievalFormatError> = text_formatter.render(&envelope);
-    let _: Result<String, RetrievalFormatError> = json_formatter.render(&envelope);
+    let _: RetrievalEnvelope = RetrievalEnvelope::new(Vec::new(), Vec::new());
 }
