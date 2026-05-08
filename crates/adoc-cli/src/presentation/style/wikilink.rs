@@ -9,10 +9,9 @@ use owo_colors::OwoColorize as _;
 /// - An id is the text between `[[` and the **next** `]]` occurrence.
 /// - An empty id (i.e. `[[]]`) is left unchanged.
 /// - An unterminated `[[` with no closing `]]` is left unchanged.
-/// - An id may contain any characters except whitespace and nested `[[`/`]]`.
-///   The id is taken verbatim up to the first `]]`; characters like `]` that
-///   appear before the closing `]]` (e.g. `a]b` in `[[a]b]]`) are included in
-///   the id.
+/// - An id may contain any characters except whitespace.  The id is taken
+///   verbatim up to the first `]]`; characters like `]` that appear before
+///   the closing `]]` (e.g. `a]b` in `[[a]b]]`) are included in the id.
 ///
 /// # Examples
 ///
