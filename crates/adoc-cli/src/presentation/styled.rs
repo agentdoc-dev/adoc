@@ -212,7 +212,9 @@ fn indent_body(body: &str, indent: &str) -> String {
         if i > 0 {
             out.push('\n');
         }
-        out.push_str(indent);
+        if !line.is_empty() {
+            out.push_str(indent);
+        }
         out.push_str(line);
     }
     if trailing_newline {
@@ -308,6 +310,11 @@ mod tests {
     #[test]
     fn indent_body_multi_line_without_trailing_newline() {
         assert_eq!(indent_body("line1\nline2", "  "), "  line1\n  line2");
+    }
+
+    #[test]
+    fn indent_body_does_not_indent_internal_blank_lines() {
+        assert_eq!(indent_body("para1\n\npara2", "  "), "  para1\n\n  para2");
     }
 
     #[test]
