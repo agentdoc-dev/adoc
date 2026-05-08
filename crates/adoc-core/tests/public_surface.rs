@@ -208,6 +208,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _: RetrievalRecord = record;
 
     let _: SearchMode = SearchMode::Lexical;
+    let _: SearchMode = SearchMode::Hybrid;
     let _: SearchFilters = SearchFilters {
         kind: None,
         status: None,
@@ -222,6 +223,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         query_vector: None,
     };
     let _: RetrievalMatch = RetrievalMatch::lexical(1, Some(1));
+    let _: RetrievalMatch = RetrievalMatch::hybrid(1, 0.0312, Some(2), Some(1));
     let search_result = SearchResult {
         records: Vec::new(),
         diagnostics: Vec::new(),
