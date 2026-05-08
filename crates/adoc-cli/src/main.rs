@@ -15,7 +15,9 @@ use adoc_core::{
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
 use crate::error::CliError;
-use crate::presentation::{ExplainPresenter, JsonPresenter, PlainPresenter};
+use crate::presentation::{
+    ColorChoice, ExplainPresenter as _, FormatChoice, ResolvedFormat, make_presenter, terminal,
+};
 
 fn main() -> ExitCode {
     ExitCode::from(run(std::env::args()) as u8)
@@ -23,40 +25,41 @@ fn main() -> ExitCode {
 
 fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
     match Cli::try_parse_from(arguments) {
-        Ok(cli) => match cli.command {
-            Commands::Check { path } => check(path),
-            Commands::Build {
-                path,
-                out,
-                no_embeddings,
-            } => build(path, out, no_embeddings),
-            Commands::Explain {
-                object_id,
-                artifact,
-                format,
-            } => explain(object_id, artifact, format),
-            Commands::Search {
-                query,
-                artifact,
-                kind,
-                status,
-                owner,
-                source_path,
-                top,
-                format,
-            } => search_command(
-                query,
-                artifact,
-                SearchFilters {
+        Ok(cli) => {
+            let resolved = terminal::detect(cli.format.into(), cli.color.into());
+            match cli.command {
+                Commands::Check { path } => check(path),
+                Commands::Build {
+                    path,
+                    out,
+                    no_embeddings,
+                } => build(path, out, no_embeddings),
+                Commands::Explain {
+                    object_id,
+                    artifact,
+                } => explain(object_id, artifact, resolved),
+                Commands::Search {
+                    query,
+                    artifact,
                     kind,
                     status,
                     owner,
                     source_path,
-                },
-                top,
-                format,
-            ),
-        },
+                    top,
+                } => search_command(
+                    query,
+                    artifact,
+                    SearchFilters {
+                        kind,
+                        status,
+                        owner,
+                        source_path,
+                    },
+                    top,
+                    resolved,
+                ),
+            }
+        }
         Err(error) => report_parse_error(error),
     }
 }
@@ -75,9 +78,66 @@ fn report_parse_error(error: clap::Error) -> i32 {
     exit_code
 }
 
+/// The output format requested on the command line (`--format`).
+#[derive(Clone, Copy, Default, ValueEnum)]
+enum CliFormat {
+    /// Auto-detect: styled when stdout is a TTY, plain otherwise.
+    #[default]
+    Auto,
+    /// Plain uncoloured text.
+    Plain,
+    /// Styled text (alias for plain until slice 4).
+    Styled,
+    /// Machine-readable JSON.
+    Json,
+}
+
+impl From<CliFormat> for FormatChoice {
+    fn from(f: CliFormat) -> Self {
+        match f {
+            CliFormat::Auto => Self::Auto,
+            CliFormat::Plain => Self::Plain,
+            CliFormat::Styled => Self::Styled,
+            CliFormat::Json => Self::Json,
+        }
+    }
+}
+
+/// The colour mode requested on the command line (`--color`).
+#[derive(Clone, Copy, Default, ValueEnum)]
+enum CliColor {
+    /// Enable colour only when stdout is a TTY and `NO_COLOR` is unset.
+    #[default]
+    Auto,
+    /// Always emit ANSI colour codes.
+    Always,
+    /// Never emit ANSI colour codes.
+    Never,
+}
+
+impl From<CliColor> for ColorChoice {
+    fn from(c: CliColor) -> Self {
+        match c {
+            CliColor::Auto => Self::Auto,
+            CliColor::Always => Self::Always,
+            CliColor::Never => Self::Never,
+        }
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "adoc", version)]
 struct Cli {
+    /// Output format.  `auto` selects `styled` when stdout is a TTY and
+    /// `NO_COLOR` is unset, otherwise `plain`.
+    #[arg(long, global = true, value_enum, default_value = "auto")]
+    format: CliFormat,
+
+    /// Colour output.  `auto` enables colour only on a TTY without `NO_COLOR`.
+    /// `always` overrides the TTY check.  `never` disables colour.
+    #[arg(long, global = true, value_enum, default_value = "auto")]
+    color: CliColor,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -98,8 +158,6 @@ enum Commands {
         object_id: String,
         #[arg(long, default_value = "dist/docs.agent.json")]
         artifact: PathBuf,
-        #[arg(long, value_enum, default_value = "text")]
-        format: RetrievalOutputFormat,
     },
     Search {
         query: String,
@@ -115,8 +173,6 @@ enum Commands {
         source_path: Option<String>,
         #[arg(long, default_value = "10")]
         top: NonZeroUsize,
-        #[arg(long, value_enum, default_value = "text")]
-        format: RetrievalOutputFormat,
     },
 }
 
@@ -166,7 +222,7 @@ fn finish_build_result(result: CompileResult, out: &Path) -> i32 {
     }
 }
 
-fn explain(object_id: String, artifact: PathBuf, format: RetrievalOutputFormat) -> i32 {
+fn explain(object_id: String, artifact: PathBuf, resolved: ResolvedFormat) -> i32 {
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact,
     });
@@ -177,7 +233,7 @@ fn explain(object_id: String, artifact: PathBuf, format: RetrievalOutputFormat) 
     let session = match session {
         Some(session) => session,
         None => {
-            if format.is_json() {
+            if resolved == ResolvedFormat::Json {
                 return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
                     .map_or_else(report, |()| 2);
             }
@@ -187,7 +243,7 @@ fn explain(object_id: String, artifact: PathBuf, format: RetrievalOutputFormat) 
     };
 
     if diagnostics_have_errors(&load_diagnostics) {
-        if format.is_json() {
+        if resolved == ResolvedFormat::Json {
             return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
                 .map_or_else(report, |()| 2);
         }
@@ -202,7 +258,7 @@ fn explain(object_id: String, artifact: PathBuf, format: RetrievalOutputFormat) 
     };
     let exit_code = explain_exit_code(&explain_result);
 
-    if format.is_json() {
+    if resolved == ResolvedFormat::Json {
         return print_retrieval_json(&RetrievalEnvelope::from(explain_result))
             .map_or_else(report, |()| exit_code);
     }
@@ -216,7 +272,13 @@ fn explain(object_id: String, artifact: PathBuf, format: RetrievalOutputFormat) 
         eprint_diagnostics(&explain_result.diagnostics);
     }
 
-    print_retrieval_text(&RetrievalEnvelope::from(explain_result)).map_or_else(report, |()| 0)
+    let presenter = make_presenter(resolved);
+    presenter
+        .present(
+            &RetrievalEnvelope::from(explain_result),
+            &mut std::io::stdout(),
+        )
+        .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
 }
 
 fn search_command(
@@ -224,7 +286,7 @@ fn search_command(
     artifact: PathBuf,
     filters: SearchFilters,
     top: NonZeroUsize,
-    format: RetrievalOutputFormat,
+    resolved: ResolvedFormat,
 ) -> i32 {
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact,
@@ -236,7 +298,7 @@ fn search_command(
     let session = match session {
         Some(session) => session,
         None => {
-            if format.is_json() {
+            if resolved == ResolvedFormat::Json {
                 return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
                     .map_or_else(report, |()| 2);
             }
@@ -246,7 +308,7 @@ fn search_command(
     };
 
     if diagnostics_have_errors(&load_diagnostics) {
-        if format.is_json() {
+        if resolved == ResolvedFormat::Json {
             return print_retrieval_json(&RetrievalEnvelope::new(Vec::new(), load_diagnostics))
                 .map_or_else(report, |()| 2);
         }
@@ -269,7 +331,7 @@ fn search_command(
     };
     let exit_code = search_exit_code(&search_result);
 
-    if format.is_json() {
+    if resolved == ResolvedFormat::Json {
         return print_retrieval_json(&RetrievalEnvelope::from(search_result))
             .map_or_else(report, |()| exit_code);
     }
@@ -288,10 +350,14 @@ fn search_command(
         return 0;
     }
 
-    print_retrieval_text(&envelope).map_or_else(report, |()| 0)
+    let presenter = make_presenter(resolved);
+    presenter
+        .present(&envelope, &mut std::io::stdout())
+        .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
 }
 
 fn print_retrieval_json(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
+    use crate::presentation::JsonPresenter;
     JsonPresenter
         .present(envelope, &mut std::io::stdout())
         .map_err(|source| CliError::RetrievalIo { source })
@@ -344,12 +410,6 @@ fn merge_diagnostics(
 ) -> Vec<Diagnostic> {
     load_diagnostics.append(&mut command_diagnostics);
     load_diagnostics
-}
-
-fn print_retrieval_text(envelope: &RetrievalEnvelope) -> Result<(), CliError> {
-    PlainPresenter
-        .present(envelope, &mut std::io::stdout())
-        .map_err(|source| CliError::RetrievalIo { source })
 }
 
 fn report(error: CliError) -> i32 {
@@ -468,18 +528,6 @@ fn print_summary(diagnostics: &[Diagnostic]) {
         .count();
 
     println!("{errors} errors, {warnings} warnings");
-}
-
-#[derive(Clone, Copy, ValueEnum)]
-enum RetrievalOutputFormat {
-    Text,
-    Json,
-}
-
-impl RetrievalOutputFormat {
-    fn is_json(&self) -> bool {
-        matches!(self, Self::Json)
-    }
 }
 
 #[cfg(test)]

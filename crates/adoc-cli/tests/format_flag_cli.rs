@@ -1,0 +1,175 @@
+mod support;
+
+use std::fs;
+
+use assert_cmd::Command;
+use predicates::prelude::*;
+use support::{TestWorkspace, fixture_path};
+
+fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
+    let artifact = fs::read_to_string(fixture_path("v1_1_explain/valid_artifact.agent.json"))
+        .expect("fixture artifact is readable");
+    workspace.write(relative_path, &artifact);
+}
+
+fn adoc() -> Command {
+    Command::cargo_bin("adoc").expect("adoc binary is available")
+}
+
+// ----------------------------------------------------------------- piped → plain
+
+/// When stdout is not a TTY (piped), `--format auto` (the default) must
+/// produce plain text output identical to explicit `--format plain`.
+#[test]
+fn piped_default_produces_plain_output() {
+    let workspace = TestWorkspace::new("format-flag-piped");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+
+    let output = adoc()
+        .current_dir(&workspace.root)
+        .args(["explain", "billing.refunds.issue-credit"])
+        .output()
+        .expect("adoc runs");
+
+    assert!(
+        output.status.success(),
+        "expected success\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Plain output contains the key header fields.
+    assert!(stdout.contains("Object: billing.refunds.issue-credit"));
+    assert!(stdout.contains("Kind: claim"));
+    // No ANSI escape codes in plain output.
+    assert!(
+        !stdout.contains('\x1b'),
+        "plain output must not contain ANSI escape codes"
+    );
+}
+
+// -------------------------------------------------------------- --format=json
+
+#[test]
+fn format_json_flag_emits_json_envelope() {
+    let workspace = TestWorkspace::new("format-flag-json");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+
+    adoc()
+        .current_dir(&workspace.root)
+        .args([
+            "explain",
+            "billing.refunds.issue-credit",
+            "--format",
+            "json",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("{"))
+        .stdout(predicate::str::contains("schema_version"))
+        .stdout(predicate::str::contains("adoc.retrieval.v0"))
+        .stdout(predicate::str::contains("billing.refunds.issue-credit"));
+}
+
+// ----------------------------------------------------------- NO_COLOR=1 → plain
+
+#[test]
+fn no_color_env_forces_plain_output() {
+    let workspace = TestWorkspace::new("format-flag-no-color");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+
+    let output = adoc()
+        .current_dir(&workspace.root)
+        .env("NO_COLOR", "1")
+        .args(["explain", "billing.refunds.issue-credit"])
+        .output()
+        .expect("adoc runs");
+
+    assert!(
+        output.status.success(),
+        "expected success\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Object: billing.refunds.issue-credit"));
+    assert!(
+        !stdout.contains('\x1b'),
+        "NO_COLOR output must not contain ANSI escape codes"
+    );
+}
+
+// ---------------------------------------------------------- --format=plain
+
+#[test]
+fn explicit_plain_flag_produces_plain_output() {
+    let workspace = TestWorkspace::new("format-flag-explicit-plain");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+
+    adoc()
+        .current_dir(&workspace.root)
+        .args([
+            "explain",
+            "billing.refunds.issue-credit",
+            "--format",
+            "plain",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Object: billing.refunds.issue-credit",
+        ))
+        .stdout(predicate::str::contains("Kind: claim"))
+        .stdout(predicate::function(|s: &str| !s.contains('\x1b')));
+}
+
+// --------------------------------------------------------- --format=styled
+
+/// `--format styled` is an alias for plain in this slice: the bytes must be
+/// identical to `--format plain`.
+#[test]
+fn styled_flag_bytes_are_identical_to_plain() {
+    let workspace = TestWorkspace::new("format-flag-styled");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+
+    let plain_output = adoc()
+        .current_dir(&workspace.root)
+        .args([
+            "explain",
+            "billing.refunds.issue-credit",
+            "--format",
+            "plain",
+        ])
+        .output()
+        .expect("plain run succeeds");
+
+    let styled_output = adoc()
+        .current_dir(&workspace.root)
+        .args([
+            "explain",
+            "billing.refunds.issue-credit",
+            "--format",
+            "styled",
+        ])
+        .output()
+        .expect("styled run succeeds");
+
+    assert!(plain_output.status.success());
+    assert!(styled_output.status.success());
+    assert_eq!(
+        plain_output.stdout, styled_output.stdout,
+        "--format styled must produce byte-identical output to --format plain in slice 2"
+    );
+}
+
+// ------------------------------------------------- invalid --format value
+
+#[test]
+fn invalid_format_value_exits_1_with_error() {
+    adoc()
+        .args(["explain", "some.id", "--format", "yaml"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("invalid value 'yaml'"));
+}
