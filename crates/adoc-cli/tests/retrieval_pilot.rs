@@ -1,6 +1,6 @@
 mod support;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -32,6 +32,27 @@ enum CaseFormat {
     Plain,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum EmbeddingBackend {
+    InMemory,
+    #[cfg(feature = "fastembed-it")]
+    FastEmbed,
+}
+
+impl EmbeddingBackend {
+    fn configure(self, command: &mut Command) {
+        match self {
+            Self::InMemory => {
+                command.env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory");
+            }
+            #[cfg(feature = "fastembed-it")]
+            Self::FastEmbed => {
+                command.env_remove("ADOC_TEST_EMBEDDING_PROVIDER");
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 struct CaseFilters {
     kind: Option<String>,
@@ -53,6 +74,13 @@ struct RetrievalCase {
     expect_stdout_contains: Option<String>,
     expected_exit: i32,
     must_appear_in_top: usize,
+}
+
+struct PilotBuild {
+    _workspace: TestWorkspace,
+    artifact_path: PathBuf,
+    search_artifact_path: PathBuf,
+    agent_json: Value,
 }
 
 #[derive(Debug, Clone)]
@@ -117,6 +145,19 @@ enum NestedSection {
 
 #[test]
 fn retrieval_set_queries_pass_against_billing_pilot() {
+    run_retrieval_set(EmbeddingBackend::InMemory, "billing-pilot-retrieval-set");
+}
+
+#[cfg(feature = "fastembed-it")]
+#[test]
+fn retrieval_set_queries_pass_against_fastembed_provider() {
+    run_retrieval_set(
+        EmbeddingBackend::FastEmbed,
+        "billing-pilot-fastembed-retrieval-set",
+    );
+}
+
+fn run_retrieval_set(backend: EmbeddingBackend, workspace_name: &str) {
     let repo_root = repo_root();
     let retrieval_set_path = repo_root
         .join("examples")
@@ -132,29 +173,17 @@ fn retrieval_set_queries_pass_against_billing_pilot() {
         cases.len()
     );
 
-    let workspace = TestWorkspace::new("billing-pilot-retrieval-set");
-    let output_directory = workspace.root.join("dist");
-    let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
-        .current_dir(&repo_root)
-        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
-        .args([
-            "build",
-            "examples/billing-pilot",
-            "--out",
-            output_directory
-                .to_str()
-                .expect("output directory path is utf-8"),
-        ])
-        .output()
-        .expect("adoc build runs");
-    assert_success("billing pilot build", &build_output);
-
-    let artifact_path = output_directory.join("docs.agent.json");
-    let search_artifact_path = output_directory.join("docs.search.json");
+    let pilot = build_billing_pilot(&repo_root, workspace_name, backend);
     let mut expected_id_assertions = 0usize;
 
     for case in &cases {
-        let output = run_search_case(case, &repo_root, &artifact_path, &search_artifact_path);
+        let output = run_search_case(
+            case,
+            &repo_root,
+            &pilot.artifact_path,
+            &pilot.search_artifact_path,
+            backend,
+        );
         assert_eq!(
             output.status.code(),
             Some(case.expected_exit),
@@ -175,6 +204,7 @@ fn retrieval_set_queries_pass_against_billing_pilot() {
                 let envelope: Value = serde_json::from_slice(&output.stdout)
                     .unwrap_or_else(|error| panic!("case `{}` stdout is JSON: {error}", case.name));
                 assert_eq!(envelope["schema_version"], "adoc.retrieval.v0");
+                assert_record_contract(&case.name, &envelope, case.mode, case.must_appear_in_top);
                 assert_expected_diagnostics(case, &envelope);
                 expected_id_assertions += assert_expected_ids(case, &envelope);
                 assert_expected_evidence(case, &envelope);
@@ -201,10 +231,138 @@ fn retrieval_set_queries_pass_against_billing_pilot() {
     }
 
     println!(
-        "retrieval-set baseline: {} queries, {} expected-id assertions passed",
+        "retrieval-set baseline: {} queries, {} succeeded, 0 failed; {} expected-id assertions passed",
+        cases.len(),
         cases.len(),
         expected_id_assertions
     );
+}
+
+#[test]
+fn retrieval_pilot_property_invariants_hold() {
+    assert_property_invariants(EmbeddingBackend::InMemory, "billing-pilot-invariants");
+}
+
+#[cfg(feature = "fastembed-it")]
+#[test]
+fn retrieval_pilot_property_invariants_hold_against_fastembed_provider() {
+    assert_property_invariants(
+        EmbeddingBackend::FastEmbed,
+        "billing-pilot-fastembed-invariants",
+    );
+}
+
+fn assert_property_invariants(backend: EmbeddingBackend, workspace_name: &str) {
+    let repo_root = repo_root();
+    let pilot = build_billing_pilot(&repo_root, workspace_name, backend);
+    let objects = pilot.agent_json["objects"]
+        .as_array()
+        .expect("agent JSON objects is an array");
+    assert!(!objects.is_empty(), "pilot artifact should contain objects");
+
+    let mut owners: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for object in objects {
+        let id = object["id"].as_str().expect("object id is a string");
+        let body = object["body"]
+            .as_str()
+            .expect("object body is a string")
+            .trim();
+
+        let id_envelope = run_lexical_json(&repo_root, &pilot.artifact_path, id, 1, &[], backend);
+        assert_record_contract(
+            &format!("object-id invariant for {id}"),
+            &id_envelope,
+            RetrievalMode::Lexical,
+            1,
+        );
+        assert_first_id(&format!("object-id invariant for {id}"), &id_envelope, id);
+
+        let body_envelope =
+            run_lexical_json(&repo_root, &pilot.artifact_path, body, 1, &[], backend);
+        assert_record_contract(
+            &format!("body invariant for {id}"),
+            &body_envelope,
+            RetrievalMode::Lexical,
+            1,
+        );
+        assert_first_id(&format!("body invariant for {id}"), &body_envelope, id);
+
+        if let Some(owner) = object["fields"]["owner"].as_str() {
+            owners
+                .entry(owner.to_string())
+                .or_default()
+                .push(id.to_string());
+        }
+    }
+
+    for (owner, expected_ids) in owners {
+        let owner_filter = [("--owner", owner.as_str())];
+        let envelope = run_lexical_json(
+            &repo_root,
+            &pilot.artifact_path,
+            "",
+            expected_ids.len(),
+            &owner_filter,
+            backend,
+        );
+        assert_record_contract(
+            &format!("owner invariant for {owner}"),
+            &envelope,
+            RetrievalMode::Lexical,
+            expected_ids.len(),
+        );
+        let actual_ids = record_ids(&envelope);
+        for expected_id in &expected_ids {
+            assert!(
+                actual_ids.iter().any(|id| id == expected_id),
+                "owner invariant for `{owner}` expected `{expected_id}` in {actual_ids:?}"
+            );
+        }
+        for record in envelope["records"].as_array().expect("records is an array") {
+            assert_eq!(
+                record["owner"], owner,
+                "owner invariant for `{owner}` returned wrong owner in {record}"
+            );
+        }
+    }
+}
+
+fn build_billing_pilot(
+    repo_root: &Path,
+    workspace_name: &str,
+    backend: EmbeddingBackend,
+) -> PilotBuild {
+    let workspace = TestWorkspace::new(workspace_name);
+    let output_directory = workspace.root.join("dist");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
+    backend.configure(&mut command);
+    let build_output = command
+        .current_dir(repo_root)
+        .args([
+            "build",
+            "examples/billing-pilot",
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+    assert_success("billing pilot build", &build_output);
+
+    let artifact_path = output_directory.join("docs.agent.json");
+    let search_artifact_path = output_directory.join("docs.search.json");
+    let agent_json_text =
+        fs::read_to_string(&artifact_path).expect("billing pilot agent JSON is written");
+    let agent_json: Value =
+        serde_json::from_str(&agent_json_text).expect("agent JSON is valid JSON");
+
+    PilotBuild {
+        _workspace: workspace,
+        artifact_path,
+        search_artifact_path,
+        agent_json,
+    }
 }
 
 fn run_search_case(
@@ -212,6 +370,7 @@ fn run_search_case(
     repo_root: &PathBuf,
     artifact_path: &Path,
     search_artifact_path: &Path,
+    backend: EmbeddingBackend,
 ) -> Output {
     let mut args = vec![
         "search".to_string(),
@@ -238,12 +397,58 @@ fn run_search_case(
     push_filter_arg(&mut args, "--owner", &case.filters.owner);
     push_filter_arg(&mut args, "--source-path", &case.filters.source_path);
 
-    Command::new(env!("CARGO_BIN_EXE_adoc"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
+    backend.configure(&mut command);
+    command
         .current_dir(repo_root)
-        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
         .args(args)
         .output()
         .expect("adoc search runs")
+}
+
+fn run_lexical_json(
+    repo_root: &Path,
+    artifact_path: &Path,
+    query: &str,
+    top: usize,
+    filters: &[(&str, &str)],
+    backend: EmbeddingBackend,
+) -> Value {
+    let mut args = vec![
+        "search".to_string(),
+        query.to_string(),
+        "--artifact".to_string(),
+        artifact_path.to_string_lossy().into_owned(),
+        "--lexical".to_string(),
+        "--format".to_string(),
+        "json".to_string(),
+        "--top".to_string(),
+        top.max(1).to_string(),
+    ];
+    for (flag, value) in filters {
+        args.push((*flag).to_string());
+        args.push((*value).to_string());
+    }
+
+    let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
+    backend.configure(&mut command);
+    let output = command
+        .current_dir(repo_root)
+        .args(args)
+        .output()
+        .expect("adoc search runs");
+    assert_success("lexical JSON search", &output);
+    assert!(
+        output.stderr.is_empty(),
+        "lexical JSON search should not emit stderr\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
+        panic!(
+            "lexical JSON search stdout is JSON: {error}\nstdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )
+    })
 }
 
 fn push_filter_arg(args: &mut Vec<String>, flag: &str, value: &Option<String>) {
@@ -260,6 +465,75 @@ fn assert_success(label: &str, output: &Output) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn assert_record_contract(label: &str, envelope: &Value, expected_mode: RetrievalMode, top: usize) {
+    let records = envelope["records"].as_array().expect("records is an array");
+    assert!(
+        records.len() <= top,
+        "{label} returned more records than top {top}: {records:?}"
+    );
+
+    let mut seen_ids = BTreeSet::new();
+    for (index, record) in records.iter().enumerate() {
+        let id = record["id"].as_str().expect("record id is a string");
+        assert!(seen_ids.insert(id), "{label} returned duplicate id `{id}`");
+        assert_eq!(
+            record["match"]["result_rank"],
+            (index + 1) as u64,
+            "{label} should have contiguous result ranks"
+        );
+
+        let expected_mode_text = match expected_mode {
+            RetrievalMode::Hybrid => "hybrid",
+            RetrievalMode::Lexical => "lexical",
+            RetrievalMode::Semantic => "semantic",
+        };
+        assert_eq!(
+            record["match"]["mode"], expected_mode_text,
+            "{label} should report requested mode"
+        );
+        match expected_mode {
+            RetrievalMode::Hybrid => {
+                assert!(
+                    record["match"]["rrf_score"].is_number(),
+                    "{label} hybrid record should include rrf_score: {record}"
+                );
+                assert!(
+                    record["match"].get("cosine_score").is_none(),
+                    "{label} hybrid record should not expose raw cosine score: {record}"
+                );
+            }
+            RetrievalMode::Lexical => {}
+            RetrievalMode::Semantic => {
+                assert!(
+                    record["match"]["vector_rank"].is_number(),
+                    "{label} semantic record should include vector_rank: {record}"
+                );
+                assert!(
+                    record["match"]["cosine_score"].is_number(),
+                    "{label} semantic record should include cosine_score: {record}"
+                );
+            }
+        }
+    }
+}
+
+fn assert_first_id(label: &str, envelope: &Value, expected_id: &str) {
+    let records = envelope["records"].as_array().expect("records is an array");
+    let first = records
+        .first()
+        .unwrap_or_else(|| panic!("{label} expected one record"));
+    assert_eq!(first["id"], expected_id, "{label} returned wrong top hit");
+}
+
+fn record_ids(envelope: &Value) -> Vec<&str> {
+    envelope["records"]
+        .as_array()
+        .expect("records is an array")
+        .iter()
+        .filter_map(|record| record["id"].as_str())
+        .collect()
 }
 
 fn assert_expected_diagnostics(case: &RetrievalCase, envelope: &Value) {

@@ -11,7 +11,7 @@ The current implementation is a pre-release Rust CLI named `adoc`. It compiles n
 - `docs.search.json` for local embedding-backed retrieval
 - source-located diagnostics for invalid input
 
-It also provides local, read-only retrieval over `docs.agent.json` with `adoc explain` and lexical-only `adoc search`.
+It also provides local, read-only retrieval over compiled artifacts with `adoc explain` and hybrid `adoc search`.
 
 AgentDoc is not AsciiDoc, even though the source extension is `.adoc`.
 
@@ -42,14 +42,15 @@ V1.3 build embeddings support:
 - per-Object-ID vector reuse when the model header and content hash match the prior `docs.search.json`
 - `--no-embeddings` to skip search artifact generation and leave any prior `docs.search.json` untouched
 
-V1.2 local retrieval supports:
+V1 local retrieval supports:
 
 - `adoc explain <object-id>` over a compiled `docs.agent.json`
-- `adoc search <query>` over the same agent artifact
+- `adoc search <query>` over `docs.agent.json` and, when present, `docs.search.json`
 - text and JSON retrieval output
+- hybrid search by default, fusing lexical BM25 and vector cosine ranks with Reciprocal Rank Fusion
+- `--lexical` and `--semantic` escape hatches
+- exact Object ID and ID-prefix pins in all search modes
 - search filters for kind, status, owner, and source path
-
-V1.2 search is lexical-only. It reads `docs.agent.json` only; it does not read `docs.search.json`, run semantic mode, or perform hybrid ranking yet.
 
 Config files, includes, custom schemas, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, a web app, and permissioned governance are deferred beyond the current V0 compiler loop. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -128,7 +129,7 @@ docs.search.json
 
 ### Try The Billing Pilot
 
-The realistic V0 pilot under [examples/billing-pilot](examples/billing-pilot) exercises the full core object set: `claim`, `decision`, `warning`, and `glossary`. It contains 20+ Knowledge Objects, 5+ verified claims, object references, relations, and source spans in the agent artifact.
+The realistic V0 pilot under [examples/billing-pilot](examples/billing-pilot) exercises the full core object set: `claim`, `decision`, `warning`, and `glossary`. It contains 30+ Knowledge Objects, 8+ verified claims, object references, relations, source spans, and a golden retrieval set.
 
 ```bash
 rm -rf /tmp/adoc-billing-pilot
@@ -166,7 +167,7 @@ adoc build /tmp/adoc-example/guide.adoc --out /tmp/adoc-example/dist
 adoc check <path>
 adoc build <path> --out <directory> [--no-embeddings]
 adoc explain <object-id> [--artifact <path>] [--format text|json]
-adoc search <query> [--artifact <path>] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--top <n>] [--format text|json]
+adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | --semantic] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--top <n>] [--format text|json]
 ```
 
 `<path>` can be:
@@ -201,15 +202,20 @@ adoc search <query> [--artifact <path>] [--kind <value>] [--status <value>] [--o
 
 `adoc search`:
 
-- reads a compiled agent artifact; it does not compile source
+- reads compiled artifacts; it does not compile source
 - defaults to `--artifact dist/docs.agent.json`
-- runs deterministic lexical search over `docs.agent.json`
-- pins exact Object ID and raw case-sensitive ID-prefix query matches above BM25 results
+- defaults to `--search-artifact dist/docs.search.json`
+- runs hybrid search by default when the search artifact loads
+- degrades to lexical search with one `search.artifact_missing` warning when the search artifact is absent
+- accepts `--lexical` for deterministic text search over `docs.agent.json`
+- accepts `--semantic` for vector-only search over `docs.search.json`
+- pins exact Object ID and raw case-sensitive ID-prefix query matches in every mode
 - supports `--kind`, `--status`, `--owner`, and `--source-path` filters
+- treats an empty lexical query plus filters as a deterministic listing of matching objects
 - limits results with `--top`, defaulting to `10`
 - supports `--format text|json`
 
-V1.2 `adoc search` does not use `docs.search.json`, semantic search, or hybrid ranking.
+See [docs/v1-retrieval.md](docs/v1-retrieval.md) for retrieval workflow, citation guidance, model-swap behavior, and retrieval-set maintenance.
 
 ## AgentDoc Source
 
