@@ -9,6 +9,7 @@ const CONFIG_FILE_NAME: &str = "agentdoc.config.yaml";
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProjectConfig {
+    pub(crate) path: PathBuf,
     pub(crate) docs_path: PathBuf,
     pub(crate) outputs: ConfigOutputs,
     pub(crate) embeddings_provider: EmbeddingsProvider,
@@ -119,6 +120,7 @@ impl RawProjectConfig {
         };
 
         Ok(ProjectConfig {
+            path: path.to_path_buf(),
             docs_path: resolve_config_path(config_dir, self.docs_path),
             outputs,
             embeddings_provider,

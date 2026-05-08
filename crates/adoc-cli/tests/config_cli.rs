@@ -200,6 +200,37 @@ fn config_build_fully_explicit_no_embeddings_ignores_malformed_config() {
 }
 
 #[test]
+fn config_build_missing_outputs_error_names_loaded_config_path() {
+    let workspace = TestWorkspace::new("config-build-missing-outputs-path");
+    write_valid_source(&workspace, "docs/index.adoc");
+    let config_path = workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\nembeddings:\n  provider: local\n",
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["build"])
+        .output()
+        .expect("adoc build runs");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = stderr(&output);
+    assert!(
+        stderr.contains("error[config.missing]"),
+        "expected config.missing, got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("outputs.dir"),
+        "expected missing outputs guidance, got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains(&config_path.display().to_string()),
+        "expected loaded config path in error, got:\n{stderr}"
+    );
+}
+
+#[test]
 fn config_explain_and_search_use_configured_artifacts_unless_args_are_explicit() {
     let workspace = TestWorkspace::new("config-retrieval-artifacts");
     copy_valid_artifact(&workspace, "configured/docs.agent.json");
