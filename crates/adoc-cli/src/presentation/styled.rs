@@ -415,7 +415,7 @@ mod tests {
         let view = view_for(record);
         let raw = render(&view);
         assert!(
-            raw.contains("\u{1b}[96mbilling.ledger\u{1b}[39m"),
+            raw.contains("\u{1b}[38;2;100;220;255mbilling.ledger\u{1b}[39m"),
             "expected bright-cyan-wrapped id in styled output, got: {:?}",
             raw
         );
@@ -680,8 +680,8 @@ mod tests {
     // Slice 9: cyan keys for evidence, fields, and relation kinds
     // -----------------------------------------------------------------------
 
-    /// The per-item key names in the Evidence section must be wrapped in bright
-    /// cyan ANSI codes (`ESC[96m…ESC[39m`) in styled mode.
+    /// The per-item key names in the Evidence section must be wrapped in
+    /// truecolour cyan ANSI codes (`ESC[38;2;100;220;255m…ESC[39m`) in styled mode.
     #[test]
     fn styled_evidence_keys_render_in_cyan() {
         let record = RetrievalRecord {
@@ -710,15 +710,15 @@ mod tests {
 
         // Each known key must appear cyan-wrapped followed by colon.
         assert!(
-            raw.contains("\u{1b}[96msource\u{1b}[39m:"),
+            raw.contains("\u{1b}[38;2;100;220;255msource\u{1b}[39m:"),
             "evidence 'source' key must be cyan; raw={raw:?}"
         );
         assert!(
-            raw.contains("\u{1b}[96mtest\u{1b}[39m:"),
+            raw.contains("\u{1b}[38;2;100;220;255mtest\u{1b}[39m:"),
             "evidence 'test' key must be cyan; raw={raw:?}"
         );
         assert!(
-            raw.contains("\u{1b}[96mreviewed_by\u{1b}[39m:"),
+            raw.contains("\u{1b}[38;2;100;220;255mreviewed_by\u{1b}[39m:"),
             "evidence 'reviewed_by' key must be cyan; raw={raw:?}"
         );
 
@@ -753,7 +753,7 @@ mod tests {
         let raw = render(&view);
 
         assert!(
-            raw.contains("\u{1b}[96mcanonical\u{1b}[39m:"),
+            raw.contains("\u{1b}[38;2;100;220;255mcanonical\u{1b}[39m:"),
             "fields 'canonical' key must be cyan; raw={raw:?}"
         );
 
@@ -790,15 +790,15 @@ mod tests {
         let raw = render(&view);
 
         assert!(
-            raw.contains("\u{1b}[96mdepends_on\u{1b}[39m:"),
+            raw.contains("\u{1b}[38;2;100;220;255mdepends_on\u{1b}[39m:"),
             "relation kind 'depends_on' must be cyan; raw={raw:?}"
         );
         assert!(
-            raw.contains("\u{1b}[96msupersedes\u{1b}[39m:"),
+            raw.contains("\u{1b}[38;2;100;220;255msupersedes\u{1b}[39m:"),
             "relation kind 'supersedes' must be cyan; raw={raw:?}"
         );
         assert!(
-            raw.contains("\u{1b}[96mrelated_to\u{1b}[39m:"),
+            raw.contains("\u{1b}[38;2;100;220;255mrelated_to\u{1b}[39m:"),
             "relation kind 'related_to' must be cyan; raw={raw:?}"
         );
 
@@ -827,7 +827,7 @@ mod tests {
         assert!(!raw.contains("[CONTRADICTED]"));
         // But kind is still cyan.
         assert!(
-            raw.contains("\u{1b}[96mdepends_on\u{1b}[39m:"),
+            raw.contains("\u{1b}[38;2;100;220;255mdepends_on\u{1b}[39m:"),
             "kind must be cyan even without a chip; raw={raw:?}"
         );
     }
