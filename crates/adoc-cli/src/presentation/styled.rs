@@ -1,11 +1,10 @@
 use std::fmt::Write as FmtWrite;
 use std::io;
 
-use adoc_core::ExplainView;
 use owo_colors::OwoColorize as _;
 
 use super::plain::{has_evidence, has_fields, has_relations};
-use super::port::ExplainPresenter;
+use super::port::{ExpiresInfo, PresentationRecord, RetrievalPresenter, RetrievalView};
 use super::style::chip::status_chip;
 use super::style::footer::render_footer;
 use super::style::humanise;
@@ -34,19 +33,26 @@ use super::style::wikilink::highlight;
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct StyledPresenter;
 
-impl ExplainPresenter for StyledPresenter {
-    fn present(&self, view: &ExplainView, out: &mut dyn io::Write) -> io::Result<()> {
+impl RetrievalPresenter for StyledPresenter {
+    fn present(&self, view: &RetrievalView, out: &mut dyn io::Write) -> io::Result<()> {
         let mut buf = String::new();
-        render_styled(&mut buf, view);
-        // Footer: one blank line, then the provenance line (styled=true).
-        buf.push('\n');
-        render_footer(&mut buf, &view.render_meta, true);
+        for (index, presentation_record) in view.records.iter().enumerate() {
+            if index > 0 {
+                buf.push('\n');
+            }
+            render_styled_record(&mut buf, presentation_record);
+        }
+        if let Some(footer) = &view.footer {
+            // Footer: one blank line, then the provenance line (styled=true).
+            buf.push('\n');
+            render_footer(&mut buf, footer, true);
+        }
         out.write_all(buf.as_bytes())
     }
 }
 
-fn render_styled(output: &mut String, view: &ExplainView) {
-    let record = &view.record;
+fn render_styled_record(output: &mut String, presentation_record: &PresentationRecord) {
+    let record = &presentation_record.record;
 
     writeln!(output, "{} {}", faint_label("Object:"), record.id)
         .expect("writing to String cannot fail");
@@ -70,7 +76,7 @@ fn render_styled(output: &mut String, view: &ExplainView) {
         writeln!(output, "{} {owner}", faint_label("Owner:"))
             .expect("writing to String cannot fail");
     }
-    match (&record.verified_at, &view.expires) {
+    match (&record.verified_at, &presentation_record.expires) {
         (Some(verified_at), Some(info)) => {
             let coloured_paren = coloured_paren(info);
             writeln!(
@@ -159,7 +165,7 @@ fn render_styled(output: &mut String, view: &ExplainView) {
         for (kind, targets) in kinds {
             let cyan_kind = cyan_key(kind);
             for target in targets {
-                let status_opt: Option<&str> = view
+                let status_opt: Option<&str> = presentation_record
                     .related_statuses
                     .get(target)
                     .and_then(|opt| opt.as_deref());
@@ -178,7 +184,7 @@ fn render_styled(output: &mut String, view: &ExplainView) {
 
 /// Format the expires parenthetical for `info`, colouring it red when the
 /// record has already expired (`days_until < 0`).
-fn coloured_paren(info: &adoc_core::ExpiresInfo) -> String {
+fn coloured_paren(info: &ExpiresInfo) -> String {
     let humanised = humanise::format_diff(info.days_until);
     let paren = format!("({humanised})");
     if info.days_until < 0 {
@@ -229,12 +235,11 @@ mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use adoc_core::{
-        AgentJsonRelations, ExpiresInfo, ExplainView, RenderMeta, RetrievalRecord, RetrievalSource,
-    };
+    use adoc_core::{AgentJsonRelations, RetrievalRecord, RetrievalSource};
     use chrono::NaiveDate;
 
     use super::*;
+    use crate::presentation::{PresentationRecord, RenderMeta};
 
     fn make_record(id: &str, kind: &str) -> RetrievalRecord {
         RetrievalRecord {
@@ -264,16 +269,23 @@ mod tests {
         }
     }
 
-    fn view_for(record: RetrievalRecord) -> ExplainView {
-        ExplainView {
-            record,
-            related_statuses: BTreeMap::new(),
-            expires: None,
-            render_meta: default_meta(),
+    fn view_for(record: RetrievalRecord) -> RetrievalView {
+        RetrievalView {
+            records: vec![PresentationRecord {
+                record,
+                related_statuses: BTreeMap::new(),
+                expires: None,
+            }],
+            diagnostics: Vec::new(),
+            footer: Some(default_meta()),
         }
     }
 
-    fn render(view: &ExplainView) -> String {
+    fn primary_mut(view: &mut RetrievalView) -> &mut PresentationRecord {
+        view.records.first_mut().expect("test view has a record")
+    }
+
+    fn render(view: &RetrievalView) -> String {
         let mut buf = Vec::new();
         StyledPresenter.present(view, &mut buf).unwrap();
         String::from_utf8(buf).unwrap()
@@ -491,7 +503,7 @@ mod tests {
         let mut record = make_record("billing.credits", "claim");
         record.verified_at = Some("2026-05-06".to_string());
         let mut view = view_for(record);
-        view.expires = Some(expires_info(
+        primary_mut(&mut view).expires = Some(expires_info(
             NaiveDate::from_ymd_opt(2026, 8, 4).unwrap(),
             88,
         ));
@@ -507,7 +519,7 @@ mod tests {
     fn styled_renders_standalone_expires_line_when_only_expires_present() {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
-        view.expires = Some(expires_info(
+        primary_mut(&mut view).expires = Some(expires_info(
             NaiveDate::from_ymd_opt(2026, 8, 4).unwrap(),
             88,
         ));
@@ -528,7 +540,7 @@ mod tests {
         let mut record = make_record("billing.credits", "claim");
         record.verified_at = Some("2026-05-06".to_string());
         let mut view = view_for(record);
-        view.expires = Some(expires_info(
+        primary_mut(&mut view).expires = Some(expires_info(
             NaiveDate::from_ymd_opt(2026, 4, 30).unwrap(),
             -8,
         ));
@@ -549,7 +561,7 @@ mod tests {
         let mut record = make_record("billing.credits", "claim");
         record.relations.supersedes = vec!["billing.credits.old-rule".to_string()];
         let mut view = view_for(record);
-        view.related_statuses.insert(
+        primary_mut(&mut view).related_statuses.insert(
             "billing.credits.old-rule".to_string(),
             Some("contradicted".to_string()),
         );
@@ -572,7 +584,7 @@ mod tests {
         let mut record = make_record("billing.credits", "claim");
         record.relations.depends_on = vec!["billing.credits.ledger".to_string()];
         let mut view = view_for(record);
-        view.related_statuses.insert(
+        primary_mut(&mut view).related_statuses.insert(
             "billing.credits.ledger".to_string(),
             Some("verified".to_string()),
         );
@@ -589,7 +601,8 @@ mod tests {
         let mut record = make_record("billing.credits", "claim");
         record.relations.related_to = vec!["billing.credits.ghost".to_string()];
         let mut view = view_for(record);
-        view.related_statuses
+        primary_mut(&mut view)
+            .related_statuses
             .insert("billing.credits.ghost".to_string(), None);
         let out = render(&view);
         assert!(!out.contains("[CONTRADICTED]"));
@@ -620,7 +633,7 @@ mod tests {
         let mut record = make_record("billing.credits", "claim");
         record.verified_at = Some("2026-05-06".to_string());
         let mut view = view_for(record);
-        view.expires = Some(expires_info(
+        primary_mut(&mut view).expires = Some(expires_info(
             NaiveDate::from_ymd_opt(2026, 8, 4).unwrap(),
             88,
         ));
@@ -643,11 +656,11 @@ mod tests {
     fn styled_footer_check_glyph_is_green() {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
-        view.render_meta = RenderMeta {
+        view.footer = Some(RenderMeta {
             artifact: PathBuf::from("/tmp/adoc-retrieval-dist/docs.agent.json"),
             trust: Some("team".to_string()),
             duration: Duration::from_millis(60),
-        };
+        });
         let raw = render(&view);
         // owo_colors emits ESC[32m for green fg and ESC[39m to reset.
         assert!(
@@ -660,11 +673,11 @@ mod tests {
     fn styled_footer_visible_text_contains_trust_and_duration() {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
-        view.render_meta = RenderMeta {
+        view.footer = Some(RenderMeta {
             artifact: PathBuf::from("/tmp/docs.agent.json"),
             trust: Some("team".to_string()),
             duration: Duration::from_millis(60),
-        };
+        });
         let stripped = strip_ansi(&render(&view));
         assert!(
             stripped.ends_with("\n✓ rendered from docs.agent.json · trust: team · 0.06s\n"),
@@ -824,7 +837,7 @@ mod tests {
         let mut record = make_record("billing.credits", "claim");
         record.relations.depends_on = vec!["billing.credits.ledger".to_string()];
         let mut view = view_for(record);
-        view.related_statuses.insert(
+        primary_mut(&mut view).related_statuses.insert(
             "billing.credits.ledger".to_string(),
             Some("verified".to_string()),
         );

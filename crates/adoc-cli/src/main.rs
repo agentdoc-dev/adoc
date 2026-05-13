@@ -1,4 +1,3 @@
-mod adapters;
 mod config;
 mod error;
 mod presentation;
@@ -8,22 +7,22 @@ use std::io::{self, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::time::Instant;
 
 use adoc_core::{
     AgentJsonDocument, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult, Diagnostic,
-    DiagnosticCode, EmbedQueryError, ExplainError, RetrievalEnvelope, RetrievalInput,
-    RetrievalLoadResult, SearchArtifactDocument, SearchFilters, SearchMode, SearchQuery,
-    SearchResult, Severity, build_workspace, compile_workspace, embed_query,
-    load_retrieval_session, search,
+    DiagnosticCode, EmbedQueryError, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
+    RetrievalRecord, RetrievalSession, SearchArtifactDocument, SearchFilters, SearchMode,
+    SearchQuery, SearchResult, Severity, build_workspace, compile_workspace, embed_query,
+    load_retrieval_session, search, why_object,
 };
 use clap::{Parser, Subcommand, ValueEnum, error::ErrorKind};
 
-use crate::adapters::{ArtifactRecordResolver, SystemClock};
 use crate::config::{EmbeddingsProvider, ProjectConfig};
 use crate::error::CliError;
 use crate::presentation::{
-    ColorChoice, FormatChoice, ResolvedFormat, json as json_presentation, make_presenter,
-    plain as plain_presentation, terminal,
+    ColorChoice, ExpiresInfo, FormatChoice, PresentationRecord, RenderMeta, ResolvedFormat,
+    RetrievalView, json as json_presentation, make_presenter, terminal,
 };
 
 const INIT_CONFIG_PATH: &str = "agentdoc.config.yaml";
@@ -69,10 +68,10 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     out,
                     no_embeddings,
                 } => build(path, out, no_embeddings),
-                Commands::Explain {
+                Commands::Why {
                     object_id,
                     artifact,
-                } => explain(object_id, artifact, resolved),
+                } => why(object_id, artifact, resolved),
                 Commands::Search {
                     query,
                     artifact,
@@ -198,7 +197,7 @@ enum Commands {
         #[arg(long)]
         no_embeddings: bool,
     },
-    Explain {
+    Why {
         object_id: String,
         #[arg(
             long,
@@ -532,7 +531,7 @@ fn finish_build_result_at_paths(result: CompileResult, paths: &BuildOutputPaths)
     }
 }
 
-fn explain(object_id: String, artifact: Option<PathBuf>, resolved: ResolvedFormat) -> i32 {
+fn why(object_id: String, artifact: Option<PathBuf>, resolved: ResolvedFormat) -> i32 {
     let config = match discover_project_config_if(artifact.is_none()) {
         Ok(config) => config,
         Err(error) => return report(error),
@@ -549,77 +548,126 @@ fn explain(object_id: String, artifact: Option<PathBuf>, resolved: ResolvedForma
     let session = match session {
         Some(session) => session,
         None => {
+            let exit_code = why_exit_code_for_diagnostics(&load_diagnostics);
             if resolved == ResolvedFormat::Json {
                 return json_presentation::write_envelope_json(
                     &RetrievalEnvelope::new(Vec::new(), load_diagnostics),
                     &mut std::io::stdout(),
                 )
-                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
+                .map_or_else(
+                    |source| report(CliError::RetrievalIo { source }),
+                    |()| exit_code,
+                );
             }
             eprint_diagnostics(&load_diagnostics);
-            return 2;
+            return exit_code;
         }
     };
 
     if diagnostics_have_errors(&load_diagnostics) {
+        let exit_code = why_exit_code_for_diagnostics(&load_diagnostics);
         if resolved == ResolvedFormat::Json {
             return json_presentation::write_envelope_json(
                 &RetrievalEnvelope::new(Vec::new(), load_diagnostics),
                 &mut std::io::stdout(),
             )
-            .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
+            .map_or_else(
+                |source| report(CliError::RetrievalIo { source }),
+                |()| exit_code,
+            );
         }
         eprint_diagnostics(&load_diagnostics);
-        return 2;
+        return exit_code;
     }
 
-    // Build the application service with the full record set from the session
-    // so that relation targets can be resolved for `related_statuses`.
-    let resolver = ArtifactRecordResolver::new(session.records());
-    let service = adoc_core::ExplainService::new(resolver, SystemClock, artifact);
+    let started = Instant::now();
+    let why_result = why_object(&session, &object_id);
+    let duration = started.elapsed();
+    let diagnostics = merge_diagnostics(load_diagnostics, why_result.diagnostics);
+    let exit_code = why_exit_code_for_diagnostics(&diagnostics);
 
-    match service.execute(&object_id) {
-        Ok(view) => match resolved {
-            ResolvedFormat::Json => {
-                let presenter = make_presenter(ResolvedFormat::Json, load_diagnostics);
-                presenter
-                    .present(&view, &mut std::io::stdout())
-                    .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
-            }
-            _ => {
-                if !load_diagnostics.is_empty() {
-                    eprint_diagnostics(&load_diagnostics);
-                }
-                let presenter = make_presenter(resolved, Vec::new());
-                presenter
-                    .present(&view, &mut std::io::stdout())
-                    .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
-            }
-        },
-        Err(ExplainError::NotFound(id)) => {
-            let diagnostic = Diagnostic::not_found(id);
-            if resolved == ResolvedFormat::Json {
-                return json_presentation::write_envelope_json(
-                    &RetrievalEnvelope::new(Vec::new(), vec![diagnostic]),
-                    &mut std::io::stdout(),
-                )
-                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 3);
-            }
-            eprint_diagnostics(&[diagnostic]);
-            3
+    if exit_code != 0 {
+        if resolved == ResolvedFormat::Json {
+            return json_presentation::write_envelope_json(
+                &RetrievalEnvelope::new(Vec::new(), diagnostics),
+                &mut std::io::stdout(),
+            )
+            .map_or_else(
+                |source| report(CliError::RetrievalIo { source }),
+                |()| exit_code,
+            );
         }
-        Err(ExplainError::Resolver(source)) => {
-            let diagnostic = Diagnostic::resolver(&source);
-            if resolved == ResolvedFormat::Json {
-                return json_presentation::write_envelope_json(
-                    &RetrievalEnvelope::new(Vec::new(), vec![diagnostic]),
-                    &mut std::io::stdout(),
-                )
-                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
+        eprint_diagnostics(&diagnostics);
+        return exit_code;
+    }
+
+    if resolved != ResolvedFormat::Json && !diagnostics.is_empty() {
+        eprint_diagnostics(&diagnostics);
+    }
+
+    let records: Vec<_> = why_result
+        .records
+        .into_iter()
+        .map(|record| presentation_record_from_session(&session, record, true))
+        .collect();
+    let footer = records.first().map(|presentation_record| RenderMeta {
+        artifact,
+        trust: presentation_record.record.fields.get("trust").cloned(),
+        duration,
+    });
+    let view = RetrievalView {
+        records,
+        diagnostics,
+        footer,
+    };
+    let presenter = make_presenter(resolved, Vec::new());
+    presenter
+        .present(&view, &mut std::io::stdout())
+        .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
+}
+
+fn presentation_record_from_session(
+    session: &RetrievalSession,
+    record: RetrievalRecord,
+    include_expires: bool,
+) -> PresentationRecord {
+    let expires = include_expires.then(|| expires_info(&record)).flatten();
+    let related_statuses = session.related_statuses(&record);
+    PresentationRecord {
+        record,
+        related_statuses,
+        expires,
+    }
+}
+
+fn expires_info(record: &RetrievalRecord) -> Option<ExpiresInfo> {
+    record
+        .fields
+        .get("expires_at")
+        .and_then(|value| chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").ok())
+        .map(|date| {
+            let today = chrono::Local::now().date_naive();
+            ExpiresInfo {
+                date,
+                days_until: (date - today).num_days(),
             }
-            eprint_diagnostics(&[diagnostic]);
-            2
-        }
+        })
+}
+
+fn why_exit_code_for_diagnostics(diagnostics: &[Diagnostic]) -> i32 {
+    diagnostics
+        .iter()
+        .filter_map(why_diagnostic_exit_code)
+        .min()
+        .unwrap_or(0)
+}
+
+fn why_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
+    match (diagnostic.code, diagnostic.severity) {
+        (DiagnosticCode::IdInvalid, _) => Some(1),
+        (DiagnosticCode::RetrievalObjectNotFound, _) => Some(3),
+        (_, Severity::Error) => Some(2),
+        _ => None,
     }
 }
 
@@ -781,45 +829,43 @@ fn search_command(input: SearchCommandInput, resolved: ResolvedFormat) -> i32 {
         diagnostics: merge_diagnostics(load_diagnostics, search_result.diagnostics),
     };
     let exit_code = search_exit_code(&search_result);
+    let view = RetrievalView {
+        records: search_result
+            .records
+            .into_iter()
+            .map(|record| presentation_record_from_session(&session, record, false))
+            .collect(),
+        diagnostics: search_result.diagnostics,
+        footer: None,
+    };
 
     if resolved == ResolvedFormat::Json {
-        return json_presentation::write_envelope_json(
-            &RetrievalEnvelope::from(search_result),
-            &mut std::io::stdout(),
-        )
-        .map_or_else(
-            |source| report(CliError::RetrievalIo { source }),
-            |()| exit_code,
-        );
+        let presenter = make_presenter(ResolvedFormat::Json, Vec::new());
+        return presenter
+            .present(&view, &mut std::io::stdout())
+            .map_or_else(
+                |source| report(CliError::RetrievalIo { source }),
+                |()| exit_code,
+            );
     }
 
     if exit_code != 0 {
-        eprint_diagnostics(&search_result.diagnostics);
+        eprint_diagnostics(&view.diagnostics);
         return exit_code;
     }
 
-    let envelope = RetrievalEnvelope::from(search_result);
-    if !envelope.diagnostics.is_empty() {
-        eprint_diagnostics(&envelope.diagnostics);
+    if !view.diagnostics.is_empty() {
+        eprint_diagnostics(&view.diagnostics);
     }
-    if envelope.records.is_empty() {
+    if view.records.is_empty() {
         println!("(no matches)");
         return 0;
     }
 
-    // Search renders multiple records; delegate to the shared plain-text helper
-    // in the presentation layer so there is a single rendering path.
-    let mut buf = String::new();
-    for (index, record) in envelope.records.iter().enumerate() {
-        if index > 0 {
-            buf.push('\n');
-        }
-        plain_presentation::render_record(&mut buf, record, None);
-    }
-    if let Err(source) = std::io::Write::write_all(&mut std::io::stdout(), buf.as_bytes()) {
-        return report(CliError::RetrievalIo { source });
-    }
-    0
+    let presenter = make_presenter(resolved, Vec::new());
+    presenter
+        .present(&view, &mut std::io::stdout())
+        .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
 }
 
 fn search_exit_code(result: &SearchResult) -> i32 {

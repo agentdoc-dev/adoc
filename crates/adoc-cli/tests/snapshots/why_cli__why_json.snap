@@ -1,5 +1,5 @@
 ---
-source: crates/adoc-cli/tests/explain_cli.rs
+source: crates/adoc-cli/tests/why_cli.rs
 assertion_line: 181
 expression: stdout
 ---

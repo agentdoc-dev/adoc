@@ -107,7 +107,7 @@ fn init_creates_config_and_example_docs_in_current_directory() {
 
     adoc()
         .current_dir(&workspace.root)
-        .args(["explain", "project.initialized"])
+        .args(["why", "project.initialized"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Object: project.initialized"))

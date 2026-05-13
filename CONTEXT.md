@@ -125,7 +125,7 @@ The directory passed to `adoc build --out`; the CLI creates it when missing and 
 _Avoid_: manual pre-created output directory
 
 **V1 Local Retrieval**:
-The first post-compiler milestone. Adds `adoc explain` and `adoc search` over compiled artifacts, ships per-Knowledge-Object embeddings as a first-class build output, and ranks results via a parameter-free hybrid of BM25 and cosine similarity.
+The first post-compiler milestone. Adds `adoc why` and `adoc search` over compiled artifacts, ships per-Knowledge-Object embeddings as a first-class build output, and ranks results via a parameter-free hybrid of BM25 and cosine similarity.
 _Avoid_: V1 hosted RAG service, V1 agent server, V1 graph database
 
 **V1 Build Artifacts**:
@@ -149,7 +149,7 @@ The V1 default search ranking: Reciprocal Rank Fusion over a BM25 lexical index 
 _Avoid_: tunable score weights in V1, multi-factor PRD §19.3 scoring in V1, ANN libraries in V1
 
 **Retrieval Record**:
-The stable JSON shape returned by `adoc explain --format json` and `adoc search --format json`. Contained inside an `adoc.retrieval.v0` envelope. A projection of `AgentJsonObject` plus a small `match` block carrying `mode`, ranks, and (when relevant) `cosine_score`.
+The stable JSON shape returned by `adoc why --format json` and `adoc search --format json`. Contained inside an `adoc.retrieval.v0` envelope. A projection of `AgentJsonObject` plus a small `match` block carrying `mode`, ranks, and (when relevant) `cosine_score`.
 _Avoid_: vectors in the retrieval envelope, per-record permissions in V1
 
 **Retrieval Session**:

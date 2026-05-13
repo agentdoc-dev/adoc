@@ -2,7 +2,7 @@
 
 V1 retrieval is a local read-side workflow over build artifacts. `adoc build`
 creates the human HTML, the agent artifact, and the optional search artifact.
-`adoc explain` and `adoc search` read those artifacts; they do not compile
+`adoc why` and `adoc search` read those artifacts; they do not compile
 source files.
 
 ## Build
@@ -62,14 +62,14 @@ If a Knowledge Object has a parseable `expires_at` date before the local build
 date, `check` and `build` emit warning `lifecycle.expired`. The warning does
 not block artifacts and does not mutate source.
 
-## Explain
+## Why
 
 ```bash
-adoc explain billing.credits.decrement-after-success --artifact dist/docs.agent.json
-adoc explain billing.credits.decrement-after-success --artifact dist/docs.agent.json --format json
+adoc why billing.credits.decrement-after-success --artifact dist/docs.agent.json
+adoc why billing.credits.decrement-after-success --artifact dist/docs.agent.json --format json
 ```
 
-Use `explain` when you already have an Object ID and need the authoritative
+Use `why` when you already have an Object ID and need the authoritative
 record: kind, status, owner, evidence, source span, body, and relations.
 
 ## Search
@@ -110,7 +110,7 @@ JSON output:
 adoc search "refund audit" --format json
 ```
 
-Search and explain both emit `adoc.retrieval.v0`:
+Search and why both emit `adoc.retrieval.v0`:
 
 ```json
 {
@@ -138,7 +138,7 @@ reviewed_by=qa-billing.
 ```
 
 Prefer the Object ID over prose titles. It is the stable handle that connects
-search, explain, source spans, and relations.
+search, why, source spans, and relations.
 
 ## Model Swaps
 

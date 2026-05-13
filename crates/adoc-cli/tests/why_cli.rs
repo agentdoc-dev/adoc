@@ -9,7 +9,7 @@ use support::{TestWorkspace, fixture_path};
 /// Build a copy of the valid artifact fixture with a single diagnostic entry
 /// injected into its `diagnostics` array at the given `severity`.
 fn artifact_with_diagnostic(severity: &str) -> String {
-    let artifact = fs::read_to_string(fixture_path("v1_1_explain/valid_artifact.agent.json"))
+    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
         .expect("fixture artifact is readable");
     let mut value: serde_json::Value =
         serde_json::from_str(&artifact).expect("fixture artifact is JSON");
@@ -43,7 +43,7 @@ fn strip_ansi(bytes: &[u8]) -> String {
 }
 
 fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
-    let artifact = fs::read_to_string(fixture_path("v1_1_explain/valid_artifact.agent.json"))
+    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
         .expect("fixture artifact is readable");
     workspace.write(relative_path, &artifact);
 }
@@ -54,27 +54,27 @@ fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
 /// pre-slice-8 state.
 fn copy_trust_artifact(workspace: &TestWorkspace, relative_path: &str) {
     let artifact = fs::read_to_string(fixture_path(
-        "v1_1_explain/valid_artifact_with_trust.agent.json",
+        "v1_1_why/valid_artifact_with_trust.agent.json",
     ))
     .expect("trust fixture artifact is readable");
     workspace.write(relative_path, &artifact);
 }
 
 #[test]
-fn explain_defaults_to_dist_agent_json_and_text_format() {
-    let workspace = TestWorkspace::new("explain-defaults");
+fn why_defaults_to_dist_agent_json_and_text_format() {
+    let workspace = TestWorkspace::new("why-defaults");
     // Use the trust-augmented fixture so the footer shows `trust: team`.
     copy_trust_artifact(&workspace, "dist/docs.agent.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["explain", "billing.refunds.issue-credit"])
+        .args(["why", "billing.refunds.issue-credit"])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
 
     assert!(
         output.status.success(),
-        "expected explain to pass\nstdout:\n{}\nstderr:\n{}",
+        "expected why to pass\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -83,19 +83,19 @@ fn explain_defaults_to_dist_agent_json_and_text_format() {
     insta::with_settings!({
         filters => vec![(r"\d+\.\d{2}s", "<duration>")]
     }, {
-        insta::assert_snapshot!("explain_plain", stdout);
+        insta::assert_snapshot!("why_plain", stdout);
     });
 }
 
 #[test]
-fn explain_uses_explicit_artifact_and_omits_unavailable_fields() {
-    let workspace = TestWorkspace::new("explain-explicit-artifact");
+fn why_uses_explicit_artifact_and_omits_unavailable_fields() {
+    let workspace = TestWorkspace::new("why-explicit-artifact");
     copy_valid_artifact(&workspace, "custom/docs.agent.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
         .args([
-            "explain",
+            "why",
             "billing.refunds.fraud-window",
             "--artifact",
             "custom/docs.agent.json",
@@ -103,11 +103,11 @@ fn explain_uses_explicit_artifact_and_omits_unavailable_fields() {
             "plain",
         ])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
 
     assert!(
         output.status.success(),
-        "expected explain to pass\nstdout:\n{}\nstderr:\n{}",
+        "expected why to pass\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -131,19 +131,19 @@ fn explain_uses_explicit_artifact_and_omits_unavailable_fields() {
 }
 
 #[test]
-fn explain_text_renders_decision_and_glossary_metadata() {
-    let workspace = TestWorkspace::new("explain-decision-glossary");
+fn why_text_renders_decision_and_glossary_metadata() {
+    let workspace = TestWorkspace::new("why-decision-glossary");
     copy_valid_artifact(&workspace, "dist/docs.agent.json");
 
     let decision_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["explain", "billing.refunds.policy"])
+        .args(["why", "billing.refunds.policy"])
         .output()
-        .expect("adoc explain decision runs");
+        .expect("adoc why decision runs");
 
     assert!(
         decision_output.status.success(),
-        "expected decision explain to pass\nstdout:\n{}\nstderr:\n{}",
+        "expected decision why to pass\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&decision_output.stdout),
         String::from_utf8_lossy(&decision_output.stderr)
     );
@@ -154,13 +154,13 @@ fn explain_text_renders_decision_and_glossary_metadata() {
 
     let glossary_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["explain", "billing.refunds.credit"])
+        .args(["why", "billing.refunds.credit"])
         .output()
-        .expect("adoc explain glossary runs");
+        .expect("adoc why glossary runs");
 
     assert!(
         glossary_output.status.success(),
-        "expected glossary explain to pass\nstdout:\n{}\nstderr:\n{}",
+        "expected glossary why to pass\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&glossary_output.stdout),
         String::from_utf8_lossy(&glossary_output.stderr)
     );
@@ -170,15 +170,15 @@ fn explain_text_renders_decision_and_glossary_metadata() {
 }
 
 #[test]
-fn explain_object_not_found_exits_3() {
-    let workspace = TestWorkspace::new("explain-not-found");
+fn why_object_not_found_exits_3() {
+    let workspace = TestWorkspace::new("why-not-found");
     copy_valid_artifact(&workspace, "dist/docs.agent.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["explain", "billing.missing"])
+        .args(["why", "billing.missing"])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
 
     assert_eq!(output.status.code(), Some(3));
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -189,14 +189,35 @@ fn explain_object_not_found_exits_3() {
 }
 
 #[test]
-fn explain_artifact_errors_exit_2() {
-    let workspace = TestWorkspace::new("explain-artifact-missing");
+fn why_invalid_object_id_exits_1() {
+    let workspace = TestWorkspace::new("why-invalid-id");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["explain", "billing.refunds.issue-credit"])
+        .args(["why", "bad"])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "invalid-id diagnostics should use stderr in text mode"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("id.invalid"));
+    assert!(stderr.contains("bad"));
+}
+
+#[test]
+fn why_artifact_errors_exit_2() {
+    let workspace = TestWorkspace::new("why-artifact-missing");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["why", "billing.refunds.issue-credit"])
+        .output()
+        .expect("adoc why runs");
 
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -205,24 +226,42 @@ fn explain_artifact_errors_exit_2() {
 }
 
 #[test]
-fn explain_format_json_emits_retrieval_envelope() {
-    let workspace = TestWorkspace::new("explain-json-success");
+fn why_format_json_invalid_object_id_exits_1_with_envelope() {
+    let workspace = TestWorkspace::new("why-json-invalid-id");
     copy_valid_artifact(&workspace, "dist/docs.agent.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args([
-            "explain",
-            "billing.refunds.issue-credit",
-            "--format",
-            "json",
-        ])
+        .args(["why", "bad", "--format", "json"])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stderr.is_empty(),
+        "JSON diagnostics should be emitted in stdout envelope"
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["records"], serde_json::json!([]));
+    assert_eq!(value["diagnostics"][0]["code"], "id.invalid");
+    assert_eq!(value["diagnostics"][0]["object_id"], "bad");
+}
+
+#[test]
+fn why_format_json_emits_retrieval_envelope() {
+    let workspace = TestWorkspace::new("why-json-success");
+    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["why", "billing.refunds.issue-credit", "--format", "json"])
+        .output()
+        .expect("adoc why runs");
 
     assert!(
         output.status.success(),
-        "expected explain JSON to pass\nstdout:\n{}\nstderr:\n{}",
+        "expected why JSON to pass\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -232,19 +271,19 @@ fn explain_format_json_emits_retrieval_envelope() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    insta::assert_snapshot!("explain_json", stdout);
+    insta::assert_snapshot!("why_json", stdout);
 }
 
 #[test]
-fn explain_format_json_object_not_found_exits_3_with_envelope() {
-    let workspace = TestWorkspace::new("explain-json-not-found");
+fn why_format_json_object_not_found_exits_3_with_envelope() {
+    let workspace = TestWorkspace::new("why-json-not-found");
     copy_valid_artifact(&workspace, "dist/docs.agent.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args(["explain", "billing.missing", "--format", "json"])
+        .args(["why", "billing.missing", "--format", "json"])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
 
     assert_eq!(output.status.code(), Some(3));
     assert!(
@@ -262,8 +301,8 @@ fn explain_format_json_object_not_found_exits_3_with_envelope() {
 }
 
 #[test]
-fn explain_format_json_artifact_errors_exit_2_with_envelope() {
-    let workspace = TestWorkspace::new("explain-json-artifact-errors");
+fn why_format_json_artifact_errors_exit_2_with_envelope() {
+    let workspace = TestWorkspace::new("why-json-artifact-errors");
     let cases = [
         ("malformed_artifact.agent.json", "io.artifact_malformed"),
         (
@@ -274,11 +313,11 @@ fn explain_format_json_artifact_errors_exit_2_with_envelope() {
     ];
 
     for (fixture, expected_code) in cases {
-        let artifact = fixture_path(&format!("v1_1_explain/{fixture}"));
+        let artifact = fixture_path(&format!("v1_1_why/{fixture}"));
         let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
             .current_dir(&workspace.root)
             .args([
-                "explain",
+                "why",
                 "billing.refunds.issue-credit",
                 "--artifact",
                 artifact.to_str().expect("fixture path is UTF-8"),
@@ -286,7 +325,7 @@ fn explain_format_json_artifact_errors_exit_2_with_envelope() {
                 "json",
             ])
             .output()
-            .expect("adoc explain runs");
+            .expect("adoc why runs");
 
         assert_eq!(
             output.status.code(),
@@ -322,7 +361,8 @@ fn top_level_help_exits_0_and_lists_commands() {
     assert!(stdout.contains("Usage: adoc"));
     assert!(stdout.contains("check"));
     assert!(stdout.contains("build"));
-    assert!(stdout.contains("explain"));
+    assert!(stdout.contains("why"));
+    assert!(!stdout.contains("explain"));
 }
 
 #[test]
@@ -343,11 +383,11 @@ fn top_level_version_exits_0_and_prints_version() {
 }
 
 #[test]
-fn explain_help_exits_0_and_lists_defaults() {
+fn why_help_exits_0_and_lists_defaults() {
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
-        .args(["explain", "--help"])
+        .args(["why", "--help"])
         .output()
-        .expect("adoc explain --help runs");
+        .expect("adoc why --help runs");
 
     assert_eq!(output.status.code(), Some(0));
     assert!(
@@ -356,7 +396,7 @@ fn explain_help_exits_0_and_lists_defaults() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Usage: adoc explain [OPTIONS] <OBJECT_ID>"));
+    assert!(stdout.contains("Usage: adoc why [OPTIONS] <OBJECT_ID>"));
     assert!(stdout.contains("--artifact <ARTIFACT>"));
     assert!(stdout.contains("dist/docs.agent.json"));
     assert!(stdout.contains("--format <FORMAT>"));
@@ -365,16 +405,28 @@ fn explain_help_exits_0_and_lists_defaults() {
 }
 
 #[test]
-fn explain_unsupported_format_exits_1_with_parse_error() {
+fn old_lookup_subcommand_exits_1_with_parse_error() {
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
-        .args([
-            "explain",
-            "billing.refunds.issue-credit",
-            "--format",
-            "yaml",
-        ])
+        .args(["explain", "billing.refunds.issue-credit"])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc parses old command");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        output.stdout.is_empty(),
+        "parse errors should render to stderr, stdout was:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unrecognized subcommand 'explain'"));
+}
+
+#[test]
+fn why_unsupported_format_exits_1_with_parse_error() {
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["why", "billing.refunds.issue-credit", "--format", "yaml"])
+        .output()
+        .expect("adoc why runs");
 
     assert_eq!(output.status.code(), Some(1));
     assert!(
@@ -388,11 +440,11 @@ fn explain_unsupported_format_exits_1_with_parse_error() {
 }
 
 #[test]
-fn explain_missing_object_id_exits_1_with_parse_error() {
+fn why_missing_object_id_exits_1_with_parse_error() {
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
-        .arg("explain")
+        .arg("why")
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
 
     assert_eq!(output.status.code(), Some(1));
     assert!(
@@ -410,11 +462,11 @@ fn explain_missing_object_id_exits_1_with_parse_error() {
 /// (plain: `verified`, styled: `[verified]`) but the line structure, field
 /// order, and all other content are identical.
 ///
-/// This test also creates the `explain_styled` snapshot which locks the
+/// This test also creates the `why_styled` snapshot which locks the
 /// visible structure of styled output independently of colour codes.
 #[test]
-fn explain_styled_layout_matches_plain_after_ansi_stripping() {
-    let workspace = TestWorkspace::new("explain-styled-layout");
+fn why_styled_layout_matches_plain_after_ansi_stripping() {
+    let workspace = TestWorkspace::new("why-styled-layout");
     // Use the trust-augmented fixture so the footer shows `trust: team`.
     copy_trust_artifact(&workspace, "dist/docs.agent.json");
 
@@ -422,7 +474,7 @@ fn explain_styled_layout_matches_plain_after_ansi_stripping() {
         .current_dir(&workspace.root)
         // --color=always forces styled even when stdout is not a TTY.
         .args([
-            "explain",
+            "why",
             "billing.refunds.issue-credit",
             "--format",
             "styled",
@@ -430,11 +482,11 @@ fn explain_styled_layout_matches_plain_after_ansi_stripping() {
             "always",
         ])
         .output()
-        .expect("adoc explain --format=styled runs");
+        .expect("adoc why --format=styled runs");
 
     assert!(
         output.status.success(),
-        "expected styled explain to pass\nstdout:\n{}\nstderr:\n{}",
+        "expected styled why to pass\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -445,7 +497,7 @@ fn explain_styled_layout_matches_plain_after_ansi_stripping() {
     insta::with_settings!({
         filters => vec![(r"\d+\.\d{2}s", "<duration>")]
     }, {
-        insta::assert_snapshot!("explain_styled", visible);
+        insta::assert_snapshot!("why_styled", visible);
     });
 
     // The visible text must not contain any residual escape characters.
@@ -473,8 +525,8 @@ fn explain_styled_layout_matches_plain_after_ansi_stripping() {
 /// Uses a purpose-built two-record fixture so the existing byte-frozen
 /// snapshots are never touched.
 #[test]
-fn explain_styled_shows_contradicted_chip_on_relation_target() {
-    let workspace = TestWorkspace::new("explain-slice7-chip");
+fn why_styled_shows_contradicted_chip_on_relation_target() {
+    let workspace = TestWorkspace::new("why-slice7-chip");
 
     // Build the fixture JSON inline — same schema_version as the existing
     // valid_artifact.agent.json fixture.
@@ -535,18 +587,18 @@ fn explain_styled_shows_contradicted_chip_on_relation_target() {
 
     let output = adoc()
         .args([
-            "explain",
+            "why",
             "slice7.primary",
             "--artifact",
             artifact_path.to_str().expect("artifact path is UTF-8"),
             "--color=always",
         ])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
 
     assert!(
         output.status.success(),
-        "expected explain to pass\nstdout:\n{}\nstderr:\n{}",
+        "expected why to pass\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -576,24 +628,19 @@ fn explain_styled_shows_contradicted_chip_on_relation_target() {
 /// warnings were printed to stderr and the JSON envelope's `diagnostics` was
 /// always `[]`, losing them for machine-readable consumers.
 #[test]
-fn explain_format_json_preserves_load_warnings_in_envelope() {
-    let workspace = TestWorkspace::new("explain-json-load-warning");
+fn why_format_json_preserves_load_warnings_in_envelope() {
+    let workspace = TestWorkspace::new("why-json-load-warning");
     workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("warning"));
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args([
-            "explain",
-            "billing.refunds.issue-credit",
-            "--format",
-            "json",
-        ])
+        .args(["why", "billing.refunds.issue-credit", "--format", "json"])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
 
     assert!(
         output.status.success(),
-        "expected explain to pass with warning artifact\nstdout:\n{}\nstderr:\n{}",
+        "expected why to pass with warning artifact\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -627,24 +674,19 @@ fn explain_format_json_preserves_load_warnings_in_envelope() {
 /// plain/text mode (not JSON mode).  This is the symmetric counterpart to the
 /// JSON test above and ensures the stderr path for non-JSON callers is intact.
 #[test]
-fn explain_plain_mode_emits_load_warnings_to_stderr() {
-    let workspace = TestWorkspace::new("explain-plain-load-warning");
+fn why_plain_mode_emits_load_warnings_to_stderr() {
+    let workspace = TestWorkspace::new("why-plain-load-warning");
     workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("warning"));
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .args([
-            "explain",
-            "billing.refunds.issue-credit",
-            "--format",
-            "plain",
-        ])
+        .args(["why", "billing.refunds.issue-credit", "--format", "plain"])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
 
     assert!(
         output.status.success(),
-        "expected plain explain to pass with warning artifact\nstdout:\n{}\nstderr:\n{}",
+        "expected plain why to pass with warning artifact\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );

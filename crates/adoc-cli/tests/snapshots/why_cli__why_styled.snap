@@ -1,15 +1,15 @@
 ---
-source: crates/adoc-cli/tests/explain_cli.rs
-expression: stdout
+source: crates/adoc-cli/tests/why_cli.rs
+expression: visible
 ---
 Object: billing.refunds.issue-credit
 Kind: claim
-Status: verified
+Status: [verified]
 Owner: team-billing
 Verified: 2026-05-06
 
 Statement:
-Refund credits are issued from the ledger after approval.
+  Refund credits are issued from the ledger after approval.
 
 Evidence:
 - source: ledger-export

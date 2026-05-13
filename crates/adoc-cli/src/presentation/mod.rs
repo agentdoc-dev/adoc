@@ -7,7 +7,9 @@ pub(crate) mod terminal;
 
 pub(crate) use json::JsonPresenter;
 pub(crate) use plain::PlainPresenter;
-pub(crate) use port::ExplainPresenter;
+pub(crate) use port::{
+    ExpiresInfo, PresentationRecord, RenderMeta, RetrievalPresenter, RetrievalView,
+};
 pub(crate) use styled::StyledPresenter;
 
 use adoc_core::Diagnostic;
@@ -54,7 +56,7 @@ pub(crate) enum ResolvedFormat {
 pub(crate) fn make_presenter(
     resolved: ResolvedFormat,
     load_diagnostics: Vec<Diagnostic>,
-) -> Box<dyn ExplainPresenter> {
+) -> Box<dyn RetrievalPresenter> {
     match resolved {
         ResolvedFormat::Plain => Box::new(PlainPresenter),
         ResolvedFormat::Styled => Box::new(StyledPresenter),

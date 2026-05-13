@@ -1,7 +1,8 @@
 use std::fmt::Write as FmtWrite;
 
-use adoc_core::RenderMeta;
 use owo_colors::OwoColorize as _;
+
+use crate::presentation::RenderMeta;
 
 /// Render the provenance/timing footer line into `out`.
 ///
@@ -24,7 +25,7 @@ use owo_colors::OwoColorize as _;
 /// ```rust,ignore
 /// use std::path::PathBuf;
 /// use std::time::Duration;
-/// use adoc_core::RenderMeta;
+/// use crate::presentation::RenderMeta;
 ///
 /// let meta = RenderMeta {
 ///     artifact: PathBuf::from("/tmp/x/docs.agent.json"),
@@ -64,8 +65,6 @@ pub(crate) fn render_footer(out: &mut String, meta: &RenderMeta, styled: bool) {
 mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
-
-    use adoc_core::RenderMeta;
 
     use super::*;
 

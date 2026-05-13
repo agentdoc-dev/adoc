@@ -21,7 +21,7 @@ This document is the implementation contract for the first AgentDoc Rust scaffol
 - No includes.
 - No nested typed blocks.
 - No graph artifact.
-- No search or explain command.
+- No search or why command.
 - No public parser, validator, or renderer API.
 
 ## Workspace Layout

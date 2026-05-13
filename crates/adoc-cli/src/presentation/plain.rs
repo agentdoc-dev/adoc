@@ -2,9 +2,8 @@ use std::fmt::Write as FmtWrite;
 use std::io;
 
 use adoc_core::{AgentJsonRelations, RetrievalRecord};
-use adoc_core::{ExpiresInfo, ExplainView};
 
-use super::port::ExplainPresenter;
+use super::port::{ExpiresInfo, RetrievalPresenter, RetrievalView};
 use super::style::footer::render_footer;
 use super::style::humanise::format_diff;
 
@@ -13,26 +12,36 @@ use super::style::humanise::format_diff;
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct PlainPresenter;
 
-impl ExplainPresenter for PlainPresenter {
-    fn present(&self, view: &ExplainView, out: &mut dyn io::Write) -> io::Result<()> {
+impl RetrievalPresenter for PlainPresenter {
+    fn present(&self, view: &RetrievalView, out: &mut dyn io::Write) -> io::Result<()> {
         let mut buf = String::new();
-        render_record(&mut buf, &view.record, view.expires.as_ref());
-        // Footer: one blank line, then the provenance line.
-        buf.push('\n');
-        render_footer(&mut buf, &view.render_meta, false);
+        for (index, presentation_record) in view.records.iter().enumerate() {
+            if index > 0 {
+                buf.push('\n');
+            }
+            render_record(
+                &mut buf,
+                &presentation_record.record,
+                presentation_record.expires.as_ref(),
+            );
+        }
+        if let Some(footer) = &view.footer {
+            // Footer: one blank line, then the provenance line.
+            buf.push('\n');
+            render_footer(&mut buf, footer, false);
+        }
         out.write_all(buf.as_bytes())
     }
 }
 
 /// Renders a single [`RetrievalRecord`] as plain text into `output`.
 ///
-/// Shared between [`PlainPresenter`] (single-record explain path) and the
-/// search command (multi-record path) so that both callers produce identical
-/// bytes.
+/// Shared by [`PlainPresenter`] and tests so single-record and multi-record
+/// output use identical bytes.
 ///
 /// `expires` is `Some` when the record's `fields["expires_at"]` was parseable
-/// as a `YYYY-MM-DD` date (populated by [`adoc_core::ExplainService`]).  Pass
-/// `None` for the search path where no expiry computation is performed.
+/// as a `YYYY-MM-DD` date. Pass `None` for the search path where no expiry
+/// computation is performed.
 pub(crate) fn render_record(
     output: &mut String,
     record: &RetrievalRecord,
@@ -174,12 +183,11 @@ mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use adoc_core::{
-        AgentJsonRelations, ExpiresInfo, ExplainView, RenderMeta, RetrievalRecord, RetrievalSource,
-    };
+    use adoc_core::{AgentJsonRelations, RetrievalRecord, RetrievalSource};
     use chrono::NaiveDate;
 
     use super::*;
+    use crate::presentation::{PresentationRecord, RenderMeta};
 
     fn make_record(id: &str, kind: &str) -> RetrievalRecord {
         RetrievalRecord {
@@ -209,16 +217,23 @@ mod tests {
         }
     }
 
-    fn view_for(record: RetrievalRecord) -> ExplainView {
-        ExplainView {
-            record,
-            related_statuses: BTreeMap::new(),
-            expires: None,
-            render_meta: default_meta(),
+    fn view_for(record: RetrievalRecord) -> RetrievalView {
+        RetrievalView {
+            records: vec![PresentationRecord {
+                record,
+                related_statuses: BTreeMap::new(),
+                expires: None,
+            }],
+            diagnostics: Vec::new(),
+            footer: Some(default_meta()),
         }
     }
 
-    fn render(view: &ExplainView) -> String {
+    fn primary_mut(view: &mut RetrievalView) -> &mut PresentationRecord {
+        view.records.first_mut().expect("test view has a record")
+    }
+
+    fn render(view: &RetrievalView) -> String {
         let mut buf = Vec::new();
         PlainPresenter.present(view, &mut buf).unwrap();
         String::from_utf8(buf).unwrap()
@@ -424,7 +439,7 @@ mod tests {
         let mut record = make_record("billing.credits", "claim");
         record.verified_at = Some("2026-05-06".to_string());
         let mut view = view_for(record);
-        view.expires = Some(expires_info(
+        primary_mut(&mut view).expires = Some(expires_info(
             NaiveDate::from_ymd_opt(2026, 8, 4).unwrap(),
             88,
         ));
@@ -455,7 +470,7 @@ mod tests {
     fn plain_renders_standalone_expires_line_when_only_expires_present() {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
-        view.expires = Some(expires_info(
+        primary_mut(&mut view).expires = Some(expires_info(
             NaiveDate::from_ymd_opt(2026, 8, 4).unwrap(),
             88,
         ));
@@ -490,7 +505,7 @@ mod tests {
         let mut record = make_record("billing.credits", "claim");
         record.verified_at = Some("2026-05-06".to_string());
         let mut view = view_for(record);
-        view.expires = Some(expires_info(
+        primary_mut(&mut view).expires = Some(expires_info(
             NaiveDate::from_ymd_opt(2026, 4, 30).unwrap(),
             -8,
         ));
@@ -506,7 +521,7 @@ mod tests {
         let mut record = make_record("billing.credits", "claim");
         record.verified_at = Some("2026-05-06".to_string());
         let mut view = view_for(record);
-        view.expires = Some(expires_info(
+        primary_mut(&mut view).expires = Some(expires_info(
             NaiveDate::from_ymd_opt(2026, 5, 8).unwrap(),
             0,
         ));
@@ -525,11 +540,11 @@ mod tests {
     fn plain_footer_emits_check_basename_and_duration() {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
-        view.render_meta = RenderMeta {
+        view.footer = Some(RenderMeta {
             artifact: PathBuf::from("/tmp/adoc-retrieval-dist/docs.agent.json"),
             trust: Some("team".to_string()),
             duration: Duration::from_millis(60),
-        };
+        });
         let text = render(&view);
         assert!(
             text.ends_with("\n✓ rendered from docs.agent.json · trust: team · 0.06s\n"),
@@ -541,11 +556,11 @@ mod tests {
     fn plain_footer_omits_trust_when_absent() {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
-        view.render_meta = RenderMeta {
+        view.footer = Some(RenderMeta {
             artifact: PathBuf::from("/tmp/docs.agent.json"),
             trust: None,
             duration: Duration::from_millis(60),
-        };
+        });
         let text = render(&view);
         assert!(
             text.ends_with("\n✓ rendered from docs.agent.json · 0.06s\n"),

@@ -6,7 +6,7 @@ use std::process::Command;
 use support::{TestWorkspace, fixture_path, workspace_fixture_path};
 
 fn copy_search_artifact(workspace: &TestWorkspace, relative_path: &str) {
-    let artifact = fs::read_to_string(fixture_path("v1_1_explain/valid_artifact.agent.json"))
+    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
         .expect("fixture artifact is readable");
     workspace.write(relative_path, &artifact);
 }
@@ -26,7 +26,7 @@ fn empty_search_artifact() -> String {
 }
 
 fn artifact_with_diagnostic(severity: &str) -> String {
-    let artifact = fs::read_to_string(fixture_path("v1_1_explain/valid_artifact.agent.json"))
+    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
         .expect("fixture artifact is readable");
     let mut value: serde_json::Value =
         serde_json::from_str(&artifact).expect("fixture artifact is JSON");
@@ -245,6 +245,42 @@ fn search_cli_uses_explicit_artifact_path() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Object: billing.refunds.fraud-window"));
     assert!(stdout.contains("Kind: warning"));
+}
+
+#[test]
+fn search_cli_styled_color_always_emits_ansi_codes() {
+    let workspace = TestWorkspace::new("search-styled-color-always");
+    copy_search_artifact(&workspace, "dist/docs.agent.json");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .env_remove("NO_COLOR")
+        .env_remove("CLICOLOR")
+        .env_remove("CLICOLOR_FORCE")
+        .args([
+            "search",
+            "ledger",
+            "--lexical",
+            "--format",
+            "styled",
+            "--color",
+            "always",
+        ])
+        .output()
+        .expect("adoc search runs");
+
+    assert!(
+        output.status.success(),
+        "expected styled search to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains('\x1b'),
+        "styled search output must contain ANSI escapes"
+    );
+    assert!(stdout.contains("billing.refunds.issue-credit"));
 }
 
 #[test]

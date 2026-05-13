@@ -2380,7 +2380,7 @@ The review lens shows:
 
 # 21. CLI Product Surface
 
-> **V1 commitments.** Section 21 lists the full target CLI. V1 ships four commands: `adoc check` and `adoc build` (V0, unchanged) plus `adoc explain` (§21.5) and `adoc search` reading the V1 retrieval surface. `adoc init`, `adoc graph`, `adoc impacted-by`, `adoc patch`, `adoc render`, `adoc migrate`, `adoc schema`, `adoc verify`, and `adoc doctor` are deferred to later milestones. `adoc build` in V1 emits a third artifact, `dist/docs.search.json`, alongside the V0 outputs. See [V1-DESIGN.md](V1-DESIGN.md).
+> **V1 commitments.** Section 21 lists the full target CLI. V1 ships four commands: `adoc check` and `adoc build` (V0, unchanged) plus `adoc why` (§21.5) and `adoc search` reading the V1 retrieval surface. `adoc init`, `adoc graph`, `adoc impacted-by`, `adoc patch`, `adoc render`, `adoc migrate`, `adoc schema`, `adoc verify`, and `adoc doctor` are deferred to later milestones. `adoc build` in V1 emits a third artifact, `dist/docs.search.json`, alongside the V0 outputs. See [V1-DESIGN.md](V1-DESIGN.md).
 
 ## 21.1 CLI Overview
 
@@ -2400,7 +2400,7 @@ adoc check
 adoc build
 adoc graph
 adoc search
-adoc explain
+adoc why
 adoc stale
 adoc contradictions
 adoc impacted-by
@@ -2461,12 +2461,12 @@ dist/docs.rag.ndjson
 dist/docs.diagnostics.json
 ```
 
-## 21.5 `adoc explain`
+## 21.5 `adoc why`
 
-Explains a knowledge object.
+Shows the authoritative record for a knowledge object.
 
 ```bash
-adoc explain billing.credits.decrement-after-success
+adoc why billing.credits.decrement-after-success
 ```
 
 Output:
@@ -2802,7 +2802,7 @@ The Agent API must be:
 doc.get(id);
 doc.search(query, filters);
 doc.related(id, relationTypes);
-doc.explain(id);
+doc.why(id);
 doc.impactedBy(sourcePath);
 doc.stale(filters);
 doc.contradictions(filters);
@@ -3499,7 +3499,7 @@ Included:
   - init
   - check
   - build
-  - explain
+  - why
   - search
 
 - strict mode and compatibility mode
@@ -4131,7 +4131,7 @@ Potential features:
 - suggest relation links
 - summarize decisions
 - convert Markdown to AgentDoc
-- explain diagnostics
+- why diagnostics
 
 ## 41.2 AI-Assisted Review
 
@@ -4317,7 +4317,7 @@ ci:
 adoc check
 adoc build
 adoc search "credits"
-adoc explain billing.credits.decrement-after-success
+adoc why billing.credits.decrement-after-success
 ```
 
 ## 43.5 PR Workflow

@@ -44,7 +44,7 @@ fn write_valid_source(workspace: &TestWorkspace, relative_path: &str, object_id:
 }
 
 #[test]
-fn v1_5_init_check_build_explain_and_search_use_config_defaults_end_to_end() {
+fn v1_5_init_check_build_why_and_search_use_config_defaults_end_to_end() {
     let workspace = TestWorkspace::new("v1-5-local-workflow");
 
     let init = adoc_command()
@@ -80,13 +80,13 @@ fn v1_5_init_check_build_explain_and_search_use_config_defaults_end_to_end() {
     assert!(workspace.root.join("dist/docs.agent.json").is_file());
     assert!(workspace.root.join("dist/docs.search.json").is_file());
 
-    let explain = adoc_command()
+    let why = adoc_command()
         .current_dir(&workspace.root)
-        .args(["explain", "project.initialized"])
+        .args(["why", "project.initialized"])
         .output()
-        .expect("adoc explain runs");
-    assert_success("adoc explain project.initialized", &explain);
-    assert!(stdout(&explain).contains("Object: project.initialized"));
+        .expect("adoc why runs");
+    assert_success("adoc why project.initialized", &why);
+    assert!(stdout(&why).contains("Object: project.initialized"));
 
     let search = adoc_command()
         .current_dir(&workspace.root)

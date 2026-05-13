@@ -246,19 +246,19 @@ V1 is not the full PRD MVP by itself. It is the first post-compiler milestone, s
 V1 product surface:
 
 - `adoc build` produces a third artifact, `dist/docs.search.json`, alongside `dist/docs.html` and `dist/docs.agent.json`.
-- `adoc explain <object-id>` reads the agent artifact only and prints a structured object explanation.
+- `adoc why <object-id>` reads the agent artifact only and prints a structured object explanation.
 - `adoc search "<query>"` reads both artifacts and ranks Knowledge Objects via Reciprocal Rank Fusion over BM25 and brute-force cosine, with exact and prefix Object ID matches pinned to the top.
 - Both new commands accept `--format auto|plain|styled|json`. The `adoc.retrieval.v0` JSON envelope is the wire format any future MCP wrapper consumes.
 
 V1 hard rules:
 
-- Retrieval is read-only over compiled artifacts. `adoc explain` and `adoc search` never re-run `compile_workspace()`. A missing or stale build is the user's responsibility, surfaced via fix-oriented diagnostics that point at `adoc build`.
+- Retrieval is read-only over compiled artifacts. `adoc why` and `adoc search` never re-run `compile_workspace()`. A missing or stale build is the user's responsibility, surfaced via fix-oriented diagnostics that point at `adoc build`.
 - The default embedding provider is local: `fastembed-rs` with `bge-small-en-v1.5`. First run downloads weights; subsequent runs are offline. A hosted adapter is explicitly possible later without port churn but is not in V1.
 - The search artifact is a sidecar JSON with a model header, an agent-artifact hash for drift detection, and one `{ id, content_hash, vector }` entry per Knowledge Object. SQLite, embedded ANN libraries, and binary sidecars are deferred until pilot data shows the JSON shape is the bottleneck.
 - Filters in V1 are `--kind`, `--status`, `--owner`, and `--source-path`. PRD §19's wider filter set requires upstream contracts that do not exist yet.
 - Lifecycle, freshness, evidence quality, and authority are filter targets in V1, never score modifiers. RRF stays parameter-free.
 
-### V1.1: `adoc explain <object-id>`
+### V1.1: `adoc why <object-id>`
 
 Goal: make Object IDs immediately useful for humans and any agent that has already learned IDs from the agent artifact.
 
@@ -267,7 +267,7 @@ Scope:
 - Treat `dist/docs.agent.json` as a supported read model. Add an artifact reader that validates `schema_version: adoc.agent.v0`, top-level `objects`, and the in-artifact uniqueness of every Object ID.
 - Add a `RetrievalSession`-owned exact lookup keyed by Object ID.
 - Add diagnostics: `io.artifact_missing`, `io.artifact_unreadable`, `io.artifact_malformed`, `schema.unsupported_version`, `id.duplicate_in_artifact`, `retrieval.object_not_found`.
-- Implement `adoc explain <id>` with `--artifact <path>` and `--format auto|plain|styled|json`.
+- Implement `adoc why <id>` with `--artifact <path>` and `--format auto|plain|styled|json`.
 - Pretty text output mirrors PRD §21.5: kind, status, owner, verified date, body, evidence, source, relations.
 - `--format json` emits an `adoc.retrieval.v0` envelope with one record.
 
@@ -396,7 +396,7 @@ Scope:
 - Add `examples/billing-pilot/retrieval-set.yaml` with 15-20 manually authored queries (`expected_ids`, `must_appear_in_top`) covering paraphrase, exact ID, owner, kind filter, evidence path, broken filter, and empty cases.
 - Add a property-based test suite over the artifact: every body verbatim → top 1 lexical, every Object ID → top 1 lexical, every owner query covers every claim with that owner.
 - Both suites run in CI on the pilot.
-- Document the workflow in `docs/v1-retrieval.md`: build, explain, search, citation pattern, hybrid versus lexical versus semantic, model swap consequences.
+- Document the workflow in `docs/v1-retrieval.md`: build, why, search, citation pattern, hybrid versus lexical versus semantic, model swap consequences.
 
 Acceptance:
 
@@ -415,7 +415,7 @@ V1-wide design guidance:
 
 Resolved V1 decisions:
 
-- `adoc explain` and `adoc search` require a prior build.
+- `adoc why` and `adoc search` require a prior build.
 - Default agent artifact path is `dist/docs.agent.json`; default search artifact path is `dist/docs.search.json`.
 - Both commands support `--artifact <path>`; `adoc search` additionally supports `--search-artifact <path>`.
 - V1 reads artifacts only; source-aware retrieval waits until config and LSP work create a real need.
@@ -445,7 +445,7 @@ Design guidance:
 
 Acceptance:
 
-- A user can run `adoc init`, edit the generated example, run `adoc check`, run `adoc build`, then run `adoc explain` and `adoc search`.
+- A user can run `adoc init`, edit the generated example, run `adoc check`, run `adoc build`, then run `adoc why` and `adoc search`.
 - Existing explicit `adoc check <path>` and `adoc build <path> --out <directory>` workflows continue to work.
 - Expired Knowledge Objects produce useful warning diagnostics without mutating source.
 
@@ -639,7 +639,7 @@ The currently resolved and implemented first cut is:
 - Build output directory: created automatically when missing.
 - Source extension: `.adoc`.
 - Authoring workflow: native AgentDoc Source first.
-- Commands: `adoc init`, `adoc check`, `adoc build`, `adoc explain`, `adoc search`.
+- Commands: `adoc init`, `adoc check`, `adoc build`, `adoc why`, `adoc search`.
 - Modes: strict mode only.
 - Config: minimal `agentdoc.config.yaml` for local docs path, outputs, and `embeddings.provider: local|none`.
 - Initial objects: `claim`, `decision`, `warning`, `glossary`.

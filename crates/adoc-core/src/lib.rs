@@ -5,14 +5,10 @@ mod infrastructure;
 pub use application::compile::{
     BuildArtifacts, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult,
 };
-pub use application::ports::{Clock, RecordResolver, ResolverError};
 pub use application::retrieval::{
-    ExplainResult, RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput,
-    RetrievalLoadResult, RetrievalSession, SearchFilters, SearchQuery, SearchResult,
-    explain_object, search,
+    RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
+    RetrievalSession, SearchFilters, SearchQuery, SearchResult, WhyResult, search, why_object,
 };
-pub use application::services::{ExplainError, ExplainService};
-pub use application::views::{ExpiresInfo, ExplainView, RenderMeta};
 pub use domain::artifact::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan,
     SearchArtifactDocument,

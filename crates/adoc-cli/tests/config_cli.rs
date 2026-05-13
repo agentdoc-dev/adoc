@@ -27,7 +27,7 @@ fn write_valid_source(workspace: &TestWorkspace, relative_path: &str) {
 }
 
 fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
-    let artifact = fs::read_to_string(fixture_path("v1_1_explain/valid_artifact.agent.json"))
+    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
         .expect("fixture artifact is readable");
     workspace.write(relative_path, &artifact);
 }
@@ -389,7 +389,7 @@ fn config_build_missing_outputs_error_names_loaded_config_path() {
 }
 
 #[test]
-fn config_explain_and_search_use_configured_artifacts_unless_args_are_explicit() {
+fn config_why_and_search_use_configured_artifacts_unless_args_are_explicit() {
     let workspace = TestWorkspace::new("config-retrieval-artifacts");
     copy_valid_artifact(&workspace, "configured/docs.agent.json");
     copy_valid_artifact(&workspace, "explicit/docs.agent.json");
@@ -398,28 +398,23 @@ fn config_explain_and_search_use_configured_artifacts_unless_args_are_explicit()
         "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\n  agent_json: configured/docs.agent.json\n  search: configured/docs.search.json\nembeddings:\n  provider: local\n",
     );
 
-    let explain = adoc_command()
+    let why = adoc_command()
         .current_dir(&workspace.root)
-        .args([
-            "explain",
-            "billing.refunds.issue-credit",
-            "--format",
-            "plain",
-        ])
+        .args(["why", "billing.refunds.issue-credit", "--format", "plain"])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
     assert!(
-        explain.status.success(),
-        "expected config artifact explain to pass\nstdout:\n{}\nstderr:\n{}",
-        stdout(&explain),
-        stderr(&explain)
+        why.status.success(),
+        "expected config artifact why to pass\nstdout:\n{}\nstderr:\n{}",
+        stdout(&why),
+        stderr(&why)
     );
-    assert!(stdout(&explain).contains("Object: billing.refunds.issue-credit"));
+    assert!(stdout(&why).contains("Object: billing.refunds.issue-credit"));
 
-    let explicit_explain = adoc_command()
+    let explicit_why = adoc_command()
         .current_dir(&workspace.root)
         .args([
-            "explain",
+            "why",
             "billing.refunds.fraud-window",
             "--artifact",
             "explicit/docs.agent.json",
@@ -427,14 +422,14 @@ fn config_explain_and_search_use_configured_artifacts_unless_args_are_explicit()
             "plain",
         ])
         .output()
-        .expect("adoc explain runs");
+        .expect("adoc why runs");
     assert!(
-        explicit_explain.status.success(),
-        "expected explicit explain to pass\nstdout:\n{}\nstderr:\n{}",
-        stdout(&explicit_explain),
-        stderr(&explicit_explain)
+        explicit_why.status.success(),
+        "expected explicit why to pass\nstdout:\n{}\nstderr:\n{}",
+        stdout(&explicit_why),
+        stderr(&explicit_why)
     );
-    assert!(stdout(&explicit_explain).contains("Object: billing.refunds.fraud-window"));
+    assert!(stdout(&explicit_why).contains("Object: billing.refunds.fraud-window"));
 
     let search = adoc_command()
         .current_dir(&workspace.root)

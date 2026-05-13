@@ -5,9 +5,8 @@
 /// - `> 0` → `"in Nd"` (N days in the future)
 /// - `< 0` → `"Nd ago"` (N days in the past)
 ///
-/// Used by presenters that hold the pre-computed `days_until` value from
-/// [`adoc_core::ExpiresInfo`] and do not need to recompute the difference from
-/// two calendar dates.
+/// Used by presenters that hold a pre-computed `days_until` value and do not
+/// need to recompute the difference from two calendar dates.
 ///
 /// This function is pure and has no I/O side-effects.
 ///

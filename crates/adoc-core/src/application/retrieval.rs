@@ -2,9 +2,11 @@ use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
-use crate::domain::artifact::{AgentJsonDocument, AgentJsonObject, SearchModelHeader};
+use crate::domain::artifact::{
+    AgentJsonDocument, AgentJsonObject, AgentJsonRelations, SearchModelHeader,
+};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::domain::identity::ObjectId;
+use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::ports::artifact_reader::ArtifactReader;
 pub use crate::domain::retrieval::SearchFilters;
 use crate::domain::retrieval::hybrid_ranker::HybridRanker;
@@ -43,21 +45,28 @@ impl RetrievalSession {
         self.vector_index.as_ref()
     }
 
-    /// Returns all records from this session as a `Vec`.
+    /// Returns statuses for the record's relation targets.
     ///
-    /// Intended for use by `ArtifactRecordResolver` in `adoc-cli` to populate
-    /// the full index so that relation targets in the primary record can be
-    /// resolved.
-    pub fn records(&self) -> Vec<RetrievalRecord> {
-        self.exact_lookup
-            .values()
-            .map(RetrievalRecord::from)
-            .collect()
+    /// Relation targets are sorted and deduplicated across `depends_on`,
+    /// `supersedes`, and `related_to`. A value of `None` means the target is
+    /// not present in the loaded artifact.
+    pub fn related_statuses(&self, record: &RetrievalRecord) -> BTreeMap<String, Option<String>> {
+        let mut statuses = BTreeMap::new();
+
+        for target in iter_relation_targets(&record.relations) {
+            let status = ObjectId::new(target)
+                .ok()
+                .and_then(|target_id| self.exact_lookup.get(&target_id))
+                .and_then(|object| object.status.clone());
+            statuses.insert(target.to_string(), status);
+        }
+
+        statuses
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ExplainResult {
+pub struct WhyResult {
     pub records: Vec<RetrievalRecord>,
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -94,8 +103,8 @@ impl RetrievalEnvelope {
     }
 }
 
-impl From<ExplainResult> for RetrievalEnvelope {
-    fn from(result: ExplainResult) -> Self {
+impl From<WhyResult> for RetrievalEnvelope {
+    fn from(result: WhyResult) -> Self {
         Self::new(result.records, result.diagnostics)
     }
 }
@@ -229,16 +238,25 @@ where
     }
 }
 
-pub fn explain_object(session: &RetrievalSession, id: &str) -> ExplainResult {
-    let object_id = ObjectId::new_unchecked(id);
+pub fn why_object(session: &RetrievalSession, id: &str) -> WhyResult {
+    let object_id = match ObjectId::new(id) {
+        Ok(object_id) => object_id,
+        Err(_) => {
+            return WhyResult {
+                records: Vec::new(),
+                diagnostics: vec![invalid_object_id_diagnostic(id)],
+            };
+        }
+    };
+
     if let Some(object) = session.exact_lookup.get(&object_id) {
-        return ExplainResult {
+        return WhyResult {
             records: vec![RetrievalRecord::from(object)],
             diagnostics: Vec::new(),
         };
     }
 
-    ExplainResult {
+    WhyResult {
         records: Vec::new(),
         diagnostics: vec![
             Diagnostic::error(
@@ -316,6 +334,8 @@ fn search_hybrid(session: &RetrievalSession, query: SearchQuery) -> SearchResult
 
     let mut records = Vec::new();
     for hit in ranked_hits {
+        // `hit.id` comes from candidate IDs collected from `exact_lookup`, so
+        // it already passed `ObjectId::new` during session load.
         let object_id = ObjectId::new_unchecked(hit.id.clone());
         let object = session
             .exact_lookup
@@ -411,6 +431,8 @@ fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResu
         .into_iter()
         .enumerate()
         .map(|(idx, id)| {
+            // Semantic result IDs are pinned candidate IDs or vector hits
+            // ranked from the same candidate pool; all were validated at load.
             let object_id = ObjectId::new_unchecked(id.clone());
             let object = session
                 .exact_lookup
@@ -527,6 +549,9 @@ fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResul
             .into_iter()
             .enumerate()
             .map(|(index, (id, lexical_rank))| {
+                // Lexical result IDs are pinned candidate IDs or BM25 hits
+                // ranked from the same candidate pool; all were validated at
+                // load.
                 let object_id = ObjectId::new_unchecked(id.clone());
                 let object = session
                     .exact_lookup
@@ -549,11 +574,14 @@ fn build_exact_lookup(
     let mut diagnostics = Vec::new();
 
     for object in objects {
-        // Retrieval preserves the artifact's exact wire ID as the lookup key.
-        // The artifact read path validates schema shape; exact ID lookups still
-        // behave as misses rather than validation errors for arbitrary queries.
         let object_id_text = object.id.clone();
-        let object_id = ObjectId::new_unchecked(object_id_text.clone());
+        let object_id = match ObjectId::new(object_id_text.clone()) {
+            Ok(object_id) => object_id,
+            Err(_) => {
+                diagnostics.push(invalid_object_id_diagnostic(object_id_text));
+                continue;
+            }
+        };
         match exact_lookup.entry(object_id) {
             Entry::Vacant(entry) => {
                 entry.insert(object);
@@ -578,6 +606,29 @@ fn build_exact_lookup(
     } else {
         Err(diagnostics)
     }
+}
+
+fn invalid_object_id_diagnostic(id: impl Into<String>) -> Diagnostic {
+    let id = id.into();
+    Diagnostic::error(
+        DiagnosticCode::IdInvalid,
+        format!("Object ID `{id}` is invalid."),
+    )
+    .with_object_id(id)
+    .with_help(OBJECT_ID_GRAMMAR_HELP)
+}
+
+fn iter_relation_targets(relations: &AgentJsonRelations) -> impl Iterator<Item = &str> {
+    let mut targets: Vec<&str> = relations
+        .depends_on
+        .iter()
+        .chain(relations.supersedes.iter())
+        .chain(relations.related_to.iter())
+        .map(String::as_str)
+        .collect();
+    targets.sort_unstable();
+    targets.dedup();
+    targets.into_iter()
 }
 
 #[cfg(test)]
@@ -640,10 +691,10 @@ mod tests {
 
         assert!(result.diagnostics.is_empty());
         let session = result.session.expect("session loads from reader port");
-        let explained = explain_object(&session, "billing.reader-port");
+        let why_result = why_object(&session, "billing.reader-port");
 
-        assert_eq!(explained.records.len(), 1);
-        assert_eq!(explained.records[0].id, "billing.reader-port");
+        assert_eq!(why_result.records.len(), 1);
+        assert_eq!(why_result.records[0].id, "billing.reader-port");
     }
 
     #[test]

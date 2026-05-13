@@ -7,7 +7,7 @@ use predicates::prelude::*;
 use support::{TestWorkspace, fixture_path};
 
 fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
-    let artifact = fs::read_to_string(fixture_path("v1_1_explain/valid_artifact.agent.json"))
+    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
         .expect("fixture artifact is readable");
     workspace.write(relative_path, &artifact);
 }
@@ -31,7 +31,7 @@ fn piped_default_produces_plain_output() {
 
     let output = adoc()
         .current_dir(&workspace.root)
-        .args(["explain", "billing.refunds.issue-credit"])
+        .args(["why", "billing.refunds.issue-credit"])
         .output()
         .expect("adoc runs");
 
@@ -61,12 +61,7 @@ fn format_json_flag_emits_json_envelope() {
 
     adoc()
         .current_dir(&workspace.root)
-        .args([
-            "explain",
-            "billing.refunds.issue-credit",
-            "--format",
-            "json",
-        ])
+        .args(["why", "billing.refunds.issue-credit", "--format", "json"])
         .assert()
         .success()
         .stdout(predicate::str::starts_with("{"))
@@ -85,7 +80,7 @@ fn no_color_env_forces_plain_output() {
     let output = adoc()
         .current_dir(&workspace.root)
         .env("NO_COLOR", "1")
-        .args(["explain", "billing.refunds.issue-credit"])
+        .args(["why", "billing.refunds.issue-credit"])
         .output()
         .expect("adoc runs");
 
@@ -112,12 +107,7 @@ fn explicit_plain_flag_produces_plain_output() {
 
     adoc()
         .current_dir(&workspace.root)
-        .args([
-            "explain",
-            "billing.refunds.issue-credit",
-            "--format",
-            "plain",
-        ])
+        .args(["why", "billing.refunds.issue-credit", "--format", "plain"])
         .assert()
         .success()
         .stdout(predicate::str::contains(
@@ -140,7 +130,7 @@ fn styled_flag_with_color_always_emits_ansi_codes() {
     adoc()
         .current_dir(&workspace.root)
         .args([
-            "explain",
+            "why",
             "billing.refunds.issue-credit",
             "--format",
             "styled",
@@ -170,7 +160,7 @@ fn format_styled_with_color_never_emits_no_ansi_codes() {
     adoc()
         .current_dir(&workspace.root)
         .args([
-            "explain",
+            "why",
             "billing.refunds.issue-credit",
             "--format",
             "styled",
@@ -196,7 +186,7 @@ fn format_plain_with_color_always_emits_ansi_codes() {
     adoc()
         .current_dir(&workspace.root)
         .args([
-            "explain",
+            "why",
             "billing.refunds.issue-credit",
             "--format",
             "plain",
@@ -216,7 +206,7 @@ fn format_plain_with_color_always_emits_ansi_codes() {
 #[test]
 fn invalid_format_value_exits_1_with_error() {
     adoc()
-        .args(["explain", "some.id", "--format", "yaml"])
+        .args(["why", "some.id", "--format", "yaml"])
         .assert()
         .failure()
         .code(1)

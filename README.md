@@ -11,7 +11,7 @@ The current implementation is a pre-release Rust CLI named `adoc`. It compiles n
 - `docs.search.json` for local embedding-backed retrieval
 - source-located diagnostics for invalid input
 
-It also provides local, read-only retrieval over compiled artifacts with `adoc explain` and hybrid `adoc search`.
+It also provides local, read-only retrieval over compiled artifacts with `adoc why` and hybrid `adoc search`.
 
 AgentDoc is not AsciiDoc, even though the source extension is `.adoc`.
 
@@ -51,7 +51,7 @@ V1.5 local workflow supports:
 
 V1 local retrieval supports:
 
-- `adoc explain <object-id>` over a compiled `docs.agent.json`
+- `adoc why <object-id>` over a compiled `docs.agent.json`
 - `adoc search <query>` over `docs.agent.json` and, when present, `docs.search.json`
 - text and JSON retrieval output
 - hybrid search by default, fusing lexical BM25 and vector cosine ranks with Reciprocal Rank Fusion
@@ -189,7 +189,7 @@ adoc build
 adoc init
 adoc check [path]
 adoc build [path] [--out <directory>] [--no-embeddings]
-adoc explain <object-id> [--artifact <path>] [--format auto|plain|styled|json]
+adoc why <object-id> [--artifact <path>] [--format auto|plain|styled|json]
 adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | --semantic] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--top <n>] [--format auto|plain|styled|json]
 ```
 
@@ -234,7 +234,7 @@ as global config.
 - accepts `--no-embeddings` to skip model loading and search artifact writes; any existing `docs.search.json` is left untouched and an info diagnostic `build.embeddings_skipped` is emitted
 - also skips embeddings when config sets `embeddings.provider: none`; config `local` and missing `embeddings` both enable the shipped local provider
 
-`adoc explain`:
+`adoc why`:
 
 - reads a compiled agent artifact; it does not compile source
 - defaults to config `outputs.agent_json`, then `dist/docs.agent.json`
@@ -556,14 +556,14 @@ V0 is complete for the local source-to-artifact compiler loop. Implemented miles
 - multi-file project behavior
 - standardized diagnostics and production-usable fixtures
 - a realistic billing pilot
-- artifact-backed `adoc explain <object-id>`
+- artifact-backed `adoc why <object-id>`
 - hybrid `adoc search <query>` over `docs.agent.json` and `docs.search.json`
 - `adoc init` and minimal `agentdoc.config.yaml`
 
 Current local retrieval focuses on the existing flat agent artifact:
 
 - define the supported `docs.agent.json` read contract
-- support `adoc explain <object-id>` for object lookup and citation
+- support `adoc why <object-id>` for object lookup and citation
 - support `adoc search <query>` for deterministic lexical and local embedding-backed search
 - prove retrieval against the billing pilot
 - build `docs.search.json` with local FastEmbed embeddings

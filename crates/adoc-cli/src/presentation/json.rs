@@ -1,8 +1,8 @@
 use std::io;
 
-use adoc_core::{Diagnostic, ExplainView, RetrievalEnvelope};
+use adoc_core::{Diagnostic, RetrievalEnvelope};
 
-use super::port::ExplainPresenter;
+use super::port::{RetrievalPresenter, RetrievalView};
 
 /// JSON presenter.  Serialises the view as a [`RetrievalEnvelope`] with
 /// pretty-printed JSON, producing byte-identical output to the former
@@ -23,17 +23,23 @@ impl JsonPresenter {
     }
 }
 
-impl ExplainPresenter for JsonPresenter {
-    fn present(&self, view: &ExplainView, out: &mut dyn io::Write) -> io::Result<()> {
-        let envelope =
-            RetrievalEnvelope::new(vec![view.record.clone()], self.load_diagnostics.clone());
+impl RetrievalPresenter for JsonPresenter {
+    fn present(&self, view: &RetrievalView, out: &mut dyn io::Write) -> io::Result<()> {
+        let records = view
+            .records
+            .iter()
+            .map(|presentation_record| presentation_record.record.clone())
+            .collect();
+        let diagnostics =
+            merge_diagnostics(self.load_diagnostics.clone(), view.diagnostics.clone());
+        let envelope = RetrievalEnvelope::new(records, diagnostics);
         write_envelope_json(&envelope, out)
     }
 }
 
 /// Serialises `envelope` as pretty-printed JSON followed by a newline.
 ///
-/// Shared between [`JsonPresenter`] (explain single-record path) and the
+/// Shared between [`JsonPresenter`] (`why` single-record path) and the
 /// search / error-emission paths in `main.rs` so that both callers produce
 /// byte-identical output.
 pub(crate) fn write_envelope_json(
@@ -44,29 +50,51 @@ pub(crate) fn write_envelope_json(
     writeln!(out, "{text}")
 }
 
+fn merge_diagnostics(
+    mut load_diagnostics: Vec<Diagnostic>,
+    mut view_diagnostics: Vec<Diagnostic>,
+) -> Vec<Diagnostic> {
+    load_diagnostics.append(&mut view_diagnostics);
+    load_diagnostics
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
-    use std::path::PathBuf;
-    use std::time::Duration;
 
     use adoc_core::{
-        AgentJsonRelations, Diagnostic, DiagnosticCode, ExplainView, RenderMeta, RetrievalEnvelope,
-        RetrievalRecord, RetrievalSource, Severity,
+        AgentJsonRelations, Diagnostic, DiagnosticCode, RetrievalEnvelope, RetrievalRecord,
+        RetrievalSource, Severity,
     };
 
     use super::*;
+    use crate::presentation::PresentationRecord;
 
-    fn make_view(record: RetrievalRecord) -> ExplainView {
-        ExplainView {
+    fn make_view(record: RetrievalRecord) -> RetrievalView {
+        RetrievalView {
+            records: vec![PresentationRecord {
+                record,
+                related_statuses: BTreeMap::new(),
+                expires: None,
+            }],
+            diagnostics: Vec::new(),
+            footer: None,
+        }
+    }
+
+    fn make_empty_view(diagnostic: Diagnostic) -> RetrievalView {
+        RetrievalView {
+            records: Vec::new(),
+            diagnostics: vec![diagnostic],
+            footer: None,
+        }
+    }
+
+    fn make_record(record: RetrievalRecord) -> PresentationRecord {
+        PresentationRecord {
             record,
             related_statuses: BTreeMap::new(),
             expires: None,
-            render_meta: RenderMeta {
-                artifact: PathBuf::from("docs.agent.json"),
-                trust: None,
-                duration: Duration::ZERO,
-            },
         }
     }
 
@@ -173,5 +201,47 @@ mod tests {
             value["diagnostics"][0]["message"],
             "artifact carried a source warning"
         );
+    }
+
+    #[test]
+    fn json_presenter_includes_view_diagnostics_in_envelope() {
+        let diagnostic = Diagnostic {
+            code: DiagnosticCode::IdInvalid,
+            severity: Severity::Error,
+            message: "bad id".to_string(),
+            span: None,
+            object_id: Some("bad".to_string()),
+            help: Some("fix id".to_string()),
+        };
+        let view = make_empty_view(diagnostic);
+        let mut buf = Vec::new();
+        JsonPresenter::new(Vec::new())
+            .present(&view, &mut buf)
+            .unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["records"], serde_json::json!([]));
+        assert_eq!(value["diagnostics"][0]["code"], "id.invalid");
+        assert_eq!(value["diagnostics"][0]["object_id"], "bad");
+    }
+
+    #[test]
+    fn json_presenter_serializes_multiple_records() {
+        let view = RetrievalView {
+            records: vec![
+                make_record(minimal_record("test.one")),
+                make_record(minimal_record("test.two")),
+            ],
+            diagnostics: Vec::new(),
+            footer: None,
+        };
+        let mut buf = Vec::new();
+        JsonPresenter::new(Vec::new())
+            .present(&view, &mut buf)
+            .unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["records"][0]["id"], "test.one");
+        assert_eq!(value["records"][1]["id"], "test.two");
     }
 }

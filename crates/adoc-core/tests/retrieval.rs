@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use adoc_core::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, DiagnosticCode,
     RetrievalEnvelope, RetrievalInput, RetrievalMatch, RetrievalRecord, RetrievalSession,
-    RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult, explain_object,
-    load_retrieval_session, search,
+    RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult, load_retrieval_session,
+    search, why_object,
 };
 use sha2::{Digest, Sha256};
 
@@ -1226,7 +1226,7 @@ fn search_filter_validation_reports_each_supplied_filter_with_no_independent_mat
 }
 
 #[test]
-fn explain_object_returns_record_for_id_in_loaded_agent_artifact() {
+fn why_object_returns_record_for_id_in_loaded_agent_artifact() {
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: fixture_path(
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
@@ -1241,15 +1241,15 @@ fn explain_object_returns_record_for_id_in_loaded_agent_artifact() {
     );
     let session = result.session.expect("retrieval session loads");
 
-    let explained = explain_object(&session, "billing.verified-credits");
+    let why_result = why_object(&session, "billing.verified-credits");
 
     assert!(
-        explained.diagnostics.is_empty(),
-        "expected clean explain, got {:?}",
-        explained.diagnostics
+        why_result.diagnostics.is_empty(),
+        "expected clean why result, got {:?}",
+        why_result.diagnostics
     );
-    assert_eq!(explained.records.len(), 1);
-    let record = &explained.records[0];
+    assert_eq!(why_result.records.len(), 1);
+    let record = &why_result.records[0];
     assert_eq!(record.id, "billing.verified-credits");
     assert_eq!(record.kind, "claim");
     assert_eq!(record.status.as_deref(), Some("verified"));
@@ -1266,7 +1266,7 @@ fn explain_object_returns_record_for_id_in_loaded_agent_artifact() {
 }
 
 #[test]
-fn explain_object_serializes_record_without_search_match_block() {
+fn why_object_serializes_record_without_search_match_block() {
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: fixture_path(
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
@@ -1275,8 +1275,8 @@ fn explain_object_serializes_record_without_search_match_block() {
     });
     let session = result.session.expect("retrieval session loads");
 
-    let explained = explain_object(&session, "billing.verified-credits");
-    let value = serde_json::to_value(&explained.records[0]).expect("record serializes");
+    let why_result = why_object(&session, "billing.verified-credits");
+    let value = serde_json::to_value(&why_result.records[0]).expect("record serializes");
 
     assert!(value.get("match").is_none());
     assert!(value.get("retrieval").is_none());
@@ -1291,10 +1291,10 @@ fn retrieval_envelope_serializes_stable_schema_with_records_and_diagnostics() {
         search_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
-    let explained = explain_object(&session, "billing.verified-credits");
+    let why_result = why_object(&session, "billing.verified-credits");
 
     let value =
-        serde_json::to_value(RetrievalEnvelope::from(explained)).expect("envelope serializes");
+        serde_json::to_value(RetrievalEnvelope::from(why_result)).expect("envelope serializes");
 
     assert_eq!(value["schema_version"], "adoc.retrieval.v0");
     assert_eq!(value["records"][0]["id"], "billing.verified-credits");
@@ -1369,7 +1369,7 @@ fn retrieval_envelope_can_be_created_from_search_result() {
 }
 
 #[test]
-fn explain_object_reports_unknown_id_without_loading_source() {
+fn why_object_reports_unknown_id_without_loading_source() {
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: fixture_path(
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
@@ -1378,18 +1378,70 @@ fn explain_object_reports_unknown_id_without_loading_source() {
     });
     let session = result.session.expect("retrieval session loads");
 
-    let explained = explain_object(&session, "billing.missing");
+    let why_result = why_object(&session, "billing.missing");
 
-    assert!(explained.records.is_empty());
-    assert_eq!(explained.diagnostics.len(), 1);
+    assert!(why_result.records.is_empty());
+    assert_eq!(why_result.diagnostics.len(), 1);
     assert_eq!(
-        explained.diagnostics[0].code,
+        why_result.diagnostics[0].code,
         DiagnosticCode::RetrievalObjectNotFound
     );
     assert_eq!(
-        explained.diagnostics[0].object_id.as_deref(),
+        why_result.diagnostics[0].object_id.as_deref(),
         Some("billing.missing")
     );
+}
+
+#[test]
+fn why_object_reports_invalid_id_without_lookup() {
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: fixture_path(
+            "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
+        ),
+        search_artifact_path: None,
+    });
+    let session = result.session.expect("retrieval session loads");
+
+    let why_result = why_object(&session, "bad");
+
+    assert!(why_result.records.is_empty());
+    assert_eq!(why_result.diagnostics.len(), 1);
+    assert_eq!(why_result.diagnostics[0].code, DiagnosticCode::IdInvalid);
+    assert_eq!(why_result.diagnostics[0].object_id.as_deref(), Some("bad"));
+}
+
+#[test]
+fn load_retrieval_session_rejects_invalid_object_ids_inside_artifact() {
+    let artifact = write_temp_artifact(
+        "invalid-object-id",
+        r#"{
+          "schema_version": "adoc.agent.v0",
+          "pages": [],
+          "objects": [
+            {
+              "id": "bad",
+              "kind": "claim",
+              "status": "draft",
+              "body": "Invalid artifact object ID.",
+              "page_id": "billing.page",
+              "source_span": { "path": "billing.adoc", "line": 1, "column": 1 },
+              "fields": {},
+              "relations": { "depends_on": [], "supersedes": [], "related_to": [] }
+            }
+          ],
+          "diagnostics": []
+        }"#,
+    );
+
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
+    });
+
+    assert!(result.session.is_none());
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(result.diagnostics[0].code, DiagnosticCode::IdInvalid);
+    assert_eq!(result.diagnostics[0].object_id.as_deref(), Some("bad"));
 }
 
 #[test]

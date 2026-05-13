@@ -328,7 +328,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
 ];
 
 impl Diagnostic {
-    /// Constructs the `explain.not_found` diagnostic emitted when the
+    /// Constructs the not-found diagnostic emitted when the `why` lookup's
     /// requested object id is absent from the loaded artifact.
     pub fn not_found(object_id: impl Into<String>) -> Self {
         let id = object_id.into();
@@ -342,31 +342,6 @@ impl Diagnostic {
                 "Run `adoc build` if the source was changed after the artifact was generated."
                     .to_string(),
             ),
-        }
-    }
-
-    /// Constructs the `explain.resolver` diagnostic emitted when the record
-    /// resolver encounters an infrastructure failure.
-    ///
-    /// The diagnostic code and message are derived from the specific
-    /// [`crate::application::ports::ResolverError`] variant so that the inner
-    /// string is used directly without duplicating any prefix that the error's
-    /// `Display` impl already emits.
-    pub fn resolver(err: &crate::application::ports::ResolverError) -> Self {
-        use crate::application::ports::ResolverError;
-        let (code, message) = match err {
-            ResolverError::Io(inner) => (
-                DiagnosticCode::IoArtifactUnreadable,
-                format!("resolver error: {inner}"),
-            ),
-        };
-        Self {
-            code,
-            severity: Severity::Error,
-            message,
-            span: None,
-            object_id: None,
-            help: None,
         }
     }
 
@@ -608,16 +583,6 @@ mod tests {
             DiagnosticCode::SearchHashDrift
         );
         assert!(!DiagnosticCode::SearchHashDrift.default_help().is_empty());
-    }
-
-    #[test]
-    fn resolver_diagnostic_uses_io_artifact_unreadable_and_does_not_double_print_prefix() {
-        use crate::application::ports::ResolverError;
-        let err = ResolverError::Io("disk gone".to_string());
-        let diag = Diagnostic::resolver(&err);
-        assert_eq!(diag.code, DiagnosticCode::IoArtifactUnreadable);
-        assert_eq!(diag.severity, Severity::Error);
-        assert_eq!(diag.message, "resolver error: disk gone");
     }
 
     #[cfg(unix)]
