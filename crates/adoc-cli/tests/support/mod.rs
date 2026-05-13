@@ -2,6 +2,7 @@ pub mod v1_4;
 
 use std::fs;
 use std::path::PathBuf;
+use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -23,6 +24,23 @@ pub(crate) fn workspace_fixture_path(relative: &str) -> PathBuf {
         .join("tests")
         .join("fixtures")
         .join(relative)
+}
+
+#[allow(dead_code)]
+pub(crate) fn adoc_command() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
+    command.env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory");
+    command
+}
+
+#[allow(dead_code)]
+pub(crate) fn stdout(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+#[allow(dead_code)]
+pub(crate) fn stderr(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
 pub(crate) struct TestWorkspace {
