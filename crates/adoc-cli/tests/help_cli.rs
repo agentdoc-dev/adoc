@@ -22,12 +22,14 @@ fn long_top_level_help_lists_command_descriptions_and_examples() {
     assert!(stdout.contains("Check AgentDoc Source for strict-mode diagnostics"));
     assert!(stdout.contains("Build human and agent-facing artifacts"));
     assert!(stdout.contains("Explain one Knowledge Object from a compiled artifact"));
+    assert!(stdout.contains("Traverse Knowledge Object relations from graph artifacts"));
     assert!(stdout.contains("Search compiled Knowledge Objects"));
     assert!(stdout.contains("Examples:"));
     assert!(stdout.contains("adoc init"));
     assert!(stdout.contains("adoc check docs"));
     assert!(stdout.contains("adoc build docs --out dist"));
     assert!(stdout.contains("adoc why billing.refunds.issue-credit"));
+    assert!(stdout.contains("adoc graph billing.refunds.issue-credit"));
     assert!(stdout.contains("adoc search \"refund policy\""));
 }
 
@@ -79,6 +81,50 @@ fn contextual_why_help_forms_render_the_same_command_help() {
         assert!(stdout.contains("adoc why billing.refunds.issue-credit"));
         assert_eq!(stdout, first);
     }
+}
+
+#[test]
+fn contextual_graph_help_lists_graph_artifact_and_relation_filters() {
+    let output = adoc_command()
+        .args(["graph", "--help"])
+        .output()
+        .expect("adoc graph --help runs");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stderr.is_empty(),
+        "graph help should render to stdout, stderr was:\n{}",
+        stderr(&output)
+    );
+    let stdout = stdout(&output);
+    assert!(stdout.contains("Usage: adoc graph [OPTIONS] <OBJECT_ID>"));
+    assert!(stdout.contains("Graph JSON artifact path"));
+    assert!(stdout.contains("dist/docs.graph.json"));
+    assert!(stdout.contains("--agent-artifact <AGENT_ARTIFACT>"));
+    assert!(stdout.contains("--relation <RELATION>"));
+    assert!(stdout.contains("--direction <DIRECTION>"));
+    assert!(stdout.contains("depends_on"));
+    assert!(stdout.contains("outgoing"));
+}
+
+#[test]
+fn contextual_search_help_lists_graph_relation_filters() {
+    let output = adoc_command()
+        .args(["search", "--help"])
+        .output()
+        .expect("adoc search --help runs");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stderr.is_empty(),
+        "search help should render to stdout, stderr was:\n{}",
+        stderr(&output)
+    );
+    let stdout = stdout(&output);
+    assert!(stdout.contains("--related-to <RELATED_TO>"));
+    assert!(stdout.contains("--graph-artifact <GRAPH_ARTIFACT>"));
+    assert!(stdout.contains("--relation <RELATION>"));
+    assert!(stdout.contains("--direction <DIRECTION>"));
 }
 
 #[test]

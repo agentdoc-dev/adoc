@@ -63,6 +63,12 @@ pub(crate) enum CliError {
         source: serde_json::Error,
     },
 
+    #[error("error[artifact.graph_json] could not serialize graph JSON: {source}")]
+    GraphJsonSerialize {
+        #[source]
+        source: serde_json::Error,
+    },
+
     #[error("build did not produce artifacts")]
     BuildMissingArtifacts,
 

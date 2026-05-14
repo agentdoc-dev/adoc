@@ -11,6 +11,7 @@ Examples:
   adoc check docs
   adoc build docs --out dist
   adoc why billing.refunds.issue-credit
+  adoc graph billing.refunds.issue-credit
   adoc search \"refund policy\"
 ";
 const INIT_LONG_HELP: &str = "\
@@ -35,10 +36,17 @@ Examples:
   adoc why billing.refunds.issue-credit --artifact dist/docs.agent.json
   adoc why billing.refunds.issue-credit --format json
 ";
+const GRAPH_LONG_HELP: &str = "\
+Examples:
+  adoc graph billing.refunds.issue-credit
+  adoc graph billing.refunds.issue-credit --direction outgoing
+  adoc graph billing.refunds.issue-credit --relation depends_on --format json
+";
 const SEARCH_LONG_HELP: &str = "\
 Examples:
   adoc search \"refund policy\"
   adoc search \"refund policy\" --kind claim --top 5
+  adoc search \"refund policy\" --related-to billing.refunds.issue-credit --relation depends_on
   adoc search billing.refunds --lexical
 ";
 
@@ -85,6 +93,42 @@ impl From<CliColor> for ColorChoice {
             CliColor::Auto => Self::Auto,
             CliColor::Always => Self::Always,
             CliColor::Never => Self::Never,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub(crate) enum CliGraphRelation {
+    #[value(name = "depends_on")]
+    DependsOn,
+    Supersedes,
+    #[value(name = "related_to")]
+    RelatedTo,
+}
+
+impl From<CliGraphRelation> for adoc_core::GraphRelationKind {
+    fn from(value: CliGraphRelation) -> Self {
+        match value {
+            CliGraphRelation::DependsOn => Self::DependsOn,
+            CliGraphRelation::Supersedes => Self::Supersedes,
+            CliGraphRelation::RelatedTo => Self::RelatedTo,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub(crate) enum CliGraphDirection {
+    Outgoing,
+    Incoming,
+    Both,
+}
+
+impl From<CliGraphDirection> for adoc_core::GraphDirection {
+    fn from(value: CliGraphDirection) -> Self {
+        match value {
+            CliGraphDirection::Outgoing => Self::Outgoing,
+            CliGraphDirection::Incoming => Self::Incoming,
+            CliGraphDirection::Both => Self::Both,
         }
     }
 }
@@ -157,6 +201,29 @@ pub(crate) enum Commands {
         artifact: Option<PathBuf>,
     },
     #[command(
+        about = "Traverse Knowledge Object relations from graph artifacts.",
+        after_long_help = GRAPH_LONG_HELP
+    )]
+    Graph {
+        /// Object ID to use as the graph traversal root.
+        #[arg(value_name = "OBJECT_ID")]
+        object_id: String,
+        #[arg(
+            long,
+            help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"
+        )]
+        artifact: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "Agent JSON artifact path for graph drift checks (default: config outputs.agent_json, then dist/docs.agent.json)"
+        )]
+        agent_artifact: Option<PathBuf>,
+        #[arg(long, value_enum)]
+        relation: Option<CliGraphRelation>,
+        #[arg(long, value_enum)]
+        direction: Option<CliGraphDirection>,
+    },
+    #[command(
         about = "Search compiled Knowledge Objects.",
         after_long_help = SEARCH_LONG_HELP
     )]
@@ -174,6 +241,12 @@ pub(crate) enum Commands {
             help = "Search artifact path (default: config outputs.search, then dist/docs.search.json)"
         )]
         search_artifact: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "Graph artifact path (default: config outputs.graph, then dist/docs.graph.json)",
+            requires = "related_to"
+        )]
+        graph_artifact: Option<PathBuf>,
         #[arg(long, conflicts_with = "lexical")]
         semantic: bool,
         /// Reserved for the V1.5/V1.6 hybrid slice; today this is the default
@@ -188,6 +261,12 @@ pub(crate) enum Commands {
         owner: Option<String>,
         #[arg(long)]
         source_path: Option<String>,
+        #[arg(long)]
+        related_to: Option<String>,
+        #[arg(long, value_enum, requires = "related_to")]
+        relation: Option<CliGraphRelation>,
+        #[arg(long, value_enum, requires = "related_to")]
+        direction: Option<CliGraphDirection>,
         #[arg(long, default_value = "10")]
         top: NonZeroUsize,
     },

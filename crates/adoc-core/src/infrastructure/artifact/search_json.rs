@@ -4,6 +4,10 @@ use std::path::Path;
 
 use crate::domain::artifact::SearchArtifactDocument;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::ports::artifact_reader::ArtifactReader;
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct SearchJsonArtifact;
 
 pub(crate) const SUPPORTED_SEARCH_SCHEMA_VERSION: &str = "adoc.search.v0";
 
@@ -59,14 +63,23 @@ fn read_error_diagnostic(path: &Path, error: io::Error) -> Diagnostic {
     )
 }
 
+impl ArtifactReader for SearchJsonArtifact {
+    type Output = SearchArtifactDocument;
+
+    fn read(&self, path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+        read_search_artifact_document(path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use crate::domain::artifact::{SearchArtifactDocument, SearchEmbedding, SearchModelHeader};
     use crate::domain::diagnostic::DiagnosticCode;
+    use crate::domain::ports::artifact_reader::ArtifactReader;
     use crate::infrastructure::artifact::search_json::{
-        SUPPORTED_SEARCH_SCHEMA_VERSION, read_search_artifact_document,
+        SUPPORTED_SEARCH_SCHEMA_VERSION, SearchJsonArtifact, read_search_artifact_document,
     };
 
     #[test]
@@ -126,6 +139,36 @@ mod tests {
 
         let read_back =
             read_search_artifact_document(artifact_file.path()).expect("artifact loads");
+
+        assert_eq!(read_back, artifact);
+    }
+
+    #[test]
+    fn search_json_artifact_reads_through_artifact_reader_port() {
+        let artifact = SearchArtifactDocument {
+            schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
+            model: SearchModelHeader {
+                id: "in-memory".to_string(),
+                provider: "test".to_string(),
+                dim: 2,
+            },
+            agent_artifact_hash: "sha256:agent".to_string(),
+            embeddings: Vec::new(),
+        };
+        let artifact_file = tempfile::Builder::new()
+            .prefix("adoc-search-reader-")
+            .suffix(".json")
+            .tempfile()
+            .expect("temp artifact can be created");
+        fs::write(
+            artifact_file.path(),
+            artifact.to_pretty_json().expect("artifact serializes"),
+        )
+        .expect("artifact can be written");
+
+        let read_back = SearchJsonArtifact
+            .read(artifact_file.path())
+            .expect("artifact loads through reader port");
 
         assert_eq!(read_back, artifact);
     }

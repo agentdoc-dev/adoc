@@ -14,16 +14,17 @@ use crate::domain::artifact::{
 };
 use crate::domain::ast::{BlockAst, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
+use crate::domain::graph::GraphArtifactDocument;
 use crate::domain::knowledge_object::KnowledgeObject;
 use crate::domain::ports::artifact_writer::ArtifactWriter;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::ports::renderer::Renderer;
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
 use crate::domain::source::SourceFile;
-use crate::infrastructure::artifact::AgentJsonArtifact;
 use crate::infrastructure::artifact::search_json::{
     SUPPORTED_SEARCH_SCHEMA_VERSION, read_search_artifact_document,
 };
+use crate::infrastructure::artifact::{AgentJsonArtifact, GraphJsonArtifact};
 use crate::infrastructure::parser::parse_page;
 use crate::infrastructure::render::HtmlRenderer;
 use crate::infrastructure::validate::{
@@ -73,6 +74,7 @@ impl CompileResult {
 pub struct BuildArtifacts {
     pub html: String,
     pub agent_json: AgentJsonDocument,
+    pub graph_json: GraphArtifactDocument,
     pub search_json: Option<SearchArtifactDocument>,
 }
 
@@ -270,6 +272,7 @@ fn build_artifacts_for_build(
 
     let html = HtmlRenderer.render(&workspace.pages);
     let agent_json = AgentJsonArtifact.build(&workspace.pages, diagnostics);
+    let graph_json = GraphJsonArtifact.build(&agent_json, &[]);
     let prior_search_artifact_path = build_options
         .as_ref()
         .and_then(|options| options.prior_search_artifact_path.clone());
@@ -300,6 +303,7 @@ fn build_artifacts_for_build(
                     artifacts: Some(BuildArtifacts {
                         html,
                         agent_json,
+                        graph_json,
                         search_json: None,
                     }),
                     diagnostics,
@@ -314,6 +318,7 @@ fn build_artifacts_for_build(
                         artifacts: Some(BuildArtifacts {
                             html,
                             agent_json,
+                            graph_json,
                             search_json: None,
                         }),
                         diagnostics: vec![embedding_error_diagnostic(error)],
@@ -341,6 +346,7 @@ fn build_artifacts_for_build(
                         artifacts: Some(BuildArtifacts {
                             html,
                             agent_json,
+                            graph_json,
                             search_json: None,
                         }),
                         diagnostics,
@@ -355,6 +361,7 @@ fn build_artifacts_for_build(
         artifacts: Some(BuildArtifacts {
             html,
             agent_json,
+            graph_json,
             search_json,
         }),
         diagnostics: artifact_diagnostics,

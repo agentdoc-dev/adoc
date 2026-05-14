@@ -2180,7 +2180,7 @@ Patch validation:
 
 # 19. Search, Retrieval, and RAG
 
-> **V1 commitments.** Section 19 describes the full retrieval surface AgentDoc aims at. The V1 milestone delivers a deliberate subset: object-based retrieval (§19.1), the retrieval record shape (§19.2) shipped as the `adoc.retrieval.v0` envelope, a parameter-free hybrid of BM25 and vector ranks (a small subset of §19.3), and four filters - kind, status, owner, source-path (a small subset of §19.4). Multi-factor scoring, the wider filter set, and the retrieval modes in §19.5 are deferred. See [V1-DESIGN.md](V1-DESIGN.md) and [adr/0010-v1-retrieval-architecture.md](adr/0010-v1-retrieval-architecture.md) for the implementation contract.
+> **V1 commitments.** Section 19 describes the full retrieval surface AgentDoc aims at. The V1 milestone delivers a deliberate subset: object-based retrieval (§19.1), the retrieval record shape (§19.2) shipped as the `adoc.retrieval.v0` envelope, a parameter-free hybrid of BM25 and vector ranks (a small subset of §19.3), four metadata filters - kind, status, owner, source-path (a small subset of §19.4), and explicit graph candidate filtering through `--related-to`. Multi-factor scoring, default graph proximity boosts, the wider filter set, and the retrieval modes in §19.5 are deferred. See [V1-DESIGN.md](V1-DESIGN.md), [adr/0010-v1-retrieval-architecture.md](adr/0010-v1-retrieval-architecture.md), and [adr/0011-json-graph-artifact.md](adr/0011-json-graph-artifact.md) for the implementation contract.
 
 ## 19.1 Retrieval Philosophy
 
@@ -2380,7 +2380,7 @@ The review lens shows:
 
 # 21. CLI Product Surface
 
-> **V1 commitments.** Section 21 lists the full target CLI. V1 ships four commands: `adoc check` and `adoc build` (V0, unchanged) plus `adoc why` (§21.5) and `adoc search` reading the V1 retrieval surface. `adoc init`, `adoc graph`, `adoc impacted-by`, `adoc patch`, `adoc render`, `adoc migrate`, `adoc schema`, `adoc verify`, and `adoc doctor` are deferred to later milestones. `adoc build` in V1 emits a third artifact, `dist/docs.search.json`, alongside the V0 outputs. See [V1-DESIGN.md](V1-DESIGN.md).
+> **V1 commitments.** Section 21 lists the full target CLI. V1 ships `adoc check`, `adoc build`, `adoc init`, `adoc why` (§21.5), `adoc graph`, and `adoc search` reading the V1 retrieval surface. `adoc impacted-by`, `adoc patch`, `adoc render`, `adoc migrate`, `adoc schema`, `adoc verify`, and `adoc doctor` are deferred to later milestones. `adoc build` in V1 emits `dist/docs.graph.json` and, when embeddings are enabled, `dist/docs.search.json`, alongside the V0 outputs. See [V1-DESIGN.md](V1-DESIGN.md).
 
 ## 21.1 CLI Overview
 
@@ -2455,7 +2455,7 @@ Outputs:
 ```text
 dist/docs.html
 dist/docs.agent.json
-dist/docs.graph.sqlite
+dist/docs.graph.json
 dist/docs.search.json
 dist/docs.rag.ndjson
 dist/docs.diagnostics.json
@@ -3219,7 +3219,7 @@ They may not define:
 | COMP-005 | Compiler emits `docs.agent.json`.                                            | P0       |
 | COMP-006 | Compiler emits `docs.search.json`.                                           | P0       |
 | COMP-007 | Compiler emits `docs.rag.ndjson`.                                            | P1       |
-| COMP-008 | Compiler emits `docs.graph.sqlite` or equivalent graph artifact.             | P1       |
+| COMP-008 | Compiler emits `docs.graph.json` as the current graph artifact.              | P1       |
 | COMP-009 | Compiler emits HTML.                                                         | P0       |
 | COMP-010 | Compiler emits semantic diff artifacts.                                      | P1       |
 | COMP-011 | Compiler supports strict and compatibility modes.                            | P0       |
@@ -4291,7 +4291,7 @@ sources:
 outputs:
   html: dist/docs
   agent_json: dist/docs.agent.json
-  graph: dist/docs.graph.sqlite
+  graph: dist/docs.graph.json
   search: dist/docs.search.json
 
 policies:

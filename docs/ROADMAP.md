@@ -2,7 +2,7 @@
 
 This roadmap converts the broad PRD into small tracer-bullet milestones. A milestone is not complete just because one subsystem exists; it is complete when a user can start with `.adoc` source, run the `adoc` CLI, receive useful diagnostics, and get both human HTML and agent JSON outputs.
 
-The initial product is a local CLI for native AgentDoc authoring in Git repositories. A minimal local config now exists for `adoc init`, default docs paths, output paths, and embedding provider selection. Web app, Markdown migration, compatibility mode, graph exports, nested blocks, includes, custom schemas, enterprise governance, hosted embedding adapters, and agent patching remain intentionally deferred until the local compiler and retrieval loop proves itself.
+The initial product is a local CLI for native AgentDoc authoring in Git repositories. A minimal local config now exists for `adoc init`, default docs paths, output paths, and embedding provider selection. Web app, Markdown migration, compatibility mode, nested blocks, includes, custom schemas, enterprise governance, hosted embedding adapters, and agent patching remain intentionally deferred until the local compiler and retrieval loop proves itself.
 
 V0 implementation stack: Rust for the `adoc` CLI, parser, validator, compiler, HTML renderer, and agent JSON emitter. The Rust project starts as a Cargo workspace with `crates/adoc-cli` for command-line behavior and `crates/adoc-core` for reusable compiler behavior. Future editor, web, and agent integrations should consume the compiled artifacts or core library rather than own the source grammar.
 
@@ -154,10 +154,13 @@ Acceptance:
 - A decision can `supersedes` another decision and preserve that relation in agent JSON.
 - Broken references fail `adoc check`.
 
-Deferred:
+Closed later in V1:
 
 - Graph artifact.
 - Relation traversal API.
+
+Deferred:
+
 - Contradiction detection.
 
 ### V0.6: Multi-File Project Slice
@@ -241,21 +244,24 @@ Deferred:
 
 V1 makes the V0 build outputs useful as a local retrieval surface for humans and for any agent that already knows Object IDs from the agent artifact. V1 ships embeddings as a first-class build output rather than deferring them past lexical search; the V0 thesis is that agents retrieve typed Knowledge Objects, and only semantic recall delivers on that thesis once paraphrased queries enter the picture.
 
-V1 is not the full PRD MVP by itself. It is the first post-compiler milestone, sized to add hybrid lexical + vector retrieval with no tunable score weights, no graph artifact, no hosted storage, and no agent server. The V1 implementation contract lives in [V1-DESIGN.md](V1-DESIGN.md). The architecture decisions that gate V1 are recorded in [adr/0010-v1-retrieval-architecture.md](adr/0010-v1-retrieval-architecture.md).
+V1 is not the full PRD MVP by itself. It is the first post-compiler milestone, sized to add hybrid lexical + vector retrieval and explicit graph traversal with no tunable score weights, no graph database, no hosted storage, and no agent server. The V1 implementation contract lives in [V1-DESIGN.md](V1-DESIGN.md). The architecture decisions that gate V1 are recorded in [adr/0010-v1-retrieval-architecture.md](adr/0010-v1-retrieval-architecture.md) and [adr/0011-json-graph-artifact.md](adr/0011-json-graph-artifact.md).
 
 V1 product surface:
 
-- `adoc build` produces a third artifact, `dist/docs.search.json`, alongside `dist/docs.html` and `dist/docs.agent.json`.
+- `adoc build` produces `dist/docs.graph.json` and, when embeddings are enabled, `dist/docs.search.json`, alongside `dist/docs.html` and `dist/docs.agent.json`.
 - `adoc why <object-id>` reads the agent artifact only and prints a structured object explanation.
-- `adoc search "<query>"` reads both artifacts and ranks Knowledge Objects via Reciprocal Rank Fusion over BM25 and brute-force cosine, with exact and prefix Object ID matches pinned to the top.
-- Both new commands accept `--format auto|plain|styled|json`. The `adoc.retrieval.v0` JSON envelope is the wire format any future MCP wrapper consumes.
+- `adoc graph <object-id>` reads the graph and agent artifacts and prints relation traversal.
+- `adoc search "<query>"` reads the agent and search artifacts, and reads the graph artifact only when `--related-to` is supplied. It ranks Knowledge Objects via Reciprocal Rank Fusion over BM25 and brute-force cosine, with exact and prefix Object ID matches pinned to the top.
+- The read-side commands accept `--format auto|plain|styled|json`. The `adoc.retrieval.v0` and `adoc.graph.traversal.v0` JSON envelopes are wire formats any future MCP wrapper consumes.
 
 V1 hard rules:
 
 - Retrieval is read-only over compiled artifacts. `adoc why` and `adoc search` never re-run `compile_workspace()`. A missing or stale build is the user's responsibility, surfaced via fix-oriented diagnostics that point at `adoc build`.
 - The default embedding provider is local: `fastembed-rs` with `bge-small-en-v1.5`. First run downloads weights; subsequent runs are offline. A hosted adapter is explicitly possible later without port churn but is not in V1.
+- The graph artifact is a sidecar JSON with an agent-artifact hash for drift detection, one node per Knowledge Object, and one directed edge per `depends_on`, `supersedes`, or `related_to` relation. SQLite and graph databases are deferred until JSON becomes limiting.
 - The search artifact is a sidecar JSON with a model header, an agent-artifact hash for drift detection, and one `{ id, content_hash, vector }` entry per Knowledge Object. SQLite, embedded ANN libraries, and binary sidecars are deferred until pilot data shows the JSON shape is the bottleneck.
 - Filters in V1 are `--kind`, `--status`, `--owner`, and `--source-path`. PRD §19's wider filter set requires upstream contracts that do not exist yet.
+- Graph retrieval is opt-in through `adoc search --related-to`; relation and direction filters restrict the candidate set without adding default graph score boosts.
 - Lifecycle, freshness, evidence quality, and authority are filter targets in V1, never score modifiers. RRF stays parameter-free.
 
 ### V1.1: `adoc why <object-id>`
@@ -567,18 +573,17 @@ Questions to resolve later:
 - Should `source` objects replace inline evidence or coexist with it?
 - Should verified lifecycle rules expand object-by-object or all at once?
 
-## V6: Graph and Composition
+## V6: Composition and Advanced Graphs
 
-V6 introduces richer structure once flat artifacts become limiting.
+V6 introduces richer composition and graph storage only after the current JSON graph artifact becomes limiting.
 
 Suggested tracer-bullet slices:
 
-- Emit a simple JSON graph artifact from the existing flat object list and relation fields before considering SQLite.
-- Add relation traversal commands after graph output exists.
-- Add relation-aware search filters after traversal behavior is proven.
 - Add `@include` with circular include detection and source-map preservation.
 - Add nested typed blocks only after source spans and JSON shape are settled.
 - Add custom schema registry after core schema versioning exists.
+- Add graph visualization or impacted-by workflows if the JSON graph traversal surface proves insufficient.
+- Consider SQLite or another embedded graph store only with measured evidence that `docs.graph.json` is too slow or awkward.
 
 Design guidance:
 
@@ -591,7 +596,7 @@ Design guidance:
 
 Questions to resolve later:
 
-- When does the graph artifact need SQLite instead of JSON?
+- When does the JSON graph artifact need SQLite or another embedded graph store?
 - How should includes interact with duplicate IDs and diagnostics?
 - Are nested typed blocks worth their parser and mental-model cost?
 
@@ -639,7 +644,7 @@ The currently resolved and implemented first cut is:
 - Build output directory: created automatically when missing.
 - Source extension: `.adoc`.
 - Authoring workflow: native AgentDoc Source first.
-- Commands: `adoc init`, `adoc check`, `adoc build`, `adoc why`, `adoc search`.
+- Commands: `adoc init`, `adoc check`, `adoc build`, `adoc why`, `adoc graph`, `adoc search`.
 - Modes: strict mode only.
 - Config: minimal `agentdoc.config.yaml` for local docs path, outputs, and `embeddings.provider: local|none`.
 - Initial objects: `claim`, `decision`, `warning`, `glossary`.
@@ -648,13 +653,13 @@ The currently resolved and implemented first cut is:
 - Relations: `depends_on`, `supersedes`, `related_to`.
 - Block structure: top-level typed blocks only.
 - Composition: scan files directly, no includes.
-- Outputs: `dist/docs.html`, `dist/docs.agent.json`, `dist/docs.search.json`.
+- Outputs: `dist/docs.html`, `dist/docs.agent.json`, `dist/docs.graph.json`, and optional `dist/docs.search.json`.
 - Agent JSON shape: flat object list plus diagnostics.
 
 ## Explicitly Deferred From V0
 
 - Markdown migration and compatibility mode.
-- Graph artifacts and graph traversal.
+- Graph artifacts and graph traversal in V0 itself; closed in V1 with `docs.graph.json` and `adoc graph`.
 - Nested typed blocks.
 - Includes.
 - Custom schemas.

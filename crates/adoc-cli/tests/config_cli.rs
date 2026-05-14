@@ -189,6 +189,7 @@ fn config_build_uses_exact_output_paths_and_dir_fills_omitted_paths() {
     );
     assert!(workspace.root.join("public/site.html").is_file());
     assert!(workspace.root.join("artifacts/agent.json").is_file());
+    assert!(workspace.root.join("bundled/docs.graph.json").is_file());
     assert!(workspace.root.join("bundled/docs.search.json").is_file());
     assert!(!workspace.root.join("bundled/docs.html").exists());
     assert!(!workspace.root.join("bundled/docs.agent.json").exists());
@@ -200,7 +201,7 @@ fn config_build_provider_none_allows_exact_html_and_agent_json_without_search() 
     write_valid_source(&workspace, "docs/index.adoc");
     workspace.write(
         "agentdoc.config.yaml",
-        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  agent_json: artifacts/agent.json\nembeddings:\n  provider: none\n",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  agent_json: artifacts/agent.json\n  graph: artifacts/graph.json\nembeddings:\n  provider: none\n",
     );
 
     let output = adoc_command()
@@ -222,6 +223,7 @@ fn config_build_provider_none_allows_exact_html_and_agent_json_without_search() 
     );
     assert!(workspace.root.join("public/site.html").is_file());
     assert!(workspace.root.join("artifacts/agent.json").is_file());
+    assert!(workspace.root.join("artifacts/graph.json").is_file());
     assert!(!workspace.root.join("docs.search.json").exists());
 }
 
@@ -231,7 +233,7 @@ fn config_build_no_embeddings_allows_exact_html_and_agent_json_without_search() 
     write_valid_source(&workspace, "docs/index.adoc");
     workspace.write(
         "agentdoc.config.yaml",
-        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  agent_json: artifacts/agent.json\nembeddings:\n  provider: local\n",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  agent_json: artifacts/agent.json\n  graph: artifacts/graph.json\nembeddings:\n  provider: local\n",
     );
 
     let output = adoc_command()
@@ -253,6 +255,7 @@ fn config_build_no_embeddings_allows_exact_html_and_agent_json_without_search() 
     );
     assert!(workspace.root.join("public/site.html").is_file());
     assert!(workspace.root.join("artifacts/agent.json").is_file());
+    assert!(workspace.root.join("artifacts/graph.json").is_file());
     assert!(!workspace.root.join("docs.search.json").exists());
 }
 
@@ -278,8 +281,8 @@ fn config_build_enabled_embeddings_requires_search_output_path() {
         "expected config.missing, got:\n{stderr}"
     );
     assert!(
-        stderr.contains("html, agent_json, and search outputs"),
-        "expected missing search guidance, got:\n{stderr}"
+        stderr.contains("html, agent_json, graph, and search outputs"),
+        "expected missing graph/search guidance, got:\n{stderr}"
     );
     assert!(!workspace.root.join("public/site.html").exists());
     assert!(!workspace.root.join("artifacts/agent.json").exists());
@@ -312,6 +315,12 @@ fn config_build_explicit_path_and_out_ignore_config_outputs() {
         workspace
             .root
             .join("explicit-dist/docs.agent.json")
+            .is_file()
+    );
+    assert!(
+        workspace
+            .root
+            .join("explicit-dist/docs.graph.json")
             .is_file()
     );
     assert!(!workspace.root.join("configured-html/custom.html").exists());
@@ -347,6 +356,12 @@ fn config_build_fully_explicit_no_embeddings_ignores_malformed_config() {
         workspace
             .root
             .join("explicit-dist/docs.agent.json")
+            .is_file()
+    );
+    assert!(
+        workspace
+            .root
+            .join("explicit-dist/docs.graph.json")
             .is_file()
     );
     assert!(

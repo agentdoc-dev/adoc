@@ -46,7 +46,14 @@ pub(crate) fn write_envelope_json(
     envelope: &RetrievalEnvelope,
     out: &mut dyn io::Write,
 ) -> io::Result<()> {
-    let text = serde_json::to_string_pretty(envelope).map_err(io::Error::other)?;
+    write_json(envelope, out)
+}
+
+pub(crate) fn write_json<T: serde::Serialize>(
+    value: &T,
+    out: &mut dyn io::Write,
+) -> io::Result<()> {
+    let text = serde_json::to_string_pretty(value).map_err(io::Error::other)?;
     writeln!(out, "{text}")
 }
 

@@ -5,6 +5,10 @@ mod infrastructure;
 pub use application::compile::{
     BuildArtifacts, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult,
 };
+pub use application::graph::{
+    GRAPH_TRAVERSAL_SCHEMA_VERSION, GraphInput, GraphLoadResult, GraphSession,
+    GraphTraversalEnvelope, traverse_graph,
+};
 pub use application::retrieval::{
     RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
     RetrievalSession, SearchFilters, SearchQuery, SearchResult, WhyResult, search, why_object,
@@ -14,6 +18,10 @@ pub use domain::artifact::{
     SearchArtifactDocument,
 };
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
+pub use domain::graph::{
+    GraphArtifactDocument, GraphDirection, GraphEdge, GraphNode, GraphRelationKind,
+    GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery, GraphTraversalResult,
+};
 pub use domain::retrieval::{RetrievalMatch, RetrievalRecord, RetrievalSource, SearchMode};
 
 /// Error returned by [`embed_query`].
@@ -64,6 +72,14 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
 
 pub fn build_workspace(input: BuildInput) -> CompileResult {
     build_workspace_with_embedding_provider_factory(input, default_embedding_provider)
+}
+
+pub fn load_graph_session(input: GraphInput) -> GraphLoadResult {
+    application::graph::load_graph_session_with_readers(
+        input,
+        &infrastructure::artifact::AgentJsonArtifact,
+        &infrastructure::artifact::GraphJsonArtifact,
+    )
 }
 
 fn default_embedding_provider() -> Result<
@@ -151,9 +167,11 @@ pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {
     } else {
         None
     };
-    application::retrieval::load_retrieval_session_with_reader(
+    application::retrieval::load_retrieval_session_with_readers(
         input,
         &infrastructure::artifact::AgentJsonArtifact,
+        &infrastructure::artifact::SearchJsonArtifact,
+        &infrastructure::artifact::GraphJsonArtifact,
         active_model,
     )
 }

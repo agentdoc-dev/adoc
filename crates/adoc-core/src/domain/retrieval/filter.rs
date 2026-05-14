@@ -1,5 +1,6 @@
 use crate::domain::artifact::AgentJsonObject;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::graph::{GraphDirection, GraphRelationKind};
 
 const OWNER_FIELD: &str = "owner";
 
@@ -9,9 +10,17 @@ pub struct SearchFilters {
     pub status: Option<String>,
     pub owner: Option<String>,
     pub source_path: Option<String>,
+    pub related_to: Option<String>,
+    pub relation: Option<GraphRelationKind>,
+    pub direction: Option<GraphDirection>,
 }
 
 impl SearchFilters {
+    /// Returns whether object metadata matches this filter set.
+    ///
+    /// Graph-scoped fields (`related_to`, `relation`, `direction`) are
+    /// resolved by the retrieval application layer so lexical, semantic, and
+    /// hybrid search can apply graph candidates at the right ranking phase.
     pub fn matches(&self, object: &AgentJsonObject) -> bool {
         matches_required(&object.kind, self.kind.as_deref())
             && matches_optional(object.status.as_deref(), self.status.as_deref())
@@ -27,28 +36,6 @@ impl SearchFilters {
         objects: impl IntoIterator<Item = &'a AgentJsonObject>,
     ) -> Vec<Diagnostic> {
         self.filter_state_against(objects).diagnostics()
-    }
-
-    pub(crate) fn validate_and_match<'a>(
-        &self,
-        objects: impl IntoIterator<Item = &'a AgentJsonObject>,
-    ) -> Result<Vec<&'a AgentJsonObject>, Vec<Diagnostic>> {
-        let mut candidates = Vec::new();
-        let mut state = FilterValidationState::new(self);
-
-        for object in objects {
-            state.update(object);
-            if self.matches(object) {
-                candidates.push(object);
-            }
-        }
-
-        let diagnostics = state.diagnostics();
-        if diagnostics.is_empty() {
-            Ok(candidates)
-        } else {
-            Err(diagnostics)
-        }
     }
 
     fn filter_state_against<'a>(

@@ -8,8 +8,9 @@ use crate::domain::artifact::{
 };
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::graph::GraphRelationKind;
 use crate::domain::knowledge_object::{
-    KnowledgeObject, RelationField, RelationTarget, Relations, projection::MetadataField,
+    KnowledgeObject, RelationTarget, Relations, projection::MetadataField,
 };
 use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::ArtifactWriter};
 
@@ -76,7 +77,7 @@ impl ArtifactReader for AgentJsonArtifact {
     }
 }
 
-impl ArtifactWriter for AgentJsonArtifact {
+impl ArtifactWriter<[PageAst]> for AgentJsonArtifact {
     type Output = AgentJsonDocument;
     fn build(&self, pages: &[PageAst], diagnostics: &[Diagnostic]) -> AgentJsonDocument {
         let mut objects: Vec<AgentJsonObject> = Vec::new();
@@ -144,9 +145,9 @@ fn metadata_fields_to_agent(metadata_fields: &[MetadataField<'_>]) -> BTreeMap<S
 
 fn relations_to_agent(relations: &Relations) -> AgentJsonRelations {
     AgentJsonRelations {
-        depends_on: relation_ids(relations.targets(RelationField::DependsOn)),
-        supersedes: relation_ids(relations.targets(RelationField::Supersedes)),
-        related_to: relation_ids(relations.targets(RelationField::RelatedTo)),
+        depends_on: relation_ids(relations.targets(GraphRelationKind::DependsOn)),
+        supersedes: relation_ids(relations.targets(GraphRelationKind::Supersedes)),
+        related_to: relation_ids(relations.targets(GraphRelationKind::RelatedTo)),
     }
 }
 

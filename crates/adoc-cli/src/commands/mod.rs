@@ -1,5 +1,6 @@
 mod build;
 mod check;
+mod graph;
 mod init;
 mod search;
 mod why;
@@ -14,11 +15,13 @@ use crate::presentation::{ExpiresInfo, PresentationRecord};
 
 pub(crate) use build::build;
 pub(crate) use check::check;
+pub(crate) use graph::{GraphCommandInput, graph};
 pub(crate) use init::init;
 pub(crate) use search::{SearchCommandInput, search_command};
 pub(crate) use why::why;
 
 const DEFAULT_AGENT_ARTIFACT_PATH: &str = "dist/docs.agent.json";
+const DEFAULT_GRAPH_ARTIFACT_PATH: &str = "dist/docs.graph.json";
 const DEFAULT_SEARCH_ARTIFACT_PATH: &str = "dist/docs.search.json";
 
 fn discover_project_config_if(needed: bool) -> Result<Option<ProjectConfig>, CliError> {
@@ -67,6 +70,20 @@ fn resolve_search_artifact_path_with_config(
         .as_ref()
         .and_then(|config| config.outputs.search.clone())
         .unwrap_or_else(|| PathBuf::from(DEFAULT_SEARCH_ARTIFACT_PATH))
+}
+
+fn resolve_graph_artifact_path_with_config(
+    path: Option<PathBuf>,
+    config: Option<&ProjectConfig>,
+) -> PathBuf {
+    if let Some(path) = path {
+        return path;
+    }
+
+    config
+        .as_ref()
+        .and_then(|config| config.outputs.graph.clone())
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_GRAPH_ARTIFACT_PATH))
 }
 
 fn diagnostics_have_errors(diagnostics: &[Diagnostic]) -> bool {

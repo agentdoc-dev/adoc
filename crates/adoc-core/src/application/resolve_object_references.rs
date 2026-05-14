@@ -2,9 +2,10 @@ use std::collections::BTreeSet;
 
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::inline::InlineSegment;
-use crate::domain::knowledge_object::{KnowledgeObject, RelationField, Relations};
+use crate::domain::knowledge_object::{KnowledgeObject, Relations};
 use crate::domain::source::SourceFile;
 
 const BROKEN_RELATION_HELP: &str = "Relation targets must name an existing Knowledge Object. Supported relation fields: `depends_on`, `supersedes`, `related_to`.";
@@ -68,8 +69,8 @@ fn resolve_relations(
     declared_ids: &BTreeSet<ObjectId>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    for field in RelationField::ALL {
-        let targets = relations.targets(field);
+    for relation in GraphRelationKind::ALL {
+        let targets = relations.targets(relation);
         for target in targets {
             if declared_ids.contains(target.id()) {
                 continue;
@@ -79,7 +80,7 @@ fn resolve_relations(
                     DiagnosticCode::RefBroken,
                     format!(
                         "{} target `{}` does not resolve to a declared Knowledge Object",
-                        field.as_str(),
+                        relation.as_str(),
                         target.id().as_str()
                     ),
                 )

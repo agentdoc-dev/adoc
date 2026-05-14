@@ -2,10 +2,13 @@ use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
+use crate::application::graph::{GraphLoadResult, GraphSession};
 use crate::domain::artifact::{
-    AgentJsonDocument, AgentJsonObject, AgentJsonRelations, SearchModelHeader,
+    AgentJsonDocument, AgentJsonObject, AgentJsonRelations, SearchArtifactDocument,
+    SearchModelHeader,
 };
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::graph::{GraphArtifactDocument, GraphTraversalQuery};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::ports::artifact_reader::ArtifactReader;
 pub use crate::domain::retrieval::SearchFilters;
@@ -20,6 +23,7 @@ pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v0";
 pub struct RetrievalInput {
     pub artifact_path: PathBuf,
     pub search_artifact_path: Option<PathBuf>,
+    pub graph_artifact_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +37,7 @@ pub struct RetrievalSession {
     exact_lookup: BTreeMap<ObjectId, AgentJsonObject>,
     lexical_index: LexicalIndex,
     vector_index: Option<VectorIndex>,
+    graph_session: Option<GraphSession>,
 }
 
 impl RetrievalSession {
@@ -43,6 +48,10 @@ impl RetrievalSession {
 
     pub(crate) fn vector_index(&self) -> Option<&VectorIndex> {
         self.vector_index.as_ref()
+    }
+
+    pub(crate) fn graph_session(&self) -> Option<&GraphSession> {
+        self.graph_session.as_ref()
     }
 
     /// Returns statuses for the record's relation targets.
@@ -115,15 +124,19 @@ impl From<SearchResult> for RetrievalEnvelope {
     }
 }
 
-pub(crate) fn load_retrieval_session_with_reader<R>(
+pub(crate) fn load_retrieval_session_with_readers<A, S, G>(
     input: RetrievalInput,
-    reader: &R,
+    agent_reader: &A,
+    search_reader: &S,
+    graph_reader: &G,
     active_model: Option<SearchModelHeader>,
 ) -> RetrievalLoadResult
 where
-    R: ArtifactReader<Output = AgentJsonDocument>,
+    A: ArtifactReader<Output = AgentJsonDocument>,
+    S: ArtifactReader<Output = SearchArtifactDocument>,
+    G: ArtifactReader<Output = GraphArtifactDocument>,
 {
-    let document = match reader.read(&input.artifact_path) {
+    let document = match agent_reader.read(&input.artifact_path) {
         Ok(document) => document,
         Err(diagnostics) => {
             return RetrievalLoadResult {
@@ -160,11 +173,10 @@ where
 
     let mut diagnostics = document_diagnostics;
     let mut vector_index: Option<VectorIndex> = None;
+    let mut graph_session: Option<GraphSession> = None;
 
     if let Some(search_path) = input.search_artifact_path.as_ref() {
-        match crate::infrastructure::artifact::search_json::read_search_artifact_document(
-            search_path,
-        ) {
+        match search_reader.read(search_path) {
             Err(diags) => {
                 let was_missing = diags
                     .iter()
@@ -228,11 +240,25 @@ where
         }
     }
 
+    if let Some(graph_path) = input.graph_artifact_path.as_ref() {
+        let GraphLoadResult {
+            session,
+            diagnostics: mut graph_diagnostics,
+        } = crate::application::graph::load_graph_session_from_canonical_agent(
+            &canonical_bytes,
+            graph_path,
+            graph_reader,
+        );
+        diagnostics.append(&mut graph_diagnostics);
+        graph_session = session;
+    }
+
     RetrievalLoadResult {
         session: Some(RetrievalSession {
             exact_lookup,
             lexical_index,
             vector_index,
+            graph_session,
         }),
         diagnostics,
     }
@@ -287,21 +313,17 @@ fn search_hybrid(session: &RetrievalSession, query: SearchQuery) -> SearchResult
         return missing_query_vector_result(SearchMode::Hybrid);
     }
 
-    let diagnostics = query
-        .filters
-        .validate_against(session.exact_lookup.values());
-    if !diagnostics.is_empty() {
-        return SearchResult {
-            records: Vec::new(),
-            diagnostics,
-        };
-    }
+    let scope = match SearchScope::resolve(session, &query.filters) {
+        Ok(scope) => scope,
+        Err(diagnostics) => {
+            return SearchResult {
+                records: Vec::new(),
+                diagnostics,
+            };
+        }
+    };
 
-    let candidate_ids: Vec<_> = session
-        .exact_lookup
-        .values()
-        .map(|object| object.id.as_str())
-        .collect();
+    let candidate_ids = scope.graph_scoped_candidate_ids(session);
     if candidate_ids.is_empty() {
         return SearchResult {
             records: Vec::new(),
@@ -379,11 +401,8 @@ fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResu
         return missing_query_vector_result(SearchMode::Semantic);
     }
 
-    let candidates = match query
-        .filters
-        .validate_and_match(session.exact_lookup.values())
-    {
-        Ok(candidates) => candidates,
+    let candidates = match SearchScope::resolve(session, &query.filters) {
+        Ok(scope) => scope.metadata_and_graph_candidates(session, &query.filters),
         Err(diagnostics) => {
             return SearchResult {
                 records: Vec::new(),
@@ -475,11 +494,8 @@ fn missing_query_vector_result(mode: SearchMode) -> SearchResult {
 }
 
 fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
-    let candidates = match query
-        .filters
-        .validate_and_match(session.exact_lookup.values())
-    {
-        Ok(candidates) => candidates,
+    let candidates = match SearchScope::resolve(session, &query.filters) {
+        Ok(scope) => scope.metadata_and_graph_candidates(session, &query.filters),
         Err(diagnostics) => {
             return SearchResult {
                 records: Vec::new(),
@@ -567,6 +583,91 @@ fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResul
     }
 }
 
+struct SearchScope {
+    graph_candidate_ids: Option<BTreeSet<String>>,
+}
+
+impl SearchScope {
+    fn resolve(
+        session: &RetrievalSession,
+        filters: &SearchFilters,
+    ) -> Result<Self, Vec<Diagnostic>> {
+        let mut diagnostics = filters.validate_against(session.exact_lookup.values());
+        let graph_candidate_ids = match Self::resolve_graph_candidates(session, filters) {
+            Ok(candidates) => candidates,
+            Err(mut graph_diagnostics) => {
+                diagnostics.append(&mut graph_diagnostics);
+                None
+            }
+        };
+        if diagnostics.is_empty() {
+            Ok(Self {
+                graph_candidate_ids,
+            })
+        } else {
+            Err(diagnostics)
+        }
+    }
+
+    fn metadata_and_graph_candidates<'a>(
+        &self,
+        session: &'a RetrievalSession,
+        filters: &SearchFilters,
+    ) -> Vec<&'a AgentJsonObject> {
+        session
+            .exact_lookup
+            .values()
+            .filter(|object| filters.matches(object))
+            .filter(|object| self.matches_graph(object))
+            .collect()
+    }
+
+    fn graph_scoped_candidate_ids<'a>(&self, session: &'a RetrievalSession) -> Vec<&'a str> {
+        session
+            .exact_lookup
+            .values()
+            .filter(|object| self.matches_graph(object))
+            .map(|object| object.id.as_str())
+            .collect()
+    }
+
+    fn matches_graph(&self, object: &AgentJsonObject) -> bool {
+        self.graph_candidate_ids
+            .as_ref()
+            .is_none_or(|candidate_ids| candidate_ids.contains(object.id.as_str()))
+    }
+
+    fn resolve_graph_candidates(
+        session: &RetrievalSession,
+        filters: &SearchFilters,
+    ) -> Result<Option<BTreeSet<String>>, Vec<Diagnostic>> {
+        let Some(root_id) = filters.related_to.clone() else {
+            if filters.relation.is_some() || filters.direction.is_some() {
+                return Err(vec![Diagnostic::error(
+                    DiagnosticCode::SearchInvalidFilter,
+                    "Graph relation and direction filters require `related_to`.",
+                )]);
+            }
+            return Ok(None);
+        };
+
+        let Some(graph_session) = session.graph_session() else {
+            return Err(vec![Diagnostic::error(
+                DiagnosticCode::SearchInvalidFilter,
+                format!("Search filter `related_to={root_id}` requires a loaded graph artifact."),
+            )]);
+        };
+
+        graph_session
+            .related_candidate_ids(GraphTraversalQuery {
+                root_id,
+                direction: filters.direction.unwrap_or_default(),
+                relations: filters.relation.iter().copied().collect(),
+            })
+            .map(Some)
+    }
+}
+
 fn build_exact_lookup(
     objects: Vec<AgentJsonObject>,
 ) -> Result<BTreeMap<ObjectId, AgentJsonObject>, Vec<Diagnostic>> {
@@ -637,15 +738,44 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::domain::artifact::{AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan};
+    use crate::application::hashing::sha256_prefixed;
+    use crate::domain::artifact::{
+        AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, SearchArtifactDocument,
+        SearchEmbedding, SearchModelHeader,
+    };
+    use crate::domain::graph::{GraphArtifactDocument, GraphEdge, GraphNode, GraphRelationKind};
     use crate::domain::ports::artifact_reader::ArtifactReader;
 
-    struct StubArtifactReader {
+    struct StubAgentArtifactReader {
         document: AgentJsonDocument,
     }
 
-    impl ArtifactReader for StubArtifactReader {
+    impl ArtifactReader for StubAgentArtifactReader {
         type Output = AgentJsonDocument;
+
+        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+            Ok(self.document.clone())
+        }
+    }
+
+    struct StubSearchArtifactReader {
+        document: SearchArtifactDocument,
+    }
+
+    impl ArtifactReader for StubSearchArtifactReader {
+        type Output = SearchArtifactDocument;
+
+        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+            Ok(self.document.clone())
+        }
+    }
+
+    struct StubGraphArtifactReader {
+        document: GraphArtifactDocument,
+    }
+
+    impl ArtifactReader for StubGraphArtifactReader {
+        type Output = GraphArtifactDocument;
 
         fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
             Ok(self.document.clone())
@@ -676,16 +806,23 @@ mod tests {
 
     #[test]
     fn retrieval_session_loads_through_artifact_reader_port() {
-        let reader = StubArtifactReader {
+        let reader = StubAgentArtifactReader {
             document: document_with_object("billing.reader-port"),
         };
 
-        let result = load_retrieval_session_with_reader(
+        let result = load_retrieval_session_with_readers(
             RetrievalInput {
                 artifact_path: PathBuf::from("ignored.agent.json"),
                 search_artifact_path: None,
+                graph_artifact_path: None,
             },
             &reader,
+            &StubSearchArtifactReader {
+                document: search_document("sha256:unused"),
+            },
+            &StubGraphArtifactReader {
+                document: graph_document("sha256:unused"),
+            },
             None,
         );
 
@@ -708,19 +845,142 @@ mod tests {
             object_id: None,
             help: None,
         });
-        let reader = StubArtifactReader { document };
+        let reader = StubAgentArtifactReader { document };
 
-        let result = load_retrieval_session_with_reader(
+        let result = load_retrieval_session_with_readers(
             RetrievalInput {
                 artifact_path: PathBuf::from("ignored.agent.json"),
                 search_artifact_path: None,
+                graph_artifact_path: None,
             },
             &reader,
+            &StubSearchArtifactReader {
+                document: search_document("sha256:unused"),
+            },
+            &StubGraphArtifactReader {
+                document: graph_document("sha256:unused"),
+            },
             None,
         );
 
         assert!(result.session.is_some());
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(result.diagnostics[0].code, DiagnosticCode::ParseRawHtml);
+    }
+
+    #[test]
+    fn retrieval_session_loads_search_and_graph_through_reader_ports() {
+        let mut document = document_with_object("billing.root");
+        document.objects.push(AgentJsonObject {
+            id: "billing.target".to_string(),
+            kind: "claim".to_string(),
+            status: Some("verified".to_string()),
+            body: "Target body.".to_string(),
+            page_id: "team.page".to_string(),
+            source_span: AgentJsonSourceSpan {
+                path: "docs/page.adoc".to_string(),
+                line: 2,
+                column: 1,
+            },
+            fields: BTreeMap::new(),
+            relations: AgentJsonRelations::default(),
+        });
+        let canonical_hash = sha256_prefixed(
+            document
+                .to_pretty_json()
+                .expect("agent document serializes")
+                .as_bytes(),
+        );
+
+        let result = load_retrieval_session_with_readers(
+            RetrievalInput {
+                artifact_path: PathBuf::from("ignored.agent.json"),
+                search_artifact_path: Some(PathBuf::from("ignored.search.json")),
+                graph_artifact_path: Some(PathBuf::from("ignored.graph.json")),
+            },
+            &StubAgentArtifactReader { document },
+            &StubSearchArtifactReader {
+                document: search_document(&canonical_hash),
+            },
+            &StubGraphArtifactReader {
+                document: graph_document(&canonical_hash),
+            },
+            Some(SearchModelHeader {
+                id: "in-memory".to_string(),
+                provider: "test".to_string(),
+                dim: 2,
+            }),
+        );
+
+        assert!(result.diagnostics.is_empty());
+        let session = result.session.expect("session loads");
+        assert!(session.has_semantic_index());
+
+        let result = search(
+            &session,
+            SearchQuery {
+                text: "target".to_string(),
+                mode: SearchMode::Lexical,
+                filters: SearchFilters {
+                    related_to: Some("billing.root".to_string()),
+                    relation: Some(GraphRelationKind::DependsOn),
+                    ..SearchFilters::default()
+                },
+                top: NonZeroUsize::new(10).expect("non-zero"),
+                query_vector: None,
+            },
+        );
+
+        assert_eq!(
+            result
+                .records
+                .iter()
+                .map(|record| record.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["billing.target"]
+        );
+    }
+
+    fn search_document(agent_artifact_hash: &str) -> SearchArtifactDocument {
+        SearchArtifactDocument {
+            schema_version: "adoc.search.v0".to_string(),
+            model: SearchModelHeader {
+                id: "in-memory".to_string(),
+                provider: "test".to_string(),
+                dim: 2,
+            },
+            agent_artifact_hash: agent_artifact_hash.to_string(),
+            embeddings: vec![SearchEmbedding {
+                id: "billing.target".to_string(),
+                content_hash: "sha256:content".to_string(),
+                vector: vec![1.0, 0.0],
+            }],
+        }
+    }
+
+    fn graph_document(agent_artifact_hash: &str) -> GraphArtifactDocument {
+        GraphArtifactDocument {
+            schema_version: "adoc.graph.v0".to_string(),
+            agent_artifact_hash: agent_artifact_hash.to_string(),
+            nodes: vec![
+                GraphNode {
+                    id: "billing.root".to_string(),
+                    kind: "claim".to_string(),
+                    status: Some("draft".to_string()),
+                    page_id: "team.page".to_string(),
+                },
+                GraphNode {
+                    id: "billing.target".to_string(),
+                    kind: "claim".to_string(),
+                    status: Some("verified".to_string()),
+                    page_id: "team.page".to_string(),
+                },
+            ],
+            edges: vec![GraphEdge {
+                source: "billing.root".to_string(),
+                target: "billing.target".to_string(),
+                relation: GraphRelationKind::DependsOn,
+            }],
+        }
     }
 }

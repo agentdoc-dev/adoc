@@ -2,6 +2,7 @@
 pub(crate) mod artifact;
 pub(crate) mod ast;
 pub(crate) mod diagnostic;
+pub(crate) mod graph;
 pub(crate) mod identity;
 pub(crate) mod inline;
 pub(crate) mod knowledge_object;

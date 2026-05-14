@@ -129,12 +129,16 @@ The first post-compiler milestone. Adds `adoc why` and `adoc search` over compil
 _Avoid_: V1 hosted RAG service, V1 agent server, V1 graph database
 
 **V1 Build Artifacts**:
-The V1 compiler outputs: `dist/docs.html`, `dist/docs.agent.json`, and `dist/docs.search.json`. The first two preserve their V0 contracts; the third is new in V1.
+The V1 compiler outputs: `dist/docs.html`, `dist/docs.agent.json`, `dist/docs.graph.json`, and optionally `dist/docs.search.json`. HTML and agent JSON preserve their V0 contracts; graph and search are read-side artifacts.
 _Avoid_: SQLite graph artifact, RAG ndjson, separate diagnostics artifact
 
 **Search Artifact**:
 The new V1 build output, `dist/docs.search.json`, with schema version `adoc.search.v0`. Carries one `{ id, content_hash, vector }` entry per Knowledge Object, a `model: { id, provider, dim }` header, and an `agent_artifact_hash` for drift detection.
 _Avoid_: per-chunk embedding store, vectors embedded in `docs.agent.json`, binary sidecar in V1
+
+**Graph Artifact**:
+The V1 build output, `dist/docs.graph.json`, with schema version `adoc.graph.v0`. It is derived from the flat agent artifact: one node per Knowledge Object and one directed edge per `depends_on`, `supersedes`, or `related_to` relation. It carries `agent_artifact_hash` for drift warnings.
+_Avoid_: graph database, SQLite-first graph storage, graph as authoring source of truth
 
 **Embedding Provider**:
 The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the `InMemoryProvider` adapter is used in every hermetic test.
@@ -147,6 +151,14 @@ _Avoid_: per-field separate embeddings in V1, relations folded into embedding in
 **Hybrid Retrieval**:
 The V1 default search ranking: Reciprocal Rank Fusion over a BM25 lexical index and a brute-force cosine vector index, with exact and prefix Object ID matches pinned above the fused list. Implemented as `HybridRanker` in `domain/retrieval/`.
 _Avoid_: tunable score weights in V1, multi-factor PRD §19.3 scoring in V1, ANN libraries in V1
+
+**Graph Retrieval**:
+Opt-in retrieval that restricts candidates by graph reachability from a requested Object ID before normal lexical, semantic, or hybrid ranking. It is enabled by `adoc search --related-to`; absent graph flags, default ranking is unchanged.
+_Avoid_: default graph score boost, graph proximity ranking, implicit relation expansion
+
+**Graph Traversal**:
+Read-only traversal over `docs.graph.json`, exposed by `adoc graph`. The default direction is both, the default relation set is the whole V0 Relation Set, and cycles are finite because visited nodes are not recursively revisited.
+_Avoid_: infinite path enumeration, graph mutation, graph visualization as the current contract
 
 **Retrieval Record**:
 The stable JSON shape returned by `adoc why --format json` and `adoc search --format json`. Contained inside an `adoc.retrieval.v0` envelope. A projection of `AgentJsonObject` plus a small `match` block carrying `mode`, ranks, and (when relevant) `cosine_score`.
@@ -175,7 +187,7 @@ _Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
 - The **V0 CLI Commands** are enough to validate source files and compile the first human and agent outputs.
 - **V0 Defaults** avoid config files until modes, schemas, ignores, CI policy, or output presets need configuration.
 - **V0 Build Artifacts** prove that the same **AgentDoc Source** can serve humans and agents.
-- **V0 Agent JSON** is flat; graph-shaped artifacts are deferred.
+- **V0 Agent JSON** is flat; graph structure is emitted separately as the **Graph Artifact**.
 - **V0 Source Composition** does not support includes; composition is by scanning files.
 - **V0 Block Structure** keeps typed blocks top-level only.
 - **Page Annotation** is optional in v0; missing page identity can be derived from the file path.
@@ -193,11 +205,14 @@ _Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
 - An **Internal Port** stays `pub(crate)` until a concrete external consumer (LSP, web preview, semantic diff) needs it.
 - **Build Output Directory** is created by the CLI when missing.
 - **V1 Local Retrieval** reads compiled artifacts only; it never re-runs `compile_workspace()`.
-- **V1 Build Artifacts** add a **Search Artifact** to the V0 pair without changing the existing **Agent-Facing Artifact** contract.
+- **V1 Build Artifacts** add a **Graph Artifact** and optional **Search Artifact** to the V0 pair without changing the existing **Agent-Facing Artifact** contract.
 - A **Search Artifact** is keyed by **Object ID** and is invalidated by model mismatch, schema-version mismatch, or per-object content-hash drift.
+- A **Graph Artifact** is keyed by **Object ID**, is derived from **V0 Relation Set** fields, and is invalidated by schema-version mismatch or whole-agent-artifact hash drift.
 - An **Embedding Provider** is an **Internal Port** under ADR-0006; it stays `pub(crate)` until a concrete external consumer needs it.
 - **Embedding Composition** is the reduction from a Knowledge Object aggregate to a single canonical input string; relations stay filter targets, not semantic signal.
 - **Hybrid Retrieval** combines lexical and vector ranks via RRF; lifecycle, freshness, and authority remain filter targets in V1, not score modifiers.
+- **Graph Retrieval** filters candidate sets explicitly; it does not change unfiltered **Hybrid Retrieval** ranking.
+- **Graph Traversal** preserves original edge direction even when traversing incoming or both directions.
 - A **Retrieval Record** is a projection of an `AgentJsonObject` plus a small `match` block; it never carries vectors.
 - A **Retrieval Session** is constructed per CLI invocation and dropped at command exit.
 - The **Pilot Retrieval Set** gates every later ranking, embedding-composition, or model change.
@@ -221,7 +236,7 @@ _Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
 - "Project setup" could imply `adoc init` in v0 - resolved: users create `.adoc` files manually until initializer behavior is worth standardizing.
 - "Project configuration" could imply an `agentdoc` or `adoc` config file in v0 - resolved: no config file in v0.
 - "Build output" could include every artifact named in the PRD - resolved: v0 emits only the **V0 Build Artifacts**.
-- "Agent JSON" could imply a graph-shaped export - resolved: **V0 Agent JSON** is a flat object list with diagnostics.
+- "Agent JSON" could imply a graph-shaped export - resolved: **V0 Agent JSON** is a flat object list with diagnostics; graph shape lives in **Graph Artifact**.
 - "Source composition" could imply `@include` support from the PRD - resolved: v0 has no includes and scans `.adoc` files directly.
 - "Typed block syntax" could include nested blocks from the PRD - resolved: **V0 Block Structure** allows only top-level typed blocks.
 - "Page annotation" could imply pages are first-class knowledge objects - resolved: **Page Annotation** is metadata only in v0.
@@ -238,6 +253,8 @@ _Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
 - "V1 retrieval staging" could mean shipping lexical search first and embeddings later - resolved: V1 ships **Hybrid Retrieval** with embeddings as a first-class build output, gated behind the **Embedding Provider** port.
 - "Embedding compute" could mean a hosted embeddings API in V1 - resolved: the V1 default **Embedding Provider** is local (`fastembed-rs` + `bge-small-en-v1.5`); a hosted adapter is deferred behind the same port.
 - "Vector storage shape" could mean SQLite, an embedded ANN library, or a binary sidecar in V1 - resolved: V1 uses a sidecar JSON (**Search Artifact**) with `adoc.search.v0` as schema version.
+- "Graph storage shape" could mean SQLite or a graph database - resolved: V1 uses a sidecar JSON (**Graph Artifact**) with `adoc.graph.v0` as schema version; SQLite waits until JSON becomes limiting.
 - "Embedding granularity" could mean per-paragraph or per-chunk embeddings - resolved: V1 is one embedding per **Knowledge Object**; chunked retrieval is deferred.
 - "Search ranking" could mean a multi-factor weighted score from the PRD - resolved: V1 uses **Hybrid Retrieval** via parameter-free RRF; lifecycle, freshness, and authority remain filters, not score modifiers.
 - "Agent surface" could mean an MCP/JSON-RPC retrieval server in V1 - resolved: V1 ships only CLI commands plus a stable `--format json` envelope (`adoc.retrieval.v0`); a server is deferred.
+- "Graph ranking" could mean boosting search results by relation distance - resolved: **Graph Retrieval** is explicit candidate filtering only; unfiltered search ranking is unchanged.

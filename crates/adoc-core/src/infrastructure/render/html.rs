@@ -1,7 +1,8 @@
 use crate::domain::ast::{BlockAst, ListKind, PageAst};
+use crate::domain::graph::GraphRelationKind;
 use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
-    KnowledgeObject, RelationField, Relations,
+    KnowledgeObject, Relations,
     claim::Evidence,
     projection::{KnowledgeObjectMetadata, MetadataDiscriminant, MetadataField},
 };
@@ -382,14 +383,14 @@ fn render_relations(kind: &str, relations: &Relations, html: &mut String) {
     html.push_str("<section class=\"");
     html.push_str(kind);
     html.push_str("__relations\"><dl>\n");
-    for field in RelationField::ALL {
-        render_relation_group(field, relations.targets(field), html);
+    for relation in GraphRelationKind::ALL {
+        render_relation_group(relation, relations.targets(relation), html);
     }
     html.push_str("</dl></section>\n");
 }
 
 fn render_relation_group(
-    field: RelationField,
+    relation: GraphRelationKind,
     targets: &[crate::domain::knowledge_object::RelationTarget],
     html: &mut String,
 ) {
@@ -398,7 +399,7 @@ fn render_relation_group(
     }
 
     html.push_str("<dt>");
-    html.push_str(field.as_str());
+    html.push_str(relation.as_str());
     html.push_str("</dt><dd>");
     for (index, target) in targets.iter().enumerate() {
         if index > 0 {

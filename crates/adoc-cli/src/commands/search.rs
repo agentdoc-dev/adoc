@@ -2,9 +2,9 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use adoc_core::{
-    Diagnostic, DiagnosticCode, EmbedQueryError, RetrievalEnvelope, RetrievalInput,
-    RetrievalLoadResult, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity,
-    embed_query, load_retrieval_session, search,
+    Diagnostic, DiagnosticCode, EmbedQueryError, GraphDirection, GraphRelationKind,
+    RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, SearchFilters, SearchMode, SearchQuery,
+    SearchResult, Severity, embed_query, load_retrieval_session, search,
 };
 
 use crate::error::CliError;
@@ -15,19 +15,23 @@ use crate::presentation::{
 use super::{
     diagnostics_have_errors, discover_project_config_if, eprint_diagnostics, merge_diagnostics,
     presentation_record_from_session, report, resolve_agent_artifact_path_with_config,
-    resolve_search_artifact_path_with_config,
+    resolve_graph_artifact_path_with_config, resolve_search_artifact_path_with_config,
 };
 
 pub(crate) struct SearchCommandInput {
     pub(crate) query: String,
     pub(crate) artifact: Option<PathBuf>,
     pub(crate) search_artifact: Option<PathBuf>,
+    pub(crate) graph_artifact: Option<PathBuf>,
     pub(crate) semantic: bool,
     pub(crate) lexical: bool,
     pub(crate) kind: Option<String>,
     pub(crate) status: Option<String>,
     pub(crate) owner: Option<String>,
     pub(crate) source_path: Option<String>,
+    pub(crate) related_to: Option<String>,
+    pub(crate) relation: Option<GraphRelationKind>,
+    pub(crate) direction: Option<GraphDirection>,
     pub(crate) top: NonZeroUsize,
 }
 
@@ -42,7 +46,10 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
 
     let needs_search_config = matches!(requested_mode, SearchMode::Hybrid | SearchMode::Semantic)
         && input.search_artifact.is_none();
-    let config = match discover_project_config_if(input.artifact.is_none() || needs_search_config) {
+    let needs_graph_config = input.related_to.is_some() && input.graph_artifact.is_none();
+    let config = match discover_project_config_if(
+        input.artifact.is_none() || needs_search_config || needs_graph_config,
+    ) {
         Ok(config) => config,
         Err(error) => return report(error),
     };
@@ -53,10 +60,19 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
             resolve_search_artifact_path_with_config(input.search_artifact, config.as_ref()),
         ),
     };
+    let graph_artifact_path = if input.related_to.is_some() {
+        Some(resolve_graph_artifact_path_with_config(
+            input.graph_artifact,
+            config.as_ref(),
+        ))
+    } else {
+        None
+    };
 
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact,
         search_artifact_path,
+        graph_artifact_path,
     });
     let RetrievalLoadResult {
         session,
@@ -174,6 +190,9 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
                 status: input.status,
                 owner: input.owner,
                 source_path: input.source_path,
+                related_to: input.related_to,
+                relation: input.relation,
+                direction: input.direction,
             },
             top: input.top,
             query_vector,

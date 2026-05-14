@@ -25,6 +25,7 @@ pub(crate) fn why(object_id: String, artifact: Option<PathBuf>, resolved: Resolv
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.clone(),
         search_artifact_path: None,
+        graph_artifact_path: None,
     });
     let RetrievalLoadResult {
         session,

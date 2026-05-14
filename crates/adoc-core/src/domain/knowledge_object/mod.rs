@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourcePosition, SourceSpan};
+use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::values::Body;
 
@@ -17,25 +18,6 @@ use claim::Claim;
 use decision::Decision;
 use glossary::Glossary;
 use warning::Warning;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RelationField {
-    DependsOn,
-    Supersedes,
-    RelatedTo,
-}
-
-impl RelationField {
-    pub(crate) const ALL: [Self; 3] = [Self::DependsOn, Self::Supersedes, Self::RelatedTo];
-
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::DependsOn => "depends_on",
-            Self::Supersedes => "supersedes",
-            Self::RelatedTo => "related_to",
-        }
-    }
-}
 
 pub(super) fn reject_duplicate_fields(
     parsed: &ParsedTypedBlock,
@@ -80,19 +62,19 @@ impl Relations {
         Self::default()
     }
 
-    pub(crate) fn targets(&self, field: RelationField) -> &[RelationTarget] {
-        match field {
-            RelationField::DependsOn => &self.depends_on,
-            RelationField::Supersedes => &self.supersedes,
-            RelationField::RelatedTo => &self.related_to,
+    pub(crate) fn targets(&self, relation: GraphRelationKind) -> &[RelationTarget] {
+        match relation {
+            GraphRelationKind::DependsOn => &self.depends_on,
+            GraphRelationKind::Supersedes => &self.supersedes,
+            GraphRelationKind::RelatedTo => &self.related_to,
         }
     }
 
-    fn set_targets(&mut self, field: RelationField, targets: Vec<RelationTarget>) {
-        match field {
-            RelationField::DependsOn => self.depends_on = targets,
-            RelationField::Supersedes => self.supersedes = targets,
-            RelationField::RelatedTo => self.related_to = targets,
+    fn set_targets(&mut self, relation: GraphRelationKind, targets: Vec<RelationTarget>) {
+        match relation {
+            GraphRelationKind::DependsOn => self.depends_on = targets,
+            GraphRelationKind::Supersedes => self.supersedes = targets,
+            GraphRelationKind::RelatedTo => self.related_to = targets,
         }
     }
 
@@ -127,8 +109,8 @@ pub(super) fn extract_relations(
 ) -> Relations {
     let mut relations = Relations::empty();
 
-    for field in RelationField::ALL {
-        let key = field.as_str();
+    for relation in GraphRelationKind::ALL {
+        let key = relation.as_str();
         let Some(value) = parsed.raw_fields.remove(key) else {
             continue;
         };
@@ -138,7 +120,7 @@ pub(super) fn extract_relations(
             .cloned()
             .unwrap_or_else(|| parsed.span.clone());
         let targets = parse_relation_targets(parsed, key, &value, &value_span, diagnostics);
-        relations.set_targets(field, targets);
+        relations.set_targets(relation, targets);
     }
 
     relations
@@ -546,18 +528,20 @@ mod tests {
     }
 
     #[test]
-    fn relation_field_all_lists_every_supported_relation_field_in_source_order() {
+    fn graph_relation_kind_all_lists_every_supported_relation_field_in_source_order() {
+        use crate::domain::graph::GraphRelationKind;
+
         assert_eq!(
-            RelationField::ALL,
+            GraphRelationKind::ALL,
             [
-                RelationField::DependsOn,
-                RelationField::Supersedes,
-                RelationField::RelatedTo,
+                GraphRelationKind::DependsOn,
+                GraphRelationKind::Supersedes,
+                GraphRelationKind::RelatedTo,
             ]
         );
-        assert_eq!(RelationField::DependsOn.as_str(), "depends_on");
-        assert_eq!(RelationField::Supersedes.as_str(), "supersedes");
-        assert_eq!(RelationField::RelatedTo.as_str(), "related_to");
+        assert_eq!(GraphRelationKind::DependsOn.as_str(), "depends_on");
+        assert_eq!(GraphRelationKind::Supersedes.as_str(), "supersedes");
+        assert_eq!(GraphRelationKind::RelatedTo.as_str(), "related_to");
     }
 
     #[test]

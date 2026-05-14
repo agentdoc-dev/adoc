@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use adoc_core::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, DiagnosticCode,
+    GraphArtifactDocument, GraphDirection, GraphEdge, GraphNode, GraphRelationKind,
     RetrievalEnvelope, RetrievalInput, RetrievalMatch, RetrievalRecord, RetrievalSession,
     RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult, load_retrieval_session,
     search, why_object,
@@ -45,6 +46,16 @@ fn write_temp_search_artifact(name: &str, contents: &str) -> tempfile::NamedTemp
     artifact
 }
 
+fn write_temp_graph_artifact(name: &str, contents: &str) -> tempfile::NamedTempFile {
+    let artifact = tempfile::Builder::new()
+        .prefix(&format!("adoc-retrieval-{name}-"))
+        .suffix(".graph.json")
+        .tempfile()
+        .expect("temp graph artifact can be created");
+    std::fs::write(artifact.path(), contents).expect("temp graph artifact can be written");
+    artifact
+}
+
 fn load_session_from_objects(objects: Vec<AgentJsonObject>) -> RetrievalSession {
     let document = AgentJsonDocument {
         schema_version: "adoc.agent.v0".to_string(),
@@ -61,6 +72,7 @@ fn load_session_from_objects(objects: Vec<AgentJsonObject>) -> RetrievalSession 
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
+        graph_artifact_path: None,
     });
 
     assert!(
@@ -110,6 +122,7 @@ fn load_session_from_objects_with_vectors(
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: Some(search_artifact.path().to_path_buf()),
+        graph_artifact_path: None,
     });
 
     assert!(
@@ -118,6 +131,56 @@ fn load_session_from_objects_with_vectors(
         result.diagnostics
     );
     result.session.expect("hybrid fixture session loads")
+}
+
+fn load_session_from_objects_with_graph(
+    objects: Vec<AgentJsonObject>,
+    edges: Vec<GraphEdge>,
+) -> RetrievalSession {
+    let graph_nodes = objects
+        .iter()
+        .map(|object| GraphNode {
+            id: object.id.clone(),
+            kind: object.kind.clone(),
+            status: object.status.clone(),
+            page_id: object.page_id.clone(),
+        })
+        .collect();
+    let document = AgentJsonDocument {
+        schema_version: "adoc.agent.v0".to_string(),
+        pages: Vec::new(),
+        objects,
+        diagnostics: Vec::new(),
+    };
+    let agent_json = document
+        .to_pretty_json()
+        .expect("search fixture serializes to agent JSON");
+    let artifact = write_temp_artifact("graph-agent", &agent_json);
+    let graph_document = GraphArtifactDocument {
+        schema_version: "adoc.graph.v0".to_string(),
+        agent_artifact_hash: sha256_prefixed(agent_json.as_bytes()),
+        nodes: graph_nodes,
+        edges,
+    };
+    let graph_artifact = write_temp_graph_artifact(
+        "graph-search",
+        &graph_document
+            .to_pretty_json()
+            .expect("graph fixture serializes"),
+    );
+
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
+        graph_artifact_path: Some(graph_artifact.path().to_path_buf()),
+    });
+
+    assert!(
+        result.diagnostics.is_empty(),
+        "expected clean graph-backed fixture load, got {:?}",
+        result.diagnostics
+    );
+    result.session.expect("graph-backed fixture session loads")
 }
 
 fn sha256_prefixed(bytes: &[u8]) -> String {
@@ -130,6 +193,7 @@ fn load_workspace_fixture_session(relative: &str) -> RetrievalSession {
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: workspace_fixture_path(relative),
         search_artifact_path: None,
+        graph_artifact_path: None,
     });
 
     assert!(
@@ -628,6 +692,7 @@ fn retrieval_search_billing_pilot_subset_covers_filters_and_tie_ordering() {
                 status: Some("accepted".to_string()),
                 owner: Some("team-billing".to_string()),
                 source_path: Some("03-decisions.adoc".to_string()),
+                ..SearchFilters::default()
             },
         ),
     );
@@ -676,6 +741,7 @@ fn search_filter_matches_case_insensitive_substrings_on_object_metadata() {
         status: Some("VERI".to_string()),
         owner: Some("billing".to_string()),
         source_path: Some("CREDITS.ADOC".to_string()),
+        ..SearchFilters::default()
     };
 
     assert!(filters.matches(&object));
@@ -1021,6 +1087,7 @@ fn search_applies_filters_individually_and_combined_before_ranking() {
                 status: Some("draft".to_string()),
                 owner: Some("team-billing".to_string()),
                 source_path: Some("billing.adoc".to_string()),
+                ..SearchFilters::default()
             },
         ),
     );
@@ -1034,6 +1101,84 @@ fn search_applies_filters_individually_and_combined_before_ranking() {
     assert_eq!(search_ids(&by_source), ["support.credit-warning"]);
     assert_eq!(search_ids(&combined), ["billing.draft-credits"]);
     assert!(combined.diagnostics.is_empty());
+}
+
+#[test]
+fn search_related_to_filters_candidates_without_changing_unfiltered_search() {
+    let session = load_session_from_objects_with_graph(
+        vec![
+            retrieval_search_object(
+                "billing.root",
+                "claim",
+                Some("draft"),
+                None,
+                "docs/graph.adoc",
+                "root target",
+            ),
+            retrieval_search_object(
+                "billing.alpha",
+                "claim",
+                Some("draft"),
+                None,
+                "docs/graph.adoc",
+                "target target",
+            ),
+            retrieval_search_object(
+                "billing.beta",
+                "claim",
+                Some("draft"),
+                None,
+                "docs/graph.adoc",
+                "target target target",
+            ),
+            retrieval_search_object(
+                "billing.gamma",
+                "claim",
+                Some("draft"),
+                None,
+                "docs/graph.adoc",
+                "target",
+            ),
+        ],
+        vec![
+            GraphEdge {
+                source: "billing.root".to_string(),
+                target: "billing.alpha".to_string(),
+                relation: GraphRelationKind::DependsOn,
+            },
+            GraphEdge {
+                source: "billing.root".to_string(),
+                target: "billing.gamma".to_string(),
+                relation: GraphRelationKind::DependsOn,
+            },
+        ],
+    );
+
+    let unfiltered = search(
+        &session,
+        lexical_query("target", 10, SearchFilters::default()),
+    );
+    let filtered = search(
+        &session,
+        lexical_query(
+            "target",
+            10,
+            SearchFilters {
+                related_to: Some("billing.root".to_string()),
+                relation: Some(GraphRelationKind::DependsOn),
+                direction: Some(GraphDirection::Outgoing),
+                ..SearchFilters::default()
+            },
+        ),
+    );
+
+    assert!(unfiltered.diagnostics.is_empty());
+    assert!(filtered.diagnostics.is_empty());
+    assert!(
+        search_ids(&unfiltered).contains(&"billing.beta"),
+        "unfiltered search should retain unrelated objects"
+    );
+    assert_eq!(search_ids(&filtered), ["billing.alpha", "billing.gamma"]);
 }
 
 #[test]
@@ -1150,6 +1295,7 @@ fn search_filter_rejects_missing_status_or_owner_when_filter_is_supplied() {
             status: Some("verified".to_string()),
             owner: None,
             source_path: None,
+            ..SearchFilters::default()
         }
         .matches(&object)
     );
@@ -1159,6 +1305,7 @@ fn search_filter_rejects_missing_status_or_owner_when_filter_is_supplied() {
             status: None,
             owner: Some("team".to_string()),
             source_path: None,
+            ..SearchFilters::default()
         }
         .matches(&object)
     );
@@ -1187,6 +1334,7 @@ fn search_filter_validation_checks_each_supplied_filter_independently() {
         status: None,
         owner: Some("team-b".to_string()),
         source_path: None,
+        ..SearchFilters::default()
     };
 
     assert!(filters.validate_against(&objects).is_empty());
@@ -1207,6 +1355,7 @@ fn search_filter_validation_reports_each_supplied_filter_with_no_independent_mat
         status: Some("verified".to_string()),
         owner: Some("team-b".to_string()),
         source_path: Some("architecture".to_string()),
+        ..SearchFilters::default()
     };
 
     let diagnostics = filters.validate_against(&objects);
@@ -1232,6 +1381,7 @@ fn why_object_returns_record_for_id_in_loaded_agent_artifact() {
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
         ),
         search_artifact_path: None,
+        graph_artifact_path: None,
     });
 
     assert!(
@@ -1272,6 +1422,7 @@ fn why_object_serializes_record_without_search_match_block() {
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
         ),
         search_artifact_path: None,
+        graph_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
 
@@ -1289,6 +1440,7 @@ fn retrieval_envelope_serializes_stable_schema_with_records_and_diagnostics() {
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
         ),
         search_artifact_path: None,
+        graph_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
     let why_result = why_object(&session, "billing.verified-credits");
@@ -1375,6 +1527,7 @@ fn why_object_reports_unknown_id_without_loading_source() {
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
         ),
         search_artifact_path: None,
+        graph_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
 
@@ -1399,6 +1552,7 @@ fn why_object_reports_invalid_id_without_lookup() {
             "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
         ),
         search_artifact_path: None,
+        graph_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
 
@@ -1436,6 +1590,7 @@ fn load_retrieval_session_rejects_invalid_object_ids_inside_artifact() {
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
+        graph_artifact_path: None,
     });
 
     assert!(result.session.is_none());
@@ -1480,6 +1635,7 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
+        graph_artifact_path: None,
     });
 
     assert!(result.session.is_none());

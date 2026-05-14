@@ -1,9 +1,9 @@
 # V1 Retrieval
 
 V1 retrieval is a local read-side workflow over build artifacts. `adoc build`
-creates the human HTML, the agent artifact, and the optional search artifact.
-`adoc why` and `adoc search` read those artifacts; they do not compile
-source files.
+creates the human HTML, the agent artifact, the graph artifact, and the
+optional search artifact. `adoc why`, `adoc graph`, and `adoc search` read
+those artifacts; they do not compile source files.
 
 ## Build
 
@@ -15,10 +15,12 @@ Successful embedding-enabled builds write:
 
 - `dist/docs.html`
 - `dist/docs.agent.json`
+- `dist/docs.graph.json`
 - `dist/docs.search.json`
 
-`docs.agent.json` is the canonical retrieval record source. `docs.search.json`
-is the sidecar vector index. By default it uses the local FastEmbed
+`docs.agent.json` is the canonical retrieval record source. `docs.graph.json`
+is the sidecar relation graph. `docs.search.json` is the sidecar vector index.
+By default search uses the local FastEmbed
 `bge-small-en-v1.5` provider. The first build may download model weights through
 `fastembed-rs`; later builds reuse the local model cache.
 
@@ -33,9 +35,9 @@ adoc build
 `check` and `build` use config `docs_path` when no source path is passed.
 `build` uses config outputs when `--out` is omitted. Config paths are resolved
 relative to the config file; `outputs.dir` fills `docs.html`,
-`docs.agent.json`, and `docs.search.json` unless exact output paths override
-them. Exact config outputs need `html` and `agent_json`; `search` is required
-only when embeddings are enabled.
+`docs.agent.json`, `docs.graph.json`, and `docs.search.json` unless exact
+output paths override them. Exact config outputs need `html`, `agent_json`,
+and `graph`; `search` is required only when embeddings are enabled.
 
 Config embedding mode is:
 
@@ -48,7 +50,7 @@ Missing `embeddings` defaults to `local`. `none` is equivalent to skipping
 embedding generation for config-backed builds. Hosted embedding adapters remain
 deferred; the shipped provider is local.
 
-Use `--no-embeddings` when you only need HTML and agent JSON:
+Use `--no-embeddings` when you only need HTML, agent JSON, and graph JSON:
 
 ```bash
 adoc build examples/billing-pilot --out dist --no-embeddings
@@ -56,7 +58,7 @@ adoc build examples/billing-pilot --out dist --no-embeddings
 
 That skips model loading and leaves any prior `docs.search.json` untouched.
 Config-backed skipped-embedding builds can omit `outputs.search` when exact
-HTML and agent JSON paths are configured.
+HTML, agent JSON, and graph JSON paths are configured.
 
 If a Knowledge Object has a parseable `expires_at` date before the local build
 date, `check` and `build` emit warning `lifecycle.expired`. The warning does
@@ -71,6 +73,26 @@ adoc why billing.credits.decrement-after-success --artifact dist/docs.agent.json
 
 Use `why` when you already have an Object ID and need the authoritative
 record: kind, status, owner, evidence, source span, body, and relations.
+
+## Graph
+
+```bash
+adoc graph billing.credits.decrement-after-success \
+  --artifact dist/docs.graph.json \
+  --agent-artifact dist/docs.agent.json
+```
+
+Use `graph` when you need relation traversal from one Object ID. The command
+loads compiled artifacts only. It includes the root node at distance `0`,
+traverses the full reachable graph by default, and marks revisit edges instead
+of recursively revisiting nodes.
+
+Traversal flags:
+
+- `--direction outgoing|incoming|both`; default is `both`.
+- `--relation depends_on|supersedes|related_to`; default is all three current
+  relation kinds.
+- `--format json` emits `adoc.graph.traversal.v0`.
 
 ## Search
 
@@ -98,11 +120,19 @@ Filters:
 ```bash
 adoc search "credit" --kind claim --status verified --owner team-billing
 adoc search "" --lexical --owner team-billing --top 20
+adoc search "credit" --related-to billing.credits --relation depends_on
 ```
 
 `--kind`, `--status`, `--owner`, and `--source-path` filter results. Empty
 lexical query text lists the filtered candidate set in deterministic Object ID
 order, which is useful for ownership audits.
+
+`--related-to` enables graph retrieval. It loads `docs.graph.json`, computes
+the reachable candidate set from the requested Object ID, then lets the normal
+lexical, semantic, or hybrid ranking run inside that candidate set. `--relation`
+and `--direction` narrow traversal. Graph flags are opt-in; absent
+`--related-to`, search ranking is unchanged and there is no graph proximity
+boost.
 
 JSON output:
 

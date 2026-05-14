@@ -10,10 +10,13 @@ use std::path::PathBuf;
 
 use adoc_core::{
     AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, BuildArtifacts,
-    CompileInput, CompileResult, Diagnostic, DiagnosticCode, RetrievalEnvelope, RetrievalInput,
-    RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalSession, RetrievalSource,
-    SearchFilters, SearchMode, SearchQuery, SearchResult, Severity, WhyResult, compile_workspace,
-    load_retrieval_session, search, why_object,
+    CompileInput, CompileResult, Diagnostic, DiagnosticCode, GraphArtifactDocument, GraphDirection,
+    GraphEdge, GraphInput, GraphLoadResult, GraphNode, GraphRelationKind, GraphSession,
+    GraphTraversalEnvelope, GraphTraversalQuery, GraphTraversalResult, RetrievalEnvelope,
+    RetrievalInput, RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalSession,
+    RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity, WhyResult,
+    compile_workspace, load_graph_session, load_retrieval_session, search, traverse_graph,
+    why_object,
 };
 
 #[test]
@@ -32,6 +35,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         // Both BuildArtifacts fields are publicly readable.
         let _: String = artifacts.html;
         let _: AgentJsonDocument = artifacts.agent_json;
+        let _: GraphArtifactDocument = artifacts.graph_json;
     }
 
     // AgentJsonObject and its sub-types are part of the public surface.
@@ -91,6 +95,8 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::RetrievalObjectNotFound;
     let _ = DiagnosticCode::SearchInvalidFilter;
     let _ = DiagnosticCode::BuildEmbeddingsCacheIgnored;
+    let _ = DiagnosticCode::GraphHashDrift;
+    let _ = DiagnosticCode::GraphObjectNotFound;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
     let _: &'static str = DiagnosticCode::ParseRawHtml.default_help();
@@ -184,11 +190,58 @@ fn public_surface_compiles_with_only_documented_imports() {
         DiagnosticCode::BuildEmbeddingsCacheIgnored.as_str(),
         "build.embeddings_cache_ignored"
     );
+    assert_eq!(DiagnosticCode::GraphHashDrift.as_str(), "graph.hash_drift");
+    assert_eq!(
+        DiagnosticCode::GraphObjectNotFound.as_str(),
+        "graph.object_not_found"
+    );
+
+    let graph_doc = GraphArtifactDocument {
+        schema_version: "adoc.graph.v0".to_string(),
+        agent_artifact_hash: "sha256:agent".to_string(),
+        nodes: vec![GraphNode {
+            id: "billing.credits".to_string(),
+            kind: "claim".to_string(),
+            status: Some("verified".to_string()),
+            page_id: "team.billing".to_string(),
+        }],
+        edges: vec![GraphEdge {
+            source: "billing.root".to_string(),
+            target: "billing.credits".to_string(),
+            relation: GraphRelationKind::DependsOn,
+        }],
+    };
+    let _: GraphArtifactDocument = graph_doc;
+    let _: GraphRelationKind = GraphRelationKind::Supersedes;
+    let _: GraphDirection = GraphDirection::Both;
+    let _: GraphInput = GraphInput {
+        agent_artifact_path: PathBuf::from("/missing-docs-agent-json-for-surface-test"),
+        graph_artifact_path: PathBuf::from("/missing-docs-graph-json-for-surface-test"),
+    };
+    let graph_load = GraphLoadResult {
+        session: None,
+        diagnostics: Vec::new(),
+    };
+    let _graph_diagnostics: Vec<Diagnostic> = graph_load.diagnostics;
+    let _maybe_graph_session: Option<GraphSession> = graph_load.session;
+    let graph_traversal = GraphTraversalResult {
+        root: "billing.root".to_string(),
+        nodes: Vec::new(),
+        edges: Vec::new(),
+        diagnostics: Vec::new(),
+    };
+    let _: GraphTraversalEnvelope = GraphTraversalEnvelope::from(graph_traversal);
+    let _: GraphTraversalQuery = GraphTraversalQuery {
+        root_id: "billing.root".to_string(),
+        direction: GraphDirection::Both,
+        relations: Vec::new(),
+    };
 
     let _: fn(RetrievalInput) -> RetrievalLoadResult = load_retrieval_session;
     let _: RetrievalInput = RetrievalInput {
         artifact_path: PathBuf::from("/missing-docs-agent-json-for-surface-test"),
         search_artifact_path: None,
+        graph_artifact_path: None,
     };
     let retrieval_result = RetrievalLoadResult {
         session: None,
@@ -223,6 +276,9 @@ fn public_surface_compiles_with_only_documented_imports() {
         status: None,
         owner: None,
         source_path: None,
+        related_to: None,
+        relation: None,
+        direction: None,
     };
     let _: SearchQuery = SearchQuery {
         text: String::from("credits"),
@@ -248,6 +304,8 @@ fn public_surface_compiles_with_only_documented_imports() {
 
     let _: fn(&RetrievalSession, &str) -> WhyResult = why_object;
     let _: fn(&RetrievalSession, SearchQuery) -> SearchResult = search;
+    let _: fn(GraphInput) -> GraphLoadResult = load_graph_session;
+    let _: fn(&GraphSession, GraphTraversalQuery) -> GraphTraversalResult = traverse_graph;
 
     let _: RetrievalEnvelope = RetrievalEnvelope::new(Vec::new(), Vec::new());
 }

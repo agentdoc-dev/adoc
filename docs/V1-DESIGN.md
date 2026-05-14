@@ -38,10 +38,11 @@ crates/adoc-core/src/
     compile.rs                       # extended: emits search artifact too
     retrieval.rs                     # NEW: orchestrates loading + querying
   domain/
-    artifact.rs                      # extended: add SearchArtifact types
+    artifact.rs                      # Agent/Search artifact DTOs
+    graph/                           # graph artifact DTOs + traversal domain
     knowledge_object/                # unchanged
     ports/
-      artifact_writer.rs             # unchanged (agent-json writer)
+      artifact_writer.rs             # generic structured artifact writer
       embedding_provider.rs          # NEW: EmbeddingProvider port
       renderer.rs                    # unchanged
       source_provider.rs             # unchanged
