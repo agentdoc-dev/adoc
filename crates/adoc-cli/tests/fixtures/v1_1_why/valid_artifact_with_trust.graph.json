@@ -1,17 +1,17 @@
 {
-  "schema_version": "adoc.agent.v0",
-  "pages": [
+  "schema_version": "adoc.graph.v1",
+  "nodes": [
     {
+      "type": "page",
       "id": "billing.refunds",
-      "title": "Refunds",
-      "source_path": "docs/refunds.adoc"
-    }
-  ],
-  "objects": [
+      "order": 0,
+      "source_path": "docs/refunds.adoc",
+      "title": "Refunds"
+    },
     {
+      "type": "knowledge_object",
       "id": "billing.refunds.issue-credit",
       "kind": "claim",
-      "status": "verified",
       "body": "Refund credits are issued from the ledger after approval.",
       "page_id": "billing.refunds",
       "source_span": {
@@ -24,6 +24,7 @@
         "reviewed_by": "risk-team",
         "source": "ledger-export",
         "test": "cargo test refunds",
+        "trust": "team",
         "verified_at": "2026-05-06"
       },
       "relations": {
@@ -36,12 +37,13 @@
         "related_to": [
           "billing.refunds.audit-required"
         ]
-      }
+      },
+      "status": "verified"
     },
     {
+      "type": "knowledge_object",
       "id": "billing.refunds.fraud-window",
       "kind": "warning",
-      "status": "high",
       "body": "Refund attempts above the risk threshold require manual review.",
       "page_id": "billing.refunds",
       "source_span": {
@@ -56,12 +58,13 @@
         "depends_on": [],
         "supersedes": [],
         "related_to": []
-      }
+      },
+      "status": "high"
     },
     {
+      "type": "knowledge_object",
       "id": "billing.refunds.policy",
       "kind": "decision",
-      "status": "accepted",
       "body": "Refund credits are issued only after approval.",
       "page_id": "billing.refunds",
       "source_span": {
@@ -77,12 +80,13 @@
         "depends_on": [],
         "supersedes": [],
         "related_to": []
-      }
+      },
+      "status": "accepted"
     },
     {
+      "type": "knowledge_object",
       "id": "billing.refunds.credit",
       "kind": "glossary",
-      "status": null,
       "body": "Refund credit means a ledger-backed customer balance adjustment.",
       "page_id": "billing.refunds",
       "source_span": {
@@ -100,5 +104,6 @@
       }
     }
   ],
+  "edges": [],
   "diagnostics": []
 }

@@ -9,7 +9,7 @@ use support::{TestWorkspace, fixture_path};
 /// Build a copy of the valid artifact fixture with a single diagnostic entry
 /// injected into its `diagnostics` array at the given `severity`.
 fn artifact_with_diagnostic(severity: &str) -> String {
-    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
+    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.graph.json"))
         .expect("fixture artifact is readable");
     let mut value: serde_json::Value =
         serde_json::from_str(&artifact).expect("fixture artifact is JSON");
@@ -43,7 +43,7 @@ fn strip_ansi(bytes: &[u8]) -> String {
 }
 
 fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
-    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
+    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.graph.json"))
         .expect("fixture artifact is readable");
     workspace.write(relative_path, &artifact);
 }
@@ -54,17 +54,17 @@ fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
 /// pre-slice-8 state.
 fn copy_trust_artifact(workspace: &TestWorkspace, relative_path: &str) {
     let artifact = fs::read_to_string(fixture_path(
-        "v1_1_why/valid_artifact_with_trust.agent.json",
+        "v1_1_why/valid_artifact_with_trust.graph.json",
     ))
     .expect("trust fixture artifact is readable");
     workspace.write(relative_path, &artifact);
 }
 
 #[test]
-fn why_defaults_to_dist_agent_json_and_text_format() {
+fn why_defaults_to_dist_graph_json_and_text_format() {
     let workspace = TestWorkspace::new("why-defaults");
     // Use the trust-augmented fixture so the footer shows `trust: team`.
-    copy_trust_artifact(&workspace, "dist/docs.agent.json");
+    copy_trust_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -90,7 +90,7 @@ fn why_defaults_to_dist_agent_json_and_text_format() {
 #[test]
 fn why_uses_explicit_artifact_and_omits_unavailable_fields() {
     let workspace = TestWorkspace::new("why-explicit-artifact");
-    copy_valid_artifact(&workspace, "custom/docs.agent.json");
+    copy_valid_artifact(&workspace, "custom/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -98,7 +98,7 @@ fn why_uses_explicit_artifact_and_omits_unavailable_fields() {
             "why",
             "billing.refunds.fraud-window",
             "--artifact",
-            "custom/docs.agent.json",
+            "custom/docs.graph.json",
             "--format",
             "plain",
         ])
@@ -133,7 +133,7 @@ fn why_uses_explicit_artifact_and_omits_unavailable_fields() {
 #[test]
 fn why_text_renders_decision_and_glossary_metadata() {
     let workspace = TestWorkspace::new("why-decision-glossary");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     let decision_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -172,7 +172,7 @@ fn why_text_renders_decision_and_glossary_metadata() {
 #[test]
 fn why_object_not_found_exits_3() {
     let workspace = TestWorkspace::new("why-not-found");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -191,7 +191,7 @@ fn why_object_not_found_exits_3() {
 #[test]
 fn why_invalid_object_id_exits_1() {
     let workspace = TestWorkspace::new("why-invalid-id");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -222,13 +222,13 @@ fn why_artifact_errors_exit_2() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("io.artifact_missing"));
-    assert!(stderr.contains("dist/docs.agent.json"));
+    assert!(stderr.contains("dist/docs.graph.json"));
 }
 
 #[test]
 fn why_format_json_invalid_object_id_exits_1_with_envelope() {
     let workspace = TestWorkspace::new("why-json-invalid-id");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -251,7 +251,7 @@ fn why_format_json_invalid_object_id_exits_1_with_envelope() {
 #[test]
 fn why_format_json_emits_retrieval_envelope() {
     let workspace = TestWorkspace::new("why-json-success");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -277,7 +277,7 @@ fn why_format_json_emits_retrieval_envelope() {
 #[test]
 fn why_format_json_object_not_found_exits_3_with_envelope() {
     let workspace = TestWorkspace::new("why-json-not-found");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -304,12 +304,12 @@ fn why_format_json_object_not_found_exits_3_with_envelope() {
 fn why_format_json_artifact_errors_exit_2_with_envelope() {
     let workspace = TestWorkspace::new("why-json-artifact-errors");
     let cases = [
-        ("malformed_artifact.agent.json", "io.artifact_malformed"),
+        ("malformed_artifact.graph.json", "io.artifact_malformed"),
         (
-            "unsupported_version.agent.json",
+            "unsupported_version.graph.json",
             "schema.unsupported_version",
         ),
-        ("duplicate_id.agent.json", "id.duplicate_in_artifact"),
+        ("duplicate_id.graph.json", "id.duplicate_in_artifact"),
     ];
 
     for (fixture, expected_code) in cases {
@@ -398,7 +398,7 @@ fn why_help_exits_0_and_lists_defaults() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Usage: adoc why [OPTIONS] <OBJECT_ID>"));
     assert!(stdout.contains("--artifact <ARTIFACT>"));
-    assert!(stdout.contains("dist/docs.agent.json"));
+    assert!(stdout.contains("dist/docs.graph.json"));
     assert!(stdout.contains("--format <FORMAT>"));
     assert!(stdout.contains("plain"));
     assert!(stdout.contains("json"));
@@ -468,7 +468,7 @@ fn why_missing_object_id_exits_1_with_parse_error() {
 fn why_styled_layout_matches_plain_after_ansi_stripping() {
     let workspace = TestWorkspace::new("why-styled-layout");
     // Use the trust-augmented fixture so the footer shows `trust: team`.
-    copy_trust_artifact(&workspace, "dist/docs.agent.json");
+    copy_trust_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -529,18 +529,19 @@ fn why_styled_shows_contradicted_chip_on_relation_target() {
     let workspace = TestWorkspace::new("why-slice7-chip");
 
     // Build the fixture JSON inline — same schema_version as the existing
-    // valid_artifact.agent.json fixture.
+    // valid_artifact.graph.json fixture.
     let fixture = serde_json::json!({
-        "schema_version": "adoc.agent.v0",
-        "pages": [
+        "schema_version": "adoc.graph.v1",
+        "nodes": [
             {
+                "type": "page",
                 "id": "slice7.page",
+                "order": 0,
                 "title": "Slice 7",
                 "source_path": "docs/slice7.adoc"
-            }
-        ],
-        "objects": [
+            },
             {
+                "type": "knowledge_object",
                 "id": "slice7.primary",
                 "kind": "claim",
                 "status": "verified",
@@ -559,6 +560,7 @@ fn why_styled_shows_contradicted_chip_on_relation_target() {
                 }
             },
             {
+                "type": "knowledge_object",
                 "id": "slice7.contradicted",
                 "kind": "claim",
                 "status": "contradicted",
@@ -577,11 +579,19 @@ fn why_styled_shows_contradicted_chip_on_relation_target() {
                 }
             }
         ],
+        "edges": [
+            {
+                "kind": "relation",
+                "source": "slice7.primary",
+                "target": "slice7.contradicted",
+                "relation": "supersedes"
+            }
+        ],
         "diagnostics": []
     });
 
     let artifact_path = workspace.write(
-        "slice7.agent.json",
+        "slice7.graph.json",
         &serde_json::to_string_pretty(&fixture).expect("fixture serialises"),
     );
 
@@ -630,7 +640,7 @@ fn why_styled_shows_contradicted_chip_on_relation_target() {
 #[test]
 fn why_format_json_preserves_load_warnings_in_envelope() {
     let workspace = TestWorkspace::new("why-json-load-warning");
-    workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("warning"));
+    workspace.write("dist/docs.graph.json", &artifact_with_diagnostic("warning"));
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -676,7 +686,7 @@ fn why_format_json_preserves_load_warnings_in_envelope() {
 #[test]
 fn why_plain_mode_emits_load_warnings_to_stderr() {
     let workspace = TestWorkspace::new("why-plain-load-warning");
-    workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("warning"));
+    workspace.write("dist/docs.graph.json", &artifact_with_diagnostic("warning"));
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)

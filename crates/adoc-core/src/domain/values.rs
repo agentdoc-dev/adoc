@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::domain::inline::{InlineSegment, embedding_plain_text, plain_text, to_source};
+use crate::domain::inline::{InlineSegment, plain_text, to_source};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NonEmptyText(String);
@@ -41,10 +41,6 @@ impl Body {
 
     pub(crate) fn to_source(&self) -> String {
         to_source(&self.0)
-    }
-
-    pub(crate) fn to_embedding_plain_text(&self) -> String {
-        embedding_plain_text(&self.0)
     }
 }
 

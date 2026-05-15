@@ -13,16 +13,14 @@ pub use application::retrieval::{
     RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
     RetrievalSession, SearchFilters, SearchQuery, SearchResult, WhyResult, search, why_object,
 };
-pub use domain::artifact::{
-    AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan,
-    SearchArtifactDocument,
-};
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::graph::{
-    GraphArtifactDocument, GraphDirection, GraphEdge, GraphNode, GraphRelationKind,
-    GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery, GraphTraversalResult,
+    GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
+    GraphTraversalResult,
 };
-pub use domain::retrieval::{RetrievalMatch, RetrievalRecord, RetrievalSource, SearchMode};
+pub use domain::retrieval::{
+    RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSource, SearchMode,
+};
 
 /// Error returned by [`embed_query`].
 #[derive(Debug)]
@@ -77,7 +75,6 @@ pub fn build_workspace(input: BuildInput) -> CompileResult {
 pub fn load_graph_session(input: GraphInput) -> GraphLoadResult {
     application::graph::load_graph_session_with_readers(
         input,
-        &infrastructure::artifact::AgentJsonArtifact,
         &infrastructure::artifact::GraphJsonArtifact,
     )
 }
@@ -169,7 +166,6 @@ pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {
     };
     application::retrieval::load_retrieval_session_with_readers(
         input,
-        &infrastructure::artifact::AgentJsonArtifact,
         &infrastructure::artifact::SearchJsonArtifact,
         &infrastructure::artifact::GraphJsonArtifact,
         active_model,

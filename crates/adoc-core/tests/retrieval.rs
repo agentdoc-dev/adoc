@@ -2,20 +2,14 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use adoc_core::{
-    AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, DiagnosticCode,
-    GraphArtifactDocument, GraphDirection, GraphEdge, GraphNode, GraphRelationKind,
-    RetrievalEnvelope, RetrievalInput, RetrievalMatch, RetrievalRecord, RetrievalSession,
-    RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult, load_retrieval_session,
-    search, why_object,
+    DiagnosticCode, GraphDirection, GraphRelationKind, RetrievalEnvelope, RetrievalInput,
+    RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSession, RetrievalSource,
+    SearchFilters, SearchMode, SearchQuery, SearchResult, load_retrieval_session, search,
+    why_object,
 };
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-
-fn fixture_path(relative: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join(relative)
-}
 
 fn workspace_fixture_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -29,7 +23,7 @@ fn workspace_fixture_path(relative: &str) -> PathBuf {
 fn write_temp_artifact(name: &str, contents: &str) -> tempfile::NamedTempFile {
     let artifact = tempfile::Builder::new()
         .prefix(&format!("adoc-retrieval-{name}-"))
-        .suffix(".agent.json")
+        .suffix(".graph.json")
         .tempfile()
         .expect("temp artifact can be created");
     std::fs::write(artifact.path(), contents).expect("temp artifact can be written");
@@ -46,33 +40,12 @@ fn write_temp_search_artifact(name: &str, contents: &str) -> tempfile::NamedTemp
     artifact
 }
 
-fn write_temp_graph_artifact(name: &str, contents: &str) -> tempfile::NamedTempFile {
-    let artifact = tempfile::Builder::new()
-        .prefix(&format!("adoc-retrieval-{name}-"))
-        .suffix(".graph.json")
-        .tempfile()
-        .expect("temp graph artifact can be created");
-    std::fs::write(artifact.path(), contents).expect("temp graph artifact can be written");
-    artifact
-}
-
-fn load_session_from_objects(objects: Vec<AgentJsonObject>) -> RetrievalSession {
-    let document = AgentJsonDocument {
-        schema_version: "adoc.agent.v0".to_string(),
-        pages: Vec::new(),
-        objects,
-        diagnostics: Vec::new(),
-    };
-    let artifact = write_temp_artifact(
-        "search",
-        &document
-            .to_pretty_json()
-            .expect("search fixture serializes to agent JSON"),
-    );
+fn load_session_from_objects(objects: Vec<Value>) -> RetrievalSession {
+    let graph_json = graph_json_from_objects(objects, Vec::new());
+    let artifact = write_temp_artifact("search", &graph_json);
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
-        graph_artifact_path: None,
     });
 
     assert!(
@@ -84,19 +57,11 @@ fn load_session_from_objects(objects: Vec<AgentJsonObject>) -> RetrievalSession 
 }
 
 fn load_session_from_objects_with_vectors(
-    objects: Vec<AgentJsonObject>,
+    objects: Vec<Value>,
     vectors: Vec<(&str, Vec<f32>)>,
 ) -> RetrievalSession {
-    let document = AgentJsonDocument {
-        schema_version: "adoc.agent.v0".to_string(),
-        pages: Vec::new(),
-        objects,
-        diagnostics: Vec::new(),
-    };
-    let agent_json = document
-        .to_pretty_json()
-        .expect("search fixture serializes to agent JSON");
-    let artifact = write_temp_artifact("hybrid-agent", &agent_json);
+    let graph_json = graph_json_from_objects(objects, Vec::new());
+    let artifact = write_temp_artifact("hybrid-graph", &graph_json);
     let search_document = serde_json::json!({
         "schema_version": "adoc.search.v0",
         "model": {
@@ -104,7 +69,7 @@ fn load_session_from_objects_with_vectors(
             "provider": "fastembed",
             "dim": 384
         },
-        "agent_artifact_hash": sha256_prefixed(agent_json.as_bytes()),
+        "graph_artifact_hash": sha256_prefixed(graph_json.as_bytes()),
         "embeddings": vectors
             .into_iter()
             .map(|(id, vector)| serde_json::json!({
@@ -122,7 +87,6 @@ fn load_session_from_objects_with_vectors(
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: Some(search_artifact.path().to_path_buf()),
-        graph_artifact_path: None,
     });
 
     assert!(
@@ -134,45 +98,15 @@ fn load_session_from_objects_with_vectors(
 }
 
 fn load_session_from_objects_with_graph(
-    objects: Vec<AgentJsonObject>,
-    edges: Vec<GraphEdge>,
+    objects: Vec<Value>,
+    edges: Vec<Value>,
 ) -> RetrievalSession {
-    let graph_nodes = objects
-        .iter()
-        .map(|object| GraphNode {
-            id: object.id.clone(),
-            kind: object.kind.clone(),
-            status: object.status.clone(),
-            page_id: object.page_id.clone(),
-        })
-        .collect();
-    let document = AgentJsonDocument {
-        schema_version: "adoc.agent.v0".to_string(),
-        pages: Vec::new(),
-        objects,
-        diagnostics: Vec::new(),
-    };
-    let agent_json = document
-        .to_pretty_json()
-        .expect("search fixture serializes to agent JSON");
-    let artifact = write_temp_artifact("graph-agent", &agent_json);
-    let graph_document = GraphArtifactDocument {
-        schema_version: "adoc.graph.v0".to_string(),
-        agent_artifact_hash: sha256_prefixed(agent_json.as_bytes()),
-        nodes: graph_nodes,
-        edges,
-    };
-    let graph_artifact = write_temp_graph_artifact(
-        "graph-search",
-        &graph_document
-            .to_pretty_json()
-            .expect("graph fixture serializes"),
-    );
+    let graph_json = graph_json_from_objects(objects, edges);
+    let artifact = write_temp_artifact("graph-search", &graph_json);
 
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
-        graph_artifact_path: Some(graph_artifact.path().to_path_buf()),
     });
 
     assert!(
@@ -189,11 +123,83 @@ fn sha256_prefixed(bytes: &[u8]) -> String {
     format!("sha256:{:x}", hasher.finalize())
 }
 
+fn graph_json_from_objects(objects: Vec<Value>, edges: Vec<Value>) -> String {
+    let document = json!({
+        "schema_version": "adoc.graph.v1",
+        "nodes": objects,
+        "edges": edges,
+        "diagnostics": []
+    });
+    let canonical: CanonicalGraphDocument =
+        serde_json::from_value(document).expect("graph fixture has canonical shape");
+    serde_json::to_string_pretty(&canonical).expect("search fixture serializes to graph JSON")
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CanonicalGraphDocument {
+    schema_version: String,
+    nodes: Vec<CanonicalGraphNode>,
+    edges: Vec<CanonicalGraphEdge>,
+    diagnostics: Vec<Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum CanonicalGraphNode {
+    KnowledgeObject(CanonicalKnowledgeObject),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CanonicalKnowledgeObject {
+    id: String,
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<String>,
+    body: String,
+    page_id: String,
+    source_span: CanonicalSourceSpan,
+    fields: std::collections::BTreeMap<String, String>,
+    relations: CanonicalRelations,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CanonicalSourceSpan {
+    path: String,
+    line: u32,
+    column: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CanonicalRelations {
+    depends_on: Vec<String>,
+    supersedes: Vec<String>,
+    related_to: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CanonicalGraphEdge {
+    kind: String,
+    source: String,
+    target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    relation: Option<GraphRelationKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    order: Option<u32>,
+}
+
+fn relation_edge(source: &str, relation: GraphRelationKind, target: &str) -> Value {
+    json!({
+        "kind": "relation",
+        "source": source,
+        "target": target,
+        "relation": relation.as_str()
+    })
+}
+
 fn load_workspace_fixture_session(relative: &str) -> RetrievalSession {
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: workspace_fixture_path(relative),
         search_artifact_path: None,
-        graph_artifact_path: None,
     });
 
     assert!(
@@ -210,26 +216,34 @@ fn retrieval_filter_object(
     status: Option<&str>,
     owner: Option<&str>,
     source_path: &str,
-) -> AgentJsonObject {
-    let mut fields = std::collections::BTreeMap::new();
+) -> Value {
+    let mut fields = serde_json::Map::new();
     if let Some(owner) = owner {
-        fields.insert("owner".to_string(), owner.to_string());
+        fields.insert("owner".to_string(), json!(owner));
     }
 
-    AgentJsonObject {
-        id: id.to_string(),
-        kind: kind.to_string(),
-        status: status.map(str::to_string),
-        body: "Filter fixture body.".to_string(),
-        page_id: "team.page".to_string(),
-        source_span: AgentJsonSourceSpan {
-            path: source_path.to_string(),
-            line: 1,
-            column: 1,
+    let mut object = json!({
+        "type": "knowledge_object",
+        "id": id,
+        "kind": kind,
+        "body": "Filter fixture body.",
+        "page_id": "team.page",
+        "source_span": {
+            "path": source_path,
+            "line": 1,
+            "column": 1
         },
-        fields,
-        relations: AgentJsonRelations::default(),
+        "fields": fields,
+        "relations": {
+            "depends_on": [],
+            "supersedes": [],
+            "related_to": []
+        }
+    });
+    if let Some(status) = status {
+        object["status"] = json!(status);
     }
+    object
 }
 
 fn retrieval_search_object(
@@ -239,10 +253,42 @@ fn retrieval_search_object(
     owner: Option<&str>,
     source_path: &str,
     body: &str,
-) -> AgentJsonObject {
+) -> Value {
     let mut object = retrieval_filter_object(id, kind, status, owner, source_path);
-    object.body = body.to_string();
+    object["body"] = json!(body);
     object
+}
+
+fn verified_claim_graph_artifact() -> tempfile::NamedTempFile {
+    let mut fields = std::collections::BTreeMap::new();
+    fields.insert("owner".to_string(), "team-billing".to_string());
+    fields.insert("verified_at".to_string(), "2026-05-05".to_string());
+    fields.insert("source".to_string(), "payments ledger".to_string());
+    fields.insert("test".to_string(), "cargo test billing_credits".to_string());
+    fields.insert("reviewed_by".to_string(), "qa-team".to_string());
+    let object = json!({
+        "type": "knowledge_object",
+        "id": "billing.verified-credits",
+        "kind": "claim",
+        "status": "verified",
+        "body": "Credits are verified by the payments ledger.",
+        "page_id": "team.billing",
+        "source_span": {
+            "path": "tests/fixtures/claim/valid_verified_claim_with_all_evidence/input.adoc",
+            "line": 5,
+            "column": 1
+        },
+        "fields": fields,
+        "relations": {
+            "depends_on": [],
+            "supersedes": [],
+            "related_to": []
+        }
+    });
+    write_temp_artifact(
+        "verified-claim",
+        &graph_json_from_objects(vec![object], Vec::new()),
+    )
 }
 
 fn lexical_query(text: &str, top: usize, filters: SearchFilters) -> SearchQuery {
@@ -337,7 +383,7 @@ fn hybrid_match_serializes_rrf_score_and_omits_missing_rank_fields() {
         },
         evidence: std::collections::BTreeMap::new(),
         fields: std::collections::BTreeMap::new(),
-        relations: AgentJsonRelations::default(),
+        relations: RetrievalRelations::default(),
         search_match: Some(RetrievalMatch::hybrid(1, 0.0312, Some(2), None)),
     };
 
@@ -491,15 +537,9 @@ fn lexical_search_indexes_v0_evidence_fields() {
         "docs/billing.adoc",
         "Credits require review.",
     );
-    object
-        .fields
-        .insert("source".to_string(), "refund runbook".to_string());
-    object
-        .fields
-        .insert("test".to_string(), "cargo test refunds".to_string());
-    object
-        .fields
-        .insert("reviewed_by".to_string(), "qa-billing".to_string());
+    object["fields"]["source"] = json!("refund runbook");
+    object["fields"]["test"] = json!("cargo test refunds");
+    object["fields"]["reviewed_by"] = json!("qa-billing");
     let session = load_session_from_objects(vec![object]);
 
     let result = search(
@@ -509,6 +549,85 @@ fn lexical_search_indexes_v0_evidence_fields() {
 
     assert!(result.diagnostics.is_empty());
     assert_eq!(search_ids(&result), ["billing.evidence"]);
+}
+
+#[test]
+fn retrieval_metadata_classification_is_shared_by_filters_records_and_lexical_index() {
+    let mut object = retrieval_search_object(
+        "billing.metadata",
+        "claim",
+        Some("verified"),
+        Some("team-billing"),
+        "docs/billing.adoc",
+        "Credits require review.",
+    );
+    object["fields"]["verified_at"] = json!("2026-05-05");
+    object["fields"]["reviewed_by"] = json!("qa-billing");
+    object["fields"]["expires_at"] = json!("2026-06-01");
+    let session = load_session_from_objects(vec![object]);
+
+    let result = search(
+        &session,
+        lexical_query(
+            "qa-billing",
+            1,
+            SearchFilters {
+                owner: Some("team-billing".to_string()),
+                ..SearchFilters::default()
+            },
+        ),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), ["billing.metadata"]);
+    let record = &result.records[0];
+    assert_eq!(record.owner.as_deref(), Some("team-billing"));
+    assert_eq!(record.verified_at.as_deref(), Some("2026-05-05"));
+    assert_eq!(
+        record.evidence.get("reviewed_by").map(String::as_str),
+        Some("qa-billing")
+    );
+    assert_eq!(
+        record.fields.get("expires_at").map(String::as_str),
+        Some("2026-06-01")
+    );
+}
+
+#[test]
+fn retrieval_session_rejects_malformed_graph_artifacts_through_graph_index_validation() {
+    let graph_json = graph_json_from_objects(
+        vec![
+            retrieval_search_object(
+                "billing.duplicate",
+                "claim",
+                Some("draft"),
+                None,
+                "docs/billing.adoc",
+                "First.",
+            ),
+            retrieval_search_object(
+                "billing.duplicate",
+                "claim",
+                Some("draft"),
+                None,
+                "docs/billing.adoc",
+                "Second.",
+            ),
+        ],
+        Vec::new(),
+    );
+    let artifact = write_temp_artifact("duplicate", &graph_json);
+
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
+    });
+
+    assert!(result.session.is_none());
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::IdDuplicateInArtifact
+    );
 }
 
 #[test]
@@ -632,7 +751,7 @@ fn hybrid_search_requires_query_vector_when_vector_index_is_loaded() {
 
 #[test]
 fn retrieval_search_billing_pilot_subset_returns_benchmark_matches_in_top_3() {
-    let session = load_workspace_fixture_session("v1_2_search/pilot_subset.agent.json");
+    let session = load_workspace_fixture_session("v1_2_search/pilot_subset.graph.json");
 
     assert_top_3_contains(&session, "credit ledger", "billing.credits.ledger-source");
     assert_top_3_contains(&session, "refund audit", "billing.refunds.audit-required");
@@ -645,7 +764,7 @@ fn retrieval_search_billing_pilot_subset_returns_benchmark_matches_in_top_3() {
 
 #[test]
 fn retrieval_search_billing_pilot_subset_pins_exact_and_prefix_ids() {
-    let session = load_workspace_fixture_session("v1_2_search/pilot_subset.agent.json");
+    let session = load_workspace_fixture_session("v1_2_search/pilot_subset.graph.json");
 
     let exact = search(
         &session,
@@ -680,7 +799,7 @@ fn retrieval_search_billing_pilot_subset_pins_exact_and_prefix_ids() {
 
 #[test]
 fn retrieval_search_billing_pilot_subset_covers_filters_and_tie_ordering() {
-    let session = load_workspace_fixture_session("v1_2_search/pilot_subset.agent.json");
+    let session = load_workspace_fixture_session("v1_2_search/pilot_subset.graph.json");
 
     let filtered = search(
         &session,
@@ -716,7 +835,7 @@ fn retrieval_search_billing_pilot_subset_covers_filters_and_tie_ordering() {
 
 #[test]
 fn retrieval_search_empty_fixture_returns_no_matches_without_diagnostics() {
-    let session = load_workspace_fixture_session("v1_2_search/empty.agent.json");
+    let session = load_workspace_fixture_session("v1_2_search/empty.graph.json");
 
     let result = search(
         &session,
@@ -729,13 +848,13 @@ fn retrieval_search_empty_fixture_returns_no_matches_without_diagnostics() {
 
 #[test]
 fn search_filter_matches_case_insensitive_substrings_on_object_metadata() {
-    let object = retrieval_filter_object(
+    let session = load_session_from_objects(vec![retrieval_filter_object(
         "billing.verified-credits",
         "claim",
         Some("verified"),
         Some("Team-Billing"),
         "docs/billing/credits.adoc",
-    );
+    )]);
     let filters = SearchFilters {
         kind: Some("CLA".to_string()),
         status: Some("VERI".to_string()),
@@ -744,7 +863,10 @@ fn search_filter_matches_case_insensitive_substrings_on_object_metadata() {
         ..SearchFilters::default()
     };
 
-    assert!(filters.matches(&object));
+    let result = search(&session, lexical_query("", 10, filters));
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), ["billing.verified-credits"]);
 }
 
 #[test]
@@ -1141,16 +1263,16 @@ fn search_related_to_filters_candidates_without_changing_unfiltered_search() {
             ),
         ],
         vec![
-            GraphEdge {
-                source: "billing.root".to_string(),
-                target: "billing.alpha".to_string(),
-                relation: GraphRelationKind::DependsOn,
-            },
-            GraphEdge {
-                source: "billing.root".to_string(),
-                target: "billing.gamma".to_string(),
-                relation: GraphRelationKind::DependsOn,
-            },
+            relation_edge(
+                "billing.root",
+                GraphRelationKind::DependsOn,
+                "billing.alpha",
+            ),
+            relation_edge(
+                "billing.root",
+                GraphRelationKind::DependsOn,
+                "billing.gamma",
+            ),
         ],
     );
 
@@ -1281,33 +1403,50 @@ fn search_returns_empty_without_diagnostics_for_empty_artifact_and_no_matches() 
 
 #[test]
 fn search_filter_rejects_missing_status_or_owner_when_filter_is_supplied() {
-    let object = retrieval_filter_object(
+    let session = load_session_from_objects(vec![retrieval_filter_object(
         "glossary.credit",
         "glossary",
         None,
         None,
         "docs/glossary.adoc",
+    )]);
+
+    let missing_status = search(
+        &session,
+        lexical_query(
+            "",
+            10,
+            SearchFilters {
+                kind: None,
+                status: Some("verified".to_string()),
+                owner: None,
+                source_path: None,
+                ..SearchFilters::default()
+            },
+        ),
+    );
+    let missing_owner = search(
+        &session,
+        lexical_query(
+            "",
+            10,
+            SearchFilters {
+                kind: None,
+                status: None,
+                owner: Some("team".to_string()),
+                source_path: None,
+                ..SearchFilters::default()
+            },
+        ),
     );
 
-    assert!(
-        !SearchFilters {
-            kind: None,
-            status: Some("verified".to_string()),
-            owner: None,
-            source_path: None,
-            ..SearchFilters::default()
-        }
-        .matches(&object)
+    assert_eq!(
+        missing_status.diagnostics[0].code,
+        DiagnosticCode::SearchInvalidFilter
     );
-    assert!(
-        !SearchFilters {
-            kind: None,
-            status: None,
-            owner: Some("team".to_string()),
-            source_path: None,
-            ..SearchFilters::default()
-        }
-        .matches(&object)
+    assert_eq!(
+        missing_owner.diagnostics[0].code,
+        DiagnosticCode::SearchInvalidFilter
     );
 }
 
@@ -1337,8 +1476,11 @@ fn search_filter_validation_checks_each_supplied_filter_independently() {
         ..SearchFilters::default()
     };
 
-    assert!(filters.validate_against(&objects).is_empty());
-    assert!(objects.iter().all(|object| !filters.matches(object)));
+    let session = load_session_from_objects(objects);
+    let result = search(&session, lexical_query("", 10, filters));
+
+    assert!(result.diagnostics.is_empty());
+    assert!(result.records.is_empty());
 }
 
 #[test]
@@ -1358,7 +1500,8 @@ fn search_filter_validation_reports_each_supplied_filter_with_no_independent_mat
         ..SearchFilters::default()
     };
 
-    let diagnostics = filters.validate_against(&objects);
+    let session = load_session_from_objects(objects);
+    let diagnostics = search(&session, lexical_query("", 10, filters)).diagnostics;
 
     assert_eq!(diagnostics.len(), 4);
     assert!(
@@ -1375,13 +1518,11 @@ fn search_filter_validation_reports_each_supplied_filter_with_no_independent_mat
 }
 
 #[test]
-fn why_object_returns_record_for_id_in_loaded_agent_artifact() {
+fn why_object_returns_record_for_id_in_loaded_graph_artifact() {
+    let artifact = verified_claim_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
-        artifact_path: fixture_path(
-            "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
-        ),
+        artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
-        graph_artifact_path: None,
     });
 
     assert!(
@@ -1417,12 +1558,10 @@ fn why_object_returns_record_for_id_in_loaded_agent_artifact() {
 
 #[test]
 fn why_object_serializes_record_without_search_match_block() {
+    let artifact = verified_claim_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
-        artifact_path: fixture_path(
-            "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
-        ),
+        artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
-        graph_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
 
@@ -1435,12 +1574,10 @@ fn why_object_serializes_record_without_search_match_block() {
 
 #[test]
 fn retrieval_envelope_serializes_stable_schema_with_records_and_diagnostics() {
+    let artifact = verified_claim_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
-        artifact_path: fixture_path(
-            "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
-        ),
+        artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
-        graph_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
     let why_result = why_object(&session, "billing.verified-credits");
@@ -1457,23 +1594,23 @@ fn retrieval_envelope_serializes_stable_schema_with_records_and_diagnostics() {
 
 #[test]
 fn retrieval_record_serializes_lexical_search_match_contract() {
-    let object = AgentJsonObject {
+    let record = RetrievalRecord {
         id: "billing.verified-credits".to_string(),
         kind: "claim".to_string(),
         status: Some("verified".to_string()),
+        owner: None,
+        verified_at: None,
         body: "Credits are verified.".to_string(),
-        page_id: "team.billing".to_string(),
-        source_span: AgentJsonSourceSpan {
+        source: RetrievalSource {
             path: "billing.adoc".to_string(),
             line: 5,
             column: 1,
         },
+        evidence: std::collections::BTreeMap::new(),
         fields: std::collections::BTreeMap::new(),
-        relations: AgentJsonRelations::default(),
+        relations: RetrievalRelations::default(),
+        search_match: Some(RetrievalMatch::lexical(1, Some(1))),
     };
-
-    let record =
-        RetrievalRecord::from_object_with_match(&object, RetrievalMatch::lexical(1, Some(1)));
     let value = serde_json::to_value(&record).expect("record serializes");
 
     assert_eq!(
@@ -1503,7 +1640,7 @@ fn retrieval_envelope_can_be_created_from_search_result() {
         },
         evidence: std::collections::BTreeMap::new(),
         fields: std::collections::BTreeMap::new(),
-        relations: AgentJsonRelations::default(),
+        relations: RetrievalRelations::default(),
         search_match: Some(RetrievalMatch::lexical(1, Some(1))),
     };
     let result = SearchResult {
@@ -1522,12 +1659,10 @@ fn retrieval_envelope_can_be_created_from_search_result() {
 
 #[test]
 fn why_object_reports_unknown_id_without_loading_source() {
+    let artifact = verified_claim_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
-        artifact_path: fixture_path(
-            "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
-        ),
+        artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
-        graph_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
 
@@ -1547,12 +1682,10 @@ fn why_object_reports_unknown_id_without_loading_source() {
 
 #[test]
 fn why_object_reports_invalid_id_without_lookup() {
+    let artifact = verified_claim_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
-        artifact_path: fixture_path(
-            "claim/valid_verified_claim_with_all_evidence/expected.agent.json",
-        ),
+        artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
-        graph_artifact_path: None,
     });
     let session = result.session.expect("retrieval session loads");
 
@@ -1569,10 +1702,10 @@ fn load_retrieval_session_rejects_invalid_object_ids_inside_artifact() {
     let artifact = write_temp_artifact(
         "invalid-object-id",
         r#"{
-          "schema_version": "adoc.agent.v0",
-          "pages": [],
-          "objects": [
+          "schema_version": "adoc.graph.v1",
+          "nodes": [
             {
+              "type": "knowledge_object",
               "id": "bad",
               "kind": "claim",
               "status": "draft",
@@ -1583,6 +1716,7 @@ fn load_retrieval_session_rejects_invalid_object_ids_inside_artifact() {
               "relations": { "depends_on": [], "supersedes": [], "related_to": [] }
             }
           ],
+          "edges": [],
           "diagnostics": []
         }"#,
     );
@@ -1590,7 +1724,6 @@ fn load_retrieval_session_rejects_invalid_object_ids_inside_artifact() {
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
-        graph_artifact_path: None,
     });
 
     assert!(result.session.is_none());
@@ -1604,10 +1737,10 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
     let artifact = write_temp_artifact(
         "duplicate",
         r#"{
-          "schema_version": "adoc.agent.v0",
-          "pages": [],
-          "objects": [
+          "schema_version": "adoc.graph.v1",
+          "nodes": [
             {
+              "type": "knowledge_object",
               "id": "billing.duplicate",
               "kind": "claim",
               "status": "draft",
@@ -1618,6 +1751,7 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
               "relations": { "depends_on": [], "supersedes": [], "related_to": [] }
             },
             {
+              "type": "knowledge_object",
               "id": "billing.duplicate",
               "kind": "claim",
               "status": "draft",
@@ -1628,6 +1762,7 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
               "relations": { "depends_on": [], "supersedes": [], "related_to": [] }
             }
           ],
+          "edges": [],
           "diagnostics": []
         }"#,
     );
@@ -1635,7 +1770,6 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.path().to_path_buf(),
         search_artifact_path: None,
-        graph_artifact_path: None,
     });
 
     assert!(result.session.is_none());

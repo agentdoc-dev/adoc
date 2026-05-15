@@ -62,22 +62,37 @@ fn build_writes_graph_json_even_when_embeddings_are_skipped() {
     let workspace = build_graph_workspace("graph-build-output");
 
     assert!(workspace.root.join("dist/docs.html").is_file());
-    assert!(workspace.root.join("dist/docs.agent.json").is_file());
     assert!(workspace.root.join("dist/docs.graph.json").is_file());
+    assert!(!workspace.root.join("dist/docs.agent.json").exists());
     assert!(!workspace.root.join("dist/docs.search.json").exists());
 
     let graph_text = std::fs::read_to_string(workspace.root.join("dist/docs.graph.json"))
         .expect("graph artifact is readable");
     let graph_json: serde_json::Value =
         serde_json::from_str(&graph_text).expect("graph artifact is JSON");
-    assert_eq!(graph_json["schema_version"], "adoc.graph.v0");
+    assert_eq!(graph_json["schema_version"], "adoc.graph.v1");
     assert_eq!(
-        graph_json["nodes"].as_array().expect("nodes array").len(),
+        graph_json["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .filter(|node| node["type"] == "knowledge_object")
+            .count(),
         4
     );
-    assert_eq!(
-        graph_json["edges"].as_array().expect("edges array").len(),
-        3
+    assert!(
+        graph_json["edges"]
+            .as_array()
+            .expect("edges array")
+            .iter()
+            .any(|edge| edge["kind"] == "contains")
+    );
+    assert!(
+        graph_json["edges"]
+            .as_array()
+            .expect("edges array")
+            .iter()
+            .any(|edge| edge["kind"] == "relation" && edge["relation"] == "depends_on")
     );
 }
 

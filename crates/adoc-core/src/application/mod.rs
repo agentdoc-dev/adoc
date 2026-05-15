@@ -5,3 +5,4 @@ pub(crate) mod hashing;
 pub(crate) mod resolve_knowledge_objects;
 pub(crate) mod resolve_object_references;
 pub(crate) mod retrieval;
+pub(crate) mod search_artifact;

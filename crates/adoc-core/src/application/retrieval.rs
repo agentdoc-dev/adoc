@@ -1,14 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
-use crate::application::graph::{GraphLoadResult, GraphSession};
-use crate::domain::artifact::{
-    AgentJsonDocument, AgentJsonObject, AgentJsonRelations, SearchArtifactDocument,
-    SearchModelHeader,
-};
+use crate::application::graph::GraphSession;
+use crate::domain::artifact::{SearchArtifactDocument, SearchModelHeader};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::domain::graph::{GraphArtifactDocument, GraphTraversalQuery};
+use crate::domain::graph::{GraphArtifactDocument, GraphIndex, GraphTraversalQuery};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::ports::artifact_reader::ArtifactReader;
 pub use crate::domain::retrieval::SearchFilters;
@@ -23,7 +20,6 @@ pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v0";
 pub struct RetrievalInput {
     pub artifact_path: PathBuf,
     pub search_artifact_path: Option<PathBuf>,
-    pub graph_artifact_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,10 +30,9 @@ pub struct RetrievalLoadResult {
 
 #[derive(Debug, Clone)]
 pub struct RetrievalSession {
-    exact_lookup: BTreeMap<ObjectId, AgentJsonObject>,
     lexical_index: LexicalIndex,
     vector_index: Option<VectorIndex>,
-    graph_session: Option<GraphSession>,
+    graph_session: GraphSession,
 }
 
 impl RetrievalSession {
@@ -50,8 +45,8 @@ impl RetrievalSession {
         self.vector_index.as_ref()
     }
 
-    pub(crate) fn graph_session(&self) -> Option<&GraphSession> {
-        self.graph_session.as_ref()
+    pub(crate) fn graph_session(&self) -> &GraphSession {
+        &self.graph_session
     }
 
     /// Returns statuses for the record's relation targets.
@@ -59,18 +54,12 @@ impl RetrievalSession {
     /// Relation targets are sorted and deduplicated across `depends_on`,
     /// `supersedes`, and `related_to`. A value of `None` means the target is
     /// not present in the loaded artifact.
-    pub fn related_statuses(&self, record: &RetrievalRecord) -> BTreeMap<String, Option<String>> {
-        let mut statuses = BTreeMap::new();
-
-        for target in iter_relation_targets(&record.relations) {
-            let status = ObjectId::new(target)
-                .ok()
-                .and_then(|target_id| self.exact_lookup.get(&target_id))
-                .and_then(|object| object.status.clone());
-            statuses.insert(target.to_string(), status);
-        }
-
-        statuses
+    pub fn related_statuses(
+        &self,
+        record: &RetrievalRecord,
+    ) -> std::collections::BTreeMap<String, Option<String>> {
+        self.graph_session
+            .related_statuses(record.relations.iter_targets())
     }
 }
 
@@ -124,19 +113,17 @@ impl From<SearchResult> for RetrievalEnvelope {
     }
 }
 
-pub(crate) fn load_retrieval_session_with_readers<A, S, G>(
+pub(crate) fn load_retrieval_session_with_readers<S, G>(
     input: RetrievalInput,
-    agent_reader: &A,
     search_reader: &S,
     graph_reader: &G,
     active_model: Option<SearchModelHeader>,
 ) -> RetrievalLoadResult
 where
-    A: ArtifactReader<Output = AgentJsonDocument>,
     S: ArtifactReader<Output = SearchArtifactDocument>,
     G: ArtifactReader<Output = GraphArtifactDocument>,
 {
-    let document = match agent_reader.read(&input.artifact_path) {
+    let document = match graph_reader.read(&input.artifact_path) {
         Ok(document) => document,
         Err(diagnostics) => {
             return RetrievalLoadResult {
@@ -146,34 +133,28 @@ where
         }
     };
 
-    // Hash before consuming the document into exact_lookup.
+    // Hash before consuming the document into GraphIndex.
     let canonical_bytes = document
         .to_pretty_json()
-        .expect("agent artifact serialization should not fail")
+        .expect("graph artifact serialization should not fail")
         .into_bytes();
 
-    let AgentJsonDocument {
-        objects,
-        diagnostics: document_diagnostics,
-        ..
-    } = document;
-
-    let exact_lookup = match build_exact_lookup(objects) {
-        Ok(exact_lookup) => exact_lookup,
-        Err(mut diagnostics) => {
+    let document_diagnostics = document.diagnostics.clone();
+    let graph_session = match GraphIndex::from_document(document) {
+        Ok(index) => GraphSession::new(index),
+        Err(mut graph_diagnostics) => {
             let mut all_diagnostics = document_diagnostics;
-            all_diagnostics.append(&mut diagnostics);
+            all_diagnostics.append(&mut graph_diagnostics);
             return RetrievalLoadResult {
                 session: None,
                 diagnostics: all_diagnostics,
             };
         }
     };
-    let lexical_index = LexicalIndex::from_objects(exact_lookup.values());
+    let lexical_index = LexicalIndex::from_objects(graph_session.objects());
 
     let mut diagnostics = document_diagnostics;
     let mut vector_index: Option<VectorIndex> = None;
-    let mut graph_session: Option<GraphSession> = None;
 
     if let Some(search_path) = input.search_artifact_path.as_ref() {
         match search_reader.read(search_path) {
@@ -217,13 +198,13 @@ where
                 if !artifact_unloadable {
                     let actual_hash =
                         crate::application::hashing::sha256_prefixed(&canonical_bytes);
-                    if actual_hash != doc.agent_artifact_hash {
+                    if actual_hash != doc.graph_artifact_hash {
                         diagnostics.push(Diagnostic::warning(
                             DiagnosticCode::SearchHashDrift,
                             format!(
-                                "Search artifact `{}` references agent_artifact_hash `{}` but the loaded agent artifact hashes to `{}`.",
+                                "Search artifact `{}` references graph_artifact_hash `{}` but the loaded graph artifact hashes to `{}`.",
                                 search_path.display(),
-                                doc.agent_artifact_hash,
+                                doc.graph_artifact_hash,
                                 actual_hash,
                             ),
                         ));
@@ -240,22 +221,8 @@ where
         }
     }
 
-    if let Some(graph_path) = input.graph_artifact_path.as_ref() {
-        let GraphLoadResult {
-            session,
-            diagnostics: mut graph_diagnostics,
-        } = crate::application::graph::load_graph_session_from_canonical_agent(
-            &canonical_bytes,
-            graph_path,
-            graph_reader,
-        );
-        diagnostics.append(&mut graph_diagnostics);
-        graph_session = session;
-    }
-
     RetrievalLoadResult {
         session: Some(RetrievalSession {
-            exact_lookup,
             lexical_index,
             vector_index,
             graph_session,
@@ -275,7 +242,7 @@ pub fn why_object(session: &RetrievalSession, id: &str) -> WhyResult {
         }
     };
 
-    if let Some(object) = session.exact_lookup.get(&object_id) {
+    if let Some(object) = session.graph_session.object(&object_id) {
         return WhyResult {
             records: vec![RetrievalRecord::from(object)],
             diagnostics: Vec::new(),
@@ -287,7 +254,7 @@ pub fn why_object(session: &RetrievalSession, id: &str) -> WhyResult {
         diagnostics: vec![
             Diagnostic::error(
                 DiagnosticCode::RetrievalObjectNotFound,
-                format!("Object ID `{id}` was not found in the agent artifact."),
+                format!("Object ID `{id}` was not found in the graph artifact."),
             )
             .with_object_id(id)
             .with_help(
@@ -356,12 +323,12 @@ fn search_hybrid(session: &RetrievalSession, query: SearchQuery) -> SearchResult
 
     let mut records = Vec::new();
     for hit in ranked_hits {
-        // `hit.id` comes from candidate IDs collected from `exact_lookup`, so
+        // `hit.id` comes from candidate IDs collected from `GraphIndex`, so
         // it already passed `ObjectId::new` during session load.
         let object_id = ObjectId::new_unchecked(hit.id.clone());
         let object = session
-            .exact_lookup
-            .get(&object_id)
+            .graph_session
+            .object(&object_id)
             .expect("search result IDs must come from the loaded retrieval session");
         if !query.filters.matches(object) {
             continue;
@@ -454,9 +421,9 @@ fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResu
             // ranked from the same candidate pool; all were validated at load.
             let object_id = ObjectId::new_unchecked(id.clone());
             let object = session
-                .exact_lookup
-                .get(&object_id)
-                .expect("hit must exist in exact lookup");
+                .graph_session
+                .object(&object_id)
+                .expect("hit must exist in graph index");
             let search_match = hits_by_id.get(id.as_str()).map_or_else(
                 || RetrievalMatch {
                     mode: SearchMode::Semantic,
@@ -570,8 +537,8 @@ fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResul
                 // load.
                 let object_id = ObjectId::new_unchecked(id.clone());
                 let object = session
-                    .exact_lookup
-                    .get(&object_id)
+                    .graph_session
+                    .object(&object_id)
                     .expect("search result IDs must come from the loaded retrieval session");
                 RetrievalRecord::from_object_with_match(
                     object,
@@ -592,7 +559,7 @@ impl SearchScope {
         session: &RetrievalSession,
         filters: &SearchFilters,
     ) -> Result<Self, Vec<Diagnostic>> {
-        let mut diagnostics = filters.validate_against(session.exact_lookup.values());
+        let mut diagnostics = filters.validate_against(session.graph_session.objects());
         let graph_candidate_ids = match Self::resolve_graph_candidates(session, filters) {
             Ok(candidates) => candidates,
             Err(mut graph_diagnostics) => {
@@ -613,10 +580,10 @@ impl SearchScope {
         &self,
         session: &'a RetrievalSession,
         filters: &SearchFilters,
-    ) -> Vec<&'a AgentJsonObject> {
+    ) -> Vec<&'a crate::domain::graph::GraphKnowledgeObjectNode> {
         session
-            .exact_lookup
-            .values()
+            .graph_session
+            .objects()
             .filter(|object| filters.matches(object))
             .filter(|object| self.matches_graph(object))
             .collect()
@@ -624,14 +591,14 @@ impl SearchScope {
 
     fn graph_scoped_candidate_ids<'a>(&self, session: &'a RetrievalSession) -> Vec<&'a str> {
         session
-            .exact_lookup
-            .values()
+            .graph_session
+            .objects()
             .filter(|object| self.matches_graph(object))
             .map(|object| object.id.as_str())
             .collect()
     }
 
-    fn matches_graph(&self, object: &AgentJsonObject) -> bool {
+    fn matches_graph(&self, object: &crate::domain::graph::GraphKnowledgeObjectNode) -> bool {
         self.graph_candidate_ids
             .as_ref()
             .is_none_or(|candidate_ids| candidate_ids.contains(object.id.as_str()))
@@ -651,61 +618,14 @@ impl SearchScope {
             return Ok(None);
         };
 
-        let Some(graph_session) = session.graph_session() else {
-            return Err(vec![Diagnostic::error(
-                DiagnosticCode::SearchInvalidFilter,
-                format!("Search filter `related_to={root_id}` requires a loaded graph artifact."),
-            )]);
-        };
-
-        graph_session
+        session
+            .graph_session()
             .related_candidate_ids(GraphTraversalQuery {
                 root_id,
                 direction: filters.direction.unwrap_or_default(),
                 relations: filters.relation.iter().copied().collect(),
             })
             .map(Some)
-    }
-}
-
-fn build_exact_lookup(
-    objects: Vec<AgentJsonObject>,
-) -> Result<BTreeMap<ObjectId, AgentJsonObject>, Vec<Diagnostic>> {
-    let mut exact_lookup = BTreeMap::new();
-    let mut diagnostics = Vec::new();
-
-    for object in objects {
-        let object_id_text = object.id.clone();
-        let object_id = match ObjectId::new(object_id_text.clone()) {
-            Ok(object_id) => object_id,
-            Err(_) => {
-                diagnostics.push(invalid_object_id_diagnostic(object_id_text));
-                continue;
-            }
-        };
-        match exact_lookup.entry(object_id) {
-            Entry::Vacant(entry) => {
-                entry.insert(object);
-            }
-            Entry::Occupied(_) => {
-                diagnostics.push(
-                    Diagnostic::error(
-                        DiagnosticCode::IdDuplicateInArtifact,
-                        format!("duplicate Object ID `{object_id_text}` in agent artifact"),
-                    )
-                    .with_object_id(object_id_text)
-                    .with_help(
-                        "Run `adoc build` to regenerate docs.agent.json from validated AgentDoc Source.",
-                    ),
-                );
-            }
-        }
-    }
-
-    if diagnostics.is_empty() {
-        Ok(exact_lookup)
-    } else {
-        Err(diagnostics)
     }
 }
 
@@ -719,19 +639,6 @@ fn invalid_object_id_diagnostic(id: impl Into<String>) -> Diagnostic {
     .with_help(OBJECT_ID_GRAMMAR_HELP)
 }
 
-fn iter_relation_targets(relations: &AgentJsonRelations) -> impl Iterator<Item = &str> {
-    let mut targets: Vec<&str> = relations
-        .depends_on
-        .iter()
-        .chain(relations.supersedes.iter())
-        .chain(relations.related_to.iter())
-        .map(String::as_str)
-        .collect();
-    targets.sort_unstable();
-    targets.dedup();
-    targets.into_iter()
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -739,24 +646,12 @@ mod tests {
 
     use super::*;
     use crate::application::hashing::sha256_prefixed;
-    use crate::domain::artifact::{
-        AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, SearchArtifactDocument,
-        SearchEmbedding, SearchModelHeader,
+    use crate::domain::artifact::{SearchArtifactDocument, SearchEmbedding, SearchModelHeader};
+    use crate::domain::graph::{
+        GraphArtifactDocument, GraphEdge, GraphEdgeKind, GraphKnowledgeObjectNode, GraphNode,
+        GraphRelationKind, GraphRelations, GraphSourceSpan,
     };
-    use crate::domain::graph::{GraphArtifactDocument, GraphEdge, GraphNode, GraphRelationKind};
     use crate::domain::ports::artifact_reader::ArtifactReader;
-
-    struct StubAgentArtifactReader {
-        document: AgentJsonDocument,
-    }
-
-    impl ArtifactReader for StubAgentArtifactReader {
-        type Output = AgentJsonDocument;
-
-        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
-            Ok(self.document.clone())
-        }
-    }
 
     struct StubSearchArtifactReader {
         document: SearchArtifactDocument,
@@ -782,47 +677,38 @@ mod tests {
         }
     }
 
-    fn document_with_object(id: &str) -> AgentJsonDocument {
-        AgentJsonDocument {
-            schema_version: "adoc.agent.v0".to_string(),
-            pages: Vec::new(),
-            objects: vec![AgentJsonObject {
-                id: id.to_string(),
-                kind: "claim".to_string(),
-                status: Some("draft".to_string()),
-                body: "Body.".to_string(),
-                page_id: "team.page".to_string(),
-                source_span: AgentJsonSourceSpan {
-                    path: "docs/page.adoc".to_string(),
-                    line: 1,
-                    column: 1,
-                },
-                fields: BTreeMap::new(),
-                relations: AgentJsonRelations::default(),
-            }],
-            diagnostics: Vec::new(),
+    fn object(id: &str, body: &str) -> GraphKnowledgeObjectNode {
+        GraphKnowledgeObjectNode {
+            id: id.to_string(),
+            kind: "claim".to_string(),
+            status: Some("draft".to_string()),
+            body: body.to_string(),
+            page_id: "team.page".to_string(),
+            source_span: GraphSourceSpan {
+                path: "docs/page.adoc".to_string(),
+                line: 1,
+                column: 1,
+            },
+            fields: BTreeMap::new(),
+            relations: GraphRelations::default(),
         }
     }
 
     #[test]
     fn retrieval_session_loads_through_artifact_reader_port() {
-        let reader = StubAgentArtifactReader {
-            document: document_with_object("billing.reader-port"),
+        let reader = StubGraphArtifactReader {
+            document: graph_document(vec![object("billing.reader-port", "Body.")], Vec::new()),
         };
 
         let result = load_retrieval_session_with_readers(
             RetrievalInput {
-                artifact_path: PathBuf::from("ignored.agent.json"),
+                artifact_path: PathBuf::from("ignored.graph.json"),
                 search_artifact_path: None,
-                graph_artifact_path: None,
             },
-            &reader,
             &StubSearchArtifactReader {
                 document: search_document("sha256:unused"),
             },
-            &StubGraphArtifactReader {
-                document: graph_document("sha256:unused"),
-            },
+            &reader,
             None,
         );
 
@@ -836,7 +722,7 @@ mod tests {
 
     #[test]
     fn retrieval_session_load_preserves_document_diagnostics_on_success() {
-        let mut document = document_with_object("billing.reader-port");
+        let mut document = graph_document(vec![object("billing.reader-port", "Body.")], Vec::new());
         document.diagnostics.push(Diagnostic {
             code: DiagnosticCode::ParseRawHtml,
             severity: crate::domain::diagnostic::Severity::Warning,
@@ -845,21 +731,17 @@ mod tests {
             object_id: None,
             help: None,
         });
-        let reader = StubAgentArtifactReader { document };
+        let reader = StubGraphArtifactReader { document };
 
         let result = load_retrieval_session_with_readers(
             RetrievalInput {
-                artifact_path: PathBuf::from("ignored.agent.json"),
+                artifact_path: PathBuf::from("ignored.graph.json"),
                 search_artifact_path: None,
-                graph_artifact_path: None,
             },
-            &reader,
             &StubSearchArtifactReader {
                 document: search_document("sha256:unused"),
             },
-            &StubGraphArtifactReader {
-                document: graph_document("sha256:unused"),
-            },
+            &reader,
             None,
         );
 
@@ -870,41 +752,35 @@ mod tests {
 
     #[test]
     fn retrieval_session_loads_search_and_graph_through_reader_ports() {
-        let mut document = document_with_object("billing.root");
-        document.objects.push(AgentJsonObject {
-            id: "billing.target".to_string(),
-            kind: "claim".to_string(),
-            status: Some("verified".to_string()),
-            body: "Target body.".to_string(),
-            page_id: "team.page".to_string(),
-            source_span: AgentJsonSourceSpan {
-                path: "docs/page.adoc".to_string(),
-                line: 2,
-                column: 1,
-            },
-            fields: BTreeMap::new(),
-            relations: AgentJsonRelations::default(),
-        });
+        let document = graph_document(
+            vec![
+                object("billing.root", "Root body."),
+                object("billing.target", "Target body."),
+            ],
+            vec![GraphEdge {
+                kind: GraphEdgeKind::Relation,
+                source: "billing.root".to_string(),
+                target: "billing.target".to_string(),
+                relation: Some(GraphRelationKind::DependsOn),
+                order: None,
+            }],
+        );
         let canonical_hash = sha256_prefixed(
             document
                 .to_pretty_json()
-                .expect("agent document serializes")
+                .expect("graph document serializes")
                 .as_bytes(),
         );
 
         let result = load_retrieval_session_with_readers(
             RetrievalInput {
-                artifact_path: PathBuf::from("ignored.agent.json"),
+                artifact_path: PathBuf::from("ignored.graph.json"),
                 search_artifact_path: Some(PathBuf::from("ignored.search.json")),
-                graph_artifact_path: Some(PathBuf::from("ignored.graph.json")),
             },
-            &StubAgentArtifactReader { document },
             &StubSearchArtifactReader {
                 document: search_document(&canonical_hash),
             },
-            &StubGraphArtifactReader {
-                document: graph_document(&canonical_hash),
-            },
+            &StubGraphArtifactReader { document },
             Some(SearchModelHeader {
                 id: "in-memory".to_string(),
                 provider: "test".to_string(),
@@ -941,7 +817,7 @@ mod tests {
         );
     }
 
-    fn search_document(agent_artifact_hash: &str) -> SearchArtifactDocument {
+    fn search_document(graph_artifact_hash: &str) -> SearchArtifactDocument {
         SearchArtifactDocument {
             schema_version: "adoc.search.v0".to_string(),
             model: SearchModelHeader {
@@ -949,7 +825,7 @@ mod tests {
                 provider: "test".to_string(),
                 dim: 2,
             },
-            agent_artifact_hash: agent_artifact_hash.to_string(),
+            graph_artifact_hash: graph_artifact_hash.to_string(),
             embeddings: vec![SearchEmbedding {
                 id: "billing.target".to_string(),
                 content_hash: "sha256:content".to_string(),
@@ -958,29 +834,18 @@ mod tests {
         }
     }
 
-    fn graph_document(agent_artifact_hash: &str) -> GraphArtifactDocument {
+    fn graph_document(
+        objects: Vec<GraphKnowledgeObjectNode>,
+        edges: Vec<GraphEdge>,
+    ) -> GraphArtifactDocument {
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v0".to_string(),
-            agent_artifact_hash: agent_artifact_hash.to_string(),
-            nodes: vec![
-                GraphNode {
-                    id: "billing.root".to_string(),
-                    kind: "claim".to_string(),
-                    status: Some("draft".to_string()),
-                    page_id: "team.page".to_string(),
-                },
-                GraphNode {
-                    id: "billing.target".to_string(),
-                    kind: "claim".to_string(),
-                    status: Some("verified".to_string()),
-                    page_id: "team.page".to_string(),
-                },
-            ],
-            edges: vec![GraphEdge {
-                source: "billing.root".to_string(),
-                target: "billing.target".to_string(),
-                relation: GraphRelationKind::DependsOn,
-            }],
+            schema_version: "adoc.graph.v1".to_string(),
+            nodes: objects
+                .into_iter()
+                .map(GraphNode::KnowledgeObject)
+                .collect(),
+            edges,
+            diagnostics: Vec::new(),
         }
     }
 }

@@ -7,8 +7,6 @@ use crate::domain::knowledge_object::{
     warning::WarningSeverity,
 };
 
-const UNKNOWN_METADATA_VALUE: &str = "unknown";
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct KnowledgeObjectMetadata<'a> {
     discriminant: Option<MetadataDiscriminant<'a>>,
@@ -74,30 +72,6 @@ impl MetadataField<'_> {
 }
 
 impl KnowledgeObject {
-    pub(crate) fn embedding_input(&self) -> String {
-        let metadata = self.metadata_projection();
-        let status = metadata
-            .discriminant()
-            .map(MetadataDiscriminant::value_as_str)
-            .unwrap_or(UNKNOWN_METADATA_VALUE);
-        let owner = metadata
-            .fields()
-            .iter()
-            .find(|field| field.key() == OWNER_FIELD)
-            .map(MetadataField::value_as_str)
-            .unwrap_or(UNKNOWN_METADATA_VALUE);
-        let body = normalized_embedding_body(&self.body().to_embedding_plain_text());
-
-        format!(
-            "{}: {}\n[id: {}] [status: {}] [owner: {}]",
-            self.kind().as_str(),
-            body,
-            self.id().as_str(),
-            status,
-            owner
-        )
-    }
-
     pub(crate) fn metadata_projection(&self) -> KnowledgeObjectMetadata<'_> {
         let mut fields: Vec<MetadataField<'_>> = self
             .fields()
@@ -132,13 +106,6 @@ impl KnowledgeObject {
     }
 }
 
-fn normalized_embedding_body(body: &str) -> String {
-    body.replace("\r\n", "\n")
-        .replace('\r', "\n")
-        .trim()
-        .to_string()
-}
-
 fn append_verification_fields<'a>(
     fields: &mut Vec<MetadataField<'a>>,
     verification: Option<&'a Verification>,
@@ -159,8 +126,6 @@ mod tests {
 
     use super::*;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
-    use crate::domain::identity::ObjectId;
-    use crate::domain::inline::InlineSegment;
     use crate::domain::knowledge_object::{
         KnowledgeObject,
         claim::{Claim, Evidence, NonEmpty, Owner, Verification, VerifiedAt},
@@ -384,75 +349,6 @@ mod tests {
         assert_eq!(
             field_entries(&projection),
             vec![entry("owner", "team-billing"), entry("status", "draft")]
-        );
-    }
-
-    #[test]
-    fn canonical_embedding_input_uses_unknown_metadata_defaults() {
-        let object = KnowledgeObject::Glossary(
-            Glossary::try_new(
-                "billing.credits",
-                "Credits balance.",
-                BTreeMap::new(),
-                span(),
-            )
-            .expect("valid glossary"),
-        );
-
-        assert_eq!(
-            object.embedding_input(),
-            "glossary: Credits balance.\n[id: billing.credits] [status: unknown] [owner: unknown]"
-        );
-    }
-
-    #[test]
-    fn canonical_embedding_input_uses_status_owner_and_preserves_object_reference_markers() {
-        let mut claim = Claim::try_new(
-            "billing.refunds",
-            Some("draft"),
-            "Placeholder.",
-            BTreeMap::from([("owner".to_string(), "team-billing".to_string())]),
-            None,
-            span(),
-        )
-        .expect("valid claim");
-        claim.body_mut().inlines_mut().clear();
-        claim
-            .body_mut()
-            .inlines_mut()
-            .push(InlineSegment::Text("See ".to_string()));
-        claim
-            .body_mut()
-            .inlines_mut()
-            .push(InlineSegment::ObjectReference {
-                id: ObjectId::new("billing.ledger").expect("valid id"),
-                span: span(),
-            });
-        let object = KnowledgeObject::Claim(claim);
-
-        assert_eq!(
-            object.embedding_input(),
-            "claim: See [[billing.ledger]]\n[id: billing.refunds] [status: draft] [owner: team-billing]"
-        );
-    }
-
-    #[test]
-    fn canonical_embedding_input_normalizes_line_endings_and_trims_edges() {
-        let object = KnowledgeObject::Claim(
-            Claim::try_new(
-                "billing.newline",
-                Some("plain"),
-                " First line\r\nSecond line\r ",
-                BTreeMap::new(),
-                None,
-                span(),
-            )
-            .expect("valid claim"),
-        );
-
-        assert_eq!(
-            object.embedding_input(),
-            "claim: First line\nSecond line\n[id: billing.newline] [status: plain] [owner: unknown]"
         );
     }
 }

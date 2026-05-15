@@ -76,13 +76,19 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
     assert!(html.contains("href=\"#billing.credits\""));
     assert!(html.contains("<dt>depends_on</dt>"));
 
-    let agent_json_text = std::fs::read_to_string(output_directory.join("docs.agent.json"))
-        .expect("billing pilot agent JSON is written");
-    let agent_json: Value =
-        serde_json::from_str(&agent_json_text).expect("agent JSON is valid JSON");
-    let objects = agent_json["objects"]
+    assert!(!output_directory.join("docs.agent.json").exists());
+    let graph_json_text = std::fs::read_to_string(output_directory.join("docs.graph.json"))
+        .expect("billing pilot graph JSON is written");
+    let graph_json: Value =
+        serde_json::from_str(&graph_json_text).expect("graph JSON is valid JSON");
+    assert_eq!(graph_json["schema_version"], "adoc.graph.v1");
+    let nodes = graph_json["nodes"]
         .as_array()
-        .expect("agent JSON objects is an array");
+        .expect("graph JSON nodes is an array");
+    let objects: Vec<&Value> = nodes
+        .iter()
+        .filter(|node| node["type"] == "knowledge_object")
+        .collect();
 
     assert!(
         objects.len() >= 30,
@@ -116,7 +122,7 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
             .as_str()
             .expect("body is a string")
             .contains("[[billing.credits]]"),
-        "agent JSON body should preserve citeable object-reference source text"
+        "graph JSON body should preserve citeable object-reference source text"
     );
     assert_eq!(
         refund_claim["relations"]["depends_on"],
@@ -156,7 +162,7 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
         "search artifact should carry one embedding per Knowledge Object"
     );
 
-    let artifact_path = output_directory.join("docs.agent.json");
+    let artifact_path = output_directory.join("docs.graph.json");
     let artifact_arg = artifact_path
         .to_str()
         .expect("artifact path is UTF-8")

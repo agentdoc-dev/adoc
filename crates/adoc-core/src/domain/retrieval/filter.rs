@@ -1,8 +1,6 @@
-use crate::domain::artifact::AgentJsonObject;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::domain::graph::{GraphDirection, GraphRelationKind};
-
-const OWNER_FIELD: &str = "owner";
+use crate::domain::graph::{GraphDirection, GraphKnowledgeObjectNode, GraphRelationKind};
+use crate::domain::retrieval::metadata;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SearchFilters {
@@ -21,26 +19,23 @@ impl SearchFilters {
     /// Graph-scoped fields (`related_to`, `relation`, `direction`) are
     /// resolved by the retrieval application layer so lexical, semantic, and
     /// hybrid search can apply graph candidates at the right ranking phase.
-    pub fn matches(&self, object: &AgentJsonObject) -> bool {
+    pub(crate) fn matches(&self, object: &GraphKnowledgeObjectNode) -> bool {
         matches_required(&object.kind, self.kind.as_deref())
             && matches_optional(object.status.as_deref(), self.status.as_deref())
-            && matches_optional(
-                object.fields.get(OWNER_FIELD).map(String::as_str),
-                self.owner.as_deref(),
-            )
+            && matches_optional(metadata::owner(object), self.owner.as_deref())
             && matches_required(&object.source_span.path, self.source_path.as_deref())
     }
 
-    pub fn validate_against<'a>(
+    pub(crate) fn validate_against<'a>(
         &self,
-        objects: impl IntoIterator<Item = &'a AgentJsonObject>,
+        objects: impl IntoIterator<Item = &'a GraphKnowledgeObjectNode>,
     ) -> Vec<Diagnostic> {
         self.filter_state_against(objects).diagnostics()
     }
 
     fn filter_state_against<'a>(
         &self,
-        objects: impl IntoIterator<Item = &'a AgentJsonObject>,
+        objects: impl IntoIterator<Item = &'a GraphKnowledgeObjectNode>,
     ) -> FilterValidationState<'_> {
         let mut state = FilterValidationState::new(self);
 
@@ -74,7 +69,7 @@ impl<'a> FilterValidationState<'a> {
         }
     }
 
-    fn update(&mut self, object: &AgentJsonObject) {
+    fn update(&mut self, object: &GraphKnowledgeObjectNode) {
         if !self.kind_valid && matches_required(&object.kind, self.filters.kind.as_deref()) {
             self.kind_valid = true;
         }
@@ -84,10 +79,7 @@ impl<'a> FilterValidationState<'a> {
             self.status_valid = true;
         }
         if !self.owner_valid
-            && matches_optional(
-                object.fields.get(OWNER_FIELD).map(String::as_str),
-                self.filters.owner.as_deref(),
-            )
+            && matches_optional(metadata::owner(object), self.filters.owner.as_deref())
         {
             self.owner_valid = true;
         }

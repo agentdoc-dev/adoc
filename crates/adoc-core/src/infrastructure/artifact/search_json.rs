@@ -94,7 +94,7 @@ mod tests {
             serde_json::json!({
                 "schema_version": "adoc.search.v99",
                 "model": { "id": "model", "provider": "test", "dim": 2 },
-                "agent_artifact_hash": "sha256:agent",
+                "graph_artifact_hash": "sha256:graph",
                 "embeddings": []
             })
             .to_string(),
@@ -119,7 +119,7 @@ mod tests {
                 provider: "test".to_string(),
                 dim: 2,
             },
-            agent_artifact_hash: "sha256:agent".to_string(),
+            graph_artifact_hash: "sha256:graph".to_string(),
             embeddings: vec![SearchEmbedding {
                 id: "billing.credits".to_string(),
                 content_hash: "sha256:content".to_string(),
@@ -152,7 +152,7 @@ mod tests {
                 provider: "test".to_string(),
                 dim: 2,
             },
-            agent_artifact_hash: "sha256:agent".to_string(),
+            graph_artifact_hash: "sha256:graph".to_string(),
             embeddings: Vec::new(),
         };
         let artifact_file = tempfile::Builder::new()

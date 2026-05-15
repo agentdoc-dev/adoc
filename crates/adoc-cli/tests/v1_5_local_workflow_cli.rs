@@ -77,7 +77,7 @@ fn v1_5_init_check_build_why_and_search_use_config_defaults_end_to_end() {
     assert_success("adoc build", &build);
 
     assert!(workspace.root.join("dist/docs.html").is_file());
-    assert!(workspace.root.join("dist/docs.agent.json").is_file());
+    assert!(workspace.root.join("dist/docs.graph.json").is_file());
     assert!(workspace.root.join("dist/docs.search.json").is_file());
 
     let why = adoc_command()
@@ -104,7 +104,7 @@ fn v1_5_explicit_check_path_and_build_out_ignore_config_defaults() {
     write_valid_source(&workspace, "explicit/index.adoc", "explicit.ready");
     workspace.write(
         "agentdoc.config.yaml",
-        "version: 1\nmode: strict\ndocs_path: configured\noutputs:\n  dir: configured-dist\n  html: configured-html/custom.html\n  agent_json: configured-artifacts/docs.agent.json\n  search: configured-artifacts/docs.search.json\nembeddings:\n  provider: local\n",
+        "version: 1\nmode: strict\ndocs_path: configured\noutputs:\n  dir: configured-dist\n  html: configured-html/custom.html\n  graph: configured-artifacts/docs.graph.json\n  search: configured-artifacts/docs.search.json\nembeddings:\n  provider: local\n",
     );
 
     let check = adoc_command()
@@ -126,7 +126,7 @@ fn v1_5_explicit_check_path_and_build_out_ignore_config_defaults() {
     assert!(
         workspace
             .root
-            .join("explicit-dist/docs.agent.json")
+            .join("explicit-dist/docs.graph.json")
             .is_file()
     );
     assert!(
@@ -140,7 +140,7 @@ fn v1_5_explicit_check_path_and_build_out_ignore_config_defaults() {
     assert!(
         !workspace
             .root
-            .join("configured-artifacts/docs.agent.json")
+            .join("configured-artifacts/docs.graph.json")
             .exists()
     );
     assert!(

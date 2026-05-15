@@ -4,7 +4,7 @@ use std::fs;
 use std::process::Command;
 
 use chrono::{Local, Months};
-use support::{TestWorkspace, fixture_path};
+use support::TestWorkspace;
 
 fn adoc_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
@@ -27,9 +27,52 @@ fn write_valid_source(workspace: &TestWorkspace, relative_path: &str) {
 }
 
 fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
-    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
-        .expect("fixture artifact is readable");
-    workspace.write(relative_path, &artifact);
+    workspace.write(
+        relative_path,
+        r#"{
+  "schema_version": "adoc.graph.v1",
+  "nodes": [
+    {
+      "type": "page",
+      "id": "billing.refunds",
+      "order": 0,
+      "title": "Refunds",
+      "source_path": "docs/refunds.adoc"
+    },
+    {
+      "type": "knowledge_object",
+      "id": "billing.refunds.issue-credit",
+      "kind": "claim",
+      "status": "verified",
+      "body": "Refund credits are issued from the ledger after approval.",
+      "page_id": "billing.refunds",
+      "source_span": { "path": "docs/refunds.adoc", "line": 12, "column": 3 },
+      "fields": {
+        "owner": "team-billing",
+        "reviewed_by": "risk-team",
+        "source": "ledger-export",
+        "test": "cargo test refunds",
+        "verified_at": "2026-05-06"
+      },
+      "relations": { "depends_on": [], "supersedes": [], "related_to": [] }
+    },
+    {
+      "type": "knowledge_object",
+      "id": "billing.refunds.fraud-window",
+      "kind": "warning",
+      "status": "high",
+      "body": "Refund attempts above the risk threshold require manual review.",
+      "page_id": "billing.refunds",
+      "source_span": { "path": "docs/refunds.adoc", "line": 28, "column": 1 },
+      "fields": { "source": "risk-runbook" },
+      "relations": { "depends_on": [], "supersedes": [], "related_to": [] }
+    }
+  ],
+  "edges": [],
+  "diagnostics": []
+}
+"#,
+    );
 }
 
 fn stderr(output: &std::process::Output) -> String {
@@ -172,7 +215,7 @@ fn config_build_uses_exact_output_paths_and_dir_fills_omitted_paths() {
     write_valid_source(&workspace, "docs/index.adoc");
     workspace.write(
         "agentdoc.config.yaml",
-        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: bundled\n  html: public/site.html\n  agent_json: artifacts/agent.json\nembeddings:\n  provider: local\n",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: bundled\n  html: public/site.html\n  graph: artifacts/graph.json\nembeddings:\n  provider: local\n",
     );
 
     let output = adoc_command()
@@ -188,20 +231,19 @@ fn config_build_uses_exact_output_paths_and_dir_fills_omitted_paths() {
         stderr(&output)
     );
     assert!(workspace.root.join("public/site.html").is_file());
-    assert!(workspace.root.join("artifacts/agent.json").is_file());
-    assert!(workspace.root.join("bundled/docs.graph.json").is_file());
+    assert!(workspace.root.join("artifacts/graph.json").is_file());
     assert!(workspace.root.join("bundled/docs.search.json").is_file());
     assert!(!workspace.root.join("bundled/docs.html").exists());
-    assert!(!workspace.root.join("bundled/docs.agent.json").exists());
+    assert!(!workspace.root.join("bundled/docs.graph.json").exists());
 }
 
 #[test]
-fn config_build_provider_none_allows_exact_html_and_agent_json_without_search() {
+fn config_build_provider_none_allows_exact_html_and_graph_without_search() {
     let workspace = TestWorkspace::new("config-build-provider-none-no-search");
     write_valid_source(&workspace, "docs/index.adoc");
     workspace.write(
         "agentdoc.config.yaml",
-        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  agent_json: artifacts/agent.json\n  graph: artifacts/graph.json\nembeddings:\n  provider: none\n",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  graph: artifacts/graph.json\nembeddings:\n  provider: none\n",
     );
 
     let output = adoc_command()
@@ -222,18 +264,17 @@ fn config_build_provider_none_allows_exact_html_and_agent_json_without_search() 
         stdout(&output)
     );
     assert!(workspace.root.join("public/site.html").is_file());
-    assert!(workspace.root.join("artifacts/agent.json").is_file());
     assert!(workspace.root.join("artifacts/graph.json").is_file());
     assert!(!workspace.root.join("docs.search.json").exists());
 }
 
 #[test]
-fn config_build_no_embeddings_allows_exact_html_and_agent_json_without_search() {
+fn config_build_no_embeddings_allows_exact_html_and_graph_without_search() {
     let workspace = TestWorkspace::new("config-build-no-embeddings-no-search");
     write_valid_source(&workspace, "docs/index.adoc");
     workspace.write(
         "agentdoc.config.yaml",
-        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  agent_json: artifacts/agent.json\n  graph: artifacts/graph.json\nembeddings:\n  provider: local\n",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  graph: artifacts/graph.json\nembeddings:\n  provider: local\n",
     );
 
     let output = adoc_command()
@@ -254,7 +295,6 @@ fn config_build_no_embeddings_allows_exact_html_and_agent_json_without_search() 
         stdout(&output)
     );
     assert!(workspace.root.join("public/site.html").is_file());
-    assert!(workspace.root.join("artifacts/agent.json").is_file());
     assert!(workspace.root.join("artifacts/graph.json").is_file());
     assert!(!workspace.root.join("docs.search.json").exists());
 }
@@ -265,7 +305,7 @@ fn config_build_enabled_embeddings_requires_search_output_path() {
     write_valid_source(&workspace, "docs/index.adoc");
     workspace.write(
         "agentdoc.config.yaml",
-        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  agent_json: artifacts/agent.json\nembeddings:\n  provider: local\n",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: public/site.html\n  graph: artifacts/graph.json\nembeddings:\n  provider: local\n",
     );
 
     let output = adoc_command()
@@ -281,11 +321,11 @@ fn config_build_enabled_embeddings_requires_search_output_path() {
         "expected config.missing, got:\n{stderr}"
     );
     assert!(
-        stderr.contains("html, agent_json, graph, and search outputs"),
+        stderr.contains("html, graph, and search outputs"),
         "expected missing graph/search guidance, got:\n{stderr}"
     );
     assert!(!workspace.root.join("public/site.html").exists());
-    assert!(!workspace.root.join("artifacts/agent.json").exists());
+    assert!(!workspace.root.join("artifacts/graph.json").exists());
 }
 
 #[test]
@@ -311,12 +351,6 @@ fn config_build_explicit_path_and_out_ignore_config_outputs() {
         stderr(&output)
     );
     assert!(workspace.root.join("explicit-dist/docs.html").is_file());
-    assert!(
-        workspace
-            .root
-            .join("explicit-dist/docs.agent.json")
-            .is_file()
-    );
     assert!(
         workspace
             .root
@@ -352,12 +386,6 @@ fn config_build_fully_explicit_no_embeddings_ignores_malformed_config() {
         stderr(&output)
     );
     assert!(workspace.root.join("explicit-dist/docs.html").is_file());
-    assert!(
-        workspace
-            .root
-            .join("explicit-dist/docs.agent.json")
-            .is_file()
-    );
     assert!(
         workspace
             .root
@@ -406,11 +434,11 @@ fn config_build_missing_outputs_error_names_loaded_config_path() {
 #[test]
 fn config_why_and_search_use_configured_artifacts_unless_args_are_explicit() {
     let workspace = TestWorkspace::new("config-retrieval-artifacts");
-    copy_valid_artifact(&workspace, "configured/docs.agent.json");
-    copy_valid_artifact(&workspace, "explicit/docs.agent.json");
+    copy_valid_artifact(&workspace, "configured/docs.graph.json");
+    copy_valid_artifact(&workspace, "explicit/docs.graph.json");
     workspace.write(
         "agentdoc.config.yaml",
-        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\n  agent_json: configured/docs.agent.json\n  search: configured/docs.search.json\nembeddings:\n  provider: local\n",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\n  graph: configured/docs.graph.json\n  search: configured/docs.search.json\nembeddings:\n  provider: local\n",
     );
 
     let why = adoc_command()
@@ -432,7 +460,7 @@ fn config_why_and_search_use_configured_artifacts_unless_args_are_explicit() {
             "why",
             "billing.refunds.fraud-window",
             "--artifact",
-            "explicit/docs.agent.json",
+            "explicit/docs.graph.json",
             "--format",
             "plain",
         ])

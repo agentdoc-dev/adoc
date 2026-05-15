@@ -4,14 +4,14 @@ This document is the implementation contract for V1: local retrieval with embedd
 
 V1 builds directly on the V0 compiler. It does not change the parser, validator, or rendering pipeline. It adds:
 
-- A second build artifact, `dist/docs.search.json`, that carries one embedding per **Knowledge Object** plus a content hash and a model header.
-- A retrieval module inside `adoc-core` that loads the agent and search artifacts, validates them, and exposes lookup, lexical, and vector indexes behind an internal hybrid ranker.
-- Two new CLI commands, `adoc why` and `adoc search`, that read those artifacts only — they never re-run `compile_workspace()`.
+- A graph read artifact, `dist/docs.graph.json`, and a search sidecar, `dist/docs.search.json`, that carries one embedding per **Knowledge Object** plus a content hash and a model header.
+- A retrieval module inside `adoc-core` that loads the graph and search artifacts, validates them, and exposes lookup, lexical, and vector indexes behind an internal hybrid ranker.
+- Three CLI commands, `adoc why`, `adoc graph`, and `adoc search`, that read those artifacts only — they never re-run `compile_workspace()`.
 - One new internal port, `EmbeddingProvider`, with a default local adapter and a deterministic in-memory adapter for tests.
 
 ## Goals
 
-- Promote `dist/docs.agent.json` from a build byproduct to a supported read model with a stable read contract.
+- Promote `dist/docs.graph.json` from a build byproduct to a supported read model with a stable read contract.
 - Ship per-Object-ID embeddings as a first-class build output, not a deferred feature.
 - Provide hybrid lexical + vector retrieval with no tunable score weights in V1.
 - Keep retrieval read-only over compiled artifacts; source recompilation belongs to `adoc check` and `adoc build`.
@@ -26,7 +26,7 @@ V1 builds directly on the V0 compiler. It does not change the parser, validator,
 - No score-weight knobs. Lifecycle, freshness, evidence quality, and authority are filters in V1, not score modifiers.
 - No agent server (MCP, JSON-RPC, HTTP). `adoc search --format json` is the wire format an external server would later wrap.
 - No `adoc init`, no config file, no source-aware retrieval. Those stay in V1.5 / V2.
-- No incremental partial builds across runs other than the per-object embedding cache. HTML and agent JSON regenerate every `adoc build` as in V0.
+- No incremental partial builds across runs other than the per-object embedding cache. HTML and graph JSON regenerate every `adoc build` as in V0.
 
 ## Workspace Layout
 
@@ -38,13 +38,12 @@ crates/adoc-core/src/
     compile.rs                       # extended: emits search artifact too
     retrieval.rs                     # NEW: orchestrates loading + querying
   domain/
-    artifact.rs                      # Agent/Search artifact DTOs
+    artifact.rs                      # Search artifact DTOs
     graph/                           # graph artifact DTOs + traversal domain
     knowledge_object/                # unchanged
     ports/
       artifact_writer.rs             # generic structured artifact writer
       embedding_provider.rs          # NEW: EmbeddingProvider port
-      renderer.rs                    # unchanged
       source_provider.rs             # unchanged
     retrieval/                       # NEW: pure retrieval domain types
       mod.rs
@@ -55,7 +54,7 @@ crates/adoc-core/src/
       filter.rs                      # filter predicates
   infrastructure/
     artifact/
-      agent_json.rs                  # unchanged
+      graph_json.rs                  # unchanged
       search_json.rs                 # NEW: SearchArtifact writer/reader
     embedding/                       # NEW: embedding adapters
       mod.rs
@@ -65,6 +64,7 @@ crates/adoc-cli/src/
   main.rs                            # extended: why + search subcommands
   commands/
     why.rs                       # NEW
+    graph.rs                         # NEW
     search.rs                        # NEW
 ```
 
@@ -88,7 +88,7 @@ pub fn why_object(session: &RetrievalSession, id: &str) -> WhyResult;
 pub fn search(session: &RetrievalSession, query: SearchQuery) -> SearchResult;
 
 pub struct RetrievalInput {
-    pub artifact_path: std::path::PathBuf,        // dist/docs.agent.json
+    pub artifact_path: std::path::PathBuf,        // dist/docs.graph.json
     pub search_artifact_path: Option<std::path::PathBuf>, // dist/docs.search.json
 }
 
@@ -129,15 +129,23 @@ Rules:
 adoc check <path>
 adoc build <path> --out dist [--no-embeddings]
 adoc why <object-id>
-  [--artifact <path>]               # default dist/docs.agent.json
+  [--artifact <path>]               # default dist/docs.graph.json
+  [--format text|json]              # default text
+adoc graph <object-id>
+  [--artifact <path>]               # default dist/docs.graph.json
+  [--relation depends_on|supersedes|related_to]
+  [--direction outgoing|incoming|both]
   [--format text|json]              # default text
 adoc search "<query>"
-  [--artifact <path>]               # default dist/docs.agent.json
+  [--artifact <path>]               # default dist/docs.graph.json
   [--search-artifact <path>]        # default dist/docs.search.json
   [--kind <kind>]
   [--status <status>]
   [--owner <owner>]
   [--source-path <substring>]
+  [--related-to <object-id>]
+  [--relation depends_on|supersedes|related_to]
+  [--direction outgoing|incoming|both]
   [--top <N>]                       # default 10
   [--lexical | --semantic]          # default = hybrid
   [--format text|json]              # default text
@@ -145,10 +153,10 @@ adoc search "<query>"
 
 Behavior:
 
-- `adoc build` writes `dist/docs.html` and `dist/docs.agent.json` after clean source compilation. It writes `dist/docs.search.json` only when embedding-enabled search artifact construction succeeds.
-- Embedding failures after clean source compilation emit `embed.model_load_failed`, `embed.compute_failed`, or `embed.unexpected_dim`, return/emit V0 artifacts, set `search_json` to `None`, leave any prior `dist/docs.search.json` untouched, and exit `1`.
+- `adoc build` writes `dist/docs.html` and `dist/docs.graph.json` after clean source compilation. It writes `dist/docs.search.json` only when embedding-enabled search artifact construction succeeds.
+- Embedding failures after clean source compilation emit `embed.model_load_failed`, `embed.compute_failed`, or `embed.unexpected_dim`, return/emit HTML and graph artifacts, set `search_json` to `None`, leave any prior `dist/docs.search.json` untouched, and exit `1`.
 - Successful embedding-enabled search builds emit `build.embeddings_cached` with `embeddings: cached N, computed M`. With `--no-embeddings`, the search artifact is skipped and a `build.embeddings_skipped` info diagnostic is emitted.
-- `adoc why` reads only the agent artifact. It exits `0` on success, `1` on argument errors, `2` on artifact errors, and `3` on object not found.
+- `adoc why` reads only the graph artifact. It exits `0` on success, `1` on argument errors, `2` on artifact errors, and `3` on object not found.
 - `adoc search` reads both artifacts. Empty result sets exit `0` with an explicit `(no matches)` line; argument errors exit `1`; artifact errors exit `2`. There is no separate "no results" exit code.
 - `--format json` emits a stable JSON envelope: `{ "schema_version": "adoc.retrieval.v0", "records": [...], "diagnostics": [...] }`. This is the wire format a future MCP wrapper consumes; it must not change shape inside V1.
 
@@ -164,7 +172,7 @@ Behavior:
     "provider": "fastembed",
     "dim": 384
   },
-  "agent_artifact_hash": "sha256:...",
+  "graph_artifact_hash": "sha256:...",
   "embeddings": [
     {
       "id": "billing.credits.decrement-after-success",
@@ -179,7 +187,7 @@ Rules:
 
 - One entry per **Knowledge Object** ID. Pages are not embedded in V1.
 - `content_hash` is computed over the canonical embedding input string (see *Embedding Composition* below). When `adoc build` runs and the new content hash matches the prior search artifact's entry for the same ID, the existing vector is reused.
-- `agent_artifact_hash` is `sha256` of the serialized `docs.agent.json` produced in the same build. Mismatch between artifacts at retrieval time produces a `search.hash_drift` warning.
+- `graph_artifact_hash` is `sha256` of the serialized `docs.graph.json` produced in the same build. Mismatch between artifacts at retrieval time produces a `search.hash_drift` warning.
 - `model` mismatch between the search artifact and the active provider produces `search.model_mismatch` (error) and the search artifact is treated as unloadable.
 - Schema version mismatch produces `schema.unsupported_version`.
 
@@ -235,7 +243,7 @@ Rules:
 ## Retrieval Pipeline
 
 ```text
-adoc.agent.json -+
+adoc.graph.json -+
                  +--> ArtifactReader --> RetrievalSession {
                  |        exact_lookup,                      (id -> object)
                  |        LexicalIndex,                      (BM25, rebuilt on load)
@@ -297,9 +305,9 @@ Rules:
 
 Rules:
 
-- Records are a projection of `AgentJsonObject` plus a `match` block. The projection lives in `domain/retrieval/retrieval_record.rs` so HTML and agent JSON renderers stay format-specific.
+- Records are a projection of an internal graph Knowledge Object node plus a `match` block. The projection lives in `domain/retrieval/retrieval_record.rs`; HTML rendering and graph artifact construction remain separate adapter concerns.
 - The `match` block is the only field that varies between `why` (no match block) and `search` outputs.
-- Per-object fields that the agent artifact omits stay omitted in the record. No null padding, no empty strings.
+- Per-object fields that the graph artifact omits stay omitted in the record. No null padding, no empty strings.
 
 ## New Diagnostic Codes
 
@@ -338,21 +346,21 @@ V1 ships in six vertical slices. Each slice ends with runnable CLI behavior, fix
 
 ### V1.1 — `adoc why <object-id>`
 
-Goal: make Object IDs immediately useful for humans and for any agent that has already learned IDs from the agent artifact.
+Goal: make Object IDs immediately useful for humans and for any agent that has already learned IDs from the graph artifact.
 
 Scope:
 
 - Add `domain/retrieval/retrieval_record.rs` and `application/retrieval.rs` skeleton.
-- Add `infrastructure/artifact/agent_json.rs` reader (currently the file only contains a writer).
+- Add `infrastructure/artifact/graph_json.rs` reader (currently the file only contains a writer).
 - Add a `RetrievalSession`-owned exact lookup keyed by Object ID with duplicate detection inside the artifact.
 - Add diagnostics: `io.artifact_missing`, `io.artifact_unreadable`, `io.artifact_malformed`, `schema.unsupported_version`, `id.duplicate_in_artifact`, `retrieval.object_not_found`.
 - Implement `adoc why <id>` with `--artifact <path>` and `--format text|json`.
 - Pretty text output mirrors PRD §21.5: kind, status, owner, verified date, body, evidence, source, relations.
-- Integration tests against a fixture agent artifact; CLI tests for the four error paths.
+- Integration tests against a fixture graph artifact; CLI tests for the four error paths.
 
 Acceptance:
 
-- `adoc why billing.credits.decrement-after-success --artifact examples/billing-pilot/dist/docs.agent.json` prints the object.
+- `adoc why billing.credits.decrement-after-success --artifact examples/billing-pilot/dist/docs.graph.json` prints the object.
 - `--format json` emits an `adoc.retrieval.v0` envelope with one record.
 - Unknown ID exits `3` with a fix-oriented message that does not implicate the source.
 - Missing or malformed artifact exits `2` with guidance to run `adoc build`.
@@ -416,7 +424,7 @@ Scope:
 - Add search-artifact loading at session start; missing artifact emits `search.artifact_missing` (warn) and disables semantic mode.
 - Add `search.model_mismatch` (error) and `search.hash_drift` (warn).
 - Implement `--semantic` flag on `adoc search`. JSON output adds `match.vector_rank` and a `match.cosine_score`.
-- Integration tests cover paraphrase recall (pilot queries that lexical loses), model mismatch error, and hash-drift warning produced when search artifact is older than agent artifact.
+- Integration tests cover paraphrase recall (pilot queries that lexical loses), model mismatch error, and hash-drift warning produced when search artifact is older than graph artifact.
 
 Acceptance:
 
@@ -466,7 +474,7 @@ Acceptance:
 - The property suite passes against both providers.
 - Every later change to ranking, embedding composition, or model selection must keep both suites green or update them with a recorded rationale.
 
-Deferred from V1 entirely: agent-server surface (V1.5/V2), `adoc init` and config (V1.5), stale-by-expiration diagnostics (V1.5), source-aware retrieval (V2+), graph artifact (V6), permissioned retrieval (V7).
+Deferred from V1 entirely: agent-server surface, source-aware retrieval, permissioned retrieval, includes, nested typed blocks, custom schemas, and SQLite-backed graph/search storage.
 
 ## Tests and Fixtures
 
@@ -475,19 +483,19 @@ Fixture additions:
 ```text
 fixtures/
   v1_1_why/
-    valid_artifact.agent.json
-    missing_object.agent.json
-    malformed_artifact.agent.json
-    unsupported_version.agent.json
-    duplicate_id.agent.json
+    valid_artifact.graph.json
+    missing_object.graph.json
+    malformed_artifact.graph.json
+    unsupported_version.graph.json
+    duplicate_id.graph.json
   v1_2_search/
-    pilot_subset.agent.json
-    empty.agent.json
+    pilot_subset.graph.json
+    empty.graph.json
   v1_3_embed/
     in_memory_baseline.search.json
   v1_4_semantic/
     model_mismatch.search.json
-    hash_drift.agent.json
+    hash_drift.graph.json
     hash_drift.search.json
 ```
 
@@ -496,7 +504,7 @@ Test guidance:
 - Hermetic tests opt into `InMemoryProvider` explicitly with `ADOC_TEST_EMBEDDING_PROVIDER=in-memory`. The fastembed path is the default when the test feature is enabled but the env var is unset, and end-to-end FastEmbed coverage runs under `cargo test --features fastembed-it`.
 - CLI tests that need the production `build_workspace()` boundary without model downloads enable the test-only `test-embedding-provider` feature and set `ADOC_TEST_EMBEDDING_PROVIDER=in-memory`. Production builds do not use this seam.
 - Golden-test the JSON envelope produced by `--format json` for both `why` and `search`. Schema regressions must update the golden file plus the schema version explicitly.
-- Property suite generated from any agent artifact: every body verbatim → top 1 lexical, every Object ID → top 1 lexical, every owner query covers every claim with that owner.
+- Property suite generated from any graph artifact: every body verbatim → top 1 lexical, every Object ID → top 1 lexical, every owner query covers every claim with that owner.
 
 ## Open Questions Before Scaffolding
 

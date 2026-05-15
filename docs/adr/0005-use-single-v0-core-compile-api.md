@@ -13,3 +13,9 @@ V0.5 also adds `DiagnosticCode::IoUnsupportedSourceExtension` with wire code `io
 V0.5 also adds `DiagnosticCode::IoUnreadableDirectory` with wire code `io.unreadable_directory` for directories that exist but cannot be traversed during recursive source discovery. Missing roots and ordinary file read failures remain `io.unreadable_file`.
 
 V1.5 adds `DiagnosticCode::LifecycleInvalidExpiresAt` with wire code `lifecycle.invalid_expires_at` for Knowledge Objects whose `expires_at` field is present but not parseable as `YYYY-MM-DD`.
+
+## Addendum (V1): public contracts are serialized artifacts and envelopes
+
+V1 adds read-side entry points (`build_workspace`, `load_graph_session`, `load_retrieval_session`, `why_object`, `search`, and `traverse_graph`) without turning `adoc-core` into a public graph-construction library. The public surface stays oriented around opaque sessions, inputs, queries, result envelopes, retrieval records, diagnostics, and mode/relation/direction enums.
+
+`BuildArtifacts` now returns ready-to-write strings: `html`, `graph_json`, and optional `search_json`. The CLI writes those strings directly. The Graph Artifact (`adoc.graph.v1`) and Search Artifact (`adoc.search.v0`) serialized JSON shapes are the supported contracts; their Rust DTOs (`GraphArtifactDocument`, graph node/edge structs, `SearchArtifactDocument`, and related construction structs) remain internal implementation details.

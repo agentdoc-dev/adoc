@@ -1,6 +1,6 @@
 # AgentDoc V0.1 Prose Reference @doc(v0-1.prose)
 
-AgentDoc keeps **knowledge** readable for both humans and *agents*. Run `adoc check` to validate the source, then `adoc build` to emit human and agent artifacts.
+AgentDoc keeps **knowledge** readable for both humans and *agents*. Run `adoc check` to validate the source, then `adoc build` to emit human and graph artifacts.
 
 ## Block coverage
 

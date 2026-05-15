@@ -1,9 +1,9 @@
 # V1 Retrieval
 
 V1 retrieval is a local read-side workflow over build artifacts. `adoc build`
-creates the human HTML, the agent artifact, the graph artifact, and the
-optional search artifact. `adoc why`, `adoc graph`, and `adoc search` read
-those artifacts; they do not compile source files.
+creates the human HTML, the graph artifact, and the optional search artifact.
+`adoc why`, `adoc graph`, and `adoc search` read those artifacts; they do not
+compile source files.
 
 ## Build
 
@@ -14,13 +14,11 @@ adoc build examples/billing-pilot --out dist
 Successful embedding-enabled builds write:
 
 - `dist/docs.html`
-- `dist/docs.agent.json`
 - `dist/docs.graph.json`
 - `dist/docs.search.json`
 
-`docs.agent.json` is the canonical retrieval record source. `docs.graph.json`
-is the sidecar relation graph. `docs.search.json` is the sidecar vector index.
-By default search uses the local FastEmbed
+`docs.graph.json` is the canonical retrieval record and relation graph source.
+`docs.search.json` is the sidecar vector index. By default search uses the local FastEmbed
 `bge-small-en-v1.5` provider. The first build may download model weights through
 `fastembed-rs`; later builds reuse the local model cache.
 
@@ -35,9 +33,9 @@ adoc build
 `check` and `build` use config `docs_path` when no source path is passed.
 `build` uses config outputs when `--out` is omitted. Config paths are resolved
 relative to the config file; `outputs.dir` fills `docs.html`,
-`docs.agent.json`, `docs.graph.json`, and `docs.search.json` unless exact
-output paths override them. Exact config outputs need `html`, `agent_json`,
-and `graph`; `search` is required only when embeddings are enabled.
+`docs.graph.json`, and `docs.search.json` unless exact output paths override
+them. Exact config outputs need `html` and `graph`; `search` is required only
+when embeddings are enabled.
 
 Config embedding mode is:
 
@@ -50,7 +48,7 @@ Missing `embeddings` defaults to `local`. `none` is equivalent to skipping
 embedding generation for config-backed builds. Hosted embedding adapters remain
 deferred; the shipped provider is local.
 
-Use `--no-embeddings` when you only need HTML, agent JSON, and graph JSON:
+Use `--no-embeddings` when you only need HTML and graph JSON:
 
 ```bash
 adoc build examples/billing-pilot --out dist --no-embeddings
@@ -58,7 +56,7 @@ adoc build examples/billing-pilot --out dist --no-embeddings
 
 That skips model loading and leaves any prior `docs.search.json` untouched.
 Config-backed skipped-embedding builds can omit `outputs.search` when exact
-HTML, agent JSON, and graph JSON paths are configured.
+HTML and graph JSON paths are configured.
 
 If a Knowledge Object has a parseable `expires_at` date before the local build
 date, `check` and `build` emit warning `lifecycle.expired`. The warning does
@@ -67,8 +65,8 @@ not block artifacts and does not mutate source.
 ## Why
 
 ```bash
-adoc why billing.credits.decrement-after-success --artifact dist/docs.agent.json
-adoc why billing.credits.decrement-after-success --artifact dist/docs.agent.json --format json
+adoc why billing.credits.decrement-after-success --artifact dist/docs.graph.json
+adoc why billing.credits.decrement-after-success --artifact dist/docs.graph.json --format json
 ```
 
 Use `why` when you already have an Object ID and need the authoritative
@@ -78,8 +76,7 @@ record: kind, status, owner, evidence, source span, body, and relations.
 
 ```bash
 adoc graph billing.credits.decrement-after-success \
-  --artifact dist/docs.graph.json \
-  --agent-artifact dist/docs.agent.json
+  --artifact dist/docs.graph.json
 ```
 
 Use `graph` when you need relation traversal from one Object ID. The command
@@ -98,7 +95,7 @@ Traversal flags:
 
 ```bash
 adoc search "when are credits decremented" \
-  --artifact dist/docs.agent.json \
+  --artifact dist/docs.graph.json \
   --search-artifact dist/docs.search.json
 ```
 
@@ -110,7 +107,7 @@ Mode flags:
 
 - Default: hybrid when `docs.search.json` loads; lexical fallback with one
   `search.artifact_missing` warning when it is absent.
-- `--lexical`: deterministic text and Object ID search over `docs.agent.json`.
+- `--lexical`: deterministic text and Object ID search over `docs.graph.json`.
   Use it for exact IDs, filters, regression tests, and offline operation.
 - `--semantic`: vector-only ranking from `docs.search.json`. Use it to inspect
   paraphrase recall or isolate embedding behavior.

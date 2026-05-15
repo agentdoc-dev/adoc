@@ -2454,7 +2454,7 @@ Outputs:
 
 ```text
 dist/docs.html
-dist/docs.agent.json
+dist/docs.graph.json
 dist/docs.graph.json
 dist/docs.search.json
 dist/docs.rag.ndjson
@@ -3216,7 +3216,7 @@ They may not define:
 | COMP-002 | Parser operates in linear time for valid documents.                          | P0       |
 | COMP-003 | Parser reports source spans for every object.                                | P0       |
 | COMP-004 | Compiler emits diagnostics with file, line, column, object ID, and severity. | P0       |
-| COMP-005 | Compiler emits `docs.agent.json`.                                            | P0       |
+| COMP-005 | Compiler emits `docs.graph.json`.                                            | P0       |
 | COMP-006 | Compiler emits `docs.search.json`.                                           | P0       |
 | COMP-007 | Compiler emits `docs.rag.ndjson`.                                            | P1       |
 | COMP-008 | Compiler emits `docs.graph.json` as the current graph artifact.              | P1       |
@@ -3325,7 +3325,7 @@ They may not define:
 | REND-004 | Rendered docs show stale warnings.                             | P0       |
 | REND-005 | Rendered docs show contradiction warnings.                     | P0       |
 | REND-006 | Rendered docs show replacement notices for superseded objects. | P0       |
-| REND-007 | System can render agent JSON view.                             | P0       |
+| REND-007 | System can render graph JSON view.                             | P0       |
 | REND-008 | System can render compliance view.                             | P2       |
 | REND-009 | System can render semantic review view.                        | P1       |
 | REND-010 | Rendering respects permissions.                                | P1       |
@@ -3667,7 +3667,7 @@ Success Criteria:
 7. Owner fields.
 8. References by ID.
 9. HTML rendering.
-10. Agent JSON output.
+10. Graph JSON output.
 11. CLI validation.
 12. Basic search.
 13. Strict mode.
@@ -4290,7 +4290,6 @@ sources:
 
 outputs:
   html: dist/docs
-  agent_json: dist/docs.agent.json
   graph: dist/docs.graph.json
   search: dist/docs.search.json
 
@@ -4424,7 +4423,7 @@ accepted decisions. Warn the user when trial credit behavior is involved.
 
 ---
 
-# 45. Example Compiled Agent JSON
+# 45. Example Compiled Graph JSON
 
 ```json
 {

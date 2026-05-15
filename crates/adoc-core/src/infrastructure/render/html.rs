@@ -1,4 +1,4 @@
-use crate::domain::ast::{BlockAst, ListKind, PageAst};
+use crate::domain::ast::{BlockAst, ListKind, WorkspaceAst};
 use crate::domain::graph::GraphRelationKind;
 use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
@@ -6,13 +6,21 @@ use crate::domain::knowledge_object::{
     claim::Evidence,
     projection::{KnowledgeObjectMetadata, MetadataDiscriminant, MetadataField},
 };
-use crate::domain::ports::renderer::Renderer;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct HtmlRenderer;
 
-impl Renderer for HtmlRenderer {
-    fn render(&self, pages: &[PageAst]) -> String {
+impl HtmlRenderer {
+    pub(crate) fn render_workspace(&self, workspace: &WorkspaceAst) -> String {
+        self.render_pages(&workspace.pages)
+    }
+
+    #[cfg(test)]
+    fn render(&self, pages: &[crate::domain::ast::PageAst]) -> String {
+        self.render_pages(pages)
+    }
+
+    fn render_pages(&self, pages: &[crate::domain::ast::PageAst]) -> String {
         let mut html = String::from(
             "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>AgentDoc</title>\n</head>\n<body>\n",
         );
@@ -541,7 +549,7 @@ mod tests {
 
     #[test]
     fn render_html_flows_inlines_through_heading_paragraph_and_list_item() {
-        use crate::domain::ast::{HeadingAst, ListAst, ListItem, ListKind, ParagraphAst};
+        use crate::domain::ast::{HeadingAst, ListAst, ListItem, ListKind, PageAst, ParagraphAst};
         use crate::domain::identity::PageId;
 
         let span = dummy_span;

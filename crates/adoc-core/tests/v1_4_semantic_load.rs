@@ -21,9 +21,8 @@ fn force_in_memory_provider() {
 fn missing_search_artifact_warns_and_disables_semantic() {
     force_in_memory_provider();
     let result = load_retrieval_session(RetrievalInput {
-        artifact_path: fixture("hash_drift.agent.json"),
+        artifact_path: fixture("hash_drift.graph.json"),
         search_artifact_path: Some(fixture("not_present.search.json")),
-        graph_artifact_path: None,
     });
     let session = result.session.expect("session loads without semantic");
     assert!(!session.has_semantic_index());
@@ -42,9 +41,8 @@ fn missing_search_artifact_warns_and_disables_semantic() {
 fn mismatched_model_emits_error_and_disables_semantic() {
     force_in_memory_provider();
     let result = load_retrieval_session(RetrievalInput {
-        artifact_path: fixture("hash_drift.agent.json"),
+        artifact_path: fixture("hash_drift.graph.json"),
         search_artifact_path: Some(fixture("model_mismatch.search.json")),
-        graph_artifact_path: None,
     });
     let session = result.session.expect("session still loads for lexical");
     assert!(
@@ -64,9 +62,8 @@ fn mismatched_model_emits_error_and_disables_semantic() {
 fn hash_drift_warns_but_keeps_semantic_index_loaded() {
     force_in_memory_provider();
     let result = load_retrieval_session(RetrievalInput {
-        artifact_path: fixture("hash_drift.agent.json"),
+        artifact_path: fixture("hash_drift.graph.json"),
         search_artifact_path: Some(fixture("hash_drift.search.json")),
-        graph_artifact_path: None,
     });
     let session = result.session.expect("session loads");
     assert!(

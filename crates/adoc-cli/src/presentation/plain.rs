@@ -1,7 +1,7 @@
 use std::fmt::Write as FmtWrite;
 use std::io;
 
-use adoc_core::{AgentJsonRelations, RetrievalRecord};
+use adoc_core::{RetrievalRecord, RetrievalRelations};
 
 use super::port::{ExpiresInfo, RetrievalPresenter, RetrievalView};
 use super::style::footer::render_footer;
@@ -129,7 +129,7 @@ pub(crate) fn has_fields(record: &RetrievalRecord) -> bool {
 }
 
 /// Returns `true` when the record has at least one relation in any category.
-pub(crate) fn has_relations(relations: &AgentJsonRelations) -> bool {
+pub(crate) fn has_relations(relations: &RetrievalRelations) -> bool {
     !relations.depends_on.is_empty()
         || !relations.supersedes.is_empty()
         || !relations.related_to.is_empty()
@@ -165,7 +165,7 @@ pub(crate) fn fields_items(output: &mut String, record: &RetrievalRecord) {
 
 /// Appends relation list items to `output`.  Does not emit a leading blank
 /// line or the `Relations:` header; the caller owns those.
-pub(crate) fn relations_items(output: &mut String, relations: &AgentJsonRelations) {
+pub(crate) fn relations_items(output: &mut String, relations: &RetrievalRelations) {
     render_relation_targets(output, "depends_on", &relations.depends_on);
     render_relation_targets(output, "supersedes", &relations.supersedes);
     render_relation_targets(output, "related_to", &relations.related_to);
@@ -183,7 +183,7 @@ mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use adoc_core::{AgentJsonRelations, RetrievalRecord, RetrievalSource};
+    use adoc_core::{RetrievalRecord, RetrievalRelations, RetrievalSource};
     use chrono::NaiveDate;
 
     use super::*;
@@ -204,14 +204,14 @@ mod tests {
             },
             evidence: BTreeMap::new(),
             fields: BTreeMap::new(),
-            relations: AgentJsonRelations::default(),
+            relations: RetrievalRelations::default(),
             search_match: None,
         }
     }
 
     fn default_meta() -> RenderMeta {
         RenderMeta {
-            artifact: PathBuf::from("docs.agent.json"),
+            artifact: PathBuf::from("docs.graph.json"),
             trust: None,
             duration: Duration::ZERO,
         }
@@ -281,7 +281,7 @@ mod tests {
                 ("scope".to_string(), "refunds".to_string()),
                 ("decided_by".to_string(), "architecture".to_string()),
             ]),
-            relations: AgentJsonRelations::default(),
+            relations: RetrievalRelations::default(),
             search_match: None,
         };
         let view = view_for(record);
@@ -305,7 +305,7 @@ mod tests {
                 "\n",
                 "Source: docs/decisions.adoc:7:1\n",
                 "\n",
-                "✓ rendered from docs.agent.json · 0.00s\n",
+                "✓ rendered from docs.graph.json · 0.00s\n",
             )
         );
     }
@@ -326,7 +326,7 @@ mod tests {
             },
             evidence: BTreeMap::new(),
             fields: BTreeMap::new(),
-            relations: AgentJsonRelations {
+            relations: RetrievalRelations {
                 depends_on: vec![
                     "billing.credits.ledger-source".to_string(),
                     "billing.refunds.audit-required".to_string(),
@@ -359,7 +359,7 @@ mod tests {
                 "- related_to: billing.credits.decrement-after-success\n",
                 "- related_to: billing.credits.reconciliation\n",
                 "\n",
-                "✓ rendered from docs.agent.json · 0.00s\n",
+                "✓ rendered from docs.graph.json · 0.00s\n",
             )
         );
     }
@@ -380,7 +380,7 @@ mod tests {
             },
             evidence: BTreeMap::new(),
             fields: BTreeMap::from([("canonical".to_string(), "billing credit".to_string())]),
-            relations: AgentJsonRelations::default(),
+            relations: RetrievalRelations::default(),
             search_match: None,
         };
         let view = view_for(record);
@@ -411,7 +411,7 @@ mod tests {
                 ("z_probe".to_string(), "trace".to_string()),
             ]),
             fields: BTreeMap::new(),
-            relations: AgentJsonRelations::default(),
+            relations: RetrievalRelations::default(),
             search_match: None,
         };
         let view = view_for(record);
@@ -541,13 +541,13 @@ mod tests {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
         view.footer = Some(RenderMeta {
-            artifact: PathBuf::from("/tmp/adoc-retrieval-dist/docs.agent.json"),
+            artifact: PathBuf::from("/tmp/adoc-retrieval-dist/docs.graph.json"),
             trust: Some("team".to_string()),
             duration: Duration::from_millis(60),
         });
         let text = render(&view);
         assert!(
-            text.ends_with("\n✓ rendered from docs.agent.json · trust: team · 0.06s\n"),
+            text.ends_with("\n✓ rendered from docs.graph.json · trust: team · 0.06s\n"),
             "plain footer line must end the output with trust and duration, got: {text:?}"
         );
     }
@@ -557,13 +557,13 @@ mod tests {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
         view.footer = Some(RenderMeta {
-            artifact: PathBuf::from("/tmp/docs.agent.json"),
+            artifact: PathBuf::from("/tmp/docs.graph.json"),
             trust: None,
             duration: Duration::from_millis(60),
         });
         let text = render(&view);
         assert!(
-            text.ends_with("\n✓ rendered from docs.agent.json · 0.06s\n"),
+            text.ends_with("\n✓ rendered from docs.graph.json · 0.06s\n"),
             "plain footer must omit trust segment when trust is None, got: {text:?}"
         );
         assert!(

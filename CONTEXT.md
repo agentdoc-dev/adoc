@@ -57,12 +57,12 @@ The first CLI behavior is driven by command arguments and built-in defaults, wit
 _Avoid_: config-first workflow, workspace manifest
 
 **V0 Build Artifacts**:
-The first compiler outputs: `dist/docs.html` and `dist/docs.agent.json`.
+The first compiler outputs were `dist/docs.html` and a flat agent JSON artifact; the flat JSON artifact is now retired in favor of the **Graph Artifact**.
 _Avoid_: graph database, search index, RAG export, semantic diff artifact
 
-**V0 Agent JSON**:
-A flat compiled list of Knowledge Objects plus diagnostics, with relations preserved as stable object ID strings.
-_Avoid_: graph-shaped artifact, embedded graph database, traversal API
+**Legacy Flat JSON Artifact**:
+The retired `docs.agent.json` object-list artifact. It is no longer emitted, loaded, or part of the public `adoc-core` surface.
+_Avoid_: new consumers, compatibility shims, treating it as the current read model
 
 **V0 Source Composition**:
 The first compiler reads multiple `.adoc` files from a project path directly, without `@include`.
@@ -81,11 +81,11 @@ The first supported relationship fields between Knowledge Objects: `depends_on`,
 _Avoid_: full graph relation model, graph traversal
 
 **Tracer-Bullet Milestone**:
-A small vertical slice that starts with `.adoc` input and ends with runnable CLI behavior, HTML output, agent JSON output, diagnostics, fixtures, and documentation.
+A small vertical slice that starts with `.adoc` input and ends with runnable CLI behavior, HTML output, graph JSON output, diagnostics, fixtures, and documentation.
 _Avoid_: horizontal layer milestone, infrastructure-only phase
 
 **V0 Implementation Stack**:
-Rust for the initial `adoc` CLI, parser, validator, compiler, HTML renderer, and agent JSON emitter.
+Rust for the initial `adoc` CLI, parser, validator, compiler, HTML renderer, and artifact emitters.
 _Avoid_: TypeScript-first compiler, web-first implementation
 
 **V0 Rust Workspace**:
@@ -99,6 +99,10 @@ _Avoid_: parser generator first, ad hoc string hacking
 **V0 Core API**:
 One high-level `compile_workspace()` entry point in `adoc-core`, backed by internal parser, validator, renderer, and artifact modules.
 _Avoid_: public low-level compiler module APIs too early
+
+**Public Core Surface**:
+The narrow `adoc-core` API exported for CLI callers and future local integrations: compile/build entry points, graph/retrieval session loaders, query functions, query/result/envelope records, diagnostics, and mode/relation/direction enums. Graph Artifact and Search Artifact DTO structs stay internal; serialized artifact files and retrieval envelopes are the contract.
+_Avoid_: public graph DTO construction, public search DTO construction, renderer-shaped read models
 
 **V0 Design Contract**:
 A short implementation design document that fixes the initial Rust module boundaries, core API shape, diagnostic shape, AST sketch, and artifact contracts before scaffolding.
@@ -117,7 +121,7 @@ One strict-mode check that produces diagnostics from a parsed page (e.g. `RawHtm
 _Avoid_: parser-side check, schema linter
 
 **Internal Port**:
-A `pub(crate)` trait in `adoc-core` that decouples `compile_workspace`'s orchestration from a specific adapter — today `SourceProvider`, `Renderer`, and `ArtifactWriter`. Internal-only per ADR-0005; promoted to `pub` only when a concrete external consumer needs it. See ADR-0006.
+A `pub(crate)` trait in `adoc-core` that decouples application orchestration from a specific adapter — today `SourceProvider`, `ArtifactReader`, `ArtifactWriter`, and `EmbeddingProvider`. Internal-only per ADR-0005; promoted to `pub` only when a concrete external consumer needs it. See ADR-0006.
 _Avoid_: public plug-in API, dynamic adapter registry
 
 **Build Output Directory**:
@@ -125,20 +129,20 @@ The directory passed to `adoc build --out`; the CLI creates it when missing and 
 _Avoid_: manual pre-created output directory
 
 **V1 Local Retrieval**:
-The first post-compiler milestone. Adds `adoc why` and `adoc search` over compiled artifacts, ships per-Knowledge-Object embeddings as a first-class build output, and ranks results via a parameter-free hybrid of BM25 and cosine similarity.
+The first post-compiler milestone. Adds `adoc why`, `adoc graph`, and `adoc search` over compiled artifacts, ships per-Knowledge-Object embeddings as a first-class build output, and ranks results via a parameter-free hybrid of BM25 and cosine similarity.
 _Avoid_: V1 hosted RAG service, V1 agent server, V1 graph database
 
 **V1 Build Artifacts**:
-The V1 compiler outputs: `dist/docs.html`, `dist/docs.agent.json`, `dist/docs.graph.json`, and optionally `dist/docs.search.json`. HTML and agent JSON preserve their V0 contracts; graph and search are read-side artifacts.
+The V1 compiler outputs: `dist/docs.html`, `dist/docs.graph.json`, and optionally `dist/docs.search.json`. `adoc-core` returns these as ready-to-write strings (`html`, `graph_json`, optional `search_json`); the CLI owns the file-write boundary. The graph artifact is the canonical read model for retrieval.
 _Avoid_: SQLite graph artifact, RAG ndjson, separate diagnostics artifact
 
 **Search Artifact**:
-The new V1 build output, `dist/docs.search.json`, with schema version `adoc.search.v0`. Carries one `{ id, content_hash, vector }` entry per Knowledge Object, a `model: { id, provider, dim }` header, and an `agent_artifact_hash` for drift detection.
-_Avoid_: per-chunk embedding store, vectors embedded in `docs.agent.json`, binary sidecar in V1
+The V1 build output, `dist/docs.search.json`, with schema version `adoc.search.v0`. Carries one `{ id, content_hash, vector }` entry per Knowledge Object, a `model: { id, provider, dim }` header, and a `graph_artifact_hash` for drift detection. The serialized JSON shape is public; the Rust DTO used to build or read it is internal to `adoc-core`.
+_Avoid_: per-chunk embedding store, vectors embedded in `docs.graph.json`, binary sidecar in V1
 
 **Graph Artifact**:
-The V1 build output, `dist/docs.graph.json`, with schema version `adoc.graph.v0`. It is derived from the flat agent artifact: one node per Knowledge Object and one directed edge per `depends_on`, `supersedes`, or `related_to` relation. It carries `agent_artifact_hash` for drift warnings.
-_Avoid_: graph database, SQLite-first graph storage, graph as authoring source of truth
+The V1 build output, `dist/docs.graph.json`, with schema version `adoc.graph.v1`. It is derived from validated AgentDoc Source and carries page, prose block, and Knowledge Object nodes plus directed `contains`, `reference`, and relation edges. It is data-only and contains no rendered HTML fields; the serialized JSON shape is public, while the Rust DTO used to build or read it is internal to `adoc-core`.
+_Avoid_: graph database, SQLite-first graph storage, graph as authoring source of truth, presentation HTML inside graph JSON
 
 **Embedding Provider**:
 The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the `InMemoryProvider` adapter is used in every hermetic test.
@@ -161,12 +165,16 @@ Read-only traversal over `docs.graph.json`, exposed by `adoc graph`. The default
 _Avoid_: infinite path enumeration, graph mutation, graph visualization as the current contract
 
 **Retrieval Record**:
-The stable JSON shape returned by `adoc why --format json` and `adoc search --format json`. Contained inside an `adoc.retrieval.v0` envelope. A projection of `AgentJsonObject` plus a small `match` block carrying `mode`, ranks, and (when relevant) `cosine_score`.
+The stable JSON shape returned by `adoc why --format json` and `adoc search --format json`. Contained inside an `adoc.retrieval.v0` envelope. A projection of a graph Knowledge Object node plus a small `match` block carrying `mode`, ranks, and (when relevant) `cosine_score`.
 _Avoid_: vectors in the retrieval envelope, per-record permissions in V1
 
 **Retrieval Session**:
-The immutable value the V1 application layer assembles from a loaded agent artifact, an optional loaded search artifact, and built indexes. CLI commands construct one session per invocation; there is no global retrieval state.
+The immutable value the V1 application layer assembles from a loaded graph artifact, an optional loaded search artifact, and built indexes. CLI commands construct one session per invocation; there is no global retrieval state.
 _Avoid_: long-lived retrieval daemon in V1, mutable shared session
+
+**Graph Index**:
+The internal deep read module built from a loaded **Graph Artifact**. It validates artifact Object IDs, owns Knowledge Object lookup and iteration, relation traversal, related candidate selection, and related-status lookup for retrieval projection.
+_Avoid_: duplicate exact lookup maps in retrieval sessions, ad-hoc graph scans in filters or rankers
 
 **Pilot Retrieval Set**:
 The V1.6 evaluation harness: `examples/billing-pilot/retrieval-set.yaml` carries 15-20 manually authored queries with `expected_ids` and `must_appear_in_top` thresholds, complemented by a property-based suite that asserts verbatim-body and Object-ID invariants. Both suites run in CI and gate ranking changes.
@@ -186,17 +194,18 @@ _Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
 - **Strict Mode** is the only v0 validation mode; compatibility mode arrives with Markdown migration.
 - The **V0 CLI Commands** are enough to validate source files and compile the first human and agent outputs.
 - **V0 Defaults** avoid config files until modes, schemas, ignores, CI policy, or output presets need configuration.
-- **V0 Build Artifacts** prove that the same **AgentDoc Source** can serve humans and agents.
-- **V0 Agent JSON** is flat; graph structure is emitted separately as the **Graph Artifact**.
+- **V0 Build Artifacts** proved that the same **AgentDoc Source** can serve humans and agents.
+- **Legacy Flat JSON Artifact** is retired; graph structure is now the canonical **Graph Artifact**.
 - **V0 Source Composition** does not support includes; composition is by scanning files.
 - **V0 Block Structure** keeps typed blocks top-level only.
 - **Page Annotation** is optional in v0; missing page identity can be derived from the file path.
-- **V0 Relation Set** references must resolve to existing Knowledge Object IDs and are preserved in **V0 Agent JSON** as ID arrays.
+- **V0 Relation Set** references must resolve to existing Knowledge Object IDs and are preserved in the **Graph Artifact** as directed relation edges.
 - Roadmap milestones should be **Tracer-Bullet Milestones**, not horizontal implementation layers.
 - **V0 Implementation Stack** treats AgentDoc as compiler infrastructure first; future editor and web surfaces consume compiled artifacts.
 - **V0 Rust Workspace** keeps CLI behavior separate from reusable compiler behavior.
 - **V0 Parser Architecture** keeps diagnostics and source spans product-specific while leaving room to replace parser internals later.
 - **V0 Core API** keeps the public core contract small; lower-level APIs can be exposed when LSP, web preview, semantic diff, or other integrations need them.
+- **Public Core Surface** exposes serialized artifacts and retrieval envelopes, not graph/search artifact DTOs.
 - **V0 Design Contract** guides scaffolding without replacing the roadmap or PRD.
 - **Object ID** values are validated in v0 and form the citation target for humans and agents.
 - **Diagnostic Code** values are semantic in v0; numeric aliases are deferred.
@@ -205,16 +214,16 @@ _Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
 - An **Internal Port** stays `pub(crate)` until a concrete external consumer (LSP, web preview, semantic diff) needs it.
 - **Build Output Directory** is created by the CLI when missing.
 - **V1 Local Retrieval** reads compiled artifacts only; it never re-runs `compile_workspace()`.
-- **V1 Build Artifacts** add a **Graph Artifact** and optional **Search Artifact** to the V0 pair without changing the existing **Agent-Facing Artifact** contract.
+- **V1 Build Artifacts** use the **Graph Artifact** as the canonical read artifact and add an optional **Search Artifact**; callers receive ready-to-write strings from `adoc-core`.
 - A **Search Artifact** is keyed by **Object ID** and is invalidated by model mismatch, schema-version mismatch, or per-object content-hash drift.
-- A **Graph Artifact** is keyed by **Object ID**, is derived from **V0 Relation Set** fields, and is invalidated by schema-version mismatch or whole-agent-artifact hash drift.
+- A **Graph Artifact** is keyed by **Object ID**, is derived from validated **AgentDoc Source**, is invalidated by schema-version mismatch, and does not carry presentation HTML.
 - An **Embedding Provider** is an **Internal Port** under ADR-0006; it stays `pub(crate)` until a concrete external consumer needs it.
 - **Embedding Composition** is the reduction from a Knowledge Object aggregate to a single canonical input string; relations stay filter targets, not semantic signal.
 - **Hybrid Retrieval** combines lexical and vector ranks via RRF; lifecycle, freshness, and authority remain filter targets in V1, not score modifiers.
 - **Graph Retrieval** filters candidate sets explicitly; it does not change unfiltered **Hybrid Retrieval** ranking.
 - **Graph Traversal** preserves original edge direction even when traversing incoming or both directions.
-- A **Retrieval Record** is a projection of an `AgentJsonObject` plus a small `match` block; it never carries vectors.
-- A **Retrieval Session** is constructed per CLI invocation and dropped at command exit.
+- A **Retrieval Record** is a projection of a graph Knowledge Object node plus a small `match` block; it never carries vectors.
+- A **Retrieval Session** is constructed per CLI invocation, delegates graph reads to the **Graph Index**, and is dropped at command exit.
 - The **Pilot Retrieval Set** gates every later ranking, embedding-composition, or model change.
 
 ## Example dialogue
@@ -236,7 +245,7 @@ _Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
 - "Project setup" could imply `adoc init` in v0 - resolved: users create `.adoc` files manually until initializer behavior is worth standardizing.
 - "Project configuration" could imply an `agentdoc` or `adoc` config file in v0 - resolved: no config file in v0.
 - "Build output" could include every artifact named in the PRD - resolved: v0 emits only the **V0 Build Artifacts**.
-- "Agent JSON" could imply a graph-shaped export - resolved: **V0 Agent JSON** is a flat object list with diagnostics; graph shape lives in **Graph Artifact**.
+- "Agent JSON" could imply a current read model - resolved: the **Legacy Flat JSON Artifact** is retired; the current read model is the **Graph Artifact**.
 - "Source composition" could imply `@include` support from the PRD - resolved: v0 has no includes and scans `.adoc` files directly.
 - "Typed block syntax" could include nested blocks from the PRD - resolved: **V0 Block Structure** allows only top-level typed blocks.
 - "Page annotation" could imply pages are first-class knowledge objects - resolved: **Page Annotation** is metadata only in v0.
@@ -253,7 +262,7 @@ _Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
 - "V1 retrieval staging" could mean shipping lexical search first and embeddings later - resolved: V1 ships **Hybrid Retrieval** with embeddings as a first-class build output, gated behind the **Embedding Provider** port.
 - "Embedding compute" could mean a hosted embeddings API in V1 - resolved: the V1 default **Embedding Provider** is local (`fastembed-rs` + `bge-small-en-v1.5`); a hosted adapter is deferred behind the same port.
 - "Vector storage shape" could mean SQLite, an embedded ANN library, or a binary sidecar in V1 - resolved: V1 uses a sidecar JSON (**Search Artifact**) with `adoc.search.v0` as schema version.
-- "Graph storage shape" could mean SQLite or a graph database - resolved: V1 uses a sidecar JSON (**Graph Artifact**) with `adoc.graph.v0` as schema version; SQLite waits until JSON becomes limiting.
+- "Graph storage shape" could mean SQLite or a graph database - resolved: V1 uses a sidecar JSON (**Graph Artifact**) with `adoc.graph.v1` as schema version; SQLite waits until JSON becomes limiting.
 - "Embedding granularity" could mean per-paragraph or per-chunk embeddings - resolved: V1 is one embedding per **Knowledge Object**; chunked retrieval is deferred.
 - "Search ranking" could mean a multi-factor weighted score from the PRD - resolved: V1 uses **Hybrid Retrieval** via parameter-free RRF; lifecycle, freshness, and authority remain filters, not score modifiers.
 - "Agent surface" could mean an MCP/JSON-RPC retrieval server in V1 - resolved: V1 ships only CLI commands plus a stable `--format json` envelope (`adoc.retrieval.v0`); a server is deferred.

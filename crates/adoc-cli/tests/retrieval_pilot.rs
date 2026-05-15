@@ -95,7 +95,7 @@ struct PilotBuild {
     _workspace: TestWorkspace,
     artifact_path: PathBuf,
     search_artifact_path: PathBuf,
-    agent_json: Value,
+    graph_json: Value,
 }
 
 fn default_must_appear_in_top() -> usize {
@@ -214,9 +214,12 @@ fn retrieval_pilot_property_invariants_hold_against_fastembed_provider() {
 fn assert_property_invariants(backend: EmbeddingBackend, workspace_name: &str) {
     let repo_root = repo_root();
     let pilot = build_billing_pilot(&repo_root, workspace_name, backend);
-    let objects = pilot.agent_json["objects"]
+    let objects = pilot.graph_json["nodes"]
         .as_array()
-        .expect("agent JSON objects is an array");
+        .expect("graph JSON nodes is an array")
+        .iter()
+        .filter(|node| node["type"] == "knowledge_object")
+        .collect::<Vec<_>>();
     assert!(!objects.is_empty(), "pilot artifact should contain objects");
 
     let mut owners: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -313,18 +316,18 @@ fn build_billing_pilot(
         .expect("adoc build runs");
     assert_success("billing pilot build", &build_output);
 
-    let artifact_path = output_directory.join("docs.agent.json");
+    let artifact_path = output_directory.join("docs.graph.json");
     let search_artifact_path = output_directory.join("docs.search.json");
-    let agent_json_text =
-        fs::read_to_string(&artifact_path).expect("billing pilot agent JSON is written");
-    let agent_json: Value =
-        serde_json::from_str(&agent_json_text).expect("agent JSON is valid JSON");
+    let graph_json_text =
+        fs::read_to_string(&artifact_path).expect("billing pilot graph JSON is written");
+    let graph_json: Value =
+        serde_json::from_str(&graph_json_text).expect("graph JSON is valid JSON");
 
     PilotBuild {
         _workspace: workspace,
         artifact_path,
         search_artifact_path,
-        agent_json,
+        graph_json,
     }
 }
 

@@ -47,17 +47,16 @@ impl CleanFixture {
             self.name
         );
 
-        let expected_agent_json = read_fixture_file(&self.directory, "expected.agent.json");
-        let actual_agent_json = format!(
-            "{}\n",
-            artifacts
-                .agent_json
-                .to_pretty_json()
-                .expect("agent JSON should serialize")
-        );
-        assert_eq!(
-            actual_agent_json, expected_agent_json,
-            "fixture {} agent JSON artifact mismatch",
+        let graph_json: serde_json::Value =
+            serde_json::from_str(&artifacts.graph_json).expect("graph JSON is valid");
+        assert_eq!(graph_json["schema_version"], "adoc.graph.v1");
+        assert!(
+            graph_json["nodes"]
+                .as_array()
+                .expect("graph nodes is an array")
+                .iter()
+                .any(|node| node["type"] == "knowledge_object"),
+            "fixture {} should emit graph Knowledge Object nodes",
             self.name
         );
     }

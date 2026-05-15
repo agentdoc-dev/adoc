@@ -37,14 +37,12 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                 Commands::Graph {
                     object_id,
                     artifact,
-                    agent_artifact,
                     relation,
                     direction,
                 } => graph(
                     GraphCommandInput {
                         object_id,
                         artifact,
-                        agent_artifact,
                         relation: relation.map(Into::into),
                         direction: direction.map(Into::into),
                     },
@@ -54,7 +52,6 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     query,
                     artifact,
                     search_artifact,
-                    graph_artifact,
                     semantic,
                     lexical,
                     kind,
@@ -70,7 +67,6 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                         query,
                         artifact,
                         search_artifact,
-                        graph_artifact,
                         semantic,
                         lexical,
                         kind,

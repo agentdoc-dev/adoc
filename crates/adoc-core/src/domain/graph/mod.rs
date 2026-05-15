@@ -65,34 +65,111 @@ impl fmt::Display for GraphDirection {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GraphArtifactDocument {
-    pub schema_version: String,
-    pub agent_artifact_hash: String,
-    pub nodes: Vec<GraphNode>,
-    pub edges: Vec<GraphEdge>,
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct GraphArtifactDocument {
+    pub(crate) schema_version: String,
+    pub(crate) nodes: Vec<GraphNode>,
+    pub(crate) edges: Vec<GraphEdge>,
+    pub(crate) diagnostics: Vec<Diagnostic>,
 }
 
 impl GraphArtifactDocument {
-    pub fn to_pretty_json(&self) -> Result<String, serde_json::Error> {
+    pub(crate) fn to_pretty_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct GraphNode {
-    pub id: String,
-    pub kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<String>,
-    pub page_id: String,
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(crate) enum GraphNode {
+    Page(GraphPageNode),
+    Heading(GraphBlockNode),
+    Paragraph(GraphBlockNode),
+    List(GraphBlockNode),
+    CodeBlock(GraphBlockNode),
+    KnowledgeObject(GraphKnowledgeObjectNode),
+}
+
+impl GraphNode {
+    pub(crate) fn as_knowledge_object(&self) -> Option<&GraphKnowledgeObjectNode> {
+        match self {
+            Self::KnowledgeObject(node) => Some(node),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct GraphEdge {
-    pub source: String,
-    pub target: String,
-    pub relation: GraphRelationKind,
+pub(crate) struct GraphPageNode {
+    pub(crate) id: String,
+    pub(crate) order: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) title: Option<String>,
+    pub(crate) source_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub(crate) struct GraphBlockNode {
+    pub(crate) id: String,
+    pub(crate) page_id: String,
+    pub(crate) order: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) level: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) code: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub(crate) items: Vec<String>,
+    pub(crate) source_span: GraphSourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub(crate) struct GraphKnowledgeObjectNode {
+    pub(crate) id: String,
+    pub(crate) kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) status: Option<String>,
+    pub(crate) body: String,
+    pub(crate) page_id: String,
+    pub(crate) source_span: GraphSourceSpan,
+    pub(crate) fields: BTreeMap<String, String>,
+    pub(crate) relations: GraphRelations,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub(crate) struct GraphSourceSpan {
+    pub(crate) path: String,
+    pub(crate) line: u32,
+    pub(crate) column: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
+pub(crate) struct GraphRelations {
+    pub(crate) depends_on: Vec<String>,
+    pub(crate) supersedes: Vec<String>,
+    pub(crate) related_to: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub(crate) struct GraphEdge {
+    pub(crate) kind: GraphEdgeKind,
+    pub(crate) source: String,
+    pub(crate) target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) relation: Option<GraphRelationKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) order: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum GraphEdgeKind {
+    Contains,
+    Relation,
+    Reference,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,7 +208,7 @@ pub struct GraphTraversalEdge {
 
 #[derive(Debug, Clone)]
 pub(crate) struct GraphIndex {
-    nodes: BTreeMap<ObjectId, GraphNode>,
+    nodes: BTreeMap<ObjectId, GraphKnowledgeObjectNode>,
     edges: Vec<GraphEdge>,
     outgoing: BTreeMap<ObjectId, Vec<usize>>,
     incoming: BTreeMap<ObjectId, Vec<usize>>,
@@ -143,7 +220,10 @@ impl GraphIndex {
         let mut diagnostics = Vec::new();
 
         for node in document.nodes {
-            let id_text = node.id.clone();
+            let Some(knowledge_object) = node.as_knowledge_object().cloned() else {
+                continue;
+            };
+            let id_text = knowledge_object.id.clone();
             let node_id = match ObjectId::new(id_text.clone()) {
                 Ok(node_id) => node_id,
                 Err(_) => {
@@ -153,7 +233,7 @@ impl GraphIndex {
             };
             match nodes.entry(node_id) {
                 Entry::Vacant(entry) => {
-                    entry.insert(node);
+                    entry.insert(knowledge_object);
                 }
                 Entry::Occupied(_) => {
                     diagnostics.push(
@@ -168,12 +248,29 @@ impl GraphIndex {
             }
         }
 
-        let mut edges = document.edges;
+        let mut edges: Vec<_> = document
+            .edges
+            .into_iter()
+            .filter(|edge| edge.kind == GraphEdgeKind::Relation)
+            .collect();
         edges.sort();
         let mut outgoing: BTreeMap<ObjectId, Vec<usize>> = BTreeMap::new();
         let mut incoming: BTreeMap<ObjectId, Vec<usize>> = BTreeMap::new();
 
         for (index, edge) in edges.iter().enumerate() {
+            if edge.relation.is_none() {
+                diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::IoArtifactMalformed,
+                        format!(
+                            "Graph relation edge `{}` -> `{}` is missing a relation kind.",
+                            edge.source, edge.target
+                        ),
+                    )
+                    .with_help("Rebuild docs.graph.json from validated AgentDoc Source."),
+                );
+                continue;
+            }
             let source_id = match ObjectId::new(edge.source.clone()) {
                 Ok(id) => id,
                 Err(_) => {
@@ -245,7 +342,10 @@ impl GraphIndex {
         while let Some((current, distance)) = queue.pop_front() {
             for edge_index in self.incident_edge_indices(&current, query.direction, &relation_set) {
                 let edge = &self.edges[edge_index];
-                let edge_key = (edge.source.clone(), edge.relation, edge.target.clone());
+                let Some(relation) = edge.relation else {
+                    continue;
+                };
+                let edge_key = (edge.source.clone(), relation, edge.target.clone());
                 if !emitted_edges.insert(edge_key) {
                     continue;
                 }
@@ -257,7 +357,7 @@ impl GraphIndex {
                 edges.push(GraphTraversalEdge {
                     source: edge.source.clone(),
                     target: edge.target.clone(),
-                    relation: edge.relation,
+                    relation,
                     revisit,
                 });
 
@@ -280,6 +380,31 @@ impl GraphIndex {
             edges,
             diagnostics: Vec::new(),
         }
+    }
+
+    pub(crate) fn object(&self, id: &ObjectId) -> Option<&GraphKnowledgeObjectNode> {
+        self.nodes.get(id)
+    }
+
+    pub(crate) fn objects(&self) -> impl Iterator<Item = &GraphKnowledgeObjectNode> {
+        self.nodes.values()
+    }
+
+    pub(crate) fn related_statuses<'a>(
+        &self,
+        targets: impl IntoIterator<Item = &'a str>,
+    ) -> BTreeMap<String, Option<String>> {
+        let mut statuses = BTreeMap::new();
+
+        for target in targets {
+            let status = ObjectId::new(target)
+                .ok()
+                .and_then(|target_id| self.nodes.get(&target_id))
+                .and_then(|object| object.status.clone());
+            statuses.insert(target.to_string(), status);
+        }
+
+        statuses
     }
 
     pub(crate) fn related_candidate_ids(
@@ -320,7 +445,11 @@ impl GraphIndex {
         edge_indices.dedup();
         edge_indices
             .into_iter()
-            .filter(|index| relations.contains(&self.edges[*index].relation))
+            .filter(|index| {
+                self.edges[*index]
+                    .relation
+                    .is_some_and(|relation| relations.contains(&relation))
+            })
             .collect()
     }
 
@@ -348,7 +477,7 @@ fn relation_set(relations: &[GraphRelationKind]) -> BTreeSet<GraphRelationKind> 
     }
 }
 
-fn traversal_node(node: &GraphNode, distance: u32) -> GraphTraversalNode {
+fn traversal_node(node: &GraphKnowledgeObjectNode, distance: u32) -> GraphTraversalNode {
     GraphTraversalNode {
         id: node.id.clone(),
         kind: node.kind.clone(),

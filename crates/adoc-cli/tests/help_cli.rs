@@ -20,7 +20,7 @@ fn long_top_level_help_lists_command_descriptions_and_examples() {
     assert!(stdout.contains("AgentDoc Local CLI"));
     assert!(stdout.contains("Create AgentDoc config and starter docs"));
     assert!(stdout.contains("Check AgentDoc Source for strict-mode diagnostics"));
-    assert!(stdout.contains("Build human and agent-facing artifacts"));
+    assert!(stdout.contains("Build HTML, graph, and search artifacts"));
     assert!(stdout.contains("Explain one Knowledge Object from a compiled artifact"));
     assert!(stdout.contains("Traverse Knowledge Object relations from graph artifacts"));
     assert!(stdout.contains("Search compiled Knowledge Objects"));
@@ -76,7 +76,7 @@ fn contextual_why_help_forms_render_the_same_command_help() {
         assert!(stdout.contains("Usage: adoc why [OPTIONS] <OBJECT_ID>"));
         assert!(stdout.contains("Object ID to explain"));
         assert!(stdout.contains("--artifact <ARTIFACT>"));
-        assert!(stdout.contains("dist/docs.agent.json"));
+        assert!(stdout.contains("dist/docs.graph.json"));
         assert!(stdout.contains("Examples:"));
         assert!(stdout.contains("adoc why billing.refunds.issue-credit"));
         assert_eq!(stdout, first);
@@ -100,7 +100,7 @@ fn contextual_graph_help_lists_graph_artifact_and_relation_filters() {
     assert!(stdout.contains("Usage: adoc graph [OPTIONS] <OBJECT_ID>"));
     assert!(stdout.contains("Graph JSON artifact path"));
     assert!(stdout.contains("dist/docs.graph.json"));
-    assert!(stdout.contains("--agent-artifact <AGENT_ARTIFACT>"));
+    assert!(!stdout.contains("--agent-artifact"));
     assert!(stdout.contains("--relation <RELATION>"));
     assert!(stdout.contains("--direction <DIRECTION>"));
     assert!(stdout.contains("depends_on"));
@@ -122,14 +122,14 @@ fn contextual_search_help_lists_graph_relation_filters() {
     );
     let stdout = stdout(&output);
     assert!(stdout.contains("--related-to <RELATED_TO>"));
-    assert!(stdout.contains("--graph-artifact <GRAPH_ARTIFACT>"));
+    assert!(!stdout.contains("--graph-artifact"));
     assert!(stdout.contains("--relation <RELATION>"));
     assert!(stdout.contains("--direction <DIRECTION>"));
 }
 
 #[test]
 fn why_treats_trailing_help_as_object_id_when_options_precede_it() {
-    let artifact = fixture_path("v1_1_why/valid_artifact.agent.json");
+    let artifact = fixture_path("v1_1_why/valid_artifact.graph.json");
     let output = adoc_command()
         .arg("why")
         .arg("--artifact")
@@ -157,7 +157,7 @@ fn why_treats_trailing_help_as_object_id_when_options_precede_it() {
 
 #[test]
 fn search_treats_trailing_help_as_query_when_options_precede_it() {
-    let artifact = workspace_fixture_path("v1_2_search/pilot_subset.agent.json");
+    let artifact = workspace_fixture_path("v1_2_search/pilot_subset.graph.json");
     let output = adoc_command()
         .arg("search")
         .arg("--artifact")

@@ -60,7 +60,6 @@ pub enum DiagnosticCode {
     SearchArtifactMissing,
     SearchModelMismatch,
     SearchHashDrift,
-    GraphHashDrift,
     GraphObjectNotFound,
 }
 
@@ -104,7 +103,6 @@ impl DiagnosticCode {
             DiagnosticCode::SearchArtifactMissing,
             DiagnosticCode::SearchModelMismatch,
             DiagnosticCode::SearchHashDrift,
-            DiagnosticCode::GraphHashDrift,
             DiagnosticCode::GraphObjectNotFound,
         ]
     }
@@ -148,7 +146,6 @@ impl DiagnosticCode {
             DiagnosticCode::SearchArtifactMissing => "search.artifact_missing",
             DiagnosticCode::SearchModelMismatch => "search.model_mismatch",
             DiagnosticCode::SearchHashDrift => "search.hash_drift",
-            DiagnosticCode::GraphHashDrift => "graph.hash_drift",
             DiagnosticCode::GraphObjectNotFound => "graph.object_not_found",
         }
     }
@@ -215,13 +212,13 @@ impl DiagnosticCode {
                 "Use supported source files with the `.adoc` extension."
             }
             DiagnosticCode::IoArtifactMissing => {
-                "Build docs.agent.json before loading the retrieval artifact."
+                "Build docs.graph.json before loading the retrieval artifact."
             }
             DiagnosticCode::IoArtifactUnreadable => {
-                "Check that docs.agent.json exists and can be read by the current user."
+                "Check that docs.graph.json exists and can be read by the current user."
             }
             DiagnosticCode::IoArtifactMalformed => {
-                "Rebuild docs.agent.json from valid source documents."
+                "Rebuild docs.graph.json from valid source documents."
             }
             DiagnosticCode::SchemaUnsupportedVersion => {
                 "Regenerate the artifact with a schema version supported by this binary."
@@ -260,10 +257,7 @@ impl DiagnosticCode {
                 "Rebuild dist/docs.search.json with the active embedding provider, or switch providers to match the artifact's model header."
             }
             DiagnosticCode::SearchHashDrift => {
-                "Re-run `adoc build` to regenerate dist/docs.search.json from the current agent artifact."
-            }
-            DiagnosticCode::GraphHashDrift => {
-                "Re-run `adoc build` to regenerate dist/docs.graph.json from the current agent artifact."
+                "Re-run `adoc build` to regenerate dist/docs.search.json from the current graph artifact."
             }
             DiagnosticCode::GraphObjectNotFound => {
                 "Use an object ID present in the loaded graph artifact, or rebuild docs.graph.json."
@@ -337,7 +331,6 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "search.artifact_missing",
     "search.model_mismatch",
     "search.hash_drift",
-    "graph.hash_drift",
     "graph.object_not_found",
 ];
 
@@ -349,7 +342,7 @@ impl Diagnostic {
         Self {
             code: DiagnosticCode::RetrievalObjectNotFound,
             severity: Severity::Error,
-            message: format!("Object ID `{id}` was not found in the agent artifact."),
+            message: format!("Object ID `{id}` was not found in the graph artifact."),
             span: None,
             object_id: Some(id),
             help: Some(

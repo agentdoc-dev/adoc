@@ -70,7 +70,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use adoc_core::{
-        AgentJsonRelations, Diagnostic, DiagnosticCode, RetrievalEnvelope, RetrievalRecord,
+        Diagnostic, DiagnosticCode, RetrievalEnvelope, RetrievalRecord, RetrievalRelations,
         RetrievalSource, Severity,
     };
 
@@ -120,7 +120,7 @@ mod tests {
             },
             evidence: BTreeMap::new(),
             fields: BTreeMap::new(),
-            relations: AgentJsonRelations::default(),
+            relations: RetrievalRelations::default(),
             search_match: None,
         }
     }
@@ -155,7 +155,7 @@ mod tests {
             },
             evidence: BTreeMap::new(),
             fields: BTreeMap::new(),
-            relations: AgentJsonRelations::default(),
+            relations: RetrievalRelations::default(),
             search_match: None,
         };
         let view = make_view(record.clone());

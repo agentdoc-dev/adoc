@@ -5,7 +5,7 @@
     "provider": "test",
     "dim": 4
   },
-  "agent_artifact_hash": "sha256:7ddfcacbfdc7a3e92d2d436c8f904579ff327de51938ffae2e429b6273c74bd0",
+  "graph_artifact_hash": "sha256:594d5cebcef437e36739e58b6aac54e07da85de84ce91a89fe84d5acbed4f2d0",
   "embeddings": [
     {
       "id": "billing.credits",

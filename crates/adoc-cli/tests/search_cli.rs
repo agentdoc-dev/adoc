@@ -6,27 +6,27 @@ use std::process::Command;
 use support::{TestWorkspace, fixture_path, workspace_fixture_path};
 
 fn copy_search_artifact(workspace: &TestWorkspace, relative_path: &str) {
-    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
+    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.graph.json"))
         .expect("fixture artifact is readable");
     workspace.write(relative_path, &artifact);
 }
 
 fn pilot_subset_artifact() -> String {
-    workspace_fixture_path("v1_2_search/pilot_subset.agent.json")
+    workspace_fixture_path("v1_2_search/pilot_subset.graph.json")
         .to_str()
         .expect("fixture path is UTF-8")
         .to_string()
 }
 
 fn empty_search_artifact() -> String {
-    workspace_fixture_path("v1_2_search/empty.agent.json")
+    workspace_fixture_path("v1_2_search/empty.graph.json")
         .to_str()
         .expect("fixture path is UTF-8")
         .to_string()
 }
 
 fn artifact_with_diagnostic(severity: &str) -> String {
-    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
+    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.graph.json"))
         .expect("fixture artifact is readable");
     let mut value: serde_json::Value =
         serde_json::from_str(&artifact).expect("fixture artifact is JSON");
@@ -187,9 +187,9 @@ fn search_cli_empty_fixture_prints_no_matches() {
 }
 
 #[test]
-fn search_cli_defaults_to_dist_agent_json_and_text_format() {
+fn search_cli_defaults_to_dist_graph_json_and_text_format() {
     let workspace = TestWorkspace::new("search-defaults");
-    copy_search_artifact(&workspace, "dist/docs.agent.json");
+    copy_search_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -220,7 +220,7 @@ fn search_cli_defaults_to_dist_agent_json_and_text_format() {
 #[test]
 fn search_cli_uses_explicit_artifact_path() {
     let workspace = TestWorkspace::new("search-explicit-artifact");
-    copy_search_artifact(&workspace, "custom/docs.agent.json");
+    copy_search_artifact(&workspace, "custom/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -228,7 +228,7 @@ fn search_cli_uses_explicit_artifact_path() {
             "search",
             "risk",
             "--artifact",
-            "custom/docs.agent.json",
+            "custom/docs.graph.json",
             "--lexical",
             "--format",
             "plain",
@@ -250,7 +250,7 @@ fn search_cli_uses_explicit_artifact_path() {
 #[test]
 fn search_cli_styled_color_always_emits_ansi_codes() {
     let workspace = TestWorkspace::new("search-styled-color-always");
-    copy_search_artifact(&workspace, "dist/docs.agent.json");
+    copy_search_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -336,13 +336,13 @@ fn search_cli_missing_artifact_exits_2() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("io.artifact_missing"));
-    assert!(stderr.contains("dist/docs.agent.json"));
+    assert!(stderr.contains("dist/docs.graph.json"));
 }
 
 #[test]
 fn search_cli_empty_result_exits_0_and_prints_no_matches() {
     let workspace = TestWorkspace::new("search-empty");
-    copy_search_artifact(&workspace, "dist/docs.agent.json");
+    copy_search_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -363,7 +363,7 @@ fn search_cli_empty_result_exits_0_and_prints_no_matches() {
 #[test]
 fn search_cli_invalid_filter_exits_1_and_prints_stderr_in_text_mode() {
     let workspace = TestWorkspace::new("search-invalid-filter-text");
-    copy_search_artifact(&workspace, "dist/docs.agent.json");
+    copy_search_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -384,7 +384,7 @@ fn search_cli_invalid_filter_exits_1_and_prints_stderr_in_text_mode() {
 #[test]
 fn search_cli_json_success_includes_envelope_records_diagnostics_and_match_metadata() {
     let workspace = TestWorkspace::new("search-json-success");
-    copy_search_artifact(&workspace, "dist/docs.agent.json");
+    copy_search_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -430,7 +430,7 @@ fn search_cli_json_success_includes_envelope_records_diagnostics_and_match_metad
 #[test]
 fn search_cli_json_invalid_filter_exits_1_with_envelope_diagnostics_and_no_stderr() {
     let workspace = TestWorkspace::new("search-json-invalid-filter");
-    copy_search_artifact(&workspace, "dist/docs.agent.json");
+    copy_search_artifact(&workspace, "dist/docs.graph.json");
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -466,7 +466,7 @@ fn search_cli_json_invalid_filter_exits_1_with_envelope_diagnostics_and_no_stder
 #[test]
 fn search_cli_json_success_includes_loaded_artifact_warnings() {
     let workspace = TestWorkspace::new("search-json-artifact-warning");
-    workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("warning"));
+    workspace.write("dist/docs.graph.json", &artifact_with_diagnostic("warning"));
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -490,7 +490,7 @@ fn search_cli_json_success_includes_loaded_artifact_warnings() {
 #[test]
 fn search_cli_text_success_prints_loaded_artifact_warnings_to_stderr() {
     let workspace = TestWorkspace::new("search-text-artifact-warning");
-    workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("warning"));
+    workspace.write("dist/docs.graph.json", &artifact_with_diagnostic("warning"));
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
@@ -506,7 +506,7 @@ fn search_cli_text_success_prints_loaded_artifact_warnings_to_stderr() {
 #[test]
 fn search_cli_loaded_artifact_errors_exit_2() {
     let workspace = TestWorkspace::new("search-artifact-error");
-    workspace.write("dist/docs.agent.json", &artifact_with_diagnostic("error"));
+    workspace.write("dist/docs.graph.json", &artifact_with_diagnostic("error"));
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)

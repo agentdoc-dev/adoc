@@ -14,31 +14,25 @@ use crate::presentation::style::kv::faint_label;
 use crate::presentation::{ResolvedFormat, json as json_presentation};
 
 use super::{
-    diagnostics_have_errors, discover_project_config_if, eprint_diagnostics, merge_diagnostics,
-    report, resolve_agent_artifact_path_with_config, resolve_graph_artifact_path_with_config,
+    diagnostics_have_errors, discover_project_config_if, eprint_diagnostics,
+    exit_code_for_diagnostics, merge_diagnostics, report, resolve_graph_artifact_path_with_config,
 };
 
 pub(crate) struct GraphCommandInput {
     pub(crate) object_id: String,
     pub(crate) artifact: Option<PathBuf>,
-    pub(crate) agent_artifact: Option<PathBuf>,
     pub(crate) relation: Option<GraphRelationKind>,
     pub(crate) direction: Option<GraphDirection>,
 }
 
 pub(crate) fn graph(input: GraphCommandInput, resolved: ResolvedFormat) -> i32 {
-    let config = match discover_project_config_if(
-        input.artifact.is_none() || input.agent_artifact.is_none(),
-    ) {
+    let config = match discover_project_config_if(input.artifact.is_none()) {
         Ok(config) => config,
         Err(error) => return report(error),
     };
     let graph_artifact = resolve_graph_artifact_path_with_config(input.artifact, config.as_ref());
-    let agent_artifact =
-        resolve_agent_artifact_path_with_config(input.agent_artifact, config.as_ref());
 
     let load_result = load_graph_session(GraphInput {
-        agent_artifact_path: agent_artifact,
         graph_artifact_path: graph_artifact,
     });
     let mut diagnostics = load_result.diagnostics;
@@ -194,11 +188,7 @@ fn render_edge(output: &mut String, edge: &GraphTraversalEdge, styled: bool) {
 }
 
 fn graph_exit_code_for_diagnostics(diagnostics: &[Diagnostic]) -> i32 {
-    diagnostics
-        .iter()
-        .filter_map(graph_diagnostic_exit_code)
-        .min()
-        .unwrap_or(0)
+    exit_code_for_diagnostics(diagnostics, graph_diagnostic_exit_code)
 }
 
 fn graph_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {

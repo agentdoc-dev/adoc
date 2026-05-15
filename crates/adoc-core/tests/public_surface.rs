@@ -9,11 +9,10 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use adoc_core::{
-    AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan, BuildArtifacts,
-    CompileInput, CompileResult, Diagnostic, DiagnosticCode, GraphArtifactDocument, GraphDirection,
-    GraphEdge, GraphInput, GraphLoadResult, GraphNode, GraphRelationKind, GraphSession,
-    GraphTraversalEnvelope, GraphTraversalQuery, GraphTraversalResult, RetrievalEnvelope,
-    RetrievalInput, RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalSession,
+    BuildArtifacts, CompileInput, CompileResult, Diagnostic, DiagnosticCode, GraphDirection,
+    GraphInput, GraphLoadResult, GraphRelationKind, GraphSession, GraphTraversalEnvelope,
+    GraphTraversalQuery, GraphTraversalResult, RetrievalEnvelope, RetrievalInput,
+    RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSession,
     RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity, WhyResult,
     compile_workspace, load_graph_session, load_retrieval_session, search, traverse_graph,
     why_object,
@@ -32,33 +31,11 @@ fn public_surface_compiles_with_only_documented_imports() {
     // The artifacts field is Option<BuildArtifacts>; either branch typechecks.
     let _artifacts: &Option<BuildArtifacts> = &result.artifacts;
     if let Some(artifacts) = result.artifacts {
-        // Both BuildArtifacts fields are publicly readable.
+        // BuildArtifacts fields are publicly readable.
         let _: String = artifacts.html;
-        let _: AgentJsonDocument = artifacts.agent_json;
-        let _: GraphArtifactDocument = artifacts.graph_json;
+        let _: String = artifacts.graph_json;
+        let _: Option<String> = artifacts.search_json;
     }
-
-    // AgentJsonObject and its sub-types are part of the public surface.
-    let _: AgentJsonObject = AgentJsonObject {
-        id: String::new(),
-        kind: String::new(),
-        status: Some(String::new()),
-        body: String::new(),
-        page_id: String::new(),
-        source_span: AgentJsonSourceSpan {
-            path: String::new(),
-            line: 0,
-            column: 0,
-        },
-        fields: std::collections::BTreeMap::new(),
-        relations: AgentJsonRelations::default(),
-    };
-    let _: AgentJsonRelations = AgentJsonRelations::default();
-    let _: AgentJsonSourceSpan = AgentJsonSourceSpan {
-        path: String::new(),
-        line: 0,
-        column: 0,
-    };
 
     // Severity discriminants are reachable as documented.
     let _ = Severity::Error;
@@ -95,7 +72,6 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::RetrievalObjectNotFound;
     let _ = DiagnosticCode::SearchInvalidFilter;
     let _ = DiagnosticCode::BuildEmbeddingsCacheIgnored;
-    let _ = DiagnosticCode::GraphHashDrift;
     let _ = DiagnosticCode::GraphObjectNotFound;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
@@ -190,32 +166,14 @@ fn public_surface_compiles_with_only_documented_imports() {
         DiagnosticCode::BuildEmbeddingsCacheIgnored.as_str(),
         "build.embeddings_cache_ignored"
     );
-    assert_eq!(DiagnosticCode::GraphHashDrift.as_str(), "graph.hash_drift");
     assert_eq!(
         DiagnosticCode::GraphObjectNotFound.as_str(),
         "graph.object_not_found"
     );
 
-    let graph_doc = GraphArtifactDocument {
-        schema_version: "adoc.graph.v0".to_string(),
-        agent_artifact_hash: "sha256:agent".to_string(),
-        nodes: vec![GraphNode {
-            id: "billing.credits".to_string(),
-            kind: "claim".to_string(),
-            status: Some("verified".to_string()),
-            page_id: "team.billing".to_string(),
-        }],
-        edges: vec![GraphEdge {
-            source: "billing.root".to_string(),
-            target: "billing.credits".to_string(),
-            relation: GraphRelationKind::DependsOn,
-        }],
-    };
-    let _: GraphArtifactDocument = graph_doc;
     let _: GraphRelationKind = GraphRelationKind::Supersedes;
     let _: GraphDirection = GraphDirection::Both;
     let _: GraphInput = GraphInput {
-        agent_artifact_path: PathBuf::from("/missing-docs-agent-json-for-surface-test"),
         graph_artifact_path: PathBuf::from("/missing-docs-graph-json-for-surface-test"),
     };
     let graph_load = GraphLoadResult {
@@ -239,9 +197,8 @@ fn public_surface_compiles_with_only_documented_imports() {
 
     let _: fn(RetrievalInput) -> RetrievalLoadResult = load_retrieval_session;
     let _: RetrievalInput = RetrievalInput {
-        artifact_path: PathBuf::from("/missing-docs-agent-json-for-surface-test"),
+        artifact_path: PathBuf::from("/missing-docs-graph-json-for-surface-test"),
         search_artifact_path: None,
-        graph_artifact_path: None,
     };
     let retrieval_result = RetrievalLoadResult {
         session: None,
@@ -264,7 +221,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         },
         evidence: std::collections::BTreeMap::new(),
         fields: std::collections::BTreeMap::new(),
-        relations: AgentJsonRelations::default(),
+        relations: RetrievalRelations::default(),
         search_match: None,
     };
     let _: RetrievalRecord = record;
@@ -323,6 +280,13 @@ fn retrieval_public_surface_does_not_reexport_cli_service_types() {
         "ResolverError",
         "ExpiresInfo",
         "RenderMeta",
+        "GraphArtifactDocument",
+        "GraphNode",
+        "GraphEdge",
+        "GraphKnowledgeObjectNode",
+        "GraphRelations",
+        "GraphSourceSpan",
+        "SearchArtifactDocument",
     ] {
         assert!(
             !lib_rs.contains(removed),

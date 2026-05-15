@@ -66,7 +66,6 @@ fn build_to_paths(
 #[derive(Debug, Clone)]
 struct BuildOutputPaths {
     html: PathBuf,
-    agent_json: PathBuf,
     graph: PathBuf,
     search: Option<PathBuf>,
 }
@@ -99,28 +98,25 @@ fn resolve_build_output_paths(
 
     let search_required = embedding_mode == BuildEmbeddingMode::Enabled;
     let html = config.outputs.html.clone();
-    let agent_json = config.outputs.agent_json.clone();
     let graph = config.outputs.graph.clone();
     let search = config.outputs.search.clone();
 
-    match (html, agent_json, graph, search_required, search) {
-        (Some(html), Some(agent_json), Some(graph), true, Some(search)) => Ok(BuildOutputPaths {
+    match (html, graph, search_required, search) {
+        (Some(html), Some(graph), true, Some(search)) => Ok(BuildOutputPaths {
             html,
-            agent_json,
             graph,
             search: Some(search),
         }),
-        (Some(html), Some(agent_json), Some(graph), false, search) => Ok(BuildOutputPaths {
+        (Some(html), Some(graph), false, search) => Ok(BuildOutputPaths {
             html,
-            agent_json,
             graph,
             search,
         }),
         _ => Err(CliError::ConfigMissing {
             message: if search_required {
-                "adoc build requires outputs.dir or exact html, agent_json, graph, and search outputs"
+                "adoc build requires outputs.dir or exact html, graph, and search outputs"
             } else {
-                "adoc build requires outputs.dir or exact html, agent_json, and graph outputs"
+                "adoc build requires outputs.dir or exact html and graph outputs"
             }
             .to_string(),
             config_path: Some(config.path.clone()),
@@ -179,7 +175,6 @@ fn output_paths_for_dir(out: &Path, include_search: bool) -> Result<BuildOutputP
 
     Ok(BuildOutputPaths {
         html: out.join("docs.html"),
-        agent_json: out.join("docs.agent.json"),
         graph: out.join("docs.graph.json"),
         search: include_search.then(|| out.join("docs.search.json")),
     })
@@ -210,33 +205,17 @@ fn serialize_artifacts(
         contents: artifacts.html.as_bytes().to_vec(),
     }];
 
-    let agent_json_text = artifacts
-        .agent_json
-        .to_pretty_json()
-        .map_err(|source| CliError::AgentJsonSerialize { source })?;
-    entries.push(ArtifactWriteEntry {
-        path: paths.agent_json.clone(),
-        contents: agent_json_text.into_bytes(),
-    });
-
-    let graph_json_text = artifacts
-        .graph_json
-        .to_pretty_json()
-        .map_err(|source| CliError::GraphJsonSerialize { source })?;
     entries.push(ArtifactWriteEntry {
         path: paths.graph.clone(),
-        contents: graph_json_text.into_bytes(),
+        contents: artifacts.graph_json.as_bytes().to_vec(),
     });
 
     if let (Some(search_json), Some(search_path)) =
         (artifacts.search_json.as_ref(), paths.search.as_ref())
     {
-        let search_json_text = search_json
-            .to_pretty_json()
-            .map_err(|source| CliError::SearchJsonSerialize { source })?;
         entries.push(ArtifactWriteEntry {
             path: search_path.clone(),
-            contents: search_json_text.into_bytes(),
+            contents: search_json.as_bytes().to_vec(),
         });
     }
 
@@ -264,15 +243,12 @@ fn write_file_with_parents(path: &Path, contents: &[u8]) -> Result<(), CliError>
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use adoc_core::{
-        AgentJsonDocument, BuildArtifacts, Diagnostic, DiagnosticCode, GraphArtifactDocument,
-        SearchArtifactDocument, Severity,
-    };
+    use adoc_core::{BuildArtifacts, Diagnostic, DiagnosticCode, Severity};
 
     use super::*;
 
     #[test]
-    fn finish_build_result_writes_v0_artifacts_and_preserves_prior_search_on_embedding_error() {
+    fn finish_build_result_writes_graph_artifact_and_preserves_prior_search_on_embedding_error() {
         let output_directory = unique_temp_dir("embedding-error-output");
         fs::create_dir_all(&output_directory).expect("output directory can be created");
         fs::write(
@@ -291,18 +267,13 @@ mod tests {
             }],
             artifacts: Some(BuildArtifacts {
                 html: "<h1>Guide</h1>".to_string(),
-                agent_json: AgentJsonDocument {
-                    schema_version: "adoc.agent.v0".to_string(),
-                    pages: Vec::new(),
-                    objects: Vec::new(),
-                    diagnostics: Vec::new(),
-                },
-                graph_json: GraphArtifactDocument {
-                    schema_version: "adoc.graph.v0".to_string(),
-                    agent_artifact_hash: "sha256:agent".to_string(),
-                    nodes: Vec::new(),
-                    edges: Vec::new(),
-                },
+                graph_json: serde_json::to_string_pretty(&serde_json::json!({
+                    "schema_version": "adoc.graph.v1",
+                    "nodes": [],
+                    "edges": [],
+                    "diagnostics": []
+                }))
+                .expect("test graph artifact serializes"),
                 search_json: None,
             }),
         };
@@ -314,15 +285,11 @@ mod tests {
             fs::read_to_string(output_directory.join("docs.html")).expect("HTML is written"),
             "<h1>Guide</h1>"
         );
-        assert!(
-            fs::read_to_string(output_directory.join("docs.agent.json"))
-                .expect("agent JSON is written")
-                .contains("\"schema_version\": \"adoc.agent.v0\"")
-        );
+        assert!(!output_directory.join("docs.agent.json").exists());
         assert!(
             fs::read_to_string(output_directory.join("docs.graph.json"))
                 .expect("graph JSON is written")
-                .contains("\"schema_version\": \"adoc.graph.v0\"")
+                .contains("\"schema_version\": \"adoc.graph.v1\"")
         );
         assert_eq!(
             fs::read_to_string(output_directory.join("docs.search.json"))
@@ -336,7 +303,6 @@ mod tests {
         let output_directory = unique_temp_dir("exact-output");
         let paths = BuildOutputPaths {
             html: output_directory.join("site/docs.html"),
-            agent_json: output_directory.join("agent/docs.agent.json"),
             graph: output_directory.join("graph/docs.graph.json"),
             search: Some(output_directory.join("search/docs.search.json")),
         };
@@ -344,26 +310,21 @@ mod tests {
             diagnostics: Vec::new(),
             artifacts: Some(BuildArtifacts {
                 html: "<h1>Guide</h1>".to_string(),
-                agent_json: AgentJsonDocument {
-                    schema_version: "adoc.agent.v0".to_string(),
-                    pages: Vec::new(),
-                    objects: Vec::new(),
-                    diagnostics: Vec::new(),
-                },
-                graph_json: GraphArtifactDocument {
-                    schema_version: "adoc.graph.v0".to_string(),
-                    agent_artifact_hash: "sha256:agent".to_string(),
-                    nodes: Vec::new(),
-                    edges: Vec::new(),
-                },
+                graph_json: serde_json::to_string_pretty(&serde_json::json!({
+                    "schema_version": "adoc.graph.v1",
+                    "nodes": [],
+                    "edges": [],
+                    "diagnostics": []
+                }))
+                .expect("test graph artifact serializes"),
                 search_json: Some(
-                    serde_json::from_value::<SearchArtifactDocument>(serde_json::json!({
+                    serde_json::to_string_pretty(&serde_json::json!({
                         "schema_version": "adoc.search.v0",
                         "model": { "id": "in-memory", "provider": "test", "dim": 2 },
-                        "agent_artifact_hash": "sha256:agent",
+                        "graph_artifact_hash": "sha256:graph",
                         "embeddings": []
                     }))
-                    .expect("test search artifact is valid"),
+                    .expect("test search artifact serializes"),
                 ),
             }),
         };
@@ -376,14 +337,9 @@ mod tests {
             "<h1>Guide</h1>"
         );
         assert!(
-            fs::read_to_string(&paths.agent_json)
-                .expect("agent JSON is written")
-                .contains("\"schema_version\": \"adoc.agent.v0\"")
-        );
-        assert!(
             fs::read_to_string(&paths.graph)
                 .expect("graph JSON is written")
-                .contains("\"schema_version\": \"adoc.graph.v0\"")
+                .contains("\"schema_version\": \"adoc.graph.v1\"")
         );
         assert!(
             fs::read_to_string(paths.search.as_ref().expect("search path"))

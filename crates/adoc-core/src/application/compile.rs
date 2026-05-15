@@ -1,34 +1,27 @@
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use chrono::NaiveDate;
 
-use crate::application::hashing::sha256_prefixed;
 use crate::application::resolve_knowledge_objects::{
     resolve_knowledge_objects, suppress_unknown_kind_shape_diagnostics,
 };
 use crate::application::resolve_object_references::resolve_object_references;
-use crate::domain::artifact::{
-    AgentJsonDocument, SearchArtifactDocument, SearchEmbedding, SearchModelHeader,
-};
-use crate::domain::ast::{BlockAst, PageAst, WorkspaceAst};
+use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
-use crate::domain::graph::GraphArtifactDocument;
-use crate::domain::knowledge_object::KnowledgeObject;
 use crate::domain::ports::artifact_writer::ArtifactWriter;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
-use crate::domain::ports::renderer::Renderer;
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
 use crate::domain::source::SourceFile;
-use crate::infrastructure::artifact::search_json::{
-    SUPPORTED_SEARCH_SCHEMA_VERSION, read_search_artifact_document,
-};
-use crate::infrastructure::artifact::{AgentJsonArtifact, GraphJsonArtifact};
+use crate::infrastructure::artifact::GraphJsonArtifact;
 use crate::infrastructure::parser::parse_page;
 use crate::infrastructure::render::HtmlRenderer;
 use crate::infrastructure::validate::{
     validate_resolved_page, validate_source_page, validate_workspace,
+};
+
+use super::search_artifact::{
+    build_search_artifact, cache_count_diagnostic, embedding_error_diagnostic,
 };
 
 #[derive(Debug, Clone)]
@@ -73,9 +66,8 @@ impl CompileResult {
 #[derive(Debug, Clone)]
 pub struct BuildArtifacts {
     pub html: String,
-    pub agent_json: AgentJsonDocument,
-    pub graph_json: GraphArtifactDocument,
-    pub search_json: Option<SearchArtifactDocument>,
+    pub graph_json: String,
+    pub search_json: Option<String>,
 }
 
 pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
@@ -242,9 +234,9 @@ fn assemble_workspace(parsed: Vec<(SourceFile, PageAst)>) -> WorkspaceAst {
     }
 }
 
-/// Gate artifacts on diagnostic severity: produce an HTML + agent JSON pair
-/// only when no diagnostic has `Severity::Error`. Renderer and ArtifactWriter
-/// ports are statically dispatched per ADR-0006.
+/// Gate artifacts on diagnostic severity: produce derived read artifacts only
+/// when no diagnostic has `Severity::Error`. ArtifactWriter ports are
+/// statically dispatched per ADR-0006.
 #[cfg(test)]
 fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Option<BuildArtifacts> {
     build_artifacts_for_build(workspace, diagnostics, None).artifacts
@@ -270,9 +262,16 @@ fn build_artifacts_for_build(
         };
     }
 
-    let html = HtmlRenderer.render(&workspace.pages);
-    let agent_json = AgentJsonArtifact.build(&workspace.pages, diagnostics);
-    let graph_json = GraphJsonArtifact.build(&agent_json, &[]);
+    let graph_diagnostics = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.code != DiagnosticCode::BuildEmbeddingsSkipped)
+        .cloned()
+        .collect::<Vec<_>>();
+    let graph_document = GraphJsonArtifact.build(workspace, &graph_diagnostics);
+    let graph_json = graph_document
+        .to_pretty_json()
+        .expect("graph artifact serialization should not fail");
+    let html = HtmlRenderer.render_workspace(workspace);
     let prior_search_artifact_path = build_options
         .as_ref()
         .and_then(|options| options.prior_search_artifact_path.clone());
@@ -282,34 +281,35 @@ fn build_artifacts_for_build(
         .map(|options| &mut options.embeddings)
     {
         #[cfg(test)]
-        Some(BuildEmbeddingBehavior::Enabled { provider }) => match build_search_artifact(
-            workspace,
-            &agent_json,
-            *provider,
-            prior_search_artifact_path.as_ref(),
-        ) {
-            Ok(search_build) => {
-                artifact_diagnostics.extend(search_build.diagnostics);
-                if search_build.cached_count != 0 || search_build.computed_count != 0 {
-                    artifact_diagnostics.push(cache_count_diagnostic(
-                        search_build.cached_count,
-                        search_build.computed_count,
-                    ));
+        Some(BuildEmbeddingBehavior::Enabled { provider }) => {
+            match build_search_artifact(
+                &graph_document,
+                &graph_json,
+                *provider,
+                prior_search_artifact_path.as_ref(),
+            ) {
+                Ok(search_build) => {
+                    artifact_diagnostics.extend(search_build.diagnostics);
+                    if search_build.cached_count != 0 || search_build.computed_count != 0 {
+                        artifact_diagnostics.push(cache_count_diagnostic(
+                            search_build.cached_count,
+                            search_build.computed_count,
+                        ));
+                    }
+                    Some(search_build.json)
                 }
-                Some(search_build.document)
+                Err(diagnostics) => {
+                    return ArtifactBuildResult {
+                        artifacts: Some(BuildArtifacts {
+                            html,
+                            graph_json,
+                            search_json: None,
+                        }),
+                        diagnostics,
+                    };
+                }
             }
-            Err(diagnostics) => {
-                return ArtifactBuildResult {
-                    artifacts: Some(BuildArtifacts {
-                        html,
-                        agent_json,
-                        graph_json,
-                        search_json: None,
-                    }),
-                    diagnostics,
-                };
-            }
-        },
+        }
         Some(BuildEmbeddingBehavior::EnabledFactory { provider_factory }) => {
             let provider = match provider_factory() {
                 Ok(provider) => provider,
@@ -317,7 +317,6 @@ fn build_artifacts_for_build(
                     return ArtifactBuildResult {
                         artifacts: Some(BuildArtifacts {
                             html,
-                            agent_json,
                             graph_json,
                             search_json: None,
                         }),
@@ -326,8 +325,8 @@ fn build_artifacts_for_build(
                 }
             };
             match build_search_artifact(
-                workspace,
-                &agent_json,
+                &graph_document,
+                &graph_json,
                 provider.as_ref(),
                 prior_search_artifact_path.as_ref(),
             ) {
@@ -339,13 +338,12 @@ fn build_artifacts_for_build(
                             search_build.computed_count,
                         ));
                     }
-                    Some(search_build.document)
+                    Some(search_build.json)
                 }
                 Err(diagnostics) => {
                     return ArtifactBuildResult {
                         artifacts: Some(BuildArtifacts {
                             html,
-                            agent_json,
                             graph_json,
                             search_json: None,
                         }),
@@ -360,250 +358,11 @@ fn build_artifacts_for_build(
     ArtifactBuildResult {
         artifacts: Some(BuildArtifacts {
             html,
-            agent_json,
             graph_json,
             search_json,
         }),
         diagnostics: artifact_diagnostics,
     }
-}
-
-struct SearchArtifactBuild {
-    document: SearchArtifactDocument,
-    cached_count: usize,
-    computed_count: usize,
-    diagnostics: Vec<Diagnostic>,
-}
-
-struct SearchCacheLoad {
-    embeddings: BTreeMap<String, SearchEmbedding>,
-    diagnostics: Vec<Diagnostic>,
-}
-
-impl SearchCacheLoad {
-    fn empty() -> Self {
-        Self {
-            embeddings: BTreeMap::new(),
-            diagnostics: Vec::new(),
-        }
-    }
-}
-
-fn build_search_artifact(
-    workspace: &WorkspaceAst,
-    agent_json: &AgentJsonDocument,
-    provider: &dyn EmbeddingProvider,
-    prior_search_artifact_path: Option<&PathBuf>,
-) -> Result<SearchArtifactBuild, Vec<Diagnostic>> {
-    let model = search_model_header(provider);
-    let cache_load = load_matching_search_cache(prior_search_artifact_path, &model);
-    let cached_embeddings = cache_load.embeddings;
-    let agent_artifact_hash = sha256_prefixed(
-        agent_json
-            .to_pretty_json()
-            .expect("agent artifact serialization should not fail")
-            .as_bytes(),
-    );
-    let mut embeddings = Vec::new();
-    let mut misses = Vec::new();
-    let mut cached_count = 0;
-
-    for knowledge_object in workspace_knowledge_objects(workspace) {
-        let input = knowledge_object.embedding_input();
-        let content_hash = sha256_prefixed(input.as_bytes());
-        let id = knowledge_object.id().as_str().to_string();
-        if let Some(cached) = cached_embeddings.get(&id)
-            && cached.content_hash == content_hash
-            && cached.vector.len() == provider.dim()
-        {
-            embeddings.push(cached.clone());
-            cached_count += 1;
-            continue;
-        }
-
-        let index = embeddings.len();
-        embeddings.push(SearchEmbedding {
-            id,
-            content_hash,
-            vector: Vec::new(),
-        });
-        misses.push((index, input));
-    }
-
-    let computed_count = misses.len();
-    if !misses.is_empty() {
-        let inputs: Vec<String> = misses.iter().map(|(_, input)| input.clone()).collect();
-        let vectors = provider
-            .embed_passages(&inputs)
-            .map_err(|error| vec![embedding_error_diagnostic(error)])?;
-        validate_embedding_vectors(&vectors, misses.len(), provider.dim())?;
-        for ((index, _), vector) in misses.into_iter().zip(vectors) {
-            embeddings[index].vector = vector;
-        }
-    }
-
-    Ok(SearchArtifactBuild {
-        document: SearchArtifactDocument {
-            schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
-            model,
-            agent_artifact_hash,
-            embeddings,
-        },
-        cached_count,
-        computed_count,
-        diagnostics: cache_load.diagnostics,
-    })
-}
-
-fn cache_count_diagnostic(cached_count: usize, computed_count: usize) -> Diagnostic {
-    Diagnostic::info(
-        DiagnosticCode::BuildEmbeddingsCached,
-        format!("embeddings: cached {cached_count}, computed {computed_count}"),
-    )
-}
-
-fn validate_embedding_vectors(
-    vectors: &[Vec<f32>],
-    expected_count: usize,
-    expected_dim: usize,
-) -> Result<(), Vec<Diagnostic>> {
-    if vectors.len() != expected_count {
-        return Err(vec![Diagnostic::error(
-            DiagnosticCode::EmbedUnexpectedDimension,
-            format!(
-                "embedding provider returned {} vectors for {expected_count} inputs",
-                vectors.len()
-            ),
-        )]);
-    }
-
-    for vector in vectors {
-        if vector.len() != expected_dim {
-            return Err(vec![embedding_error_diagnostic(
-                EmbeddingError::DimensionMismatch {
-                    expected: expected_dim,
-                    actual: vector.len(),
-                },
-            )]);
-        }
-    }
-
-    Ok(())
-}
-
-pub(crate) fn embedding_error_diagnostic(error: EmbeddingError) -> Diagnostic {
-    match error {
-        EmbeddingError::ModelLoad(message) => Diagnostic::error(
-            DiagnosticCode::EmbedModelLoadFailed,
-            format!("embedding model could not be loaded: {message}"),
-        ),
-        EmbeddingError::Compute(message) => Diagnostic::error(
-            DiagnosticCode::EmbedComputeFailed,
-            format!("embedding computation failed: {message}"),
-        ),
-        EmbeddingError::DimensionMismatch { expected, actual } => Diagnostic::error(
-            DiagnosticCode::EmbedUnexpectedDimension,
-            format!("embedding provider returned dimension {actual}; expected {expected}"),
-        ),
-    }
-}
-
-fn search_model_header(provider: &dyn EmbeddingProvider) -> SearchModelHeader {
-    SearchModelHeader {
-        id: provider.model_id().id.clone(),
-        provider: provider.model_id().provider.clone(),
-        dim: provider.dim(),
-    }
-}
-
-fn load_matching_search_cache(
-    path: Option<&PathBuf>,
-    model: &SearchModelHeader,
-) -> SearchCacheLoad {
-    let Some(path) = path else {
-        return SearchCacheLoad::empty();
-    };
-    if !path.exists() {
-        return SearchCacheLoad::empty();
-    }
-    let document = match read_search_artifact_document(path) {
-        Ok(document) => document,
-        Err(diagnostics) => {
-            return SearchCacheLoad {
-                embeddings: BTreeMap::new(),
-                diagnostics: diagnostics
-                    .into_iter()
-                    .map(ignored_search_cache_read_diagnostic)
-                    .collect(),
-            };
-        }
-    };
-    if document.model != *model {
-        return SearchCacheLoad {
-            embeddings: BTreeMap::new(),
-            diagnostics: vec![ignored_search_cache_model_diagnostic(
-                path,
-                &document.model,
-                model,
-            )],
-        };
-    }
-
-    let embeddings = document
-        .embeddings
-        .into_iter()
-        .map(|embedding| (embedding.id.clone(), embedding))
-        .collect();
-    SearchCacheLoad {
-        embeddings,
-        diagnostics: Vec::new(),
-    }
-}
-
-fn ignored_search_cache_read_diagnostic(mut diagnostic: Diagnostic) -> Diagnostic {
-    diagnostic.severity = Severity::Warning;
-    diagnostic.message = format!(
-        "Ignoring prior search artifact cache: {}",
-        diagnostic.message
-    );
-    diagnostic.help =
-        Some("The cache will be recomputed and rewritten if embedding generation succeeds.".into());
-    diagnostic
-}
-
-fn ignored_search_cache_model_diagnostic(
-    path: &Path,
-    cached_model: &SearchModelHeader,
-    current_model: &SearchModelHeader,
-) -> Diagnostic {
-    Diagnostic::warning(
-        DiagnosticCode::BuildEmbeddingsCacheIgnored,
-        format!(
-            "Ignoring prior search artifact cache '{}': cache model {} differs from current model {}.",
-            path.display(),
-            format_search_model(cached_model),
-            format_search_model(current_model)
-        ),
-    )
-    .with_help("The cache will be recomputed and rewritten if embedding generation succeeds.")
-}
-
-fn format_search_model(model: &SearchModelHeader) -> String {
-    format!("{}:{}:{}", model.provider, model.id, model.dim)
-}
-
-fn workspace_knowledge_objects(workspace: &WorkspaceAst) -> impl Iterator<Item = &KnowledgeObject> {
-    workspace
-        .pages
-        .iter()
-        .flat_map(|page| page.blocks.iter())
-        .filter_map(|block| match block {
-            BlockAst::KnowledgeObject(knowledge_object) => Some(knowledge_object.as_ref()),
-            BlockAst::KnowledgeObjectPending(_) => unreachable!(
-                "resolver must replace pending knowledge objects before artifact emission"
-            ),
-            _ => None,
-        })
 }
 
 fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
@@ -622,6 +381,7 @@ fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::artifact::SearchArtifactDocument;
     use crate::domain::ast::BlockAst;
     use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider, ModelId};
     use crate::domain::source::SourceFile;
@@ -642,6 +402,10 @@ mod tests {
 
     fn fixed_today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 5, 8).expect("valid test date")
+    }
+
+    fn parse_search_json(search_json: &str) -> SearchArtifactDocument {
+        serde_json::from_str(search_json).expect("search artifact JSON is valid")
     }
 
     #[test]
@@ -701,7 +465,14 @@ mod tests {
 
         assert!(!result.has_errors());
         let artifacts = result.artifacts.expect("empty workspace still builds");
-        assert!(artifacts.agent_json.pages.is_empty());
+        let graph_json: serde_json::Value =
+            serde_json::from_str(&artifacts.graph_json).expect("graph artifact JSON is valid");
+        assert!(
+            graph_json["nodes"]
+                .as_array()
+                .expect("nodes is an array")
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1035,7 +806,8 @@ mod tests {
             result.diagnostics
         );
         let artifacts = result.artifacts.expect("artifacts are built");
-        let search = artifacts.search_json.expect("search artifact is built");
+        let search_json = artifacts.search_json.expect("search artifact is built");
+        let search = parse_search_json(&search_json);
         let expected_vector = embedding_provider
             .embed_passages(&[concat!(
                 "claim: Credits apply after successful payment.\n",
@@ -1049,7 +821,7 @@ mod tests {
         assert_eq!(search.model.id, "in-memory");
         assert_eq!(search.model.provider, "test");
         assert_eq!(search.model.dim, 4);
-        assert!(search.agent_artifact_hash.starts_with("sha256:"));
+        assert!(search.graph_artifact_hash.starts_with("sha256:"));
         assert_eq!(search.embeddings.len(), 1);
         assert_eq!(search.embeddings[0].id, "billing.credits");
         assert!(search.embeddings[0].content_hash.starts_with("sha256:"));
@@ -1084,7 +856,8 @@ mod tests {
             .expect("artifacts are built")
             .search_json
             .expect("search artifact is built");
-        let actual_json = actual.to_pretty_json().expect("actual serializes");
+        let actual_json = actual.clone();
+        let actual = parse_search_json(&actual);
         let expected_text = fs::read_to_string(repo_fixture_path(
             "v1_3_embed/in_memory_baseline.search.json",
         ))
@@ -1134,6 +907,7 @@ mod tests {
             .search_json
             .as_ref()
             .expect("search artifact is built");
+        let search = parse_search_json(search);
         assert!(search.embeddings.is_empty());
         assert_no_cache_count_diagnostic(&result);
     }
@@ -1162,18 +936,13 @@ mod tests {
             .expect("first artifacts")
             .search_json
             .expect("first search artifact");
+        let first_search_document = parse_search_json(&first_search);
         let prior = tempfile::Builder::new()
             .prefix("adoc-cache-")
             .suffix(".search.json")
             .tempfile()
             .expect("cache file");
-        fs::write(
-            prior.path(),
-            first_search
-                .to_pretty_json()
-                .expect("search artifact serializes"),
-        )
-        .expect("cache write");
+        fs::write(prior.path(), &first_search).expect("cache write");
 
         let second_source = InMemorySourceProvider::new().with_source(source_file(
             "billing.adoc",
@@ -1206,6 +975,7 @@ mod tests {
             .search_json
             .as_ref()
             .expect("second search artifact");
+        let second_search = parse_search_json(second_search);
         let recorded_inputs = second_provider.recorded_inputs();
         assert_eq!(
             recorded_inputs,
@@ -1219,11 +989,11 @@ mod tests {
             "only the changed object should be embedded"
         );
         assert_eq!(
-            second_search.embeddings[0].vector, first_search.embeddings[0].vector,
+            second_search.embeddings[0].vector, first_search_document.embeddings[0].vector,
             "unchanged object vector should be reused"
         );
         assert_ne!(
-            second_search.embeddings[1].vector, first_search.embeddings[1].vector,
+            second_search.embeddings[1].vector, first_search_document.embeddings[1].vector,
             "changed object vector should be recomputed"
         );
         assert_cache_count_diagnostic(&second_result, 1, 1);
@@ -1258,13 +1028,7 @@ mod tests {
             .suffix(".search.json")
             .tempfile()
             .expect("cache file");
-        fs::write(
-            prior.path(),
-            first_search
-                .to_pretty_json()
-                .expect("search artifact serializes"),
-        )
-        .expect("cache write");
+        fs::write(prior.path(), &first_search).expect("cache write");
 
         let second_source = InMemorySourceProvider::new().with_source(source_file(
             "billing.adoc",
@@ -1361,7 +1125,7 @@ mod tests {
             serde_json::json!({
                 "schema_version": "adoc.search.v99",
                 "model": { "id": "recording", "provider": "test", "dim": 4 },
-                "agent_artifact_hash": "sha256:agent",
+                "graph_artifact_hash": "sha256:graph",
                 "embeddings": []
             })
             .to_string(),
@@ -1420,6 +1184,7 @@ mod tests {
             .artifacts
             .expect("first artifacts")
             .search_json
+            .map(|json| parse_search_json(&json))
             .expect("first search artifact");
         prior_search.model.id = "other-model".to_string();
         let prior = tempfile::Builder::new()

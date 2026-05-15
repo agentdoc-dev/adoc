@@ -235,7 +235,7 @@ mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use adoc_core::{AgentJsonRelations, RetrievalRecord, RetrievalSource};
+    use adoc_core::{RetrievalRecord, RetrievalRelations, RetrievalSource};
     use chrono::NaiveDate;
 
     use super::*;
@@ -256,14 +256,14 @@ mod tests {
             },
             evidence: BTreeMap::new(),
             fields: BTreeMap::new(),
-            relations: AgentJsonRelations::default(),
+            relations: RetrievalRelations::default(),
             search_match: None,
         }
     }
 
     fn default_meta() -> RenderMeta {
         RenderMeta {
-            artifact: PathBuf::from("docs.agent.json"),
+            artifact: PathBuf::from("docs.graph.json"),
             trust: None,
             duration: Duration::ZERO,
         }
@@ -364,7 +364,7 @@ mod tests {
                 ("scope".to_string(), "refunds".to_string()),
                 ("decided_by".to_string(), "architecture".to_string()),
             ]),
-            relations: AgentJsonRelations::default(),
+            relations: RetrievalRelations::default(),
             search_match: None,
         };
         let view = view_for(record);
@@ -388,7 +388,7 @@ mod tests {
                 "\n",
                 "Source: docs/decisions.adoc:7:1\n",
                 "\n",
-                "✓ rendered from docs.agent.json · 0.00s\n",
+                "✓ rendered from docs.graph.json · 0.00s\n",
             )
         );
     }
@@ -456,7 +456,7 @@ mod tests {
             },
             evidence: BTreeMap::from([("source".to_string(), "ledger".to_string())]),
             fields: BTreeMap::from([("scope".to_string(), "credits".to_string())]),
-            relations: AgentJsonRelations {
+            relations: RetrievalRelations {
                 depends_on: vec!["billing.ledger".to_string()],
                 supersedes: vec![],
                 related_to: vec![],
@@ -657,14 +657,14 @@ mod tests {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
         view.footer = Some(RenderMeta {
-            artifact: PathBuf::from("/tmp/adoc-retrieval-dist/docs.agent.json"),
+            artifact: PathBuf::from("/tmp/adoc-retrieval-dist/docs.graph.json"),
             trust: Some("team".to_string()),
             duration: Duration::from_millis(60),
         });
         let raw = render(&view);
         // owo_colors emits ESC[32m for green fg and ESC[39m to reset.
         assert!(
-            raw.contains("\u{1b}[32m✓\u{1b}[39m rendered from docs.agent.json"),
+            raw.contains("\u{1b}[32m✓\u{1b}[39m rendered from docs.graph.json"),
             "styled footer must have green ✓; got: {raw:?}"
         );
     }
@@ -674,13 +674,13 @@ mod tests {
         let record = make_record("billing.credits", "claim");
         let mut view = view_for(record);
         view.footer = Some(RenderMeta {
-            artifact: PathBuf::from("/tmp/docs.agent.json"),
+            artifact: PathBuf::from("/tmp/docs.graph.json"),
             trust: Some("team".to_string()),
             duration: Duration::from_millis(60),
         });
         let stripped = strip_ansi(&render(&view));
         assert!(
-            stripped.ends_with("\n✓ rendered from docs.agent.json · trust: team · 0.06s\n"),
+            stripped.ends_with("\n✓ rendered from docs.graph.json · trust: team · 0.06s\n"),
             "stripped styled footer must match plain shape; got: {stripped:?}"
         );
     }
@@ -722,7 +722,7 @@ mod tests {
                 ("reviewed_by".to_string(), "risk".to_string()),
             ]),
             fields: BTreeMap::new(),
-            relations: AgentJsonRelations::default(),
+            relations: RetrievalRelations::default(),
             search_match: None,
         };
         let view = view_for(record);
@@ -766,7 +766,7 @@ mod tests {
             },
             evidence: BTreeMap::new(),
             fields: BTreeMap::from([("canonical".to_string(), "billing credit".to_string())]),
-            relations: AgentJsonRelations::default(),
+            relations: RetrievalRelations::default(),
             search_match: None,
         };
         let view = view_for(record);
@@ -799,7 +799,7 @@ mod tests {
             },
             evidence: BTreeMap::new(),
             fields: BTreeMap::new(),
-            relations: AgentJsonRelations {
+            relations: RetrievalRelations {
                 depends_on: vec!["billing.credits.ledger-source".to_string()],
                 supersedes: vec!["billing.refunds.manual-credit".to_string()],
                 related_to: vec!["billing.credits.decrement-after-success".to_string()],

@@ -7,11 +7,11 @@ AgentDoc is a human-readable documentation system for teams that need documentat
 The current implementation is a pre-release Rust CLI named `adoc`. It compiles native AgentDoc Source (`.adoc`) into:
 
 - `docs.html` for humans
-- `docs.agent.json` for agents and tooling
+- `docs.graph.json` for agents, tooling, graph traversal, and retrieval
 - `docs.search.json` for local embedding-backed retrieval
 - source-located diagnostics for invalid input
 
-It also provides local, read-only retrieval over compiled artifacts with `adoc why` and hybrid `adoc search`.
+It also provides local, read-only retrieval over compiled artifacts with `adoc why`, `adoc graph`, and hybrid `adoc search`.
 
 AgentDoc is not AsciiDoc, even though the source extension is `.adoc`.
 
@@ -34,7 +34,7 @@ AgentDoc is pre-release compiler and retrieval infrastructure. The source-to-art
 - relation fields `depends_on`, `supersedes`, and `related_to`
 - strict diagnostics for raw HTML, unsafe links, unclosed fenced code blocks, malformed typed blocks, malformed page annotations, invalid or duplicate Object IDs, invalid verified claims, broken references, and unsupported single-file source extensions
 - diagnostic metadata with source location, severity, code, message, and `object_id`/`help` when available
-- HTML, agent JSON, and search artifact emission when no error diagnostics exist
+- HTML, graph JSON, and search artifact emission when no error diagnostics exist
 - warning-only `lifecycle.expired` diagnostics for Knowledge Objects with parseable past `expires_at` dates; source files are not mutated
 
 V1.5 local workflow supports:
@@ -51,15 +51,17 @@ V1.5 local workflow supports:
 
 V1 local retrieval supports:
 
-- `adoc why <object-id>` over a compiled `docs.agent.json`
-- `adoc search <query>` over `docs.agent.json` and, when present, `docs.search.json`
+- `adoc why <object-id>` over a compiled `docs.graph.json`
+- `adoc graph <object-id>` over compiled Knowledge Object relations
+- `adoc search <query>` over `docs.graph.json` and, when present, `docs.search.json`
 - text and JSON retrieval output
 - hybrid search by default, fusing lexical BM25 and vector cosine ranks with Reciprocal Rank Fusion
 - `--lexical` and `--semantic` escape hatches
 - exact Object ID and ID-prefix pins in all search modes
 - search filters for kind, status, owner, and source path
+- graph relation filters for opt-in candidate narrowing with `--related-to`
 
-Includes, custom schemas, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, a web app, hosted embedding adapters, and permissioned governance are deferred beyond the current local CLI workflow. See [docs/ROADMAP.md](docs/ROADMAP.md).
+Includes, custom schemas, migrations, semantic diff, CI/PR integrations, agent patching, a web app, hosted embedding adapters, and permissioned governance are deferred beyond the current local CLI workflow. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Quick Start
 
@@ -119,7 +121,7 @@ Inspect the generated files:
 ```bash
 ls -la dist
 cat dist/docs.html
-cat dist/docs.agent.json
+cat dist/docs.graph.json
 cat dist/docs.search.json
 ```
 
@@ -127,7 +129,7 @@ Expected files:
 
 ```text
 docs.html
-docs.agent.json
+docs.graph.json
 docs.search.json
 ```
 
@@ -153,7 +155,7 @@ Expected files:
 
 ```text
 docs.html
-docs.agent.json
+docs.graph.json
 docs.search.json
 ```
 
@@ -190,7 +192,8 @@ adoc init
 adoc check [path]
 adoc build [path] [--out <directory>] [--no-embeddings]
 adoc why <object-id> [--artifact <path>] [--format auto|plain|styled|json]
-adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | --semantic] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--top <n>] [--format auto|plain|styled|json]
+adoc graph <object-id> [--artifact <path>] [--relation depends_on|supersedes|related_to] [--direction outgoing|incoming|both] [--format auto|plain|styled|json]
+adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | --semantic] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--related-to <object-id>] [--relation depends_on|supersedes|related_to] [--direction outgoing|incoming|both] [--top <n>] [--format auto|plain|styled|json]
 ```
 
 `<path>` can be:
@@ -221,37 +224,47 @@ as global config.
 `adoc build`:
 
 - uses explicit `[path]` and `--out` when passed
-- otherwise discovers config defaults; without `--out`, config must provide `outputs.dir` or exact `outputs.html` and `outputs.agent_json`; `outputs.search` is also required when embeddings are enabled
-- with `--out <directory>`, writes `<directory>/docs.html`, `<directory>/docs.agent.json`, and, when embeddings are enabled, `<directory>/docs.search.json`
-- with config outputs, paths are resolved relative to the config file; `outputs.dir` fills omitted artifact paths as `docs.html`, `docs.agent.json`, and `docs.search.json`; exact artifact paths override the `outputs.dir` defaults
+- otherwise discovers config defaults; without `--out`, config must provide `outputs.dir` or exact `outputs.html` and `outputs.graph`; `outputs.search` is also required when embeddings are enabled
+- with `--out <directory>`, writes `<directory>/docs.html`, `<directory>/docs.graph.json`, and, when embeddings are enabled, `<directory>/docs.search.json`
+- with config outputs, paths are resolved relative to the config file; `outputs.dir` fills omitted artifact paths as `docs.html`, `docs.graph.json`, and `docs.search.json`; exact artifact paths override the `outputs.dir` defaults
 - runs the same compile path as `check`
 - creates the output directory when it does not exist
 - fails if the output path exists as a file
-- writes `docs.html` and `docs.agent.json` when source compilation is clean
+- writes `docs.html` and `docs.graph.json` when source compilation is clean
 - loads the local FastEmbed `bge-small-en-v1.5` model by default through the default-on `embeddings` feature; first run may download model weights into the platform cache
 - reads the prior output directory's `docs.search.json` when present and reuses vectors whose model header and content hash still match, reported as `info[build.embeddings_cached] embeddings: cached N, computed M`
-- if embedding model load, compute, or dimension validation fails after clean source compilation, exits `1`, still writes `docs.html` and `docs.agent.json`, omits a new `docs.search.json`, and leaves any prior `docs.search.json` untouched
+- if embedding model load, compute, or dimension validation fails after clean source compilation, exits `1`, still writes `docs.html` and `docs.graph.json`, omits a new `docs.search.json`, and leaves any prior `docs.search.json` untouched
 - accepts `--no-embeddings` to skip model loading and search artifact writes; any existing `docs.search.json` is left untouched and an info diagnostic `build.embeddings_skipped` is emitted
 - also skips embeddings when config sets `embeddings.provider: none`; config `local` and missing `embeddings` both enable the shipped local provider
 
 `adoc why`:
 
-- reads a compiled agent artifact; it does not compile source
-- defaults to config `outputs.agent_json`, then `dist/docs.agent.json`
+- reads a compiled graph artifact; it does not compile source
+- defaults to config `outputs.graph`, then `dist/docs.graph.json`
 - prints the matching Knowledge Object with source and relation metadata
+- supports `--format auto|plain|styled|json`
+
+`adoc graph`:
+
+- reads a compiled graph artifact; it does not compile source
+- defaults to config `outputs.graph`, then `dist/docs.graph.json`
+- traverses all reachable Knowledge Objects by default, with cycle detection
+- includes the root node at distance `0` and preserves original edge direction in output
+- supports `--relation depends_on|supersedes|related_to` and `--direction outgoing|incoming|both`
 - supports `--format auto|plain|styled|json`
 
 `adoc search`:
 
 - reads compiled artifacts; it does not compile source
-- defaults to config `outputs.agent_json`, then `dist/docs.agent.json`
+- defaults to config `outputs.graph`, then `dist/docs.graph.json`
 - defaults to config `outputs.search`, then `dist/docs.search.json`
 - runs hybrid search by default when the search artifact loads
 - degrades to lexical search with one `search.artifact_missing` warning when the search artifact is absent
-- accepts `--lexical` for deterministic text search over `docs.agent.json`
+- accepts `--lexical` for deterministic text search over `docs.graph.json`
 - accepts `--semantic` for vector-only search over `docs.search.json`
 - pins exact Object ID and raw case-sensitive ID-prefix query matches in every mode
 - supports `--kind`, `--status`, `--owner`, and `--source-path` filters
+- supports `--related-to`, `--relation`, and `--direction` for opt-in graph candidate filtering without changing unfiltered ranking
 - treats an empty lexical query plus filters as a deterministic listing of matching objects
 - limits results with `--top`, defaulting to `10`
 - supports `--format auto|plain|styled|json`
@@ -326,7 +339,7 @@ Supported relation fields:
 
 Relation values can be a single Object ID, a comma-separated list, or a bracket array. The compiler deduplicates repeated targets while preserving first occurrence order. A trailing empty segment from a final comma is ignored; leading or interior empty segments emit `id.invalid`. Valid targets that do not resolve to a declared Knowledge Object emit `ref.broken`; malformed targets emit `id.invalid`.
 
-Object references use `[[object.id]]` in prose, headings, list items, and typed object bodies. References are rendered as HTML links and preserved as citeable source text in agent JSON object bodies.
+Object references use `[[object.id]]` in prose, headings, list items, and typed object bodies. References are rendered as HTML links and preserved as citeable source text in graph JSON object bodies.
 
 Page annotations are optional. IDs must be lowercase dot-separated kebab-case values with at least two segments, such as `product.area`. If the first heading does not include `@doc(id)`, the compiler derives the page identity from the file path and applies the same ID grammar.
 
@@ -345,7 +358,7 @@ fn main() {}
 
 Current limitations:
 
-- custom schemas, includes, migrations, graph exports, semantic diff, CI/PR integrations, agent patching, hosted embedding adapters, web app, and permissions are deferred
+- custom schemas, includes, migrations, semantic diff, CI/PR integrations, agent patching, hosted embedding adapters, web app, and permissions are deferred
 - config is intentionally minimal: strict mode only, one `docs_path`, output paths, and `embeddings.provider: local|none`
 
 ## Diagnostics
@@ -363,7 +376,7 @@ Examples:
 - unreadable directories emit `error[io.unreadable_directory]`
 - unsupported single-file source extensions emit `error[io.unsupported_source_extension]`
 
-`adoc build` writes nothing when source compilation has error diagnostics. Embedding failures do not block `docs.html` or `docs.agent.json`: they emit `embed.model_load_failed`, `embed.compute_failed`, or `embed.unexpected_dim`, omit the new search sidecar, preserve any prior `docs.search.json`, and exit `1`.
+`adoc build` writes nothing when source compilation has error diagnostics. Embedding failures do not block `docs.html` or `docs.graph.json`: they emit `embed.model_load_failed`, `embed.compute_failed`, or `embed.unexpected_dim`, omit the new search sidecar, preserve any prior `docs.search.json`, and exit `1`.
 
 ## Smoke Tests
 
@@ -388,7 +401,7 @@ cargo run -p adoc-cli --bin adoc -- build /tmp/adoc-smoke/guide.adoc --out /tmp/
 
 ls -la /tmp/adoc-smoke/dist
 cat /tmp/adoc-smoke/dist/docs.html
-cat /tmp/adoc-smoke/dist/docs.agent.json
+cat /tmp/adoc-smoke/dist/docs.graph.json
 ```
 
 Expected:
@@ -396,9 +409,9 @@ Expected:
 - `check` exits `0`
 - `build` exits `0`
 - `docs.html` exists
-- `docs.agent.json` exists
+- `docs.graph.json` exists
 - `docs.search.json` exists
-- agent JSON includes `schema_version`, `pages`, `"objects": []`, and `"diagnostics": []`
+- graph JSON includes `schema_version`, `"nodes": []`, `"edges": []`, and `"diagnostics": []`
 
 Run strict-mode failure checks:
 
@@ -530,7 +543,7 @@ AgentDoc Source
   -> adoc-core compile_workspace()
   -> parser and diagnostics
   -> HTML renderer
-  -> agent JSON artifact
+  -> graph JSON artifact
   -> adoc-cli exit codes and file output
 ```
 
@@ -557,18 +570,20 @@ V0 is complete for the local source-to-artifact compiler loop. Implemented miles
 - standardized diagnostics and production-usable fixtures
 - a realistic billing pilot
 - artifact-backed `adoc why <object-id>`
-- hybrid `adoc search <query>` over `docs.agent.json` and `docs.search.json`
+- `adoc graph <object-id>` relation traversal over `docs.graph.json`
+- hybrid `adoc search <query>` over `docs.graph.json` and `docs.search.json`
 - `adoc init` and minimal `agentdoc.config.yaml`
 
-Current local retrieval focuses on the existing flat agent artifact:
+Current local retrieval focuses on the graph artifact:
 
-- define the supported `docs.agent.json` read contract
+- define the supported `docs.graph.json` read contract
 - support `adoc why <object-id>` for object lookup and citation
+- support `adoc graph <object-id>` for relation traversal
 - support `adoc search <query>` for deterministic lexical and local embedding-backed search
 - prove retrieval against the billing pilot
 - build `docs.search.json` with local FastEmbed embeddings
 
-Later milestones cover migration, review workflows, patch safety, expanded schema, graph exports, composition, hosted embedding adapters, and team surfaces.
+Later milestones cover migration, review workflows, patch safety, expanded schema, composition, hosted embedding adapters, and team surfaces.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full sequence.
 

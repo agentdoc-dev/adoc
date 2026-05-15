@@ -28,13 +28,13 @@ use crate::presentation::RenderMeta;
 /// use crate::presentation::RenderMeta;
 ///
 /// let meta = RenderMeta {
-///     artifact: PathBuf::from("/tmp/x/docs.agent.json"),
+///     artifact: PathBuf::from("/tmp/x/docs.graph.json"),
 ///     trust: Some("team".to_string()),
 ///     duration: Duration::from_millis(60),
 /// };
 /// let mut out = String::new();
 /// render_footer(&mut out, &meta, false);
-/// assert_eq!(out, "✓ rendered from docs.agent.json · trust: team · 0.06s\n");
+/// assert_eq!(out, "✓ rendered from docs.graph.json · trust: team · 0.06s\n");
 /// ```
 pub(crate) fn render_footer(out: &mut String, meta: &RenderMeta, styled: bool) {
     let basename = meta
@@ -82,22 +82,22 @@ mod tests {
 
     #[test]
     fn plain_with_trust_and_60ms() {
-        let m = meta("/tmp/x/docs.agent.json", Some("team"), 60);
+        let m = meta("/tmp/x/docs.graph.json", Some("team"), 60);
         let mut out = String::new();
         render_footer(&mut out, &m, false);
         assert_eq!(
-            out, "✓ rendered from docs.agent.json · trust: team · 0.06s\n",
+            out, "✓ rendered from docs.graph.json · trust: team · 0.06s\n",
             "plain footer with trust=team and duration=60ms"
         );
     }
 
     #[test]
     fn plain_without_trust_omits_trust_segment() {
-        let m = meta("/tmp/x/docs.agent.json", None, 60);
+        let m = meta("/tmp/x/docs.graph.json", None, 60);
         let mut out = String::new();
         render_footer(&mut out, &m, false);
         assert_eq!(
-            out, "✓ rendered from docs.agent.json · 0.06s\n",
+            out, "✓ rendered from docs.graph.json · 0.06s\n",
             "plain footer with trust=None must omit the · trust: segment"
         );
     }
@@ -106,7 +106,7 @@ mod tests {
     fn plain_sub_millisecond_rounds_to_two_decimals() {
         // 5 ms = 0.005 s → rendered as "0.01s" (two decimal places, standard
         // f64 rounding).
-        let m = meta("/tmp/x/docs.agent.json", None, 5);
+        let m = meta("/tmp/x/docs.graph.json", None, 5);
         let mut out = String::new();
         render_footer(&mut out, &m, false);
         assert!(
@@ -117,11 +117,11 @@ mod tests {
 
     #[test]
     fn plain_uses_basename_not_full_path() {
-        let m = meta("/very/long/path/to/my.agent.json", Some("ops"), 100);
+        let m = meta("/very/long/path/to/my.graph.json", Some("ops"), 100);
         let mut out = String::new();
         render_footer(&mut out, &m, false);
         assert!(
-            out.contains("rendered from my.agent.json"),
+            out.contains("rendered from my.graph.json"),
             "footer must use basename only, got: {out:?}"
         );
         assert!(
@@ -136,7 +136,7 @@ mod tests {
 
     #[test]
     fn styled_check_glyph_is_green_ansi() {
-        let m = meta("/tmp/x/docs.agent.json", Some("team"), 60);
+        let m = meta("/tmp/x/docs.graph.json", Some("team"), 60);
         let mut out = String::new();
         render_footer(&mut out, &m, true);
         // owo_colors 4.x emits ESC[32m for green fg and ESC[39m to reset fg.
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn styled_visible_text_matches_plain() {
-        let m = meta("/tmp/x/docs.agent.json", Some("team"), 60);
+        let m = meta("/tmp/x/docs.graph.json", Some("team"), 60);
         let mut plain_out = String::new();
         let mut styled_out = String::new();
         render_footer(&mut plain_out, &m, false);
@@ -162,12 +162,12 @@ mod tests {
 
     #[test]
     fn styled_without_trust_omits_trust_segment() {
-        let m = meta("/tmp/x/docs.agent.json", None, 60);
+        let m = meta("/tmp/x/docs.graph.json", None, 60);
         let mut out = String::new();
         render_footer(&mut out, &m, true);
         let stripped = strip_ansi_escapes::strip_str(&out);
         assert_eq!(
-            stripped, "✓ rendered from docs.agent.json · 0.06s\n",
+            stripped, "✓ rendered from docs.graph.json · 0.06s\n",
             "styled footer with trust=None must omit trust segment"
         );
     }

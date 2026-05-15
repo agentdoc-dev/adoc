@@ -2,18 +2,17 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use adoc_core::{
-    Diagnostic, DiagnosticCode, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, Severity,
+    Diagnostic, DiagnosticCode, RetrievalInput, RetrievalLoadResult, Severity,
     load_retrieval_session, why_object,
 };
 
 use crate::error::CliError;
-use crate::presentation::{
-    RenderMeta, ResolvedFormat, RetrievalView, json as json_presentation, make_presenter,
-};
+use crate::presentation::{RenderMeta, ResolvedFormat, RetrievalView, make_presenter};
 
 use super::{
-    diagnostics_have_errors, discover_project_config_if, eprint_diagnostics, merge_diagnostics,
-    presentation_record_from_session, report, resolve_agent_artifact_path_with_config,
+    discover_project_config_if, emit_retrieval_error, eprint_diagnostics,
+    exit_code_for_diagnostics, gate_retrieval_load, merge_diagnostics,
+    presentation_record_from_session, report, resolve_graph_artifact_path_with_config,
 };
 
 pub(crate) fn why(object_id: String, artifact: Option<PathBuf>, resolved: ResolvedFormat) -> i32 {
@@ -21,50 +20,21 @@ pub(crate) fn why(object_id: String, artifact: Option<PathBuf>, resolved: Resolv
         Ok(config) => config,
         Err(error) => return report(error),
     };
-    let artifact = resolve_agent_artifact_path_with_config(artifact, config.as_ref());
+    let artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact.clone(),
         search_artifact_path: None,
-        graph_artifact_path: None,
     });
     let RetrievalLoadResult {
         session,
         diagnostics: load_diagnostics,
     } = load_result;
-    let session = match session {
-        Some(session) => session,
-        None => {
-            let exit_code = why_exit_code_for_diagnostics(&load_diagnostics);
-            if resolved == ResolvedFormat::Json {
-                return json_presentation::write_envelope_json(
-                    &RetrievalEnvelope::new(Vec::new(), load_diagnostics),
-                    &mut std::io::stdout(),
-                )
-                .map_or_else(
-                    |source| report(CliError::RetrievalIo { source }),
-                    |()| exit_code,
-                );
-            }
-            eprint_diagnostics(&load_diagnostics);
-            return exit_code;
-        }
-    };
-
-    if diagnostics_have_errors(&load_diagnostics) {
-        let exit_code = why_exit_code_for_diagnostics(&load_diagnostics);
-        if resolved == ResolvedFormat::Json {
-            return json_presentation::write_envelope_json(
-                &RetrievalEnvelope::new(Vec::new(), load_diagnostics),
-                &mut std::io::stdout(),
-            )
-            .map_or_else(
-                |source| report(CliError::RetrievalIo { source }),
-                |()| exit_code,
-            );
-        }
-        eprint_diagnostics(&load_diagnostics);
-        return exit_code;
-    }
+    let load_exit_code = why_exit_code_for_diagnostics(&load_diagnostics);
+    let (session, load_diagnostics) =
+        match gate_retrieval_load(session, load_diagnostics, resolved, load_exit_code) {
+            Ok(loaded) => loaded,
+            Err(exit_code) => return exit_code,
+        };
 
     let started = Instant::now();
     let why_result = why_object(&session, &object_id);
@@ -73,18 +43,7 @@ pub(crate) fn why(object_id: String, artifact: Option<PathBuf>, resolved: Resolv
     let exit_code = why_exit_code_for_diagnostics(&diagnostics);
 
     if exit_code != 0 {
-        if resolved == ResolvedFormat::Json {
-            return json_presentation::write_envelope_json(
-                &RetrievalEnvelope::new(Vec::new(), diagnostics),
-                &mut std::io::stdout(),
-            )
-            .map_or_else(
-                |source| report(CliError::RetrievalIo { source }),
-                |()| exit_code,
-            );
-        }
-        eprint_diagnostics(&diagnostics);
-        return exit_code;
+        return emit_retrieval_error(diagnostics, resolved, exit_code);
     }
 
     if resolved != ResolvedFormat::Json && !diagnostics.is_empty() {
@@ -113,11 +72,7 @@ pub(crate) fn why(object_id: String, artifact: Option<PathBuf>, resolved: Resolv
 }
 
 fn why_exit_code_for_diagnostics(diagnostics: &[Diagnostic]) -> i32 {
-    diagnostics
-        .iter()
-        .filter_map(why_diagnostic_exit_code)
-        .min()
-        .unwrap_or(0)
+    exit_code_for_diagnostics(diagnostics, why_diagnostic_exit_code)
 }
 
 fn why_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {

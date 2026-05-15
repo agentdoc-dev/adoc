@@ -18,7 +18,6 @@ pub(crate) struct ProjectConfig {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ConfigOutputs {
     pub(crate) html: Option<PathBuf>,
-    pub(crate) agent_json: Option<PathBuf>,
     pub(crate) graph: Option<PathBuf>,
     pub(crate) search: Option<PathBuf>,
 }
@@ -44,7 +43,6 @@ struct RawProjectConfig {
 struct RawOutputs {
     dir: Option<PathBuf>,
     html: Option<PathBuf>,
-    agent_json: Option<PathBuf>,
     graph: Option<PathBuf>,
     search: Option<PathBuf>,
 }
@@ -150,10 +148,6 @@ impl RawOutputs {
                 .html
                 .map(|path| resolve_config_path(config_dir, path))
                 .or_else(|| dir.as_ref().map(|dir| dir.join("docs.html"))),
-            agent_json: self
-                .agent_json
-                .map(|path| resolve_config_path(config_dir, path))
-                .or_else(|| dir.as_ref().map(|dir| dir.join("docs.agent.json"))),
             graph: self
                 .graph
                 .map(|path| resolve_config_path(config_dir, path))

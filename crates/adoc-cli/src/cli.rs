@@ -33,7 +33,7 @@ Examples:
 const WHY_LONG_HELP: &str = "\
 Examples:
   adoc why billing.refunds.issue-credit
-  adoc why billing.refunds.issue-credit --artifact dist/docs.agent.json
+  adoc why billing.refunds.issue-credit --artifact dist/docs.graph.json
   adoc why billing.refunds.issue-credit --format json
 ";
 const GRAPH_LONG_HELP: &str = "\
@@ -172,14 +172,14 @@ pub(crate) enum Commands {
         path: Option<PathBuf>,
     },
     #[command(
-        about = "Build human and agent-facing artifacts.",
+        about = "Build HTML, graph, and search artifacts.",
         after_long_help = BUILD_LONG_HELP
     )]
     Build {
         /// AgentDoc Source file or directory to build.
         #[arg(value_name = "PATH")]
         path: Option<PathBuf>,
-        /// Output directory for docs.html, docs.agent.json, and docs.search.json.
+        /// Output directory for docs.html, docs.graph.json, and docs.search.json.
         #[arg(long)]
         out: Option<PathBuf>,
         /// Skip embedding generation and search artifact writes.
@@ -196,7 +196,7 @@ pub(crate) enum Commands {
         object_id: String,
         #[arg(
             long,
-            help = "Agent JSON artifact path (default: config outputs.agent_json, then dist/docs.agent.json)"
+            help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"
         )]
         artifact: Option<PathBuf>,
     },
@@ -213,11 +213,6 @@ pub(crate) enum Commands {
             help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"
         )]
         artifact: Option<PathBuf>,
-        #[arg(
-            long,
-            help = "Agent JSON artifact path for graph drift checks (default: config outputs.agent_json, then dist/docs.agent.json)"
-        )]
-        agent_artifact: Option<PathBuf>,
         #[arg(long, value_enum)]
         relation: Option<CliGraphRelation>,
         #[arg(long, value_enum)]
@@ -233,7 +228,7 @@ pub(crate) enum Commands {
         query: String,
         #[arg(
             long,
-            help = "Agent JSON artifact path (default: config outputs.agent_json, then dist/docs.agent.json)"
+            help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"
         )]
         artifact: Option<PathBuf>,
         #[arg(
@@ -241,12 +236,6 @@ pub(crate) enum Commands {
             help = "Search artifact path (default: config outputs.search, then dist/docs.search.json)"
         )]
         search_artifact: Option<PathBuf>,
-        #[arg(
-            long,
-            help = "Graph artifact path (default: config outputs.graph, then dist/docs.graph.json)",
-            requires = "related_to"
-        )]
-        graph_artifact: Option<PathBuf>,
         #[arg(long, conflicts_with = "lexical")]
         semantic: bool,
         /// Reserved for the V1.5/V1.6 hybrid slice; today this is the default

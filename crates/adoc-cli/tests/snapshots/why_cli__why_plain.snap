@@ -26,4 +26,4 @@ Relations:
 - supersedes: billing.refunds.manual-credit
 - related_to: billing.refunds.audit-required
 
-✓ rendered from docs.agent.json · trust: team · <duration>
+✓ rendered from docs.graph.json · trust: team · <duration>

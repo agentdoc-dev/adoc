@@ -1,8 +1,6 @@
-pub(crate) mod agent_json;
 pub(crate) mod graph_json;
 pub(crate) mod search_json;
 
-pub(crate) use agent_json::AgentJsonArtifact;
 pub(crate) use graph_json::GraphJsonArtifact;
 pub(crate) use search_json::SearchJsonArtifact;
 
@@ -15,7 +13,7 @@ mod tests {
     use crate::domain::identity::PageId;
     use crate::domain::ports::artifact_writer::ArtifactWriter;
 
-    /// Stub adapter declaring a non-`AgentJsonDocument` Output. Compiling and
+    /// Stub adapter declaring a non-graph Output. Compiling and
     /// running this proves the trait is genuinely format-agnostic.
     struct CountingArtifact;
 
@@ -50,20 +48,15 @@ mod tests {
     }
 
     #[test]
-    fn graph_json_artifact_writes_from_agent_document_through_same_writer_port() {
-        use crate::domain::artifact::AgentJsonDocument;
+    fn graph_json_artifact_writes_from_workspace_through_same_writer_port() {
+        use crate::domain::ast::WorkspaceAst;
         use crate::infrastructure::artifact::GraphJsonArtifact;
 
-        let agent_document = AgentJsonDocument {
-            schema_version: "adoc.agent.v0".to_string(),
-            pages: Vec::new(),
-            objects: Vec::new(),
-            diagnostics: Vec::new(),
-        };
+        let workspace = WorkspaceAst { pages: Vec::new() };
 
-        let graph_document = GraphJsonArtifact.build(&agent_document, &[]);
+        let graph_document = GraphJsonArtifact.build(&workspace, &[]);
 
-        assert_eq!(graph_document.schema_version, "adoc.graph.v0");
+        assert_eq!(graph_document.schema_version, "adoc.graph.v1");
         assert!(graph_document.nodes.is_empty());
         assert!(graph_document.edges.is_empty());
     }

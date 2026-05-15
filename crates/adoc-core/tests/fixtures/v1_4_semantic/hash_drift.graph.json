@@ -1,17 +1,17 @@
 {
-  "schema_version": "adoc.agent.v0",
-  "pages": [
+  "schema_version": "adoc.graph.v1",
+  "nodes": [
     {
+      "type": "page",
       "id": "billing.page",
+      "order": 0,
       "title": "Billing",
       "source_path": "billing.adoc"
-    }
-  ],
-  "objects": [
+    },
     {
+      "type": "knowledge_object",
       "id": "billing.first",
       "kind": "claim",
-      "status": "draft",
       "body": "First billing claim.",
       "page_id": "billing.page",
       "source_span": {
@@ -24,8 +24,10 @@
         "depends_on": [],
         "supersedes": [],
         "related_to": []
-      }
+      },
+      "status": "draft"
     }
   ],
+  "edges": [],
   "diagnostics": []
 }

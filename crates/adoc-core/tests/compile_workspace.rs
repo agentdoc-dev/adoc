@@ -1,10 +1,99 @@
 mod support;
 
 use adoc_core::{
-    AgentJsonObject, BuildEmbeddingMode, BuildInput, CompileInput, DiagnosticCode, Severity,
+    BuildArtifacts, BuildEmbeddingMode, BuildInput, CompileInput, DiagnosticCode, Severity,
     build_workspace, compile_workspace,
 };
+use serde::Deserialize;
 use support::TestWorkspace;
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+struct TestGraphDocument {
+    schema_version: String,
+    nodes: Vec<TestGraphNode>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum TestGraphNode {
+    Page(TestGraphPage),
+    KnowledgeObject(TestGraphObject),
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+struct TestGraphPage {
+    id: String,
+    title: Option<String>,
+    source_path: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TestGraphObject {
+    id: String,
+    kind: String,
+    status: Option<String>,
+    body: String,
+    page_id: String,
+    source_span: TestGraphSourceSpan,
+    fields: std::collections::BTreeMap<String, String>,
+    relations: TestGraphRelations,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TestGraphSourceSpan {
+    line: u32,
+    column: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TestGraphRelations {
+    depends_on: Vec<String>,
+    supersedes: Vec<String>,
+    related_to: Vec<String>,
+}
+
+fn graph_document(artifacts: &BuildArtifacts) -> TestGraphDocument {
+    serde_json::from_str(&artifacts.graph_json).expect("graph artifact JSON is valid")
+}
+
+fn graph_objects(artifacts: &BuildArtifacts) -> Vec<TestGraphObject> {
+    graph_document(artifacts)
+        .nodes
+        .into_iter()
+        .filter_map(|node| match node {
+            TestGraphNode::KnowledgeObject(object) => Some(object),
+            _ => None,
+        })
+        .collect()
+}
+
+fn first_graph_object(artifacts: &BuildArtifacts) -> TestGraphObject {
+    graph_objects(artifacts)
+        .into_iter()
+        .next()
+        .expect("object must be emitted")
+}
+
+fn find_graph_object(artifacts: &BuildArtifacts, id: &str) -> Option<TestGraphObject> {
+    graph_objects(artifacts)
+        .into_iter()
+        .find(|object| object.id == id)
+}
+
+fn graph_pages(artifacts: &BuildArtifacts) -> Vec<TestGraphPage> {
+    graph_document(artifacts)
+        .nodes
+        .into_iter()
+        .filter_map(|node| match node {
+            TestGraphNode::Page(page) => Some(page),
+            _ => None,
+        })
+        .collect()
+}
 
 #[test]
 fn build_workspace_skips_embeddings_without_affecting_check_path() {
@@ -229,7 +318,7 @@ fn compile_workspace_rejects_invalid_path_derived_page_id() {
 
 #[test]
 fn compile_workspace_resolves_claim_into_artifact_record() {
-    // A well-formed claim block must produce exactly one AgentJsonObject record
+    // A well-formed claim block must produce exactly one graph Knowledge Object record
     // with the correct id, kind, status, body, page_id, source span, and empty
     // relation arrays.
     let workspace = TestWorkspace::new("resolve-claim-into-record");
@@ -258,12 +347,12 @@ fn compile_workspace_resolves_claim_into_artifact_record() {
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
     assert_eq!(
-        artifacts.agent_json.objects.len(),
+        graph_objects(&artifacts).len(),
         1,
         "expected exactly one object record"
     );
 
-    let record: &AgentJsonObject = &artifacts.agent_json.objects[0];
+    let record = first_graph_object(&artifacts);
     assert_eq!(record.id, "billing.credits");
     assert_eq!(record.kind, "claim");
     assert_eq!(record.status.as_deref(), Some("draft"));
@@ -316,11 +405,7 @@ fn compile_workspace_resolves_clean_decision_into_artifacts() {
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
-    let record = artifacts
-        .agent_json
-        .objects
-        .first()
-        .expect("decision object must be emitted");
+    let record = first_graph_object(&artifacts);
     assert_eq!(record.id, "billing.policy");
     assert_eq!(record.kind, "decision");
     assert_eq!(record.status.as_deref(), Some("proposed"));
@@ -373,11 +458,7 @@ fn compile_workspace_resolves_warning_into_artifacts() {
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
-    let record = artifacts
-        .agent_json
-        .objects
-        .first()
-        .expect("warning object must be emitted");
+    let record = first_graph_object(&artifacts);
     assert_eq!(record.id, "auth.session.clock-skew");
     assert_eq!(record.kind, "warning");
     assert_eq!(record.status.as_deref(), Some("high"));
@@ -444,11 +525,7 @@ fn compile_workspace_resolves_glossary_into_artifacts() {
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
-    let record = artifacts
-        .agent_json
-        .objects
-        .first()
-        .expect("glossary object must be emitted");
+    let record = first_graph_object(&artifacts);
     assert_eq!(record.id, "billing.credits");
     assert_eq!(record.kind, "glossary");
     assert_eq!(record.status, None);
@@ -599,13 +676,12 @@ fn compile_workspace_ignores_non_adoc_files_during_directory_scan() {
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
-    assert_eq!(artifacts.agent_json.pages.len(), 1);
+    let pages = graph_pages(&artifacts);
+    assert_eq!(pages.len(), 1);
     assert!(
-        artifacts.agent_json.pages[0]
-            .source_path
-            .ends_with("guide.adoc"),
+        pages[0].source_path.ends_with("guide.adoc"),
         "expected only the .adoc source path, got: {}",
-        artifacts.agent_json.pages[0].source_path
+        pages[0].source_path
     );
     assert!(!artifacts.html.contains("This raw HTML would fail"));
 }
@@ -687,7 +763,7 @@ fn compile_workspace_links_references_in_heading_and_list_item() {
         artifacts.html
     );
     assert_eq!(
-        artifacts.agent_json.pages[0].title.as_deref(),
+        graph_pages(&artifacts)[0].title.as_deref(),
         Some("See billing.credits")
     );
     assert!(
@@ -735,12 +811,8 @@ fn compile_workspace_links_reference_inside_claim_body_and_preserves_source_body
         "expected claim body reference anchor: {}",
         artifacts.html
     );
-    let claim = artifacts
-        .agent_json
-        .objects
-        .iter()
-        .find(|object| object.id == "billing.credit-policy")
-        .expect("claim object emitted");
+    let claim =
+        find_graph_object(&artifacts, "billing.credit-policy").expect("claim object emitted");
     assert_eq!(
         claim.body,
         "Use [[billing.credits]] before issuing refunds."
@@ -819,7 +891,7 @@ fn compile_workspace_rejects_unsafe_link_inside_claim_body() {
 }
 
 #[test]
-fn compile_workspace_emits_decision_supersedes_relation_in_html_and_agent_json() {
+fn compile_workspace_emits_decision_supersedes_relation_in_html_and_graph_json() {
     let workspace = TestWorkspace::new("decision-supersedes-relation");
     let source = workspace.write(
         "decisions.adoc",
@@ -858,12 +930,8 @@ fn compile_workspace_emits_decision_supersedes_relation_in_html_and_agent_json()
         "expected supersedes relation link in HTML: {}",
         artifacts.html
     );
-    let decision = artifacts
-        .agent_json
-        .objects
-        .iter()
-        .find(|object| object.id == "billing.new-policy")
-        .expect("new decision emitted");
+    let decision =
+        find_graph_object(&artifacts, "billing.new-policy").expect("new decision emitted");
     assert_eq!(decision.relations.supersedes, vec!["billing.old-policy"]);
     assert!(
         !decision.fields.contains_key("supersedes"),
@@ -907,12 +975,7 @@ fn compile_workspace_emits_claim_depends_on_multiple_object_kinds() {
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
-    let claim = artifacts
-        .agent_json
-        .objects
-        .iter()
-        .find(|object| object.id == "billing.refunds")
-        .expect("claim emitted");
+    let claim = find_graph_object(&artifacts, "billing.refunds").expect("claim emitted");
     assert_eq!(
         claim.relations.depends_on,
         vec!["billing.credits", "billing.ledger"]
@@ -962,12 +1025,7 @@ fn compile_workspace_emits_relation_bracket_array_in_first_occurrence_order() {
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
-    let claim = artifacts
-        .agent_json
-        .objects
-        .iter()
-        .find(|object| object.id == "billing.refunds")
-        .expect("claim emitted");
+    let claim = find_graph_object(&artifacts, "billing.refunds").expect("claim emitted");
     assert_eq!(
         claim.relations.depends_on,
         vec!["billing.credits", "billing.ledger"]
@@ -1011,12 +1069,7 @@ fn compile_workspace_deduplicates_relation_targets_and_ignores_trailing_comma() 
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
-    let claim = artifacts
-        .agent_json
-        .objects
-        .iter()
-        .find(|object| object.id == "billing.refunds")
-        .expect("claim emitted");
+    let claim = find_graph_object(&artifacts, "billing.refunds").expect("claim emitted");
     assert_eq!(claim.relations.related_to, vec!["billing.credits"]);
     assert!(
         !claim.fields.contains_key("related_to"),
@@ -1054,12 +1107,7 @@ fn relation_empty_segment_bracket_array_ignores_trailing_empty() {
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
-    let claim = artifacts
-        .agent_json
-        .objects
-        .iter()
-        .find(|object| object.id == "billing.refunds")
-        .expect("claim emitted");
+    let claim = find_graph_object(&artifacts, "billing.refunds").expect("claim emitted");
     assert_eq!(claim.relations.related_to, vec!["billing.credits"]);
 }
 
@@ -1943,11 +1991,7 @@ fn compile_workspace_emits_accepted_decision_with_verdict() {
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
-    let record = artifacts
-        .agent_json
-        .objects
-        .first()
-        .expect("decision object must be emitted");
+    let record = first_graph_object(&artifacts);
     assert_eq!(record.kind, "decision");
     assert_eq!(record.status.as_deref(), Some("accepted"));
     assert_eq!(
@@ -2006,11 +2050,7 @@ fn compile_workspace_builds_verified_claim_with_all_v0_evidence() {
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
-    let record = artifacts
-        .agent_json
-        .objects
-        .first()
-        .expect("claim object must be emitted");
+    let record = first_graph_object(&artifacts);
     assert_eq!(record.status.as_deref(), Some("verified"));
     assert_eq!(
         record.fields.get("owner").map(String::as_str),
@@ -2133,7 +2173,7 @@ fn compile_workspace_warns_and_treats_status_casing_variant_as_plain() {
     );
     let artifacts = result.artifacts.expect("warnings must not block artifacts");
     assert_eq!(
-        artifacts.agent_json.objects[0].status.as_deref(),
+        first_graph_object(&artifacts).status.as_deref(),
         Some("Verified")
     );
     assert!(

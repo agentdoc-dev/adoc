@@ -1,13 +1,10 @@
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use adoc_core::{
-    AgentJsonDocument, AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan,
-    BuildEmbeddingMode, BuildInput, DiagnosticCode, GraphArtifactDocument, GraphDirection,
-    GraphEdge, GraphInput, GraphNode, GraphRelationKind, GraphTraversalQuery, load_graph_session,
-    traverse_graph,
+    BuildEmbeddingMode, BuildInput, DiagnosticCode, GraphDirection, GraphInput, GraphRelationKind,
+    GraphTraversalQuery, load_graph_session, traverse_graph,
 };
-use sha2::{Digest, Sha256};
+use serde_json::{Value, json};
 
 mod support;
 
@@ -23,65 +20,55 @@ fn write_temp_artifact(name: &str, suffix: &str, contents: &str) -> tempfile::Na
     artifact
 }
 
-fn sha256_prefixed(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    format!("sha256:{:x}", hasher.finalize())
+fn empty_relations() -> Value {
+    json!({
+        "depends_on": [],
+        "supersedes": [],
+        "related_to": []
+    })
 }
 
-fn object(id: &str, relations: AgentJsonRelations) -> AgentJsonObject {
-    AgentJsonObject {
-        id: id.to_string(),
-        kind: "claim".to_string(),
-        status: Some("draft".to_string()),
-        body: format!("{id} body."),
-        page_id: "team.graph".to_string(),
-        source_span: AgentJsonSourceSpan {
-            path: "docs/graph.adoc".to_string(),
-            line: 1,
-            column: 1,
+fn graph_node(id: &str) -> Value {
+    json!({
+        "type": "knowledge_object",
+        "id": id,
+        "kind": "claim",
+        "status": "draft",
+        "body": format!("{id} body."),
+        "page_id": "team.graph",
+        "source_span": {
+            "path": "docs/graph.adoc",
+            "line": 1,
+            "column": 1
         },
-        fields: BTreeMap::new(),
-        relations,
-    }
+        "fields": {},
+        "relations": empty_relations()
+    })
 }
 
-fn agent_document(objects: Vec<AgentJsonObject>) -> AgentJsonDocument {
-    AgentJsonDocument {
-        schema_version: "adoc.agent.v0".to_string(),
-        pages: Vec::new(),
-        objects,
-        diagnostics: Vec::new(),
-    }
+fn relation_edge(source: &str, relation: GraphRelationKind, target: &str) -> Value {
+    json!({
+        "kind": "relation",
+        "source": source,
+        "target": target,
+        "relation": relation.as_str()
+    })
 }
 
-fn graph_document(agent_json: &str, nodes: Vec<GraphNode>, edges: Vec<GraphEdge>) -> String {
-    GraphArtifactDocument {
-        schema_version: "adoc.graph.v0".to_string(),
-        agent_artifact_hash: sha256_prefixed(agent_json.as_bytes()),
-        nodes,
-        edges,
-    }
-    .to_pretty_json()
-    .expect("graph artifact serializes")
+fn graph_document(nodes: Vec<Value>, edges: Vec<Value>) -> String {
+    serde_json::to_string_pretty(&json!({
+        "schema_version": "adoc.graph.v1",
+        "nodes": nodes,
+        "edges": edges,
+        "diagnostics": []
+    }))
+    .expect("graph fixture serializes")
 }
 
-fn load_session(agent: AgentJsonDocument, graph: GraphArtifactDocument) -> adoc_core::GraphSession {
-    let agent_json = agent.to_pretty_json().expect("agent serializes");
-    let agent_artifact = write_temp_artifact("agent", ".agent.json", &agent_json);
-    let graph_artifact = write_temp_artifact(
-        "graph",
-        ".graph.json",
-        &GraphArtifactDocument {
-            agent_artifact_hash: sha256_prefixed(agent_json.as_bytes()),
-            ..graph
-        }
-        .to_pretty_json()
-        .expect("graph serializes"),
-    );
+fn load_session(graph_json: String) -> adoc_core::GraphSession {
+    let graph_artifact = write_temp_artifact("graph", ".graph.json", &graph_json);
 
     let result = load_graph_session(GraphInput {
-        agent_artifact_path: agent_artifact.path().to_path_buf(),
         graph_artifact_path: graph_artifact.path().to_path_buf(),
     });
 
@@ -94,31 +81,44 @@ fn load_session(agent: AgentJsonDocument, graph: GraphArtifactDocument) -> adoc_
 }
 
 #[test]
-fn graph_artifact_serializes_with_v0_shape() {
-    let artifact = GraphArtifactDocument {
-        schema_version: "adoc.graph.v0".to_string(),
-        agent_artifact_hash: "sha256:agent".to_string(),
-        nodes: vec![GraphNode {
-            id: "billing.credits".to_string(),
-            kind: "claim".to_string(),
-            status: Some("verified".to_string()),
-            page_id: "team.billing".to_string(),
-        }],
-        edges: vec![GraphEdge {
-            source: "billing.refunds".to_string(),
-            target: "billing.credits".to_string(),
-            relation: GraphRelationKind::DependsOn,
-        }],
-    };
+fn graph_artifact_serializes_with_v1_shape() {
+    let artifact = graph_document(
+        vec![json!({
+            "type": "knowledge_object",
+            "id": "billing.credits",
+            "kind": "claim",
+            "status": "verified",
+            "body": "billing.credits body.",
+            "page_id": "team.billing",
+            "source_span": {
+                "path": "docs/graph.adoc",
+                "line": 1,
+                "column": 1
+            },
+            "fields": {},
+            "relations": empty_relations()
+        })],
+        vec![relation_edge(
+            "billing.refunds",
+            GraphRelationKind::DependsOn,
+            "billing.credits",
+        )],
+    );
 
-    let value = serde_json::to_value(&artifact).expect("graph artifact serializes");
+    let value: Value = serde_json::from_str(&artifact).expect("graph artifact serializes");
 
-    assert_eq!(value["schema_version"], "adoc.graph.v0");
-    assert_eq!(value["agent_artifact_hash"], "sha256:agent");
+    assert_eq!(value["schema_version"], "adoc.graph.v1");
+    assert_eq!(value.get("graph_artifact_hash"), None);
+    assert!(
+        !artifact.contains("\"html\""),
+        "graph artifact must be presentation-free: {artifact}"
+    );
+    assert_eq!(value["nodes"][0]["type"], "knowledge_object");
     assert_eq!(value["nodes"][0]["id"], "billing.credits");
     assert_eq!(value["nodes"][0]["kind"], "claim");
     assert_eq!(value["nodes"][0]["status"], "verified");
     assert_eq!(value["nodes"][0]["page_id"], "team.billing");
+    assert_eq!(value["edges"][0]["kind"], "relation");
     assert_eq!(value["edges"][0]["source"], "billing.refunds");
     assert_eq!(value["edges"][0]["target"], "billing.credits");
     assert_eq!(value["edges"][0]["relation"], "depends_on");
@@ -167,42 +167,51 @@ fn build_workspace_emits_graph_artifact_with_deterministic_order_when_embeddings
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts are produced");
-    let graph = artifacts.graph_json;
+    let graph: Value = serde_json::from_str(&artifacts.graph_json).expect("graph artifact is JSON");
+    assert_eq!(graph["schema_version"], "adoc.graph.v1");
+    assert!(
+        !artifacts.graph_json.contains("\"html\""),
+        "graph artifact must not serialize HTML fragments: {}",
+        artifacts.graph_json
+    );
     assert_eq!(
         graph
-            .nodes
+            .get("nodes")
+            .and_then(Value::as_array)
+            .expect("nodes is an array")
             .iter()
-            .map(|node| node.id.as_str())
+            .filter(|node| node["type"] == "knowledge_object")
+            .map(|node| node["id"].as_str().expect("node id"))
             .collect::<Vec<_>>(),
         ["billing.alpha", "billing.beta", "billing.gamma"]
     );
     assert_eq!(
         graph
-            .edges
+            .get("edges")
+            .and_then(Value::as_array)
+            .expect("edges is an array")
             .iter()
-            .map(|edge| (edge.source.as_str(), edge.relation, edge.target.as_str()))
+            .filter(|edge| edge["kind"] == "relation")
+            .map(|edge| (
+                edge["source"].as_str().expect("source"),
+                edge["relation"].as_str(),
+                edge["target"].as_str().expect("target")
+            ))
             .collect::<Vec<_>>(),
         [
-            (
-                "billing.beta",
-                GraphRelationKind::DependsOn,
-                "billing.alpha"
-            ),
-            (
-                "billing.beta",
-                GraphRelationKind::RelatedTo,
-                "billing.gamma"
-            ),
-            (
-                "billing.gamma",
-                GraphRelationKind::Supersedes,
-                "billing.alpha"
-            ),
+            ("billing.beta", Some("depends_on"), "billing.alpha"),
+            ("billing.beta", Some("related_to"), "billing.gamma"),
+            ("billing.gamma", Some("supersedes"), "billing.alpha"),
         ]
     );
     assert!(
-        graph.agent_artifact_hash.starts_with("sha256:"),
-        "graph artifact should carry agent hash"
+        graph
+            .get("edges")
+            .and_then(Value::as_array)
+            .expect("edges is an array")
+            .iter()
+            .any(|edge| edge["kind"] == "contains"),
+        "graph should include content containment edges"
     );
     assert!(
         artifacts.search_json.is_none(),
@@ -211,13 +220,8 @@ fn build_workspace_emits_graph_artifact_with_deterministic_order_when_embeddings
 }
 
 #[test]
-fn load_graph_session_rejects_schema_malformed_missing_artifacts_and_warns_on_hash_drift() {
-    let agent = agent_document(vec![object("billing.root", AgentJsonRelations::default())]);
-    let agent_json = agent.to_pretty_json().expect("agent serializes");
-    let agent_artifact = write_temp_artifact("agent", ".agent.json", &agent_json);
-
+fn load_graph_session_rejects_missing_malformed_and_unsupported_artifacts() {
     let missing = load_graph_session(GraphInput {
-        agent_artifact_path: agent_artifact.path().to_path_buf(),
         graph_artifact_path: PathBuf::from("/tmp/adoc-missing-docs.graph.json"),
     });
     assert!(missing.session.is_none());
@@ -228,7 +232,6 @@ fn load_graph_session_rejects_schema_malformed_missing_artifacts_and_warns_on_ha
 
     let malformed_artifact = write_temp_artifact("malformed", ".graph.json", "{");
     let malformed = load_graph_session(GraphInput {
-        agent_artifact_path: agent_artifact.path().to_path_buf(),
         graph_artifact_path: malformed_artifact.path().to_path_buf(),
     });
     assert!(malformed.session.is_none());
@@ -240,10 +243,9 @@ fn load_graph_session_rejects_schema_malformed_missing_artifacts_and_warns_on_ha
     let unsupported_artifact = write_temp_artifact(
         "unsupported",
         ".graph.json",
-        r#"{"schema_version":"adoc.graph.v99","agent_artifact_hash":"sha256:agent","nodes":[],"edges":[]}"#,
+        r#"{"schema_version":"adoc.graph.v99","nodes":[],"edges":[],"diagnostics":[]}"#,
     );
     let unsupported = load_graph_session(GraphInput {
-        agent_artifact_path: agent_artifact.path().to_path_buf(),
         graph_artifact_path: unsupported_artifact.path().to_path_buf(),
     });
     assert!(unsupported.session.is_none());
@@ -251,123 +253,25 @@ fn load_graph_session_rejects_schema_malformed_missing_artifacts_and_warns_on_ha
         unsupported.diagnostics[0].code,
         DiagnosticCode::SchemaUnsupportedVersion
     );
-
-    let drift_graph = GraphArtifactDocument {
-        schema_version: "adoc.graph.v0".to_string(),
-        agent_artifact_hash: "sha256:stale".to_string(),
-        nodes: vec![GraphNode {
-            id: "billing.root".to_string(),
-            kind: "claim".to_string(),
-            status: Some("draft".to_string()),
-            page_id: "team.graph".to_string(),
-        }],
-        edges: Vec::new(),
-    };
-    let drift_artifact = write_temp_artifact(
-        "drift",
-        ".graph.json",
-        &drift_graph.to_pretty_json().expect("graph serializes"),
-    );
-    let drift = load_graph_session(GraphInput {
-        agent_artifact_path: agent_artifact.path().to_path_buf(),
-        graph_artifact_path: drift_artifact.path().to_path_buf(),
-    });
-    assert!(
-        drift.session.is_some(),
-        "hash drift is a warning, not fatal"
-    );
-    assert_eq!(drift.diagnostics[0].code, DiagnosticCode::GraphHashDrift);
 }
 
 #[test]
 fn graph_traversal_is_full_reachable_and_marks_cycle_edges_without_revisiting_nodes() {
-    let agent = agent_document(vec![
-        object(
-            "billing.a",
-            AgentJsonRelations {
-                depends_on: vec!["billing.b".to_string()],
-                supersedes: Vec::new(),
-                related_to: Vec::new(),
-            },
-        ),
-        object(
-            "billing.b",
-            AgentJsonRelations {
-                depends_on: vec!["billing.c".to_string()],
-                supersedes: Vec::new(),
-                related_to: Vec::new(),
-            },
-        ),
-        object(
-            "billing.c",
-            AgentJsonRelations {
-                depends_on: vec!["billing.a".to_string()],
-                supersedes: Vec::new(),
-                related_to: Vec::new(),
-            },
-        ),
-        object(
-            "billing.d",
-            AgentJsonRelations {
-                depends_on: Vec::new(),
-                supersedes: Vec::new(),
-                related_to: vec!["billing.a".to_string()],
-            },
-        ),
-    ]);
-    let graph = GraphArtifactDocument {
-        schema_version: "adoc.graph.v0".to_string(),
-        agent_artifact_hash: "sha256:filled-by-helper".to_string(),
-        nodes: vec![
-            GraphNode {
-                id: "billing.a".to_string(),
-                kind: "claim".to_string(),
-                status: Some("draft".to_string()),
-                page_id: "team.graph".to_string(),
-            },
-            GraphNode {
-                id: "billing.b".to_string(),
-                kind: "claim".to_string(),
-                status: Some("draft".to_string()),
-                page_id: "team.graph".to_string(),
-            },
-            GraphNode {
-                id: "billing.c".to_string(),
-                kind: "claim".to_string(),
-                status: Some("draft".to_string()),
-                page_id: "team.graph".to_string(),
-            },
-            GraphNode {
-                id: "billing.d".to_string(),
-                kind: "claim".to_string(),
-                status: Some("draft".to_string()),
-                page_id: "team.graph".to_string(),
-            },
+    let graph = graph_document(
+        vec![
+            graph_node("billing.a"),
+            graph_node("billing.b"),
+            graph_node("billing.c"),
+            graph_node("billing.d"),
         ],
-        edges: vec![
-            GraphEdge {
-                source: "billing.a".to_string(),
-                target: "billing.b".to_string(),
-                relation: GraphRelationKind::DependsOn,
-            },
-            GraphEdge {
-                source: "billing.b".to_string(),
-                target: "billing.c".to_string(),
-                relation: GraphRelationKind::DependsOn,
-            },
-            GraphEdge {
-                source: "billing.c".to_string(),
-                target: "billing.a".to_string(),
-                relation: GraphRelationKind::DependsOn,
-            },
-            GraphEdge {
-                source: "billing.d".to_string(),
-                target: "billing.a".to_string(),
-                relation: GraphRelationKind::RelatedTo,
-            },
+        vec![
+            relation_edge("billing.a", GraphRelationKind::DependsOn, "billing.b"),
+            relation_edge("billing.b", GraphRelationKind::DependsOn, "billing.c"),
+            relation_edge("billing.c", GraphRelationKind::DependsOn, "billing.a"),
+            relation_edge("billing.d", GraphRelationKind::RelatedTo, "billing.a"),
         ],
-    };
-    let session = load_session(agent, graph);
+    );
+    let session = load_session(graph);
 
     let traversal = traverse_graph(
         &session,
@@ -402,68 +306,18 @@ fn graph_traversal_is_full_reachable_and_marks_cycle_edges_without_revisiting_no
 
 #[test]
 fn graph_traversal_applies_direction_and_relation_filters() {
-    let agent = agent_document(vec![
-        object("billing.a", AgentJsonRelations::default()),
-        object(
-            "billing.b",
-            AgentJsonRelations {
-                depends_on: vec!["billing.a".to_string()],
-                supersedes: Vec::new(),
-                related_to: Vec::new(),
-            },
-        ),
-        object(
-            "billing.c",
-            AgentJsonRelations {
-                depends_on: Vec::new(),
-                supersedes: Vec::new(),
-                related_to: vec!["billing.a".to_string()],
-            },
-        ),
-    ]);
-    let agent_json = agent.to_pretty_json().expect("agent serializes");
-    let graph_json = graph_document(
-        &agent_json,
+    let graph = graph_document(
         vec![
-            GraphNode {
-                id: "billing.a".to_string(),
-                kind: "claim".to_string(),
-                status: Some("draft".to_string()),
-                page_id: "team.graph".to_string(),
-            },
-            GraphNode {
-                id: "billing.b".to_string(),
-                kind: "claim".to_string(),
-                status: Some("draft".to_string()),
-                page_id: "team.graph".to_string(),
-            },
-            GraphNode {
-                id: "billing.c".to_string(),
-                kind: "claim".to_string(),
-                status: Some("draft".to_string()),
-                page_id: "team.graph".to_string(),
-            },
+            graph_node("billing.a"),
+            graph_node("billing.b"),
+            graph_node("billing.c"),
         ],
         vec![
-            GraphEdge {
-                source: "billing.b".to_string(),
-                target: "billing.a".to_string(),
-                relation: GraphRelationKind::DependsOn,
-            },
-            GraphEdge {
-                source: "billing.c".to_string(),
-                target: "billing.a".to_string(),
-                relation: GraphRelationKind::RelatedTo,
-            },
+            relation_edge("billing.b", GraphRelationKind::DependsOn, "billing.a"),
+            relation_edge("billing.c", GraphRelationKind::RelatedTo, "billing.a"),
         ],
     );
-    let agent_artifact = write_temp_artifact("agent", ".agent.json", &agent_json);
-    let graph_artifact = write_temp_artifact("graph", ".graph.json", &graph_json);
-    let result = load_graph_session(GraphInput {
-        agent_artifact_path: agent_artifact.path().to_path_buf(),
-        graph_artifact_path: graph_artifact.path().to_path_buf(),
-    });
-    let session = result.session.expect("graph session loads");
+    let session = load_session(graph);
 
     let traversal = traverse_graph(
         &session,

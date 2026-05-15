@@ -7,7 +7,7 @@ use predicates::prelude::*;
 use support::{TestWorkspace, fixture_path};
 
 fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
-    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.agent.json"))
+    let artifact = fs::read_to_string(fixture_path("v1_1_why/valid_artifact.graph.json"))
         .expect("fixture artifact is readable");
     workspace.write(relative_path, &artifact);
 }
@@ -27,7 +27,7 @@ fn adoc() -> Command {
 #[test]
 fn piped_default_produces_plain_output() {
     let workspace = TestWorkspace::new("format-flag-piped");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     let output = adoc()
         .current_dir(&workspace.root)
@@ -57,7 +57,7 @@ fn piped_default_produces_plain_output() {
 #[test]
 fn format_json_flag_emits_json_envelope() {
     let workspace = TestWorkspace::new("format-flag-json");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     adoc()
         .current_dir(&workspace.root)
@@ -75,7 +75,7 @@ fn format_json_flag_emits_json_envelope() {
 #[test]
 fn no_color_env_forces_plain_output() {
     let workspace = TestWorkspace::new("format-flag-no-color");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     let output = adoc()
         .current_dir(&workspace.root)
@@ -103,7 +103,7 @@ fn no_color_env_forces_plain_output() {
 #[test]
 fn explicit_plain_flag_produces_plain_output() {
     let workspace = TestWorkspace::new("format-flag-explicit-plain");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     adoc()
         .current_dir(&workspace.root)
@@ -125,7 +125,7 @@ fn explicit_plain_flag_produces_plain_output() {
 #[test]
 fn styled_flag_with_color_always_emits_ansi_codes() {
     let workspace = TestWorkspace::new("format-flag-styled");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     adoc()
         .current_dir(&workspace.root)
@@ -155,7 +155,7 @@ fn styled_flag_with_color_always_emits_ansi_codes() {
 #[test]
 fn format_styled_with_color_never_emits_no_ansi_codes() {
     let workspace = TestWorkspace::new("format-flag-styled-color-never");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     adoc()
         .current_dir(&workspace.root)
@@ -181,7 +181,7 @@ fn format_styled_with_color_never_emits_no_ansi_codes() {
 #[test]
 fn format_plain_with_color_always_emits_ansi_codes() {
     let workspace = TestWorkspace::new("format-flag-plain-color-always");
-    copy_valid_artifact(&workspace, "dist/docs.agent.json");
+    copy_valid_artifact(&workspace, "dist/docs.graph.json");
 
     adoc()
         .current_dir(&workspace.root)

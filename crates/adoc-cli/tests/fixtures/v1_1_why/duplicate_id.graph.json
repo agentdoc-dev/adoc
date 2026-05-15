@@ -1,17 +1,17 @@
 {
-  "schema_version": "adoc.agent.v0",
-  "pages": [
+  "schema_version": "adoc.graph.v1",
+  "nodes": [
     {
+      "type": "page",
       "id": "billing.refunds",
-      "title": "Refunds",
-      "source_path": "docs/refunds.adoc"
-    }
-  ],
-  "objects": [
+      "order": 0,
+      "source_path": "docs/refunds.adoc",
+      "title": "Refunds"
+    },
     {
+      "type": "knowledge_object",
       "id": "billing.refunds.issue-credit",
       "kind": "claim",
-      "status": "verified",
       "body": "Refund credits are issued from the ledger after approval.",
       "page_id": "billing.refunds",
       "source_span": {
@@ -36,12 +36,13 @@
         "related_to": [
           "billing.refunds.audit-required"
         ]
-      }
+      },
+      "status": "verified"
     },
     {
+      "type": "knowledge_object",
       "id": "billing.refunds.issue-credit",
       "kind": "claim",
-      "status": "verified",
       "body": "Duplicate copy.",
       "page_id": "billing.refunds",
       "source_span": {
@@ -54,8 +55,10 @@
         "depends_on": [],
         "supersedes": [],
         "related_to": []
-      }
+      },
+      "status": "verified"
     }
   ],
+  "edges": [],
   "diagnostics": []
 }

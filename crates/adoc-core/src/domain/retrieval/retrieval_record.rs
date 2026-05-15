@@ -2,11 +2,8 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::domain::artifact::{AgentJsonObject, AgentJsonRelations};
-
-const OWNER_FIELD: &str = "owner";
-const VERIFIED_AT_FIELD: &str = "verified_at";
-const EVIDENCE_FIELDS: [&str; 3] = ["source", "test", "reviewed_by"];
+use crate::domain::graph::{GraphKnowledgeObjectNode, GraphRelations};
+use crate::domain::retrieval::metadata;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RetrievalRecord {
@@ -24,7 +21,7 @@ pub struct RetrievalRecord {
     pub evidence: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub fields: BTreeMap<String, String>,
-    pub relations: AgentJsonRelations,
+    pub relations: RetrievalRelations,
     #[serde(rename = "match", skip_serializing_if = "Option::is_none")]
     pub search_match: Option<RetrievalMatch>,
 }
@@ -41,6 +38,40 @@ pub struct RetrievalMatch {
     pub vector_rank: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cosine_score: Option<f32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+pub struct RetrievalRelations {
+    pub depends_on: Vec<String>,
+    pub supersedes: Vec<String>,
+    pub related_to: Vec<String>,
+}
+
+impl RetrievalRelations {
+    pub fn is_empty(&self) -> bool {
+        self.depends_on.is_empty() && self.supersedes.is_empty() && self.related_to.is_empty()
+    }
+
+    pub(crate) fn from_graph(relations: &GraphRelations) -> Self {
+        Self {
+            depends_on: relations.depends_on.clone(),
+            supersedes: relations.supersedes.clone(),
+            related_to: relations.related_to.clone(),
+        }
+    }
+
+    pub(crate) fn iter_targets(&self) -> impl Iterator<Item = &str> {
+        let mut targets: Vec<&str> = self
+            .depends_on
+            .iter()
+            .chain(self.supersedes.iter())
+            .chain(self.related_to.iter())
+            .map(String::as_str)
+            .collect();
+        targets.sort_unstable();
+        targets.dedup();
+        targets.into_iter()
+    }
 }
 
 impl RetrievalMatch {
@@ -98,47 +129,39 @@ pub struct RetrievalSource {
     pub column: u32,
 }
 
-impl From<&AgentJsonObject> for RetrievalRecord {
-    fn from(object: &AgentJsonObject) -> Self {
+impl From<&GraphKnowledgeObjectNode> for RetrievalRecord {
+    fn from(object: &GraphKnowledgeObjectNode) -> Self {
         Self::from_object_with_optional_match(object, None)
     }
 }
 
 impl RetrievalRecord {
-    pub fn from_object_with_match(object: &AgentJsonObject, search_match: RetrievalMatch) -> Self {
+    pub(crate) fn from_object_with_match(
+        object: &GraphKnowledgeObjectNode,
+        search_match: RetrievalMatch,
+    ) -> Self {
         Self::from_object_with_optional_match(object, Some(search_match))
     }
 
     fn from_object_with_optional_match(
-        object: &AgentJsonObject,
+        object: &GraphKnowledgeObjectNode,
         search_match: Option<RetrievalMatch>,
     ) -> Self {
-        let mut evidence = BTreeMap::new();
-        let mut fields = BTreeMap::new();
-
-        for (key, value) in &object.fields {
-            if EVIDENCE_FIELDS.contains(&key.as_str()) {
-                evidence.insert(key.clone(), value.clone());
-            } else if key != OWNER_FIELD && key != VERIFIED_AT_FIELD {
-                fields.insert(key.clone(), value.clone());
-            }
-        }
-
         Self {
             id: object.id.clone(),
             kind: object.kind.clone(),
             status: object.status.clone(),
-            owner: object.fields.get(OWNER_FIELD).cloned(),
-            verified_at: object.fields.get(VERIFIED_AT_FIELD).cloned(),
+            owner: metadata::owner(object).map(str::to_string),
+            verified_at: metadata::verified_at(object).map(str::to_string),
             body: object.body.clone(),
             source: RetrievalSource {
                 path: object.source_span.path.clone(),
                 line: object.source_span.line,
                 column: object.source_span.column,
             },
-            evidence,
-            fields,
-            relations: object.relations.clone(),
+            evidence: metadata::evidence_fields(&object.fields),
+            fields: metadata::generic_fields(&object.fields),
+            relations: RetrievalRelations::from_graph(&object.relations),
             search_match,
         }
     }
@@ -147,17 +170,17 @@ impl RetrievalRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::artifact::{AgentJsonRelations, AgentJsonSourceSpan};
+    use crate::domain::graph::{GraphRelations, GraphSourceSpan};
 
     #[test]
-    fn retrieval_record_projects_agent_object_metadata() {
-        let object = AgentJsonObject {
+    fn retrieval_record_projects_graph_object_metadata() {
+        let object = GraphKnowledgeObjectNode {
             id: "billing.credits".to_string(),
             kind: "claim".to_string(),
             status: Some("verified".to_string()),
             body: "Credits are verified.".to_string(),
             page_id: "team.billing".to_string(),
-            source_span: AgentJsonSourceSpan {
+            source_span: GraphSourceSpan {
                 path: "billing.adoc".to_string(),
                 line: 5,
                 column: 1,
@@ -170,7 +193,7 @@ mod tests {
                 ("test".to_string(), "cargo test billing".to_string()),
                 ("verified_at".to_string(), "2026-05-05".to_string()),
             ]),
-            relations: AgentJsonRelations {
+            relations: GraphRelations {
                 depends_on: vec!["billing.ledger".to_string()],
                 supersedes: Vec::new(),
                 related_to: Vec::new(),

@@ -1,10 +1,10 @@
 # AgentDoc Roadmap
 
-This roadmap converts the broad PRD into small tracer-bullet milestones. A milestone is not complete just because one subsystem exists; it is complete when a user can start with `.adoc` source, run the `adoc` CLI, receive useful diagnostics, and get both human HTML and agent JSON outputs.
+This roadmap converts the broad PRD into small tracer-bullet milestones. A milestone is not complete just because one subsystem exists; it is complete when a user can start with `.adoc` source, run the `adoc` CLI, receive useful diagnostics, and get both human HTML and graph JSON outputs.
 
-The initial product is a local CLI for native AgentDoc authoring in Git repositories. A minimal local config now exists for `adoc init`, default docs paths, output paths, and embedding provider selection. Web app, Markdown migration, compatibility mode, nested blocks, includes, custom schemas, enterprise governance, hosted embedding adapters, and agent patching remain intentionally deferred until the local compiler and retrieval loop proves itself.
+The initial product is a local CLI for native AgentDoc authoring in Git repositories. The compiler, graph artifact, local retrieval loop, hybrid search, graph traversal, retrieval evaluation harness, and V1.5 local workflow are now implemented. The next product bet is an agent patch format: agents should be able to propose object-level semantic changes that the CLI can validate before any source rewrite or team workflow exists.
 
-V0 implementation stack: Rust for the `adoc` CLI, parser, validator, compiler, HTML renderer, and agent JSON emitter. The Rust project starts as a Cargo workspace with `crates/adoc-cli` for command-line behavior and `crates/adoc-core` for reusable compiler behavior. Future editor, web, and agent integrations should consume the compiled artifacts or core library rather than own the source grammar.
+V0 implementation stack: Rust for the `adoc` CLI, parser, validator, compiler, HTML renderer, and graph JSON emitter. The Rust project starts as a Cargo workspace with `crates/adoc-cli` for command-line behavior and `crates/adoc-core` for reusable compiler behavior. Future editor, web, and agent integrations should consume the compiled artifacts or core library rather than own the source grammar.
 
 V0 parser approach: a structured hand-written, line-oriented parser in `adoc-core`. It should model source files, line indexes, spans, blocks, diagnostics, and explicit parse functions. It should not be ad hoc string manipulation, and it should not commit to a parser generator before the grammar has earned that complexity.
 
@@ -14,7 +14,7 @@ The implementation-level V0 contract lives in [V0-DESIGN.md](V0-DESIGN.md).
 
 ## Roadmap Rules
 
-- Each milestone must be vertical: source syntax, validation, CLI behavior, HTML rendering, agent JSON, fixtures, and docs move together.
+- Each milestone must be vertical: source syntax, validation, CLI behavior, HTML rendering, graph JSON, fixtures, and docs move together.
 - Keep `adoc check` and `adoc build` runnable after every milestone.
 - Keep the Rust core responsible for source parsing, validation, diagnostics, and artifact emission.
 - Keep `adoc-cli` thin; product semantics belong in `adoc-core`.
@@ -22,8 +22,26 @@ The implementation-level V0 contract lives in [V0-DESIGN.md](V0-DESIGN.md).
 - Keep lower-level `adoc-core` modules internal until LSP, web preview, semantic diff, or integration work needs them.
 - Preserve strict mode as the default product posture.
 - Add one product concept at a time, then prove it in both human and agent outputs.
-- Defer storage and platform work until flat artifacts are no longer enough.
+- Treat `docs.graph.json` as the canonical local read model; defer SQLite, graph databases, and hosted platforms until measured workflows outgrow JSON artifacts.
 - Do not add compatibility behavior until the native `.adoc` target is stable.
+
+## Current Status
+
+Implemented:
+
+- V0 native compiler: `.adoc` source, strict validation, core object types, references, relations, HTML, and graph JSON.
+- V1 local retrieval: `adoc why`, `adoc graph`, lexical search, semantic search, hybrid search, graph relation filters, and retrieval JSON envelopes.
+- V1 build artifacts: `dist/docs.html`, `dist/docs.graph.json`, and optional `dist/docs.search.json` with `graph_artifact_hash` drift detection.
+- V1.5 local workflow: `adoc init`, minimal `agentdoc.config.yaml`, config-backed command defaults, local embedding provider selection, and stale-by-expiration diagnostics.
+- Billing pilot retrieval harness: 30+ Knowledge Objects, retrieval-set fixtures, property-style search invariants, and docs for retrieval maintenance.
+
+Next:
+
+- V2 agent patch format and validation over compiled graph artifacts.
+
+Later:
+
+- Semantic diff and CI review, Markdown migration, expanded object types, includes and custom schemas, richer graph tooling, web surfaces, hosted storage, and governance.
 
 ## V0: Native CLI Compiler
 
@@ -44,13 +62,13 @@ Scope:
 - Implement `adoc check <path>`.
 - Implement `adoc build <path> --out dist`.
 - Emit `dist/docs.html`.
-- Emit `dist/docs.agent.json` with pages, no knowledge objects yet, and diagnostics.
+- Emit `dist/docs.graph.json` with pages, no knowledge objects yet, and diagnostics.
 - Create the `--out` directory when missing and fail if it exists as a file.
 
 Acceptance:
 
 - A sample prose-only `.adoc` file checks cleanly.
-- The same sample builds into readable HTML and valid agent JSON.
+- The same sample builds into readable HTML and valid graph JSON.
 - A raw HTML fixture fails with a useful file, line, column, severity, and message.
 
 Deferred:
@@ -73,12 +91,12 @@ Scope:
 - Detect duplicate object IDs across scanned files.
 - Require `status` and body for claims.
 - Render claims in HTML with kind, ID, status, and body.
-- Emit claims in flat `docs.agent.json`.
+- Emit claims in graph `docs.graph.json`.
 
 Acceptance:
 
 - A page with prose and one claim checks cleanly.
-- The claim appears in both HTML and agent JSON.
+- The claim appears in both HTML and graph JSON.
 - Duplicate IDs and missing required claim fields produce clear diagnostics.
 
 Deferred:
@@ -96,7 +114,7 @@ Scope:
 - Support `status: verified` for `claim`.
 - Require `owner`, `verified_at`, and at least one V0 evidence field for verified claims.
 - V0 evidence fields are `source`, `test`, and `reviewed_by`.
-- Preserve evidence fields in agent JSON.
+- Preserve evidence fields in graph JSON.
 - Render verified metadata in HTML.
 - Produce errors for invalid verified claims.
 
@@ -104,7 +122,7 @@ Acceptance:
 
 - A verified claim with `owner`, `verified_at`, and `source` checks cleanly.
 - A verified claim without evidence fails.
-- Agent JSON gives agents enough structure to cite the verified claim and its evidence.
+- Graph JSON gives agents enough structure to cite the verified claim and its evidence.
 
 Deferred:
 
@@ -122,14 +140,14 @@ Scope:
 - Keep typed blocks top-level only.
 - Validate required fields for each object type.
 - Render each kind distinctly in HTML.
-- Emit each kind in flat agent JSON.
+- Emit each kind in graph JSON.
 - Reject unknown object types in strict mode.
 
 Acceptance:
 
 - A sample document containing `claim`, `decision`, `warning`, and `glossary` checks and builds.
 - Unknown object types fail with a schema diagnostic.
-- Agent JSON preserves kind-specific fields without inventing a graph model.
+- Graph JSON preserves kind-specific fields without inventing a graph model.
 
 Deferred:
 
@@ -145,18 +163,18 @@ Scope:
 - Support relation fields `depends_on`, `supersedes`, and `related_to`.
 - Accept relation values as comma-separated Object IDs.
 - Validate that referenced IDs exist in the scanned source set.
-- Preserve relations as ID arrays in agent JSON.
+- Preserve relations as ID arrays in graph JSON.
 - Render object references as links in HTML.
 
 Acceptance:
 
 - A claim can reference a glossary term and build into linked HTML.
-- A decision can `supersedes` another decision and preserve that relation in agent JSON.
+- A decision can `supersedes` another decision and preserve that relation in graph JSON.
 - Broken references fail `adoc check`.
 
 Closed later in V1:
 
-- Graph artifact.
+- Supported graph artifact read contract.
 - Relation traversal API.
 
 Deferred:
@@ -171,7 +189,7 @@ Scope:
 
 - Scan multiple `.adoc` files under a directory.
 - Produce one consolidated HTML artifact.
-- Produce one consolidated flat agent JSON artifact.
+- Produce one consolidated graph JSON artifact.
 - Include source file and page identity for every object.
 - Keep includes unsupported.
 - Keep config unsupported.
@@ -179,7 +197,7 @@ Scope:
 Acceptance:
 
 - `adoc check docs/` validates a folder with multiple `.adoc` files.
-- `adoc build docs/ --out dist/` emits `dist/docs.html` and `dist/docs.agent.json`.
+- `adoc build docs/ --out dist/` emits `dist/docs.html` and `dist/docs.graph.json`.
 - Duplicate IDs across files fail.
 
 Deferred:
@@ -202,7 +220,7 @@ Scope:
 - Use grouped semantic codes such as `parse.raw_html`; numeric aliases are deferred.
 - Include file, line, column, object ID when available, severity, and fix-oriented message.
 - Add positive and negative fixtures for every supported feature.
-- Add golden output tests for HTML and agent JSON.
+- Add golden output tests for HTML and graph JSON.
 - Document the native authoring workflow.
 
 Acceptance:
@@ -225,14 +243,14 @@ Scope:
 - Create a realistic example doc set using billing or auth-style product knowledge.
 - Run `adoc check` and `adoc build` against it.
 - Review generated HTML for readability.
-- Review generated agent JSON for citation usefulness.
+- Review generated graph JSON for citation usefulness.
 - Tighten schemas only where the pilot reveals real confusion.
 
 Acceptance:
 
 - The example set contains at least 20 objects across the core object set.
 - At least 5 claims are verified.
-- Agent JSON can answer simple lookup questions by object ID, status, kind, owner, and evidence.
+- Graph JSON can answer simple lookup questions by object ID, status, kind, owner, and evidence.
 
 Deferred:
 
@@ -240,226 +258,126 @@ Deferred:
 - Hosted preview.
 - Team workflows.
 
-## V1: Local Retrieval with Embeddings
+## V1: Local Graph Retrieval with Embeddings
 
-V1 makes the V0 build outputs useful as a local retrieval surface for humans and for any agent that already knows Object IDs from the agent artifact. V1 ships embeddings as a first-class build output rather than deferring them past lexical search; the V0 thesis is that agents retrieve typed Knowledge Objects, and only semantic recall delivers on that thesis once paraphrased queries enter the picture.
+Status: implemented through V1.5.
 
-V1 is not the full PRD MVP by itself. It is the first post-compiler milestone, sized to add hybrid lexical + vector retrieval and explicit graph traversal with no tunable score weights, no graph database, no hosted storage, and no agent server. The V1 implementation contract lives in [V1-DESIGN.md](V1-DESIGN.md). The architecture decisions that gate V1 are recorded in [adr/0010-v1-retrieval-architecture.md](adr/0010-v1-retrieval-architecture.md) and [adr/0011-json-graph-artifact.md](adr/0011-json-graph-artifact.md).
+V1 makes the V0 build outputs useful as a local retrieval surface for humans and agents. It also resolves the old flat-artifact direction: `docs.agent.json` is retired, `docs.graph.json` is the canonical read model, and `docs.search.json` is an optional embedding sidecar keyed to the graph artifact hash.
 
-V1 product surface:
+The V1 implementation contract lives in [V1-DESIGN.md](V1-DESIGN.md). The architecture decisions are recorded in [adr/0010-v1-retrieval-architecture.md](adr/0010-v1-retrieval-architecture.md) and [adr/0011-json-graph-artifact.md](adr/0011-json-graph-artifact.md).
 
-- `adoc build` produces `dist/docs.graph.json` and, when embeddings are enabled, `dist/docs.search.json`, alongside `dist/docs.html` and `dist/docs.agent.json`.
-- `adoc why <object-id>` reads the agent artifact only and prints a structured object explanation.
-- `adoc graph <object-id>` reads the graph and agent artifacts and prints relation traversal.
-- `adoc search "<query>"` reads the agent and search artifacts, and reads the graph artifact only when `--related-to` is supplied. It ranks Knowledge Objects via Reciprocal Rank Fusion over BM25 and brute-force cosine, with exact and prefix Object ID matches pinned to the top.
-- The read-side commands accept `--format auto|plain|styled|json`. The `adoc.retrieval.v0` and `adoc.graph.traversal.v0` JSON envelopes are wire formats any future MCP wrapper consumes.
+Implemented product surface:
 
-V1 hard rules:
+- `adoc build` writes `dist/docs.html`, `dist/docs.graph.json`, and, when embeddings are enabled, `dist/docs.search.json`.
+- `adoc why <object-id>` reads the graph artifact and prints a citation-shaped Knowledge Object record.
+- `adoc graph <object-id>` reads the graph artifact and traverses relations with direction and relation filters.
+- `adoc search "<query>"` reads the graph artifact and, when present, the search artifact. It ranks Knowledge Objects via Reciprocal Rank Fusion over BM25 and brute-force cosine, with exact and prefix Object ID matches pinned to the top.
+- `adoc search --related-to <object-id>` performs opt-in graph retrieval by restricting the candidate set before normal lexical, semantic, or hybrid ranking.
+- Read-side commands support `--format auto|plain|styled|json`. The `adoc.retrieval.v0` and `adoc.graph.traversal.v0` JSON envelopes are the current agent-facing wire formats.
 
-- Retrieval is read-only over compiled artifacts. `adoc why` and `adoc search` never re-run `compile_workspace()`. A missing or stale build is the user's responsibility, surfaced via fix-oriented diagnostics that point at `adoc build`.
-- The default embedding provider is local: `fastembed-rs` with `bge-small-en-v1.5`. First run downloads weights; subsequent runs are offline. A hosted adapter is explicitly possible later without port churn but is not in V1.
-- The graph artifact is a sidecar JSON with an agent-artifact hash for drift detection, one node per Knowledge Object, and one directed edge per `depends_on`, `supersedes`, or `related_to` relation. SQLite and graph databases are deferred until JSON becomes limiting.
-- The search artifact is a sidecar JSON with a model header, an agent-artifact hash for drift detection, and one `{ id, content_hash, vector }` entry per Knowledge Object. SQLite, embedded ANN libraries, and binary sidecars are deferred until pilot data shows the JSON shape is the bottleneck.
-- Filters in V1 are `--kind`, `--status`, `--owner`, and `--source-path`. PRD §19's wider filter set requires upstream contracts that do not exist yet.
-- Graph retrieval is opt-in through `adoc search --related-to`; relation and direction filters restrict the candidate set without adding default graph score boosts.
-- Lifecycle, freshness, evidence quality, and authority are filter targets in V1, never score modifiers. RRF stays parameter-free.
+Implemented build and retrieval rules:
 
-### V1.1: `adoc why <object-id>`
+- Retrieval is read-only over compiled artifacts. `adoc why`, `adoc graph`, and `adoc search` do not compile source.
+- The graph artifact uses schema version `adoc.graph.v1` and carries page, prose block, and Knowledge Object nodes plus directed `contains`, `reference`, and relation edges.
+- The search artifact uses schema version `adoc.search.v0`, carries a model header, stores `graph_artifact_hash`, and contains one `{ id, content_hash, vector }` entry per Knowledge Object.
+- The default embedding provider is local FastEmbed with `bge-small-en-v1.5`; `--no-embeddings` and config `embeddings.provider: none` keep graph-only builds cheap.
+- Graph retrieval remains an explicit candidate filter. There is no default graph proximity boost.
+- Lifecycle, freshness, evidence quality, and authority remain filters or diagnostics, not score modifiers. Hybrid ranking stays parameter-free.
 
-Goal: make Object IDs immediately useful for humans and any agent that has already learned IDs from the agent artifact.
+Implemented slices:
 
-Scope:
-
-- Treat `dist/docs.agent.json` as a supported read model. Add an artifact reader that validates `schema_version: adoc.agent.v0`, top-level `objects`, and the in-artifact uniqueness of every Object ID.
-- Add a `RetrievalSession`-owned exact lookup keyed by Object ID.
-- Add diagnostics: `io.artifact_missing`, `io.artifact_unreadable`, `io.artifact_malformed`, `schema.unsupported_version`, `id.duplicate_in_artifact`, `retrieval.object_not_found`.
-- Implement `adoc why <id>` with `--artifact <path>` and `--format auto|plain|styled|json`.
-- Pretty text output mirrors PRD §21.5: kind, status, owner, verified date, body, evidence, source, relations.
-- `--format json` emits an `adoc.retrieval.v0` envelope with one record.
-
-Acceptance:
-
-- A valid V0 `docs.agent.json` can be loaded and queried by Object ID.
-- Verified claims show verification metadata and V0 evidence fields.
-- Decisions show `decided_by` when available; warnings and glossary entries render with their kind-specific fields.
-- Unknown IDs exit `3` with a fix-oriented message that does not implicate the source.
-- Missing or malformed artifact exits `2` with guidance to run `adoc build`.
-
-Deferred to later slices:
-
-- Search.
-- Embeddings.
-- Hybrid ranking.
-- Pilot evaluation harness.
-
-### V1.2: `adoc search` (lexical-only)
-
-Goal: ship structured search before introducing the embedding pipeline so that the filter UX, ranking determinism, and JSON envelope are settled in isolation.
-
-Scope:
-
-- Add a BM25 `LexicalIndex` rebuilt at session load over `body`, `id`, `kind`, `owner`.
-- Add filters: `--kind`, `--status`, `--owner`, `--source-path`.
-- Implement `adoc search "<query>"` with all CLI flags except `--semantic` and `--search-artifact`.
-- Pin exact Object ID and ID-prefix matches above the BM25 list.
-- Stable lex tie-breaker. Empty result is a `0` exit with `(no matches)`.
-- `--format json` reuses the V1.1 envelope, plus `match.mode = "lexical"`, `match.result_rank`, and `match.lexical_rank` when the record has a BM25 hit.
-
-Acceptance:
-
-- Lexical queries against the billing pilot return obvious matches in the top three for every benchmark query authored alongside this slice.
-- All filter combinations resolve correctly; unknown filter values produce a fix-oriented error and exit `1`.
-
-Deferred:
-
-- Embeddings.
-- Hybrid ranking.
-- Search-artifact diagnostics.
-- Scope, evidence-type, changed-since, and permission filters.
-
-### V1.3: Embedding Build Pipeline
-
-Goal: make `adoc build` produce a deterministic, content-hashed search artifact.
-
-Scope:
-
-- Add the `EmbeddingProvider` internal port (governed by ADR-0006).
-- Add `FastEmbedProvider` (`fastembed-rs` + `bge-small-en-v1.5`) as the default adapter behind the default-on `embeddings` feature; first-run weights cached locally; subsequent runs are offline.
-- Add `InMemoryProvider` as a deterministic test adapter mirroring the role of `InMemorySourceProvider`; tests select it explicitly with `ADOC_TEST_EMBEDDING_PROVIDER=in-memory`.
-- Extend the application pipeline so `compile_with_provider` accepts an `EmbeddingProvider`; `compile_workspace()` defaults to `FastEmbedProvider`.
-- Emit `dist/docs.search.json` with the schema documented in V1-DESIGN: `{ schema_version: "adoc.search.v0", model: { id, provider, dim }, agent_artifact_hash, embeddings: [{ id, content_hash, vector }] }`.
-- Add per-Object-ID embedding cache: when prior content hash matches, the prior vector is reused and reported with `build.embeddings_cached` (`embeddings: cached N, computed M`).
-- Add `--no-embeddings` to `adoc build`. Add diagnostics: `embed.model_load_failed`, `embed.compute_failed`, `embed.unexpected_dim`, `build.embeddings_skipped`.
-- Embedding failures after clean source compilation preserve `docs.html` and `docs.agent.json`, omit a new `docs.search.json`, leave any prior search sidecar untouched, and exit `1`.
-- FastEmbed is the default test-provider path when `test-embedding-provider` is enabled but `ADOC_TEST_EMBEDDING_PROVIDER` is unset. The FastEmbed integration path runs under a gated feature flag (`cargo test --features fastembed-it`).
-
-Acceptance:
-
-- `adoc build examples/billing-pilot --out examples/billing-pilot/dist` produces all three artifacts.
-- A second `adoc build` with no source changes reuses every prior vector.
-- `--no-embeddings` skips the search artifact, leaves any prior search artifact untouched, and emits `build.embeddings_skipped`.
-- Model load failures emit a fix-oriented diagnostic and a non-zero exit.
-
-Deferred:
-
-- Semantic queries.
-- Hybrid ranking.
-- Pilot evaluation harness.
-- Hosted embedding adapters.
-
-### V1.4: `adoc search --semantic`
-
-Goal: surface semantic recall behind an explicit flag before changing default ranking behavior.
-
-Scope:
-
-- Add a brute-force cosine `VectorIndex`.
-- Load the search artifact at session start; missing artifact emits `search.artifact_missing` (warn) and disables semantic mode.
-- Add `search.model_mismatch` (error) and `search.hash_drift` (warn).
-- Implement `--semantic` on `adoc search`. JSON output adds `match.vector_rank` and `match.cosine_score`.
-
-Acceptance:
-
-- A paraphrase query that fails under `--lexical` succeeds in the top three under `--semantic` for at least three pilot examples.
-- A search artifact built with a different model is rejected with `search.model_mismatch` and exit `2`.
-- A stale search artifact (drifted from the agent artifact) emits `search.hash_drift` but still serves results.
-
-Deferred:
-
-- Making hybrid the default.
-- Pilot evaluation harness.
-- Multi-factor scoring.
-
-### V1.5: Hybrid Default
-
-Goal: make `adoc search` hybrid by default, with `--lexical` and `--semantic` as escape hatches.
-
-Scope:
-
-- Add `HybridRanker` (Reciprocal Rank Fusion, `k = 60`).
-- Default mode for `adoc search` becomes hybrid when both indexes are available; degrades to lexical-only with one warning when the search artifact is absent.
-- ID-prefix pin moves into `HybridRanker` so it applies in every mode.
-- Filters apply post-rank in hybrid mode; pre-rank in lexical and semantic modes.
-
-Acceptance:
-
-- Benchmark queries from V1.2 and V1.4 still pass; new hybrid-only queries (where neither lexical nor semantic alone suffices) exist and pass.
-- Removing `dist/docs.search.json` reduces search to lexical with one warning, with no other behavior change.
-
-Deferred:
-
-- Pilot evaluation harness.
-- Multi-factor scoring.
-- Agent-server surface.
-
-### V1.6: Pilot Evaluation Harness
-
-Goal: prove V1 retrieval is good and stays good.
-
-Scope:
-
-- Grow `examples/billing-pilot` to at least 30 Knowledge Objects across all four V0 kinds, with a meaningful share of verified claims.
-- Add `examples/billing-pilot/retrieval-set.yaml` with 15-20 manually authored queries (`expected_ids`, `must_appear_in_top`) covering paraphrase, exact ID, owner, kind filter, evidence path, broken filter, and empty cases.
-- Add a property-based test suite over the artifact: every body verbatim → top 1 lexical, every Object ID → top 1 lexical, every owner query covers every claim with that owner.
-- Both suites run in CI on the pilot.
-- Document the workflow in `docs/v1-retrieval.md`: build, why, search, citation pattern, hybrid versus lexical versus semantic, model swap consequences.
-
-Acceptance:
-
-- The retrieval-set integration test passes deterministically against `InMemoryProvider`.
-- The same test passes against `FastEmbedProvider` under the gated CI run.
-- The property suite passes against both providers.
-- Future ranking, embedding-composition, or model changes must keep both suites green or update them with a recorded rationale.
-
-V1-wide design guidance:
-
-- Prefer reading the existing flat artifact before adding new index files. The search artifact is the only new build output in V1.
-- Keep citation by Object ID as the center of the workflow; the retrieval record is a projection of the agent JSON object plus a small `match` block.
-- Treat V1 as local retrieval, not RAG infrastructure: no chunking, no scope-based retrieval, no permissions.
-- Keep source parsing, validation, and artifact emission behind the existing compiler path. Retrieval is a pure read of compiled outputs.
-- Keep V1 retrieval artifact-first; config-backed source defaults start in V1.5.
+- V1.1 object lookup: graph-artifact loading, exact Object ID lookup, `adoc why`, retrieval diagnostics, and retrieval JSON output.
+- V1.2 lexical search: BM25 over graph records, exact and prefix Object ID pins, metadata filters, deterministic empty-result behavior, and lexical JSON matches.
+- V1.3 embedding build pipeline: `EmbeddingProvider` port, FastEmbed adapter, deterministic in-memory test adapter, embedding cache, `docs.search.json`, model mismatch diagnostics, and `--no-embeddings`.
+- V1.4 semantic retrieval: brute-force cosine vector index, `--semantic`, search-artifact drift warnings, model mismatch rejection, and vector rank metadata.
+- V1.5 local workflow: hybrid search default, `adoc init`, minimal `agentdoc.config.yaml`, config-backed artifact defaults, local embedding provider selection, stale-by-expiration diagnostics, and docs for the local workflow.
+- Retrieval evaluation: billing pilot growth, retrieval-set fixtures, property-style invariants, and [v1-retrieval.md](v1-retrieval.md) maintenance guidance.
 
 Resolved V1 decisions:
 
-- `adoc why` and `adoc search` require a prior build.
-- Default agent artifact path is `dist/docs.agent.json`; default search artifact path is `dist/docs.search.json`.
-- Both commands support `--artifact <path>`; `adoc search` additionally supports `--search-artifact <path>`.
-- V1 reads artifacts only; source-aware retrieval waits until config and LSP work create a real need.
-- Embeddings ship in V1, not V2. The default provider is local. The hosted adapter is deferred behind a stable internal port.
-- The hybrid default ranks via parameter-free RRF over BM25 and cosine, with ID and ID-prefix pins above the fused list.
+- The graph artifact is the canonical local read model; the flat `docs.agent.json` contract is obsolete.
+- Build artifacts are ready-to-write strings owned by the application boundary; the CLI owns file writes.
+- Public Rust APIs expose sessions, query inputs, result envelopes, records, diagnostics, and mode/relation/direction enums. Graph and search artifact DTOs stay internal.
+- Embeddings ship in V1, not V2. Hosted embedding adapters remain deferred behind the same port.
+- JSON artifacts are enough for the current local workflow. SQLite, embedded ANN libraries, and graph databases wait for measured pressure.
 
-## V1.5: Local Project Ergonomics and MVP Gap Closure
+## V2: Agent Patch Format and Validation
 
-V1.5 closes small local-tooling gaps before migration and team workflows expand the product surface. The search artifact already ships in V1, so V1.5 focuses on author ergonomics: an initializer, a minimal config, and the first lifecycle diagnostic.
+V2 lets agents propose object-level semantic changes while humans and CLI validation remain in control. It moves ahead of Markdown migration because the current graph artifact and retrieval records already give agents stable Object IDs, source spans, relations, and citation-shaped records. The missing contract is a safe way for an agent to say "change this Knowledge Object" without directly editing source text.
 
-Implemented tracer-bullet slices:
+V2 should validate patch intent first. Source rewriting, approvals, audit trails, and hosted review state are later workflow problems.
 
-- Add `adoc init` after the no-config V1 workflow is proven.
-- Introduce a minimal `agentdoc.config.yaml` with strict mode, docs path, output paths, and the embedding provider selection.
-- Keep custom schemas, remote sources, permissions, and team ownership out of the first config version.
-- Let `adoc check` and `adoc build` use config defaults when no source path is passed; let retrieval commands use config artifact paths when artifact flags are omitted.
-- Add basic stale-by-expiration diagnostics for objects that carry parseable past `expires_at` dates.
-- Keep hosted `EmbeddingProvider` adapters deferred until an external user asks for one; the local provider remains the only shipped provider.
-- Update docs and examples around the default local workflow.
+Suggested tracer-bullet slices:
+
+- Define an `adoc.patch.v0` JSON format with `op`, `target`, `base_hash`, `changes`, `reason`, and optional proposer metadata.
+- Add stable Knowledge Object content hashes to the graph/retrieval surface before requiring `base_hash` in patches.
+- Implement `adoc patch --check patch.json` over compiled graph artifacts; the command validates without modifying source.
+- Support the first operations only: update fields, replace body, create draft object, and revoke or supersede by relation.
+- Validate target existence, base hash match, allowed fields, schema rules, relation targets, lifecycle transitions, and verified-claim proof obligations.
+- Emit a review-oriented result that shows proposed object-level changes, affected relations, source span, diagnostics, and required human follow-up.
+- Add `--format json` for an agent-consumable patch validation envelope.
 
 Design guidance:
 
-- Do not add config to solve problems that explicit CLI flags already solve.
-- Config should make the common local workflow shorter, not introduce project semantics prematurely.
-- Staleness by expiration is the first lifecycle diagnostic because it needs no Git integration.
-- Keep strict mode as the default.
+- Keep patch validation in the application layer, with pure patch value objects and rules in the domain and JSON parsing in infrastructure.
+- Keep the patch format object-oriented rather than line-oriented.
+- Treat `docs.graph.json` as the read model for validation; source parsing is not needed for `--check`.
+- Require `base_hash` to prevent stale edits.
+- Do not let patch validation approve verified knowledge. It should produce proof obligations and review requirements.
+- Do not apply patches to source in the first slice; formatting-preserving rewrites are a separate editing problem.
+- Keep permissions out of the first local patch format. Record proposer metadata, but do not enforce enterprise authorization yet.
 
 Acceptance:
 
-- A user can run `adoc init`, edit the generated example, run `adoc check`, run `adoc build`, then run `adoc why` and `adoc search`.
-- Existing explicit `adoc check <path>` and `adoc build <path> --out <directory>` workflows continue to work.
-- Expired Knowledge Objects produce useful warning diagnostics without mutating source.
+- A valid patch against the current graph artifact exits `0` and reports the proposed semantic diff.
+- A stale patch with the wrong `base_hash` exits non-zero with a fix-oriented diagnostic.
+- A patch that violates object schema rules fails before any source write is attempted.
+- A patch touching verified knowledge reports proof obligations and required review.
+- JSON output is stable enough for an external agent wrapper to consume.
 
-## V2: Migration and Compatibility
+Questions to resolve before implementation:
 
-V2 helps existing Markdown users enter the native AgentDoc world.
+- What exact hash input defines `base_hash`: graph-node canonical JSON, retrieval record projection, or object-only semantic fields?
+- Should create-object patches require source placement hints in V2, or should creation stay validation-only until patch application exists?
+- Should relation-only patches use explicit operations or field replacement of relation arrays?
 
-V2 should remain after V1/V1.5 because migration is valuable only when the native artifact and retrieval workflow are already useful.
+## V3: Team CI and Review
+
+V3 brings AgentDoc into pull-request workflows.
+
+V3 should start with local Git and compiled artifacts. GitHub, GitLab, hosted review state, and blocking CI policies should wait until object-level diffs, patch validation, and impact reports are useful in local runs.
+
+Suggested tracer-bullet slices:
+
+- Object-level semantic diff shows created, deleted, and changed objects.
+- Field-level diff highlights body, status, owner, evidence, and relation changes.
+- `adoc check --changed` validates changed `.adoc` files using local Git diff.
+- Source-path impact analysis marks verified claims whose V0 evidence references changed files.
+- CI output mode emits a PR-comment-ready summary after local diff and impact analysis are useful.
+- Review artifacts identify required owners for changed verified claims.
+- Patch validation summaries can be included in local review output when a patch file is present.
+
+Design guidance:
+
+- Start with Git diff and local source paths before integrating GitHub or GitLab APIs.
+- Semantic diff should compare Knowledge Objects, not rendered HTML.
+- Source-path impact should be conservative and explain why an object was flagged.
+- Keep CI advisory before making it blocking by default.
+- Do not make examples part of source-path impact analysis until `example` objects exist.
+- Do not mutate source status to `needs_review` in the first CI version; report diagnostics and proof obligations first.
+- Reuse V2 patch proof-obligation language instead of inventing separate CI terminology.
+
+Questions to resolve later:
+
+- What change should fail CI versus warn?
+- How should owner identity map to GitHub/GitLab reviewers?
+- When should advisory CI become blocking?
+
+## V4: Migration and Compatibility
+
+V4 helps existing Markdown users enter the native AgentDoc world.
+
+Migration now sits after graph retrieval and patch validation because native AgentDoc needs a stable object, retrieval, and patch contract before compatibility behavior expands the authoring surface.
 
 Suggested tracer-bullet slices:
 
@@ -481,68 +399,8 @@ Design guidance:
 Questions to resolve later:
 
 - What Markdown features are intentionally unsupported?
-- Should suggested claims be comments, draft objects, or a separate report?
+- Should suggested claims be comments, draft objects, patch proposals, or a separate report?
 - How should raw HTML quarantine appear in source and rendered HTML?
-
-## V3: Team CI and Review
-
-V3 brings AgentDoc into pull-request workflows.
-
-V3 should start with local Git and compiled artifacts. GitHub, GitLab, hosted review state, and blocking CI policies should wait until object-level diffs and impact reports are useful in local runs.
-
-Suggested tracer-bullet slices:
-
-- Object-level semantic diff shows created, deleted, and changed objects.
-- Field-level diff highlights body, status, owner, evidence, and relation changes.
-- `adoc check --changed` validates changed `.adoc` files using local Git diff.
-- Source-path impact analysis marks verified claims whose V0 evidence references changed files.
-- CI output mode emits a PR-comment-ready summary after local diff and impact analysis are useful.
-- Review artifacts identify required owners for changed verified claims.
-
-Design guidance:
-
-- Start with Git diff and local source paths before integrating GitHub or GitLab APIs.
-- Semantic diff should compare Knowledge Objects, not rendered HTML.
-- Source-path impact should be conservative and explain why an object was flagged.
-- Keep CI advisory before making it blocking by default.
-- Do not make examples part of source-path impact analysis until `example` objects exist.
-- Do not mutate source status to `needs_review` in the first CI version; report diagnostics and proof obligations first.
-
-Questions to resolve later:
-
-- What change should fail CI versus warn?
-- How should owner identity map to GitHub/GitLab reviewers?
-- When should advisory CI become blocking?
-
-## V4: Agent Patch Review
-
-V4 lets agents propose changes while humans remain in control.
-
-V4 depends on V1 object lookup and V3 semantic comparison. It should validate proposed semantic changes before any source rewrite is attempted.
-
-Suggested tracer-bullet slices:
-
-- Define a semantic patch JSON format with `op`, `target`, `base_hash`, `changes`, and `reason`.
-- `adoc patch --check patch.json` validates a proposed patch without modifying source.
-- Patch validation checks target existence, base hash, schema validity, lifecycle transition, and impacted references.
-- Patch review output shows proposed object-level changes and proof obligations.
-- Add or expose stable object content hashes before requiring `base_hash`.
-- Optional later slice applies validated patches to source files.
-
-Design guidance:
-
-- Agents propose patches; they do not autonomously approve verified knowledge.
-- Base hashes are mandatory to prevent stale edits.
-- Proof obligations should be generated before patch application.
-- Keep patch format object-oriented rather than line-oriented.
-- Treat patch application as a separate editing problem; validation can ship first.
-- Require review for anything that changes verified knowledge.
-
-Questions to resolve later:
-
-- Which patch operations are needed first: create object, update fields, replace body, revoke?
-- Should patch application preserve author formatting exactly?
-- How should agent identity be represented before full permissions exist?
 
 ## V5: Expanded Knowledge Model
 
@@ -551,7 +409,7 @@ V5 grows the object vocabulary and lifecycle after the first workflows are stabl
 Suggested tracer-bullet slices:
 
 - Add `constraint` first because the PRD treats it as a core object type and it is close to existing claim/decision validation.
-- Add `procedure` with ordered-step rendering and agent JSON.
+- Add `procedure` with ordered-step rendering and graph JSON.
 - Add `example` with declared checks but no sandbox execution at first.
 - Add `agent` instruction objects with explicit allowed and forbidden actions.
 - Add `policy` with approval metadata.
@@ -604,7 +462,7 @@ Questions to resolve later:
 
 V7 turns the CLI-proven model into team and enterprise surfaces.
 
-V7 should be split internally: read-only artifact browsing can arrive much earlier than enterprise governance, but permissions, audit, RBAC, and compliance require the team review semantics from V3 and patch semantics from V4.
+V7 should be split internally: read-only artifact browsing can arrive much earlier than enterprise governance, but permissions, audit, RBAC, and compliance require the team review semantics from V3 and patch semantics from V2.
 
 Suggested tracer-bullet slices:
 
@@ -629,9 +487,9 @@ Questions to resolve later:
 - Which permissions are enforced locally, server-side, or both?
 - What audit guarantees are required for regulated customers?
 
-## Current V0 Cut
+## Current Implemented Cut
 
-The currently resolved and implemented first cut is:
+The currently resolved and implemented local cut is:
 
 - Product surface: local CLI.
 - Command name: `adoc`.
@@ -653,13 +511,13 @@ The currently resolved and implemented first cut is:
 - Relations: `depends_on`, `supersedes`, `related_to`.
 - Block structure: top-level typed blocks only.
 - Composition: scan files directly, no includes.
-- Outputs: `dist/docs.html`, `dist/docs.agent.json`, `dist/docs.graph.json`, and optional `dist/docs.search.json`.
-- Agent JSON shape: flat object list plus diagnostics.
+- Outputs: `dist/docs.html`, `dist/docs.graph.json`, and optional `dist/docs.search.json`.
+- Graph JSON shape: page, prose block, and Knowledge Object nodes plus directed `contains`, `reference`, and relation edges.
 
 ## Explicitly Deferred From V0
 
 - Markdown migration and compatibility mode.
-- Graph artifacts and graph traversal in V0 itself; closed in V1 with `docs.graph.json` and `adoc graph`.
+- Graph traversal in V0 itself; closed in V1 with `docs.graph.json` and `adoc graph`.
 - Nested typed blocks.
 - Includes.
 - Custom schemas.

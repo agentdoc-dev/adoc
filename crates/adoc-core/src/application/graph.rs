@@ -1,19 +1,17 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::application::hashing::sha256_prefixed;
-use crate::domain::artifact::AgentJsonDocument;
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::diagnostic::Diagnostic;
 use crate::domain::graph::{
-    GraphArtifactDocument, GraphIndex, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
-    GraphTraversalResult,
+    GraphArtifactDocument, GraphIndex, GraphKnowledgeObjectNode, GraphTraversalEdge,
+    GraphTraversalNode, GraphTraversalQuery, GraphTraversalResult,
 };
+use crate::domain::identity::ObjectId;
 use crate::domain::ports::artifact_reader::ArtifactReader;
 
 pub const GRAPH_TRAVERSAL_SCHEMA_VERSION: &str = "adoc.graph.traversal.v0";
 
 #[derive(Debug, Clone)]
 pub struct GraphInput {
-    pub agent_artifact_path: PathBuf,
     pub graph_artifact_path: PathBuf,
 }
 
@@ -29,11 +27,30 @@ pub struct GraphSession {
 }
 
 impl GraphSession {
+    pub(crate) fn new(index: GraphIndex) -> Self {
+        Self { index }
+    }
+
     pub(crate) fn related_candidate_ids(
         &self,
         query: GraphTraversalQuery,
     ) -> Result<std::collections::BTreeSet<String>, Vec<Diagnostic>> {
         self.index.related_candidate_ids(query)
+    }
+
+    pub(crate) fn object(&self, id: &ObjectId) -> Option<&GraphKnowledgeObjectNode> {
+        self.index.object(id)
+    }
+
+    pub(crate) fn objects(&self) -> impl Iterator<Item = &GraphKnowledgeObjectNode> {
+        self.index.objects()
+    }
+
+    pub(crate) fn related_statuses<'a>(
+        &self,
+        targets: impl IntoIterator<Item = &'a str>,
+    ) -> std::collections::BTreeMap<String, Option<String>> {
+        self.index.related_statuses(targets)
     }
 }
 
@@ -69,43 +86,14 @@ impl From<GraphTraversalResult> for GraphTraversalEnvelope {
     }
 }
 
-pub(crate) fn load_graph_session_with_readers<A, G>(
+pub(crate) fn load_graph_session_with_readers<G>(
     input: GraphInput,
-    agent_reader: &A,
-    graph_reader: &G,
-) -> GraphLoadResult
-where
-    A: ArtifactReader<Output = AgentJsonDocument>,
-    G: ArtifactReader<Output = GraphArtifactDocument>,
-{
-    let agent_document = match agent_reader.read(&input.agent_artifact_path) {
-        Ok(document) => document,
-        Err(diagnostics) => {
-            return GraphLoadResult {
-                session: None,
-                diagnostics,
-            };
-        }
-    };
-    let canonical_agent_json = agent_document
-        .to_pretty_json()
-        .expect("agent artifact serialization should not fail");
-    load_graph_session_from_canonical_agent(
-        canonical_agent_json.as_bytes(),
-        &input.graph_artifact_path,
-        graph_reader,
-    )
-}
-
-pub(crate) fn load_graph_session_from_canonical_agent<G>(
-    canonical_agent_json: &[u8],
-    graph_artifact_path: &Path,
     graph_reader: &G,
 ) -> GraphLoadResult
 where
     G: ArtifactReader<Output = GraphArtifactDocument>,
 {
-    let graph_document = match graph_reader.read(graph_artifact_path) {
+    let graph_document = match graph_reader.read(&input.graph_artifact_path) {
         Ok(document) => document,
         Err(diagnostics) => {
             return GraphLoadResult {
@@ -115,19 +103,7 @@ where
         }
     };
 
-    let mut diagnostics = Vec::new();
-    let actual_hash = sha256_prefixed(canonical_agent_json);
-    if graph_document.agent_artifact_hash != actual_hash {
-        diagnostics.push(Diagnostic::warning(
-            DiagnosticCode::GraphHashDrift,
-            format!(
-                "Graph artifact `{}` references agent_artifact_hash `{}` but the loaded agent artifact hashes to `{}`.",
-                graph_artifact_path.display(),
-                graph_document.agent_artifact_hash,
-                actual_hash,
-            ),
-        ));
-    }
+    let mut diagnostics = graph_document.diagnostics.clone();
 
     let index = match GraphIndex::from_document(graph_document) {
         Ok(index) => index,
@@ -141,7 +117,7 @@ where
     };
 
     GraphLoadResult {
-        session: Some(GraphSession { index }),
+        session: Some(GraphSession::new(index)),
         diagnostics,
     }
 }

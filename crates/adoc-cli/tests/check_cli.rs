@@ -6,6 +6,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 
+use serde_json::Value;
+
 use support::{TestWorkspace, fixture_path};
 
 fn adoc_command() -> Command {
@@ -118,6 +120,110 @@ fn assert_fixture_directory_build_matches_golden(
     actual
 }
 
+fn assert_fixture_builds_graph(
+    workspace_name: &str,
+    fixture_relative: &str,
+    source_file: &str,
+) -> Value {
+    let workspace = TestWorkspace::new(workspace_name);
+    write_fixture_to_workspace(&workspace, fixture_relative, source_file);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["build", source_file, "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    read_graph_artifact(&workspace.root.join("dist").join("docs.graph.json"))
+}
+
+fn assert_fixture_directory_builds_graph(
+    workspace_name: &str,
+    fixture_relative: &str,
+    source_dir: &str,
+) -> String {
+    let workspace = TestWorkspace::new(workspace_name);
+    copy_fixture_directory_to_workspace(&workspace, fixture_relative, source_dir);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["build", source_dir, "--out", "dist"])
+        .output()
+        .expect("adoc build runs");
+
+    assert!(
+        output.status.success(),
+        "expected build to pass\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.graph.json"))
+        .expect("graph artifact is written");
+    assert_graph_artifact(&actual);
+    actual
+}
+
+fn read_graph_artifact(path: &Path) -> Value {
+    let text = fs::read_to_string(path).expect("graph artifact is written");
+    assert_graph_artifact(&text)
+}
+
+fn assert_graph_artifact(text: &str) -> Value {
+    let graph: Value = serde_json::from_str(text).expect("graph artifact is valid JSON");
+    assert_eq!(graph["schema_version"], "adoc.graph.v1");
+    assert!(graph["nodes"].as_array().is_some());
+    assert!(graph["edges"].as_array().is_some());
+    assert_eq!(
+        graph["diagnostics"]
+            .as_array()
+            .expect("diagnostics is an array")
+            .len(),
+        0
+    );
+    graph
+}
+
+fn assert_graph_has_node(graph: &Value, expected_id: &str) {
+    let has_node = graph["nodes"]
+        .as_array()
+        .expect("nodes is an array")
+        .iter()
+        .any(|node| node["id"] == expected_id);
+    assert!(
+        has_node,
+        "expected graph node `{expected_id}` in:\n{graph:#}"
+    );
+}
+
+fn assert_graph_lacks_node(graph: &Value, forbidden_id: &str) {
+    let has_node = graph["nodes"]
+        .as_array()
+        .expect("nodes is an array")
+        .iter()
+        .any(|node| node["id"] == forbidden_id);
+    assert!(
+        !has_node,
+        "did not expect graph node `{forbidden_id}` in:\n{graph:#}"
+    );
+}
+
+fn graph_node<'a>(graph: &'a Value, expected_id: &str) -> &'a Value {
+    graph["nodes"]
+        .as_array()
+        .expect("nodes is an array")
+        .iter()
+        .find(|node| node["id"] == expected_id)
+        .unwrap_or_else(|| panic!("expected graph node `{expected_id}` in:\n{graph:#}"))
+}
+
 #[test]
 fn check_accepts_v0_1_prose_fixture_with_all_inline_syntax() {
     let fixture = fixture_path("v0_1/prose_page.adoc");
@@ -209,8 +315,8 @@ fn check_rejects_unsafe_link_with_source_location() {
 }
 
 #[test]
-fn build_renders_v0_1_prose_fixture_to_golden_agent_json() {
-    let workspace = TestWorkspace::new("build-renders-prose-golden-json");
+fn build_renders_v0_1_prose_fixture_to_graph_json() {
+    let workspace = TestWorkspace::new("build-renders-prose-golden-graph");
     let fixture_contents = fs::read_to_string(fixture_path("v0_1/prose_page.adoc"))
         .expect("prose fixture is readable");
     workspace.write("prose_page.adoc", &fixture_contents);
@@ -230,16 +336,10 @@ fn build_renders_v0_1_prose_fixture_to_golden_agent_json() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
-        .expect("docs.agent.json is written");
-    let golden = fs::read_to_string(fixture_path("v0_1/prose_page.golden.agent.json"))
-        .expect("golden agent JSON fixture is readable");
-
-    assert_eq!(
-        actual, golden,
-        "agent JSON diverged from prose_page.golden.agent.json; \
-         re-run `adoc build` against prose_page.adoc and review before updating the snapshot"
-    );
+    let graph = read_graph_artifact(&workspace.root.join("dist").join("docs.graph.json"));
+    assert_graph_has_node(&graph, "v0-1.prose");
+    assert!(graph["nodes"].as_array().expect("nodes array").len() > 1);
+    assert!(!workspace.root.join("dist").join("docs.agent.json").exists());
 }
 
 #[test]
@@ -347,12 +447,9 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
     assert!(html.contains("<h1>Getting Started</h1>"));
     assert!(html.contains("<p>AgentDoc keeps knowledge readable.</p>"));
 
-    let agent_json = fs::read_to_string(output_directory.join("docs.agent.json"))
-        .expect("agent JSON is written");
-    assert!(agent_json.contains("\"schema_version\": \"adoc.agent.v0\""));
-    assert!(agent_json.contains("\"pages\""));
-    assert!(agent_json.contains("\"id\": \"docs.search-ready\""));
-    assert!(agent_json.contains("\"diagnostics\": []"));
+    let graph = read_graph_artifact(&output_directory.join("docs.graph.json"));
+    assert_graph_has_node(&graph, "docs.search-ready");
+    assert!(!output_directory.join("docs.agent.json").exists());
 
     let search_json_text = fs::read_to_string(output_directory.join("docs.search.json"))
         .expect("search JSON is written");
@@ -409,7 +506,8 @@ fn build_no_embeddings_emits_info_and_leaves_prior_search_artifact_untouched() {
         "expected skipped embedding info diagnostic in stdout:\n{stdout}"
     );
     assert!(workspace.root.join("dist/docs.html").is_file());
-    assert!(workspace.root.join("dist/docs.agent.json").is_file());
+    assert!(workspace.root.join("dist/docs.graph.json").is_file());
+    assert!(!workspace.root.join("dist/docs.agent.json").exists());
     assert_eq!(
         fs::read_to_string(search_artifact_path).expect("prior search artifact remains readable"),
         "existing search artifact",
@@ -609,10 +707,10 @@ fn build_derives_distinct_page_ids_from_directory_relative_paths() {
     assert!(html.contains("data-page-id=\"a.guide\""));
     assert!(html.contains("data-page-id=\"b.guide\""));
 
-    let agent_json = fs::read_to_string(output_directory.join("docs.agent.json"))
-        .expect("agent JSON is written");
-    assert!(agent_json.contains("\"id\": \"a.guide\""));
-    assert!(agent_json.contains("\"id\": \"b.guide\""));
+    let graph = read_graph_artifact(&output_directory.join("docs.graph.json"));
+    assert_graph_has_node(&graph, "a.guide");
+    assert_graph_has_node(&graph, "b.guide");
+    assert!(!output_directory.join("docs.agent.json").exists());
 }
 
 #[test]
@@ -647,10 +745,10 @@ fn build_keeps_page_identity_from_first_heading_annotation() {
     assert!(html.contains("data-page-id=\"docs.primary-guide\""));
     assert!(!html.contains("data-page-id=\"docs.details-section\""));
 
-    let agent_json = fs::read_to_string(output_directory.join("docs.agent.json"))
-        .expect("agent JSON is written");
-    assert!(agent_json.contains("\"id\": \"docs.primary-guide\""));
-    assert!(!agent_json.contains("\"id\": \"docs.details-section\""));
+    let graph = read_graph_artifact(&output_directory.join("docs.graph.json"));
+    assert_graph_has_node(&graph, "docs.primary-guide");
+    assert_graph_lacks_node(&graph, "docs.details-section");
+    assert!(!output_directory.join("docs.agent.json").exists());
 }
 
 #[test]
@@ -685,10 +783,10 @@ fn build_uses_first_top_level_heading_annotation_for_page_identity() {
     assert!(html.contains("data-page-id=\"product.area\""));
     assert!(!html.contains("data-page-id=\"draft.notes\""));
 
-    let agent_json = fs::read_to_string(output_directory.join("docs.agent.json"))
-        .expect("agent JSON is written");
-    assert!(agent_json.contains("\"id\": \"product.area\""));
-    assert!(!agent_json.contains("\"id\": \"draft.notes\""));
+    let graph = read_graph_artifact(&output_directory.join("docs.graph.json"));
+    assert_graph_has_node(&graph, "product.area");
+    assert_graph_lacks_node(&graph, "draft.notes");
+    assert!(!output_directory.join("docs.agent.json").exists());
 }
 
 #[test]
@@ -718,6 +816,7 @@ fn build_fails_clearly_when_output_path_is_a_file() {
     assert!(stderr.contains("io.output_not_directory"));
     assert!(stderr.contains("exists as a file"));
     assert!(!output_path.join("docs.html").exists());
+    assert!(!output_path.join("docs.graph.json").exists());
     assert!(!output_path.join("docs.agent.json").exists());
 }
 
@@ -888,6 +987,7 @@ fn build_rejects_inline_raw_html_and_writes_no_artifacts() {
     assert!(stdout.contains("Raw HTML is not allowed in strict mode"));
     assert!(stdout.contains("1 errors"));
     assert!(!output_directory.join("docs.html").exists());
+    assert!(!output_directory.join("docs.graph.json").exists());
     assert!(!output_directory.join("docs.agent.json").exists());
 }
 
@@ -945,6 +1045,7 @@ fn duplicate_claim_ids_fail_check_and_block_build_artifacts() {
         "expected id.duplicate diagnostic in build stdout:\n{build_stdout}"
     );
     assert!(!output_directory.join("docs.html").exists());
+    assert!(!output_directory.join("docs.graph.json").exists());
     assert!(!output_directory.join("docs.agent.json").exists());
 }
 
@@ -992,6 +1093,7 @@ fn broken_prose_reference_fails_check_and_blocks_build_artifacts() {
         "expected broken reference to fail build"
     );
     assert!(!output_directory.join("docs.html").exists());
+    assert!(!output_directory.join("docs.graph.json").exists());
     assert!(!output_directory.join("docs.agent.json").exists());
 }
 
@@ -1054,7 +1156,8 @@ fn build_writes_artifacts_for_raw_html_inside_fenced_code_block() {
         html.contains("&lt;div&gt;example&lt;/div&gt;"),
         "fenced HTML sample must be HTML-escaped inside <pre><code>:\n{html}"
     );
-    assert!(output_directory.join("docs.agent.json").exists());
+    assert!(output_directory.join("docs.graph.json").exists());
+    assert!(!output_directory.join("docs.agent.json").exists());
 }
 
 #[test]
@@ -1278,8 +1381,8 @@ fn build_renders_v0_2_claim_fixture_to_golden_html() {
 }
 
 #[test]
-fn build_renders_v0_2_claim_fixture_to_golden_agent_json() {
-    let workspace = TestWorkspace::new("build-renders-claim-golden-json");
+fn build_renders_v0_2_claim_fixture_to_graph_json() {
+    let workspace = TestWorkspace::new("build-renders-claim-golden-graph");
     let fixture_contents = fs::read_to_string(fixture_path("v0_2/claim_basic.adoc"))
         .expect("claim_basic fixture is readable");
     workspace.write("claim_basic.adoc", &fixture_contents);
@@ -1297,16 +1400,13 @@ fn build_renders_v0_2_claim_fixture_to_golden_agent_json() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
-        .expect("docs.agent.json is written");
-    let golden = fs::read_to_string(fixture_path("v0_2/claim_basic.golden.agent.json"))
-        .expect("golden agent JSON fixture is readable");
-
-    assert_eq!(
-        actual, golden,
-        "agent JSON diverged from claim_basic.golden.agent.json; \
-         re-run `adoc build` against claim_basic.adoc and review before updating the snapshot"
-    );
+    let graph = read_graph_artifact(&workspace.root.join("dist").join("docs.graph.json"));
+    let node = graph_node(&graph, "billing.credits");
+    assert_eq!(node["type"], "knowledge_object");
+    assert_eq!(node["kind"], "claim");
+    assert_eq!(node["status"], "draft");
+    assert_eq!(node["fields"]["owner"], "team-billing");
+    assert!(!workspace.root.join("dist").join("docs.agent.json").exists());
 }
 
 #[test]
@@ -1396,8 +1496,8 @@ fn build_renders_v0_3_verified_claims_pilot_to_golden_html() {
 }
 
 #[test]
-fn build_renders_v0_3_verified_claims_pilot_to_golden_agent_json() {
-    let workspace = TestWorkspace::new("build-renders-verified-pilot-golden-json");
+fn build_renders_v0_3_verified_claims_pilot_to_graph_json() {
+    let workspace = TestWorkspace::new("build-renders-verified-pilot-golden-graph");
     let fixture_contents = fs::read_to_string(fixture_path("v0_3/verified_claims_pilot.adoc"))
         .expect("verified pilot fixture is readable");
     workspace.write("verified_claims_pilot.adoc", &fixture_contents);
@@ -1415,15 +1515,22 @@ fn build_renders_v0_3_verified_claims_pilot_to_golden_agent_json() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
-        .expect("docs.agent.json is written");
-    let golden = fs::read_to_string(fixture_path("v0_3/verified_claims_pilot.golden.agent.json"))
-        .expect("golden agent JSON fixture is readable");
-
+    let graph = read_graph_artifact(&workspace.root.join("dist").join("docs.graph.json"));
+    for id in [
+        "billing.credits.automatic",
+        "billing.credits.tested",
+        "billing.credits.reviewed",
+        "billing.credits.review-only",
+    ] {
+        let node = graph_node(&graph, id);
+        assert_eq!(node["type"], "knowledge_object");
+        assert_eq!(node["kind"], "claim");
+    }
     assert_eq!(
-        actual, golden,
-        "agent JSON diverged from verified_claims_pilot.golden.agent.json"
+        graph_node(&graph, "billing.credits.automatic")["status"],
+        "verified"
     );
+    assert!(!workspace.root.join("dist").join("docs.agent.json").exists());
 }
 
 #[test]
@@ -1484,8 +1591,8 @@ fn build_renders_v0_4_proposed_decision_to_golden_html() {
 }
 
 #[test]
-fn build_renders_v0_4_proposed_decision_to_golden_agent_json() {
-    let workspace = TestWorkspace::new("build-renders-proposed-decision-golden-json");
+fn build_renders_v0_4_proposed_decision_to_graph_json() {
+    let workspace = TestWorkspace::new("build-renders-proposed-decision-golden-graph");
     let fixture_contents = fs::read_to_string(fixture_path("v0_4/decision_proposed.adoc"))
         .expect("decision_proposed fixture is readable");
     workspace.write("decision_proposed.adoc", &fixture_contents);
@@ -1503,15 +1610,12 @@ fn build_renders_v0_4_proposed_decision_to_golden_agent_json() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
-        .expect("docs.agent.json is written");
-    let golden = fs::read_to_string(fixture_path("v0_4/decision_proposed.golden.agent.json"))
-        .expect("golden agent JSON fixture is readable");
-
-    assert_eq!(
-        actual, golden,
-        "agent JSON diverged from decision_proposed.golden.agent.json"
-    );
+    let graph = read_graph_artifact(&workspace.root.join("dist").join("docs.graph.json"));
+    let node = graph_node(&graph, "billing.policy");
+    assert_eq!(node["type"], "knowledge_object");
+    assert_eq!(node["kind"], "decision");
+    assert_eq!(node["status"], "proposed");
+    assert!(!workspace.root.join("dist").join("docs.agent.json").exists());
 }
 
 #[test]
@@ -1554,8 +1658,8 @@ fn build_renders_v0_4_accepted_decision_to_golden_html() {
 }
 
 #[test]
-fn build_renders_v0_4_accepted_decision_to_golden_agent_json() {
-    let workspace = TestWorkspace::new("build-renders-accepted-decision-golden-json");
+fn build_renders_v0_4_accepted_decision_to_graph_json() {
+    let workspace = TestWorkspace::new("build-renders-accepted-decision-golden-graph");
     let fixture_contents = fs::read_to_string(fixture_path("v0_4/decision_accepted.adoc"))
         .expect("decision_accepted fixture is readable");
     workspace.write("decision_accepted.adoc", &fixture_contents);
@@ -1573,19 +1677,13 @@ fn build_renders_v0_4_accepted_decision_to_golden_agent_json() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
-        .expect("docs.agent.json is written");
-    let golden = fs::read_to_string(fixture_path("v0_4/decision_accepted.golden.agent.json"))
-        .expect("golden agent JSON fixture is readable");
-
-    assert_eq!(
-        actual, golden,
-        "agent JSON diverged from decision_accepted.golden.agent.json"
-    );
-    assert!(
-        actual.contains("\"decided_by\": \"architecture\""),
-        "accepted decision agent JSON must flatten fields.decided_by"
-    );
+    let graph = read_graph_artifact(&workspace.root.join("dist").join("docs.graph.json"));
+    let node = graph_node(&graph, "billing.policy");
+    assert_eq!(node["type"], "knowledge_object");
+    assert_eq!(node["kind"], "decision");
+    assert_eq!(node["status"], "accepted");
+    assert_eq!(node["fields"]["decided_by"], "architecture");
+    assert!(!workspace.root.join("dist").join("docs.agent.json").exists());
 }
 
 #[test]
@@ -1650,8 +1748,8 @@ fn build_renders_v0_4_warning_to_golden_html() {
 }
 
 #[test]
-fn build_renders_v0_4_warning_to_golden_agent_json() {
-    let workspace = TestWorkspace::new("build-renders-warning-golden-json");
+fn build_renders_v0_4_warning_to_graph_json() {
+    let workspace = TestWorkspace::new("build-renders-warning-golden-graph");
     let fixture_contents = fs::read_to_string(fixture_path("v0_4/warning_basic.adoc"))
         .expect("warning_basic fixture is readable");
     workspace.write("warning_basic.adoc", &fixture_contents);
@@ -1669,23 +1767,13 @@ fn build_renders_v0_4_warning_to_golden_agent_json() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
-        .expect("docs.agent.json is written");
-    let golden = fs::read_to_string(fixture_path("v0_4/warning_basic.golden.agent.json"))
-        .expect("golden agent JSON fixture is readable");
-
-    assert_eq!(
-        actual, golden,
-        "agent JSON diverged from warning_basic.golden.agent.json"
-    );
-    assert!(
-        actual.contains("\"status\": \"high\""),
-        "warning agent JSON must use status for severity"
-    );
-    assert!(
-        !actual.contains("\"severity\""),
-        "severity must not appear in warning fields"
-    );
+    let graph = read_graph_artifact(&workspace.root.join("dist").join("docs.graph.json"));
+    let node = graph_node(&graph, "auth.session.clock-skew");
+    assert_eq!(node["type"], "knowledge_object");
+    assert_eq!(node["kind"], "warning");
+    assert_eq!(node["status"], "high");
+    assert!(node["fields"].get("severity").is_none());
+    assert!(!workspace.root.join("dist").join("docs.agent.json").exists());
 }
 
 #[test]
@@ -1750,8 +1838,8 @@ fn build_renders_v0_4_glossary_to_golden_html() {
 }
 
 #[test]
-fn build_renders_v0_4_glossary_to_golden_agent_json() {
-    let workspace = TestWorkspace::new("build-renders-glossary-golden-json");
+fn build_renders_v0_4_glossary_to_graph_json() {
+    let workspace = TestWorkspace::new("build-renders-glossary-golden-graph");
     let fixture_contents = fs::read_to_string(fixture_path("v0_4/glossary_basic.adoc"))
         .expect("glossary_basic fixture is readable");
     workspace.write("glossary_basic.adoc", &fixture_contents);
@@ -1769,23 +1857,13 @@ fn build_renders_v0_4_glossary_to_golden_agent_json() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
-        .expect("docs.agent.json is written");
-    let golden = fs::read_to_string(fixture_path("v0_4/glossary_basic.golden.agent.json"))
-        .expect("golden agent JSON fixture is readable");
-
-    assert_eq!(
-        actual, golden,
-        "agent JSON diverged from glossary_basic.golden.agent.json"
-    );
-    assert!(
-        !actual.contains("\n      \"status\":"),
-        "glossary agent JSON must omit top-level status"
-    );
-    assert!(
-        actual.contains("\"status\": \"draft\""),
-        "glossary fields must preserve status metadata"
-    );
+    let graph = read_graph_artifact(&workspace.root.join("dist").join("docs.graph.json"));
+    let node = graph_node(&graph, "billing.credits");
+    assert_eq!(node["type"], "knowledge_object");
+    assert_eq!(node["kind"], "glossary");
+    assert!(node.get("status").is_none());
+    assert_eq!(node["fields"]["status"], "draft");
+    assert!(!workspace.root.join("dist").join("docs.agent.json").exists());
 }
 
 #[test]
@@ -1863,8 +1941,8 @@ fn build_renders_v0_4_core_object_set_to_golden_html() {
 }
 
 #[test]
-fn build_renders_v0_4_core_object_set_to_golden_agent_json() {
-    let workspace = TestWorkspace::new("build-renders-core-object-set-golden-json");
+fn build_renders_v0_4_core_object_set_to_graph_json() {
+    let workspace = TestWorkspace::new("build-renders-core-object-set-golden-graph");
     let fixture_contents = fs::read_to_string(fixture_path("v0_4/core_object_set.adoc"))
         .expect("core_object_set fixture is readable");
     workspace.write("core_object_set.adoc", &fixture_contents);
@@ -1882,31 +1960,22 @@ fn build_renders_v0_4_core_object_set_to_golden_agent_json() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let actual = fs::read_to_string(workspace.root.join("dist").join("docs.agent.json"))
-        .expect("docs.agent.json is written");
-    let golden = fs::read_to_string(fixture_path("v0_4/core_object_set.golden.agent.json"))
-        .expect("golden agent JSON fixture is readable");
-
+    let graph = read_graph_artifact(&workspace.root.join("dist").join("docs.graph.json"));
     assert_eq!(
-        actual, golden,
-        "agent JSON diverged from core_object_set.golden.agent.json"
+        graph_node(&graph, "billing.credits.lifecycle")["status"],
+        "verified"
+    );
+    assert_eq!(graph_node(&graph, "billing.policy")["status"], "accepted");
+    assert_eq!(
+        graph_node(&graph, "auth.session.clock-skew")["status"],
+        "high"
     );
     assert!(
-        actual.contains("\"kind\": \"claim\",\n      \"status\": \"verified\""),
-        "claim agent JSON must include top-level verified status"
+        graph_node(&graph, "billing.credits")
+            .get("status")
+            .is_none()
     );
-    assert!(
-        actual.contains("\"kind\": \"decision\",\n      \"status\": \"accepted\""),
-        "decision agent JSON must include top-level accepted status"
-    );
-    assert!(
-        actual.contains("\"kind\": \"warning\",\n      \"status\": \"high\""),
-        "warning agent JSON must map severity to top-level status"
-    );
-    assert!(
-        !actual.contains("\"kind\": \"glossary\",\n      \"status\":"),
-        "glossary agent JSON must omit top-level status"
-    );
+    assert!(!workspace.root.join("dist").join("docs.agent.json").exists());
 }
 
 #[test]
@@ -1921,14 +1990,14 @@ fn build_renders_v0_5_scalar_relation_to_golden_html() {
 }
 
 #[test]
-fn build_renders_v0_5_scalar_relation_to_golden_agent_json() {
-    assert_fixture_build_matches_golden(
+fn build_renders_v0_5_scalar_relation_to_graph_json() {
+    let graph = assert_fixture_builds_graph(
         "build-renders-v0-5-scalar-relation-json",
         "v0_5/relation_scalar.adoc",
         "relation_scalar.adoc",
-        "docs.agent.json",
-        "v0_5/relation_scalar.golden.agent.json",
     );
+    assert_graph_has_node(&graph, "billing.credits");
+    assert_graph_has_node(&graph, "billing.refunds");
 }
 
 #[test]
@@ -1943,14 +2012,14 @@ fn build_renders_v0_5_bracket_array_relation_to_golden_html() {
 }
 
 #[test]
-fn build_renders_v0_5_bracket_array_relation_to_golden_agent_json() {
-    assert_fixture_build_matches_golden(
+fn build_renders_v0_5_bracket_array_relation_to_graph_json() {
+    let graph = assert_fixture_builds_graph(
         "build-renders-v0-5-bracket-array-relation-json",
         "v0_5/relation_bracket_array.adoc",
         "relation_bracket_array.adoc",
-        "docs.agent.json",
-        "v0_5/relation_bracket_array.golden.agent.json",
     );
+    assert_graph_has_node(&graph, "billing.credits");
+    assert_graph_has_node(&graph, "billing.refunds");
 }
 
 #[test]
@@ -1965,14 +2034,14 @@ fn build_renders_v0_5_decision_supersedes_to_golden_html() {
 }
 
 #[test]
-fn build_renders_v0_5_decision_supersedes_to_golden_agent_json() {
-    assert_fixture_build_matches_golden(
+fn build_renders_v0_5_decision_supersedes_to_graph_json() {
+    let graph = assert_fixture_builds_graph(
         "build-renders-v0-5-decision-supersedes-json",
         "v0_5/decision_supersedes.adoc",
         "decision_supersedes.adoc",
-        "docs.agent.json",
-        "v0_5/decision_supersedes.golden.agent.json",
     );
+    assert_graph_has_node(&graph, "billing.legacy-refunds");
+    assert_graph_has_node(&graph, "billing.refund-policy");
 }
 
 #[test]
@@ -2032,13 +2101,11 @@ fn build_renders_v0_6_multi_file_project_to_golden_html() {
 }
 
 #[test]
-fn build_renders_v0_6_multi_file_project_to_golden_agent_json() {
-    let actual = assert_fixture_directory_build_matches_golden(
+fn build_renders_v0_6_multi_file_project_to_graph_json() {
+    let actual = assert_fixture_directory_builds_graph(
         "build-renders-v0-6-multi-file-json",
         "v0_6/project",
         "project",
-        "docs.agent.json",
-        "v0_6/project.golden.agent.json",
     );
 
     assert!(

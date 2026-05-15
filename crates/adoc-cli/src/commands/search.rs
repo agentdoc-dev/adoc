@@ -2,27 +2,25 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use adoc_core::{
-    Diagnostic, DiagnosticCode, EmbedQueryError, GraphDirection, GraphRelationKind,
-    RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, SearchFilters, SearchMode, SearchQuery,
-    SearchResult, Severity, embed_query, load_retrieval_session, search,
+    Diagnostic, DiagnosticCode, EmbedQueryError, GraphDirection, GraphRelationKind, RetrievalInput,
+    RetrievalLoadResult, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity,
+    embed_query, load_retrieval_session, search,
 };
 
 use crate::error::CliError;
-use crate::presentation::{
-    ResolvedFormat, RetrievalView, json as json_presentation, make_presenter,
-};
+use crate::presentation::{ResolvedFormat, RetrievalView, make_presenter};
 
 use super::{
-    diagnostics_have_errors, discover_project_config_if, eprint_diagnostics, merge_diagnostics,
-    presentation_record_from_session, report, resolve_agent_artifact_path_with_config,
-    resolve_graph_artifact_path_with_config, resolve_search_artifact_path_with_config,
+    discover_project_config_if, emit_retrieval_error, eprint_diagnostics,
+    exit_code_for_diagnostics, gate_retrieval_load, merge_diagnostics,
+    presentation_record_from_session, report, resolve_graph_artifact_path_with_config,
+    resolve_search_artifact_path_with_config,
 };
 
 pub(crate) struct SearchCommandInput {
     pub(crate) query: String,
     pub(crate) artifact: Option<PathBuf>,
     pub(crate) search_artifact: Option<PathBuf>,
-    pub(crate) graph_artifact: Option<PathBuf>,
     pub(crate) semantic: bool,
     pub(crate) lexical: bool,
     pub(crate) kind: Option<String>,
@@ -46,64 +44,30 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
 
     let needs_search_config = matches!(requested_mode, SearchMode::Hybrid | SearchMode::Semantic)
         && input.search_artifact.is_none();
-    let needs_graph_config = input.related_to.is_some() && input.graph_artifact.is_none();
-    let config = match discover_project_config_if(
-        input.artifact.is_none() || needs_search_config || needs_graph_config,
-    ) {
+    let config = match discover_project_config_if(input.artifact.is_none() || needs_search_config) {
         Ok(config) => config,
         Err(error) => return report(error),
     };
-    let artifact = resolve_agent_artifact_path_with_config(input.artifact, config.as_ref());
+    let artifact = resolve_graph_artifact_path_with_config(input.artifact, config.as_ref());
     let search_artifact_path = match requested_mode {
         SearchMode::Lexical => None,
         SearchMode::Hybrid | SearchMode::Semantic => Some(
             resolve_search_artifact_path_with_config(input.search_artifact, config.as_ref()),
         ),
     };
-    let graph_artifact_path = if input.related_to.is_some() {
-        Some(resolve_graph_artifact_path_with_config(
-            input.graph_artifact,
-            config.as_ref(),
-        ))
-    } else {
-        None
-    };
-
     let load_result = load_retrieval_session(RetrievalInput {
         artifact_path: artifact,
         search_artifact_path,
-        graph_artifact_path,
     });
     let RetrievalLoadResult {
         session,
         diagnostics: load_diagnostics,
     } = load_result;
-    let session = match session {
-        Some(session) => session,
-        None => {
-            if resolved == ResolvedFormat::Json {
-                return json_presentation::write_envelope_json(
-                    &RetrievalEnvelope::new(Vec::new(), load_diagnostics),
-                    &mut std::io::stdout(),
-                )
-                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
-            }
-            eprint_diagnostics(&load_diagnostics);
-            return 2;
-        }
-    };
-
-    if diagnostics_have_errors(&load_diagnostics) {
-        if resolved == ResolvedFormat::Json {
-            return json_presentation::write_envelope_json(
-                &RetrievalEnvelope::new(Vec::new(), load_diagnostics),
-                &mut std::io::stdout(),
-            )
-            .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
-        }
-        eprint_diagnostics(&load_diagnostics);
-        return 2;
-    }
+    let (session, load_diagnostics) =
+        match gate_retrieval_load(session, load_diagnostics, resolved, 2) {
+            Ok(loaded) => loaded,
+            Err(exit_code) => return exit_code,
+        };
 
     // Explicit semantic mode cannot run without a vector index. Hybrid mode
     // degrades to lexical below so missing embeddings do not pay model-load
@@ -122,13 +86,7 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
                     .to_string(),
             ),
         });
-        let envelope = RetrievalEnvelope::new(Vec::new(), diagnostics);
-        if resolved == ResolvedFormat::Json {
-            return json_presentation::write_envelope_json(&envelope, &mut std::io::stdout())
-                .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
-        }
-        eprint_diagnostics(&envelope.diagnostics);
-        return 2;
+        return emit_retrieval_error(diagnostics, resolved, 2);
     }
 
     let mode = match requested_mode {
@@ -165,15 +123,7 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
                     object_id: None,
                     help: Some(code.default_help().to_string()),
                 };
-                if resolved == ResolvedFormat::Json {
-                    return json_presentation::write_envelope_json(
-                        &RetrievalEnvelope::new(Vec::new(), vec![diagnostic]),
-                        &mut std::io::stdout(),
-                    )
-                    .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 2);
-                }
-                eprint_diagnostics(&[diagnostic]);
-                return 2;
+                return emit_retrieval_error(vec![diagnostic], resolved, 2);
             }
         }
     } else {
@@ -243,12 +193,7 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
 }
 
 fn search_exit_code(result: &SearchResult) -> i32 {
-    result
-        .diagnostics
-        .iter()
-        .filter_map(search_diagnostic_exit_code)
-        .min()
-        .unwrap_or(0)
+    exit_code_for_diagnostics(&result.diagnostics, search_diagnostic_exit_code)
 }
 
 fn search_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {

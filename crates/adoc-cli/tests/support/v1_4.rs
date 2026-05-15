@@ -41,7 +41,7 @@ const PILOT_SOURCE: &str = "# Billing @doc(billing.page)\n\
 #[allow(dead_code)]
 pub struct V1_4Pilot {
     pub _workspace: TestWorkspace,
-    pub agent_path: PathBuf,
+    pub artifact_path: PathBuf,
     pub search_path: PathBuf,
 }
 
@@ -68,7 +68,7 @@ pub fn build_v1_4_pilot() -> V1_4Pilot {
     );
 
     V1_4Pilot {
-        agent_path: out.join("docs.agent.json"),
+        artifact_path: out.join("docs.graph.json"),
         search_path: out.join("docs.search.json"),
         _workspace: workspace,
     }
@@ -98,7 +98,7 @@ pub fn build_v1_4_pilot_with_fastembed() -> V1_4Pilot {
     );
 
     V1_4Pilot {
-        agent_path: out.join("docs.agent.json"),
+        artifact_path: out.join("docs.graph.json"),
         search_path: out.join("docs.search.json"),
         _workspace: workspace,
     }

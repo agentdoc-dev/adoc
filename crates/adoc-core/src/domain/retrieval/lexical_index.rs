@@ -1,11 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::domain::artifact::AgentJsonObject;
+use crate::domain::graph::GraphKnowledgeObjectNode;
+use crate::domain::retrieval::metadata;
 
 const BM25_K1: f64 = 1.2;
 const BM25_B: f64 = 0.75;
-const OWNER_FIELD: &str = "owner";
-const EVIDENCE_FIELDS: [&str; 3] = ["source", "test", "reviewed_by"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct LexicalSearchHit {
@@ -30,7 +29,9 @@ struct IndexedDocument {
 }
 
 impl LexicalIndex {
-    pub(crate) fn from_objects<'a>(objects: impl IntoIterator<Item = &'a AgentJsonObject>) -> Self {
+    pub(crate) fn from_objects<'a>(
+        objects: impl IntoIterator<Item = &'a GraphKnowledgeObjectNode>,
+    ) -> Self {
         let mut documents = Vec::new();
 
         for object in objects {
@@ -208,17 +209,12 @@ fn score_term(
     idf * (term_frequency * (BM25_K1 + 1.0)) / denominator
 }
 
-fn indexed_tokens(object: &AgentJsonObject) -> Vec<String> {
+fn indexed_tokens(object: &GraphKnowledgeObjectNode) -> Vec<String> {
     let mut tokens = tokenize(&object.body);
     tokens.extend(tokenize(&object.id));
     tokens.extend(tokenize(&object.kind));
-    if let Some(owner) = object.fields.get(OWNER_FIELD) {
-        tokens.extend(tokenize(owner));
-    }
-    for evidence_field in EVIDENCE_FIELDS {
-        if let Some(value) = object.fields.get(evidence_field) {
-            tokens.extend(tokenize(value));
-        }
+    for value in metadata::indexed_field_values(object) {
+        tokens.extend(tokenize(value));
     }
     tokens
 }
@@ -247,27 +243,27 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::*;
-    use crate::domain::artifact::{AgentJsonObject, AgentJsonRelations, AgentJsonSourceSpan};
+    use crate::domain::graph::{GraphKnowledgeObjectNode, GraphRelations, GraphSourceSpan};
 
-    fn object(id: &str, kind: &str, owner: Option<&str>, body: &str) -> AgentJsonObject {
+    fn object(id: &str, kind: &str, owner: Option<&str>, body: &str) -> GraphKnowledgeObjectNode {
         let mut fields = BTreeMap::new();
         if let Some(owner) = owner {
             fields.insert("owner".to_string(), owner.to_string());
         }
 
-        AgentJsonObject {
+        GraphKnowledgeObjectNode {
             id: id.to_string(),
             kind: kind.to_string(),
             status: None,
             body: body.to_string(),
             page_id: "team.page".to_string(),
-            source_span: AgentJsonSourceSpan {
+            source_span: GraphSourceSpan {
                 path: "docs/team.adoc".to_string(),
                 line: 1,
                 column: 1,
             },
             fields,
-            relations: AgentJsonRelations::default(),
+            relations: GraphRelations::default(),
         }
     }
 

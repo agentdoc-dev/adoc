@@ -1,5 +1,9 @@
 # V0 Design
 
+> Historical note: this document records the original V0 scaffold. The flat
+> `docs.agent.json` artifact described here has been retired; the current read
+> model is `docs.graph.json` per ADR-0011.
+
 This document is the implementation contract for the first AgentDoc Rust scaffold. It is deliberately smaller than the PRD and roadmap: it fixes enough structure to start coding without pretending that every later product question is settled.
 
 ## Goals
