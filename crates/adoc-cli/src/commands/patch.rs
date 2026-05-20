@@ -2,17 +2,15 @@ use std::fmt::Write as FmtWrite;
 use std::io;
 use std::path::PathBuf;
 
-use adoc_core::{Diagnostic, DiagnosticCode, PatchCheckResult, PatchInput, Severity, check_patch};
+use adoc_core::PatchCheckResult;
+use adoc_local::{LocalContext, PatchCheckInput, PatchCheckUseCase, UnrestrictedPathPolicy};
 
 use crate::error::CliError;
 use crate::presentation::style::key::cyan_key;
 use crate::presentation::style::kv::faint_label;
 use crate::presentation::{ResolvedFormat, json as json_presentation};
 
-use super::{
-    discover_project_config_if, eprint_diagnostics, exit_code_for_diagnostics, report,
-    resolve_graph_artifact_path_with_config,
-};
+use super::{current_dir, eprint_diagnostics, report};
 
 pub(crate) struct PatchCommandInput {
     pub(crate) patch_path: PathBuf,
@@ -20,16 +18,20 @@ pub(crate) struct PatchCommandInput {
 }
 
 pub(crate) fn patch(input: PatchCommandInput, resolved: ResolvedFormat) -> i32 {
-    let config = match discover_project_config_if(input.artifact.is_none()) {
-        Ok(config) => config,
+    let config_start = match current_dir() {
+        Ok(path) => path,
         Err(error) => return report(error),
     };
-    let graph_artifact = resolve_graph_artifact_path_with_config(input.artifact, config.as_ref());
-    let result = check_patch(PatchInput {
-        graph_artifact_path: graph_artifact,
+    let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
+    let outcome = match PatchCheckUseCase::new(context).run(PatchCheckInput {
         patch_path: input.patch_path,
-    });
-    let exit_code = patch_exit_code(&result);
+        artifact: input.artifact,
+    }) {
+        Ok(outcome) => outcome,
+        Err(error) => return report(error.into()),
+    };
+    let result = outcome.result;
+    let exit_code = outcome.exit_code;
 
     match resolved {
         ResolvedFormat::Json => write_patch_json(&result, exit_code),
@@ -192,38 +194,5 @@ fn compact_json(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::String(value) => format!("{value:?}"),
         _ => serde_json::to_string(value).expect("JSON value serializes"),
-    }
-}
-
-fn patch_exit_code(result: &PatchCheckResult) -> i32 {
-    if result.valid {
-        0
-    } else {
-        exit_code_for_diagnostics(&result.diagnostics, patch_diagnostic_exit_code).max(1)
-    }
-}
-
-fn patch_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
-    match (diagnostic.code, diagnostic.severity) {
-        (DiagnosticCode::PatchBaseHashMismatch, _) => Some(4),
-        (DiagnosticCode::GraphObjectNotFound, _) => Some(3),
-        (
-            DiagnosticCode::IoArtifactMissing
-            | DiagnosticCode::IoArtifactUnreadable
-            | DiagnosticCode::IoArtifactMalformed
-            | DiagnosticCode::SchemaUnsupportedVersion
-            | DiagnosticCode::IdDuplicateInArtifact,
-            _,
-        ) => Some(2),
-        (
-            DiagnosticCode::PatchInvalidDocument
-            | DiagnosticCode::PatchValidationFailed
-            | DiagnosticCode::PatchTargetAlreadyExists
-            | DiagnosticCode::PatchPlacementInvalid
-            | DiagnosticCode::IdInvalid,
-            _,
-        ) => Some(1),
-        (_, Severity::Error) => Some(1),
-        _ => None,
     }
 }

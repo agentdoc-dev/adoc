@@ -92,6 +92,10 @@ _Avoid_: TypeScript-first compiler, web-first implementation
 A Cargo workspace with `crates/adoc-cli` for command-line concerns and `crates/adoc-core` for parsing, validation, diagnostics, rendering, and artifact emission.
 _Avoid_: single CLI-only crate, over-split compiler crates
 
+**Local Workflow Layer**:
+The protocol-free local application adapter in `crates/adoc-local`. It owns AgentDoc project config discovery, default path resolution, local command orchestration, filesystem writes for `init`/`build`, and command outcome shapes shared by CLI and MCP.
+_Avoid_: duplicating config/build/check orchestration in each driving adapter, putting terminal presentation in the core
+
 **V0 Parser Architecture**:
 A structured hand-written, line-oriented parser with explicit source files, line indexes, spans, blocks, parse functions, and diagnostics.
 _Avoid_: parser generator first, ad hoc string hacking
@@ -103,6 +107,10 @@ _Avoid_: public low-level compiler module APIs too early
 **Public Core Surface**:
 The narrow `adoc-core` API exported for CLI callers and future local integrations: compile/build entry points, graph/retrieval session loaders, query functions, query/result/envelope records, diagnostics, and mode/relation/direction enums. Graph Artifact and Search Artifact DTO structs stay internal; serialized artifact files and retrieval envelopes are the contract.
 _Avoid_: public graph DTO construction, public search DTO construction, renderer-shaped read models
+
+**MCP Agent Gateway**:
+The local `rmcp` server in `crates/adoc-mcp` that exposes AgentDoc CLI-equivalent tools to agents. It is a driving adapter over `adoc-local` and `adoc-core`, uses a project-root path sandbox, and returns the same stable retrieval, graph traversal, and patch-check envelopes where those contracts already exist.
+_Avoid_: hosted review state, patch application, source rewriting from patches, graph/search DTO exposure
 
 **V0 Design Contract**:
 A short implementation design document that fixes the initial Rust module boundaries, core API shape, diagnostic shape, AST sketch, and artifact contracts before scaffolding.

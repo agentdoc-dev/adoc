@@ -1,25 +1,22 @@
 use std::path::PathBuf;
 
-use adoc_core::{CompileInput, compile_workspace};
+use adoc_local::{CheckInput, CheckUseCase, LocalContext, UnrestrictedPathPolicy};
 
-use super::{
-    discover_project_config_if, print_diagnostics, print_summary, report,
-    resolve_docs_path_with_config,
-};
+use super::{current_dir, print_diagnostics, print_summary, report};
 
 pub(crate) fn check(path: Option<PathBuf>) -> i32 {
-    let config = match discover_project_config_if(path.is_none()) {
-        Ok(config) => config,
-        Err(error) => return report(error),
-    };
-    let path = match resolve_docs_path_with_config(path, config.as_ref()) {
+    let config_start = match current_dir() {
         Ok(path) => path,
         Err(error) => return report(error),
     };
 
-    let result = compile_workspace(CompileInput { root: path });
-    print_diagnostics(&result.diagnostics);
-    print_summary(&result.diagnostics);
+    let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
+    let outcome = match CheckUseCase::new(context).run(CheckInput { path }) {
+        Ok(outcome) => outcome,
+        Err(error) => return report(error.into()),
+    };
+    print_diagnostics(&outcome.diagnostics);
+    print_summary(&outcome.diagnostics);
 
-    if result.has_errors() { 1 } else { 0 }
+    outcome.exit_code
 }

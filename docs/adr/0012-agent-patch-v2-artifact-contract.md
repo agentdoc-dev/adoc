@@ -16,6 +16,8 @@ V2 needs agents to propose Knowledge Object changes without rewriting `.adoc` so
 
 The serialized patch artifact and serialized patch-check report are the stable wire contract. The public Rust report/input structs in `adoc-core` are convenience mirrors for the CLI and other local in-process integrations; they are not a separate artifact schema and do not make graph/search DTOs public.
 
+Local integrations may validate inline `adoc.patch.v0` JSON through `check_patch_json`; this is the same wire document lowered by the same JSON adapter, not a second patch schema.
+
 `create_object` patches must provide `changes.placement.page_id`, with optional `changes.placement.after`. The page must exist in the graph artifact; when `after` is present, that object must exist on the same page.
 
 ## Consequences

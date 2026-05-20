@@ -3,27 +3,27 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::error::CliError;
+use crate::LocalError;
 
 const CONFIG_FILE_NAME: &str = "agentdoc.config.yaml";
 
 #[derive(Debug, Clone)]
-pub(crate) struct ProjectConfig {
-    pub(crate) path: PathBuf,
-    pub(crate) docs_path: PathBuf,
-    pub(crate) outputs: ConfigOutputs,
-    pub(crate) embeddings_provider: EmbeddingsProvider,
+pub struct ProjectConfig {
+    pub path: PathBuf,
+    pub docs_path: PathBuf,
+    pub outputs: ConfigOutputs,
+    pub embeddings_provider: EmbeddingsProvider,
 }
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct ConfigOutputs {
-    pub(crate) html: Option<PathBuf>,
-    pub(crate) graph: Option<PathBuf>,
-    pub(crate) search: Option<PathBuf>,
+pub struct ConfigOutputs {
+    pub html: Option<PathBuf>,
+    pub graph: Option<PathBuf>,
+    pub search: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum EmbeddingsProvider {
+pub enum EmbeddingsProvider {
     Local,
     None,
 }
@@ -54,19 +54,25 @@ struct RawEmbeddings {
 }
 
 impl ProjectConfig {
-    pub(crate) fn discover() -> Result<Option<Self>, CliError> {
+    pub fn discover() -> Result<Option<Self>, LocalError> {
+        let current_dir =
+            std::env::current_dir().map_err(|source| LocalError::CurrentDir { source })?;
+        Self::discover_from(&current_dir)
+    }
+
+    pub fn discover_from(start_dir: &Path) -> Result<Option<Self>, LocalError> {
         let mut current_dir =
-            std::env::current_dir().map_err(|source| CliError::CurrentDir { source })?;
+            std::fs::canonicalize(start_dir).unwrap_or_else(|_| start_dir.to_path_buf());
         let home_boundary = home_boundary();
 
         loop {
-            if current_dir.parent().is_none() {
-                return Ok(None);
-            }
-
             let candidate = current_dir.join(CONFIG_FILE_NAME);
             if candidate.exists() {
                 return Self::read(&candidate).map(Some);
+            }
+
+            if current_dir.parent().is_none() {
+                return Ok(None);
             }
 
             if is_git_boundary(&current_dir) {
@@ -83,13 +89,13 @@ impl ProjectConfig {
         }
     }
 
-    fn read(path: &Path) -> Result<Self, CliError> {
-        let text = fs::read_to_string(path).map_err(|source| CliError::ConfigRead {
+    fn read(path: &Path) -> Result<Self, LocalError> {
+        let text = fs::read_to_string(path).map_err(|source| LocalError::ConfigRead {
             path: path.to_path_buf(),
             source,
         })?;
         let raw: RawProjectConfig =
-            serde_saphyr::from_str(&text).map_err(|source| CliError::ConfigParse {
+            serde_saphyr::from_str(&text).map_err(|source| LocalError::ConfigParse {
                 path: path.to_path_buf(),
                 source: Box::new(source),
             })?;
@@ -98,16 +104,16 @@ impl ProjectConfig {
 }
 
 impl RawProjectConfig {
-    fn validate_and_resolve(self, path: &Path) -> Result<ProjectConfig, CliError> {
+    fn validate_and_resolve(self, path: &Path) -> Result<ProjectConfig, LocalError> {
         if self.version != 1 {
-            return Err(CliError::ConfigInvalid {
+            return Err(LocalError::ConfigInvalid {
                 path: path.to_path_buf(),
                 message: format!("unsupported version {}; expected 1", self.version),
             });
         }
 
         if self.mode != "strict" {
-            return Err(CliError::ConfigInvalid {
+            return Err(LocalError::ConfigInvalid {
                 path: path.to_path_buf(),
                 message: format!("unsupported mode {:?}; expected \"strict\"", self.mode),
             });
@@ -120,7 +126,7 @@ impl RawProjectConfig {
                 "local" => EmbeddingsProvider::Local,
                 "none" => EmbeddingsProvider::None,
                 provider => {
-                    return Err(CliError::ConfigInvalid {
+                    return Err(LocalError::ConfigInvalid {
                         path: path.to_path_buf(),
                         message: format!(
                             "unsupported embeddings provider {provider:?}; expected \"local\" or \"none\""
@@ -178,7 +184,7 @@ fn home_boundary() -> Option<PathBuf> {
         if home.as_os_str().is_empty() {
             None
         } else {
-            Some(fs::canonicalize(&home).unwrap_or(home))
+            Some(std::fs::canonicalize(&home).unwrap_or(home))
         }
     })
 }

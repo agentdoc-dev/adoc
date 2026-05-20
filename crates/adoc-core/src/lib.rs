@@ -9,7 +9,9 @@ pub use application::graph::{
     GRAPH_TRAVERSAL_SCHEMA_VERSION, GraphInput, GraphLoadResult, GraphSession,
     GraphTraversalEnvelope, traverse_graph,
 };
-pub use application::patch::{PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput};
+pub use application::patch::{
+    PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput, PatchJsonInput,
+};
 pub use application::retrieval::{
     RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
     RetrievalSession, SearchFilters, SearchQuery, SearchResult, WhyResult, search, why_object,
@@ -89,18 +91,37 @@ pub fn check_patch(input: PatchInput) -> PatchCheckResult {
     )
 }
 
+pub fn check_patch_json(input: PatchJsonInput) -> PatchCheckResult {
+    use domain::ports::artifact_reader::ArtifactReader;
+
+    let graph_document =
+        match infrastructure::artifact::GraphJsonArtifact.read(&input.graph_artifact_path) {
+            Ok(document) => document,
+            Err(diagnostics) => return application::patch::PatchCheckResult::failure(diagnostics),
+        };
+    let patch_document = match infrastructure::artifact::read_patch_document_value(
+        input.patch,
+        "Inline patch document",
+    ) {
+        Ok(document) => document,
+        Err(diagnostics) => return application::patch::PatchCheckResult::failure(diagnostics),
+    };
+
+    application::patch::check_patch_documents(graph_document, patch_document)
+}
+
 fn default_embedding_provider() -> Result<
     Box<dyn domain::ports::embedding_provider::EmbeddingProvider>,
     domain::ports::embedding_provider::EmbeddingError,
 > {
-    #[cfg(feature = "test-embedding-provider")]
+    #[cfg(any(feature = "test-embedding-provider", debug_assertions))]
     if use_in_memory_test_embedding_provider() {
         return Ok(Box::new(
             infrastructure::embedding::in_memory::InMemoryProvider::new(384),
         ));
     }
 
-    #[cfg(feature = "test-embedding-provider")]
+    #[cfg(any(feature = "test-embedding-provider", debug_assertions))]
     if use_force_load_fail_test_embedding_provider() {
         return Err(
             domain::ports::embedding_provider::EmbeddingError::ModelLoad(
@@ -124,12 +145,12 @@ fn default_embedding_provider() -> Result<
     }
 }
 
-#[cfg(feature = "test-embedding-provider")]
+#[cfg(any(feature = "test-embedding-provider", debug_assertions))]
 fn use_in_memory_test_embedding_provider() -> bool {
     std::env::var("ADOC_TEST_EMBEDDING_PROVIDER").as_deref() == Ok("in-memory")
 }
 
-#[cfg(feature = "test-embedding-provider")]
+#[cfg(any(feature = "test-embedding-provider", debug_assertions))]
 fn use_force_load_fail_test_embedding_provider() -> bool {
     std::env::var("ADOC_TEST_EMBEDDING_PROVIDER").as_deref() == Ok("force-load-fail")
 }
@@ -186,7 +207,7 @@ pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {
 /// loading the underlying model. Returns `None` when the binary was built
 /// without the `embeddings` feature.
 fn active_search_model_header() -> Option<domain::artifact::SearchModelHeader> {
-    #[cfg(feature = "test-embedding-provider")]
+    #[cfg(any(feature = "test-embedding-provider", debug_assertions))]
     if use_in_memory_test_embedding_provider() {
         return Some(infrastructure::embedding::in_memory::InMemoryProvider::metadata_header(384));
     }
@@ -195,7 +216,7 @@ fn active_search_model_header() -> Option<domain::artifact::SearchModelHeader> {
     // that the model-mismatch gate is bypassed.  The failure is then surfaced
     // by `embed_query` itself, which is the code path the caller intends to
     // exercise.
-    #[cfg(feature = "test-embedding-provider")]
+    #[cfg(any(feature = "test-embedding-provider", debug_assertions))]
     if use_force_load_fail_test_embedding_provider() {
         return None;
     }
@@ -398,7 +419,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "test-embedding-provider")]
+    #[cfg(any(feature = "test-embedding-provider", debug_assertions))]
     #[test]
     fn test_embedding_provider_env_uses_in_memory_only_when_explicitly_requested() {
         temp_env_remove("ADOC_TEST_EMBEDDING_PROVIDER", || {
@@ -412,7 +433,7 @@ mod tests {
         });
     }
 
-    #[cfg(feature = "test-embedding-provider")]
+    #[cfg(any(feature = "test-embedding-provider", debug_assertions))]
     fn temp_env_remove(name: &str, test: impl FnOnce()) {
         let previous = std::env::var_os(name);
         unsafe {
@@ -422,7 +443,7 @@ mod tests {
         restore_env(name, previous);
     }
 
-    #[cfg(feature = "test-embedding-provider")]
+    #[cfg(any(feature = "test-embedding-provider", debug_assertions))]
     fn temp_env_set(name: &str, value: &str, test: impl FnOnce()) {
         let previous = std::env::var_os(name);
         unsafe {
@@ -432,7 +453,7 @@ mod tests {
         restore_env(name, previous);
     }
 
-    #[cfg(feature = "test-embedding-provider")]
+    #[cfg(any(feature = "test-embedding-provider", debug_assertions))]
     fn restore_env(name: &str, value: Option<std::ffi::OsString>) {
         unsafe {
             match value {

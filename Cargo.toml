@@ -2,6 +2,8 @@
 members = [
     "crates/adoc-cli",
     "crates/adoc-core",
+    "crates/adoc-local",
+    "crates/adoc-mcp",
 ]
 resolver = "3"
 

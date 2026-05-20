@@ -12,12 +12,24 @@ use adoc_core::{
     AffectedRelation, BuildArtifacts, CompileInput, CompileResult, Diagnostic, DiagnosticCode,
     GraphDirection, GraphInput, GraphLoadResult, GraphRelationKind, GraphSession,
     GraphTraversalEnvelope, GraphTraversalQuery, GraphTraversalResult, PATCH_CHECK_SCHEMA_VERSION,
-    PatchCheckResult, PatchDiff, PatchInput, PatchOperation, ProofObligation, RetrievalEnvelope,
-    RetrievalInput, RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalRelations,
-    RetrievalSession, RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult,
-    Severity, WhyResult, check_patch, compile_workspace, load_graph_session,
-    load_retrieval_session, search, traverse_graph, why_object,
+    PatchCheckResult, PatchDiff, PatchInput, PatchJsonInput, PatchOperation, ProofObligation,
+    RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, RetrievalMatch, RetrievalRecord,
+    RetrievalRelations, RetrievalSession, RetrievalSource, SearchFilters, SearchMode, SearchQuery,
+    SearchResult, Severity, WhyResult, check_patch, check_patch_json, compile_workspace,
+    load_graph_session, load_retrieval_session, search, traverse_graph, why_object,
 };
+
+#[test]
+fn patch_application_layer_does_not_reference_infrastructure() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let patch_source =
+        std::fs::read_to_string(manifest_dir.join("src/application/patch.rs")).unwrap();
+
+    assert!(
+        !patch_source.contains("crate::infrastructure"),
+        "application/patch.rs must stay independent from infrastructure adapters"
+    );
+}
 
 #[test]
 fn public_surface_compiles_with_only_documented_imports() {
@@ -319,6 +331,17 @@ fn public_surface_compiles_with_only_documented_imports() {
         graph_artifact_path: PathBuf::from("/missing-docs-graph-json-for-surface-test"),
         patch_path: PathBuf::from("/missing-patch-json-for-surface-test"),
     };
+    let _: PatchJsonInput = PatchJsonInput {
+        graph_artifact_path: PathBuf::from("/missing-docs-graph-json-for-surface-test"),
+        patch: serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "revoke",
+            "target": "billing.old",
+            "base_hash": "sha256:old",
+            "changes": {},
+            "reason": "retired"
+        }),
+    };
     let patch_result = PatchCheckResult {
         schema_version: PATCH_CHECK_SCHEMA_VERSION,
         valid: false,
@@ -346,6 +369,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     };
     let _patch_diagnostics: Vec<Diagnostic> = patch_result.diagnostics;
     let _: fn(PatchInput) -> PatchCheckResult = check_patch;
+    let _: fn(PatchJsonInput) -> PatchCheckResult = check_patch_json;
 }
 
 #[test]

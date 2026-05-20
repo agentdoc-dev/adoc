@@ -36,16 +36,20 @@ pub(crate) fn read_patch_document(path: &Path) -> Result<PatchDocument, Vec<Diag
             ]);
         }
     };
+    read_patch_document_value(value, &format!("Patch artifact '{}'", path.display()))
+}
+
+pub(crate) fn read_patch_document_value(
+    value: serde_json::Value,
+    label: &str,
+) -> Result<PatchDocument, Vec<Diagnostic>> {
     let document = match serde_json::from_value::<PatchDocumentDto>(value) {
         Ok(document) => document,
         Err(error) => {
             return Err(vec![
                 Diagnostic::error(
                     DiagnosticCode::PatchInvalidDocument,
-                    format!(
-                        "Patch artifact '{}' is not a valid adoc.patch.v0 document: {error}",
-                        path.display()
-                    ),
+                    format!("{label} is not a valid adoc.patch.v0 document: {error}"),
                 )
                 .with_help(DiagnosticCode::PatchInvalidDocument.default_help()),
             ]);
@@ -56,9 +60,8 @@ pub(crate) fn read_patch_document(path: &Path) -> Result<PatchDocument, Vec<Diag
             Diagnostic::error(
                 DiagnosticCode::PatchInvalidDocument,
                 format!(
-                    "Patch artifact '{}' uses unsupported schema_version '{}'.",
-                    path.display(),
-                    document.schema_version
+                    "{label} uses unsupported schema_version '{}'.",
+                    document.schema_version,
                 ),
             )
             .with_help(format!(

@@ -1,0 +1,24 @@
+[package]
+name = "adoc-mcp"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "adoc-mcp"
+path = "src/main.rs"
+
+[dependencies]
+adoc-core = { path = "../adoc-core" }
+adoc-local = { path = "../adoc-local" }
+rmcp = { version = "1.5.0", features = ["server", "macros", "transport-io"] }
+schemars = { version = "1.0.4", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+thiserror = "2.0.17"
+tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "io-std"] }
+
+[dev-dependencies]
+adoc-core = { path = "../adoc-core", features = ["test-embedding-provider"] }
+tempfile = "3.23.0"

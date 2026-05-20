@@ -22,6 +22,6 @@ V1 adds read-side entry points (`build_workspace`, `load_graph_session`, `load_r
 
 ## Addendum (V2): patch check convenience API is intentional
 
-V2 keeps the patch-validation Rust surface public for local integrations that need the same read-only behavior as the CLI: `check_patch`, `PatchInput`, `PatchCheckResult`, `PatchOperation`, `PatchDiff`, `AffectedRelation`, `ProofObligation`, and `PATCH_CHECK_SCHEMA_VERSION`. The patch diagnostic codes are also part of the pinned `DiagnosticCode` surface: `patch.invalid_document`, `patch.validation_failed`, `patch.base_hash_mismatch`, `patch.target_already_exists`, and `patch.placement_invalid`.
+V2 keeps the patch-validation Rust surface public for local integrations that need the same read-only behavior as the CLI: `check_patch`, `check_patch_json`, `PatchInput`, `PatchJsonInput`, `PatchCheckResult`, `PatchOperation`, `PatchDiff`, `AffectedRelation`, `ProofObligation`, and `PATCH_CHECK_SCHEMA_VERSION`. The patch diagnostic codes are also part of the pinned `DiagnosticCode` surface: `patch.invalid_document`, `patch.validation_failed`, `patch.base_hash_mismatch`, `patch.target_already_exists`, and `patch.placement_invalid`.
 
 The stable interoperability contract remains the serialized `adoc.patch.v0` input and `adoc.patch.check.v0` report. The public Rust structs mirror those artifacts for in-process callers; they do not expose graph/search artifact DTOs or source-rewrite internals.

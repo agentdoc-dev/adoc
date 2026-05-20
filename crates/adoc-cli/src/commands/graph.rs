@@ -3,9 +3,11 @@ use std::io;
 use std::path::PathBuf;
 
 use adoc_core::{
-    Diagnostic, DiagnosticCode, GraphDirection, GraphInput, GraphRelationKind, GraphTraversalEdge,
-    GraphTraversalEnvelope, GraphTraversalNode, GraphTraversalQuery, GraphTraversalResult,
-    Severity, load_graph_session, traverse_graph,
+    GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalEnvelope,
+    GraphTraversalNode, GraphTraversalResult,
+};
+use adoc_local::{
+    GraphInput as LocalGraphInput, GraphUseCase, LocalContext, UnrestrictedPathPolicy,
 };
 
 use crate::error::CliError;
@@ -13,10 +15,7 @@ use crate::presentation::style::key::cyan_key;
 use crate::presentation::style::kv::faint_label;
 use crate::presentation::{ResolvedFormat, json as json_presentation};
 
-use super::{
-    diagnostics_have_errors, discover_project_config_if, eprint_diagnostics,
-    exit_code_for_diagnostics, merge_diagnostics, report, resolve_graph_artifact_path_with_config,
-};
+use super::{current_dir, eprint_diagnostics, report};
 
 pub(crate) struct GraphCommandInput {
     pub(crate) object_id: String,
@@ -26,52 +25,32 @@ pub(crate) struct GraphCommandInput {
 }
 
 pub(crate) fn graph(input: GraphCommandInput, resolved: ResolvedFormat) -> i32 {
-    let config = match discover_project_config_if(input.artifact.is_none()) {
-        Ok(config) => config,
+    let config_start = match current_dir() {
+        Ok(path) => path,
         Err(error) => return report(error),
     };
-    let graph_artifact = resolve_graph_artifact_path_with_config(input.artifact, config.as_ref());
-
-    let load_result = load_graph_session(GraphInput {
-        graph_artifact_path: graph_artifact,
-    });
-    let mut diagnostics = load_result.diagnostics;
-    let session = match load_result.session {
-        Some(session) => session,
-        None => {
-            let exit_code = graph_exit_code_for_diagnostics(&diagnostics);
-            return emit_graph_error(&input.object_id, diagnostics, resolved, exit_code);
-        }
+    let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
+    let outcome = match GraphUseCase::new(context).run(LocalGraphInput {
+        object_id: input.object_id,
+        artifact: input.artifact,
+        relation: input.relation,
+        direction: input.direction,
+    }) {
+        Ok(outcome) => outcome,
+        Err(error) => return report(error.into()),
     };
-
-    if diagnostics_have_errors(&diagnostics) {
-        let exit_code = graph_exit_code_for_diagnostics(&diagnostics);
-        return emit_graph_error(&input.object_id, diagnostics, resolved, exit_code);
-    }
-
-    let traversal = traverse_graph(
-        &session,
-        GraphTraversalQuery {
-            root_id: input.object_id.clone(),
-            direction: input.direction.unwrap_or_default(),
-            relations: input.relation.into_iter().collect(),
-        },
-    );
-    diagnostics = merge_diagnostics(diagnostics, traversal.diagnostics);
-    let exit_code = graph_exit_code_for_diagnostics(&diagnostics);
+    let exit_code = outcome.exit_code;
     if exit_code != 0 {
-        return emit_graph_error(&input.object_id, diagnostics, resolved, exit_code);
+        return emit_graph_error(outcome.envelope, resolved, exit_code);
     }
-
-    if resolved != ResolvedFormat::Json && !diagnostics.is_empty() {
-        eprint_diagnostics(&diagnostics);
+    if resolved != ResolvedFormat::Json && !outcome.envelope.diagnostics.is_empty() {
+        eprint_diagnostics(&outcome.envelope.diagnostics);
     }
-
     let result = GraphTraversalResult {
-        root: traversal.root,
-        nodes: traversal.nodes,
-        edges: traversal.edges,
-        diagnostics,
+        root: outcome.envelope.root,
+        nodes: outcome.envelope.nodes,
+        edges: outcome.envelope.edges,
+        diagnostics: outcome.envelope.diagnostics,
     };
     match resolved {
         ResolvedFormat::Json => write_graph_json(GraphTraversalEnvelope::from(result), exit_code),
@@ -81,18 +60,14 @@ pub(crate) fn graph(input: GraphCommandInput, resolved: ResolvedFormat) -> i32 {
 }
 
 fn emit_graph_error(
-    root: &str,
-    diagnostics: Vec<Diagnostic>,
+    envelope: GraphTraversalEnvelope,
     resolved: ResolvedFormat,
     exit_code: i32,
 ) -> i32 {
     if resolved == ResolvedFormat::Json {
-        return write_graph_json(
-            GraphTraversalEnvelope::new(root.to_string(), Vec::new(), Vec::new(), diagnostics),
-            exit_code,
-        );
+        return write_graph_json(envelope, exit_code);
     }
-    eprint_diagnostics(&diagnostics);
+    eprint_diagnostics(&envelope.diagnostics);
     exit_code
 }
 
@@ -184,18 +159,5 @@ fn render_edge(output: &mut String, edge: &GraphTraversalEdge, styled: bool) {
             edge.source, edge.relation, edge.target, revisit
         )
         .expect("writing to String cannot fail");
-    }
-}
-
-fn graph_exit_code_for_diagnostics(diagnostics: &[Diagnostic]) -> i32 {
-    exit_code_for_diagnostics(diagnostics, graph_diagnostic_exit_code)
-}
-
-fn graph_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
-    match (diagnostic.code, diagnostic.severity) {
-        (DiagnosticCode::IdInvalid, _) => Some(1),
-        (DiagnosticCode::GraphObjectNotFound, _) => Some(3),
-        (_, Severity::Error) => Some(2),
-        _ => None,
     }
 }

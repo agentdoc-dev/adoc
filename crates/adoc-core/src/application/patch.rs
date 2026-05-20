@@ -18,6 +18,12 @@ pub struct PatchInput {
     pub patch_path: PathBuf,
 }
 
+#[derive(Debug, Clone)]
+pub struct PatchJsonInput {
+    pub graph_artifact_path: PathBuf,
+    pub patch: serde_json::Value,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PatchCheckResult {
     pub schema_version: &'static str,
@@ -51,7 +57,7 @@ impl PatchCheckResult {
         }
     }
 
-    fn failure(diagnostics: Vec<Diagnostic>) -> Self {
+    pub(crate) fn failure(diagnostics: Vec<Diagnostic>) -> Self {
         Self {
             schema_version: PATCH_CHECK_SCHEMA_VERSION,
             valid: false,
@@ -85,6 +91,13 @@ where
         Err(diagnostics) => return PatchCheckResult::failure(diagnostics),
     };
 
+    check_patch_documents(graph_document, patch_document)
+}
+
+pub(crate) fn check_patch_documents(
+    graph_document: GraphArtifactDocument,
+    patch_document: PatchDocument,
+) -> PatchCheckResult {
     let document_diagnostics = graph_document.diagnostics.clone();
     if diagnostics_have_errors(&document_diagnostics) {
         return PatchCheckResult::failure(document_diagnostics);

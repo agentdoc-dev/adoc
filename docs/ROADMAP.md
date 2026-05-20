@@ -341,6 +341,18 @@ Questions to resolve before implementation:
 - Should create-object patches require source placement hints in V2, or should creation stay validation-only until patch application exists?
 - Should relation-only patches use explicit operations or field replacement of relation arrays?
 
+## V2.1: Local MCP Agent Gateway
+
+V2.1 makes the existing local agent contracts directly usable by MCP-capable agents. It adds an `rmcp` stdio server as a driving adapter over the same local workflow and core application services used by the CLI.
+
+Acceptance:
+
+- MCP exposes init, check, build, why, graph, search, and patch-check tools.
+- Read/query tools return existing `adoc.retrieval.v0`, `adoc.graph.traversal.v0`, and `adoc.patch.check.v0` envelopes where applicable.
+- Build/init writes are constrained by a project-root sandbox.
+- Patch validation accepts either a patch file path or inline `adoc.patch.v0` JSON.
+- MCP does not apply patches, approve knowledge, rewrite source from patches, or introduce hosted review state.
+
 ## V3: Team CI and Review
 
 V3 brings AgentDoc into pull-request workflows.

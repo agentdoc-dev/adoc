@@ -10,14 +10,14 @@ name = "adoc"
 path = "src/main.rs"
 
 [dependencies]
-adoc-core = { path = "../adoc-core", features = ["test-embedding-provider"] }
+adoc-core = { path = "../adoc-core" }
+adoc-local = { path = "../adoc-local" }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4", features = ["derive"] }
 is-terminal = "0.4"
 owo-colors = "4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde-saphyr = "0.0.21"
 thiserror = "1"
 
 [features]
@@ -28,4 +28,5 @@ adoc-core = { path = "../adoc-core", features = ["test-embedding-provider"] }
 assert_cmd = "2"
 insta = { version = "1", features = ["filters"] }
 predicates = "3"
+serde-saphyr = "0.0.21"
 strip-ansi-escapes = "0.2"
