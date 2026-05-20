@@ -12,6 +12,7 @@ Examples:
   adoc build docs --out dist
   adoc why billing.refunds.issue-credit
   adoc graph billing.refunds.issue-credit
+  adoc patch --check patch.json
   adoc search \"refund policy\"
 ";
 const INIT_LONG_HELP: &str = "\
@@ -41,6 +42,12 @@ Examples:
   adoc graph billing.refunds.issue-credit
   adoc graph billing.refunds.issue-credit --direction outgoing
   adoc graph billing.refunds.issue-credit --relation depends_on --format json
+";
+const PATCH_LONG_HELP: &str = "\
+Examples:
+  adoc patch --check patch.json
+  adoc patch --check patch.json --artifact dist/docs.graph.json
+  adoc patch --check patch.json --format json
 ";
 const SEARCH_LONG_HELP: &str = "\
 Examples:
@@ -217,6 +224,20 @@ pub(crate) enum Commands {
         relation: Option<CliGraphRelation>,
         #[arg(long, value_enum)]
         direction: Option<CliGraphDirection>,
+    },
+    #[command(
+        about = "Validate one AgentDoc patch document against graph artifacts.",
+        after_long_help = PATCH_LONG_HELP
+    )]
+    Patch {
+        /// Patch JSON document to validate.
+        #[arg(long, value_name = "PATCH_JSON")]
+        check: PathBuf,
+        #[arg(
+            long,
+            help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"
+        )]
+        artifact: Option<PathBuf>,
     },
     #[command(
         about = "Search compiled Knowledge Objects.",

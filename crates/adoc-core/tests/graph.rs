@@ -33,6 +33,7 @@ fn graph_node(id: &str) -> Value {
         "type": "knowledge_object",
         "id": id,
         "kind": "claim",
+        "content_hash": format!("sha256:{id}"),
         "status": "draft",
         "body": format!("{id} body."),
         "page_id": "team.graph",
@@ -57,7 +58,7 @@ fn relation_edge(source: &str, relation: GraphRelationKind, target: &str) -> Val
 
 fn graph_document(nodes: Vec<Value>, edges: Vec<Value>) -> String {
     serde_json::to_string_pretty(&json!({
-        "schema_version": "adoc.graph.v1",
+        "schema_version": "adoc.graph.v2",
         "nodes": nodes,
         "edges": edges,
         "diagnostics": []
@@ -80,13 +81,70 @@ fn load_session(graph_json: String) -> adoc_core::GraphSession {
     result.session.expect("graph session loads")
 }
 
+fn build_graph_value(source: &str) -> Value {
+    let workspace = TestWorkspace::new("graph-hash");
+    let source_path = workspace.write("graph.adoc", source);
+    let result = adoc_core::build_workspace(BuildInput {
+        root: source_path,
+        embeddings: BuildEmbeddingMode::Skipped,
+        prior_search_artifact_path: None,
+    });
+    assert!(
+        !result.has_errors(),
+        "build should pass: {:?}",
+        result.diagnostics
+    );
+    serde_json::from_str(&result.artifacts.expect("artifacts are produced").graph_json)
+        .expect("graph artifact is JSON")
+}
+
+fn object_hash(graph: &Value, id: &str) -> String {
+    graph["nodes"]
+        .as_array()
+        .expect("nodes array")
+        .iter()
+        .find(|node| node["type"] == "knowledge_object" && node["id"] == id)
+        .and_then(|node| node["content_hash"].as_str())
+        .expect("knowledge object content_hash")
+        .to_string()
+}
+
+fn hash_source(body: &str, page_id: &str, owner: &str, relation: &str, prefix: &str) -> String {
+    format!(
+        concat!(
+            "# Graph @doc({page_id})\n",
+            "\n",
+            "{prefix}",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "owner: {owner}\n",
+            "depends_on: {relation}\n",
+            "--\n",
+            "{body}\n",
+            "::\n",
+            "\n",
+            "::claim {relation}\n",
+            "status: draft\n",
+            "--\n",
+            "Related body.\n",
+            "::\n",
+        ),
+        page_id = page_id,
+        prefix = prefix,
+        owner = owner,
+        relation = relation,
+        body = body,
+    )
+}
+
 #[test]
-fn graph_artifact_serializes_with_v1_shape() {
+fn graph_artifact_serializes_with_v2_shape() {
     let artifact = graph_document(
         vec![json!({
             "type": "knowledge_object",
             "id": "billing.credits",
             "kind": "claim",
+            "content_hash": "sha256:billing.credits",
             "status": "verified",
             "body": "billing.credits body.",
             "page_id": "team.billing",
@@ -107,7 +165,7 @@ fn graph_artifact_serializes_with_v1_shape() {
 
     let value: Value = serde_json::from_str(&artifact).expect("graph artifact serializes");
 
-    assert_eq!(value["schema_version"], "adoc.graph.v1");
+    assert_eq!(value["schema_version"], "adoc.graph.v2");
     assert_eq!(value.get("graph_artifact_hash"), None);
     assert!(
         !artifact.contains("\"html\""),
@@ -116,12 +174,117 @@ fn graph_artifact_serializes_with_v1_shape() {
     assert_eq!(value["nodes"][0]["type"], "knowledge_object");
     assert_eq!(value["nodes"][0]["id"], "billing.credits");
     assert_eq!(value["nodes"][0]["kind"], "claim");
+    assert_eq!(value["nodes"][0]["content_hash"], "sha256:billing.credits");
     assert_eq!(value["nodes"][0]["status"], "verified");
     assert_eq!(value["nodes"][0]["page_id"], "team.billing");
     assert_eq!(value["edges"][0]["kind"], "relation");
     assert_eq!(value["edges"][0]["source"], "billing.refunds");
     assert_eq!(value["edges"][0]["target"], "billing.credits");
     assert_eq!(value["edges"][0]["relation"], "depends_on");
+}
+
+#[test]
+fn graph_content_hash_is_stable_for_same_source() {
+    let source = hash_source(
+        "Credits apply after successful payment.",
+        "team.graph",
+        "team-billing",
+        "billing.ledger",
+        "",
+    );
+    let workspace = TestWorkspace::new("graph-hash-stable");
+    let source_path = workspace.write("graph.adoc", &source);
+    let build = || {
+        let result = adoc_core::build_workspace(BuildInput {
+            root: source_path.clone(),
+            embeddings: BuildEmbeddingMode::Skipped,
+            prior_search_artifact_path: None,
+        });
+        assert!(
+            !result.has_errors(),
+            "build should pass: {:?}",
+            result.diagnostics
+        );
+        serde_json::from_str(&result.artifacts.expect("artifacts are produced").graph_json)
+            .expect("graph artifact is JSON")
+    };
+
+    let first = object_hash(&build(), "billing.credits");
+    let second = object_hash(&build(), "billing.credits");
+
+    assert!(first.starts_with("sha256:"));
+    assert_eq!(first, second);
+}
+
+#[test]
+fn graph_content_hash_changes_when_node_semantics_change() {
+    let base = object_hash(
+        &build_graph_value(&hash_source(
+            "Credits apply after successful payment.",
+            "team.graph",
+            "team-billing",
+            "billing.ledger",
+            "",
+        )),
+        "billing.credits",
+    );
+
+    let changed_body = object_hash(
+        &build_graph_value(&hash_source(
+            "Credits apply after ledger commit.",
+            "team.graph",
+            "team-billing",
+            "billing.ledger",
+            "",
+        )),
+        "billing.credits",
+    );
+    let changed_page = object_hash(
+        &build_graph_value(&hash_source(
+            "Credits apply after successful payment.",
+            "team.changed",
+            "team-billing",
+            "billing.ledger",
+            "",
+        )),
+        "billing.credits",
+    );
+    let changed_source_span = object_hash(
+        &build_graph_value(&hash_source(
+            "Credits apply after successful payment.",
+            "team.graph",
+            "team-billing",
+            "billing.ledger",
+            "Intro paragraph.\n\n",
+        )),
+        "billing.credits",
+    );
+    let changed_fields = object_hash(
+        &build_graph_value(&hash_source(
+            "Credits apply after successful payment.",
+            "team.graph",
+            "team-risk",
+            "billing.ledger",
+            "",
+        )),
+        "billing.credits",
+    );
+    let changed_relations = object_hash(
+        &build_graph_value(&hash_source(
+            "Credits apply after successful payment.",
+            "team.graph",
+            "team-billing",
+            "billing.source",
+            "",
+        )),
+        "billing.credits",
+    );
+
+    assert_ne!(base, changed_body);
+    assert_ne!(base, changed_page);
+    assert_ne!(base, changed_source_span);
+    assert_ne!(base, changed_fields);
+    assert_ne!(base, changed_relations);
 }
 
 #[test]
@@ -168,7 +331,7 @@ fn build_workspace_emits_graph_artifact_with_deterministic_order_when_embeddings
     );
     let artifacts = result.artifacts.expect("artifacts are produced");
     let graph: Value = serde_json::from_str(&artifacts.graph_json).expect("graph artifact is JSON");
-    assert_eq!(graph["schema_version"], "adoc.graph.v1");
+    assert_eq!(graph["schema_version"], "adoc.graph.v2");
     assert!(
         !artifacts.graph_json.contains("\"html\""),
         "graph artifact must not serialize HTML fragments: {}",

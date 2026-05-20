@@ -1,5 +1,5 @@
 {
-  "schema_version": "adoc.graph.v1",
+  "schema_version": "adoc.graph.v2",
   "nodes": [
     {
       "type": "page",
@@ -33,6 +33,7 @@
       "type": "knowledge_object",
       "id": "billing.credits",
       "kind": "glossary",
+      "content_hash": "sha256:032df834937db3c1cb52d22d7773bae80e92ce16c6aee46b1869827949f41c63",
       "body": "Credits are account balance adjustments that reduce future invoices after payment, refund, or support correction.",
       "page_id": "billing.glossary",
       "source_span": {
@@ -53,6 +54,7 @@
       "type": "knowledge_object",
       "id": "billing.ledger",
       "kind": "glossary",
+      "content_hash": "sha256:9aef7970c7662401399dbc296a9ce4d8bfec0c17d0880de78568df1039f10d42",
       "body": "The billing ledger is the append-only record of money movement for invoices, payments, credits, refunds, and adjustments.",
       "page_id": "billing.glossary",
       "source_span": {
@@ -73,6 +75,7 @@
       "type": "knowledge_object",
       "id": "billing.entitlement",
       "kind": "glossary",
+      "content_hash": "sha256:95516646068e5d3bf2e96b57701dfecc56c7bcd4ba96f2468e9e720b0f7f667e",
       "body": "An entitlement is product access granted by paid invoices, trials, credits, or account-level overrides.",
       "page_id": "billing.glossary",
       "source_span": {
@@ -93,6 +96,7 @@
       "type": "knowledge_object",
       "id": "billing.credits.ledger-source",
       "kind": "claim",
+      "content_hash": "sha256:0acc02b371ca799c61591fd8da376618827b971998db6cf3688509563df157f4",
       "body": "Every posted credit movement is sourced from a ledger entry before it can affect an invoice.",
       "page_id": "billing.claims",
       "source_span": {
@@ -120,6 +124,7 @@
       "type": "knowledge_object",
       "id": "billing.credits.nonnegative",
       "kind": "claim",
+      "content_hash": "sha256:cd1d97dbbc0f1885e3852614e5d7e7477ff3be62437104fa337f95103bd7aad2",
       "body": "Available credit balance cannot become negative during invoice application or refund settlement.",
       "page_id": "billing.claims",
       "source_span": {
@@ -145,6 +150,7 @@
       "type": "knowledge_object",
       "id": "billing.credits.decrement-after-success",
       "kind": "claim",
+      "content_hash": "sha256:d3a939f688be2bd5200792e83731e8d4a6c8690c54e7a9dd52f8ff69c159641b",
       "body": "Consumed billing credits are decremented only after the successful billing operation posts its ledger movement.",
       "page_id": "billing.claims",
       "source_span": {
@@ -174,6 +180,7 @@
       "type": "knowledge_object",
       "id": "billing.refunds.audit-required",
       "kind": "claim",
+      "content_hash": "sha256:fe19dbfb7fe7be06ae514dd9e4b5f9446a834852cace79c6a415f46d963203e5",
       "body": "Each billing refund that issues account credit must keep an audit link to the original payment and operator action.",
       "page_id": "billing.claims",
       "source_span": {
@@ -200,6 +207,7 @@
       "type": "knowledge_object",
       "id": "billing.entitlements.sync-after-payment",
       "kind": "claim",
+      "content_hash": "sha256:ba31e3f8e9d53c2a5b51eb500ac19f33376a014100d5d35bb1e098e69cf0f592",
       "body": "Entitlement state is recalculated after payment settlement so product access matches the account balance.",
       "page_id": "billing.claims",
       "source_span": {
@@ -225,6 +233,7 @@
       "type": "knowledge_object",
       "id": "billing.decision.legacy-refunds",
       "kind": "decision",
+      "content_hash": "sha256:cc9307f7b60af3b10276d7253effd9dfd891ec45d0409a18e4460cadfebb3b4e",
       "body": "Legacy refunds recorded the operator action in support notes before a later ledger adjustment reconciled the balance.",
       "page_id": "billing.decisions",
       "source_span": {
@@ -247,6 +256,7 @@
       "type": "knowledge_object",
       "id": "billing.decision.ledger-first",
       "kind": "decision",
+      "content_hash": "sha256:b0c805aac4a2286f429143124b627103cb320b35275b34b5a29cbdf737b67752",
       "body": "All balance-changing billing workflows write ledger entries before exposing customer-visible credit or refund state.",
       "page_id": "billing.decisions",
       "source_span": {
@@ -273,6 +283,7 @@
       "type": "knowledge_object",
       "id": "billing.warning.double-credit",
       "kind": "warning",
+      "content_hash": "sha256:411276888b46b8fa29253e97ca4b37d401e15fe9c5e217da188bce9b396414df",
       "body": "Concurrent refund retries can double-apply billing credits unless ledger idempotency keys are checked before posting.",
       "page_id": "billing.warnings",
       "source_span": {
@@ -296,6 +307,7 @@
       "type": "knowledge_object",
       "id": "billing.warning.ledger-delay",
       "kind": "warning",
+      "content_hash": "sha256:f79d5a80358843a121aeecd432e8b6c93c2c424ab7fa1e7ac15add2aeb354dd5",
       "body": "Delayed ledger replication can make support tools show stale credit availability for recently settled payments.",
       "page_id": "billing.warnings",
       "source_span": {
@@ -319,6 +331,7 @@
       "type": "knowledge_object",
       "id": "billing.tie.alpha",
       "kind": "glossary",
+      "content_hash": "sha256:7c35fd83c0e8f0648f0197726a1087ff95143d73a3dfab9b8151d3cf0d0f0a6f",
       "body": "Tie rank billing benchmark.",
       "page_id": "billing.glossary",
       "source_span": {
@@ -339,6 +352,7 @@
       "type": "knowledge_object",
       "id": "billing.tie.beta",
       "kind": "glossary",
+      "content_hash": "sha256:0af4dade462e89f948fafa31b2e14b3299cdbab8fefd3435df2d77af9f19b82a",
       "body": "Tie rank billing benchmark.",
       "page_id": "billing.glossary",
       "source_span": {
@@ -359,6 +373,7 @@
       "type": "knowledge_object",
       "id": "billing.tie.gamma",
       "kind": "glossary",
+      "content_hash": "sha256:4490f6c9e775d908854d03da99dee6f595ac2a41591aa65afdd09b59e382a408",
       "body": "Tie rank billing benchmark.",
       "page_id": "billing.glossary",
       "source_span": {

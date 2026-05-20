@@ -9,6 +9,7 @@ pub use application::graph::{
     GRAPH_TRAVERSAL_SCHEMA_VERSION, GraphInput, GraphLoadResult, GraphSession,
     GraphTraversalEnvelope, traverse_graph,
 };
+pub use application::patch::{PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput};
 pub use application::retrieval::{
     RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
     RetrievalSession, SearchFilters, SearchQuery, SearchResult, WhyResult, search, why_object,
@@ -18,6 +19,7 @@ pub use domain::graph::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
     GraphTraversalResult,
 };
+pub use domain::patch::{AffectedRelation, PatchDiff, PatchOperation, ProofObligation};
 pub use domain::retrieval::{
     RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSource, SearchMode,
 };
@@ -76,6 +78,14 @@ pub fn load_graph_session(input: GraphInput) -> GraphLoadResult {
     application::graph::load_graph_session_with_readers(
         input,
         &infrastructure::artifact::GraphJsonArtifact,
+    )
+}
+
+pub fn check_patch(input: PatchInput) -> PatchCheckResult {
+    application::patch::check_patch_with_readers(
+        input,
+        &infrastructure::artifact::GraphJsonArtifact,
+        &infrastructure::artifact::PatchJsonArtifact,
     )
 }
 

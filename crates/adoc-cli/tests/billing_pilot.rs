@@ -81,7 +81,7 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
         .expect("billing pilot graph JSON is written");
     let graph_json: Value =
         serde_json::from_str(&graph_json_text).expect("graph JSON is valid JSON");
-    assert_eq!(graph_json["schema_version"], "adoc.graph.v1");
+    assert_eq!(graph_json["schema_version"], "adoc.graph.v2");
     let nodes = graph_json["nodes"]
         .as_array()
         .expect("graph JSON nodes is an array");

@@ -23,6 +23,7 @@ fn long_top_level_help_lists_command_descriptions_and_examples() {
     assert!(stdout.contains("Build HTML, graph, and search artifacts"));
     assert!(stdout.contains("Explain one Knowledge Object from a compiled artifact"));
     assert!(stdout.contains("Traverse Knowledge Object relations from graph artifacts"));
+    assert!(stdout.contains("Validate one AgentDoc patch document against graph artifacts"));
     assert!(stdout.contains("Search compiled Knowledge Objects"));
     assert!(stdout.contains("Examples:"));
     assert!(stdout.contains("adoc init"));
@@ -30,6 +31,7 @@ fn long_top_level_help_lists_command_descriptions_and_examples() {
     assert!(stdout.contains("adoc build docs --out dist"));
     assert!(stdout.contains("adoc why billing.refunds.issue-credit"));
     assert!(stdout.contains("adoc graph billing.refunds.issue-credit"));
+    assert!(stdout.contains("adoc patch --check patch.json"));
     assert!(stdout.contains("adoc search \"refund policy\""));
 }
 

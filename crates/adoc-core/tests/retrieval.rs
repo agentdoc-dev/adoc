@@ -125,7 +125,7 @@ fn sha256_prefixed(bytes: &[u8]) -> String {
 
 fn graph_json_from_objects(objects: Vec<Value>, edges: Vec<Value>) -> String {
     let document = json!({
-        "schema_version": "adoc.graph.v1",
+        "schema_version": "adoc.graph.v2",
         "nodes": objects,
         "edges": edges,
         "diagnostics": []
@@ -153,6 +153,7 @@ enum CanonicalGraphNode {
 struct CanonicalKnowledgeObject {
     id: String,
     kind: String,
+    content_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<String>,
     body: String,
@@ -226,6 +227,7 @@ fn retrieval_filter_object(
         "type": "knowledge_object",
         "id": id,
         "kind": kind,
+        "content_hash": format!("sha256:{id}"),
         "body": "Filter fixture body.",
         "page_id": "team.page",
         "source_span": {
@@ -270,6 +272,7 @@ fn verified_claim_graph_artifact() -> tempfile::NamedTempFile {
         "type": "knowledge_object",
         "id": "billing.verified-credits",
         "kind": "claim",
+        "content_hash": "sha256:billing.verified-credits",
         "status": "verified",
         "body": "Credits are verified by the payments ledger.",
         "page_id": "team.billing",
@@ -373,6 +376,7 @@ fn hybrid_match_serializes_rrf_score_and_omits_missing_rank_fields() {
         id: "billing.hybrid".to_string(),
         kind: "claim".to_string(),
         status: Some("verified".to_string()),
+        content_hash: "sha256:billing.hybrid".to_string(),
         owner: None,
         verified_at: None,
         body: "Hybrid result.".to_string(),
@@ -1598,6 +1602,7 @@ fn retrieval_record_serializes_lexical_search_match_contract() {
         id: "billing.verified-credits".to_string(),
         kind: "claim".to_string(),
         status: Some("verified".to_string()),
+        content_hash: "sha256:billing.verified-credits".to_string(),
         owner: None,
         verified_at: None,
         body: "Credits are verified.".to_string(),
@@ -1630,6 +1635,7 @@ fn retrieval_envelope_can_be_created_from_search_result() {
         id: "billing.credits".to_string(),
         kind: "claim".to_string(),
         status: Some("verified".to_string()),
+        content_hash: "sha256:billing.credits".to_string(),
         owner: None,
         verified_at: None,
         body: "Credits decrement after successful payment.".to_string(),
@@ -1702,12 +1708,13 @@ fn load_retrieval_session_rejects_invalid_object_ids_inside_artifact() {
     let artifact = write_temp_artifact(
         "invalid-object-id",
         r#"{
-          "schema_version": "adoc.graph.v1",
+          "schema_version": "adoc.graph.v2",
           "nodes": [
             {
               "type": "knowledge_object",
               "id": "bad",
               "kind": "claim",
+              "content_hash": "sha256:bad",
               "status": "draft",
               "body": "Invalid artifact object ID.",
               "page_id": "billing.page",
@@ -1737,12 +1744,13 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
     let artifact = write_temp_artifact(
         "duplicate",
         r#"{
-          "schema_version": "adoc.graph.v1",
+          "schema_version": "adoc.graph.v2",
           "nodes": [
             {
               "type": "knowledge_object",
               "id": "billing.duplicate",
               "kind": "claim",
+              "content_hash": "sha256:billing.duplicate.first",
               "status": "draft",
               "body": "First.",
               "page_id": "billing.page",
@@ -1754,6 +1762,7 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
               "type": "knowledge_object",
               "id": "billing.duplicate",
               "kind": "claim",
+              "content_hash": "sha256:billing.duplicate.second",
               "status": "draft",
               "body": "Second.",
               "page_id": "billing.page",

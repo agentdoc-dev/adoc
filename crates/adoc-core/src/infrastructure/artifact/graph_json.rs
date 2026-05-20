@@ -3,6 +3,9 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+use serde::Serialize;
+
+use crate::application::hashing::sha256_prefixed;
 use crate::domain::ast::{BlockAst, ListKind, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::graph::{
@@ -18,7 +21,7 @@ use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::Art
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GraphJsonArtifact;
 
-pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v1";
+pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v2";
 
 pub(crate) fn read_graph_artifact_document(
     path: &Path,
@@ -187,6 +190,15 @@ fn knowledge_object_to_graph_node(
     knowledge_object: &KnowledgeObject,
     page_id: &str,
 ) -> GraphKnowledgeObjectNode {
+    let mut node = knowledge_object_to_graph_node_without_hash(knowledge_object, page_id);
+    node.content_hash = graph_knowledge_object_content_hash(&node);
+    node
+}
+
+fn knowledge_object_to_graph_node_without_hash(
+    knowledge_object: &KnowledgeObject,
+    page_id: &str,
+) -> GraphKnowledgeObjectNode {
     let span = knowledge_object.span();
     let metadata = knowledge_object.metadata_projection();
     let status = metadata
@@ -196,6 +208,7 @@ fn knowledge_object_to_graph_node(
     GraphKnowledgeObjectNode {
         id: knowledge_object.id().as_str().to_string(),
         kind: knowledge_object.kind().as_str().to_string(),
+        content_hash: String::new(),
         status,
         body: knowledge_object.body().to_source(),
         page_id: page_id.to_string(),
@@ -203,6 +216,34 @@ fn knowledge_object_to_graph_node(
         fields: metadata_fields_to_graph(metadata.fields()),
         relations: relations_to_graph(knowledge_object.relations()),
     }
+}
+
+#[derive(Serialize)]
+struct KnowledgeObjectHashPayload<'a> {
+    id: &'a str,
+    kind: &'a str,
+    status: &'a Option<String>,
+    body: &'a str,
+    page_id: &'a str,
+    source_span: &'a GraphSourceSpan,
+    fields: &'a BTreeMap<String, String>,
+    relations: &'a GraphRelations,
+}
+
+pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNode) -> String {
+    let payload = KnowledgeObjectHashPayload {
+        id: &node.id,
+        kind: &node.kind,
+        status: &node.status,
+        body: &node.body,
+        page_id: &node.page_id,
+        source_span: &node.source_span,
+        fields: &node.fields,
+        relations: &node.relations,
+    };
+    let canonical_json =
+        serde_json::to_vec(&payload).expect("knowledge object hash payload serializes");
+    sha256_prefixed(&canonical_json)
 }
 
 fn metadata_fields_to_graph(metadata_fields: &[MetadataField<'_>]) -> BTreeMap<String, String> {

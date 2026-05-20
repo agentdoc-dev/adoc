@@ -10,7 +10,8 @@ use clap::{Parser, error::ErrorKind};
 
 use crate::cli::{Cli, Commands};
 use crate::commands::{
-    GraphCommandInput, SearchCommandInput, build, check, graph, init, search_command, why,
+    GraphCommandInput, PatchCommandInput, SearchCommandInput, build, check, graph, init, patch,
+    search_command, why,
 };
 use crate::presentation::terminal;
 
@@ -45,6 +46,13 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                         artifact,
                         relation: relation.map(Into::into),
                         direction: direction.map(Into::into),
+                    },
+                    resolved,
+                ),
+                Commands::Patch { check, artifact } => patch(
+                    PatchCommandInput {
+                        patch_path: check,
+                        artifact,
                     },
                     resolved,
                 ),

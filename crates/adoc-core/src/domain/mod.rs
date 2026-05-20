@@ -6,6 +6,7 @@ pub(crate) mod graph;
 pub(crate) mod identity;
 pub(crate) mod inline;
 pub(crate) mod knowledge_object;
+pub(crate) mod patch;
 pub(crate) mod ports;
 pub(crate) mod retrieval;
 pub(crate) mod rules;

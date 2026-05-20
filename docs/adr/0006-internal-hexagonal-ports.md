@@ -14,4 +14,4 @@ AgentDoc keeps its public compiler surface small (per ADR-0005) but factors appl
 
 ## Addendum: graph and search DTOs are adapter internals
 
-The Graph Artifact is presentation-free data. `GraphJsonArtifact` does not import HTML rendering and does not serialize `html` fields on graph nodes; HTML output is produced separately by `HtmlRenderer`. The graph/search artifact DTOs remain `pub(crate)` so Rust callers cannot couple themselves to construction structs that may change while `adoc.graph.v1` and `adoc.search.v0` are still settling. Public callers receive ready-to-write artifact strings and retrieval envelopes instead.
+The Graph Artifact is presentation-free data. `GraphJsonArtifact` does not import HTML rendering and does not serialize `html` fields on graph nodes; HTML output is produced separately by `HtmlRenderer`. The graph/search artifact DTOs remain `pub(crate)` so Rust callers cannot couple themselves to construction structs that may change while `adoc.graph.v2` and `adoc.search.v0` are still settling. Public callers receive ready-to-write artifact strings and retrieval envelopes instead.

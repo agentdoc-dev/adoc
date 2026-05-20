@@ -268,7 +268,7 @@ mod tests {
             artifacts: Some(BuildArtifacts {
                 html: "<h1>Guide</h1>".to_string(),
                 graph_json: serde_json::to_string_pretty(&serde_json::json!({
-                    "schema_version": "adoc.graph.v1",
+                    "schema_version": "adoc.graph.v2",
                     "nodes": [],
                     "edges": [],
                     "diagnostics": []
@@ -289,7 +289,7 @@ mod tests {
         assert!(
             fs::read_to_string(output_directory.join("docs.graph.json"))
                 .expect("graph JSON is written")
-                .contains("\"schema_version\": \"adoc.graph.v1\"")
+                .contains("\"schema_version\": \"adoc.graph.v2\"")
         );
         assert_eq!(
             fs::read_to_string(output_directory.join("docs.search.json"))
@@ -311,7 +311,7 @@ mod tests {
             artifacts: Some(BuildArtifacts {
                 html: "<h1>Guide</h1>".to_string(),
                 graph_json: serde_json::to_string_pretty(&serde_json::json!({
-                    "schema_version": "adoc.graph.v1",
+                    "schema_version": "adoc.graph.v2",
                     "nodes": [],
                     "edges": [],
                     "diagnostics": []
@@ -339,7 +339,7 @@ mod tests {
         assert!(
             fs::read_to_string(&paths.graph)
                 .expect("graph JSON is written")
-                .contains("\"schema_version\": \"adoc.graph.v1\"")
+                .contains("\"schema_version\": \"adoc.graph.v2\"")
         );
         assert!(
             fs::read_to_string(paths.search.as_ref().expect("search path"))

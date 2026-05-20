@@ -681,6 +681,7 @@ mod tests {
         GraphKnowledgeObjectNode {
             id: id.to_string(),
             kind: "claim".to_string(),
+            content_hash: format!("sha256:{id}"),
             status: Some("draft".to_string()),
             body: body.to_string(),
             page_id: "team.page".to_string(),
@@ -839,7 +840,7 @@ mod tests {
         edges: Vec<GraphEdge>,
     ) -> GraphArtifactDocument {
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v1".to_string(),
+            schema_version: "adoc.graph.v2".to_string(),
             nodes: objects
                 .into_iter()
                 .map(GraphNode::KnowledgeObject)

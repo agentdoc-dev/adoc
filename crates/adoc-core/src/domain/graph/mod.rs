@@ -130,6 +130,8 @@ pub(crate) struct GraphBlockNode {
 pub(crate) struct GraphKnowledgeObjectNode {
     pub(crate) id: String,
     pub(crate) kind: String,
+    #[serde(default)]
+    pub(crate) content_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) status: Option<String>,
     pub(crate) body: String,
@@ -209,6 +211,7 @@ pub struct GraphTraversalEdge {
 #[derive(Debug, Clone)]
 pub(crate) struct GraphIndex {
     nodes: BTreeMap<ObjectId, GraphKnowledgeObjectNode>,
+    page_ids: BTreeSet<String>,
     edges: Vec<GraphEdge>,
     outgoing: BTreeMap<ObjectId, Vec<usize>>,
     incoming: BTreeMap<ObjectId, Vec<usize>>,
@@ -217,13 +220,21 @@ pub(crate) struct GraphIndex {
 impl GraphIndex {
     pub(crate) fn from_document(document: GraphArtifactDocument) -> Result<Self, Vec<Diagnostic>> {
         let mut nodes = BTreeMap::new();
+        let mut page_ids = BTreeSet::new();
         let mut diagnostics = Vec::new();
 
         for node in document.nodes {
+            if let GraphNode::Page(page) = &node {
+                page_ids.insert(page.id.clone());
+            }
             let Some(knowledge_object) = node.as_knowledge_object().cloned() else {
                 continue;
             };
             let id_text = knowledge_object.id.clone();
+            if let Some(diagnostic) = content_hash_diagnostic(&knowledge_object) {
+                diagnostics.push(diagnostic);
+                continue;
+            }
             let node_id = match ObjectId::new(id_text.clone()) {
                 Ok(node_id) => node_id,
                 Err(_) => {
@@ -300,6 +311,7 @@ impl GraphIndex {
         if diagnostics.is_empty() {
             Ok(Self {
                 nodes,
+                page_ids,
                 edges,
                 outgoing,
                 incoming,
@@ -388,6 +400,18 @@ impl GraphIndex {
 
     pub(crate) fn objects(&self) -> impl Iterator<Item = &GraphKnowledgeObjectNode> {
         self.nodes.values()
+    }
+
+    pub(crate) fn contains_object(&self, id: &ObjectId) -> bool {
+        self.nodes.contains_key(id)
+    }
+
+    pub(crate) fn page_exists(&self, page_id: &str) -> bool {
+        self.page_ids.contains(page_id)
+    }
+
+    pub(crate) fn object_page_id(&self, id: &ObjectId) -> Option<&str> {
+        self.nodes.get(id).map(|object| object.page_id.as_str())
     }
 
     pub(crate) fn related_statuses<'a>(
@@ -505,4 +529,117 @@ fn missing_graph_object_diagnostic(id: impl Into<String>) -> Diagnostic {
     )
     .with_object_id(id)
     .with_help("Run `adoc build` if the source was changed after the graph artifact was generated.")
+}
+
+fn content_hash_diagnostic(node: &GraphKnowledgeObjectNode) -> Option<Diagnostic> {
+    if node.content_hash.trim().is_empty() {
+        return Some(
+            Diagnostic::error(
+                DiagnosticCode::IoArtifactMalformed,
+                format!(
+                    "Graph Knowledge Object `{}` is missing content_hash.",
+                    node.id
+                ),
+            )
+            .with_object_id(&node.id)
+            .with_help("Rebuild docs.graph.json from validated AgentDoc Source."),
+        );
+    }
+
+    let Some(suffix) = node.content_hash.strip_prefix("sha256:") else {
+        return Some(invalid_content_hash_diagnostic(node));
+    };
+    if suffix.trim().is_empty() {
+        return Some(invalid_content_hash_diagnostic(node));
+    }
+
+    None
+}
+
+fn invalid_content_hash_diagnostic(node: &GraphKnowledgeObjectNode) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::IoArtifactMalformed,
+        format!(
+            "Graph Knowledge Object `{}` has invalid content_hash `{}`.",
+            node.id, node.content_hash
+        ),
+    )
+    .with_object_id(&node.id)
+    .with_help("Graph Artifact v2 content_hash values must start with `sha256:` and include a non-empty suffix.")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn graph_document(content_hash: Option<&str>) -> GraphArtifactDocument {
+        GraphArtifactDocument {
+            schema_version: "adoc.graph.v2".to_string(),
+            nodes: vec![
+                GraphNode::Page(GraphPageNode {
+                    id: "team.page".to_string(),
+                    order: 0,
+                    title: None,
+                    source_path: "docs/team.adoc".to_string(),
+                }),
+                GraphNode::KnowledgeObject(GraphKnowledgeObjectNode {
+                    id: "billing.credits".to_string(),
+                    kind: "claim".to_string(),
+                    content_hash: content_hash.unwrap_or_default().to_string(),
+                    status: Some("draft".to_string()),
+                    body: "Credits apply after payment.".to_string(),
+                    page_id: "team.page".to_string(),
+                    source_span: GraphSourceSpan {
+                        path: "docs/team.adoc".to_string(),
+                        line: 1,
+                        column: 1,
+                    },
+                    fields: BTreeMap::new(),
+                    relations: GraphRelations::default(),
+                }),
+            ],
+            edges: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn from_document_rejects_missing_content_hash_without_adapter() {
+        let diagnostics =
+            GraphIndex::from_document(graph_document(None)).expect_err("missing hash fails");
+
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactMalformed);
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.credits"));
+        assert!(diagnostics[0].message.contains("missing content_hash"));
+    }
+
+    #[test]
+    fn from_document_rejects_empty_content_hash_without_adapter() {
+        let diagnostics =
+            GraphIndex::from_document(graph_document(Some(" \t "))).expect_err("empty hash fails");
+
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactMalformed);
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.credits"));
+        assert!(diagnostics[0].message.contains("missing content_hash"));
+    }
+
+    #[test]
+    fn from_document_rejects_unprefixed_or_empty_sha256_content_hash() {
+        for hash in ["content", "sha256:"] {
+            let diagnostics =
+                GraphIndex::from_document(graph_document(Some(hash))).expect_err("hash fails");
+
+            assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactMalformed);
+            assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.credits"));
+            assert!(diagnostics[0].message.contains("invalid content_hash"));
+        }
+    }
+
+    #[test]
+    fn from_document_accepts_sha256_prefixed_content_hash_with_fake_suffix() {
+        let graph = GraphIndex::from_document(graph_document(Some("sha256:billing.credits")))
+            .expect("fake but prefixed hash is accepted");
+
+        assert!(graph.contains_object(&ObjectId::new_unchecked("billing.credits".to_string())));
+    }
 }

@@ -531,7 +531,7 @@ fn why_styled_shows_contradicted_chip_on_relation_target() {
     // Build the fixture JSON inline — same schema_version as the existing
     // valid_artifact.graph.json fixture.
     let fixture = serde_json::json!({
-        "schema_version": "adoc.graph.v1",
+        "schema_version": "adoc.graph.v2",
         "nodes": [
             {
                 "type": "page",
@@ -544,6 +544,7 @@ fn why_styled_shows_contradicted_chip_on_relation_target() {
                 "type": "knowledge_object",
                 "id": "slice7.primary",
                 "kind": "claim",
+                "content_hash": "sha256:slice7.primary",
                 "status": "verified",
                 "body": "Slice 7 primary.",
                 "page_id": "slice7.page",
@@ -563,6 +564,7 @@ fn why_styled_shows_contradicted_chip_on_relation_target() {
                 "type": "knowledge_object",
                 "id": "slice7.contradicted",
                 "kind": "claim",
+                "content_hash": "sha256:slice7.contradicted",
                 "status": "contradicted",
                 "body": "Slice 7 contradicted.",
                 "page_id": "slice7.page",

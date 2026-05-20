@@ -178,7 +178,7 @@ fn read_graph_artifact(path: &Path) -> Value {
 
 fn assert_graph_artifact(text: &str) -> Value {
     let graph: Value = serde_json::from_str(text).expect("graph artifact is valid JSON");
-    assert_eq!(graph["schema_version"], "adoc.graph.v1");
+    assert_eq!(graph["schema_version"], "adoc.graph.v2");
     assert!(graph["nodes"].as_array().is_some());
     assert!(graph["edges"].as_array().is_some());
     assert_eq!(

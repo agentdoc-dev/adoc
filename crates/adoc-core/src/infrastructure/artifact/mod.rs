@@ -1,7 +1,9 @@
 pub(crate) mod graph_json;
+pub(crate) mod patch_json;
 pub(crate) mod search_json;
 
 pub(crate) use graph_json::GraphJsonArtifact;
+pub(crate) use patch_json::PatchJsonArtifact;
 pub(crate) use search_json::SearchJsonArtifact;
 
 #[cfg(test)]
@@ -56,7 +58,7 @@ mod tests {
 
         let graph_document = GraphJsonArtifact.build(&workspace, &[]);
 
-        assert_eq!(graph_document.schema_version, "adoc.graph.v1");
+        assert_eq!(graph_document.schema_version, "adoc.graph.v2");
         assert!(graph_document.nodes.is_empty());
         assert!(graph_document.edges.is_empty());
     }

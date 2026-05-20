@@ -1,5 +1,5 @@
 {
-  "schema_version": "adoc.graph.v1",
+  "schema_version": "adoc.graph.v2",
   "nodes": [
     {
       "type": "page",
@@ -12,6 +12,7 @@
       "type": "knowledge_object",
       "id": "billing.refunds.issue-credit",
       "kind": "claim",
+      "content_hash": "sha256:f8983f5582c342eafe666bd3c2c8e3074c64367181ebf739983a0226eb159cb0",
       "body": "Refund credits are issued from the ledger after approval.",
       "page_id": "billing.refunds",
       "source_span": {
@@ -43,6 +44,7 @@
       "type": "knowledge_object",
       "id": "billing.refunds.issue-credit",
       "kind": "claim",
+      "content_hash": "sha256:503ccaf5c15a90d373955baf07f08259a0298c7bf5c20baff894c592e400b784",
       "body": "Duplicate copy.",
       "page_id": "billing.refunds",
       "source_span": {

@@ -2,6 +2,7 @@ mod build;
 mod check;
 mod graph;
 mod init;
+mod patch;
 mod search;
 mod why;
 
@@ -19,6 +20,7 @@ pub(crate) use build::build;
 pub(crate) use check::check;
 pub(crate) use graph::{GraphCommandInput, graph};
 pub(crate) use init::init;
+pub(crate) use patch::{PatchCommandInput, patch};
 pub(crate) use search::{SearchCommandInput, search_command};
 pub(crate) use why::why;
 

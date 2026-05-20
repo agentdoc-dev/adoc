@@ -11,6 +11,7 @@ pub struct RetrievalRecord {
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    pub content_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -151,6 +152,7 @@ impl RetrievalRecord {
             id: object.id.clone(),
             kind: object.kind.clone(),
             status: object.status.clone(),
+            content_hash: object.content_hash.clone(),
             owner: metadata::owner(object).map(str::to_string),
             verified_at: metadata::verified_at(object).map(str::to_string),
             body: object.body.clone(),
@@ -178,6 +180,7 @@ mod tests {
             id: "billing.credits".to_string(),
             kind: "claim".to_string(),
             status: Some("verified".to_string()),
+            content_hash: "sha256:content".to_string(),
             body: "Credits are verified.".to_string(),
             page_id: "team.billing".to_string(),
             source_span: GraphSourceSpan {

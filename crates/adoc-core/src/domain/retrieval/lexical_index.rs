@@ -254,6 +254,7 @@ mod tests {
         GraphKnowledgeObjectNode {
             id: id.to_string(),
             kind: kind.to_string(),
+            content_hash: format!("sha256:{id}"),
             status: None,
             body: body.to_string(),
             page_id: "team.page".to_string(),

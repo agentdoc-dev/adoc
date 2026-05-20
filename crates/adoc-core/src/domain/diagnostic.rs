@@ -61,6 +61,11 @@ pub enum DiagnosticCode {
     SearchModelMismatch,
     SearchHashDrift,
     GraphObjectNotFound,
+    PatchInvalidDocument,
+    PatchValidationFailed,
+    PatchBaseHashMismatch,
+    PatchTargetAlreadyExists,
+    PatchPlacementInvalid,
 }
 
 impl DiagnosticCode {
@@ -104,6 +109,11 @@ impl DiagnosticCode {
             DiagnosticCode::SearchModelMismatch,
             DiagnosticCode::SearchHashDrift,
             DiagnosticCode::GraphObjectNotFound,
+            DiagnosticCode::PatchInvalidDocument,
+            DiagnosticCode::PatchValidationFailed,
+            DiagnosticCode::PatchBaseHashMismatch,
+            DiagnosticCode::PatchTargetAlreadyExists,
+            DiagnosticCode::PatchPlacementInvalid,
         ]
     }
 
@@ -147,6 +157,11 @@ impl DiagnosticCode {
             DiagnosticCode::SearchModelMismatch => "search.model_mismatch",
             DiagnosticCode::SearchHashDrift => "search.hash_drift",
             DiagnosticCode::GraphObjectNotFound => "graph.object_not_found",
+            DiagnosticCode::PatchInvalidDocument => "patch.invalid_document",
+            DiagnosticCode::PatchValidationFailed => "patch.validation_failed",
+            DiagnosticCode::PatchBaseHashMismatch => "patch.base_hash_mismatch",
+            DiagnosticCode::PatchTargetAlreadyExists => "patch.target_already_exists",
+            DiagnosticCode::PatchPlacementInvalid => "patch.placement_invalid",
         }
     }
 
@@ -262,6 +277,21 @@ impl DiagnosticCode {
             DiagnosticCode::GraphObjectNotFound => {
                 "Use an object ID present in the loaded graph artifact, or rebuild docs.graph.json."
             }
+            DiagnosticCode::PatchInvalidDocument => {
+                "Use the adoc.patch.v0 schema with exactly one supported operation and its required fields."
+            }
+            DiagnosticCode::PatchValidationFailed => {
+                "Adjust the patch intent so it satisfies AgentDoc patch validation rules."
+            }
+            DiagnosticCode::PatchBaseHashMismatch => {
+                "Rebuild docs.graph.json or regenerate the patch against the current target content_hash."
+            }
+            DiagnosticCode::PatchTargetAlreadyExists => {
+                "Use create_object only for a new Object ID, or choose an update operation for an existing object."
+            }
+            DiagnosticCode::PatchPlacementInvalid => {
+                "Use an existing page_id and, when after is supplied, an object already on that page."
+            }
         }
     }
 
@@ -332,6 +362,11 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "search.model_mismatch",
     "search.hash_drift",
     "graph.object_not_found",
+    "patch.invalid_document",
+    "patch.validation_failed",
+    "patch.base_hash_mismatch",
+    "patch.target_already_exists",
+    "patch.placement_invalid",
 ];
 
 impl Diagnostic {

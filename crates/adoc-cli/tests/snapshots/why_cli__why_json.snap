@@ -1,6 +1,6 @@
 ---
 source: crates/adoc-cli/tests/why_cli.rs
-assertion_line: 181
+assertion_line: 274
 expression: stdout
 ---
 {
@@ -10,6 +10,7 @@ expression: stdout
       "id": "billing.refunds.issue-credit",
       "kind": "claim",
       "status": "verified",
+      "content_hash": "sha256:f8983f5582c342eafe666bd3c2c8e3074c64367181ebf739983a0226eb159cb0",
       "owner": "team-billing",
       "verified_at": "2026-05-06",
       "body": "Refund credits are issued from the ledger after approval.",

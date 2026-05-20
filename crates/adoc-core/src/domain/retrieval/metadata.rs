@@ -82,6 +82,7 @@ mod tests {
         GraphKnowledgeObjectNode {
             id: id.to_string(),
             kind: kind.to_string(),
+            content_hash: format!("sha256:{id}"),
             status: status.map(str::to_string),
             body: body.to_string(),
             page_id: "team.guide".to_string(),

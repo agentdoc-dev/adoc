@@ -1,5 +1,5 @@
 {
-  "schema_version": "adoc.graph.v1",
+  "schema_version": "adoc.graph.v2",
   "nodes": [
     {
       "type": "page",
@@ -12,6 +12,7 @@
       "type": "knowledge_object",
       "id": "billing.first",
       "kind": "claim",
+      "content_hash": "sha256:3a16fe68dfb09b92feea7b3f631eda4b1e874e32556456b13e092302ea8a7ab6",
       "body": "First billing claim.",
       "page_id": "billing.page",
       "source_span": {

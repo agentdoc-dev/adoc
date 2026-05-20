@@ -30,7 +30,7 @@ fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
     workspace.write(
         relative_path,
         r#"{
-  "schema_version": "adoc.graph.v1",
+  "schema_version": "adoc.graph.v2",
   "nodes": [
     {
       "type": "page",
@@ -43,6 +43,7 @@ fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
       "type": "knowledge_object",
       "id": "billing.refunds.issue-credit",
       "kind": "claim",
+      "content_hash": "sha256:billing.refunds.issue-credit",
       "status": "verified",
       "body": "Refund credits are issued from the ledger after approval.",
       "page_id": "billing.refunds",
@@ -60,6 +61,7 @@ fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
       "type": "knowledge_object",
       "id": "billing.refunds.fraud-window",
       "kind": "warning",
+      "content_hash": "sha256:billing.refunds.fraud-window",
       "status": "high",
       "body": "Refund attempts above the risk threshold require manual review.",
       "page_id": "billing.refunds",

@@ -1,5 +1,5 @@
 {
-  "schema_version": "adoc.graph.v1",
+  "schema_version": "adoc.graph.v2",
   "nodes": [
     {
       "type": "page",
@@ -12,6 +12,7 @@
       "type": "knowledge_object",
       "id": "billing.refunds.issue-credit",
       "kind": "claim",
+      "content_hash": "sha256:f8983f5582c342eafe666bd3c2c8e3074c64367181ebf739983a0226eb159cb0",
       "body": "Refund credits are issued from the ledger after approval.",
       "page_id": "billing.refunds",
       "source_span": {
@@ -43,6 +44,7 @@
       "type": "knowledge_object",
       "id": "billing.refunds.fraud-window",
       "kind": "warning",
+      "content_hash": "sha256:c08f3141bf7bf8b3ae4e498fd13163df2fa4227e158ce392640ba39b28b61bdc",
       "body": "Refund attempts above the risk threshold require manual review.",
       "page_id": "billing.refunds",
       "source_span": {
@@ -64,6 +66,7 @@
       "type": "knowledge_object",
       "id": "billing.refunds.policy",
       "kind": "decision",
+      "content_hash": "sha256:5d6533e462c4dd65561f962903af5a9aeb09c31b40177622eb211e390132224c",
       "body": "Refund credits are issued only after approval.",
       "page_id": "billing.refunds",
       "source_span": {
@@ -86,6 +89,7 @@
       "type": "knowledge_object",
       "id": "billing.refunds.credit",
       "kind": "glossary",
+      "content_hash": "sha256:313bc1d023a7aab0a21c25f0da46bbd8b6ea6d0fb74eadb004bef0b6bb06639a",
       "body": "Refund credit means a ledger-backed customer balance adjustment.",
       "page_id": "billing.refunds",
       "source_span": {

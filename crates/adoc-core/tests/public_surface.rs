@@ -9,13 +9,14 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use adoc_core::{
-    BuildArtifacts, CompileInput, CompileResult, Diagnostic, DiagnosticCode, GraphDirection,
-    GraphInput, GraphLoadResult, GraphRelationKind, GraphSession, GraphTraversalEnvelope,
-    GraphTraversalQuery, GraphTraversalResult, RetrievalEnvelope, RetrievalInput,
-    RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSession,
-    RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult, Severity, WhyResult,
-    compile_workspace, load_graph_session, load_retrieval_session, search, traverse_graph,
-    why_object,
+    AffectedRelation, BuildArtifacts, CompileInput, CompileResult, Diagnostic, DiagnosticCode,
+    GraphDirection, GraphInput, GraphLoadResult, GraphRelationKind, GraphSession,
+    GraphTraversalEnvelope, GraphTraversalQuery, GraphTraversalResult, PATCH_CHECK_SCHEMA_VERSION,
+    PatchCheckResult, PatchDiff, PatchInput, PatchOperation, ProofObligation, RetrievalEnvelope,
+    RetrievalInput, RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalRelations,
+    RetrievalSession, RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchResult,
+    Severity, WhyResult, check_patch, compile_workspace, load_graph_session,
+    load_retrieval_session, search, traverse_graph, why_object,
 };
 
 #[test]
@@ -73,6 +74,11 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::SearchInvalidFilter;
     let _ = DiagnosticCode::BuildEmbeddingsCacheIgnored;
     let _ = DiagnosticCode::GraphObjectNotFound;
+    let _ = DiagnosticCode::PatchInvalidDocument;
+    let _ = DiagnosticCode::PatchValidationFailed;
+    let _ = DiagnosticCode::PatchBaseHashMismatch;
+    let _ = DiagnosticCode::PatchTargetAlreadyExists;
+    let _ = DiagnosticCode::PatchPlacementInvalid;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
     let _: &'static str = DiagnosticCode::ParseRawHtml.default_help();
@@ -170,6 +176,46 @@ fn public_surface_compiles_with_only_documented_imports() {
         DiagnosticCode::GraphObjectNotFound.as_str(),
         "graph.object_not_found"
     );
+    assert_eq!(
+        DiagnosticCode::PatchInvalidDocument.as_str(),
+        "patch.invalid_document"
+    );
+    assert_eq!(
+        DiagnosticCode::PatchInvalidDocument.default_help(),
+        "Use the adoc.patch.v0 schema with exactly one supported operation and its required fields."
+    );
+    assert_eq!(
+        DiagnosticCode::PatchValidationFailed.as_str(),
+        "patch.validation_failed"
+    );
+    assert_eq!(
+        DiagnosticCode::PatchValidationFailed.default_help(),
+        "Adjust the patch intent so it satisfies AgentDoc patch validation rules."
+    );
+    assert_eq!(
+        DiagnosticCode::PatchBaseHashMismatch.as_str(),
+        "patch.base_hash_mismatch"
+    );
+    assert_eq!(
+        DiagnosticCode::PatchBaseHashMismatch.default_help(),
+        "Rebuild docs.graph.json or regenerate the patch against the current target content_hash."
+    );
+    assert_eq!(
+        DiagnosticCode::PatchTargetAlreadyExists.as_str(),
+        "patch.target_already_exists"
+    );
+    assert_eq!(
+        DiagnosticCode::PatchTargetAlreadyExists.default_help(),
+        "Use create_object only for a new Object ID, or choose an update operation for an existing object."
+    );
+    assert_eq!(
+        DiagnosticCode::PatchPlacementInvalid.as_str(),
+        "patch.placement_invalid"
+    );
+    assert_eq!(
+        DiagnosticCode::PatchPlacementInvalid.default_help(),
+        "Use an existing page_id and, when after is supplied, an object already on that page."
+    );
 
     let _: GraphRelationKind = GraphRelationKind::Supersedes;
     let _: GraphDirection = GraphDirection::Both;
@@ -211,6 +257,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         id: String::new(),
         kind: String::new(),
         status: None,
+        content_hash: String::new(),
         owner: None,
         verified_at: None,
         body: String::new(),
@@ -265,6 +312,40 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _: fn(&GraphSession, GraphTraversalQuery) -> GraphTraversalResult = traverse_graph;
 
     let _: RetrievalEnvelope = RetrievalEnvelope::new(Vec::new(), Vec::new());
+
+    let _: &'static str = PATCH_CHECK_SCHEMA_VERSION;
+    let _: PatchOperation = PatchOperation::ReplaceBody;
+    let _: PatchInput = PatchInput {
+        graph_artifact_path: PathBuf::from("/missing-docs-graph-json-for-surface-test"),
+        patch_path: PathBuf::from("/missing-patch-json-for-surface-test"),
+    };
+    let patch_result = PatchCheckResult {
+        schema_version: PATCH_CHECK_SCHEMA_VERSION,
+        valid: false,
+        accepted_for_review: false,
+        target: None,
+        operation: String::new(),
+        diffs: vec![PatchDiff {
+            field: "body".to_string(),
+            old: Some(serde_json::json!("old")),
+            new: Some(serde_json::json!("new")),
+        }],
+        affected_relations: vec![AffectedRelation {
+            source: "billing.new".to_string(),
+            relation: GraphRelationKind::Supersedes,
+            target: "billing.old".to_string(),
+            action: "add".to_string(),
+        }],
+        proof_obligations: vec![ProofObligation {
+            object_id: "billing.claim".to_string(),
+            reason: "review evidence".to_string(),
+            required_evidence: vec!["source".to_string()],
+        }],
+        required_follow_up: Vec::new(),
+        diagnostics: Vec::new(),
+    };
+    let _patch_diagnostics: Vec<Diagnostic> = patch_result.diagnostics;
+    let _: fn(PatchInput) -> PatchCheckResult = check_patch;
 }
 
 #[test]
