@@ -8,7 +8,7 @@ use support::TestWorkspace;
 
 fn adoc_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
-    command.env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory");
+    command.env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic");
     command
 }
 

@@ -1,4 +1,5 @@
 // see ADR-0009
+pub(crate) mod artifact_inspection;
 pub(crate) mod compile;
 pub(crate) mod graph;
 pub(crate) mod hashing;

@@ -1,8 +1,8 @@
 {
   "schema_version": "adoc.search.v0",
   "model": {
-    "id": "in-memory",
-    "provider": "test",
+    "id": "hash-v1",
+    "provider": "deterministic",
     "dim": 4
   },
   "graph_artifact_hash": "sha256:7de3e9e323f607ddc9367d73683c5d5213514982b330df4292a9bfa4cb8f2950",

@@ -1,9 +1,15 @@
 use std::fs;
-use std::path::Path;
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use adoc_local::{PathPolicy, ProjectRootPathPolicy};
-use adoc_mcp::{AdocPatchCheckParams, AgentDocMcpServer, BuildParams, InitParams, PatchInput};
+use adoc_mcp::{
+    AdocPatchCheckParams, AgentDocMcpServer, BuildParams, InitParams, PatchInput,
+    ProjectStatusParams, SearchParams, WhyParams,
+};
 use rmcp::ServerHandler;
+use rmcp::model::ResourceContents;
 
 fn write(path: &Path, contents: &str) {
     if let Some(parent) = path.parent() {
@@ -14,6 +20,22 @@ fn write(path: &Path, contents: &str) {
 
 fn source() -> &'static str {
     "# Billing @doc(team.billing)\n\n::claim billing.credits\nstatus: draft\n--\nCredits apply after payment.\n::\n"
+}
+
+fn copy_billing_pilot_fixture(root: &Path) {
+    let fixture_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/billing-pilot")
+        .canonicalize()
+        .expect("billing pilot fixture path");
+    for file in [
+        "agentdoc.config.yaml",
+        "01-glossary.adoc",
+        "02-claims.adoc",
+        "03-decisions.adoc",
+        "04-warnings.adoc",
+    ] {
+        fs::copy(fixture_root.join(file), root.join(file)).expect("fixture file copies");
+    }
 }
 
 #[test]
@@ -128,4 +150,394 @@ fn server_implements_rmcp_server_handler_with_tools_capability() {
 
     assert_handler(&server);
     assert!(server.get_info().capabilities.tools.is_some());
+    assert!(server.get_info().capabilities.resources.is_some());
+    assert!(server.get_info().capabilities.prompts.is_some());
+}
+
+#[test]
+fn project_status_tool_is_read_only_by_default() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), source());
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+    let server = AgentDocMcpServer::new(root.to_path_buf());
+
+    let value = server
+        .run_project_status(ProjectStatusParams {
+            project_root: None,
+            refresh: None,
+            no_embeddings: false,
+        })
+        .expect("status succeeds");
+
+    assert_eq!(value["schema_version"], "adoc.project.status.v0");
+    assert_eq!(value["refresh"]["requested"], "none");
+    assert_eq!(value["artifacts"]["graph"]["exists"], false);
+    assert_eq!(value["readiness"]["retrieval"], false);
+    assert!(
+        !root.join("dist/docs.graph.json").exists(),
+        "default status must not build artifacts"
+    );
+}
+
+#[test]
+fn project_status_tool_can_refresh_with_check_or_build() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), source());
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+    let server = AgentDocMcpServer::new(root.to_path_buf());
+
+    let check = server
+        .run_project_status(ProjectStatusParams {
+            project_root: None,
+            refresh: Some("check".to_string()),
+            no_embeddings: true,
+        })
+        .expect("status check succeeds");
+    assert_eq!(check["refresh"]["requested"], "check");
+    assert_eq!(check["refresh"]["exit_code"], 0);
+    assert_eq!(check["artifacts"]["graph"]["exists"], false);
+    assert!(!root.join("dist/docs.graph.json").exists());
+
+    let build = server
+        .run_project_status(ProjectStatusParams {
+            project_root: None,
+            refresh: Some("build".to_string()),
+            no_embeddings: false,
+        })
+        .expect("status build succeeds");
+    assert_eq!(build["refresh"]["requested"], "build");
+    assert_eq!(build["refresh"]["exit_code"], 0);
+    assert_eq!(
+        build["artifacts"]["graph"]["schema_version"],
+        "adoc.graph.v2"
+    );
+    assert_eq!(build["artifacts"]["graph"]["object_count"], 1);
+    assert_eq!(build["readiness"]["patch_validation"], true);
+}
+
+#[test]
+fn project_status_rejects_configured_outputs_outside_project_root() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let outside = tempfile::tempdir().expect("outside");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), source());
+    write(
+        &root.join("agentdoc.config.yaml"),
+        &format!(
+            "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  html: {}\n  graph: dist/docs.graph.json\nembeddings:\n  provider: none\n",
+            outside.path().join("docs.html").display()
+        ),
+    );
+    let server = AgentDocMcpServer::new(root.to_path_buf());
+
+    let error = server
+        .run_project_status(ProjectStatusParams {
+            project_root: None,
+            refresh: Some("build".to_string()),
+            no_embeddings: false,
+        })
+        .expect_err("outside configured output is rejected");
+
+    assert!(error.to_string().contains("path_outside_project"));
+    assert!(!outside.path().join("docs.html").exists());
+}
+
+#[test]
+fn lists_and_reads_all_stable_agent_resources() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let server = AgentDocMcpServer::new(workspace.path().to_path_buf());
+    let expected = [
+        "adoc://agent/v0/usage-contract",
+        "adoc://agent/v0/tool-guide",
+        "adoc://agent/v0/answer-contract",
+        "adoc://agent/v0/patch-contract",
+        "adoc://agent/v0/project-status-guide",
+        "adoc://agent/v0/dogfood-billing-pilot",
+        "adoc://agent/v0/schema/retrieval",
+        "adoc://agent/v0/schema/graph-traversal",
+        "adoc://agent/v0/schema/patch",
+        "adoc://agent/v0/schema/project-status",
+        "adoc://agent/v0/schema/mcp-command",
+        "adoc://agent/v0/schema/retrieval-envelope.json",
+        "adoc://agent/v0/schema/graph-traversal-envelope.json",
+        "adoc://agent/v0/schema/patch-input.json",
+        "adoc://agent/v0/schema/patch-check.json",
+        "adoc://agent/v0/schema/project-status.json",
+        "adoc://agent/v0/schema/mcp-command.json",
+    ];
+
+    let resources = server.list_agent_resources();
+    let listed = resources
+        .iter()
+        .map(|resource| resource.raw.uri.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(listed, expected);
+
+    for uri in expected {
+        let resource = resources
+            .iter()
+            .find(|resource| resource.raw.uri == uri)
+            .expect("resource listed");
+        let result = server.read_agent_resource(uri).expect("resource reads");
+        assert_eq!(result.contents.len(), 1);
+        let ResourceContents::TextResourceContents {
+            mime_type, text, ..
+        } = &result.contents[0]
+        else {
+            panic!("agent resources should be text");
+        };
+        if uri.ends_with(".json") {
+            assert_eq!(
+                resource.raw.mime_type.as_deref(),
+                Some("application/schema+json")
+            );
+            assert_eq!(mime_type.as_deref(), Some("application/schema+json"));
+            let schema: serde_json::Value =
+                serde_json::from_str(text).expect("json schema resource is valid JSON");
+            assert_eq!(
+                schema["$schema"],
+                "https://json-schema.org/draft/2020-12/schema"
+            );
+        } else {
+            assert_eq!(resource.raw.mime_type.as_deref(), Some("text/markdown"));
+            assert_eq!(mime_type.as_deref(), Some("text/markdown"));
+            assert!(text.starts_with("# "));
+            assert!(text.contains("V2.2") || text.contains("adoc."));
+        }
+    }
+}
+
+#[test]
+fn lists_versioned_prompts_and_pinned_aliases() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let server = AgentDocMcpServer::new(workspace.path().to_path_buf());
+
+    let prompts = server.list_agent_prompts();
+    let names = prompts
+        .iter()
+        .map(|prompt| prompt.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        [
+            "adoc_answer_with_citations_v0",
+            "adoc_answer_with_citations",
+            "adoc_propose_patch_v0",
+            "adoc_propose_patch",
+            "adoc_inspect_project_status_v0",
+            "adoc_inspect_project_status",
+            "adoc_dogfood_billing_pilot_v0",
+            "adoc_dogfood_billing_pilot",
+        ]
+    );
+
+    let answer = prompts
+        .iter()
+        .find(|prompt| prompt.name == "adoc_answer_with_citations_v0")
+        .expect("answer prompt listed");
+    let args = answer.arguments.as_ref().expect("rich arguments");
+    assert!(args.iter().any(|arg| {
+        arg.name == "query"
+            && arg.required == Some(true)
+            && arg
+                .description
+                .as_deref()
+                .is_some_and(|desc| desc.contains("question"))
+    }));
+    assert!(args.iter().any(|arg| {
+        arg.name == "retrieval_mode"
+            && arg.description.as_deref().is_some_and(|desc| {
+                desc.contains("hybrid") && desc.contains("semantic") && desc.contains("lexical")
+            })
+    }));
+
+    let versioned = server
+        .get_agent_prompt("adoc_answer_with_citations_v0", None)
+        .expect("versioned prompt");
+    let alias = server
+        .get_agent_prompt("adoc_answer_with_citations", None)
+        .expect("alias prompt");
+    assert_eq!(alias.messages, versioned.messages);
+
+    let text = serde_json::to_string(&versioned).expect("prompt serializes");
+    assert!(text.contains("adoc_search"));
+    assert!(text.contains("Object ID"));
+    assert!(text.contains("status"));
+    assert!(text.contains("caveats"));
+}
+
+#[test]
+fn dogfood_billing_pilot_flow_uses_status_search_why_and_patch_check() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    copy_billing_pilot_fixture(root);
+    let server = AgentDocMcpServer::new(root.to_path_buf());
+
+    let initial_status = server
+        .run_project_status(ProjectStatusParams {
+            project_root: None,
+            refresh: None,
+            no_embeddings: false,
+        })
+        .expect("initial status succeeds");
+    assert_eq!(initial_status["schema_version"], "adoc.project.status.v0");
+
+    let build_status = server
+        .run_project_status(ProjectStatusParams {
+            project_root: None,
+            refresh: Some("build".to_string()),
+            no_embeddings: true,
+        })
+        .expect("status build succeeds");
+    assert_eq!(build_status["readiness"]["retrieval"], true);
+    assert_eq!(build_status["readiness"]["patch_validation"], true);
+
+    let search = server
+        .run_search(SearchParams {
+            project_root: None,
+            query: "billing.credits".to_string(),
+            artifact: None,
+            search_artifact: None,
+            semantic: false,
+            lexical: true,
+            kind: None,
+            status: None,
+            owner: None,
+            source_path: None,
+            related_to: None,
+            relation: None,
+            direction: None,
+            top: Some(5),
+        })
+        .expect("lexical search succeeds");
+    assert_eq!(search["schema_version"], "adoc.retrieval.v0");
+    assert!(
+        search["records"]
+            .as_array()
+            .expect("records array")
+            .iter()
+            .any(|record| record["id"] == "billing.credits")
+    );
+
+    let why = server
+        .run_why(WhyParams {
+            project_root: None,
+            object_id: "billing.credits".to_string(),
+            artifact: None,
+        })
+        .expect("why succeeds");
+    let record = &why["records"][0];
+    assert_eq!(record["id"], "billing.credits");
+    assert_eq!(record["kind"], "glossary");
+    assert_eq!(record["owner"], "team-billing");
+    let base_hash = record["content_hash"]
+        .as_str()
+        .expect("record has content hash");
+
+    let patch = server
+        .run_patch_check(AdocPatchCheckParams {
+            project_root: None,
+            artifact: None,
+            input: PatchInput::Inline {
+                patch: serde_json::json!({
+                    "schema_version": "adoc.patch.v0",
+                    "op": "replace_body",
+                    "target": "billing.credits",
+                    "base_hash": base_hash,
+                    "changes": {
+                        "body": "Credits are account balance adjustments that reduce future invoices after reviewed ledger, refund, or support correction events."
+                    },
+                    "reason": "Dogfood a validated billing glossary patch."
+                }),
+            },
+        })
+        .expect("inline patch validates");
+
+    assert_eq!(patch["schema_version"], "adoc.patch.check.v0");
+    assert_eq!(patch["valid"], true);
+}
+
+#[test]
+fn stdio_server_smoke_lists_agent_resources() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_adoc-mcp"))
+        .current_dir(workspace.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("adoc-mcp binary spawns");
+    let mut stdin = child.stdin.take().expect("stdin is piped");
+    let stdout = child.stdout.take().expect("stdout is piped");
+    let mut stdout = BufReader::new(stdout);
+
+    write_json_line(
+        &mut stdin,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": { "name": "adoc-mcp-test", "version": "0" }
+            }
+        }),
+    );
+    let init = read_json_line(&mut stdout);
+    assert_eq!(init["id"], 1);
+    assert!(init["result"]["capabilities"]["tools"].is_object());
+    assert!(init["result"]["capabilities"]["resources"].is_object());
+    assert!(init["result"]["capabilities"]["prompts"].is_object());
+
+    write_json_line(
+        &mut stdin,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        }),
+    );
+    write_json_line(
+        &mut stdin,
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "resources/list"
+        }),
+    );
+    let resources = read_json_line(&mut stdout);
+    assert_eq!(resources["id"], 2);
+    assert!(
+        resources["result"]["resources"]
+            .as_array()
+            .expect("resources array")
+            .iter()
+            .any(|resource| resource["uri"] == "adoc://agent/v0/usage-contract")
+    );
+
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn write_json_line(stdin: &mut impl Write, value: serde_json::Value) {
+    writeln!(stdin, "{value}").expect("json request can be written");
+    stdin.flush().expect("json request can be flushed");
+}
+
+fn read_json_line(stdout: &mut impl BufRead) -> serde_json::Value {
+    let mut line = String::new();
+    stdout
+        .read_line(&mut line)
+        .expect("json response can be read");
+    assert!(!line.is_empty(), "expected json response line");
+    serde_json::from_str(&line).expect("response is valid JSON")
 }

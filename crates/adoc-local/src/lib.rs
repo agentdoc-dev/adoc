@@ -13,6 +13,9 @@ pub use path_policy::{PathPolicy, ProjectRootPathPolicy, UnrestrictedPathPolicy}
 pub use use_cases::{
     BuildInput, BuildOutcome, BuildOutputs, BuildUseCase, CheckInput, CheckOutcome, CheckUseCase,
     GraphInput, GraphOutcome, GraphUseCase, InitInput, InitOutcome, InitUseCase, PatchCheckInput,
-    PatchCheckOutcome, PatchCheckUseCase, ResolvedRetrievalRecord, SearchInput, SearchOutcome,
-    SearchUseCase, WhyInput, WhyOutcome, WhyUseCase,
+    PatchCheckOutcome, PatchCheckUseCase, ProjectArtifactLoadStatus, ProjectArtifactStatus,
+    ProjectStatusArtifacts, ProjectStatusConfig, ProjectStatusInput, ProjectStatusOutcome,
+    ProjectStatusPaths, ProjectStatusReadiness, ProjectStatusRefresh, ProjectStatusRefreshReport,
+    ProjectStatusUseCase, ResolvedRetrievalRecord, SearchInput, SearchOutcome, SearchUseCase,
+    WhyInput, WhyOutcome, WhyUseCase,
 };

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/patch-input.json",
+  "title": "AgentDoc Patch Input",
+  "type": "object",
+  "required": ["schema_version", "op", "target", "changes", "reason"],
+  "properties": {
+    "schema_version": { "const": "adoc.patch.v0" },
+    "op": { "enum": ["replace_body", "update_fields", "create_object", "supersede", "revoke"] },
+    "target": { "type": "string" },
+    "base_hash": { "type": "string", "pattern": "^sha256:" },
+    "changes": { "type": "object" },
+    "reason": { "type": "string", "minLength": 1 },
+    "proposer": { "type": "object" }
+  },
+  "additionalProperties": false
+}

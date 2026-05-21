@@ -6,13 +6,17 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use adoc_core::{
-    BuildArtifacts, BuildEmbeddingMode, BuildInput as CoreBuildInput, CompileInput, CompileResult,
-    Diagnostic, DiagnosticCode, GraphDirection, GraphInput as CoreGraphInput, GraphRelationKind,
-    GraphTraversalEnvelope, GraphTraversalQuery, GraphTraversalResult, PatchCheckResult,
-    PatchInput, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, RetrievalRecord,
-    SearchFilters, SearchMode, SearchQuery, Severity, build_workspace,
-    check_patch as core_check_patch, compile_workspace, embed_query, load_graph_session,
-    load_retrieval_session, search as core_search, traverse_graph, why_object,
+    ArtifactInspection, ArtifactLoadStatus, BuildArtifacts, BuildEmbeddingMode,
+    BuildInput as CoreBuildInput, CompileInput, CompileResult, Diagnostic, DiagnosticCode,
+    EmbeddingProviderSelection, GraphArtifactInspectionInput, GraphDirection,
+    GraphInput as CoreGraphInput, GraphRelationKind, GraphTraversalEnvelope, GraphTraversalQuery,
+    GraphTraversalResult, PatchCheckResult, PatchInput, RetrievalEnvelope, RetrievalInput,
+    RetrievalLoadResult, RetrievalRecord, SearchArtifactInspectionInput, SearchFilters, SearchMode,
+    SearchQuery, Severity, build_workspace_with_embedding_provider,
+    check_patch as core_check_patch, compile_workspace, embed_query_with_embedding_provider,
+    inspect_graph_artifact, inspect_search_artifact, load_graph_session,
+    load_retrieval_session_with_embedding_provider, search as core_search, traverse_graph,
+    why_object,
 };
 use serde::Serialize;
 
@@ -20,6 +24,8 @@ use crate::{EmbeddingsProvider, LocalContext, LocalError, PathPolicy, ProjectCon
 
 const DEFAULT_GRAPH_ARTIFACT_PATH: &str = "dist/docs.graph.json";
 const DEFAULT_SEARCH_ARTIFACT_PATH: &str = "dist/docs.search.json";
+const DEFAULT_HTML_ARTIFACT_PATH: &str = "dist/docs.html";
+const PROJECT_STATUS_SCHEMA_VERSION: &str = "adoc.project.status.v0";
 const INIT_CONFIG_PATH: &str = "agentdoc.config.yaml";
 const INIT_INDEX_PATH: &str = "docs/index.adoc";
 const INIT_CONFIG_TEMPLATE: &str = "\
@@ -144,6 +150,71 @@ pub struct PatchCheckInput {
 pub struct PatchCheckOutcome {
     #[serde(flatten)]
     pub result: PatchCheckResult,
+    pub exit_code: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectStatusRefresh {
+    None,
+    Check,
+    Build,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectStatusInput {
+    pub refresh: ProjectStatusRefresh,
+    pub no_embeddings: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectStatusConfig {
+    pub discovered: bool,
+    pub path: Option<PathBuf>,
+    pub embeddings_provider: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectStatusPaths {
+    pub docs: PathBuf,
+    pub html: Option<PathBuf>,
+    pub graph: PathBuf,
+    pub search: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectStatusRefreshReport {
+    pub requested: ProjectStatusRefresh,
+    pub exit_code: Option<i32>,
+    pub diagnostics: Vec<Diagnostic>,
+    pub outputs: Option<BuildOutputs>,
+}
+
+pub type ProjectArtifactLoadStatus = ArtifactLoadStatus;
+pub type ProjectArtifactStatus = ArtifactInspection;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectStatusArtifacts {
+    pub graph: ProjectArtifactStatus,
+    pub search: ProjectArtifactStatus,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectStatusReadiness {
+    pub retrieval: bool,
+    pub semantic_search: bool,
+    pub patch_validation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectStatusOutcome {
+    pub schema_version: &'static str,
+    pub project_root: PathBuf,
+    pub config: ProjectStatusConfig,
+    pub paths: ProjectStatusPaths,
+    pub refresh: ProjectStatusRefreshReport,
+    pub artifacts: ProjectStatusArtifacts,
+    pub readiness: ProjectStatusReadiness,
     pub exit_code: i32,
 }
 
@@ -294,6 +365,27 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ProjectStatusUseCase<P>
+where
+    P: PathPolicy,
+{
+    context: LocalContext<P>,
+}
+
+impl<P> ProjectStatusUseCase<P>
+where
+    P: PathPolicy,
+{
+    pub fn new(context: LocalContext<P>) -> Self {
+        Self { context }
+    }
+
+    pub fn run(&self, input: ProjectStatusInput) -> Result<ProjectStatusOutcome, LocalError> {
+        project_status_with_context(&self.context, input)
+    }
+}
+
 fn init_with_context<P>(context: &LocalContext<P>) -> Result<InitOutcome, LocalError>
 where
     P: PathPolicy,
@@ -357,13 +449,14 @@ where
     let path = resolve_docs_path_with_config(path, config.as_ref())?;
     let path = context.path_policy().resolve_read_path(&path)?;
     let embedding_mode = resolve_embedding_mode(config.as_ref(), input.no_embeddings);
+    let embedding_provider = resolve_embedding_provider_selection(config.as_ref());
 
     match out {
-        Some(out) => build_to_dir(path, out, embedding_mode),
+        Some(out) => build_to_dir(path, out, embedding_mode, embedding_provider),
         None => {
             let output_paths = resolve_build_output_paths(config.as_ref(), embedding_mode)?;
             let output_paths = resolve_build_output_paths_with_policy(&output_paths, context)?;
-            build_to_paths(path, output_paths, embedding_mode)
+            build_to_paths(path, output_paths, embedding_mode, embedding_provider)
         }
     }
 }
@@ -380,10 +473,13 @@ where
     let config = discover_project_config_if(artifact.is_none(), context.config_start())?;
     let artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
     let artifact = context.path_policy().resolve_read_path(&artifact)?;
-    let load_result = load_retrieval_session(RetrievalInput {
-        artifact_path: artifact.clone(),
-        search_artifact_path: None,
-    });
+    let load_result = load_retrieval_session_with_embedding_provider(
+        RetrievalInput {
+            artifact_path: artifact.clone(),
+            search_artifact_path: None,
+        },
+        EmbeddingProviderSelection::Local,
+    );
     let RetrievalLoadResult {
         session,
         diagnostics: load_diagnostics,
@@ -518,6 +614,7 @@ where
         artifact.is_none() || needs_search_config,
         context.config_start(),
     )?;
+    let embedding_provider = resolve_embedding_provider_selection(config.as_ref());
     let artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
     let artifact = context.path_policy().resolve_read_path(&artifact)?;
     let search_artifact_path = match requested_mode {
@@ -527,10 +624,13 @@ where
             Some(context.path_policy().resolve_read_path(&path)?)
         }
     };
-    let load_result = load_retrieval_session(RetrievalInput {
-        artifact_path: artifact,
-        search_artifact_path,
-    });
+    let load_result = load_retrieval_session_with_embedding_provider(
+        RetrievalInput {
+            artifact_path: artifact,
+            search_artifact_path,
+        },
+        embedding_provider,
+    );
     let RetrievalLoadResult {
         session,
         diagnostics: load_diagnostics,
@@ -563,7 +663,7 @@ where
     };
     let needs_query_vector = matches!(mode, SearchMode::Hybrid | SearchMode::Semantic);
     let query_vector = if needs_query_vector {
-        match embed_query(&input.query) {
+        match embed_query_with_embedding_provider(&input.query, embedding_provider) {
             Ok(vector) => Some(vector),
             Err(embed_error) => {
                 let mode_label = match mode {
@@ -662,6 +762,162 @@ where
     Ok(PatchCheckOutcome { result, exit_code })
 }
 
+fn project_status_with_context<P>(
+    context: &LocalContext<P>,
+    input: ProjectStatusInput,
+) -> Result<ProjectStatusOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    let config = ProjectConfig::discover_from(context.config_start())?;
+    let paths = project_status_paths(context, config.as_ref())?;
+    let refresh = run_project_status_refresh(context, input)?;
+    let exit_code = refresh.exit_code.unwrap_or(0);
+    let graph_inspection = inspect_graph_artifact(GraphArtifactInspectionInput {
+        graph_artifact_path: paths.graph.clone(),
+    });
+    let search_inspection = inspect_search_artifact(SearchArtifactInspectionInput {
+        graph_artifact_path: paths.graph.clone(),
+        search_artifact_path: paths.search.clone(),
+        embedding_provider: project_status_embedding_provider(config.as_ref()),
+    });
+    let artifacts = ProjectStatusArtifacts {
+        graph: graph_inspection,
+        search: search_inspection,
+    };
+    let graph_ready = artifacts.graph.load_status == ArtifactLoadStatus::Readable;
+    let search_ready = artifacts.search.load_status == ArtifactLoadStatus::Readable;
+    let semantic_enabled = config
+        .as_ref()
+        .map(|config| config.embeddings_provider != EmbeddingsProvider::None)
+        .unwrap_or(true);
+    let readiness = ProjectStatusReadiness {
+        retrieval: graph_ready,
+        semantic_search: graph_ready && search_ready && semantic_enabled,
+        patch_validation: graph_ready,
+    };
+
+    Ok(ProjectStatusOutcome {
+        schema_version: PROJECT_STATUS_SCHEMA_VERSION,
+        project_root: context.config_start().to_path_buf(),
+        config: ProjectStatusConfig {
+            discovered: config.is_some(),
+            path: config.as_ref().map(|config| config.path.clone()),
+            embeddings_provider: config
+                .as_ref()
+                .map(|config| embedding_provider_label(config.embeddings_provider).to_string()),
+        },
+        paths,
+        refresh,
+        artifacts,
+        readiness,
+        exit_code,
+    })
+}
+
+fn run_project_status_refresh<P>(
+    context: &LocalContext<P>,
+    input: ProjectStatusInput,
+) -> Result<ProjectStatusRefreshReport, LocalError>
+where
+    P: PathPolicy,
+{
+    match input.refresh {
+        ProjectStatusRefresh::None => Ok(ProjectStatusRefreshReport {
+            requested: ProjectStatusRefresh::None,
+            exit_code: None,
+            diagnostics: Vec::new(),
+            outputs: None,
+        }),
+        ProjectStatusRefresh::Check => {
+            let outcome = check_with_context(context, CheckInput { path: None })?;
+            Ok(ProjectStatusRefreshReport {
+                requested: ProjectStatusRefresh::Check,
+                exit_code: Some(outcome.exit_code),
+                diagnostics: outcome.diagnostics,
+                outputs: None,
+            })
+        }
+        ProjectStatusRefresh::Build => {
+            let outcome = build_with_context(
+                context,
+                BuildInput {
+                    path: None,
+                    out: None,
+                    no_embeddings: input.no_embeddings,
+                },
+            )?;
+            Ok(ProjectStatusRefreshReport {
+                requested: ProjectStatusRefresh::Build,
+                exit_code: Some(outcome.exit_code),
+                diagnostics: outcome.diagnostics,
+                outputs: outcome.outputs,
+            })
+        }
+    }
+}
+
+fn project_status_paths<P>(
+    context: &LocalContext<P>,
+    config: Option<&ProjectConfig>,
+) -> Result<ProjectStatusPaths, LocalError>
+where
+    P: PathPolicy,
+{
+    let docs = config
+        .map(|config| config.docs_path.clone())
+        .unwrap_or_else(|| context.config_start().to_path_buf());
+    let html = config
+        .and_then(|config| config.outputs.html.clone())
+        .or_else(|| Some(PathBuf::from(DEFAULT_HTML_ARTIFACT_PATH)));
+    let graph = resolve_graph_artifact_path_with_config(None, config);
+    let search = config
+        .and_then(|config| config.outputs.search.clone())
+        .or_else(|| Some(PathBuf::from(DEFAULT_SEARCH_ARTIFACT_PATH)));
+
+    Ok(ProjectStatusPaths {
+        docs: context.path_policy().resolve_read_path(&docs)?,
+        html: html
+            .as_deref()
+            .map(|path| context.path_policy().resolve_write_path(path))
+            .transpose()?,
+        graph: context.path_policy().resolve_write_path(&graph)?,
+        search: search
+            .as_deref()
+            .map(|path| context.path_policy().resolve_write_path(path))
+            .transpose()?,
+    })
+}
+
+fn embedding_provider_label(provider: EmbeddingsProvider) -> &'static str {
+    match provider {
+        EmbeddingsProvider::Local => "local",
+        EmbeddingsProvider::Deterministic => "deterministic",
+        EmbeddingsProvider::None => "none",
+    }
+}
+
+fn resolve_embedding_provider_selection(
+    config: Option<&ProjectConfig>,
+) -> EmbeddingProviderSelection {
+    match config.map(|config| config.embeddings_provider) {
+        Some(EmbeddingsProvider::Deterministic) => EmbeddingProviderSelection::Deterministic,
+        Some(EmbeddingsProvider::Local | EmbeddingsProvider::None) | None => {
+            EmbeddingProviderSelection::Local
+        }
+    }
+}
+
+fn project_status_embedding_provider(
+    config: Option<&ProjectConfig>,
+) -> Option<EmbeddingProviderSelection> {
+    match config.map(|config| config.embeddings_provider) {
+        Some(EmbeddingsProvider::None) => None,
+        Some(EmbeddingsProvider::Deterministic) => Some(EmbeddingProviderSelection::Deterministic),
+        Some(EmbeddingsProvider::Local) | None => Some(EmbeddingProviderSelection::Local),
+    }
+}
+
 fn write_init_files(project_root: &Path) -> Result<(), LocalError> {
     let config_path = project_root.join(INIT_CONFIG_PATH);
     let index_path = project_root.join(INIT_INDEX_PATH);
@@ -743,12 +999,16 @@ fn build_to_dir(
     path: PathBuf,
     out: PathBuf,
     embedding_mode: BuildEmbeddingMode,
+    embedding_provider: EmbeddingProviderSelection,
 ) -> Result<BuildOutcome, LocalError> {
-    let result = build_workspace(CoreBuildInput {
-        root: path,
-        embeddings: embedding_mode,
-        prior_search_artifact_path: Some(out.join("docs.search.json")),
-    });
+    let result = build_workspace_with_embedding_provider(
+        CoreBuildInput {
+            root: path,
+            embeddings: embedding_mode,
+            prior_search_artifact_path: Some(out.join("docs.search.json")),
+        },
+        embedding_provider,
+    );
     finish_build_result(result, &out)
 }
 
@@ -756,12 +1016,16 @@ fn build_to_paths(
     path: PathBuf,
     output_paths: BuildOutputs,
     embedding_mode: BuildEmbeddingMode,
+    embedding_provider: EmbeddingProviderSelection,
 ) -> Result<BuildOutcome, LocalError> {
-    let result = build_workspace(CoreBuildInput {
-        root: path,
-        embeddings: embedding_mode,
-        prior_search_artifact_path: output_paths.search.clone(),
-    });
+    let result = build_workspace_with_embedding_provider(
+        CoreBuildInput {
+            root: path,
+            embeddings: embedding_mode,
+            prior_search_artifact_path: output_paths.search.clone(),
+        },
+        embedding_provider,
+    );
     finish_build_result_at_paths(result, &output_paths)
 }
 

@@ -42,8 +42,9 @@ V1.5 local workflow supports:
 - `adoc init` creates `agentdoc.config.yaml` and `docs/index.adoc`
 - omitted `check` and `build` paths use config `docs_path`
 - omitted `build --out` uses config outputs
-- `embeddings.provider: local|none`; missing `embeddings` defaults to `local`
+- `embeddings.provider: local|deterministic|none`; missing `embeddings` defaults to `local`
 - `local` uses FastEmbed `bge-small-en-v1.5` (`provider: "fastembed"`, `dim: 384`)
+- `deterministic` uses repeatable hash-based embeddings (`provider: "deterministic"`, `id: "hash-v1"`, `dim: 384`) for offline or reproducible workflows, with lower retrieval quality than semantic model providers
 - first-run model download through `fastembed-rs`, then local cache reuse on later builds
 - per-Object-ID vector reuse when the model header and content hash match the prior `docs.search.json`
 - `--no-embeddings` to skip search artifact generation and leave any prior `docs.search.json` untouched
@@ -232,6 +233,7 @@ as global config.
 - fails if the output path exists as a file
 - writes `docs.html` and `docs.graph.json` when source compilation is clean
 - loads the local FastEmbed `bge-small-en-v1.5` model by default through the default-on `embeddings` feature; first run may download model weights into the platform cache
+- uses the deterministic hash-based provider instead when config sets `embeddings.provider: deterministic`
 - reads the prior output directory's `docs.search.json` when present and reuses vectors whose model header and content hash still match, reported as `info[build.embeddings_cached] embeddings: cached N, computed M`
 - if embedding model load, compute, or dimension validation fails after clean source compilation, exits `1`, still writes `docs.html` and `docs.graph.json`, omits a new `docs.search.json`, and leaves any prior `docs.search.json` untouched
 - accepts `--no-embeddings` to skip model loading and search artifact writes; any existing `docs.search.json` is left untouched and an info diagnostic `build.embeddings_skipped` is emitted
@@ -359,7 +361,7 @@ fn main() {}
 Current limitations:
 
 - custom schemas, includes, migrations, semantic diff, CI/PR integrations, agent patching, hosted embedding adapters, web app, and permissions are deferred
-- config is intentionally minimal: strict mode only, one `docs_path`, output paths, and `embeddings.provider: local|none`
+- config is intentionally minimal: strict mode only, one `docs_path`, output paths, and `embeddings.provider: local|deterministic|none`
 
 ## Diagnostics
 
@@ -500,7 +502,7 @@ cargo run -p adoc-cli --bin adoc -- build <path> --out dist
 
 The `embeddings` feature is default-on and enables the FastEmbed dependency. Build without it with `cargo test -p adoc-core --no-default-features` or equivalent no-default build commands when embedding support is intentionally excluded.
 
-Hermetic CLI/core tests use the deterministic in-memory embedding provider through the `test-embedding-provider` feature only when `ADOC_TEST_EMBEDDING_PROVIDER=in-memory` is set. With that feature enabled, unset `ADOC_TEST_EMBEDDING_PROVIDER` and `ADOC_TEST_EMBEDDING_PROVIDER=fastembed` both use FastEmbed. FastEmbed end-to-end coverage is gated behind `fastembed-it`:
+Hermetic CLI/core tests use the deterministic embedding provider through the `test-embedding-provider` feature when `ADOC_TEST_EMBEDDING_PROVIDER=deterministic` is set. The legacy `in-memory` value remains accepted as a test alias. With that feature enabled, unset `ADOC_TEST_EMBEDDING_PROVIDER` and `ADOC_TEST_EMBEDDING_PROVIDER=fastembed` both use FastEmbed. FastEmbed end-to-end coverage is gated behind `fastembed-it`:
 
 ```bash
 cargo test -p adoc-core --features fastembed-it --no-run --locked

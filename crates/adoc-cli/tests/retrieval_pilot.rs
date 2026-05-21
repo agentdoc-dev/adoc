@@ -46,7 +46,7 @@ impl EmbeddingBackend {
     fn configure(self, command: &mut Command) {
         match self {
             Self::InMemory => {
-                command.env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory");
+                command.env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic");
             }
             #[cfg(feature = "fastembed-it")]
             Self::FastEmbed => {

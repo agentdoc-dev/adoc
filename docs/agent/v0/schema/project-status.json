@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/project-status.json",
+  "title": "AgentDoc Project Status",
+  "type": "object",
+  "required": ["schema_version", "project_root", "config", "paths", "refresh", "artifacts", "readiness", "exit_code"],
+  "properties": {
+    "schema_version": { "const": "adoc.project.status.v0" },
+    "project_root": { "type": "string" },
+    "config": {
+      "type": "object",
+      "required": ["discovered", "path", "embeddings_provider"],
+      "properties": {
+        "discovered": { "type": "boolean" },
+        "path": { "type": ["string", "null"] },
+        "embeddings_provider": { "type": ["string", "null"], "enum": ["local", "deterministic", "none", null] }
+      },
+      "additionalProperties": false
+    },
+    "paths": {
+      "type": "object",
+      "required": ["docs", "html", "graph", "search"],
+      "properties": {
+        "docs": { "type": "string" },
+        "html": { "type": ["string", "null"] },
+        "graph": { "type": "string" },
+        "search": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "refresh": {
+      "type": "object",
+      "required": ["requested", "exit_code", "diagnostics", "outputs"],
+      "properties": {
+        "requested": { "enum": ["none", "check", "build"] },
+        "exit_code": { "type": ["integer", "null"] },
+        "diagnostics": { "type": "array", "items": { "type": "object" } },
+        "outputs": { "type": ["object", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["graph", "search"],
+      "properties": {
+        "graph": { "$ref": "#/$defs/artifact" },
+        "search": { "$ref": "#/$defs/artifact" }
+      },
+      "additionalProperties": false
+    },
+    "readiness": {
+      "type": "object",
+      "required": ["retrieval", "semantic_search", "patch_validation"],
+      "properties": {
+        "retrieval": { "type": "boolean" },
+        "semantic_search": { "type": "boolean" },
+        "patch_validation": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "exit_code": { "type": "integer" }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": ["path", "exists", "load_status", "schema_version", "object_count", "diagnostics"],
+      "properties": {
+        "path": { "type": ["string", "null"] },
+        "exists": { "type": "boolean" },
+        "load_status": {
+          "enum": ["not_configured", "missing", "readable", "malformed", "unsupported_version", "unreadable"]
+        },
+        "schema_version": { "type": ["string", "null"] },
+        "object_count": { "type": ["integer", "null"], "minimum": 0 },
+        "diagnostics": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

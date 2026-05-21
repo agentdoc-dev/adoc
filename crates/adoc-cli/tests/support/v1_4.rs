@@ -59,7 +59,7 @@ pub fn build_v1_4_pilot() -> V1_4Pilot {
             "--out",
             out.to_str().unwrap(),
         ])
-        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
         .status()
         .expect("adoc build runs");
     assert!(

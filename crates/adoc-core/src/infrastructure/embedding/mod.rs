@@ -1,7 +1,6 @@
+pub(crate) mod deterministic;
 #[cfg(feature = "embeddings")]
 pub(crate) mod fastembed;
-#[cfg(any(test, feature = "test-embedding-provider"))]
-pub(crate) mod in_memory;
 
 #[cfg(all(test, feature = "embeddings"))]
 mod tests {

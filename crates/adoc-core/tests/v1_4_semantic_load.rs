@@ -9,17 +9,17 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn force_in_memory_provider() {
+fn force_deterministic_provider() {
     // Serialized via #[serial(env_provider)] on each test below; safe
     // because no other test reads/writes ADOC_TEST_EMBEDDING_PROVIDER
     // under the same lock.
-    unsafe { std::env::set_var("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory") };
+    unsafe { std::env::set_var("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic") };
 }
 
 #[test]
 #[serial(env_provider)]
 fn missing_search_artifact_warns_and_disables_semantic() {
-    force_in_memory_provider();
+    force_deterministic_provider();
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: fixture("hash_drift.graph.json"),
         search_artifact_path: Some(fixture("not_present.search.json")),
@@ -39,7 +39,7 @@ fn missing_search_artifact_warns_and_disables_semantic() {
 #[test]
 #[serial(env_provider)]
 fn mismatched_model_emits_error_and_disables_semantic() {
-    force_in_memory_provider();
+    force_deterministic_provider();
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: fixture("hash_drift.graph.json"),
         search_artifact_path: Some(fixture("model_mismatch.search.json")),
@@ -60,7 +60,7 @@ fn mismatched_model_emits_error_and_disables_semantic() {
 #[test]
 #[serial(env_provider)]
 fn hash_drift_warns_but_keeps_semantic_index_loaded() {
-    force_in_memory_provider();
+    force_deterministic_provider();
     let result = load_retrieval_session(RetrievalInput {
         artifact_path: fixture("hash_drift.graph.json"),
         search_artifact_path: Some(fixture("hash_drift.search.json")),

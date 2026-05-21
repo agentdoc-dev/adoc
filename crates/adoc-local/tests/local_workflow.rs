@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 
 use adoc_local::{
     BuildInput, BuildUseCase, CheckInput, CheckUseCase, GraphInput, GraphUseCase, InitInput,
-    InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase, ProjectConfig, SearchInput,
-    SearchUseCase, UnrestrictedPathPolicy, WhyInput, WhyUseCase,
+    InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase, ProjectConfig,
+    ProjectStatusInput, ProjectStatusRefresh, ProjectStatusUseCase, SearchInput, SearchUseCase,
+    UnrestrictedPathPolicy, WhyInput, WhyUseCase,
 };
 
 fn write(path: &Path, contents: &str) {
@@ -40,6 +41,10 @@ fn build_with_config(root: &Path) {
         .expect("build should run");
 }
 
+fn invalid_source_missing_status() -> &'static str {
+    "# Billing @doc(team.billing)\n\n::claim billing.ready\n--\nBilling docs are ready.\n::\n"
+}
+
 #[test]
 fn config_discovery_resolves_outputs_from_loaded_config_directory() {
     let workspace = tempfile::tempdir().expect("workspace");
@@ -58,6 +63,26 @@ fn config_discovery_resolves_outputs_from_loaded_config_directory() {
     assert_eq!(
         config.outputs.graph,
         Some(root.join("dist/docs.graph.json"))
+    );
+}
+
+#[test]
+fn config_accepts_deterministic_embeddings_provider() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), &valid_source());
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n",
+    );
+
+    let config = ProjectConfig::discover_from(root)
+        .expect("config discovery succeeds")
+        .expect("config is found");
+
+    assert_eq!(
+        config.embeddings_provider,
+        adoc_local::EmbeddingsProvider::Deterministic
     );
 }
 
@@ -193,6 +218,75 @@ fn build_uses_configured_exact_paths_and_preserves_prior_search_when_skipped() {
 }
 
 #[test]
+fn build_uses_deterministic_embedding_provider_from_config() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), &valid_source());
+    write_config(
+        root,
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n",
+    );
+
+    let outcome = BuildUseCase::new(context(root))
+        .run(BuildInput {
+            path: None,
+            out: None,
+            no_embeddings: false,
+        })
+        .expect("build should run");
+
+    assert_eq!(outcome.exit_code, 0);
+    let outputs = outcome.outputs.expect("outputs");
+    let search_path = outputs.search.expect("search output");
+    let search_json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(search_path).expect("search readable"))
+            .expect("search is json");
+    assert_eq!(search_json["model"]["id"], "hash-v1");
+    assert_eq!(search_json["model"]["provider"], "deterministic");
+    assert_eq!(search_json["model"]["dim"], 384);
+}
+
+#[test]
+fn semantic_search_uses_deterministic_provider_from_config() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), &valid_source());
+    write_config(
+        root,
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n",
+    );
+    BuildUseCase::new(context(root))
+        .run(BuildInput {
+            path: None,
+            out: None,
+            no_embeddings: false,
+        })
+        .expect("build should run");
+
+    let outcome = SearchUseCase::new(context(root))
+        .run(SearchInput {
+            query: "billing docs readiness".to_string(),
+            artifact: None,
+            search_artifact: None,
+            semantic: true,
+            lexical: false,
+            kind: None,
+            status: None,
+            owner: None,
+            source_path: None,
+            related_to: None,
+            relation: None,
+            direction: None,
+            top: NonZeroUsize::new(5).expect("nonzero"),
+        })
+        .expect("search should run");
+
+    assert_eq!(outcome.exit_code, 0, "{:?}", outcome.diagnostics);
+    assert_eq!(outcome.records.len(), 1);
+    assert_eq!(outcome.records[0].record.id, "billing.ready");
+}
+
+#[test]
 fn retrieval_graph_search_and_patch_exit_codes_are_mapped_locally() {
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();
@@ -259,4 +353,162 @@ fn retrieval_graph_search_and_patch_exit_codes_are_mapped_locally() {
         })
         .expect("patch check should run");
     assert_eq!(patch.exit_code, 4);
+}
+
+#[test]
+fn project_status_none_reports_config_and_artifact_readiness_without_refreshing() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), &valid_source());
+    write_config(
+        root,
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+    let canonical_root = fs::canonicalize(root).expect("root canonicalizes");
+
+    let outcome = ProjectStatusUseCase::new(context(root))
+        .run(ProjectStatusInput {
+            refresh: ProjectStatusRefresh::None,
+            no_embeddings: false,
+        })
+        .expect("status should run");
+
+    assert_eq!(outcome.schema_version, "adoc.project.status.v0");
+    assert_eq!(outcome.exit_code, 0);
+    assert_eq!(outcome.refresh.requested, ProjectStatusRefresh::None);
+    assert_eq!(outcome.refresh.exit_code, None);
+    assert!(outcome.refresh.diagnostics.is_empty());
+    assert!(outcome.config.discovered);
+    assert_eq!(
+        outcome.config.path,
+        Some(canonical_root.join("agentdoc.config.yaml"))
+    );
+    assert_eq!(outcome.paths.docs, canonical_root.join("docs"));
+    assert_eq!(
+        outcome.paths.graph,
+        canonical_root.join("dist/docs.graph.json")
+    );
+    assert!(!outcome.paths.graph.exists());
+    assert!(!outcome.artifacts.graph.exists);
+    assert_eq!(outcome.artifacts.graph.schema_version, None);
+    assert_eq!(outcome.artifacts.graph.object_count, None);
+    assert!(!outcome.readiness.retrieval);
+    assert!(!outcome.readiness.semantic_search);
+    assert!(!outcome.readiness.patch_validation);
+}
+
+#[test]
+fn project_status_check_refresh_validates_source_without_writing_artifacts() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(
+        &root.join("docs/index.adoc"),
+        invalid_source_missing_status(),
+    );
+    write_config(
+        root,
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+
+    let outcome = ProjectStatusUseCase::new(context(root))
+        .run(ProjectStatusInput {
+            refresh: ProjectStatusRefresh::Check,
+            no_embeddings: true,
+        })
+        .expect("status check should run");
+
+    assert_eq!(outcome.schema_version, "adoc.project.status.v0");
+    assert_eq!(outcome.exit_code, 1);
+    assert_eq!(outcome.refresh.requested, ProjectStatusRefresh::Check);
+    assert_eq!(outcome.refresh.exit_code, Some(1));
+    assert!(
+        outcome
+            .refresh
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == adoc_core::DiagnosticCode::SchemaMissingField)
+    );
+    assert!(!root.join("dist/docs.graph.json").exists());
+    assert!(!outcome.readiness.retrieval);
+    assert!(!outcome.readiness.patch_validation);
+}
+
+#[test]
+fn project_status_build_refresh_writes_artifacts_and_reports_readiness() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), &valid_source());
+    write_config(
+        root,
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+
+    let outcome = ProjectStatusUseCase::new(context(root))
+        .run(ProjectStatusInput {
+            refresh: ProjectStatusRefresh::Build,
+            no_embeddings: false,
+        })
+        .expect("status build should run");
+
+    assert_eq!(outcome.schema_version, "adoc.project.status.v0");
+    assert_eq!(outcome.exit_code, 0);
+    assert_eq!(outcome.refresh.requested, ProjectStatusRefresh::Build);
+    assert_eq!(outcome.refresh.exit_code, Some(0));
+    assert!(outcome.refresh.outputs.is_some());
+    assert!(outcome.artifacts.graph.exists);
+    assert_eq!(
+        outcome.artifacts.graph.schema_version.as_deref(),
+        Some("adoc.graph.v2")
+    );
+    assert_eq!(outcome.artifacts.graph.object_count, Some(1));
+    assert_eq!(
+        outcome.artifacts.search.schema_version.as_deref(),
+        None,
+        "search artifacts are skipped when config disables embeddings"
+    );
+    assert!(outcome.readiness.retrieval);
+    assert!(!outcome.readiness.semantic_search);
+    assert!(outcome.readiness.patch_validation);
+}
+
+#[test]
+fn project_status_reports_deterministic_semantic_readiness_with_quality_warning() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), &valid_source());
+    write_config(
+        root,
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n",
+    );
+
+    let outcome = ProjectStatusUseCase::new(context(root))
+        .run(ProjectStatusInput {
+            refresh: ProjectStatusRefresh::Build,
+            no_embeddings: false,
+        })
+        .expect("status build should run");
+
+    assert_eq!(outcome.exit_code, 0);
+    assert_eq!(
+        outcome.config.embeddings_provider.as_deref(),
+        Some("deterministic")
+    );
+    assert!(outcome.readiness.retrieval);
+    assert!(outcome.readiness.semantic_search);
+    assert!(outcome.readiness.patch_validation);
+    assert_eq!(
+        outcome.artifacts.search.schema_version.as_deref(),
+        Some("adoc.search.v0")
+    );
+    assert!(
+        outcome
+            .artifacts
+            .search
+            .diagnostics
+            .iter()
+            .any(|diagnostic| {
+                diagnostic.code == adoc_core::DiagnosticCode::SearchDeterministicQuality
+                    && diagnostic.severity == adoc_core::Severity::Warning
+            })
+    );
 }

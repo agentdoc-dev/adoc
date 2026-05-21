@@ -4,8 +4,9 @@ use std::path::PathBuf;
 use adoc_core::{GraphDirection, GraphRelationKind};
 use adoc_local::{
     BuildInput, BuildUseCase, CheckInput, CheckUseCase, GraphInput, GraphUseCase, InitInput,
-    InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase, SearchInput, SearchUseCase,
-    UnrestrictedPathPolicy, WhyInput, WhyUseCase,
+    InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase, ProjectStatusInput,
+    ProjectStatusRefresh, ProjectStatusUseCase, SearchInput, SearchUseCase, UnrestrictedPathPolicy,
+    WhyInput, WhyUseCase,
 };
 
 #[test]
@@ -19,6 +20,10 @@ fn local_public_surface_is_use_case_oriented() {
     let _: GraphUseCase<_> = GraphUseCase::new(context.clone());
     let _: SearchUseCase<_> = SearchUseCase::new(context.clone());
     let _: PatchCheckUseCase<_> = PatchCheckUseCase::new(context);
+    let _: ProjectStatusUseCase<_> = ProjectStatusUseCase::new(LocalContext::new(
+        PathBuf::from("."),
+        UnrestrictedPathPolicy,
+    ));
 
     let _: InitInput = InitInput;
     let _: CheckInput = CheckInput { path: None };
@@ -56,4 +61,11 @@ fn local_public_surface_is_use_case_oriented() {
         patch_path: PathBuf::from("patch.json"),
         artifact: None,
     };
+    let _: ProjectStatusInput = ProjectStatusInput {
+        refresh: ProjectStatusRefresh::None,
+        no_embeddings: true,
+    };
+    let _: ProjectStatusRefresh = ProjectStatusRefresh::Check;
+    let _: ProjectStatusRefresh = ProjectStatusRefresh::Build;
+    let _: adoc_local::EmbeddingsProvider = adoc_local::EmbeddingsProvider::Deterministic;
 }

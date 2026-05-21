@@ -7,7 +7,7 @@ V1 builds directly on the V0 compiler. It does not change the parser, validator,
 - A graph read artifact, `dist/docs.graph.json`, and a search sidecar, `dist/docs.search.json`, that carries one embedding per **Knowledge Object** plus a content hash and a model header.
 - A retrieval module inside `adoc-core` that loads the graph and search artifacts, validates them, and exposes lookup, lexical, and vector indexes behind an internal hybrid ranker.
 - Three CLI commands, `adoc why`, `adoc graph`, and `adoc search`, that read those artifacts only — they never re-run `compile_workspace()`.
-- One new internal port, `EmbeddingProvider`, with a default local adapter and a deterministic in-memory adapter for tests.
+- One new internal port, `EmbeddingProvider`, with a default local adapter and a deterministic hash-based adapter.
 
 ## Goals
 
@@ -59,7 +59,7 @@ crates/adoc-core/src/
     embedding/                       # NEW: embedding adapters
       mod.rs
       fastembed.rs                   # FastEmbedProvider (default)
-      in_memory.rs                   # InMemoryProvider (deterministic)
+      deterministic.rs               # DeterministicProvider
 crates/adoc-cli/src/
   main.rs                            # extended: why + search subcommands
   commands/
@@ -237,7 +237,7 @@ Rules:
 - The port stays `pub(crate)` per ADR-0006. Promoted to `pub` only when an external consumer (LSP, MCP server, alternate CLI) exists.
 - `embed_passages` and `embed_query` are split because most modern embedding models distinguish passage and query encoding (asymmetric retrieval). For models that do not, a single implementation can dispatch both.
 - The default adapter is `FastEmbedProvider` wrapping `fastembed-rs` with `bge-small-en-v1.5`. First run downloads weights via the crate's built-in HF fetcher; subsequent runs read the cached file. The dependency is behind the default-on `embeddings` feature; no-default builds that request embeddings return `embed.model_load_failed` with help to enable the feature or use `--no-embeddings`.
-- `InMemoryProvider` produces deterministic pseudo-embeddings via a small hashing scheme. It is selected only in tests that enable `test-embedding-provider` and set `ADOC_TEST_EMBEDDING_PROVIDER=in-memory`; unset or `fastembed` uses FastEmbed when the `embeddings` feature is available.
+- `DeterministicProvider` produces deterministic pseudo-embeddings via a small hashing scheme. It is selected by config `embeddings.provider: deterministic`, or in tests by setting `ADOC_TEST_EMBEDDING_PROVIDER=deterministic`; unset or `fastembed` uses FastEmbed when the `embeddings` feature is available.
 - Adding a hosted provider later means adding one file in `infrastructure/embedding/` and one CLI flag (`--embedding-provider hosted`); the port does not change.
 
 ## Retrieval Pipeline
@@ -397,12 +397,12 @@ Scope:
 
 - Add `EmbeddingProvider` port in `domain/ports/`.
 - Add `FastEmbedProvider` adapter wrapping `fastembed-rs` with `bge-small-en-v1.5`. First-run weight download cached under the platform user data dir; subsequent runs are offline.
-- Add `InMemoryProvider` adapter that deterministically maps inputs to fixed-dim vectors via a hashing scheme. Used by every test that does not specifically exercise the fastembed adapter.
+- Add `DeterministicProvider` adapter that deterministically maps inputs to fixed-dim vectors via a hashing scheme. Used by tests that do not specifically exercise the fastembed adapter and by offline/reproducible configured builds.
 - Extend `compile_with_provider` with an `EmbeddingProvider` argument plumbed via the application layer; `compile_workspace()` defaults to `FastEmbedProvider`.
 - Add `infrastructure/artifact/search_json.rs` writer/reader.
 - Add per-Object-ID embedding cache: when an existing `dist/docs.search.json` matches the current model and a content hash agrees, the prior vector is reused.
 - Add `--no-embeddings` to `adoc build`. Add diagnostics: `embed.model_load_failed`, `embed.compute_failed`, `embed.unexpected_dim`, `build.embeddings_skipped`.
-- Golden tests over the InMemoryProvider so the search artifact has a stable shape under CI.
+- Golden tests over the deterministic provider so the search artifact has a stable shape under CI.
 - A separate integration test exercises the FastEmbedProvider path and is gated behind a feature flag (`cargo test --features fastembed-it`) so default `cargo test` stays hermetic.
 
 Acceptance:
@@ -469,7 +469,7 @@ Scope:
 
 Acceptance:
 
-- The retrieval-set integration test passes deterministically against `InMemoryProvider`.
+- The retrieval-set integration test passes deterministically against `DeterministicProvider`.
 - The same test passes against `FastEmbedProvider` under the gated CI run.
 - The property suite passes against both providers.
 - Every later change to ranking, embedding composition, or model selection must keep both suites green or update them with a recorded rationale.
@@ -501,14 +501,14 @@ fixtures/
 
 Test guidance:
 
-- Hermetic tests opt into `InMemoryProvider` explicitly with `ADOC_TEST_EMBEDDING_PROVIDER=in-memory`. The fastembed path is the default when the test feature is enabled but the env var is unset, and end-to-end FastEmbed coverage runs under `cargo test --features fastembed-it`.
-- CLI tests that need the production `build_workspace()` boundary without model downloads enable the test-only `test-embedding-provider` feature and set `ADOC_TEST_EMBEDDING_PROVIDER=in-memory`. Production builds do not use this seam.
+- Hermetic tests opt into the deterministic provider explicitly with `ADOC_TEST_EMBEDDING_PROVIDER=deterministic`. The fastembed path is the default when the test feature is enabled but the env var is unset, and end-to-end FastEmbed coverage runs under `cargo test --features fastembed-it`.
+- CLI tests that need the production `build_workspace()` boundary without model downloads enable the test-only `test-embedding-provider` feature and set `ADOC_TEST_EMBEDDING_PROVIDER=deterministic`. Production builds can select the same provider with `embeddings.provider: deterministic`.
 - Golden-test the JSON envelope produced by `--format json` for both `why` and `search`. Schema regressions must update the golden file plus the schema version explicitly.
 - Property suite generated from any graph artifact: every body verbatim → top 1 lexical, every Object ID → top 1 lexical, every owner query covers every claim with that owner.
 
 ## Open Questions Before Scaffolding
 
-None. The next step is scaffolding `domain/retrieval/`, the `EmbeddingProvider` port, and the `InMemoryProvider` adapter.
+None. The next step is scaffolding `domain/retrieval/`, the `EmbeddingProvider` port, and the deterministic adapter.
 
 ## Related ADRs
 

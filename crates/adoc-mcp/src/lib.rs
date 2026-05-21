@@ -1,5 +1,6 @@
 //! MCP adapter for local AgentDoc workflows.
 
+use std::future::Future;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
@@ -9,18 +10,26 @@ use adoc_core::{
 use adoc_local::{
     BuildInput, BuildUseCase, CheckInput, CheckUseCase, GraphInput, GraphUseCase, InitInput,
     InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase, PathPolicy, ProjectConfig,
-    ProjectRootPathPolicy, SearchInput, SearchUseCase, WhyInput, WhyUseCase,
+    ProjectRootPathPolicy, ProjectStatusInput, ProjectStatusRefresh, ProjectStatusUseCase,
+    SearchInput, SearchUseCase, WhyInput, WhyUseCase,
 };
 use rmcp::{
     ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, ErrorData, ServerCapabilities, ServerInfo},
+    model::{
+        CallToolResult, ErrorData, GetPromptRequestParams, GetPromptResult, JsonObject,
+        ListPromptsResult, ListResourcesResult, PaginatedRequestParams, Prompt,
+        ReadResourceRequestParams, ReadResourceResult, Resource, ServerCapabilities, ServerInfo,
+    },
+    service::{MaybeSendFuture, RequestContext, RoleServer},
     tool, tool_handler, tool_router,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 mod envelope;
+mod prompts;
+mod resources;
 
 use envelope::command_envelope;
 
@@ -155,6 +164,42 @@ impl AgentDocMcpServer {
         }
     }
 
+    pub fn run_project_status(
+        &self,
+        params: ProjectStatusParams,
+    ) -> McpAdapterResult<serde_json::Value> {
+        let context = self.context(params.project_root)?;
+        let outcome = ProjectStatusUseCase::new(context).run(ProjectStatusInput {
+            refresh: parse_project_status_refresh(params.refresh.as_deref())?,
+            no_embeddings: params.no_embeddings,
+        })?;
+        serde_json::to_value(outcome).map_err(Into::into)
+    }
+
+    pub fn list_agent_resources(&self) -> Vec<Resource> {
+        resources::list()
+    }
+
+    pub fn read_agent_resource(&self, uri: &str) -> McpAdapterResult<ReadResourceResult> {
+        resources::read(uri).ok_or_else(|| {
+            McpAdapterError::InvalidArguments(format!("unknown AgentDoc resource URI {uri:?}"))
+        })
+    }
+
+    pub fn list_agent_prompts(&self) -> Vec<Prompt> {
+        prompts::list()
+    }
+
+    pub fn get_agent_prompt(
+        &self,
+        name: &str,
+        arguments: Option<JsonObject>,
+    ) -> McpAdapterResult<GetPromptResult> {
+        prompts::get(name, arguments).ok_or_else(|| {
+            McpAdapterError::InvalidArguments(format!("unknown AgentDoc prompt {name:?}"))
+        })
+    }
+
     fn context(
         &self,
         override_root: Option<PathBuf>,
@@ -260,13 +305,72 @@ impl AgentDocMcpServer {
             .map(CallToolResult::structured)
             .map_err(adapter_error)
     }
+
+    #[tool(
+        name = "adoc_project_status",
+        description = "Inspect AgentDoc project readiness. refresh is one of none, check, or build; default is none. build may write configured artifacts."
+    )]
+    pub fn adoc_project_status(
+        &self,
+        Parameters(params): Parameters<ProjectStatusParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_project_status(params)
+            .map(CallToolResult::structured)
+            .map_err(adapter_error)
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for AgentDocMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .enable_prompts()
+                .build(),
+        )
             .with_instructions("AgentDoc local MCP gateway over compiled artifacts, source checks, builds, graph traversal, search, and patch validation.")
+    }
+
+    fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListResourcesResult, ErrorData>> + MaybeSendFuture + '_ {
+        std::future::ready(Ok(ListResourcesResult::with_all_items(
+            self.list_agent_resources(),
+        )))
+    }
+
+    fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ReadResourceResult, ErrorData>> + MaybeSendFuture + '_ {
+        std::future::ready(
+            self.read_agent_resource(&request.uri)
+                .map_err(adapter_error),
+        )
+    }
+
+    fn list_prompts(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListPromptsResult, ErrorData>> + MaybeSendFuture + '_ {
+        std::future::ready(Ok(prompts::list_result()))
+    }
+
+    fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<GetPromptResult, ErrorData>> + MaybeSendFuture + '_ {
+        std::future::ready(
+            self.get_agent_prompt(&request.name, request.arguments)
+                .map_err(adapter_error),
+        )
     }
 }
 
@@ -348,6 +452,15 @@ pub enum PatchInput {
     Inline { patch: serde_json::Value },
 }
 
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectStatusParams {
+    pub project_root: Option<PathBuf>,
+    pub refresh: Option<String>,
+    #[serde(default)]
+    pub no_embeddings: bool,
+}
+
 fn resolve_graph_artifact_for_inline_patch<P>(
     context: &LocalContext<P>,
     artifact: Option<PathBuf>,
@@ -396,6 +509,17 @@ fn parse_direction(value: Option<&str>) -> McpAdapterResult<Option<GraphDirectio
             ))),
         })
         .transpose()
+}
+
+fn parse_project_status_refresh(value: Option<&str>) -> McpAdapterResult<ProjectStatusRefresh> {
+    match value.unwrap_or("none") {
+        "none" => Ok(ProjectStatusRefresh::None),
+        "check" => Ok(ProjectStatusRefresh::Check),
+        "build" => Ok(ProjectStatusRefresh::Build),
+        other => Err(McpAdapterError::InvalidArguments(format!(
+            "unsupported refresh {other:?}; expected none, check, or build"
+        ))),
+    }
 }
 
 fn adapter_error(error: McpAdapterError) -> ErrorData {

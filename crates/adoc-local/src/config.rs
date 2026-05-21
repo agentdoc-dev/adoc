@@ -25,6 +25,7 @@ pub struct ConfigOutputs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingsProvider {
     Local,
+    Deterministic,
     None,
 }
 
@@ -124,12 +125,13 @@ impl RawProjectConfig {
         let embeddings_provider = match self.embeddings {
             Some(embeddings) => match embeddings.provider.as_str() {
                 "local" => EmbeddingsProvider::Local,
+                "deterministic" => EmbeddingsProvider::Deterministic,
                 "none" => EmbeddingsProvider::None,
                 provider => {
                     return Err(LocalError::ConfigInvalid {
                         path: path.to_path_buf(),
                         message: format!(
-                            "unsupported embeddings provider {provider:?}; expected \"local\" or \"none\""
+                            "unsupported embeddings provider {provider:?}; expected \"local\", \"deterministic\", or \"none\""
                         ),
                     });
                 }

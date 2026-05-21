@@ -60,6 +60,7 @@ pub enum DiagnosticCode {
     SearchArtifactMissing,
     SearchModelMismatch,
     SearchHashDrift,
+    SearchDeterministicQuality,
     GraphObjectNotFound,
     PatchInvalidDocument,
     PatchValidationFailed,
@@ -108,6 +109,7 @@ impl DiagnosticCode {
             DiagnosticCode::SearchArtifactMissing,
             DiagnosticCode::SearchModelMismatch,
             DiagnosticCode::SearchHashDrift,
+            DiagnosticCode::SearchDeterministicQuality,
             DiagnosticCode::GraphObjectNotFound,
             DiagnosticCode::PatchInvalidDocument,
             DiagnosticCode::PatchValidationFailed,
@@ -156,6 +158,7 @@ impl DiagnosticCode {
             DiagnosticCode::SearchArtifactMissing => "search.artifact_missing",
             DiagnosticCode::SearchModelMismatch => "search.model_mismatch",
             DiagnosticCode::SearchHashDrift => "search.hash_drift",
+            DiagnosticCode::SearchDeterministicQuality => "search.deterministic_quality",
             DiagnosticCode::GraphObjectNotFound => "graph.object_not_found",
             DiagnosticCode::PatchInvalidDocument => "patch.invalid_document",
             DiagnosticCode::PatchValidationFailed => "patch.validation_failed",
@@ -274,6 +277,9 @@ impl DiagnosticCode {
             DiagnosticCode::SearchHashDrift => {
                 "Re-run `adoc build` to regenerate dist/docs.search.json from the current graph artifact."
             }
+            DiagnosticCode::SearchDeterministicQuality => {
+                "Use a semantic embedding provider for quality-sensitive retrieval; deterministic embeddings are repeatable but non-semantic."
+            }
             DiagnosticCode::GraphObjectNotFound => {
                 "Use an object ID present in the loaded graph artifact, or rebuild docs.graph.json."
             }
@@ -361,6 +367,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "search.artifact_missing",
     "search.model_mismatch",
     "search.hash_drift",
+    "search.deterministic_quality",
     "graph.object_not_found",
     "patch.invalid_document",
     "patch.validation_failed",

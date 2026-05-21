@@ -2,7 +2,7 @@
 
 This roadmap converts the broad PRD into small tracer-bullet milestones. A milestone is not complete just because one subsystem exists; it is complete when a user can start with `.adoc` source, run the `adoc` CLI, receive useful diagnostics, and get both human HTML and graph JSON outputs.
 
-The initial product is a local CLI for native AgentDoc authoring in Git repositories. The compiler, graph artifact, local retrieval loop, hybrid search, graph traversal, retrieval evaluation harness, and V1.5 local workflow are now implemented. The next product bet is an agent patch format: agents should be able to propose object-level semantic changes that the CLI can validate before any source rewrite or team workflow exists.
+The initial product is a local CLI for native AgentDoc authoring in Git repositories. The compiler, graph artifact, local retrieval loop, hybrid search, graph traversal, retrieval evaluation harness, local workflow, agent patch validation, and local MCP gateway are now implemented. The next product bet is team CI and review: AgentDoc should turn object-level changes, proof obligations, and ownership into useful pull-request feedback.
 
 V0 implementation stack: Rust for the `adoc` CLI, parser, validator, compiler, HTML renderer, and graph JSON emitter. The Rust project starts as a Cargo workspace with `crates/adoc-cli` for command-line behavior and `crates/adoc-core` for reusable compiler behavior. Future editor, web, and agent integrations should consume the compiled artifacts or core library rather than own the source grammar.
 
@@ -33,11 +33,14 @@ Implemented:
 - V1 local retrieval: `adoc why`, `adoc graph`, lexical search, semantic search, hybrid search, graph relation filters, and retrieval JSON envelopes.
 - V1 build artifacts: `dist/docs.html`, `dist/docs.graph.json`, and optional `dist/docs.search.json` with `graph_artifact_hash` drift detection.
 - V1.5 local workflow: `adoc init`, minimal `agentdoc.config.yaml`, config-backed command defaults, local embedding provider selection, and stale-by-expiration diagnostics.
+- V2 agent patch validation: `adoc.patch.v0`, graph `content_hash` preconditions, inline/file patch validation, `adoc.patch.check.v0`, diffs, affected relations, diagnostics, and proof obligations.
+- V2.1 local MCP gateway: MCP tools for init, check, build, why, graph, search, and patch-check over the shared local workflow layer.
+- V2.2 agent usage contract: MCP-discoverable guidance resources, pinned workflow prompts, and `adoc_project_status` with `adoc.project.status.v0`.
 - Billing pilot retrieval harness: 30+ Knowledge Objects, retrieval-set fixtures, property-style search invariants, and docs for retrieval maintenance.
 
 Next:
 
-- V2 agent patch format and validation over compiled graph artifacts.
+- V3 team CI and review.
 
 Later:
 
@@ -288,7 +291,7 @@ Implemented slices:
 
 - V1.1 object lookup: graph-artifact loading, exact Object ID lookup, `adoc why`, retrieval diagnostics, and retrieval JSON output.
 - V1.2 lexical search: BM25 over graph records, exact and prefix Object ID pins, metadata filters, deterministic empty-result behavior, and lexical JSON matches.
-- V1.3 embedding build pipeline: `EmbeddingProvider` port, FastEmbed adapter, deterministic in-memory test adapter, embedding cache, `docs.search.json`, model mismatch diagnostics, and `--no-embeddings`.
+- V1.3 embedding build pipeline: `EmbeddingProvider` port, FastEmbed adapter, deterministic hash-based provider, embedding cache, `docs.search.json`, model mismatch diagnostics, and `--no-embeddings`.
 - V1.4 semantic retrieval: brute-force cosine vector index, `--semantic`, search-artifact drift warnings, model mismatch rejection, and vector rank metadata.
 - V1.5 local workflow: hybrid search default, `adoc init`, minimal `agentdoc.config.yaml`, config-backed artifact defaults, local embedding provider selection, stale-by-expiration diagnostics, and docs for the local workflow.
 - Retrieval evaluation: billing pilot growth, retrieval-set fixtures, property-style invariants, and [v1-retrieval.md](v1-retrieval.md) maintenance guidance.
@@ -352,6 +355,28 @@ Acceptance:
 - Build/init writes are constrained by a project-root sandbox.
 - Patch validation accepts either a patch file path or inline `adoc.patch.v0` JSON.
 - MCP does not apply patches, approve knowledge, rewrite source from patches, or introduce hosted review state.
+
+## V2.2: Agent Usage Contract and MCP Guidance
+
+V2.2 makes the MCP gateway self-describing enough for agents to use safely without guessing tool order, artifact readiness, or wire contracts.
+
+Acceptance:
+
+- MCP exposes versioned guidance resources under `adoc://agent/v0/...` for usage, tool order, answer citations, patch proposals, project status, dogfood, and schema references.
+- MCP exposes JSON Schema resources for `adoc.retrieval.v0`, `adoc.graph.traversal.v0`, `adoc.patch.v0`, `adoc.patch.check.v0`, `adoc.project.status.v0`, and `adoc.mcp.command.v0`.
+- MCP exposes versioned workflow prompts with pinned v0 aliases: answer with citations, propose patch, inspect project status, and billing pilot dogfood.
+- `adoc_project_status` returns `adoc.project.status.v0`, defaults to read-only inspection, and only runs validation or build behavior when `refresh` is explicitly `check` or `build`.
+- Static MCP resources and prompts never mutate files.
+- `adoc_project_status refresh: "build"` uses the same local build behavior as `adoc_build`; embeddings honor config unless `no_embeddings` is true.
+
+Design guidance:
+
+- Keep domain/application behavior in `adoc-core`.
+- Keep protocol-free orchestration in `adoc-local`.
+- Keep MCP protocol handling, resource exposure, prompt exposure, and status serialization in `adoc-mcp`.
+- Keep unversioned prompt aliases pinned to v0, not floating latest.
+- Do not expose graph/search artifact DTOs as public Rust API.
+- Do not add patch application, source rewriting, hosted review state, or permission enforcement in V2.2.
 
 ## V3: Team CI and Review
 
@@ -504,6 +529,7 @@ Questions to resolve later:
 The currently resolved and implemented local cut is:
 
 - Product surface: local CLI.
+- Agent surface: local MCP gateway with tools, resources, prompts, and project status.
 - Command name: `adoc`.
 - Implementation stack: Rust.
 - Rust layout: two-crate Cargo workspace with `adoc-cli` and `adoc-core`.
@@ -515,6 +541,7 @@ The currently resolved and implemented local cut is:
 - Source extension: `.adoc`.
 - Authoring workflow: native AgentDoc Source first.
 - Commands: `adoc init`, `adoc check`, `adoc build`, `adoc why`, `adoc graph`, `adoc search`.
+- MCP tools: `adoc_init`, `adoc_check`, `adoc_build`, `adoc_why`, `adoc_graph`, `adoc_search`, `adoc_patch_check`, `adoc_project_status`.
 - Modes: strict mode only.
 - Config: minimal `agentdoc.config.yaml` for local docs path, outputs, and `embeddings.provider: local|none`.
 - Initial objects: `claim`, `decision`, `warning`, `glossary`.

@@ -783,8 +783,8 @@ mod tests {
             },
             &StubGraphArtifactReader { document },
             Some(SearchModelHeader {
-                id: "in-memory".to_string(),
-                provider: "test".to_string(),
+                id: "hash-v1".to_string(),
+                provider: "deterministic".to_string(),
                 dim: 2,
             }),
         );
@@ -822,8 +822,8 @@ mod tests {
         SearchArtifactDocument {
             schema_version: "adoc.search.v0".to_string(),
             model: SearchModelHeader {
-                id: "in-memory".to_string(),
-                provider: "test".to_string(),
+                id: "hash-v1".to_string(),
+                provider: "deterministic".to_string(),
                 dim: 2,
             },
             graph_artifact_hash: graph_artifact_hash.to_string(),

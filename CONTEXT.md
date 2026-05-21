@@ -112,6 +112,22 @@ _Avoid_: public graph DTO construction, public search DTO construction, renderer
 The local `rmcp` server in `crates/adoc-mcp` that exposes AgentDoc CLI-equivalent tools to agents. It is a driving adapter over `adoc-local` and `adoc-core`, uses a project-root path sandbox, and returns the same stable retrieval, graph traversal, and patch-check envelopes where those contracts already exist.
 _Avoid_: hosted review state, patch application, source rewriting from patches, graph/search DTO exposure
 
+**Agent Usage Contract**:
+The V2.2 stable local contract that tells agents how to inspect project readiness, retrieve and cite knowledge, and validate patch proposals through MCP without guessing tool order or private artifact shapes.
+_Avoid_: implicit agent habits, shell wrapper convention, unversioned prompt drift
+
+**Agent Guidance Resource**:
+A versioned MCP resource under `adoc://agent/v0/...` that exposes canonical Markdown guidance or JSON Schema documentation for the Agent Usage Contract.
+_Avoid_: duplicated prompt strings, docs hidden from MCP discovery, private README scraping
+
+**Agent Workflow Prompt**:
+A versioned MCP prompt, with a pinned unversioned v0 alias, that packages a repeatable AgentDoc workflow such as answer-with-citations, propose-patch, inspect-project-status, or billing-pilot dogfood.
+_Avoid_: floating latest prompt aliases, ad hoc per-agent instructions
+
+**Project Status Report**:
+The `adoc.project.status.v0` envelope returned by `adoc_project_status`. It reports config discovery, resolved paths, refresh diagnostics, artifact load status, readable graph/search schema versions, cheap graph object counts, and readiness booleans for retrieval, semantic search, and patch validation.
+_Avoid_: probing random files, assuming artifacts exist, mutating source during inspection
+
 **V0 Design Contract**:
 A short implementation design document that fixes the initial Rust module boundaries, core API shape, diagnostic shape, AST sketch, and artifact contracts before scaffolding.
 _Avoid_: second PRD, implementation without a contract
@@ -160,6 +176,14 @@ _Avoid_: source-file checksum, search embedding hash, approval token
 A single-operation JSON proposal with schema version `adoc.patch.v0`, validated by `adoc patch --check`. It expresses patch intent against compiled artifacts only; it does not rewrite AgentDoc Source, approve knowledge, or create hosted review state.
 _Avoid_: source rewrite format, migration script, approval record
 
+**Agent Contract Schema**:
+A versioned JSON Schema resource under `docs/agent/v0/schema/` that documents a stable agent wire contract, such as retrieval envelopes, graph traversal envelopes, patch input, patch check output, project status, and MCP command envelopes. These schemas are authored contracts and are tested against representative serialized values.
+_Avoid_: generated-only schema, undocumented DTO dump, untested prompt prose
+
+**Artifact Readiness**:
+The validated ability of Graph and Search artifacts to support retrieval, semantic search, or patch validation. Readiness is inspected in `adoc-core` using artifact readers, graph index validation, model-header checks, graph-hash drift detection, and diagnostics; `adoc-local` only orchestrates Project Status around those inspectors.
+_Avoid_: raw JSON sniffing in adapters, existence-only readiness, assuming stale artifacts are usable
+
 **Patch Validation**:
 Artifact-only validation of one **Agent Patch** against a **Graph Artifact**. It checks Object IDs, required reasons, operation-specific fields, target existence, **Base Hash** freshness, relation targets, create placement hints, lifecycle intent, and proof obligations, then emits an `adoc.patch.check.v0` review report.
 _Avoid_: applying edits, mutating graph JSON, bypassing source review
@@ -169,8 +193,12 @@ A review-time requirement emitted when a patch touches knowledge that needs rene
 _Avoid_: validation error by default, approval, automated trust upgrade
 
 **Embedding Provider**:
-The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the `InMemoryProvider` adapter is used in every hermetic test.
+The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the deterministic adapter is available for repeatable local/offline use.
 _Avoid_: hosted-only embedding pipeline, public plug-in registry, per-call API key configuration
+
+**Deterministic Embedding Provider**:
+A production-configurable, repeatable hash-based embedding provider selected with `embeddings.provider: deterministic`. It emits `model: { provider: "deterministic", id: "hash-v1", dim: 384 }`, supports offline build/search parity, and must surface warnings because its vectors are non-semantic and lower quality than semantic model providers.
+_Avoid_: hidden debug-only provider, calling deterministic vectors semantic quality, model-header mismatch between build and query
 
 **Embedding Composition**:
 The canonical input string each Knowledge Object is reduced to before embedding: `{kind}: {body_plain_text}\n[id: {id}] [status: {status}] [owner: {owner}]`. Part of the `adoc.search.v0` contract; changing it requires a schema-version bump.
@@ -230,6 +258,8 @@ _Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
 - **V0 Parser Architecture** keeps diagnostics and source spans product-specific while leaving room to replace parser internals later.
 - **V0 Core API** keeps the public core contract small; lower-level APIs can be exposed when LSP, web preview, semantic diff, or other integrations need them.
 - **Public Core Surface** exposes serialized artifacts and retrieval envelopes, not graph/search artifact DTOs.
+- The **Agent Usage Contract** is MCP-discoverable through **Agent Guidance Resources**, **Agent Workflow Prompts**, and the **Project Status Report**.
+- A **Project Status Report** may run check/build refreshes only when explicitly requested; static **Agent Guidance Resources** never mutate files.
 - **V0 Design Contract** guides scaffolding without replacing the roadmap or PRD.
 - **Object ID** values are validated in v0 and form the citation target for humans and agents.
 - **Diagnostic Code** values are semantic in v0; numeric aliases are deferred.
@@ -293,3 +323,5 @@ _Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
 - "Search ranking" could mean a multi-factor weighted score from the PRD - resolved: V1 uses **Hybrid Retrieval** via parameter-free RRF; lifecycle, freshness, and authority remain filters, not score modifiers.
 - "Agent surface" could mean an MCP/JSON-RPC retrieval server in V1 - resolved: V1 ships only CLI commands plus a stable `--format json` envelope (`adoc.retrieval.v0`); a server is deferred.
 - "Graph ranking" could mean boosting search results by relation distance - resolved: **Graph Retrieval** is explicit candidate filtering only; unfiltered search ranking is unchanged.
+- "MCP guidance" could mean only prose in repository docs - resolved: V2.2 exposes **Agent Guidance Resources** and **Agent Workflow Prompts** directly through the **MCP Agent Gateway**.
+- "Project readiness" could mean agents should infer state from artifact files - resolved: agents use the **Project Status Report** before retrieval, semantic search, or patch validation.

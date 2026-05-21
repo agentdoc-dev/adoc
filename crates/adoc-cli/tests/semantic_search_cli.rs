@@ -23,7 +23,7 @@ fn run_search_json(pilot: &V1_4Pilot, query: &str, semantic: bool) -> serde_json
     }
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_adoc"))
         .args(&args)
-        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
         .output()
         .expect("adoc search runs");
     serde_json::from_slice(&output.stdout).unwrap_or_else(|e| {
@@ -66,7 +66,7 @@ fn semantic_search_without_artifact_errors_out() {
             "--format",
             "json",
         ])
-        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
         .output()
         .expect("adoc runs");
     assert_eq!(output.status.code(), Some(2));
@@ -159,7 +159,7 @@ fn lexical_flag_remains_escape_hatch_when_search_artifact_is_present() {
             "--top",
             "5",
         ])
-        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
         .output()
         .expect("adoc search runs");
     assert_eq!(output.status.code(), Some(0));
@@ -167,7 +167,7 @@ fn lexical_flag_remains_escape_hatch_when_search_artifact_is_present() {
     assert_eq!(envelope["records"][0]["match"]["mode"], "lexical");
 }
 
-/// Smoke check on JSON envelope serialization stability for the in-memory
+/// Smoke check on JSON envelope serialization stability for the deterministic
 /// provider. Determinism on the production fastembed path is asserted in
 /// `paraphrase_recall::fastembed_semantic_results_are_deterministic_across_two_runs`.
 #[test]
@@ -195,7 +195,7 @@ fn search_model_mismatch_disables_semantic_in_cli() {
             "--format",
             "json",
         ])
-        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(2));

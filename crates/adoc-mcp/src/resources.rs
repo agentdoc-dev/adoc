@@ -1,0 +1,179 @@
+use rmcp::model::{AnnotateAble, RawResource, ReadResourceResult, Resource, ResourceContents};
+
+#[derive(Debug, Clone, Copy)]
+struct AgentResource {
+    uri: &'static str,
+    name: &'static str,
+    title: &'static str,
+    description: &'static str,
+    mime_type: &'static str,
+    contents: &'static str,
+}
+
+const MARKDOWN: &str = "text/markdown";
+const JSON_SCHEMA: &str = "application/schema+json";
+
+const RESOURCES: &[AgentResource] = &[
+    AgentResource {
+        uri: "adoc://agent/v0/usage-contract",
+        name: "agent-usage-contract",
+        title: "Agent Usage Contract",
+        description: "V2.2 stable AgentDoc agent usage rules.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/usage-contract.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/tool-guide",
+        name: "agent-tool-guide",
+        title: "Agent Tool Guide",
+        description: "Recommended V2.2 MCP tool order for AgentDoc.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/tool-guide.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/answer-contract",
+        name: "agent-answer-contract",
+        title: "Agent Answer Contract",
+        description: "Citation requirements for AgentDoc answers.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/answer-contract.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/patch-contract",
+        name: "agent-patch-contract",
+        title: "Agent Patch Contract",
+        description: "Read-only AgentDoc patch proposal rules.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/patch-contract.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/project-status-guide",
+        name: "agent-project-status-guide",
+        title: "Project Status Guide",
+        description: "How to interpret adoc.project.status.v0.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/project-status-guide.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/dogfood-billing-pilot",
+        name: "agent-dogfood-billing-pilot",
+        title: "Billing Pilot Dogfood",
+        description: "V2.2 dogfood flow for examples/billing-pilot.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/dogfood-billing-pilot.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/retrieval",
+        name: "schema-retrieval",
+        title: "Retrieval Schema Reference",
+        description: "Markdown reference for adoc.retrieval.v0.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/schema/retrieval.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/graph-traversal",
+        name: "schema-graph-traversal",
+        title: "Graph Traversal Schema Reference",
+        description: "Markdown reference for adoc.graph.traversal.v0.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/schema/graph-traversal.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/patch",
+        name: "schema-patch",
+        title: "Patch Schema Reference",
+        description: "Markdown reference for adoc.patch.v0 and adoc.patch.check.v0.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/schema/patch.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/project-status",
+        name: "schema-project-status",
+        title: "Project Status Schema Reference",
+        description: "Markdown reference for adoc.project.status.v0.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/schema/project-status.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/mcp-command",
+        name: "schema-mcp-command",
+        title: "MCP Command Schema Reference",
+        description: "Markdown reference for adoc.mcp.command.v0.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/schema/mcp-command.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/retrieval-envelope.json",
+        name: "schema-retrieval-envelope-json",
+        title: "Retrieval Envelope JSON Schema",
+        description: "JSON Schema for adoc.retrieval.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/retrieval-envelope.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/graph-traversal-envelope.json",
+        name: "schema-graph-traversal-envelope-json",
+        title: "Graph Traversal Envelope JSON Schema",
+        description: "JSON Schema for adoc.graph.traversal.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/graph-traversal-envelope.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/patch-input.json",
+        name: "schema-patch-input-json",
+        title: "Patch Input JSON Schema",
+        description: "JSON Schema for adoc.patch.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/patch-input.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/patch-check.json",
+        name: "schema-patch-check-json",
+        title: "Patch Check JSON Schema",
+        description: "JSON Schema for adoc.patch.check.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/patch-check.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/project-status.json",
+        name: "schema-project-status-json",
+        title: "Project Status JSON Schema",
+        description: "JSON Schema for adoc.project.status.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/project-status.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/mcp-command.json",
+        name: "schema-mcp-command-json",
+        title: "MCP Command JSON Schema",
+        description: "JSON Schema for adoc.mcp.command.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/mcp-command.json"),
+    },
+];
+
+pub fn list() -> Vec<Resource> {
+    RESOURCES
+        .iter()
+        .map(|resource| {
+            RawResource::new(resource.uri, resource.name)
+                .with_title(resource.title)
+                .with_description(resource.description)
+                .with_mime_type(resource.mime_type)
+                .with_size(resource.contents.len() as u32)
+                .no_annotation()
+        })
+        .collect()
+}
+
+pub fn read(uri: &str) -> Option<ReadResourceResult> {
+    RESOURCES
+        .iter()
+        .find(|resource| resource.uri == uri)
+        .map(|resource| {
+            ReadResourceResult::new(vec![
+                ResourceContents::text(resource.contents, resource.uri)
+                    .with_mime_type(resource.mime_type),
+            ])
+        })
+}

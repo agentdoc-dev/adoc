@@ -29,7 +29,7 @@ pub(crate) fn workspace_fixture_path(relative: &str) -> PathBuf {
 #[allow(dead_code)]
 pub(crate) fn adoc_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
-    command.env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory");
+    command.env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic");
     command
 }
 

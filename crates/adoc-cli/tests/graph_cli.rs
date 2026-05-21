@@ -230,7 +230,7 @@ fn graph_cli_styled_color_always_emits_ansi_codes() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&workspace.root)
-        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
         .env_remove("NO_COLOR")
         .args([
             "graph",

@@ -12,7 +12,7 @@ use support::{TestWorkspace, fixture_path};
 
 fn adoc_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
-    command.env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory");
+    command.env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic");
     command
 }
 
@@ -424,7 +424,7 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
     let output_directory = workspace.root.join("dist");
 
     let output = adoc_command()
-        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),
@@ -456,8 +456,8 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
     let search_json: serde_json::Value =
         serde_json::from_str(&search_json_text).expect("search JSON is valid");
     assert_eq!(search_json["schema_version"], "adoc.search.v0");
-    assert_eq!(search_json["model"]["id"], "in-memory");
-    assert_eq!(search_json["model"]["provider"], "test");
+    assert_eq!(search_json["model"]["id"], "hash-v1");
+    assert_eq!(search_json["model"]["provider"], "deterministic");
     assert_eq!(search_json["model"]["dim"], 384);
     assert_eq!(search_json["embeddings"][0]["id"], "docs.search-ready");
 }
@@ -534,7 +534,7 @@ fn build_reuses_search_artifact_cache_for_unchanged_source() {
 
     for _ in 0..2 {
         let output = adoc_command()
-            .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+            .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
             .args([
                 "build",
                 source.to_str().expect("source path is utf-8"),
@@ -560,7 +560,7 @@ fn build_reuses_search_artifact_cache_for_unchanged_source() {
     let first_vector = first_search["embeddings"][0]["vector"].clone();
 
     let output = adoc_command()
-        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
         .args([
             "build",
             source.to_str().expect("source path is utf-8"),

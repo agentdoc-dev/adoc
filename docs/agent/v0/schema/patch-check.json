@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/patch-check.json",
+  "title": "AgentDoc Patch Check",
+  "type": "object",
+  "required": ["schema_version", "valid", "accepted_for_review", "operation", "diffs", "affected_relations", "proof_obligations", "required_follow_up", "diagnostics"],
+  "properties": {
+    "schema_version": { "const": "adoc.patch.check.v0" },
+    "valid": { "type": "boolean" },
+    "accepted_for_review": { "type": "boolean" },
+    "target": { "type": "string" },
+    "operation": { "enum": ["", "replace_body", "update_fields", "create_object", "supersede", "revoke"] },
+    "diffs": { "type": "array", "items": { "type": "object" } },
+    "affected_relations": { "type": "array", "items": { "type": "object" } },
+    "proof_obligations": { "type": "array", "items": { "type": "object" } },
+    "required_follow_up": { "type": "array", "items": { "type": "string" } },
+    "diagnostics": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": false
+}

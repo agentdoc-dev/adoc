@@ -1,27 +1,35 @@
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider, ModelId};
 
+pub(crate) const MODEL_ID: &str = "hash-v1";
+pub(crate) const PROVIDER_ID: &str = "deterministic";
+pub(crate) const DEFAULT_DIM: usize = 384;
+
 #[derive(Debug, Clone)]
-pub(crate) struct InMemoryProvider {
+pub(crate) struct DeterministicProvider {
     model_id: ModelId,
     dim: usize,
 }
 
-impl InMemoryProvider {
+impl DeterministicProvider {
+    pub(crate) fn default() -> Self {
+        Self::new(DEFAULT_DIM)
+    }
+
     pub(crate) fn new(dim: usize) -> Self {
         Self {
-            model_id: ModelId::new("in-memory", "test"),
+            model_id: ModelId::new(MODEL_ID, PROVIDER_ID),
             dim,
         }
     }
 
-    /// Returns the in-memory provider's `SearchModelHeader` without
+    /// Returns the deterministic provider's `SearchModelHeader` without
     /// constructing an instance.
     #[allow(dead_code)]
-    pub(crate) fn metadata_header(dim: usize) -> crate::domain::artifact::SearchModelHeader {
+    pub(crate) fn metadata_header() -> crate::domain::artifact::SearchModelHeader {
         crate::domain::artifact::SearchModelHeader {
-            id: "in-memory".to_string(),
-            provider: "test".to_string(),
-            dim,
+            id: MODEL_ID.to_string(),
+            provider: PROVIDER_ID.to_string(),
+            dim: DEFAULT_DIM,
         }
     }
 
@@ -32,7 +40,7 @@ impl InMemoryProvider {
     }
 }
 
-impl EmbeddingProvider for InMemoryProvider {
+impl EmbeddingProvider for DeterministicProvider {
     fn model_id(&self) -> &ModelId {
         &self.model_id
     }
@@ -63,11 +71,11 @@ fn stable_component(bytes: &[u8], seed: u64) -> f32 {
 #[cfg(test)]
 mod tests {
     use crate::domain::ports::embedding_provider::EmbeddingProvider;
-    use crate::infrastructure::embedding::in_memory::InMemoryProvider;
+    use crate::infrastructure::embedding::deterministic::DeterministicProvider;
 
     #[test]
-    fn in_memory_provider_returns_deterministic_vectors_with_configured_dim() {
-        let provider = InMemoryProvider::new(4);
+    fn deterministic_provider_returns_repeatable_vectors_with_configured_dim() {
+        let provider = DeterministicProvider::new(4);
 
         let first = provider
             .embed_passages(&["Credits apply after payment.".to_string()])
@@ -76,8 +84,8 @@ mod tests {
             .embed_passages(&["Credits apply after payment.".to_string()])
             .expect("passage embedding succeeds");
 
-        assert_eq!(provider.model_id().id, "in-memory");
-        assert_eq!(provider.model_id().provider, "test");
+        assert_eq!(provider.model_id().id, "hash-v1");
+        assert_eq!(provider.model_id().provider, "deterministic");
         assert_eq!(provider.dim(), 4);
         assert_eq!(first, second);
         assert_eq!(first[0].len(), 4);

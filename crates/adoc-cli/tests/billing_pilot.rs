@@ -49,7 +49,7 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
     let output_directory = workspace.root.join("dist");
     let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&repo_root)
-        .env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory")
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
         .args([
             "build",
             example_path,
@@ -150,8 +150,8 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
     let search_json: Value =
         serde_json::from_str(&search_json_text).expect("search JSON is valid JSON");
     assert_eq!(search_json["schema_version"], "adoc.search.v0");
-    assert_eq!(search_json["model"]["id"], "in-memory");
-    assert_eq!(search_json["model"]["provider"], "test");
+    assert_eq!(search_json["model"]["id"], "hash-v1");
+    assert_eq!(search_json["model"]["provider"], "deterministic");
     assert_eq!(search_json["model"]["dim"], 384);
     assert_eq!(
         search_json["embeddings"]

@@ -29,7 +29,7 @@ struct InitEmbeddings {
 
 fn adoc() -> Command {
     let mut cmd = Command::cargo_bin("adoc").expect("adoc binary is available");
-    cmd.env("ADOC_TEST_EMBEDDING_PROVIDER", "in-memory");
+    cmd.env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic");
     cmd
 }
 

@@ -115,8 +115,8 @@ mod tests {
         let artifact = SearchArtifactDocument {
             schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
             model: SearchModelHeader {
-                id: "in-memory".to_string(),
-                provider: "test".to_string(),
+                id: "hash-v1".to_string(),
+                provider: "deterministic".to_string(),
                 dim: 2,
             },
             graph_artifact_hash: "sha256:graph".to_string(),
@@ -148,8 +148,8 @@ mod tests {
         let artifact = SearchArtifactDocument {
             schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
             model: SearchModelHeader {
-                id: "in-memory".to_string(),
-                provider: "test".to_string(),
+                id: "hash-v1".to_string(),
+                provider: "deterministic".to_string(),
                 dim: 2,
             },
             graph_artifact_hash: "sha256:graph".to_string(),

@@ -386,7 +386,7 @@ mod tests {
     use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider, ModelId};
     use crate::domain::source::SourceFile;
     use crate::infrastructure::artifact::search_json::SUPPORTED_SEARCH_SCHEMA_VERSION;
-    use crate::infrastructure::embedding::in_memory::InMemoryProvider;
+    use crate::infrastructure::embedding::deterministic::DeterministicProvider;
     use crate::infrastructure::source::in_memory::InMemorySourceProvider;
     use chrono::NaiveDate;
     use std::cell::RefCell;
@@ -788,7 +788,7 @@ mod tests {
                 "::\n",
             ),
         ));
-        let embedding_provider = InMemoryProvider::new(4);
+        let embedding_provider = DeterministicProvider::new(4);
 
         let result = build_with_provider(
             &source_provider,
@@ -818,8 +818,8 @@ mod tests {
             .remove(0);
 
         assert_eq!(search.schema_version, SUPPORTED_SEARCH_SCHEMA_VERSION);
-        assert_eq!(search.model.id, "in-memory");
-        assert_eq!(search.model.provider, "test");
+        assert_eq!(search.model.id, "hash-v1");
+        assert_eq!(search.model.provider, "deterministic");
         assert_eq!(search.model.dim, 4);
         assert!(search.graph_artifact_hash.starts_with("sha256:"));
         assert_eq!(search.embeddings.len(), 1);
@@ -829,12 +829,12 @@ mod tests {
     }
 
     #[test]
-    fn build_with_provider_matches_v1_3_in_memory_search_fixture() {
+    fn build_with_provider_matches_v1_3_deterministic_search_fixture() {
         let source_text = fs::read_to_string(repo_fixture_path("v1_3_embed/input.adoc"))
             .expect("fixture source is readable");
         let source_provider = InMemorySourceProvider::new()
             .with_source(source_file("v1_3_embed/input.adoc", &source_text));
-        let embedding_provider = InMemoryProvider::new(4);
+        let embedding_provider = DeterministicProvider::new(4);
 
         let result = build_with_provider(
             &source_provider,
@@ -869,7 +869,7 @@ mod tests {
 
         assert_eq!(
             actual, expected,
-            "in-memory search artifact fixture drifted"
+            "deterministic search artifact fixture drifted"
         );
     }
 

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/graph-traversal-envelope.json",
+  "title": "AgentDoc Graph Traversal Envelope",
+  "type": "object",
+  "required": ["schema_version", "root", "nodes", "edges", "diagnostics"],
+  "properties": {
+    "schema_version": { "const": "adoc.graph.traversal.v0" },
+    "root": { "type": "string" },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "page_id", "distance"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string" },
+          "status": { "type": ["string", "null"] },
+          "page_id": { "type": "string" },
+          "distance": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "target", "relation", "revisit"],
+        "properties": {
+          "source": { "type": "string" },
+          "target": { "type": "string" },
+          "relation": { "enum": ["depends_on", "supersedes", "related_to"] },
+          "revisit": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "diagnostics": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": false
+}

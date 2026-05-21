@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/mcp-command.json",
+  "title": "AgentDoc MCP Command Envelope",
+  "type": "object",
+  "required": ["schema_version", "command", "ok", "exit_code", "result"],
+  "properties": {
+    "schema_version": { "const": "adoc.mcp.command.v0" },
+    "command": { "type": "string" },
+    "ok": { "type": "boolean" },
+    "exit_code": { "type": "integer" },
+    "result": {}
+  },
+  "additionalProperties": false
+}
