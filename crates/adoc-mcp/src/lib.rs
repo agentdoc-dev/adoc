@@ -437,7 +437,6 @@ pub struct SearchParams {
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct AdocPatchCheckParams {
     pub project_root: Option<PathBuf>,
     pub artifact: Option<PathBuf>,

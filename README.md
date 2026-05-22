@@ -168,6 +168,25 @@ cargo run -p adoc-cli --manifest-path ../../Cargo.toml --bin adoc -- check
 cargo run -p adoc-cli --manifest-path ../../Cargo.toml --bin adoc -- build
 ```
 
+### Use From An MCP Agent
+
+AgentDoc also ships a local MCP Agent Gateway for MCP-capable agents:
+
+```bash
+cargo build -p adoc-mcp --release
+```
+
+Configure your MCP client to launch `target/release/adoc-mcp` over stdio with
+the AgentDoc project as the process working directory. The gateway exposes
+`adoc_init`, `adoc_check`, `adoc_build`, `adoc_why`, `adoc_graph`,
+`adoc_search`, `adoc_patch_check`, and `adoc_project_status`, plus versioned
+Agent Guidance Resources and Agent Workflow Prompts.
+
+Agents should begin by reading `adoc://agent/v0/usage-contract`, getting the
+`adoc_answer_with_citations` prompt, and calling `adoc_project_status` before
+retrieval or patch validation. See [docs/mcp-agent-gateway.md](docs/mcp-agent-gateway.md)
+for setup, JSON-RPC examples, and the safety boundary.
+
 ### Install Locally
 
 To install the `adoc` binary from this checkout:
