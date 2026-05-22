@@ -232,6 +232,42 @@ _Avoid_: duplicate exact lookup maps in retrieval sessions, ad-hoc graph scans i
 The V1.6 evaluation harness: `examples/billing-pilot/retrieval-set.yaml` carries 15-20 manually authored queries with `expected_ids` and `must_appear_in_top` thresholds, complemented by a property-based suite that asserts verbatim-body and Object-ID invariants. Both suites run in CI and gate ranking changes.
 _Avoid_: ad-hoc retrieval review, ranking changes without recorded baselines
 
+**Object Change**:
+A DDD entity representing one entry in an **Object Diff**. Sealed enum with variants `Created { record }`, `Deleted { record }`, and `Changed { id, base, head }`. Constructible only via `ObjectDiff::compute`. Holds full before/after `KnowledgeObjectRecord`s on `Changed`, so V3.2 field-level projection is pure additive computation over the aggregate.
+_Avoid_: line-level diff, text-level diff, prose-block diff, rendered-HTML diff
+
+**Object Diff**:
+The V3 aggregate `{ created[], deleted[], changed[] }` produced by `ObjectDiff::compute(&GraphRecord, &GraphRecord)` over two recompiled graph snapshots. Knowledge Object scope only — pages, prose blocks, `contains` edges, and `reference` edges are excluded. Sorted by Object ID; deterministic across runs. Serialized as `adoc.diff.v0`.
+_Avoid_: full-graph diff, semantic diff over rendered output, page-level diff
+
+**Field Change**:
+A sealed `#[non_exhaustive]` enum projection over a `Changed` Object Change. Variants in V3.2: `Body`, `Status`, `Owner`, `VerifiedAt`, `EvidenceAdded`, `EvidenceRemoved`, `RelationAdded`, `RelationRemoved`. V3.3 adds `ImpactsAdded` and `ImpactsRemoved`. Drives type-based dispatch in V3.4 obligation rules.
+_Avoid_: stringly-typed `{ field: String, before, after }`, free-form change descriptions
+
+**Code Impact Path**:
+A repo-relative file path declared on a `claim` or `decision` via the `impacts:` field, parsed into `RelPath`. Authored as a list; stored as non-empty, deduplicated, sorted `NonEmpty<RelPath>`. Opt-in — absence means the object has no source-path impact. Matched strictly per path; globs deferred.
+_Avoid_: absolute path, `..` segment, free-text source description, evidence-as-impact overload
+
+**Impacted Object**:
+A verified Knowledge Object whose `impacts` field intersects the changed-file set returned by `ChangedFilesProvider` for a given base ref. Surfaced in `adoc.review.v0.impact[]`; carries the changed file paths that matched so reviewers see why an object was flagged.
+_Avoid_: heuristic source matching, flagging non-verified objects, flagging without showing why
+
+**Required Reviewer**:
+The `owner` of a changed verified claim or an Impacted Object, aggregated and deduplicated across the diff and impact lists. Surfaced in `adoc.review.v0.required_reviewers[]` and rendered as a top-of-comment `@team-` mention list in markdown output.
+_Avoid_: GitHub/GitLab reviewer mapping (deferred), per-line reviewers, file-pattern owners
+
+**Review Report**:
+The V3 aggregate `{ diff, impact[], required_reviewers[], proof_obligations[], patch_check? }`. Serialized as `adoc.review.v0`. New fields added across V3.4–V3.7 are JSON-optional with empty defaults; schema version stays `v0` for the whole milestone.
+_Avoid_: bumping schema per slice, including rendered HTML, mutating source
+
+**Snapshot Workspace**:
+A RAII handle wrapping a filesystem path. Two variants: workdir (no-op cleanup on drop) or a temporary linked git worktree (drop runs `git worktree remove`). Returned by `SnapshotWorkspaceProvider::checkout`. Existing `FsSourceProvider` reads from the path unchanged.
+_Avoid_: leaking worktrees on panic, sharing tmp paths across processes, mutating the checked-out workdir
+
+**Snapshot Selector**:
+The sealed enum input to a `SnapshotWorkspaceProvider`: `Workdir` or `GitRef(GitRef)`. `GitRef` is an opaque `String` passed verbatim to `git rev-parse`; supports branches, tags, SHAs, and revspecs without reinventing the parser.
+_Avoid_: typed enum over branch/tag/sha, validating refs in the constructor
+
 ## Relationships
 
 - **AgentDoc Source** contains prose and typed blocks that compile into **Knowledge Objects**.

@@ -10,7 +10,7 @@ V0 parser approach: a structured hand-written, line-oriented parser in `adoc-cor
 
 V0 core API: expose one high-level `compile_workspace()` entry point from `adoc-core`. Keep parser, validator, renderer, and artifact modules internal until another real consumer needs lower-level access.
 
-The implementation-level V0 contract lives in [V0-DESIGN.md](V0-DESIGN.md).
+The implementation-level V0 contract lives in [V0-DESIGN.md](V0-DESIGN.md). V1 is captured in [V1-DESIGN.md](V1-DESIGN.md). V3 is captured in [V3-DESIGN.md](V3-DESIGN.md).
 
 ## Roadmap Rules
 
@@ -40,7 +40,7 @@ Implemented:
 
 Next:
 
-- V3 team CI and review.
+- V3 team CI and review. Seven vertical slices V3.1 through V3.7 land in dependency order. The implementation contract is [V3-DESIGN.md](V3-DESIGN.md). The architecture decisions are [adr/0018-v3-review-architecture.md](adr/0018-v3-review-architecture.md), [adr/0019-source-path-impact-via-impacts-field.md](adr/0019-source-path-impact-via-impacts-field.md), and [adr/0020-shared-proof-obligation-across-aggregates.md](adr/0020-shared-proof-obligation-across-aggregates.md).
 
 Later:
 
@@ -380,35 +380,176 @@ Design guidance:
 
 ## V3: Team CI and Review
 
-V3 brings AgentDoc into pull-request workflows.
+V3 brings AgentDoc into pull-request workflows. It adds two stable wire envelopes — `adoc.diff.v0` for mechanical object diffs and `adoc.review.v0` for enriched review reports — plus the CLI commands `adoc diff` and `adoc review`, the MCP tools `adoc_diff` and `adoc_review`, and a new opt-in `impacts:` field on `claim` and `decision` objects for source-path impact analysis.
 
-V3 should start with local Git and compiled artifacts. GitHub, GitLab, hosted review state, and blocking CI policies should wait until object-level diffs, patch validation, and impact reports are useful in local runs.
+V3 starts with local Git and recomputed graph artifacts. The driving adapter checks out a temporary linked git worktree (`git worktree add --detach`) and runs the existing V0 compile pipeline twice — once at the base ref, once at the workdir — so users keep their `dist/` gitignored and no commit discipline is imposed. GitHub, GitLab, hosted review state, and blocking CI policies stay deferred until object-level diffs, patch validation, and impact reports prove themselves in local runs.
 
-Suggested tracer-bullet slices:
+The implementation-level V3 contract lives in [V3-DESIGN.md](V3-DESIGN.md). The architecture decisions are recorded in [adr/0018-v3-review-architecture.md](adr/0018-v3-review-architecture.md), [adr/0019-source-path-impact-via-impacts-field.md](adr/0019-source-path-impact-via-impacts-field.md), and [adr/0020-shared-proof-obligation-across-aggregates.md](adr/0020-shared-proof-obligation-across-aggregates.md).
 
-- Object-level semantic diff shows created, deleted, and changed objects.
-- Field-level diff highlights body, status, owner, evidence, and relation changes.
-- `adoc check --changed` validates changed `.adoc` files using local Git diff.
-- Source-path impact analysis marks verified claims whose V0 evidence references changed files.
-- CI output mode emits a PR-comment-ready summary after local diff and impact analysis are useful.
-- Review artifacts identify required owners for changed verified claims.
-- Patch validation summaries can be included in local review output when a patch file is present.
+### V3.1: Object Diff Slice
+
+Goal: produce a deterministic mechanical diff between a git ref and the current workdir.
+
+Scope:
+
+- New internal port `SnapshotWorkspaceProvider` and a `GitWorktreeProvider` adapter under `infrastructure/git/`.
+- New `domain/review/` aggregate family with `ObjectChange`, `ObjectDiff`, and `ObjectDiff::compute(&GraphRecord, &GraphRecord)` as the sole constructor.
+- New `application/review.rs::ReviewSession` plus `load_review` and `diff_objects`.
+- New CLI command `adoc diff <ref>` with `--format auto|plain|styled|json`.
+- `adoc.diff.v0` JSON envelope with full before/after `KnowledgeObjectRecord` on each `changed` entry; contract-tested schema under `docs/agent/v0/schema/`.
+- Two-commit git fixture, inline domain units, app units against an in-memory test double, and a CLI integration test.
+
+Acceptance:
+
+- `adoc diff main` against the fixture exits zero and emits a JSON envelope whose `created`, `deleted`, and `changed` arrays match exactly, with `content_hash` before and after on each `changed` entry.
+
+Deferred:
+
+- Field-level diff, impact analysis, markdown output, MCP tool.
+
+### V3.2: Field-Level Projection Slice
+
+Goal: explain what changed inside a `Changed` Object Change.
+
+Scope:
+
+- New `domain/review/field_change.rs` with sealed `#[non_exhaustive]` enum: `Body`, `Status`, `Owner`, `VerifiedAt`, `EvidenceAdded`, `EvidenceRemoved`, `RelationAdded`, `RelationRemoved`.
+- Pure projection `field_changes(c: &ObjectChange) -> Vec<FieldChange>` in `application/review.rs`.
+- Additive optional `field_changes[]` field on each `Changed` entry in `adoc.diff.v0`; schema stays `v0`.
+- Styled and plain rendering of field-level diffs.
+
+Acceptance:
+
+- A verified claim body change produces exactly `[FieldChange::Body { before, after }]`.
+- Relation array reorder with the same set produces an empty projection.
+
+Deferred:
+
+- `Impacts*` variants (V3.3), obligation dispatch (V3.4).
+
+### V3.3: Source-Path Impact and Required Reviewers Slice
+
+Goal: flag verified claims whose declared code impact is in the diff.
+
+Scope:
+
+- New `RelPath` value object rejecting absolute paths, `..` segments, and empty strings.
+- Parser, validator, and graph emission extension for `impacts: [path1, path2, ...]` on `claim` and `decision`. New diagnostic codes `schema.impacts_invalid_path` and `schema.impacts_empty`.
+- New port `ChangedFilesProvider` with a git-CLI adapter.
+- New `domain/review/{impact.rs, reviewer.rs}` with `ImpactedObject`, `compute_impact`, `RequiredReviewer`, and `required_reviewers`.
+- Two new `FieldChange` variants: `ImpactsAdded`, `ImpactsRemoved`.
+- New CLI command `adoc review <ref>` and new wire envelope `adoc.review.v0` with `{ diff, impact[], required_reviewers[] }`.
+- Billing pilot fixture extension with one verified claim declaring `impacts:` and a diff that touches the file.
+
+Acceptance:
+
+- A verified claim with `impacts: [crates/billing/src/refund.rs]` is reported in `impact[]` when that file is in the changed set; its owner appears in `required_reviewers[]`.
+- A claim with `impacts: [..]` fails `adoc check` with a fix-oriented diagnostic.
+
+Deferred:
+
+- Glob support, proof obligations, markdown output, MCP tool, patch composition.
+
+### V3.4: Proof Obligations Slice
+
+Goal: emit re-verify, re-evidence, reassign, and impact-review obligations for changed verified knowledge.
+
+Scope:
+
+- Promote `ProofObligation` from `domain/patch/mod.rs` to `domain/obligation.rs` via `git mv`. No behavior change; V2's `adoc.patch.check.v0` envelope stays byte-identical.
+- Trigger-table function `obligations_for_change(&ObjectChange) -> Vec<ProofObligation>` dispatching on `FieldChange` variants. Body change on a verified claim emits a re-verify obligation. Status transition `Verified → NeedsReview` emits a stale-claim notice. Status transition `Verified → Draft` emits a demotion review. Owner removal emits a reassign obligation. Owner change emits a new-owner-acknowledge obligation. `VerifiedAt` removal emits a re-verify obligation. Evidence removal emits a re-evidence obligation against the removed field.
+- Trigger function `obligations_for_impact(&ImpactedObject) -> Vec<ProofObligation>` emits an impact-review obligation against the impacted claim's `source` evidence.
+- New `proof_obligations(&ObjectDiff, &[ImpactedObject])` application function. Deduplicated by `(object_id, reason)` exactly as V2 already does.
+- Additive optional `proof_obligations[]` field on `adoc.review.v0`.
+
+Acceptance:
+
+- A body change on a verified claim with three evidence fields produces exactly one obligation with `required_evidence: ["source", "test", "reviewed_by"]`.
+- An impacted verified claim produces an impact-review obligation against its `source`.
+- A draft claim change produces zero obligations.
+
+Deferred:
+
+- Relation-change obligations, non-verified KO obligations.
+
+### V3.5: CI Markdown Output Slice
+
+Goal: emit a PR-comment-ready Markdown summary for human review.
+
+Scope:
+
+- New `crates/adoc-cli/src/presentation/markdown.rs` with a `MarkdownReviewPresenter`.
+- New `--format markdown` flag on `adoc diff` and `adoc review`.
+- Output conventions: collapsible `<details>` per object change, status icons, required reviewers as `@team-` mentions at the top, obligations as a checklist, field changes as fenced diffs.
+- Golden fixture test under `crates/adoc-cli/tests/fixtures/review_markdown/`.
+
+Acceptance:
+
+- `adoc review main --format markdown` against the V3.3/V3.4 fixture produces output byte-equal to the golden file.
+
+Deferred:
+
+- HTML output, multi-file split, custom templates.
+
+### V3.6: MCP Surface Slice
+
+Goal: expose Diff and Review via MCP for agent consumption.
+
+Scope:
+
+- Two new MCP tools: `adoc_diff` and `adoc_review`.
+- Two new Agent Guidance Resources under `adoc://agent/v0/`: `review-workflow` and a `usage-contract` update.
+- Two new Agent Workflow Prompts pinned to v0: `adoc_review_pull_request` and `adoc_explain_what_changed`.
+- Extension of `adoc.project.status.v0` with `readiness.review: bool`.
+- JSON Schema files `adoc.diff.v0.schema.json` and `adoc.review.v0.schema.json` published under `docs/agent/v0/schema/`.
+- Extension of `crates/adoc-mcp/tests/stdio_dogfood.rs` exercising both tools.
+
+Acceptance:
+
+- The dogfood stdio server returns valid `adoc.diff.v0` and `adoc.review.v0` envelopes against a 2-commit fixture project.
+- No file writes occur outside the system tmp directory used by the worktree adapter.
+
+Deferred:
+
+- SSE/HTTP MCP transports, server-side ref resolution caching, multi-project gateways.
+
+### V3.7: Patch Composition Slice
+
+Goal: embed `adoc.patch.check.v0` validation inside a Review Report.
+
+Scope:
+
+- New `application/review.rs::review_with_patch(&ReviewSession, Option<&PatchDocument>)` that reuses V2's `validate_patch` against the head graph.
+- New `--patch <path-or-@-stdin>` flag on `adoc review`. Same patch-source contract as V2's `adoc patch-check`.
+- New optional `patch` parameter on the MCP `adoc_review` tool, matching V2.1's `PatchInput` shape.
+- Additive optional `patch_check: adoc.patch.check.v0?` field on `adoc.review.v0`.
+- The patch is never applied. V3 explicitly rejects hypothetical post-patch diff.
+
+Acceptance:
+
+- `adoc review main --patch p.json` against a fixture where `p.json` validates cleanly produces an `adoc.review.v0` envelope with `patch_check.valid: true` and obligations reflecting the union of diff-driven and patch-driven obligations.
+
+Deferred:
+
+- Patch application, hosted patch review state.
 
 Design guidance:
 
-- Start with Git diff and local source paths before integrating GitHub or GitLab APIs.
-- Semantic diff should compare Knowledge Objects, not rendered HTML.
-- Source-path impact should be conservative and explain why an object was flagged.
+- Recompute graphs via `git worktree add --detach`; never compare committed `dist/` artifacts.
+- Semantic diff compares Knowledge Objects, not rendered HTML.
+- Source-path impact is opt-in via the `impacts:` field and uses strict per-path matching; no globs in V3.
 - Keep CI advisory before making it blocking by default.
 - Do not make examples part of source-path impact analysis until `example` objects exist.
-- Do not mutate source status to `needs_review` in the first CI version; report diagnostics and proof obligations first.
-- Reuse V2 patch proof-obligation language instead of inventing separate CI terminology.
+- Do not mutate source status to `needs_review` in V3; report diagnostics and proof obligations only.
+- Share `ProofObligation` across V2 patch and V3 review via `domain/obligation.rs`.
+- Patches embed their validation result inside the review envelope; V3 never applies a patch.
 
 Questions to resolve later:
 
 - What change should fail CI versus warn?
 - How should owner identity map to GitHub/GitLab reviewers?
 - When should advisory CI become blocking?
+- When does `--changed` validation become measurable user pain?
 
 ## V4: Migration and Compatibility
 
