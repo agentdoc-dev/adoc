@@ -13,6 +13,7 @@ Examples:
   adoc why billing.refunds.issue-credit
   adoc graph billing.refunds.issue-credit
   adoc patch --check patch.json
+  adoc diff main
   adoc search \"refund policy\"
 ";
 const INIT_LONG_HELP: &str = "\
@@ -48,6 +49,12 @@ Examples:
   adoc patch --check patch.json
   adoc patch --check patch.json --artifact dist/docs.graph.json
   adoc patch --check patch.json --format json
+";
+const DIFF_LONG_HELP: &str = "\
+Examples:
+  adoc diff main
+  adoc diff main --format json
+  adoc diff HEAD~1
 ";
 const SEARCH_LONG_HELP: &str = "\
 Examples:
@@ -238,6 +245,15 @@ pub(crate) enum Commands {
             help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"
         )]
         artifact: Option<PathBuf>,
+    },
+    #[command(
+        about = "Diff Knowledge Objects between a git ref and the working tree.",
+        after_long_help = DIFF_LONG_HELP
+    )]
+    Diff {
+        /// Base git ref to diff against. The current working tree is the head.
+        #[arg(value_name = "BASE_REF")]
+        base_ref: String,
     },
     #[command(
         about = "Search compiled Knowledge Objects.",

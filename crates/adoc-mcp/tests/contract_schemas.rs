@@ -1,6 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
+use adoc_core::{
+    GitRef, ObjectDiffEnvelope, ReviewInput, SnapshotSelector, diff_objects, load_review_from_git,
+};
 use adoc_mcp::{
     AdocPatchCheckParams, AgentDocMcpServer, BuildParams, GraphParams, InitParams, PatchInput,
     ProjectStatusParams, SearchParams,
@@ -196,4 +200,133 @@ fn validates_mcp_command_envelope_against_contract_schema() {
         .expect("init succeeds");
 
     assert_valid("mcp-command.json", &command);
+}
+
+#[test]
+fn validates_adoc_diff_v0_envelope_against_schema() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    build_two_commit_review_fixture(root);
+
+    let envelope = run_review_diff(root);
+    let value = serde_json::to_value(&envelope).expect("envelope serializes");
+
+    assert_valid("adoc.diff.v0.schema.json", &value);
+    assert_eq!(value["schema_version"], "adoc.diff.v0");
+    assert!(
+        value["created"]
+            .as_array()
+            .expect("created")
+            .iter()
+            .any(|node| node["id"] == "billing.holds")
+    );
+    assert!(
+        value["deleted"]
+            .as_array()
+            .expect("deleted")
+            .iter()
+            .any(|node| node["id"] == "billing.legacy-credits")
+    );
+    assert!(
+        value["changed"]
+            .as_array()
+            .expect("changed")
+            .iter()
+            .any(|entry| entry["id"] == "billing.credits")
+    );
+}
+
+/// Build a 2-commit git fixture under `root` matching the V3.1 review
+/// acceptance scenario. Mirrors the layout used by
+/// `crates/adoc-cli/tests/diff_cli.rs::build_two_commit_fixture`.
+fn build_two_commit_review_fixture(root: &Path) {
+    let base = concat!(
+        "# Billing @doc(team.billing)\n",
+        "\n",
+        "::claim billing.credits\n",
+        "status: draft\n",
+        "--\n",
+        "Credits apply after payment.\n",
+        "::\n",
+        "\n",
+        "::claim billing.legacy-credits\n",
+        "status: draft\n",
+        "--\n",
+        "Legacy credits, slated for removal.\n",
+        "::\n",
+    );
+    let head = concat!(
+        "# Billing @doc(team.billing)\n",
+        "\n",
+        "::claim billing.credits\n",
+        "status: draft\n",
+        "--\n",
+        "Credits apply after ledger commit.\n",
+        "::\n",
+        "\n",
+        "::claim billing.holds\n",
+        "status: draft\n",
+        "--\n",
+        "Holds delay disbursement.\n",
+        "::\n",
+    );
+
+    write(&root.join("agentdoc.config.yaml"), config());
+    run_git(root, &["init", "--initial-branch=main"]);
+    run_git(root, &["config", "user.email", "test@adoc.dev"]);
+    run_git(root, &["config", "user.name", "adoc tests"]);
+    run_git(root, &["config", "commit.gpgsign", "false"]);
+
+    write(&root.join("docs/billing.adoc"), base);
+    run_git(root, &["add", "-A"]);
+    run_git(root, &["commit", "-m", "base"]);
+
+    run_git(root, &["checkout", "-b", "feature"]);
+    write(&root.join("docs/billing.adoc"), head);
+    run_git(root, &["add", "-A"]);
+    run_git(root, &["commit", "-m", "head"]);
+}
+
+fn config() -> &'static str {
+    "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n"
+}
+
+fn run_git(cwd: &Path, args: &[&str]) {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(cwd).args(args);
+    // Strip inherited GIT_* env vars so fixtures stay isolated from any
+    // outer git repo whose context the test runner might have set (e.g.
+    // pre-commit hooks via prek).
+    for var in [
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_WORK_TREE",
+        "GIT_NAMESPACE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_COMMON_DIR",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+    ] {
+        command.env_remove(var);
+    }
+    let output = command
+        .output()
+        .unwrap_or_else(|error| panic!("spawn `git {args:?}`: {error}"));
+    assert!(
+        output.status.success(),
+        "git {args:?} failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn run_review_diff(root: &Path) -> ObjectDiffEnvelope {
+    let load = load_review_from_git(ReviewInput {
+        project_root: root.to_path_buf(),
+        base: SnapshotSelector::GitRef(GitRef::new("main")),
+        head: SnapshotSelector::Workdir,
+    })
+    .expect("load review succeeds");
+    let diff = diff_objects(&load.session);
+    ObjectDiffEnvelope::from_diff(diff, load.diagnostics)
 }

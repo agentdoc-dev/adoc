@@ -20,15 +20,23 @@ pub use application::retrieval::{
     RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
     RetrievalSession, SearchFilters, SearchQuery, SearchResult, WhyResult, search, why_object,
 };
+pub use application::review::{
+    DIFF_SCHEMA_VERSION, ObjectDiffEnvelope, ReviewError, ReviewInput, ReviewLoadResult,
+    ReviewSession, diff_objects,
+};
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::graph::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
     GraphTraversalResult,
 };
 pub use domain::patch::{AffectedRelation, PatchDiff, PatchOperation, ProofObligation};
+pub use domain::ports::snapshot_workspace::{GitRef, SnapshotError, SnapshotSelector};
 pub use domain::retrieval::{
     RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSource, SearchMode,
 };
+pub use domain::review::object_change::ChangedObject;
+pub use domain::review::object_diff::ObjectDiff;
+pub use infrastructure::git::error::GitError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingProviderSelection {
@@ -122,6 +130,16 @@ pub fn check_patch(input: PatchInput) -> PatchCheckResult {
         &infrastructure::artifact::GraphJsonArtifact,
         &infrastructure::artifact::PatchJsonArtifact,
     )
+}
+
+/// Public entry point for V3.1 review loading. Constructs the
+/// `GitWorktreeProvider` adapter against `input.project_root` and delegates
+/// to the application layer. Mirrors the existing `compile_workspace` /
+/// `check_patch` three-line wrapper pattern.
+pub fn load_review_from_git(input: ReviewInput) -> Result<ReviewLoadResult, ReviewError> {
+    let provider =
+        infrastructure::git::worktree::GitWorktreeProvider::new(input.project_root.clone());
+    application::review::load_review_with_providers(input, &provider)
 }
 
 pub fn check_patch_json(input: PatchJsonInput) -> PatchCheckResult {

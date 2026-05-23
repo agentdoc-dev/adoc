@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.diff.v0.schema.json",
+  "title": "AgentDoc Object Diff",
+  "description": "Mechanical Knowledge-Object-scoped diff between two snapshots of an AgentDoc project. Emitted by `adoc diff` and (V3.6) the `adoc_diff` MCP tool. See V3-DESIGN.md and ADR-0018.",
+  "type": "object",
+  "required": ["schema_version", "created", "deleted", "changed", "diagnostics"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.diff.v0" },
+    "created": {
+      "description": "Knowledge Objects only present on the head side, in Object-ID sort order.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/knowledgeObjectRecord" }
+    },
+    "deleted": {
+      "description": "Knowledge Objects only present on the base side, in Object-ID sort order.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/knowledgeObjectRecord" }
+    },
+    "changed": {
+      "description": "Knowledge Objects present on both sides whose `content_hash` differs, in Object-ID sort order.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/changedEntry" }
+    },
+    "diagnostics": {
+      "description": "Compile diagnostics surfaced during either snapshot's compile.",
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  },
+  "$defs": {
+    "knowledgeObjectRecord": {
+      "type": "object",
+      "required": ["id", "kind", "content_hash", "body", "page_id", "source_span", "fields", "relations"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string" },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]+$"
+        },
+        "status": { "type": "string" },
+        "body": { "type": "string" },
+        "page_id": { "type": "string" },
+        "source_span": {
+          "type": "object",
+          "required": ["path", "line", "column"],
+          "properties": {
+            "path": { "type": "string" },
+            "line": { "type": "integer", "minimum": 1 },
+            "column": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "relations": {
+          "type": "object",
+          "required": ["depends_on", "supersedes", "related_to"],
+          "properties": {
+            "depends_on": { "type": "array", "items": { "type": "string" } },
+            "supersedes": { "type": "array", "items": { "type": "string" } },
+            "related_to": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "changedEntry": {
+      "type": "object",
+      "required": ["id", "base", "head"],
+      "properties": {
+        "id": { "type": "string" },
+        "base": { "$ref": "#/$defs/knowledgeObjectRecord" },
+        "head": { "$ref": "#/$defs/knowledgeObjectRecord" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

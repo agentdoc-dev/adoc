@@ -59,6 +59,12 @@ pub enum LocalError {
 
     #[error("build did not produce artifacts")]
     BuildMissingArtifacts,
+
+    #[error("error[review.failed] review failed: {source}")]
+    Review {
+        #[source]
+        source: adoc_core::ReviewError,
+    },
 }
 
 fn format_config_path(config_path: &Option<PathBuf>) -> String {

@@ -1,0 +1,317 @@
+//! `SnapshotWorkspaceProvider` adapter backed by the system `git` binary.
+//!
+//! Uses `git worktree add --detach` to materialize the target ref into a
+//! temporary directory under `std::env::temp_dir()`, and `git worktree
+//! remove --force` on drop. The application layer never sees the
+//! intermediate worktree — it only receives a `SnapshotWorkspace` handle.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::domain::ports::snapshot_workspace::{
+    SnapshotError, SnapshotSelector, SnapshotWorkspace, SnapshotWorkspaceProvider,
+};
+
+use super::error::GitError;
+
+/// V3.1 git-CLI adapter for [`SnapshotWorkspaceProvider`].
+pub(crate) struct GitWorktreeProvider {
+    repo_root: PathBuf,
+}
+
+impl GitWorktreeProvider {
+    pub(crate) fn new(repo_root: impl Into<PathBuf>) -> Self {
+        Self {
+            repo_root: repo_root.into(),
+        }
+    }
+}
+
+impl SnapshotWorkspaceProvider for GitWorktreeProvider {
+    fn checkout(&self, selector: &SnapshotSelector) -> Result<SnapshotWorkspace, SnapshotError> {
+        match selector {
+            SnapshotSelector::Workdir => Ok(SnapshotWorkspace::workdir(self.repo_root.clone())),
+            SnapshotSelector::GitRef(spec) => self.checkout_ref(spec.as_str()),
+        }
+    }
+}
+
+impl GitWorktreeProvider {
+    fn checkout_ref(&self, spec: &str) -> Result<SnapshotWorkspace, SnapshotError> {
+        verify_ref(&self.repo_root, spec)?;
+
+        let tmp = generate_worktree_path();
+        add_worktree(&self.repo_root, &tmp, spec)?;
+
+        let repo_root = self.repo_root.clone();
+        let tmp_for_cleanup = tmp.clone();
+        let cleanup = Box::new(move || {
+            run_git_worktree_remove(&repo_root, &tmp_for_cleanup);
+            // Best-effort fallback in case `git worktree remove` left
+            // residue (e.g. partial worktree-add).
+            let _ = fs::remove_dir_all(&tmp_for_cleanup);
+        });
+
+        Ok(SnapshotWorkspace::with_cleanup(tmp, cleanup))
+    }
+}
+
+fn verify_ref(repo_root: &Path, spec: &str) -> Result<(), SnapshotError> {
+    let output = run_git(
+        repo_root,
+        &["rev-parse", "--verify", &format!("{spec}^{{commit}}")],
+    )?;
+    if !output.status.success() {
+        return Err(SnapshotError::Git(GitError::RefNotResolvable {
+            spec: spec.to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        }));
+    }
+    Ok(())
+}
+
+fn add_worktree(repo_root: &Path, tmp: &Path, spec: &str) -> Result<(), SnapshotError> {
+    let output = run_git(
+        repo_root,
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            tmp.to_str().ok_or_else(|| {
+                SnapshotError::Git(GitError::WorktreeCreate {
+                    tmp: tmp.to_path_buf(),
+                    stderr: "worktree path is not valid UTF-8".to_string(),
+                })
+            })?,
+            spec,
+        ],
+    )?;
+    if !output.status.success() {
+        return Err(SnapshotError::Git(GitError::WorktreeCreate {
+            tmp: tmp.to_path_buf(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        }));
+    }
+    Ok(())
+}
+
+fn run_git_worktree_remove(repo_root: &Path, tmp: &Path) {
+    // Drop-time cleanup: errors are absorbed (cannot propagate from Drop)
+    // but recorded as best-effort. The fallback `fs::remove_dir_all` in
+    // the caller covers cases where `git worktree remove` itself fails.
+    let Some(tmp_str) = tmp.to_str() else {
+        return;
+    };
+    let mut command = Command::new("git");
+    command
+        .arg("-C")
+        .arg(repo_root)
+        .args(["worktree", "remove", "--force", tmp_str]);
+    clear_git_env(&mut command);
+    let _ = command.output();
+}
+
+fn run_git(repo_root: &Path, args: &[&str]) -> Result<Output, SnapshotError> {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(repo_root);
+    for arg in args {
+        command.arg(arg);
+    }
+    clear_git_env(&mut command);
+    command.output().map_err(|source| match source.kind() {
+        std::io::ErrorKind::NotFound => SnapshotError::Git(GitError::GitNotFound),
+        _ => SnapshotError::Git(GitError::CommandSpawn {
+            program: "git".to_string(),
+            source,
+        }),
+    })
+}
+
+/// Strip inherited `GIT_*` environment variables so the spawned git always
+/// operates on the explicit `repo_root` we pass via `-C`. Tools like prek
+/// run the test suite from inside a pre-commit hook that exports `GIT_DIR`
+/// pointing at the outer repository's `.git`; without this scrub, every
+/// invocation here would target the outer repo regardless of `repo_root`.
+fn clear_git_env(command: &mut Command) {
+    for var in [
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_WORK_TREE",
+        "GIT_NAMESPACE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_COMMON_DIR",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+    ] {
+        command.env_remove(var);
+    }
+}
+
+fn generate_worktree_path() -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock is after unix epoch")
+        .as_nanos();
+    let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "adoc-worktree-{}-{counter}-{nonce}",
+        std::process::id()
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(cwd: &Path, args: &[&str]) {
+        let mut command = Command::new("git");
+        command.arg("-C").arg(cwd).args(args);
+        clear_git_env(&mut command);
+        let output = command
+            .output()
+            .unwrap_or_else(|error| panic!("spawn `git {args:?}`: {error}"));
+        assert!(
+            output.status.success(),
+            "git {args:?} failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+
+    struct Repo {
+        _tempdir: tempfile::TempDir,
+        root: PathBuf,
+    }
+
+    impl Repo {
+        fn new() -> Self {
+            let temp = tempfile::Builder::new()
+                .prefix("adoc-git-test-")
+                .tempdir()
+                .expect("tempdir");
+            let root = temp.path().to_path_buf();
+            run(&root, &["init", "--initial-branch=main"]);
+            run(&root, &["config", "user.email", "test@adoc.dev"]);
+            run(&root, &["config", "user.name", "adoc tests"]);
+            run(&root, &["config", "commit.gpgsign", "false"]);
+            fs::write(root.join("hello.txt"), "hello world\n").expect("write hello.txt");
+            run(&root, &["add", "-A"]);
+            run(&root, &["commit", "-m", "initial"]);
+            Self {
+                _tempdir: temp,
+                root,
+            }
+        }
+    }
+
+    #[test]
+    fn workdir_selector_returns_repo_root_without_cleanup() {
+        let repo = Repo::new();
+        let provider = GitWorktreeProvider::new(repo.root.clone());
+
+        let workspace = provider
+            .checkout(&SnapshotSelector::Workdir)
+            .expect("workdir checkout succeeds");
+
+        assert_eq!(workspace.path(), repo.root.as_path());
+        // Drop is a no-op for workdir; nothing should be removed.
+        drop(workspace);
+        assert!(repo.root.join("hello.txt").exists());
+    }
+
+    #[test]
+    fn gitref_head_returns_separate_path_with_committed_file_present() {
+        use crate::domain::ports::snapshot_workspace::GitRef;
+        let repo = Repo::new();
+        let provider = GitWorktreeProvider::new(repo.root.clone());
+
+        let workspace = provider
+            .checkout(&SnapshotSelector::GitRef(GitRef::new("HEAD")))
+            .expect("HEAD checkout succeeds");
+
+        assert_ne!(workspace.path(), repo.root.as_path());
+        assert!(workspace.path().exists());
+        let hello = fs::read_to_string(workspace.path().join("hello.txt"))
+            .expect("hello.txt exists in worktree");
+        assert_eq!(hello, "hello world\n");
+    }
+
+    #[test]
+    fn dropping_gitref_workspace_removes_the_temporary_worktree() {
+        use crate::domain::ports::snapshot_workspace::GitRef;
+        let repo = Repo::new();
+        let provider = GitWorktreeProvider::new(repo.root.clone());
+
+        let tmp_path = {
+            let workspace = provider
+                .checkout(&SnapshotSelector::GitRef(GitRef::new("HEAD")))
+                .expect("HEAD checkout succeeds");
+            let path = workspace.path().to_path_buf();
+            assert!(path.exists());
+            path
+        };
+
+        assert!(
+            !tmp_path.exists(),
+            "worktree directory must be cleaned up on drop"
+        );
+
+        // `git worktree list` should no longer reference the temp path.
+        let mut listing_command = Command::new("git");
+        listing_command
+            .arg("-C")
+            .arg(&repo.root)
+            .args(["worktree", "list"]);
+        clear_git_env(&mut listing_command);
+        let listing = listing_command.output().expect("git worktree list runs");
+        let listing = String::from_utf8_lossy(&listing.stdout);
+        assert!(
+            !listing.contains(tmp_path.to_str().expect("path is utf-8")),
+            "git worktree list still mentions cleaned-up worktree: {listing}"
+        );
+    }
+
+    #[test]
+    fn unresolvable_ref_returns_ref_not_resolvable_error() {
+        use crate::domain::ports::snapshot_workspace::GitRef;
+        let repo = Repo::new();
+        let provider = GitWorktreeProvider::new(repo.root.clone());
+
+        let error = provider
+            .checkout(&SnapshotSelector::GitRef(GitRef::new(
+                "definitely-not-a-real-ref",
+            )))
+            .expect_err("bad ref must error");
+
+        match error {
+            SnapshotError::Git(GitError::RefNotResolvable { spec, .. }) => {
+                assert_eq!(spec, "definitely-not-a-real-ref");
+            }
+            other => panic!("expected RefNotResolvable, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn missing_repo_dir_propagates_command_failure() {
+        use crate::domain::ports::snapshot_workspace::GitRef;
+        let provider =
+            GitWorktreeProvider::new(PathBuf::from("/this/path/should/not/exist/anywhere"));
+
+        let error = provider
+            .checkout(&SnapshotSelector::GitRef(GitRef::new("HEAD")))
+            .expect_err("non-repo must error");
+
+        // The exact variant depends on git's stderr; we just need the error
+        // type to be a `Git(_)` mapped value and have a non-empty message.
+        match error {
+            SnapshotError::Git(inner) => {
+                assert!(!format!("{inner}").is_empty());
+            }
+            other => panic!("expected Git error, got: {other:?}"),
+        }
+    }
+}

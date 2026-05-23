@@ -9,8 +9,8 @@ use clap::{Parser, error::ErrorKind};
 
 use crate::cli::{Cli, Commands};
 use crate::commands::{
-    GraphCommandInput, PatchCommandInput, SearchCommandInput, build, check, graph, init, patch,
-    search_command, why,
+    DiffCommandInput, GraphCommandInput, PatchCommandInput, SearchCommandInput, build, check, diff,
+    graph, init, patch, search_command, why,
 };
 use crate::presentation::terminal;
 
@@ -55,6 +55,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     },
                     resolved,
                 ),
+                Commands::Diff { base_ref } => diff(DiffCommandInput { base_ref }, resolved),
                 Commands::Search {
                     query,
                     artifact,
