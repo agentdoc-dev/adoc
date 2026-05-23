@@ -1,0 +1,190 @@
+//! Errors emitted by the git-CLI adapter.
+//!
+//! Hand-rolled per V3-DESIGN.md §"Enterprise rules" — no `thiserror`,
+//! `#[non_exhaustive]` so adding a variant is not a breaking change, and
+//! structured fields so consumers can inspect the cause without parsing
+//! strings.
+
+use std::error::Error;
+use std::fmt;
+use std::io;
+use std::path::PathBuf;
+
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum GitError {
+    GitNotFound,
+    NotARepository {
+        path: PathBuf,
+    },
+    RefNotResolvable {
+        spec: String,
+        stderr: String,
+    },
+    WorktreeCreate {
+        tmp: PathBuf,
+        stderr: String,
+    },
+    WorktreeRemove {
+        tmp: PathBuf,
+        stderr: String,
+        source: io::Error,
+    },
+    CommandSpawn {
+        program: String,
+        source: io::Error,
+    },
+    CommandFailed {
+        command: String,
+        code: Option<i32>,
+        stderr: String,
+    },
+}
+
+impl fmt::Display for GitError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GitNotFound => f.write_str(
+                "could not find a `git` binary on PATH; install git or check the environment",
+            ),
+            Self::NotARepository { path } => {
+                write!(f, "{} is not a git repository", path.display())
+            }
+            Self::RefNotResolvable { spec, stderr } => {
+                write!(f, "git could not resolve ref `{spec}`: {}", stderr.trim())
+            }
+            Self::WorktreeCreate { tmp, stderr } => write!(
+                f,
+                "git worktree add failed at {}: {}",
+                tmp.display(),
+                stderr.trim()
+            ),
+            Self::WorktreeRemove { tmp, stderr, .. } => write!(
+                f,
+                "git worktree remove failed at {}: {}",
+                tmp.display(),
+                stderr.trim()
+            ),
+            Self::CommandSpawn { program, source } => {
+                write!(f, "could not spawn `{program}`: {source}")
+            }
+            Self::CommandFailed {
+                command,
+                code,
+                stderr,
+            } => {
+                let code = code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "<signal>".to_string());
+                write!(
+                    f,
+                    "command failed (`{command}` exited with {code}): {}",
+                    stderr.trim()
+                )
+            }
+        }
+    }
+}
+
+impl Error for GitError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::WorktreeRemove { source, .. } | Self::CommandSpawn { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn git_not_found_renders_actionable_message() {
+        let error = GitError::GitNotFound;
+        let message = format!("{error}");
+        assert!(message.contains("git"));
+        assert!(message.contains("PATH"));
+        assert!(error.source().is_none());
+    }
+
+    #[test]
+    fn not_a_repository_renders_path() {
+        let error = GitError::NotARepository {
+            path: PathBuf::from("/tmp/not-a-repo"),
+        };
+        assert!(format!("{error}").contains("/tmp/not-a-repo"));
+        assert!(error.source().is_none());
+    }
+
+    #[test]
+    fn ref_not_resolvable_renders_spec_and_stderr() {
+        let error = GitError::RefNotResolvable {
+            spec: "nonexistent".to_string(),
+            stderr: "fatal: bad revision\n".to_string(),
+        };
+        let message = format!("{error}");
+        assert!(message.contains("nonexistent"));
+        assert!(message.contains("bad revision"));
+        assert!(error.source().is_none());
+    }
+
+    #[test]
+    fn worktree_create_renders_tmp_and_stderr() {
+        let error = GitError::WorktreeCreate {
+            tmp: PathBuf::from("/tmp/wt"),
+            stderr: "fatal: already locked\n".to_string(),
+        };
+        let message = format!("{error}");
+        assert!(message.contains("/tmp/wt"));
+        assert!(message.contains("already locked"));
+        assert!(error.source().is_none());
+    }
+
+    #[test]
+    fn worktree_remove_exposes_io_source() {
+        let io_error = io::Error::other("file in use");
+        let error = GitError::WorktreeRemove {
+            tmp: PathBuf::from("/tmp/wt"),
+            stderr: "<stderr>".to_string(),
+            source: io_error,
+        };
+        assert!(format!("{error}").contains("/tmp/wt"));
+        assert!(error.source().is_some());
+    }
+
+    #[test]
+    fn command_spawn_exposes_io_source() {
+        let io_error = io::Error::from(io::ErrorKind::PermissionDenied);
+        let error = GitError::CommandSpawn {
+            program: "git".to_string(),
+            source: io_error,
+        };
+        assert!(format!("{error}").contains("git"));
+        assert!(error.source().is_some());
+    }
+
+    #[test]
+    fn command_failed_renders_code_and_stderr() {
+        let error = GitError::CommandFailed {
+            command: "git rev-parse HEAD".to_string(),
+            code: Some(128),
+            stderr: "fatal: not a git repository\n".to_string(),
+        };
+        let message = format!("{error}");
+        assert!(message.contains("git rev-parse HEAD"));
+        assert!(message.contains("128"));
+        assert!(message.contains("not a git repository"));
+    }
+
+    #[test]
+    fn command_failed_with_no_exit_code_renders_signal_placeholder() {
+        let error = GitError::CommandFailed {
+            command: "git fetch".to_string(),
+            code: None,
+            stderr: "killed".to_string(),
+        };
+        let message = format!("{error}");
+        assert!(message.contains("<signal>"));
+    }
+}

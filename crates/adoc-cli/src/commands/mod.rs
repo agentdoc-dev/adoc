@@ -1,5 +1,6 @@
 mod build;
 mod check;
+mod diff;
 mod graph;
 mod init;
 mod patch;
@@ -18,6 +19,7 @@ use crate::presentation::{
 
 pub(crate) use build::build;
 pub(crate) use check::check;
+pub(crate) use diff::{DiffCommandInput, diff};
 pub(crate) use graph::{GraphCommandInput, graph};
 pub(crate) use init::init;
 pub(crate) use patch::{PatchCommandInput, patch};

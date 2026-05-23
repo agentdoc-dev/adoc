@@ -8,15 +8,15 @@ use std::time::{Duration, Instant};
 use adoc_core::{
     ArtifactInspection, ArtifactLoadStatus, BuildArtifacts, BuildEmbeddingMode,
     BuildInput as CoreBuildInput, CompileInput, CompileResult, Diagnostic, DiagnosticCode,
-    EmbeddingProviderSelection, GraphArtifactInspectionInput, GraphDirection,
+    EmbeddingProviderSelection, GitRef, GraphArtifactInspectionInput, GraphDirection,
     GraphInput as CoreGraphInput, GraphRelationKind, GraphTraversalEnvelope, GraphTraversalQuery,
-    GraphTraversalResult, PatchCheckResult, PatchInput, RetrievalEnvelope, RetrievalInput,
-    RetrievalLoadResult, RetrievalRecord, SearchArtifactInspectionInput, SearchFilters, SearchMode,
-    SearchQuery, Severity, build_workspace_with_embedding_provider,
-    check_patch as core_check_patch, compile_workspace, embed_query_with_embedding_provider,
-    inspect_graph_artifact, inspect_search_artifact, load_graph_session,
-    load_retrieval_session_with_embedding_provider, search as core_search, traverse_graph,
-    why_object,
+    GraphTraversalResult, ObjectDiffEnvelope, PatchCheckResult, PatchInput, RetrievalEnvelope,
+    RetrievalInput, RetrievalLoadResult, RetrievalRecord, ReviewInput,
+    SearchArtifactInspectionInput, SearchFilters, SearchMode, SearchQuery, Severity,
+    SnapshotSelector, build_workspace_with_embedding_provider, check_patch as core_check_patch,
+    compile_workspace, diff_objects, embed_query_with_embedding_provider, inspect_graph_artifact,
+    inspect_search_artifact, load_graph_session, load_retrieval_session_with_embedding_provider,
+    load_review_from_git, search as core_search, traverse_graph, why_object,
 };
 use serde::Serialize;
 
@@ -150,6 +150,19 @@ pub struct PatchCheckInput {
 pub struct PatchCheckOutcome {
     #[serde(flatten)]
     pub result: PatchCheckResult,
+    pub exit_code: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct DiffInput {
+    pub base_ref: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiffOutcome {
+    #[serde(flatten)]
+    pub envelope: ObjectDiffEnvelope,
+    #[serde(skip)]
     pub exit_code: i32,
 }
 
@@ -362,6 +375,27 @@ where
 
     pub fn run(&self, input: PatchCheckInput) -> Result<PatchCheckOutcome, LocalError> {
         patch_check_with_context(&self.context, input)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DiffUseCase<P>
+where
+    P: PathPolicy,
+{
+    context: LocalContext<P>,
+}
+
+impl<P> DiffUseCase<P>
+where
+    P: PathPolicy,
+{
+    pub fn new(context: LocalContext<P>) -> Self {
+        Self { context }
+    }
+
+    pub fn run(&self, input: DiffInput) -> Result<DiffOutcome, LocalError> {
+        diff_with_context(&self.context, input)
     }
 }
 
@@ -734,6 +768,29 @@ where
         records,
         diagnostics,
         exit_code,
+    })
+}
+
+fn diff_with_context<P>(
+    context: &LocalContext<P>,
+    input: DiffInput,
+) -> Result<DiffOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    let project_root = context.config_start().to_path_buf();
+    let review_input = ReviewInput {
+        project_root,
+        base: SnapshotSelector::GitRef(GitRef::new(input.base_ref)),
+        head: SnapshotSelector::Workdir,
+    };
+    let load =
+        load_review_from_git(review_input).map_err(|source| LocalError::Review { source })?;
+    let diff = diff_objects(&load.session);
+    let envelope = ObjectDiffEnvelope::from_diff(diff, load.diagnostics);
+    Ok(DiffOutcome {
+        envelope,
+        exit_code: 0,
     })
 }
 
