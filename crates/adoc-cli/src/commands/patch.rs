@@ -37,6 +37,9 @@ pub(crate) fn patch(input: PatchCommandInput, resolved: ResolvedFormat) -> i32 {
         ResolvedFormat::Json => write_patch_json(&result, exit_code),
         ResolvedFormat::Plain => write_patch_text(&result, false, exit_code),
         ResolvedFormat::Styled => write_patch_text(&result, true, exit_code),
+        ResolvedFormat::Markdown => {
+            unreachable!("main.rs rejects markdown format for `adoc patch` before dispatch")
+        }
     }
 }
 

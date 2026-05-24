@@ -15,9 +15,10 @@ use super::{ColorChoice, FormatChoice, ResolvedFormat};
 ///
 /// Precedence rules (matching cargo / git / ripgrep convention):
 ///
-/// 1. `--format=json` always wins — JSON is structural and must not be
-///    influenced by colour flags.
-/// 2. For all non-JSON formats, `--color` takes precedence over `--format`:
+/// 1. `--format=json` and `--format=markdown` always win — both are
+///    structural formats and must not be influenced by colour flags.
+/// 2. For all non-structural formats, `--color` takes precedence over
+///    `--format`:
 ///    - `--color=never`  → [`ResolvedFormat::Plain`]  (no escapes)
 ///    - `--color=always` → [`ResolvedFormat::Styled`] (force colour)
 ///    - `--color=auto`   → honour the explicit `--format` value, or fall back
@@ -45,9 +46,12 @@ pub(crate) fn resolve(
     is_stdout_tty: bool,
     no_color_env: bool,
 ) -> ResolvedFormat {
-    // JSON is structural: colour flags must not alter it.
+    // Structural formats are unaffected by colour flags.
     if matches!(format, FormatChoice::Json) {
         return ResolvedFormat::Json;
+    }
+    if matches!(format, FormatChoice::Markdown) {
+        return ResolvedFormat::Markdown;
     }
     match color {
         ColorChoice::Never => ResolvedFormat::Plain,
@@ -56,7 +60,9 @@ pub(crate) fn resolve(
             FormatChoice::Plain => ResolvedFormat::Plain,
             FormatChoice::Styled => ResolvedFormat::Styled,
             FormatChoice::Auto => resolve_auto(is_stdout_tty, no_color_env),
-            FormatChoice::Json => unreachable!("Json handled above"),
+            FormatChoice::Json | FormatChoice::Markdown => {
+                unreachable!("structural formats handled above")
+            }
         },
     }
 }
@@ -124,6 +130,49 @@ mod tests {
                         resolve(FormatChoice::Json, color, tty, no_color),
                         ResolvedFormat::Json,
                         "json should always resolve to Json (color={color:?}, tty={tty}, no_color={no_color})"
+                    );
+                }
+            }
+        }
+    }
+
+    // ---------------------------- markdown overrides (V3.5 structural format)
+
+    /// Markdown is structural; colour flags must never change it.
+    #[test]
+    fn format_markdown_overrides_color_never_to_keep_markdown() {
+        assert_eq!(
+            resolve(FormatChoice::Markdown, ColorChoice::Never, true, false),
+            ResolvedFormat::Markdown
+        );
+    }
+
+    #[test]
+    fn format_markdown_overrides_color_always_to_keep_markdown() {
+        assert_eq!(
+            resolve(FormatChoice::Markdown, ColorChoice::Always, true, false),
+            ResolvedFormat::Markdown
+        );
+    }
+
+    #[test]
+    fn format_markdown_overrides_color_auto_to_keep_markdown() {
+        assert_eq!(
+            resolve(FormatChoice::Markdown, ColorChoice::Auto, true, false),
+            ResolvedFormat::Markdown
+        );
+    }
+
+    /// Exhaustive check: Markdown wins over every colour × tty × no_color combo.
+    #[test]
+    fn markdown_wins_over_any_combination() {
+        for &color in &[ColorChoice::Auto, ColorChoice::Always, ColorChoice::Never] {
+            for tty in [true, false] {
+                for no_color in [true, false] {
+                    assert_eq!(
+                        resolve(FormatChoice::Markdown, color, tty, no_color),
+                        ResolvedFormat::Markdown,
+                        "markdown should always resolve to Markdown (color={color:?}, tty={tty}, no_color={no_color})"
                     );
                 }
             }

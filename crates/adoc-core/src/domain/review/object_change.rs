@@ -71,6 +71,14 @@ impl ChangedObject {
     pub fn field_changes(&self) -> &[FieldChange] {
         &self.field_changes
     }
+
+    /// The `status:` field on the head-side record, if present. Consumed by
+    /// the V3.5 Markdown presenter for the per-object status icon; the wire
+    /// envelope already exposes head/base records, so this accessor adds no
+    /// new contract — it only widens the in-crate visibility.
+    pub fn head_status(&self) -> Option<&str> {
+        self.head.status.as_deref()
+    }
 }
 
 #[cfg(test)]

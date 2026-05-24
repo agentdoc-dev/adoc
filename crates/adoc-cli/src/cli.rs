@@ -54,12 +54,14 @@ const DIFF_LONG_HELP: &str = "\
 Examples:
   adoc diff main
   adoc diff main --format json
+  adoc diff main --format markdown
   adoc diff HEAD~1
 ";
 const REVIEW_LONG_HELP: &str = "\
 Examples:
   adoc review main
   adoc review main --format json
+  adoc review main --format markdown
   adoc review HEAD~1
 ";
 const SEARCH_LONG_HELP: &str = "\
@@ -82,6 +84,9 @@ pub(crate) enum CliFormat {
     Styled,
     /// Machine-readable JSON.
     Json,
+    /// PR-comment-ready GitHub-flavored Markdown (only supported by
+    /// `adoc diff` and `adoc review`).
+    Markdown,
 }
 
 impl From<CliFormat> for FormatChoice {
@@ -91,6 +96,7 @@ impl From<CliFormat> for FormatChoice {
             CliFormat::Plain => Self::Plain,
             CliFormat::Styled => Self::Styled,
             CliFormat::Json => Self::Json,
+            CliFormat::Markdown => Self::Markdown,
         }
     }
 }

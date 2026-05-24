@@ -234,6 +234,15 @@ Acceptance: `adoc review main --format markdown` against the V3.3/V3.4 fixture p
 
 Deferred: HTML output, multi-file split, custom templates.
 
+Resolved (implemented):
+
+- Section order is fixed: (1) `**Required reviewers:**` mention line (review only, non-empty); (2) `## Diff: N created, M deleted, K changed` summary; (3) one `<details><summary>{icon} <code>{id}</code> — {labels}</summary>` block per changed object in envelope order; (4) `## Created` and `## Deleted` bullet lists (non-empty only); (5) `## Impact` (review only, non-empty); (6) `## Proof obligations` task-list checklist (review only, non-empty). Empty sections are omitted entirely — predictable rule for diff vs review divergence.
+- Status icon per changed object: `❌` if any proof obligation targets the object's id; else `⚠️` if `head.status == "needs_review"`; else `✅` if `head.status == "verified"`; else `📝`. `adoc diff --format markdown` passes an empty obligations slice, so the diff command never renders `❌` — review may, diff may not.
+- Reviewer mentions are `@{owner}` verbatim — owner values like `team-billing` become `@team-billing`. Multiple reviewers join on a single space.
+- Body changes render as a ` ```diff ` fenced block with `-` for each `before.lines()` row and `+` for each `after.lines()` row. Status / owner / verified_at render as a single `**field:** before → after` line. Evidence / relation / impacts render as `+`/`-` prefixed lines with the field name and value.
+- Markdown is a structural format like JSON: `--color` flags never alter it. `--format markdown` is rejected for every CLI command other than `adoc diff` and `adoc review` (the dispatcher emits a fix-oriented stderr line and exits 2).
+- Golden fixtures live at `crates/adoc-cli/tests/fixtures/review_markdown/{diff.md,review.md}`. Tests refresh them via `ADOC_UPDATE_GOLDEN=1 cargo test -p adoc-cli --test review_cli`.
+
 ### V3.6: MCP Surface Slice
 
 Goal: expose Diff and Review via MCP for agent consumption.

@@ -7,7 +7,7 @@ use adoc_local::{DiffInput, DiffUseCase, LocalContext, UnrestrictedPathPolicy};
 use crate::error::CliError;
 use crate::presentation::style::key::cyan_key;
 use crate::presentation::style::kv::faint_label;
-use crate::presentation::{ResolvedFormat, json as json_presentation};
+use crate::presentation::{MarkdownReviewPresenter, ResolvedFormat, json as json_presentation};
 
 use super::{current_dir, eprint_diagnostics, report};
 
@@ -34,11 +34,22 @@ pub(crate) fn diff(input: DiffCommandInput, resolved: ResolvedFormat) -> i32 {
         ResolvedFormat::Json => write_diff_json(&envelope, exit_code),
         ResolvedFormat::Plain => write_diff_text(&envelope, false, exit_code),
         ResolvedFormat::Styled => write_diff_text(&envelope, true, exit_code),
+        ResolvedFormat::Markdown => write_diff_markdown(&envelope, exit_code),
     }
 }
 
 fn write_diff_json(envelope: &ObjectDiffEnvelope, exit_code: i32) -> i32 {
     json_presentation::write_json(envelope, &mut io::stdout()).map_or_else(
+        |source| report(CliError::RetrievalIo { source }),
+        |()| exit_code,
+    )
+}
+
+fn write_diff_markdown(envelope: &ObjectDiffEnvelope, exit_code: i32) -> i32 {
+    if !envelope.diagnostics.is_empty() {
+        eprint_diagnostics(&envelope.diagnostics);
+    }
+    MarkdownReviewPresenter::write_diff(envelope, &mut io::stdout()).map_or_else(
         |source| report(CliError::RetrievalIo { source }),
         |()| exit_code,
     )

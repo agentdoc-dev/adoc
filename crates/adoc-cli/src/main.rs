@@ -12,7 +12,7 @@ use crate::commands::{
     DiffCommandInput, GraphCommandInput, PatchCommandInput, ReviewCommandInput, SearchCommandInput,
     build, check, diff, graph, init, patch, review, search_command, why,
 };
-use crate::presentation::terminal;
+use crate::presentation::{ResolvedFormat, terminal};
 
 fn main() -> ExitCode {
     ExitCode::from(run(std::env::args()) as u8)
@@ -22,6 +22,18 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
     match Cli::try_parse_from(arguments) {
         Ok(cli) => {
             let resolved = terminal::detect(cli.format.into(), cli.color.into());
+            // Markdown is review-only output; reject it before any command
+            // that does not implement a markdown presenter. Diff and review
+            // pass through; every other command exits non-zero with a
+            // fix-oriented stderr line.
+            if resolved == ResolvedFormat::Markdown
+                && !matches!(cli.command, Commands::Diff { .. } | Commands::Review { .. })
+            {
+                eprintln!(
+                    "error[cli.format] --format markdown is only supported by `adoc diff` and `adoc review`"
+                );
+                return 2;
+            }
             match cli.command {
                 Commands::Init => init(),
                 Commands::Check { path } => check(path),

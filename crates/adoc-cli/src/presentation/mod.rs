@@ -1,4 +1,5 @@
 pub(crate) mod json;
+pub(crate) mod markdown;
 pub(crate) mod plain;
 pub(crate) mod port;
 pub(crate) mod style;
@@ -6,6 +7,7 @@ pub(crate) mod styled;
 pub(crate) mod terminal;
 
 pub(crate) use json::JsonPresenter;
+pub(crate) use markdown::MarkdownReviewPresenter;
 pub(crate) use plain::PlainPresenter;
 pub(crate) use port::{
     ExpiresInfo, PresentationRecord, RenderMeta, RetrievalPresenter, RetrievalView,
@@ -25,6 +27,9 @@ pub(crate) enum FormatChoice {
     Styled,
     /// Machine-readable JSON.
     Json,
+    /// GitHub-flavored Markdown for PR review comments. Only supported by
+    /// `adoc diff` and `adoc review`; rejected at dispatch for other commands.
+    Markdown,
 }
 
 /// The colour mode requested by the user via `--color`.
@@ -44,6 +49,10 @@ pub(crate) enum ResolvedFormat {
     Plain,
     Styled,
     Json,
+    /// Markdown is structural like Json — colour flags never alter it.
+    /// Only `adoc diff` and `adoc review` accept this resolved variant; other
+    /// commands reject it in `main.rs` before dispatching.
+    Markdown,
 }
 
 /// Returns a presenter for the resolved format.
@@ -61,5 +70,11 @@ pub(crate) fn make_presenter(
         ResolvedFormat::Plain => Box::new(PlainPresenter),
         ResolvedFormat::Styled => Box::new(StyledPresenter),
         ResolvedFormat::Json => Box::new(JsonPresenter::new(load_diagnostics)),
+        // Markdown is reachable only from `adoc diff` / `adoc review`, which
+        // do not use the retrieval presenter port. Dispatch in `main.rs`
+        // rejects markdown for every other command, so this arm cannot be hit.
+        ResolvedFormat::Markdown => {
+            unreachable!("markdown format is not supported by retrieval commands")
+        }
     }
 }
