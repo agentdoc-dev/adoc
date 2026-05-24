@@ -22,14 +22,15 @@ pub use application::retrieval::{
 };
 pub use application::review::{
     DIFF_SCHEMA_VERSION, ObjectDiffEnvelope, REVIEW_SCHEMA_VERSION, ReviewEnvelope, ReviewError,
-    ReviewInput, ReviewLoadResult, ReviewSession, diff_objects,
+    ReviewInput, ReviewLoadResult, ReviewSession, diff_objects, proof_obligations,
 };
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::graph::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
     GraphTraversalResult,
 };
-pub use domain::patch::{AffectedRelation, PatchDiff, PatchOperation, ProofObligation};
+pub use domain::obligation::ProofObligation;
+pub use domain::patch::{AffectedRelation, PatchDiff, PatchOperation};
 pub use domain::ports::snapshot_workspace::{GitRef, SnapshotError, SnapshotSelector};
 pub use domain::retrieval::{
     RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSource, SearchMode,

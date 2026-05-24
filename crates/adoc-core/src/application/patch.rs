@@ -4,9 +4,9 @@ use serde::Serialize;
 
 use crate::domain::diagnostic::{Diagnostic, Severity};
 use crate::domain::graph::{GraphArtifactDocument, GraphIndex};
+use crate::domain::obligation::ProofObligation;
 use crate::domain::patch::{
-    AffectedRelation, PatchDiff, PatchDocument, PatchValidationReport, ProofObligation,
-    validate_patch,
+    AffectedRelation, PatchDiff, PatchDocument, PatchValidationReport, validate_patch,
 };
 use crate::domain::ports::artifact_reader::ArtifactReader;
 

@@ -9,6 +9,7 @@
     "diff",
     "impact",
     "required_reviewers",
+    "proof_obligations",
     "diagnostics"
   ],
   "additionalProperties": true,
@@ -32,6 +33,11 @@
       "description": "Owners aggregated across changed verified objects and impacted objects. Sorted by owner.",
       "type": "array",
       "items": { "$ref": "#/$defs/requiredReviewer" }
+    },
+    "proof_obligations": {
+      "description": "V3.4 proof obligations triggered by diff field changes and impact entries. Deduplicated by (object_id, reason). Sorted by (object_id, reason). Empty when no triggers fire.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/proofObligation" }
     },
     "diagnostics": {
       "description": "Compile diagnostics surfaced during either snapshot's compile.",
@@ -61,6 +67,19 @@
         "object_ids": {
           "type": "array",
           "minItems": 1,
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "proofObligation": {
+      "type": "object",
+      "required": ["object_id", "reason", "required_evidence"],
+      "properties": {
+        "object_id": { "type": "string" },
+        "reason": { "type": "string" },
+        "required_evidence": {
+          "type": "array",
           "items": { "type": "string" }
         }
       },

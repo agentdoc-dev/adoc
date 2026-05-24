@@ -6,6 +6,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphIndex, GraphKnowledgeObjectNode, GraphRelationKind};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::knowledge_object::draft::{KnowledgeObjectDraft, validate_draft};
+use crate::domain::obligation::ProofObligation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PatchDocument {
@@ -108,13 +109,6 @@ pub struct AffectedRelation {
     pub relation: GraphRelationKind,
     pub target: String,
     pub action: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ProofObligation {
-    pub object_id: String,
-    pub reason: String,
-    pub required_evidence: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
