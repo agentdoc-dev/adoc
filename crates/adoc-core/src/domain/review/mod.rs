@@ -5,5 +5,7 @@
 //! for the architectural rationale.
 
 pub(crate) mod field_change;
+pub(crate) mod impact;
 pub(crate) mod object_change;
 pub(crate) mod object_diff;
+pub(crate) mod reviewer;

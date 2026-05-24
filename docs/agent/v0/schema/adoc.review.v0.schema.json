@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.review.v0.schema.json",
+  "title": "AgentDoc Review Report",
+  "description": "Enriched review report for `adoc review` and (V3.6) the `adoc_review` MCP tool. Embeds the V3.1 Object Diff envelope alongside V3.3 source-path impact and required-reviewer projections. See V3-DESIGN.md and ADR-0018 / ADR-0019.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "diff",
+    "impact",
+    "required_reviewers",
+    "diagnostics"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "const": "adoc.review.v0" },
+    "diff": {
+      "description": "Embedded V3.1 Object Diff envelope (adoc.diff.v0). Validated against `adoc.diff.v0.schema.json` separately so each schema stays independently consumable; only the outer shape is checked here.",
+      "type": "object",
+      "required": ["schema_version", "created", "deleted", "changed", "diagnostics"],
+      "properties": {
+        "schema_version": { "const": "adoc.diff.v0" }
+      },
+      "additionalProperties": true
+    },
+    "impact": {
+      "description": "Verified Knowledge Objects whose `impacts:` declaration intersects the changed-file set. Sorted by Object ID.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/impactedObject" }
+    },
+    "required_reviewers": {
+      "description": "Owners aggregated across changed verified objects and impacted objects. Sorted by owner.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/requiredReviewer" }
+    },
+    "diagnostics": {
+      "description": "Compile diagnostics surfaced during either snapshot's compile.",
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  },
+  "$defs": {
+    "impactedObject": {
+      "type": "object",
+      "required": ["id", "paths"],
+      "properties": {
+        "id": { "type": "string" },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "requiredReviewer": {
+      "type": "object",
+      "required": ["owner", "object_ids"],
+      "properties": {
+        "owner": { "type": "string" },
+        "object_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

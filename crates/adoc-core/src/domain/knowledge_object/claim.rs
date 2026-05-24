@@ -4,7 +4,8 @@ use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
 use crate::domain::knowledge_object::Relations;
-use crate::domain::values::{Body, NonEmptyText, OptionalFields, trim_ascii_edges};
+use crate::domain::value_objects::rel_path::RelPath;
+use crate::domain::values::{Body, NonEmpty, NonEmptyText, OptionalFields, trim_ascii_edges};
 
 pub(crate) const STATUS_FIELD: &str = "status";
 pub(crate) const OWNER_FIELD: &str = "owner";
@@ -26,6 +27,7 @@ pub(crate) struct Claim {
     fields: OptionalFields,
     verification: Option<Verification>,
     relations: Relations,
+    impacts: Option<NonEmpty<RelPath>>,
     span: SourceSpan,
 }
 
@@ -64,6 +66,7 @@ impl Claim {
         }
 
         let relations = super::extract_relations(&mut parsed, diagnostics);
+        let impacts = super::extract_impacts(&mut parsed, diagnostics);
         let optional_fields = std::mem::take(&mut parsed.raw_fields);
 
         match Self::from_parts(
@@ -79,7 +82,7 @@ impl Claim {
                 if claim.status().is_verified_ascii_case_variant() {
                     diagnostics.push(status_casing_diagnostic(&parsed, claim.status().as_str()));
                 }
-                Some(claim)
+                Some(claim.with_impacts(impacts))
             }
             Err(error) => {
                 emit_claim_error(&parsed, error, diagnostics);
@@ -141,8 +144,16 @@ impl Claim {
             fields,
             verification,
             relations,
+            impacts: None,
             span,
         })
+    }
+
+    /// Attach the (already validated) opt-in `impacts:` list. Returns `self`
+    /// for fluent composition by the V3.3 build pipeline.
+    pub(crate) fn with_impacts(mut self, impacts: Option<NonEmpty<RelPath>>) -> Self {
+        self.impacts = impacts;
+        self
     }
 
     #[cfg(test)]
@@ -195,6 +206,10 @@ impl Claim {
         &self.relations
     }
 
+    pub(crate) fn impacts(&self) -> Option<&[RelPath]> {
+        self.impacts.as_ref().map(NonEmpty::as_slice)
+    }
+
     pub(crate) fn span(&self) -> &SourceSpan {
         &self.span
     }
@@ -208,6 +223,7 @@ impl Claim {
     ) -> Option<Self> {
         let verification = build_verification(&parsed, &parsed.raw_fields, diagnostics)?;
         let relations = super::extract_relations(&mut parsed, diagnostics);
+        let impacts = super::extract_impacts(&mut parsed, diagnostics);
         let optional_fields = std::mem::take(&mut parsed.raw_fields);
         let storage_fields = verified_claim_storage_fields(optional_fields);
 
@@ -220,7 +236,7 @@ impl Claim {
             relations,
             parsed.span.clone(),
         ) {
-            Ok(claim) => Some(claim),
+            Ok(claim) => Some(claim.with_impacts(impacts)),
             Err(error) => {
                 emit_claim_error(&parsed, error, diagnostics);
                 None
@@ -443,19 +459,6 @@ impl Verification {
 
     pub(crate) fn evidence(&self) -> &[Evidence] {
         self.evidence.as_slice()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NonEmpty<T>(Vec<T>);
-
-impl<T> NonEmpty<T> {
-    pub(crate) fn from_vec(values: Vec<T>) -> Option<Self> {
-        (!values.is_empty()).then_some(Self(values))
-    }
-
-    pub(crate) fn as_slice(&self) -> &[T] {
-        &self.0
     }
 }
 
@@ -815,6 +818,149 @@ mod tests {
             DiagnosticCode::ClaimVerifiedMissingEvidence
         );
         assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.credits"));
+    }
+
+    #[test]
+    fn claim_build_from_parsed_extracts_impacts_field_sorted_and_deduplicated() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                (
+                    "impacts".to_string(),
+                    "crates/billing/src/refund.rs, src/a.rs, src/a.rs".to_string(),
+                ),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let impacts = claim.impacts().expect("impacts present");
+        let strs: Vec<&str> = impacts.iter().map(|p| p.as_str()).collect();
+        assert_eq!(strs, vec!["crates/billing/src/refund.rs", "src/a.rs"]);
+    }
+
+    #[test]
+    fn claim_build_from_parsed_accepts_bracketed_impacts_syntax() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                ("impacts".to_string(), "[a.rs, b.rs]".to_string()),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let impacts = claim.impacts().expect("impacts present");
+        let strs: Vec<&str> = impacts.iter().map(|p| p.as_str()).collect();
+        assert_eq!(strs, vec!["a.rs", "b.rs"]);
+    }
+
+    #[test]
+    fn claim_build_from_parsed_rejects_parent_segment_impacts_path() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                ("impacts".to_string(), "..".to_string()),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(claim.impacts().is_none());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::SchemaImpactsInvalidPath
+        );
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.credits"));
+    }
+
+    #[test]
+    fn claim_build_from_parsed_rejects_absolute_impacts_path() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                ("impacts".to_string(), "/etc/passwd".to_string()),
+            ]),
+            "body",
+        );
+
+        Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::SchemaImpactsInvalidPath
+        );
+    }
+
+    #[test]
+    fn claim_build_from_parsed_reports_empty_impacts_field() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                ("impacts".to_string(), "".to_string()),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(claim.impacts().is_none());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaImpactsEmpty);
+    }
+
+    #[test]
+    fn claim_build_from_parsed_reports_empty_bracketed_impacts_field() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                ("impacts".to_string(), "[]".to_string()),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(claim.impacts().is_none());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaImpactsEmpty);
+    }
+
+    #[test]
+    fn claim_build_from_parsed_keeps_valid_impacts_alongside_invalid_ones() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                ("impacts".to_string(), "src/good.rs, ..".to_string()),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        let impacts = claim.impacts().expect("good path retained");
+        let strs: Vec<&str> = impacts.iter().map(|p| p.as_str()).collect();
+        assert_eq!(strs, vec!["src/good.rs"]);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::SchemaImpactsInvalidPath
+        );
     }
 
     #[test]

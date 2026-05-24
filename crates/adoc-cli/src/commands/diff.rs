@@ -54,7 +54,10 @@ fn write_diff_text(envelope: &ObjectDiffEnvelope, styled: bool, exit_code: i32) 
     exit_code
 }
 
-fn render_diff_text(output: &mut String, envelope: &ObjectDiffEnvelope, styled: bool) {
+/// Render the diff section of the envelope. Visible to sibling commands
+/// (V3.3 `review`) so they can compose the diff body with their own
+/// extensions.
+pub(super) fn render_diff_text(output: &mut String, envelope: &ObjectDiffEnvelope, styled: bool) {
     let summary = format!(
         "Diff: {} created, {} deleted, {} changed",
         envelope.created_count(),
@@ -140,9 +143,10 @@ fn render_field_change(output: &mut String, change: &FieldChange, styled: bool) 
         FieldChange::RelationRemoved { kind, target } => {
             format!("{}: -{target}", relation_kind_label(*kind))
         }
-        // V3.3+ will add `ImpactsAdded` / `ImpactsRemoved`; surface unknown
-        // variants as a labelled stub so the CLI keeps rendering during the
-        // window where the wire envelope ships ahead of the presenter.
+        FieldChange::ImpactsAdded { path } => format!("impacts: +{path}"),
+        FieldChange::ImpactsRemoved { path } => format!("impacts: -{path}"),
+        // Unknown future variants surface as a labelled stub so the CLI keeps
+        // rendering when the wire envelope ships ahead of the presenter.
         _ => "field_change: (unsupported variant; upgrade the CLI)".to_string(),
     };
     if styled {

@@ -20,15 +20,19 @@ use crate::domain::graph::{GraphArtifactDocument, GraphKnowledgeObjectNode, Grap
 use crate::domain::knowledge_object::claim::{
     OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD, VERIFIED_AT_FIELD,
 };
+use crate::domain::ports::changed_files::{ChangedFilesError, ChangedFilesProvider};
 use crate::domain::ports::snapshot_workspace::{
     SnapshotError, SnapshotSelector, SnapshotWorkspaceProvider,
 };
 use crate::domain::review::field_change::{FieldChange, RelationKind};
+use crate::domain::review::impact::{ImpactedObject, compute_impact};
 use crate::domain::review::object_change::{ChangedObject, ObjectChange};
 use crate::domain::review::object_diff::ObjectDiff;
+use crate::domain::review::reviewer::{RequiredReviewer, required_reviewers};
 use crate::infrastructure::source::fs::FsSourceProvider;
 
 pub const DIFF_SCHEMA_VERSION: &str = "adoc.diff.v0";
+pub const REVIEW_SCHEMA_VERSION: &str = "adoc.review.v0";
 
 #[derive(Debug, Clone)]
 pub struct ReviewInput {
@@ -49,6 +53,12 @@ pub struct ReviewLoadResult {
 pub struct ReviewSession {
     base: CompileResult,
     head: CompileResult,
+    /// V3.3 impact projection. Empty for sessions loaded via
+    /// [`load_review_with_providers`] (the V3.1 path that does not run
+    /// changed-files analysis).
+    impact: Vec<ImpactedObject>,
+    /// V3.3 required reviewers aggregated from the diff and impact list.
+    required_reviewers: Vec<RequiredReviewer>,
 }
 
 impl ReviewSession {
@@ -58,6 +68,14 @@ impl ReviewSession {
 
     pub fn head(&self) -> &CompileResult {
         &self.head
+    }
+
+    pub fn impact_analysis(&self) -> &[ImpactedObject] {
+        &self.impact
+    }
+
+    pub fn required_reviewers(&self) -> &[RequiredReviewer] {
+        &self.required_reviewers
     }
 }
 
@@ -77,6 +95,12 @@ pub enum ReviewError {
     },
     HeadCompileBlocked {
         diagnostics: Vec<Diagnostic>,
+    },
+    /// V3.3 — the `ChangedFilesProvider` adapter failed to resolve the
+    /// changed-file set for `selector`.
+    ChangedFiles {
+        selector: SnapshotSelector,
+        source: ChangedFilesError,
     },
 }
 
@@ -99,6 +123,9 @@ impl fmt::Display for ReviewError {
                 "head snapshot failed to compile ({} diagnostics)",
                 diagnostics.len()
             ),
+            Self::ChangedFiles { selector, .. } => {
+                write!(f, "could not resolve changed-file set against {selector}")
+            }
         }
     }
 }
@@ -107,6 +134,7 @@ impl Error for ReviewError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::BaseSnapshot { source, .. } | Self::HeadSnapshot { source, .. } => Some(source),
+            Self::ChangedFiles { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -151,7 +179,50 @@ pub(crate) fn load_review_with_providers<S: SnapshotWorkspaceProvider>(
     diagnostics.extend(head.diagnostics.iter().cloned());
 
     Ok(ReviewLoadResult {
-        session: ReviewSession { base, head },
+        session: ReviewSession {
+            base,
+            head,
+            impact: Vec::new(),
+            required_reviewers: Vec::new(),
+        },
+        diagnostics,
+    })
+}
+
+/// V3.3 loader. Layers on top of [`load_review_with_providers`] by resolving
+/// the changed-file set through the supplied [`ChangedFilesProvider`] and
+/// populating the session's `impact` and `required_reviewers` projections.
+pub(crate) fn load_review_with_changed_files<
+    S: SnapshotWorkspaceProvider,
+    C: ChangedFilesProvider,
+>(
+    input: ReviewInput,
+    snapshot_provider: &S,
+    changed_files_provider: &C,
+) -> Result<ReviewLoadResult, ReviewError> {
+    let base_selector = input.base.clone();
+    let ReviewLoadResult {
+        session,
+        diagnostics,
+    } = load_review_with_providers(input, snapshot_provider)?;
+
+    let changed = changed_files_provider
+        .changed_files(&base_selector)
+        .map_err(|source| ReviewError::ChangedFiles {
+            selector: base_selector,
+            source,
+        })?;
+
+    let diff = diff_objects(&session);
+    let impact = compute_impact(&diff, &changed);
+    let reviewers = required_reviewers(&diff, &impact);
+
+    Ok(ReviewLoadResult {
+        session: ReviewSession {
+            impact,
+            required_reviewers: reviewers,
+            ..session
+        },
         diagnostics,
     })
 }
@@ -294,7 +365,25 @@ fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
         &head.relations.related_to,
     );
 
+    project_impacts(&mut out, &base.impacts, &head.impacts);
+
     out
+}
+
+fn project_impacts(out: &mut Vec<FieldChange>, base: &[String], head: &[String]) {
+    use std::collections::BTreeSet;
+    let base_set: BTreeSet<&str> = base.iter().map(String::as_str).collect();
+    let head_set: BTreeSet<&str> = head.iter().map(String::as_str).collect();
+    for path in head_set.difference(&base_set) {
+        out.push(FieldChange::ImpactsAdded {
+            path: (*path).to_string(),
+        });
+    }
+    for path in base_set.difference(&head_set) {
+        out.push(FieldChange::ImpactsRemoved {
+            path: (*path).to_string(),
+        });
+    }
 }
 
 fn project_relation(
@@ -393,6 +482,35 @@ impl ObjectDiffEnvelope {
     /// render the V3.2 field-level projection beneath each id.
     pub fn changed(&self) -> &[ChangedObject] {
         &self.changed
+    }
+}
+
+/// Wire envelope for `adoc.review.v0` (V3.3). Embeds the V3.1 diff envelope
+/// alongside the V3.3 impact and required-reviewer projections. The schema
+/// stays at `v0` across V3 — later slices add optional fields (proof
+/// obligations in V3.4, patch_check in V3.7); tolerant readers required.
+#[derive(Debug, Clone, Serialize)]
+pub struct ReviewEnvelope {
+    pub schema_version: &'static str,
+    pub diff: ObjectDiffEnvelope,
+    pub impact: Vec<ImpactedObject>,
+    pub required_reviewers: Vec<RequiredReviewer>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl ReviewEnvelope {
+    /// Build the wire envelope from a loaded [`ReviewSession`] and the diff
+    /// computed against it. The session's `impact_analysis` and
+    /// `required_reviewers` are cloned in.
+    pub fn from_session(session: &ReviewSession, diagnostics: Vec<Diagnostic>) -> Self {
+        let diff = diff_objects(session);
+        Self {
+            schema_version: REVIEW_SCHEMA_VERSION,
+            diff: ObjectDiffEnvelope::from_diff(diff, Vec::new()),
+            impact: session.impact_analysis().to_vec(),
+            required_reviewers: session.required_reviewers().to_vec(),
+            diagnostics,
+        }
     }
 }
 
@@ -711,6 +829,7 @@ mod tests {
                 },
                 fields,
                 relations,
+                impacts: Vec::new(),
             }
         }
 
@@ -955,6 +1074,64 @@ mod tests {
             head.relations.depends_on = vec!["a.a".to_string()];
 
             assert!(project_changed(&changed_from(base, head)).is_empty());
+        }
+
+        #[test]
+        fn impacts_added_when_path_appears_in_head() {
+            let base = baseline("x");
+            let mut head = baseline("x");
+            head.impacts = vec!["a.rs".to_string()];
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![FieldChange::ImpactsAdded {
+                    path: "a.rs".to_string(),
+                }]
+            );
+        }
+
+        #[test]
+        fn impacts_removed_when_path_disappears_in_head() {
+            let mut base = baseline("x");
+            base.impacts = vec!["a.rs".to_string()];
+            let head = baseline("x");
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![FieldChange::ImpactsRemoved {
+                    path: "a.rs".to_string(),
+                }]
+            );
+        }
+
+        #[test]
+        fn impacts_set_reorder_with_same_set_produces_empty_projection() {
+            let mut base = baseline("x");
+            base.impacts = vec!["a.rs".to_string(), "b.rs".to_string()];
+            let mut head = baseline("x");
+            head.impacts = vec!["b.rs".to_string(), "a.rs".to_string()];
+
+            assert!(project_changed(&changed_from(base, head)).is_empty());
+        }
+
+        #[test]
+        fn impacts_added_and_removed_emit_sorted_per_kind() {
+            let mut base = baseline("x");
+            base.impacts = vec!["keep.rs".to_string(), "drop.rs".to_string()];
+            let mut head = baseline("x");
+            head.impacts = vec!["keep.rs".to_string(), "add.rs".to_string()];
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![
+                    FieldChange::ImpactsAdded {
+                        path: "add.rs".to_string(),
+                    },
+                    FieldChange::ImpactsRemoved {
+                        path: "drop.rs".to_string(),
+                    },
+                ]
+            );
         }
 
         #[test]

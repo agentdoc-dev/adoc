@@ -636,10 +636,11 @@ mod tests {
         use crate::domain::knowledge_object::{
             KnowledgeObject,
             claim::{
-                Claim, Evidence, NonEmpty, OWNER_FIELD, Owner, REVIEWED_BY_FIELD, SOURCE_FIELD,
-                TEST_FIELD, VERIFIED_AT_FIELD, Verification, VerifiedAt,
+                Claim, Evidence, OWNER_FIELD, Owner, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
+                VERIFIED_AT_FIELD, Verification, VerifiedAt,
             },
         };
+        use crate::domain::values::NonEmpty;
         let verification = Verification::new(
             Owner::try_new(fields.get(OWNER_FIELD).expect("owner")).expect("owner"),
             VerifiedAt::try_new(fields.get(VERIFIED_AT_FIELD).expect("verified_at"))

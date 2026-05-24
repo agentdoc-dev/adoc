@@ -4,5 +4,7 @@
 //! Domain and application layers never import this module directly; the
 //! composition root in `lib.rs` is the only wiring site.
 
+pub(crate) mod changed_files;
 pub(crate) mod error;
+pub(crate) mod util;
 pub(crate) mod worktree;

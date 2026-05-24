@@ -56,6 +56,12 @@ Examples:
   adoc diff main --format json
   adoc diff HEAD~1
 ";
+const REVIEW_LONG_HELP: &str = "\
+Examples:
+  adoc review main
+  adoc review main --format json
+  adoc review HEAD~1
+";
 const SEARCH_LONG_HELP: &str = "\
 Examples:
   adoc search \"refund policy\"
@@ -252,6 +258,15 @@ pub(crate) enum Commands {
     )]
     Diff {
         /// Base git ref to diff against. The current working tree is the head.
+        #[arg(value_name = "BASE_REF")]
+        base_ref: String,
+    },
+    #[command(
+        about = "Review Knowledge Object changes with source-path impact and required reviewers.",
+        after_long_help = REVIEW_LONG_HELP
+    )]
+    Review {
+        /// Base git ref to review against. The current working tree is the head.
         #[arg(value_name = "BASE_REF")]
         base_ref: String,
     },

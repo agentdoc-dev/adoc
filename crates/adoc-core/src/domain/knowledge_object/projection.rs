@@ -128,11 +128,12 @@ mod tests {
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
     use crate::domain::knowledge_object::{
         KnowledgeObject,
-        claim::{Claim, Evidence, NonEmpty, Owner, Verification, VerifiedAt},
+        claim::{Claim, Evidence, Owner, Verification, VerifiedAt},
         decision::{AcceptedVerdict, DECIDED_BY_FIELD, DecidedBy, Decision},
         glossary::Glossary,
         warning::Warning,
     };
+    use crate::domain::values::NonEmpty;
 
     fn span() -> SourceSpan {
         SourceSpan {

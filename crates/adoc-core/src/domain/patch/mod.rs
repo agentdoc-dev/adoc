@@ -621,6 +621,7 @@ mod tests {
             },
             fields: BTreeMap::new(),
             relations: GraphRelations::default(),
+            impacts: Vec::new(),
         }
     }
 

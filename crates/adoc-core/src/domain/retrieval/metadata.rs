@@ -93,6 +93,7 @@ mod tests {
             },
             fields,
             relations: GraphRelations::default(),
+            impacts: Vec::new(),
         }
     }
 

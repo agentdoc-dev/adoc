@@ -148,6 +148,7 @@ pub(crate) mod test_support {
             },
             fields: BTreeMap::new(),
             relations: GraphRelations::default(),
+            impacts: Vec::new(),
         }
     }
 }
