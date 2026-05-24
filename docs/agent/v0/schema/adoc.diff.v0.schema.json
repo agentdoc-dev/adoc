@@ -74,9 +74,101 @@
       "properties": {
         "id": { "type": "string" },
         "base": { "$ref": "#/$defs/knowledgeObjectRecord" },
-        "head": { "$ref": "#/$defs/knowledgeObjectRecord" }
+        "head": { "$ref": "#/$defs/knowledgeObjectRecord" },
+        "field_changes": {
+          "type": "array",
+          "description": "V3.2 typed projection over the base/head pair. Optional and omitted entirely when the projection produces no entries V3.2 expresses (e.g. value-only changes to evidence keys, or differences only in fields outside the V3.2 vocabulary). Tolerant readers must ignore unknown `type` values to stay forward-compatible with V3.3+ additions.",
+          "items": { "$ref": "#/$defs/fieldChange" }
+        }
       },
       "additionalProperties": true
+    },
+    "fieldChange": {
+      "$comment": "Sealed-but-extensible discriminated union; new V3.3+ variants (e.g. impacts_added, impacts_removed) extend the `type` set without bumping the envelope to v1.",
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "before", "after"],
+          "properties": {
+            "type": { "const": "body" },
+            "before": { "type": "string" },
+            "after": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "before", "after"],
+          "properties": {
+            "type": { "const": "status" },
+            "before": { "type": ["string", "null"] },
+            "after": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "before", "after"],
+          "properties": {
+            "type": { "const": "owner" },
+            "before": { "type": ["string", "null"] },
+            "after": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "before", "after"],
+          "properties": {
+            "type": { "const": "verified_at" },
+            "before": { "type": ["string", "null"] },
+            "after": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "field", "value"],
+          "properties": {
+            "type": { "const": "evidence_added" },
+            "field": { "type": "string", "enum": ["source", "test", "reviewed_by"] },
+            "value": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "field", "value"],
+          "properties": {
+            "type": { "const": "evidence_removed" },
+            "field": { "type": "string", "enum": ["source", "test", "reviewed_by"] },
+            "value": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "kind", "target"],
+          "properties": {
+            "type": { "const": "relation_added" },
+            "kind": { "type": "string", "enum": ["depends_on", "supersedes", "related_to"] },
+            "target": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "kind", "target"],
+          "properties": {
+            "type": { "const": "relation_removed" },
+            "kind": { "type": "string", "enum": ["depends_on", "supersedes", "related_to"] },
+            "target": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      ]
     }
   }
 }

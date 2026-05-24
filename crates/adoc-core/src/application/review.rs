@@ -17,10 +17,14 @@ use serde::Serialize;
 use crate::application::compile::{CompileResult, compile_with_provider};
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::graph::{GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode};
+use crate::domain::knowledge_object::claim::{
+    OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD, VERIFIED_AT_FIELD,
+};
 use crate::domain::ports::snapshot_workspace::{
     SnapshotError, SnapshotSelector, SnapshotWorkspaceProvider,
 };
-use crate::domain::review::object_change::ChangedObject;
+use crate::domain::review::field_change::{FieldChange, RelationKind};
+use crate::domain::review::object_change::{ChangedObject, ObjectChange};
 use crate::domain::review::object_diff::ObjectDiff;
 use crate::infrastructure::source::fs::FsSourceProvider;
 
@@ -177,10 +181,143 @@ fn compile_snapshot<S: SnapshotWorkspaceProvider>(
 ///
 /// Pure projection — does not allocate I/O. Knowledge Object scope only;
 /// pages, prose blocks, and edges are excluded per V3-DESIGN.md §V3.1.
+///
+/// Each `Changed` entry is decorated with its V3.2
+/// [`FieldChange`] projection via [`field_changes`].
 pub fn diff_objects(session: &ReviewSession) -> ObjectDiff {
     let base = extract_knowledge_objects(&session.base);
     let head = extract_knowledge_objects(&session.head);
-    ObjectDiff::compute(&base, &head)
+    let mut diff = ObjectDiff::compute(&base, &head);
+    for entry in diff.changed_mut() {
+        let projection = project_changed(entry);
+        entry.field_changes = projection;
+    }
+    diff
+}
+
+/// Pure projection over an [`ObjectChange`] — explains, in V3.2's typed
+/// vocabulary, what differs between the base and head sides of a `Changed`
+/// entry. `Created` and `Deleted` variants project to an empty vector; the
+/// full before/after record already lives in the diff envelope.
+///
+/// See V3-DESIGN.md §V3.2 for the variant list and §"Boundary Invariants"
+/// for the set-diff (not list-diff) semantics on relations.
+// V3.4 will reuse this projection for obligation dispatch via
+// `obligations_for_change(&ObjectChange)`. V3.2 itself decorates the diff
+// inline via `project_changed`, so the public function is currently
+// exercised only by tests; `#[allow(dead_code)]` documents the deferred
+// consumer rather than silencing a real warning (matches the
+// `ObjectChange` precedent in `domain/review/object_change.rs:20`).
+#[allow(dead_code)]
+pub fn field_changes(change: &ObjectChange) -> Vec<FieldChange> {
+    match change {
+        ObjectChange::Created { .. } | ObjectChange::Deleted { .. } => Vec::new(),
+        ObjectChange::Changed(c) => project_changed(c),
+    }
+}
+
+const V0_EVIDENCE_FIELDS: [&str; 3] = [SOURCE_FIELD, TEST_FIELD, REVIEWED_BY_FIELD];
+
+fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
+    let mut out = Vec::new();
+    let base = &c.base;
+    let head = &c.head;
+
+    if base.body != head.body {
+        out.push(FieldChange::Body {
+            before: base.body.clone(),
+            after: head.body.clone(),
+        });
+    }
+
+    if base.status != head.status {
+        out.push(FieldChange::Status {
+            before: base.status.clone(),
+            after: head.status.clone(),
+        });
+    }
+
+    let owner_before = base.fields.get(OWNER_FIELD).cloned();
+    let owner_after = head.fields.get(OWNER_FIELD).cloned();
+    if owner_before != owner_after {
+        out.push(FieldChange::Owner {
+            before: owner_before,
+            after: owner_after,
+        });
+    }
+
+    let verified_at_before = base.fields.get(VERIFIED_AT_FIELD).cloned();
+    let verified_at_after = head.fields.get(VERIFIED_AT_FIELD).cloned();
+    if verified_at_before != verified_at_after {
+        out.push(FieldChange::VerifiedAt {
+            before: verified_at_before,
+            after: verified_at_after,
+        });
+    }
+
+    // Strict presence/absence on the V0 evidence keys. A value-only change to
+    // an evidence field emits nothing — consumers see the diff in the full
+    // before/after records, and V3.4's "Evidence removal → re-evidence"
+    // obligation rule must not fire on edits that only update the value.
+    for key in V0_EVIDENCE_FIELDS {
+        let base_value = base.fields.get(key);
+        let head_value = head.fields.get(key);
+        match (base_value, head_value) {
+            (None, Some(after)) => out.push(FieldChange::EvidenceAdded {
+                field: key.to_string(),
+                value: after.clone(),
+            }),
+            (Some(before), None) => out.push(FieldChange::EvidenceRemoved {
+                field: key.to_string(),
+                value: before.clone(),
+            }),
+            _ => {}
+        }
+    }
+
+    project_relation(
+        &mut out,
+        RelationKind::DependsOn,
+        &base.relations.depends_on,
+        &head.relations.depends_on,
+    );
+    project_relation(
+        &mut out,
+        RelationKind::Supersedes,
+        &base.relations.supersedes,
+        &head.relations.supersedes,
+    );
+    project_relation(
+        &mut out,
+        RelationKind::RelatedTo,
+        &base.relations.related_to,
+        &head.relations.related_to,
+    );
+
+    out
+}
+
+fn project_relation(
+    out: &mut Vec<FieldChange>,
+    kind: RelationKind,
+    base: &[String],
+    head: &[String],
+) {
+    use std::collections::BTreeSet;
+    let base_set: BTreeSet<&str> = base.iter().map(String::as_str).collect();
+    let head_set: BTreeSet<&str> = head.iter().map(String::as_str).collect();
+    for target in head_set.difference(&base_set) {
+        out.push(FieldChange::RelationAdded {
+            kind,
+            target: (*target).to_string(),
+        });
+    }
+    for target in base_set.difference(&head_set) {
+        out.push(FieldChange::RelationRemoved {
+            kind,
+            target: (*target).to_string(),
+        });
+    }
 }
 
 fn extract_knowledge_objects(result: &CompileResult) -> Vec<GraphKnowledgeObjectNode> {
@@ -250,6 +387,12 @@ impl ObjectDiffEnvelope {
     /// Object IDs of changed entries, in deterministic sort order.
     pub fn changed_ids(&self) -> impl Iterator<Item = &str> {
         self.changed.iter().map(|entry| entry.id.as_str())
+    }
+
+    /// Changed entries in deterministic sort order. Exposed so the CLI can
+    /// render the V3.2 field-level projection beneath each id.
+    pub fn changed(&self) -> &[ChangedObject] {
+        &self.changed
     }
 }
 
@@ -534,5 +677,412 @@ mod tests {
                 .expect("diagnostics")
                 .is_empty()
         );
+    }
+
+    // ----- V3.2 field-level projection -----
+
+    mod field_changes_projection {
+        use std::collections::BTreeMap;
+
+        use crate::application::review::{V0_EVIDENCE_FIELDS, field_changes, project_changed};
+        use crate::domain::graph::{GraphKnowledgeObjectNode, GraphRelations, GraphSourceSpan};
+        use crate::domain::review::field_change::{FieldChange, RelationKind};
+        use crate::domain::review::object_change::{ChangedObject, ObjectChange};
+
+        fn node(
+            id: &str,
+            content_hash: &str,
+            body: &str,
+            status: Option<&str>,
+            fields: BTreeMap<String, String>,
+            relations: GraphRelations,
+        ) -> GraphKnowledgeObjectNode {
+            GraphKnowledgeObjectNode {
+                id: id.to_string(),
+                kind: "claim".to_string(),
+                content_hash: content_hash.to_string(),
+                status: status.map(str::to_string),
+                body: body.to_string(),
+                page_id: "team.billing".to_string(),
+                source_span: GraphSourceSpan {
+                    path: "docs/billing.adoc".to_string(),
+                    line: 1,
+                    column: 1,
+                },
+                fields,
+                relations,
+            }
+        }
+
+        fn baseline(body: &str) -> GraphKnowledgeObjectNode {
+            node(
+                "billing.credits",
+                "sha256:base",
+                body,
+                Some("draft"),
+                BTreeMap::new(),
+                GraphRelations::default(),
+            )
+        }
+
+        fn changed_from(
+            base: GraphKnowledgeObjectNode,
+            head: GraphKnowledgeObjectNode,
+        ) -> ChangedObject {
+            ChangedObject::new("billing.credits".to_string(), base, head)
+        }
+
+        #[test]
+        fn identical_records_produce_empty_projection() {
+            let base = baseline("Credits apply.");
+            let head = baseline("Credits apply.");
+            let c = changed_from(base, head);
+
+            assert!(project_changed(&c).is_empty());
+        }
+
+        #[test]
+        fn body_only_change_produces_exactly_one_body_field_change() {
+            let base = baseline("Old.");
+            let head = baseline("New.");
+            let c = changed_from(base, head);
+
+            assert_eq!(
+                project_changed(&c),
+                vec![FieldChange::Body {
+                    before: "Old.".to_string(),
+                    after: "New.".to_string(),
+                }]
+            );
+        }
+
+        #[test]
+        fn status_change_emits_status_field_change_with_optional_sides() {
+            let base = node(
+                "billing.credits",
+                "sha256:a",
+                "x",
+                Some("draft"),
+                BTreeMap::new(),
+                GraphRelations::default(),
+            );
+            let head = node(
+                "billing.credits",
+                "sha256:b",
+                "x",
+                Some("verified"),
+                BTreeMap::new(),
+                GraphRelations::default(),
+            );
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![FieldChange::Status {
+                    before: Some("draft".to_string()),
+                    after: Some("verified".to_string()),
+                }]
+            );
+        }
+
+        #[test]
+        fn status_appearance_from_none_to_some_emits_status_field_change() {
+            let base = node(
+                "billing.credits",
+                "sha256:a",
+                "x",
+                None,
+                BTreeMap::new(),
+                GraphRelations::default(),
+            );
+            let head = node(
+                "billing.credits",
+                "sha256:b",
+                "x",
+                Some("draft"),
+                BTreeMap::new(),
+                GraphRelations::default(),
+            );
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![FieldChange::Status {
+                    before: None,
+                    after: Some("draft".to_string()),
+                }]
+            );
+        }
+
+        #[test]
+        fn owner_appearance_emits_owner_field_change_with_none_before() {
+            let base = baseline("x");
+            let mut head = baseline("x");
+            head.fields
+                .insert("owner".to_string(), "team-billing".to_string());
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![FieldChange::Owner {
+                    before: None,
+                    after: Some("team-billing".to_string()),
+                }]
+            );
+        }
+
+        #[test]
+        fn verified_at_removal_emits_verified_at_field_change_with_none_after() {
+            let mut base = baseline("x");
+            base.fields
+                .insert("verified_at".to_string(), "2026-05-05".to_string());
+            let head = baseline("x");
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![FieldChange::VerifiedAt {
+                    before: Some("2026-05-05".to_string()),
+                    after: None,
+                }]
+            );
+        }
+
+        #[test]
+        fn evidence_added_when_source_appears_in_head() {
+            let base = baseline("x");
+            let mut head = baseline("x");
+            head.fields
+                .insert("source".to_string(), "ledger".to_string());
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![FieldChange::EvidenceAdded {
+                    field: "source".to_string(),
+                    value: "ledger".to_string(),
+                }]
+            );
+        }
+
+        #[test]
+        fn evidence_removed_when_test_disappears_in_head() {
+            let mut base = baseline("x");
+            base.fields
+                .insert("test".to_string(), "integration".to_string());
+            let head = baseline("x");
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![FieldChange::EvidenceRemoved {
+                    field: "test".to_string(),
+                    value: "integration".to_string(),
+                }]
+            );
+        }
+
+        #[test]
+        fn evidence_value_only_change_emits_no_field_change() {
+            // Strict presence/absence semantics: source: A -> source: B is
+            // not an EvidenceAdded/Removed and not an "EvidenceChanged"
+            // (no such variant in V3.2). Consumers must read the full
+            // before/after records if they care about value-only edits.
+            let mut base = baseline("x");
+            base.fields
+                .insert("source".to_string(), "ledger-v1".to_string());
+            let mut head = baseline("x");
+            head.fields
+                .insert("source".to_string(), "ledger-v2".to_string());
+
+            assert!(project_changed(&changed_from(base, head)).is_empty());
+        }
+
+        #[test]
+        fn relation_added_for_new_depends_on_target() {
+            let base = baseline("x");
+            let mut head = baseline("x");
+            head.relations.depends_on = vec!["billing.payments".to_string()];
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![FieldChange::RelationAdded {
+                    kind: RelationKind::DependsOn,
+                    target: "billing.payments".to_string(),
+                }]
+            );
+        }
+
+        #[test]
+        fn relation_removed_for_dropped_supersedes_target() {
+            let mut base = baseline("x");
+            base.relations.supersedes = vec!["billing.legacy-credits".to_string()];
+            let head = baseline("x");
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![FieldChange::RelationRemoved {
+                    kind: RelationKind::Supersedes,
+                    target: "billing.legacy-credits".to_string(),
+                }]
+            );
+        }
+
+        #[test]
+        fn related_to_relation_uses_related_to_kind() {
+            let base = baseline("x");
+            let mut head = baseline("x");
+            head.relations.related_to = vec!["billing.holds".to_string()];
+
+            assert_eq!(
+                project_changed(&changed_from(base, head)),
+                vec![FieldChange::RelationAdded {
+                    kind: RelationKind::RelatedTo,
+                    target: "billing.holds".to_string(),
+                }]
+            );
+        }
+
+        #[test]
+        fn relation_array_reorder_with_same_set_produces_empty_projection() {
+            let mut base = baseline("x");
+            base.relations.depends_on = vec!["b.b".to_string(), "a.a".to_string()];
+            let mut head = baseline("x");
+            head.relations.depends_on = vec!["a.a".to_string(), "b.b".to_string()];
+
+            assert!(project_changed(&changed_from(base, head)).is_empty());
+        }
+
+        #[test]
+        fn relation_duplicate_entries_collapse_via_set_semantics() {
+            let mut base = baseline("x");
+            base.relations.depends_on = vec!["a.a".to_string(), "a.a".to_string()];
+            let mut head = baseline("x");
+            head.relations.depends_on = vec!["a.a".to_string()];
+
+            assert!(project_changed(&changed_from(base, head)).is_empty());
+        }
+
+        #[test]
+        fn multiple_changes_appear_in_deterministic_visit_order() {
+            // Order: body, status, owner, verified_at, evidence (source,
+            // test, reviewed_by), relations (depends_on, supersedes,
+            // related_to). Matches the documented visit order in
+            // project_changed.
+            let base = node(
+                "billing.credits",
+                "sha256:a",
+                "old",
+                Some("draft"),
+                BTreeMap::new(),
+                GraphRelations::default(),
+            );
+            let mut head_fields = BTreeMap::new();
+            head_fields.insert("owner".to_string(), "team-billing".to_string());
+            head_fields.insert("source".to_string(), "ledger".to_string());
+            let head = node(
+                "billing.credits",
+                "sha256:b",
+                "new",
+                Some("verified"),
+                head_fields,
+                GraphRelations {
+                    depends_on: vec!["billing.payments".to_string()],
+                    ..GraphRelations::default()
+                },
+            );
+
+            let changes = project_changed(&changed_from(base, head));
+
+            assert_eq!(
+                changes,
+                vec![
+                    FieldChange::Body {
+                        before: "old".to_string(),
+                        after: "new".to_string(),
+                    },
+                    FieldChange::Status {
+                        before: Some("draft".to_string()),
+                        after: Some("verified".to_string()),
+                    },
+                    FieldChange::Owner {
+                        before: None,
+                        after: Some("team-billing".to_string()),
+                    },
+                    FieldChange::EvidenceAdded {
+                        field: "source".to_string(),
+                        value: "ledger".to_string(),
+                    },
+                    FieldChange::RelationAdded {
+                        kind: RelationKind::DependsOn,
+                        target: "billing.payments".to_string(),
+                    },
+                ]
+            );
+        }
+
+        #[test]
+        fn field_changes_returns_empty_for_created_variant() {
+            let record = baseline("x");
+            let change = ObjectChange::Created { record };
+
+            assert!(field_changes(&change).is_empty());
+        }
+
+        #[test]
+        fn field_changes_returns_empty_for_deleted_variant() {
+            let record = baseline("x");
+            let change = ObjectChange::Deleted { record };
+
+            assert!(field_changes(&change).is_empty());
+        }
+
+        #[test]
+        fn field_changes_dispatches_to_project_changed_for_changed_variant() {
+            let base = baseline("old");
+            let head = baseline("new");
+            let inner = changed_from(base, head);
+
+            // Wrapping the same ChangedObject in an ObjectChange::Changed must
+            // produce the same projection as calling project_changed directly.
+            let projected = field_changes(&ObjectChange::Changed(Box::new(inner.clone())));
+
+            assert_eq!(projected, project_changed(&inner));
+            assert_eq!(projected.len(), 1);
+        }
+
+        #[test]
+        fn v0_evidence_fields_constant_is_aligned_with_claim_module() {
+            assert_eq!(V0_EVIDENCE_FIELDS, ["source", "test", "reviewed_by"]);
+        }
+
+        #[test]
+        fn diff_objects_decoration_step_populates_field_changes_on_each_changed_entry() {
+            // ObjectDiff::compute only emits a Changed entry when
+            // content_hash differs, so base and head need distinct hashes
+            // even if the rest of the record varies on its own. The actual
+            // graph builder guarantees hash-vs-content correspondence —
+            // tests fake it.
+            let mut base = baseline("old");
+            base.content_hash = "sha256:base-hash".to_string();
+            let mut head = baseline("new");
+            head.content_hash = "sha256:head-hash".to_string();
+
+            let diff = crate::domain::review::object_diff::ObjectDiff::compute(
+                std::slice::from_ref(&base),
+                std::slice::from_ref(&head),
+            );
+
+            // Un-decorated diff: decoration is the application layer's job.
+            assert_eq!(diff.changed().len(), 1);
+            assert!(diff.changed()[0].field_changes().is_empty());
+
+            // Run the same decoration step diff_objects() performs.
+            let mut decorated = diff;
+            for entry in decorated.changed_mut() {
+                entry.field_changes = project_changed(entry);
+            }
+            assert_eq!(
+                decorated.changed()[0].field_changes(),
+                &[FieldChange::Body {
+                    before: "old".to_string(),
+                    after: "new".to_string(),
+                }]
+            );
+        }
     }
 }

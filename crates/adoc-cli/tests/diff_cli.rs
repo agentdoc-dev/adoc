@@ -131,6 +131,13 @@ fn diff_main_plain_lists_created_deleted_changed_ids() {
     assert!(stdout.contains("billing.legacy-credits"));
     assert!(stdout.contains("Changed:"));
     assert!(stdout.contains("billing.credits"));
+    // V3.2: the Changed section now nests a per-FieldChange line under each
+    // entry. The fixture's billing.credits change is a body-only edit, so
+    // the only line emitted is `body: changed`.
+    assert!(
+        stdout.contains("      body: changed"),
+        "expected plain output to include `body: changed` under the billing.credits Changed entry; got:\n{stdout}"
+    );
 }
 
 #[test]
@@ -240,4 +247,20 @@ fn diff_main_json_envelope_matches_prepared_changes() {
     );
     assert!(base_hash.starts_with("sha256:"));
     assert!(head_hash.starts_with("sha256:"));
+
+    // V3.2 acceptance: the body-only change on billing.credits in the
+    // fixture must project to exactly one FieldChange of type "body" with
+    // the expected before/after strings.
+    let field_changes = entry["field_changes"]
+        .as_array()
+        .expect("field_changes array present on a body-changed entry");
+    assert_eq!(
+        field_changes.len(),
+        1,
+        "expected exactly one field_change for body-only edit, got: {field_changes:#?}"
+    );
+    let body_change = &field_changes[0];
+    assert_eq!(body_change["type"], "body");
+    assert_eq!(body_change["before"], "Credits apply after payment.");
+    assert_eq!(body_change["after"], "Credits apply after ledger commit.");
 }
