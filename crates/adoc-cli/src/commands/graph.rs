@@ -56,6 +56,9 @@ pub(crate) fn graph(input: GraphCommandInput, resolved: ResolvedFormat) -> i32 {
         ResolvedFormat::Json => write_graph_json(GraphTraversalEnvelope::from(result), exit_code),
         ResolvedFormat::Plain => write_graph_text(&result, false),
         ResolvedFormat::Styled => write_graph_text(&result, true),
+        ResolvedFormat::Markdown => {
+            unreachable!("main.rs rejects markdown format for `adoc graph` before dispatch")
+        }
     }
 }
 

@@ -7,7 +7,7 @@ use adoc_local::{LocalContext, ReviewInput, ReviewUseCase, UnrestrictedPathPolic
 use crate::error::CliError;
 use crate::presentation::style::key::cyan_key;
 use crate::presentation::style::kv::faint_label;
-use crate::presentation::{ResolvedFormat, json as json_presentation};
+use crate::presentation::{MarkdownReviewPresenter, ResolvedFormat, json as json_presentation};
 
 use super::diff::render_diff_text;
 use super::{current_dir, eprint_diagnostics, report};
@@ -35,11 +35,22 @@ pub(crate) fn review(input: ReviewCommandInput, resolved: ResolvedFormat) -> i32
         ResolvedFormat::Json => write_review_json(&envelope, exit_code),
         ResolvedFormat::Plain => write_review_text(&envelope, false, exit_code),
         ResolvedFormat::Styled => write_review_text(&envelope, true, exit_code),
+        ResolvedFormat::Markdown => write_review_markdown(&envelope, exit_code),
     }
 }
 
 fn write_review_json(envelope: &ReviewEnvelope, exit_code: i32) -> i32 {
     json_presentation::write_json(envelope, &mut io::stdout()).map_or_else(
+        |source| report(CliError::RetrievalIo { source }),
+        |()| exit_code,
+    )
+}
+
+fn write_review_markdown(envelope: &ReviewEnvelope, exit_code: i32) -> i32 {
+    if !envelope.diagnostics.is_empty() {
+        eprint_diagnostics(&envelope.diagnostics);
+    }
+    MarkdownReviewPresenter::write_review(envelope, &mut io::stdout()).map_or_else(
         |source| report(CliError::RetrievalIo { source }),
         |()| exit_code,
     )

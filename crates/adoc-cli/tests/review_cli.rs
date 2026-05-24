@@ -2,8 +2,16 @@ mod support;
 
 use std::process::Command;
 
-use support::{TestWorkspace, adoc_command, stderr, stdout};
+use support::{TestWorkspace, adoc_command, fixture_path, stderr, stdout};
 
+// V3.3 / V3.4 base fixture plus a second verified claim `billing.holds-policy`
+// whose head delta exercises every other `FieldChange` variant — status,
+// owner, verified_at, evidence add/remove, relation add/remove, and impacts
+// add/remove. `billing.legacy-credits` exists only in base (Deleted variant)
+// and `billing.holds` only in head (Created variant), so the V3.5 golden also
+// covers the `## Created` and `## Deleted` markdown sections. The supersedes
+// target `billing.legacy-holds` is a draft claim that lives in both refs so
+// reference validation stays clean.
 const BASE_BILLING_ADOC: &str = concat!(
     "# Billing @doc(team.billing)\n",
     "\n",
@@ -19,10 +27,28 @@ const BASE_BILLING_ADOC: &str = concat!(
     "Refunds process within 24 hours.\n",
     "::\n",
     "\n",
-    "::claim billing.credits\n",
+    "::claim billing.holds-policy\n",
+    "status: verified\n",
+    "owner: team-billing\n",
+    "verified_at: 2026-05-05\n",
+    "source: holds-spec\n",
+    "test: integration\n",
+    "supersedes: billing.legacy-holds\n",
+    "impacts: crates/billing/src/holds.rs\n",
+    "--\n",
+    "Holds expire after 7 days.\n",
+    "::\n",
+    "\n",
+    "::claim billing.legacy-holds\n",
     "status: draft\n",
     "--\n",
-    "Credits apply after payment.\n",
+    "Legacy hold semantics.\n",
+    "::\n",
+    "\n",
+    "::claim billing.legacy-credits\n",
+    "status: draft\n",
+    "--\n",
+    "Legacy credit semantics.\n",
     "::\n",
 );
 
@@ -41,10 +67,28 @@ const HEAD_BILLING_ADOC: &str = concat!(
     "Refunds process within 12 hours.\n",
     "::\n",
     "\n",
-    "::claim billing.credits\n",
+    "::claim billing.holds-policy\n",
+    "status: needs_review\n",
+    "owner: team-payments\n",
+    "verified_at: 2026-05-10\n",
+    "source: holds-spec\n",
+    "reviewed_by: team-payments\n",
+    "depends_on: billing.refunds\n",
+    "impacts: crates/billing/src/holds-v2.rs\n",
+    "--\n",
+    "Holds expire after 7 days.\n",
+    "::\n",
+    "\n",
+    "::claim billing.legacy-holds\n",
     "status: draft\n",
     "--\n",
-    "Credits apply after payment.\n",
+    "Legacy hold semantics.\n",
+    "::\n",
+    "\n",
+    "::claim billing.holds\n",
+    "status: draft\n",
+    "--\n",
+    "Holds extend refund window automatically.\n",
     "::\n",
 );
 
@@ -200,17 +244,34 @@ fn review_main_json_envelope_includes_proof_obligations() {
     let obligations = value["proof_obligations"]
         .as_array()
         .expect("proof_obligations array");
+    // V3.5 fixture extension: billing.holds-policy transitions verified →
+    // needs_review (one stale-verified obligation) on top of billing.refunds'
+    // body change (re-verify body) and the impact-review obligation.
     assert_eq!(
         obligations.len(),
-        2,
-        "expected one re-verify-body obligation and one impact-review obligation, got: {obligations:#?}"
+        3,
+        "expected stale-verified + re-verify-body + impact-review, got: {obligations:#?}"
     );
 
-    // Output sorts by (object_id, reason). Both share billing.refunds, so
-    // "re-verify body" precedes "review impacted claim" alphabetically.
-    assert_eq!(obligations[0]["object_id"], "billing.refunds");
-    assert_eq!(obligations[0]["reason"], "re-verify body");
-    let re_verify_evidence: Vec<&str> = obligations[0]["required_evidence"]
+    // Output sorts by (object_id, reason). billing.holds-policy precedes
+    // billing.refunds alphabetically; within billing.refunds, "re-verify body"
+    // precedes "review impacted claim".
+    assert_eq!(obligations[0]["object_id"], "billing.holds-policy");
+    assert_eq!(obligations[0]["reason"], "stale verified claim");
+    let stale_evidence: Vec<&str> = obligations[0]["required_evidence"]
+        .as_array()
+        .expect("required_evidence array")
+        .iter()
+        .map(|v| v.as_str().expect("evidence is string"))
+        .collect();
+    assert!(
+        stale_evidence.is_empty(),
+        "stale-verified obligation should carry no required evidence; got: {stale_evidence:?}"
+    );
+
+    assert_eq!(obligations[1]["object_id"], "billing.refunds");
+    assert_eq!(obligations[1]["reason"], "re-verify body");
+    let re_verify_evidence: Vec<&str> = obligations[1]["required_evidence"]
         .as_array()
         .expect("required_evidence array")
         .iter()
@@ -222,9 +283,9 @@ fn review_main_json_envelope_includes_proof_obligations() {
         "V3.4 acceptance: body change on verified claim with three evidence fields"
     );
 
-    assert_eq!(obligations[1]["object_id"], "billing.refunds");
-    assert_eq!(obligations[1]["reason"], "review impacted claim");
-    let impact_evidence: Vec<&str> = obligations[1]["required_evidence"]
+    assert_eq!(obligations[2]["object_id"], "billing.refunds");
+    assert_eq!(obligations[2]["reason"], "review impacted claim");
+    let impact_evidence: Vec<&str> = obligations[2]["required_evidence"]
         .as_array()
         .expect("required_evidence array")
         .iter()
@@ -262,6 +323,73 @@ fn review_main_plain_lists_proof_obligations_section() {
         stdout.contains("billing.refunds: review impacted claim"),
         "expected impact-review obligation line\n{stdout}"
     );
+}
+
+/// Read or refresh a V3.5 golden Markdown file under
+/// `tests/fixtures/review_markdown/`. Set `ADOC_UPDATE_GOLDEN=1` in the env
+/// to rewrite the golden from the current run; otherwise compare for byte
+/// equality.
+fn assert_markdown_matches_golden(relative: &str, actual: &str) {
+    let golden = fixture_path(relative);
+    if std::env::var_os("ADOC_UPDATE_GOLDEN").is_some() {
+        if let Some(parent) = golden.parent() {
+            std::fs::create_dir_all(parent).expect("create golden parent dir");
+        }
+        std::fs::write(&golden, actual).expect("write golden file");
+        return;
+    }
+    let expected = std::fs::read_to_string(&golden).unwrap_or_else(|error| {
+        panic!(
+            "missing golden file at {}: {error}\nTo bootstrap, re-run with ADOC_UPDATE_GOLDEN=1",
+            golden.display()
+        )
+    });
+    assert_eq!(
+        actual,
+        expected,
+        "markdown output diverged from golden at {}\n--- expected ---\n{expected}\n--- actual ---\n{actual}",
+        golden.display()
+    );
+}
+
+#[test]
+fn diff_main_markdown_matches_golden() {
+    let workspace = build_billing_pilot_with_impacts("diff-markdown");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["diff", "main", "--format", "markdown"])
+        .output()
+        .expect("adoc diff runs");
+
+    assert!(
+        output.status.success(),
+        "expected adoc diff --format markdown to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+
+    assert_markdown_matches_golden("review_markdown/diff.md", &stdout(&output));
+}
+
+#[test]
+fn review_main_markdown_matches_golden() {
+    let workspace = build_billing_pilot_with_impacts("review-markdown");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "markdown"])
+        .output()
+        .expect("adoc review runs");
+
+    assert!(
+        output.status.success(),
+        "expected adoc review --format markdown to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+
+    assert_markdown_matches_golden("review_markdown/review.md", &stdout(&output));
 }
 
 #[test]
