@@ -11,6 +11,7 @@
 use serde::Serialize;
 
 use crate::domain::graph::GraphKnowledgeObjectNode;
+use crate::domain::review::field_change::FieldChange;
 
 /// One entry of an [`ObjectDiff`]. Closed enum; new variants would require a
 /// `v1` envelope bump and are out of scope for V3.
@@ -32,20 +33,43 @@ pub(crate) enum ObjectChange {
 /// Fields are `pub` so external consumers can read the projection;
 /// instances are only constructed by
 /// [`super::object_diff::ObjectDiff::compute`] via the `pub(super)` factory.
+///
+/// `field_changes` is the V3.2 typed projection over the base/head pair; it is
+/// populated by [`crate::application::review::diff_objects`] after the
+/// mechanical diff is computed. The field is `#[serde(skip_serializing_if =
+/// "Vec::is_empty")]` so V3.1 envelopes (and any code path that builds a
+/// `ChangedObject` without running the projection) stay byte-identical.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChangedObject {
     pub id: String,
     pub(crate) base: GraphKnowledgeObjectNode,
     pub(crate) head: GraphKnowledgeObjectNode,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) field_changes: Vec<FieldChange>,
 }
 
 impl ChangedObject {
-    pub(super) fn new(
+    /// Factory used by [`super::object_diff::ObjectDiff::compute`] (the sole
+    /// production constructor) and by application-layer unit tests that need
+    /// to drive [`crate::application::review::project_changed`] against
+    /// hand-built records.
+    pub(crate) fn new(
         id: String,
         base: GraphKnowledgeObjectNode,
         head: GraphKnowledgeObjectNode,
     ) -> Self {
-        Self { id, base, head }
+        Self {
+            id,
+            base,
+            head,
+            field_changes: Vec::new(),
+        }
+    }
+
+    /// Read-only access to the typed projection. Empty until
+    /// [`crate::application::review::diff_objects`] decorates the diff.
+    pub fn field_changes(&self) -> &[FieldChange] {
+        &self.field_changes
     }
 }
 

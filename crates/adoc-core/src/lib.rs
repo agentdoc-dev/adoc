@@ -34,6 +34,7 @@ pub use domain::ports::snapshot_workspace::{GitRef, SnapshotError, SnapshotSelec
 pub use domain::retrieval::{
     RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSource, SearchMode,
 };
+pub use domain::review::field_change::{FieldChange, RelationKind};
 pub use domain::review::object_change::ChangedObject;
 pub use domain::review::object_diff::ObjectDiff;
 pub use infrastructure::git::error::GitError;

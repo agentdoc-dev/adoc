@@ -1,7 +1,7 @@
 use std::fmt::Write as FmtWrite;
 use std::io;
 
-use adoc_core::ObjectDiffEnvelope;
+use adoc_core::{ChangedObject, FieldChange, ObjectDiffEnvelope, RelationKind};
 use adoc_local::{DiffInput, DiffUseCase, LocalContext, UnrestrictedPathPolicy};
 
 use crate::error::CliError;
@@ -69,7 +69,7 @@ fn render_diff_text(output: &mut String, envelope: &ObjectDiffEnvelope, styled: 
 
     render_id_list(output, "Created:", envelope.created_ids(), styled);
     render_id_list(output, "Deleted:", envelope.deleted_ids(), styled);
-    render_id_list(output, "Changed:", envelope.changed_ids(), styled);
+    render_changed_section(output, envelope.changed(), styled);
 }
 
 fn render_id_list<'a, I: Iterator<Item = &'a str>>(
@@ -94,5 +94,72 @@ fn render_id_list<'a, I: Iterator<Item = &'a str>>(
     }
     if empty {
         writeln!(output, "  (none)").expect("write to String");
+    }
+}
+
+fn render_changed_section(output: &mut String, entries: &[ChangedObject], styled: bool) {
+    let label = "Changed:";
+    if styled {
+        writeln!(output, "{}", faint_label(label)).expect("write to String");
+    } else {
+        writeln!(output, "{label}").expect("write to String");
+    }
+    if entries.is_empty() {
+        writeln!(output, "  (none)").expect("write to String");
+        return;
+    }
+    for entry in entries {
+        if styled {
+            writeln!(output, "  - {}", cyan_key(&entry.id)).expect("write to String");
+        } else {
+            writeln!(output, "  - {}", &entry.id).expect("write to String");
+        }
+        for change in entry.field_changes() {
+            render_field_change(output, change, styled);
+        }
+    }
+}
+
+fn render_field_change(output: &mut String, change: &FieldChange, styled: bool) {
+    let line = match change {
+        FieldChange::Body { .. } => "body: changed".to_string(),
+        FieldChange::Status { before, after } => {
+            format!("status: {} → {}", optional(before), optional(after))
+        }
+        FieldChange::Owner { before, after } => {
+            format!("owner: {} → {}", optional(before), optional(after))
+        }
+        FieldChange::VerifiedAt { before, after } => {
+            format!("verified_at: {} → {}", optional(before), optional(after))
+        }
+        FieldChange::EvidenceAdded { field, .. } => format!("evidence: +{field}"),
+        FieldChange::EvidenceRemoved { field, .. } => format!("evidence: -{field}"),
+        FieldChange::RelationAdded { kind, target } => {
+            format!("{}: +{target}", relation_kind_label(*kind))
+        }
+        FieldChange::RelationRemoved { kind, target } => {
+            format!("{}: -{target}", relation_kind_label(*kind))
+        }
+        // V3.3+ will add `ImpactsAdded` / `ImpactsRemoved`; surface unknown
+        // variants as a labelled stub so the CLI keeps rendering during the
+        // window where the wire envelope ships ahead of the presenter.
+        _ => "field_change: (unsupported variant; upgrade the CLI)".to_string(),
+    };
+    if styled {
+        writeln!(output, "      {}", faint_label(&line)).expect("write to String");
+    } else {
+        writeln!(output, "      {line}").expect("write to String");
+    }
+}
+
+fn optional(value: &Option<String>) -> &str {
+    value.as_deref().unwrap_or("(none)")
+}
+
+fn relation_kind_label(kind: RelationKind) -> &'static str {
+    match kind {
+        RelationKind::DependsOn => "depends_on",
+        RelationKind::Supersedes => "supersedes",
+        RelationKind::RelatedTo => "related_to",
     }
 }

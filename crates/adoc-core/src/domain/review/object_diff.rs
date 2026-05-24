@@ -82,6 +82,16 @@ impl ObjectDiff {
         self.created.is_empty() && self.deleted.is_empty() && self.changed.is_empty()
     }
 
+    /// Mutable access to the `changed` slice. The application layer uses this
+    /// to decorate each entry with its V3.2 [`super::field_change::FieldChange`]
+    /// projection after `compute` runs. Kept `pub(crate)` so the
+    /// application layer can decorate without re-cloning the diff, while the
+    /// public Rust API surface continues to expose only the read-only
+    /// serialized envelope.
+    pub(crate) fn changed_mut(&mut self) -> &mut Vec<ChangedObject> {
+        &mut self.changed
+    }
+
     // Accessor methods are used by inline domain and application unit tests.
     // Production callers serialize the diff via serde and never touch its
     // typed structure directly (V3-DESIGN.md §"Public Core API Additions").
