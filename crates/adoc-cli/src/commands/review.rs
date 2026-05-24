@@ -1,7 +1,7 @@
 use std::fmt::Write as FmtWrite;
 use std::io;
 
-use adoc_core::{ImpactedObject, RequiredReviewer, ReviewEnvelope};
+use adoc_core::{ImpactedObject, ProofObligation, RequiredReviewer, ReviewEnvelope};
 use adoc_local::{LocalContext, ReviewInput, ReviewUseCase, UnrestrictedPathPolicy};
 
 use crate::error::CliError;
@@ -53,6 +53,7 @@ fn write_review_text(envelope: &ReviewEnvelope, styled: bool, exit_code: i32) ->
     render_diff_text(&mut output, &envelope.diff, styled);
     render_impact_section(&mut output, &envelope.impact, styled);
     render_required_reviewers_section(&mut output, &envelope.required_reviewers, styled);
+    render_proof_obligations_section(&mut output, &envelope.proof_obligations, styled);
     print!("{output}");
     exit_code
 }
@@ -102,5 +103,36 @@ fn render_required_reviewers_section(
         };
         let ids = entry.object_ids.join(", ");
         writeln!(output, "  - {owner}: {ids}").expect("write to String");
+    }
+}
+
+fn render_proof_obligations_section(
+    output: &mut String,
+    entries: &[ProofObligation],
+    styled: bool,
+) {
+    let label = "Proof obligations:";
+    if styled {
+        writeln!(output, "{}", faint_label(label)).expect("write to String");
+    } else {
+        writeln!(output, "{label}").expect("write to String");
+    }
+    if entries.is_empty() {
+        writeln!(output, "  (none)").expect("write to String");
+        return;
+    }
+    for entry in entries {
+        let id = if styled {
+            cyan_key(&entry.object_id)
+        } else {
+            entry.object_id.clone()
+        };
+        let evidence = entry.required_evidence.join(", ");
+        if evidence.is_empty() {
+            writeln!(output, "  - {id}: {}", entry.reason).expect("write to String");
+        } else {
+            writeln!(output, "  - {id}: {} [evidence: {evidence}]", entry.reason)
+                .expect("write to String");
+        }
     }
 }

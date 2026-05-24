@@ -12,6 +12,8 @@ const BASE_BILLING_ADOC: &str = concat!(
     "owner: team-billing\n",
     "verified_at: 2026-05-05\n",
     "source: ledger\n",
+    "test: integration\n",
+    "reviewed_by: team-billing\n",
     "impacts: crates/billing/src/refund.rs\n",
     "--\n",
     "Refunds process within 24 hours.\n",
@@ -32,6 +34,8 @@ const HEAD_BILLING_ADOC: &str = concat!(
     "owner: team-billing\n",
     "verified_at: 2026-05-05\n",
     "source: ledger\n",
+    "test: integration\n",
+    "reviewed_by: team-billing\n",
     "impacts: crates/billing/src/refund.rs\n",
     "--\n",
     "Refunds process within 12 hours.\n",
@@ -171,6 +175,93 @@ fn review_main_plain_lists_impact_and_reviewer_sections() {
     assert!(stdout.contains("billing.refunds (crates/billing/src/refund.rs)"));
     assert!(stdout.contains("Required reviewers:"));
     assert!(stdout.contains("team-billing: billing.refunds"));
+}
+
+#[test]
+fn review_main_json_envelope_includes_proof_obligations() {
+    let workspace = build_billing_pilot_with_impacts("review-obligations-json");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+
+    assert!(
+        output.status.success(),
+        "expected adoc review to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("adoc review --format json must emit a JSON envelope on stdout");
+
+    let obligations = value["proof_obligations"]
+        .as_array()
+        .expect("proof_obligations array");
+    assert_eq!(
+        obligations.len(),
+        2,
+        "expected one re-verify-body obligation and one impact-review obligation, got: {obligations:#?}"
+    );
+
+    // Output sorts by (object_id, reason). Both share billing.refunds, so
+    // "re-verify body" precedes "review impacted claim" alphabetically.
+    assert_eq!(obligations[0]["object_id"], "billing.refunds");
+    assert_eq!(obligations[0]["reason"], "re-verify body");
+    let re_verify_evidence: Vec<&str> = obligations[0]["required_evidence"]
+        .as_array()
+        .expect("required_evidence array")
+        .iter()
+        .map(|v| v.as_str().expect("evidence is string"))
+        .collect();
+    assert_eq!(
+        re_verify_evidence,
+        vec!["source", "test", "reviewed_by"],
+        "V3.4 acceptance: body change on verified claim with three evidence fields"
+    );
+
+    assert_eq!(obligations[1]["object_id"], "billing.refunds");
+    assert_eq!(obligations[1]["reason"], "review impacted claim");
+    let impact_evidence: Vec<&str> = obligations[1]["required_evidence"]
+        .as_array()
+        .expect("required_evidence array")
+        .iter()
+        .map(|v| v.as_str().expect("evidence is string"))
+        .collect();
+    assert_eq!(impact_evidence, vec!["source"]);
+}
+
+#[test]
+fn review_main_plain_lists_proof_obligations_section() {
+    let workspace = build_billing_pilot_with_impacts("review-obligations-plain");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "plain"])
+        .output()
+        .expect("adoc review runs");
+
+    assert!(
+        output.status.success(),
+        "expected adoc review to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let stdout = stdout(&output);
+    assert!(
+        stdout.contains("Proof obligations:"),
+        "expected section header in plain output\n{stdout}"
+    );
+    assert!(
+        stdout.contains("billing.refunds: re-verify body"),
+        "expected re-verify body obligation line\n{stdout}"
+    );
+    assert!(
+        stdout.contains("billing.refunds: review impacted claim"),
+        "expected impact-review obligation line\n{stdout}"
+    );
 }
 
 #[test]
