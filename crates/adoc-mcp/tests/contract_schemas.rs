@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use adoc_core::{
-    GitRef, ObjectDiffEnvelope, ReviewInput, SnapshotSelector, diff_objects, load_review_from_git,
+    GitRef, ObjectDiffEnvelope, ReviewEnvelope, ReviewInput, SnapshotSelector, diff_objects,
+    load_review_from_git, load_review_with_changed_files_from_git,
 };
 use adoc_mcp::{
     AdocPatchCheckParams, AgentDocMcpServer, BuildParams, GraphParams, InitParams, PatchInput,
@@ -329,4 +330,35 @@ fn run_review_diff(root: &Path) -> ObjectDiffEnvelope {
     .expect("load review succeeds");
     let diff = diff_objects(&load.session);
     ObjectDiffEnvelope::from_diff(diff, load.diagnostics)
+}
+
+fn run_review(root: &Path) -> ReviewEnvelope {
+    let load = load_review_with_changed_files_from_git(ReviewInput {
+        project_root: root.to_path_buf(),
+        base: SnapshotSelector::GitRef(GitRef::new("main")),
+        head: SnapshotSelector::Workdir,
+    })
+    .expect("load review succeeds");
+    ReviewEnvelope::from_session(&load.session, load.diagnostics)
+}
+
+#[test]
+fn validates_adoc_review_v0_envelope_against_schema() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    build_two_commit_review_fixture(root);
+
+    let envelope = run_review(root);
+    let value = serde_json::to_value(&envelope).expect("envelope serializes");
+
+    assert_valid("adoc.review.v0.schema.json", &value);
+    assert_eq!(value["schema_version"], "adoc.review.v0");
+    assert_eq!(value["diff"]["schema_version"], "adoc.diff.v0");
+    assert!(value["impact"].is_array());
+    assert!(value["required_reviewers"].is_array());
+    assert!(value["diagnostics"].is_array());
+
+    // The embedded diff envelope must also stand on its own against its
+    // schema — the two contracts are independently consumable.
+    assert_valid("adoc.diff.v0.schema.json", &value["diff"]);
 }

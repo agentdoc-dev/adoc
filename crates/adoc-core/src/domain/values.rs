@@ -44,6 +44,24 @@ impl Body {
     }
 }
 
+/// A `Vec<T>` proven non-empty by construction.
+///
+/// Hoisted from `domain/knowledge_object/claim.rs` in V3.3 so the V3.3 `impacts:`
+/// field on Knowledge Objects can reuse the same invariant as
+/// `Verification::evidence`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NonEmpty<T>(Vec<T>);
+
+impl<T> NonEmpty<T> {
+    pub(crate) fn from_vec(values: Vec<T>) -> Option<Self> {
+        (!values.is_empty()).then_some(Self(values))
+    }
+
+    pub(crate) fn as_slice(&self) -> &[T] {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct OptionalFields(BTreeMap<String, String>);
 

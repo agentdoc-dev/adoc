@@ -215,7 +215,15 @@ fn knowledge_object_to_graph_node_without_hash(
         source_span: source_span(span),
         fields: metadata_fields_to_graph(metadata.fields()),
         relations: relations_to_graph(knowledge_object.relations()),
+        impacts: impacts_to_graph(knowledge_object.impacts()),
     }
+}
+
+fn impacts_to_graph(impacts: &[crate::domain::value_objects::rel_path::RelPath]) -> Vec<String> {
+    impacts
+        .iter()
+        .map(|path| path.as_str().to_string())
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -228,6 +236,10 @@ struct KnowledgeObjectHashPayload<'a> {
     source_span: &'a GraphSourceSpan,
     fields: &'a BTreeMap<String, String>,
     relations: &'a GraphRelations,
+    /// V3.3: omitted from canonical JSON when empty so claims without
+    /// `impacts:` keep their existing `content_hash`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    impacts: &'a Vec<String>,
 }
 
 pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNode) -> String {
@@ -240,6 +252,7 @@ pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNod
         source_span: &node.source_span,
         fields: &node.fields,
         relations: &node.relations,
+        impacts: &node.impacts,
     };
     let canonical_json =
         serde_json::to_vec(&payload).expect("knowledge object hash payload serializes");

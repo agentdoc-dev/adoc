@@ -139,6 +139,11 @@ pub(crate) struct GraphKnowledgeObjectNode {
     pub(crate) source_span: GraphSourceSpan,
     pub(crate) fields: BTreeMap<String, String>,
     pub(crate) relations: GraphRelations,
+    /// V3.3 opt-in source-path impact list. Repo-relative paths, sorted and
+    /// deduplicated at parse time. Skipped when empty so existing fixtures
+    /// without `impacts` remain byte-stable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) impacts: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -596,6 +601,7 @@ mod tests {
                     },
                     fields: BTreeMap::new(),
                     relations: GraphRelations::default(),
+                    impacts: Vec::new(),
                 }),
             ],
             edges: Vec::new(),

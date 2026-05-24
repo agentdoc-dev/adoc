@@ -21,8 +21,8 @@ pub use application::retrieval::{
     RetrievalSession, SearchFilters, SearchQuery, SearchResult, WhyResult, search, why_object,
 };
 pub use application::review::{
-    DIFF_SCHEMA_VERSION, ObjectDiffEnvelope, ReviewError, ReviewInput, ReviewLoadResult,
-    ReviewSession, diff_objects,
+    DIFF_SCHEMA_VERSION, ObjectDiffEnvelope, REVIEW_SCHEMA_VERSION, ReviewEnvelope, ReviewError,
+    ReviewInput, ReviewLoadResult, ReviewSession, diff_objects,
 };
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::graph::{
@@ -35,8 +35,11 @@ pub use domain::retrieval::{
     RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSource, SearchMode,
 };
 pub use domain::review::field_change::{FieldChange, RelationKind};
+pub use domain::review::impact::{ImpactedObject, compute_impact};
 pub use domain::review::object_change::ChangedObject;
 pub use domain::review::object_diff::ObjectDiff;
+pub use domain::review::reviewer::{RequiredReviewer, required_reviewers};
+pub use domain::value_objects::rel_path::{RelPath, RelPathError};
 pub use infrastructure::git::error::GitError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -141,6 +144,21 @@ pub fn load_review_from_git(input: ReviewInput) -> Result<ReviewLoadResult, Revi
     let provider =
         infrastructure::git::worktree::GitWorktreeProvider::new(input.project_root.clone());
     application::review::load_review_with_providers(input, &provider)
+}
+
+/// Public entry point for V3.3 review loading. Constructs both the
+/// `GitWorktreeProvider` and the `GitChangedFilesProvider` against
+/// `input.project_root` and delegates to the application layer. Produces a
+/// session populated with the V3.3 impact and required-reviewer projections.
+pub fn load_review_with_changed_files_from_git(
+    input: ReviewInput,
+) -> Result<ReviewLoadResult, ReviewError> {
+    let snapshot =
+        infrastructure::git::worktree::GitWorktreeProvider::new(input.project_root.clone());
+    let changed_files = infrastructure::git::changed_files::GitChangedFilesProvider::new(
+        input.project_root.clone(),
+    );
+    application::review::load_review_with_changed_files(input, &snapshot, &changed_files)
 }
 
 pub fn check_patch_json(input: PatchJsonInput) -> PatchCheckResult {

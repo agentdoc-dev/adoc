@@ -6,7 +6,10 @@ use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourcePosition, SourceSpan};
 use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
-use crate::domain::values::Body;
+use crate::domain::value_objects::rel_path::RelPath;
+use crate::domain::values::{Body, NonEmpty};
+
+pub(super) const IMPACTS_FIELD: &str = "impacts";
 
 pub(crate) mod claim;
 pub(crate) mod decision;
@@ -284,6 +287,136 @@ fn trim_segment(value: &str) -> Option<(&str, usize, usize)> {
     Some((&value[start..end], start, end))
 }
 
+/// Parse the opt-in `impacts:` field into a sorted, deduplicated, non-empty
+/// list of repo-relative paths. Emits one [`DiagnosticCode::SchemaImpactsInvalidPath`]
+/// per bad entry and [`DiagnosticCode::SchemaImpactsEmpty`] when the field is
+/// authored but holds no path content (e.g. `impacts:` or `impacts: []`).
+/// Returns `None` when the field is absent, structurally empty, or every entry
+/// was invalid.
+pub(super) fn extract_impacts(
+    parsed: &mut ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<NonEmpty<RelPath>> {
+    let value = parsed.raw_fields.remove(IMPACTS_FIELD)?;
+    let value_span = parsed
+        .raw_field_spans
+        .get(IMPACTS_FIELD)
+        .cloned()
+        .unwrap_or_else(|| parsed.span.clone());
+
+    let Some((content_start, content_end)) =
+        relation_content_range(parsed, IMPACTS_FIELD, &value, &value_span, diagnostics)
+    else {
+        // Malformed `[...]` already reported by relation_content_range.
+        return None;
+    };
+
+    let content = &value[content_start..content_end];
+    if content
+        .trim_matches(|character: char| character.is_ascii_whitespace())
+        .is_empty()
+    {
+        diagnostics.push(empty_impacts_diagnostic(parsed, &value_span));
+        return None;
+    }
+
+    let mut paths: std::collections::BTreeSet<RelPath> = std::collections::BTreeSet::new();
+    let mut segment_start = content_start;
+    for (relative_comma_index, _) in content.match_indices(',') {
+        let comma_index = content_start + relative_comma_index;
+        push_impact_segment(
+            parsed,
+            &value,
+            segment_start,
+            comma_index,
+            &value_span,
+            &mut paths,
+            diagnostics,
+            false,
+        );
+        segment_start = comma_index + 1;
+    }
+    push_impact_segment(
+        parsed,
+        &value,
+        segment_start,
+        content_end,
+        &value_span,
+        &mut paths,
+        diagnostics,
+        true,
+    );
+
+    NonEmpty::from_vec(paths.into_iter().collect())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_impact_segment(
+    parsed: &ParsedTypedBlock,
+    value: &str,
+    start: usize,
+    end: usize,
+    value_span: &SourceSpan,
+    paths: &mut std::collections::BTreeSet<RelPath>,
+    diagnostics: &mut Vec<Diagnostic>,
+    is_last: bool,
+) {
+    let raw = &value[start..end];
+    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(raw) else {
+        if is_last {
+            // Trailing comma is tolerated, matching relation parsing.
+            return;
+        }
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaImpactsInvalidPath,
+                format!(
+                    "empty `impacts` segment in `{}`; remove the extra comma or fill in the path",
+                    parsed.id_text
+                ),
+            )
+            .with_span(relation_segment_span(value_span, value, start, end))
+            .with_object_id(&parsed.id_text),
+        );
+        return;
+    };
+
+    let span = relation_segment_span(
+        value_span,
+        value,
+        start + trimmed_start,
+        start + trimmed_end,
+    );
+    match RelPath::try_new(trimmed) {
+        Ok(path) => {
+            paths.insert(path);
+        }
+        Err(error) => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaImpactsInvalidPath,
+                format!(
+                    "invalid `impacts` path `{trimmed}` for `{}`: {error}",
+                    parsed.id_text
+                ),
+            )
+            .with_span(span)
+            .with_object_id(&parsed.id_text),
+        ),
+    }
+}
+
+fn empty_impacts_diagnostic(parsed: &ParsedTypedBlock, value_span: &SourceSpan) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::SchemaImpactsEmpty,
+        format!(
+            "`impacts:` on `{}` is empty; omit the field instead of leaving it blank",
+            parsed.id_text
+        ),
+    )
+    .with_span(value_span.clone())
+    .with_object_id(&parsed.id_text)
+}
+
 fn relation_segment_span(
     value_span: &SourceSpan,
     value: &str,
@@ -391,6 +524,17 @@ impl KnowledgeObject {
             Self::Decision(decision) => decision.relations(),
             Self::Glossary(glossary) => glossary.relations(),
             Self::Warning(warning) => warning.relations(),
+        }
+    }
+
+    /// V3.3 opt-in `impacts:` list. Empty slice for kinds that do not carry
+    /// this field (`glossary`, `warning`) or for `claim`/`decision` instances
+    /// without it.
+    pub(crate) fn impacts(&self) -> &[RelPath] {
+        match self {
+            Self::Claim(claim) => claim.impacts().unwrap_or(&[]),
+            Self::Decision(decision) => decision.impacts().unwrap_or(&[]),
+            Self::Glossary(_) | Self::Warning(_) => &[],
         }
     }
 

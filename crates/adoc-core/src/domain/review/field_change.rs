@@ -52,6 +52,14 @@ pub enum FieldChange {
         kind: RelationKind,
         target: String,
     },
+    /// V3.3: a new path appeared in the `impacts:` list on the head side.
+    ImpactsAdded {
+        path: String,
+    },
+    /// V3.3: a path that was present on the base side disappeared on head.
+    ImpactsRemoved {
+        path: String,
+    },
 }
 
 /// Discriminator for the three V0 relation slots on a Knowledge Object.
@@ -193,6 +201,34 @@ mod tests {
         let value = serde_json::to_value(RelationKind::RelatedTo).expect("RelationKind serializes");
 
         assert_eq!(value, json!("related_to"));
+    }
+
+    #[test]
+    fn impacts_added_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::ImpactsAdded {
+            path: "crates/billing/src/refund.rs".to_string(),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(
+            value,
+            json!({ "type": "impacts_added", "path": "crates/billing/src/refund.rs" })
+        );
+    }
+
+    #[test]
+    fn impacts_removed_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::ImpactsRemoved {
+            path: "src/old.rs".to_string(),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(
+            value,
+            json!({ "type": "impacts_removed", "path": "src/old.rs" })
+        );
     }
 
     #[test]

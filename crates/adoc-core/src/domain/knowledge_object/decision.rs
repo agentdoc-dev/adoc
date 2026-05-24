@@ -4,7 +4,8 @@ use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
 use crate::domain::knowledge_object::Relations;
-use crate::domain::values::{Body, NonEmptyText, OptionalFields, trim_ascii_edges};
+use crate::domain::value_objects::rel_path::RelPath;
+use crate::domain::values::{Body, NonEmpty, NonEmptyText, OptionalFields, trim_ascii_edges};
 
 pub(crate) const STATUS_FIELD: &str = "status";
 pub(crate) const DECIDED_BY_FIELD: &str = "decided_by";
@@ -22,6 +23,7 @@ pub(crate) struct Decision {
     fields: OptionalFields,
     verdict: Option<AcceptedVerdict>,
     relations: Relations,
+    impacts: Option<NonEmpty<RelPath>>,
     span: SourceSpan,
 }
 
@@ -71,6 +73,7 @@ impl Decision {
         };
 
         let relations = super::extract_relations(&mut parsed, diagnostics);
+        let impacts = super::extract_impacts(&mut parsed, diagnostics);
         let mut optional_fields = std::mem::take(&mut parsed.raw_fields);
         if verdict.is_some() {
             optional_fields.remove(DECIDED_BY_FIELD);
@@ -85,7 +88,7 @@ impl Decision {
             relations,
             parsed.span.clone(),
         ) {
-            Ok(decision) => Some(decision),
+            Ok(decision) => Some(decision.with_impacts(impacts)),
             Err(DecisionError::MissingVerdict | DecisionError::UnexpectedVerdict) => {
                 unreachable!("decision builder constructs verdict to match status")
             }
@@ -147,8 +150,16 @@ impl Decision {
             fields: OptionalFields::from_map(optional_fields),
             verdict,
             relations,
+            impacts: None,
             span,
         })
+    }
+
+    /// Attach the (already validated) opt-in `impacts:` list. Used by the V3.3
+    /// build pipeline.
+    pub(crate) fn with_impacts(mut self, impacts: Option<NonEmpty<RelPath>>) -> Self {
+        self.impacts = impacts;
+        self
     }
 
     #[cfg(test)]
@@ -199,6 +210,10 @@ impl Decision {
 
     pub(crate) fn relations(&self) -> &Relations {
         &self.relations
+    }
+
+    pub(crate) fn impacts(&self) -> Option<&[RelPath]> {
+        self.impacts.as_ref().map(NonEmpty::as_slice)
     }
 
     pub(crate) fn span(&self) -> &SourceSpan {

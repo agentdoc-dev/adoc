@@ -16,6 +16,7 @@ use crate::domain::ports::snapshot_workspace::{
 };
 
 use super::error::GitError;
+use super::util::clear_git_env;
 
 /// V3.1 git-CLI adapter for [`SnapshotWorkspaceProvider`].
 pub(crate) struct GitWorktreeProvider {
@@ -128,26 +129,6 @@ fn run_git(repo_root: &Path, args: &[&str]) -> Result<Output, SnapshotError> {
             source,
         }),
     })
-}
-
-/// Strip inherited `GIT_*` environment variables so the spawned git always
-/// operates on the explicit `repo_root` we pass via `-C`. Tools like prek
-/// run the test suite from inside a pre-commit hook that exports `GIT_DIR`
-/// pointing at the outer repository's `.git`; without this scrub, every
-/// invocation here would target the outer repo regardless of `repo_root`.
-fn clear_git_env(command: &mut Command) {
-    for var in [
-        "GIT_DIR",
-        "GIT_INDEX_FILE",
-        "GIT_WORK_TREE",
-        "GIT_NAMESPACE",
-        "GIT_OBJECT_DIRECTORY",
-        "GIT_COMMON_DIR",
-        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-        "GIT_PREFIX",
-    ] {
-        command.env_remove(var);
-    }
 }
 
 fn generate_worktree_path() -> PathBuf {

@@ -201,6 +201,7 @@ mod tests {
                 supersedes: Vec::new(),
                 related_to: Vec::new(),
             },
+            impacts: Vec::new(),
         };
 
         let record = RetrievalRecord::from(&object);

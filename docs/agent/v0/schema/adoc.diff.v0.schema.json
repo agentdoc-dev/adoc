@@ -64,6 +64,11 @@
             "supersedes": { "type": "array", "items": { "type": "string" } },
             "related_to": { "type": "array", "items": { "type": "string" } }
           }
+        },
+        "impacts": {
+          "description": "V3.3 opt-in source-path impact list. Repo-relative file paths, sorted and deduplicated. Omitted entirely when the object has no impacts. Tolerant readers must accept this field on `claim` and `decision` nodes.",
+          "type": "array",
+          "items": { "type": "string" }
         }
       },
       "additionalProperties": true
@@ -165,6 +170,24 @@
             "type": { "const": "relation_removed" },
             "kind": { "type": "string", "enum": ["depends_on", "supersedes", "related_to"] },
             "target": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": { "const": "impacts_added" },
+            "path": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "path"],
+          "properties": {
+            "type": { "const": "impacts_removed" },
+            "path": { "type": "string" }
           },
           "additionalProperties": false
         }

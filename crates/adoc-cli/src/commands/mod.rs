@@ -4,6 +4,7 @@ mod diff;
 mod graph;
 mod init;
 mod patch;
+mod review;
 mod search;
 mod why;
 
@@ -23,6 +24,7 @@ pub(crate) use diff::{DiffCommandInput, diff};
 pub(crate) use graph::{GraphCommandInput, graph};
 pub(crate) use init::init;
 pub(crate) use patch::{PatchCommandInput, patch};
+pub(crate) use review::{ReviewCommandInput, review};
 pub(crate) use search::{SearchCommandInput, search_command};
 pub(crate) use why::why;
 

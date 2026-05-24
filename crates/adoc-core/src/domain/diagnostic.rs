@@ -67,6 +67,8 @@ pub enum DiagnosticCode {
     PatchBaseHashMismatch,
     PatchTargetAlreadyExists,
     PatchPlacementInvalid,
+    SchemaImpactsInvalidPath,
+    SchemaImpactsEmpty,
 }
 
 impl DiagnosticCode {
@@ -116,6 +118,8 @@ impl DiagnosticCode {
             DiagnosticCode::PatchBaseHashMismatch,
             DiagnosticCode::PatchTargetAlreadyExists,
             DiagnosticCode::PatchPlacementInvalid,
+            DiagnosticCode::SchemaImpactsInvalidPath,
+            DiagnosticCode::SchemaImpactsEmpty,
         ]
     }
 
@@ -165,6 +169,8 @@ impl DiagnosticCode {
             DiagnosticCode::PatchBaseHashMismatch => "patch.base_hash_mismatch",
             DiagnosticCode::PatchTargetAlreadyExists => "patch.target_already_exists",
             DiagnosticCode::PatchPlacementInvalid => "patch.placement_invalid",
+            DiagnosticCode::SchemaImpactsInvalidPath => "schema.impacts_invalid_path",
+            DiagnosticCode::SchemaImpactsEmpty => "schema.impacts_empty",
         }
     }
 
@@ -298,6 +304,12 @@ impl DiagnosticCode {
             DiagnosticCode::PatchPlacementInvalid => {
                 "Use an existing page_id and, when after is supplied, an object already on that page."
             }
+            DiagnosticCode::SchemaImpactsInvalidPath => {
+                "Use a repo-relative path under the project root; remove leading `/`, `..` segments, and blank entries."
+            }
+            DiagnosticCode::SchemaImpactsEmpty => {
+                "Remove the `impacts:` field entirely instead of leaving it empty; impacts must list at least one path."
+            }
         }
     }
 
@@ -374,6 +386,8 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "patch.base_hash_mismatch",
     "patch.target_already_exists",
     "patch.placement_invalid",
+    "schema.impacts_invalid_path",
+    "schema.impacts_empty",
 ];
 
 impl Diagnostic {
