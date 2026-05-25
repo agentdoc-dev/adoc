@@ -268,6 +268,34 @@ _Avoid_: leaking worktrees on panic, sharing tmp paths across processes, mutatin
 The sealed enum input to a `SnapshotWorkspaceProvider`: `Workdir` or `GitRef(GitRef)`. `GitRef` is an opaque `String` passed verbatim to `git rev-parse`; supports branches, tags, SHAs, and revspecs without reinventing the parser.
 _Avoid_: typed enum over branch/tag/sha, validating refs in the constructor
 
+**Compatibility Mode**:
+The second validation mode, introduced in V4, that applies to **Markdown Source** only. Raw HTML and unsafe link/image schemes that are errors under **Strict Mode** become `Severity::Warning` diagnostics under Compatibility Mode. Mode is selected purely by file extension — `.md` files are parsed under Compatibility Mode, `.adoc` files stay under **Strict Mode**. See ADR-0022.
+_Avoid_: `--compat` flag on `.adoc`, project-wide compat toggle, third validation mode, runtime mode switching
+
+**Markdown Source**:
+The `.md` files AgentDoc ingests in V4 **Compatibility Mode**. Parsed by the **Markdown Parser** into a Page AST populated only with prose blocks. Never produces **Knowledge Objects**, relations, references, or typed metadata — durable structure still requires `.adoc` typed blocks. See ADR-0023.
+_Avoid_: auto-typed claims from Markdown, inferred glossary terms from definition lists, Markdown as authoring source of truth
+
+**Markdown Parser**:
+The V4 parser for **Markdown Source**, wrapping `pulldown-cmark` with CommonMark and GFM feature flags. Lives at `crates/adoc-core/src/parser/markdown.rs`. Produces the same `Page` AST the `.adoc` parser produces, populated only with `ProseBlock` children. Spans are byte-offsets from `pulldown-cmark`, mapped to `LineIndex` for diagnostics. See ADR-0021.
+_Avoid_: hand-written CommonMark parser, comrak/markdown-rs alternates, port-based abstraction over a pure-computation parser
+
+**V4 Markdown Subset**:
+The Markdown feature set V4 supports end-to-end: CommonMark core (headings, paragraphs, ordered/unordered lists, blockquotes, fenced and indented code blocks, links, emphasis, inline code, horizontal rules), GFM extensions (tables, task lists, strikethrough, autolinks, footnotes), and image embeds. Image and link URLs share the same scheme allowlist; `javascript:`, `data:`, and `vbscript:` are dropped. Unknown extensions (MDX, Pandoc directives, custom attribute blocks) emit `compat.unknown_extension` and render as escaped code.
+_Avoid_: Markdown extensions out of scope in V4 (math, definition lists, embedded MDX components), partial GFM support, ad-hoc extension whitelisting
+
+**Quarantined HTML**:
+Raw HTML found inside **Markdown Source**, rendered as escaped text inside `<pre class="adoc-quarantined-html">…</pre>` blocks. Visible to the reader as code, never interpreted as markup. The **Graph Artifact** stores the original source text on the wrapping `prose_block` node; quarantine is a renderer-side transform driven by the `compat.raw_html_quarantined` diagnostic.
+_Avoid_: passing raw HTML through to the rendered output, dropping raw HTML silently, allowlisting iframe/script/style elements
+
+**Compat Validation Rule**:
+A validation rule run after **Markdown Parser** parsing, against pages whose source is **Markdown Source**. Lives under `crates/adoc-core/src/validator/compat/` per ADR-0007. Emits `Severity::Warning` only — never `Severity::Error`. Examples: `RawHtmlQuarantine`, `UnsafeLinkDropped`, `UnsafeImageSrcDropped`, `UnknownExtension`. Runs in a parallel pipeline to `validator/strict/`; the composition root in `compile_workspace()` dispatches by file extension.
+_Avoid_: shared validator pipeline with a mode flag, raising compat rules to `Error` severity, applying compat rules to `.adoc` pages
+
+**Markdown Pilot**:
+The V4.4 evaluation fixture: `examples/markdown-pilot/` carries 15–20 hand-curated `.md` files modeled on real product docs, exercising the **V4 Markdown Subset**, **Quarantined HTML**, unsafe link/image dropping, and the empty-retrieval diagnostic. Paired end-to-end test in `crates/adoc-cli/tests/markdown_pilot.rs`. Mirrors the Billing Pilot pattern used to gate V0–V3.
+_Avoid_: ad-hoc Markdown fixtures scattered across crates, large random Markdown corpora without curated diagnostic expectations
+
 ## Relationships
 
 - **AgentDoc Source** contains prose and typed blocks that compile into **Knowledge Objects**.
@@ -317,6 +345,15 @@ _Avoid_: typed enum over branch/tag/sha, validating refs in the constructor
 - A **Retrieval Record** is a projection of a graph Knowledge Object node plus a small `match` block; it never carries vectors.
 - A **Retrieval Session** is constructed per CLI invocation, delegates graph reads to the **Graph Index**, and is dropped at command exit.
 - The **Pilot Retrieval Set** gates every later ranking, embedding-composition, or model change.
+- **Compatibility Mode** is the second validation mode, applying only to **Markdown Source**; **Strict Mode** continues to apply to all **AgentDoc Source**.
+- **Markdown Source** produces `kind: "page"` and `kind: "prose_block"` graph nodes only — never **Knowledge Objects**, relations, references, or typed metadata.
+- **Quarantined HTML** is escaped at the renderer boundary; the **Graph Artifact** stores original source text only, never interpreted HTML.
+- **Compat Validation Rule** instances emit `Severity::Warning` only; the strict-mode equivalents (`parse.raw_html`, `parse.unsafe_link`) stay reserved for **AgentDoc Source**.
+- The **Markdown Parser** uses `pulldown-cmark` per ADR-0021; **V0 Parser Architecture** stays hand-written for `.adoc`.
+- The **V4 Markdown Subset** is fixed at V4; new Markdown features land only with new ADRs and new diagnostic codes.
+- The **Markdown Pilot** gates V4 acceptance the way the **Pilot Retrieval Set** gates V1 ranking changes.
+- A **Markdown Source** page never participates in `adoc.diff.v0`, `adoc.review.v0`, **Patch Validation**, or as a citation in retrieval — those surfaces remain Knowledge-Object-scoped.
+- `adoc search` over a project containing only **Markdown Source** emits `retrieval.no_knowledge_objects_consider_migration` and points users at the future `adoc migrate` workflow (V4.5+).
 
 ## Example dialogue
 
@@ -361,3 +398,9 @@ _Avoid_: typed enum over branch/tag/sha, validating refs in the constructor
 - "Graph ranking" could mean boosting search results by relation distance - resolved: **Graph Retrieval** is explicit candidate filtering only; unfiltered search ranking is unchanged.
 - "MCP guidance" could mean only prose in repository docs - resolved: V2.2 exposes **Agent Guidance Resources** and **Agent Workflow Prompts** directly through the **MCP Agent Gateway**.
 - "Project readiness" could mean agents should infer state from artifact files - resolved: agents use the **Project Status Report** before retrieval, semantic search, or patch validation.
+- "Compatibility mode could relax `.adoc` validation when a project enables it" - resolved: **Compatibility Mode** applies only to `.md` files; `.adoc` files stay under **Strict Mode** regardless of project configuration (ADR-0022).
+- "Markdown ingestion could auto-create suggested Knowledge Objects from prose" - resolved: **Markdown Source** is prose-only; auto-typing violates the evidence-first principle (ADR-0023). Suggested-claim extraction is deferred to `adoc migrate` (V4.5+).
+- "Markdown parser could be hand-written to match V0 Parser Architecture" - resolved: V4 uses `pulldown-cmark` (ADR-0021); CommonMark spec is too large to hand-roll for ingestion-only use.
+- "Compatibility mode could be selected by CLI flag, config block, or file extension" - resolved: file extension only; no flag, no config (ADR-0022).
+- "Prose blocks could become retrievable in V4 to make Markdown-only projects searchable" - resolved: V4 keeps the Knowledge-Object-only retrieval invariant; prose retrieval is its own milestone (**V1.7 Prose Retrieval**), applied symmetrically to `.md` and `.adoc` prose.
+- "Raw HTML in Markdown could be passed through to the rendered output" - resolved: raw HTML becomes **Quarantined HTML**, escaped as visible text inside `<pre class="adoc-quarantined-html">`; the renderer is the security boundary, never the parser.
