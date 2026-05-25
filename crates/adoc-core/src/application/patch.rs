@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::fmt;
 use std::path::PathBuf;
 
 use serde::Serialize;
@@ -11,6 +13,69 @@ use crate::domain::patch::{
 use crate::domain::ports::artifact_reader::ArtifactReader;
 
 pub const PATCH_CHECK_SCHEMA_VERSION: &str = "adoc.patch.check.v0";
+
+/// Error returned by the V3.7 patch parsing helpers
+/// ([`crate::parse_patch_from_path`] and [`crate::parse_patch_from_value`])
+/// when the supplied patch source cannot be turned into a [`PatchDocument`].
+///
+/// V3.7 surface (introduced for `adoc review --patch`): a failed parse must
+/// be distinguishable from a successful parse that fails validation. The
+/// latter is reported inside [`PatchCheckResult::diagnostics`]; the former
+/// reaches callers as this typed error so the orchestration layer can map it
+/// into a higher-level review error rather than a misleading `valid: false`
+/// envelope without a target object.
+///
+/// This enum lives in `application/patch.rs` (a pure value type) while the
+/// constructors live in `lib.rs` — the application layer is forbidden from
+/// importing `infrastructure/` directly per ADR-0006 and the
+/// `patch_application_layer_does_not_reference_infrastructure` boundary
+/// test in `crates/adoc-core/tests/public_surface.rs`.
+#[non_exhaustive]
+#[derive(Debug)]
+pub enum PatchParseError {
+    /// Reading or parsing the patch file at `path` failed. `diagnostics`
+    /// carry the file/line/column context produced by the infrastructure
+    /// reader (typically `IoArtifactMalformed` or `PatchInvalidDocument`).
+    Read {
+        path: PathBuf,
+        diagnostics: Vec<Diagnostic>,
+    },
+    /// Parsing an inline `serde_json::Value` into a [`PatchDocument`] failed.
+    /// `diagnostics` carry the structural reason (typically
+    /// `PatchInvalidDocument`).
+    Inline { diagnostics: Vec<Diagnostic> },
+}
+
+impl fmt::Display for PatchParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Read { path, diagnostics } => write!(
+                f,
+                "could not parse patch document at {} ({} diagnostics)",
+                path.display(),
+                diagnostics.len()
+            ),
+            Self::Inline { diagnostics } => write!(
+                f,
+                "could not parse inline patch document ({} diagnostics)",
+                diagnostics.len()
+            ),
+        }
+    }
+}
+
+impl Error for PatchParseError {}
+
+impl PatchParseError {
+    /// Surfaces the underlying [`Diagnostic`] list to callers that want to
+    /// embed parse failures into a downstream envelope (e.g. as the
+    /// `diagnostics` field of a synthetic `PatchCheckResult::failure`).
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        match self {
+            Self::Read { diagnostics, .. } | Self::Inline { diagnostics } => diagnostics,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct PatchInput {
@@ -340,6 +405,41 @@ mod tests {
             result.diagnostics[0].object_id.as_deref(),
             Some("billing.credits")
         );
+    }
+
+    #[test]
+    fn patch_parse_error_display_mentions_diagnostics_count_and_path() {
+        let err = PatchParseError::Read {
+            path: PathBuf::from("/tmp/x.json"),
+            diagnostics: vec![
+                Diagnostic::error(DiagnosticCode::IoArtifactUnreadable, "missing file"),
+                Diagnostic::error(DiagnosticCode::IoArtifactMalformed, "bad json"),
+            ],
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("/tmp/x.json"));
+        assert!(msg.contains("2 diagnostics"));
+    }
+
+    #[test]
+    fn patch_parse_error_inline_display_mentions_diagnostics_count() {
+        let err = PatchParseError::Inline {
+            diagnostics: vec![Diagnostic::error(
+                DiagnosticCode::PatchInvalidDocument,
+                "bad shape",
+            )],
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("inline patch"));
+        assert!(msg.contains("1 diagnostics"));
+    }
+
+    #[test]
+    fn patch_parse_error_diagnostics_accessor_returns_underlying_list() {
+        let err = PatchParseError::Inline {
+            diagnostics: vec![Diagnostic::error(DiagnosticCode::PatchInvalidDocument, "x")],
+        };
+        assert_eq!(err.diagnostics().len(), 1);
     }
 
     #[test]

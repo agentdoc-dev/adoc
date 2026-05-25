@@ -4,11 +4,12 @@ use std::process::Command;
 
 use adoc_core::{
     GitRef, ObjectDiffEnvelope, ReviewEnvelope, ReviewInput, SnapshotSelector, diff_objects,
-    load_review_from_git, load_review_with_changed_files_from_git,
+    load_review_from_git, load_review_with_changed_files_from_git, parse_patch_from_value,
+    review_with_patch,
 };
 use adoc_mcp::{
-    AdocPatchCheckParams, AgentDocMcpServer, BuildParams, GraphParams, InitParams, PatchInput,
-    ProjectStatusParams, SearchParams,
+    AdocPatchCheckParams, AdocReviewParams, AgentDocMcpServer, BuildParams, GraphParams,
+    InitParams, PatchInput, ProjectStatusParams, SearchParams,
 };
 use serde_json::json;
 
@@ -361,6 +362,112 @@ fn validates_adoc_review_v0_envelope_against_schema() {
     // The embedded diff envelope must also stand on its own against its
     // schema — the two contracts are independently consumable.
     assert_valid("adoc.diff.v0.schema.json", &value["diff"]);
+
+    // V3.7 — when no patch is supplied, patch_check is omitted from the
+    // serialized envelope (not present as `null`).
+    assert!(
+        value.get("patch_check").is_none(),
+        "patch_check must be omitted when no patch is supplied: {value:#}"
+    );
+}
+
+#[test]
+fn validates_adoc_review_v0_envelope_with_patch_check_against_schema() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    build_two_commit_review_fixture(root);
+
+    let load = load_review_with_changed_files_from_git(ReviewInput {
+        project_root: root.to_path_buf(),
+        base: SnapshotSelector::GitRef(GitRef::new("main")),
+        head: SnapshotSelector::Workdir,
+    })
+    .expect("load review succeeds");
+
+    // Pull the head content_hash for billing.credits so the patch validates
+    // cleanly. Round-trip via the no-patch envelope so we don't reach into
+    // adoc-core internals.
+    let envelope_no_patch = ReviewEnvelope::from_session(&load.session, Vec::new());
+    let value = serde_json::to_value(&envelope_no_patch).expect("envelope serializes");
+    let base_hash = value["diff"]["changed"]
+        .as_array()
+        .expect("changed array")
+        .iter()
+        .find(|entry| entry["id"] == "billing.credits")
+        .expect("billing.credits in changed")["head"]["content_hash"]
+        .as_str()
+        .expect("content_hash")
+        .to_string();
+
+    let patch = parse_patch_from_value(json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "replace_body",
+        "target": "billing.credits",
+        "base_hash": base_hash,
+        "changes": { "body": "Patched body." },
+        "reason": "demo"
+    }))
+    .expect("patch parses");
+
+    let envelope = review_with_patch(&load.session, load.diagnostics, Some(&patch));
+    let value = serde_json::to_value(&envelope).expect("envelope serializes");
+
+    assert_valid("adoc.review.v0.schema.json", &value);
+    assert_eq!(value["patch_check"]["valid"], json!(true));
+    assert_eq!(
+        value["patch_check"]["schema_version"],
+        "adoc.patch.check.v0"
+    );
+    assert_eq!(value["patch_check"]["target"], "billing.credits");
+}
+
+#[test]
+fn adoc_review_mcp_tool_accepts_optional_patch_parameter() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    build_two_commit_review_fixture(root);
+
+    let server = AgentDocMcpServer::new(root.to_path_buf());
+
+    // Round-trip via the no-patch path first to learn the head content_hash.
+    let base_envelope = server
+        .run_review(AdocReviewParams {
+            project_root: None,
+            base_ref: "main".to_string(),
+            head_ref: None,
+            patch: None,
+        })
+        .expect("review without patch succeeds");
+    let base_hash = base_envelope["diff"]["changed"]
+        .as_array()
+        .expect("changed array")
+        .iter()
+        .find(|entry| entry["id"] == "billing.credits")
+        .expect("billing.credits in changed")["head"]["content_hash"]
+        .as_str()
+        .expect("content_hash")
+        .to_string();
+
+    let envelope = server
+        .run_review(AdocReviewParams {
+            project_root: None,
+            base_ref: "main".to_string(),
+            head_ref: None,
+            patch: Some(PatchInput::Inline {
+                patch: json!({
+                    "schema_version": "adoc.patch.v0",
+                    "op": "replace_body",
+                    "target": "billing.credits",
+                    "base_hash": base_hash,
+                    "changes": { "body": "Patched body." },
+                    "reason": "demo"
+                }),
+            }),
+        })
+        .expect("review with inline patch succeeds");
+
+    assert_valid("adoc.review.v0.schema.json", &envelope);
+    assert_eq!(envelope["patch_check"]["valid"], json!(true));
 }
 
 /// V3.6 contract: MCP must serve the V3 schema files verbatim (no transformation,

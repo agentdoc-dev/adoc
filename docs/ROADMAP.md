@@ -36,11 +36,12 @@ Implemented:
 - V2 agent patch validation: `adoc.patch.v0`, graph `content_hash` preconditions, inline/file patch validation, `adoc.patch.check.v0`, diffs, affected relations, diagnostics, and proof obligations.
 - V2.1 local MCP gateway: MCP tools for init, check, build, why, graph, search, and patch-check over the shared local workflow layer.
 - V2.2 agent usage contract: MCP-discoverable guidance resources, pinned workflow prompts, and `adoc_project_status` with `adoc.project.status.v0`.
+- V3 team CI and review: object diff (`adoc.diff.v0`), field-level projection, opt-in `impacts:` field on `claim`/`decision`, source-path impact and required reviewers, proof obligations, Markdown output, MCP `adoc_diff` / `adoc_review`, and patch composition (`adoc review --patch` embeds `adoc.patch.check.v0`).
 - Billing pilot retrieval harness: 30+ Knowledge Objects, retrieval-set fixtures, property-style search invariants, and docs for retrieval maintenance.
 
 Next:
 
-- V3 team CI and review. Seven vertical slices V3.1 through V3.7 land in dependency order. The implementation contract is [V3-DESIGN.md](V3-DESIGN.md). The architecture decisions are [adr/0018-v3-review-architecture.md](adr/0018-v3-review-architecture.md), [adr/0019-source-path-impact-via-impacts-field.md](adr/0019-source-path-impact-via-impacts-field.md), and [adr/0020-shared-proof-obligation-across-aggregates.md](adr/0020-shared-proof-obligation-across-aggregates.md).
+- Markdown migration (V4), expanded object types (V5), composition and advanced graphs (V6), and web/governance surfaces (V7) per the sections below. No active slice; the next pick is driven by measured pain on the V0–V3 surfaces.
 
 Later:
 

@@ -601,6 +601,7 @@ fn adoc_review_returns_review_envelope_with_obligations_and_impact() {
             project_root: None,
             base_ref: "main".to_string(),
             head_ref: None,
+            patch: None,
         })
         .expect("adoc_review runs");
 
@@ -642,6 +643,7 @@ fn adoc_review_accepts_explicit_head_ref() {
             project_root: None,
             base_ref: "main".to_string(),
             head_ref: Some("feature".to_string()),
+            patch: None,
         })
         .expect("adoc_review with explicit head_ref runs");
 

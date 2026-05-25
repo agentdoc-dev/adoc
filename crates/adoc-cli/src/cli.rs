@@ -275,6 +275,12 @@ pub(crate) enum Commands {
         /// Base git ref to review against. The current working tree is the head.
         #[arg(value_name = "BASE_REF")]
         base_ref: String,
+        /// Optional adoc.patch.v0 JSON file to validate against the head graph.
+        /// When supplied, the review envelope embeds an adoc.patch.check.v0
+        /// report and unions patch-driven proof obligations into the
+        /// top-level obligation list.
+        #[arg(long, value_name = "PATCH_JSON")]
+        patch: Option<PathBuf>,
     },
     #[command(
         about = "Search compiled Knowledge Objects.",

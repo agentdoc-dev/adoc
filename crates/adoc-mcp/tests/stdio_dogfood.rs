@@ -371,6 +371,152 @@ fn stdio_server_emits_diff_and_review_envelopes_for_v3_6_acceptance() {
     );
 }
 
+/// V3.7 acceptance: the dogfood stdio server, given a 2-commit fixture
+/// project, returns valid `adoc.review.v0` envelopes for `adoc_review` calls
+/// with both the inline-patch and path-patch shapes of the optional `patch`
+/// parameter, embedding `adoc.patch.check.v0` and unioning patch-driven
+/// obligations into the top-level list. The patch is never applied.
+#[test]
+fn stdio_server_adoc_review_accepts_optional_patch_parameter_v3_7() {
+    let fixture = build_v3_review_fixture("stdio-v3-7-patch");
+    let project_root = fixture.root.clone();
+
+    let mut server = StdioServer::spawn(&project_root);
+
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": { "name": "adoc-mcp-stdio-v3-7", "version": "0" }
+        }
+    }));
+    let init = server.receive();
+    assert_eq!(init["id"], 1);
+
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized"
+    }));
+
+    // Round-trip via the no-patch path first to learn the head content_hash
+    // of billing.refunds so the test patch validates cleanly.
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "adoc_review",
+            "arguments": { "base_ref": "main" }
+        }
+    }));
+    let baseline = server.receive();
+    assert_eq!(baseline["id"], 2);
+    assert!(
+        baseline.get("error").is_none(),
+        "baseline adoc_review error: {baseline:#?}"
+    );
+    let baseline_content = structured_content(&baseline);
+    assert!(
+        baseline_content.get("patch_check").is_none(),
+        "patch_check must be omitted when no patch parameter is supplied: {baseline_content}"
+    );
+    let head_hash = baseline_content["diff"]["changed"]
+        .as_array()
+        .expect("changed array")
+        .iter()
+        .find(|entry| entry["id"] == "billing.refunds")
+        .expect("billing.refunds in changed")["head"]["content_hash"]
+        .as_str()
+        .expect("content_hash")
+        .to_string();
+
+    // Inline patch variant.
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+            "name": "adoc_review",
+            "arguments": {
+                "base_ref": "main",
+                "patch": {
+                    "source": "inline",
+                    "patch": {
+                        "schema_version": "adoc.patch.v0",
+                        "op": "replace_body",
+                        "target": "billing.refunds",
+                        "base_hash": head_hash,
+                        "changes": { "body": "Refunds process within 6 hours." },
+                        "reason": "V3.7 dogfood (inline)"
+                    }
+                }
+            }
+        }
+    }));
+    let inline = server.receive();
+    assert_eq!(inline["id"], 3);
+    assert!(
+        inline.get("error").is_none(),
+        "inline-patch adoc_review error: {inline:#?}"
+    );
+    let inline_content = structured_content(&inline);
+    assert_eq!(inline_content["schema_version"], "adoc.review.v0");
+    let patch_check = &inline_content["patch_check"];
+    assert!(
+        patch_check.is_object(),
+        "patch_check must be present when patch parameter supplied: {inline_content}"
+    );
+    assert_eq!(patch_check["schema_version"], "adoc.patch.check.v0");
+    assert_eq!(patch_check["valid"], true);
+    assert_eq!(patch_check["target"], "billing.refunds");
+
+    // Path patch variant. Path-policy resolves under the project root, so
+    // the patch file must live there.
+    fixture.write(
+        "tests-tmp/patch.json",
+        &format!(
+            concat!(
+                "{{\n",
+                "  \"schema_version\": \"adoc.patch.v0\",\n",
+                "  \"op\": \"replace_body\",\n",
+                "  \"target\": \"billing.refunds\",\n",
+                "  \"base_hash\": \"{}\",\n",
+                "  \"changes\": {{ \"body\": \"Refunds process within 4 hours.\" }},\n",
+                "  \"reason\": \"V3.7 dogfood (path)\"\n",
+                "}}\n",
+            ),
+            head_hash,
+        ),
+    );
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {
+            "name": "adoc_review",
+            "arguments": {
+                "base_ref": "main",
+                "patch": {
+                    "source": "path",
+                    "patch_path": "tests-tmp/patch.json"
+                }
+            }
+        }
+    }));
+    let path = server.receive();
+    assert_eq!(path["id"], 4);
+    assert!(
+        path.get("error").is_none(),
+        "path-patch adoc_review error: {path:#?}"
+    );
+    let path_content = structured_content(&path);
+    assert_eq!(path_content["patch_check"]["valid"], true);
+    assert_eq!(path_content["patch_check"]["target"], "billing.refunds");
+}
+
 fn list_files(root: &Path) -> BTreeSet<PathBuf> {
     let mut out = BTreeSet::new();
     walk(root, &mut out);

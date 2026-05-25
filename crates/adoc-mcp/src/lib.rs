@@ -11,8 +11,8 @@ use adoc_local::{
     BuildInput, BuildUseCase, CheckInput, CheckUseCase, DiffInput, DiffUseCase, GraphInput,
     GraphUseCase, InitInput, InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase,
     PathPolicy, ProjectConfig, ProjectRootPathPolicy, ProjectStatusInput, ProjectStatusRefresh,
-    ProjectStatusUseCase, ReviewInput, ReviewUseCase, SearchInput, SearchUseCase, WhyInput,
-    WhyUseCase,
+    ProjectStatusUseCase, ReviewInput, ReviewPatchSource, ReviewUseCase, SearchInput,
+    SearchUseCase, WhyInput, WhyUseCase,
 };
 use rmcp::{
     ServerHandler,
@@ -176,9 +176,14 @@ impl AgentDocMcpServer {
 
     pub fn run_review(&self, params: AdocReviewParams) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
+        let patch = params.patch.map(|input| match input {
+            PatchInput::Path { patch_path } => ReviewPatchSource::Path(patch_path),
+            PatchInput::Inline { patch } => ReviewPatchSource::Inline(patch),
+        });
         let outcome = ReviewUseCase::new(context).run(ReviewInput {
             base_ref: params.base_ref,
             head_ref: params.head_ref,
+            patch,
         })?;
         serde_json::to_value(outcome.envelope).map_err(Into::into)
     }
@@ -340,7 +345,7 @@ impl AgentDocMcpServer {
 
     #[tool(
         name = "adoc_review",
-        description = "Return the enriched adoc.review.v0 report (diff plus source-path impact, required reviewers, and proof obligations) between a base git ref and the workdir (or an optional head ref). Read-only; requires readiness.review."
+        description = "Return the enriched adoc.review.v0 report (diff plus source-path impact, required reviewers, and proof obligations) between a base git ref and the workdir (or an optional head ref). Optional `patch` parameter embeds an adoc.patch.check.v0 validation result against the head graph and unions patch-driven obligations into the top-level list (the patch is never applied). Read-only; requires readiness.review."
     )]
     pub fn adoc_review(
         &self,
@@ -512,6 +517,12 @@ pub struct AdocReviewParams {
     pub base_ref: String,
     #[serde(default)]
     pub head_ref: Option<String>,
+    /// V3.7 — optional adoc.patch.v0 to validate against the head graph.
+    /// When supplied, the returned envelope embeds an adoc.patch.check.v0
+    /// report and unions patch-driven proof obligations into the top-level
+    /// obligation list. Reuses V2.1's [`PatchInput`] shape (path or inline).
+    #[serde(default)]
+    pub patch: Option<PatchInput>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]

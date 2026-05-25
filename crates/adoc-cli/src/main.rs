@@ -68,7 +68,9 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     resolved,
                 ),
                 Commands::Diff { base_ref } => diff(DiffCommandInput { base_ref }, resolved),
-                Commands::Review { base_ref } => review(ReviewCommandInput { base_ref }, resolved),
+                Commands::Review { base_ref, patch } => {
+                    review(ReviewCommandInput { base_ref, patch }, resolved)
+                }
                 Commands::Search {
                     query,
                     artifact,
