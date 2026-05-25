@@ -41,11 +41,14 @@ Implemented:
 
 Next:
 
-- Markdown migration (V4), expanded object types (V5), composition and advanced graphs (V6), and web/governance surfaces (V7) per the sections below. No active slice; the next pick is driven by measured pain on the V0–V3 surfaces.
+- V4 Markdown compatibility mode. Four vertical slices V4.1 through V4.4. The implementation contract is [V4-DESIGN.md](V4-DESIGN.md). The architecture decisions are [adr/0021-use-pulldown-cmark-for-markdown-ingestion.md](adr/0021-use-pulldown-cmark-for-markdown-ingestion.md), [adr/0022-file-extension-as-the-only-mode-signal.md](adr/0022-file-extension-as-the-only-mode-signal.md), and [adr/0023-markdown-source-is-prose-only-ingestion.md](adr/0023-markdown-source-is-prose-only-ingestion.md). V4 closes PRD MVP must-have #14 (compatibility mode); PRD MVP must-have #18 (`adoc migrate`) is explicitly deferred to V4.5.
+- No active slice; the next pick is driven by measured pain on the V0–V3 surfaces.
 
 Later:
 
-- Semantic diff and CI review, Markdown migration, expanded object types, includes and custom schemas, richer graph tooling, web surfaces, hosted storage, and governance.
+- V4.5 Markdown migration (`adoc migrate`, suggested-claim extraction, import report, `adoc.migrate.report.v0` envelope, MCP integration). Sequenced after V4 once compatibility-mode usage surfaces measured friction.
+- V1.7 prose retrieval. Extends BM25 and embedding pipelines to index prose blocks symmetrically across `.adoc` and `.md` sources. Independent of V4 sequencing; can ship before or after.
+- Semantic diff and CI review enhancements, expanded object types (V5), includes and custom schemas (V6), richer graph tooling, web surfaces (V7), hosted storage, and governance.
 
 ## V0: Native CLI Compiler
 
