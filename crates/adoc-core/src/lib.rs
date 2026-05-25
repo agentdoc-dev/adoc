@@ -162,6 +162,15 @@ pub fn load_review_with_changed_files_from_git(
     application::review::load_review_with_changed_files(input, &snapshot, &changed_files)
 }
 
+/// V3.6 readiness probe for the review pipeline. Returns `true` when the local
+/// `git` binary is available and `repo_root` has a resolvable `HEAD` ref —
+/// i.e. when `load_review_from_git` has at least a usable default base ref to
+/// compare against. Backs the `readiness.review` field on
+/// `adoc.project.status.v0`. Never panics; any failure becomes `false`.
+pub fn git_review_available(repo_root: &std::path::Path) -> bool {
+    infrastructure::git::is_review_available(repo_root)
+}
+
 pub fn check_patch_json(input: PatchJsonInput) -> PatchCheckResult {
     use domain::ports::artifact_reader::ArtifactReader;
 

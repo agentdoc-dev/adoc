@@ -63,6 +63,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/dogfood-billing-pilot.md"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/review-workflow",
+        name: "agent-review-workflow",
+        title: "Review Workflow",
+        description: "V3.6 PR-review workflow over adoc_diff and adoc_review.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/review-workflow.md"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/retrieval",
         name: "schema-retrieval",
         title: "Retrieval Schema Reference",
@@ -101,6 +109,22 @@ const RESOURCES: &[AgentResource] = &[
         description: "Markdown reference for adoc.mcp.command.v0.",
         mime_type: MARKDOWN,
         contents: include_str!("../../../docs/agent/v0/schema/mcp-command.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/diff",
+        name: "schema-diff",
+        title: "Diff Schema Reference",
+        description: "Markdown reference for adoc.diff.v0.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/schema/diff.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/review",
+        name: "schema-review",
+        title: "Review Schema Reference",
+        description: "Markdown reference for adoc.review.v0.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/schema/review.md"),
     },
     AgentResource {
         uri: "adoc://agent/v0/schema/retrieval-envelope.json",
@@ -149,6 +173,22 @@ const RESOURCES: &[AgentResource] = &[
         description: "JSON Schema for adoc.mcp.command.v0.",
         mime_type: JSON_SCHEMA,
         contents: include_str!("../../../docs/agent/v0/schema/mcp-command.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.diff.v0.schema.json",
+        name: "schema-adoc-diff-v0-json",
+        title: "Object Diff JSON Schema",
+        description: "JSON Schema for adoc.diff.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.diff.v0.schema.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.review.v0.schema.json",
+        name: "schema-adoc-review-v0-json",
+        title: "Review Report JSON Schema",
+        description: "JSON Schema for adoc.review.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.review.v0.schema.json"),
     },
 ];
 

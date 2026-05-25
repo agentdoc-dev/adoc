@@ -3,13 +3,17 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+mod support;
+
 use adoc_local::{PathPolicy, ProjectRootPathPolicy};
 use adoc_mcp::{
-    AdocPatchCheckParams, AgentDocMcpServer, BuildParams, InitParams, PatchInput,
-    ProjectStatusParams, SearchParams, WhyParams,
+    AdocDiffParams, AdocPatchCheckParams, AdocReviewParams, AgentDocMcpServer, BuildParams,
+    InitParams, PatchInput, ProjectStatusParams, SearchParams, WhyParams,
 };
 use rmcp::ServerHandler;
 use rmcp::model::ResourceContents;
+
+use support::build_v3_review_fixture;
 
 fn write(path: &Path, contents: &str) {
     if let Some(parent) = path.parent() {
@@ -261,17 +265,22 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/patch-contract",
         "adoc://agent/v0/project-status-guide",
         "adoc://agent/v0/dogfood-billing-pilot",
+        "adoc://agent/v0/review-workflow",
         "adoc://agent/v0/schema/retrieval",
         "adoc://agent/v0/schema/graph-traversal",
         "adoc://agent/v0/schema/patch",
         "adoc://agent/v0/schema/project-status",
         "adoc://agent/v0/schema/mcp-command",
+        "adoc://agent/v0/schema/diff",
+        "adoc://agent/v0/schema/review",
         "adoc://agent/v0/schema/retrieval-envelope.json",
         "adoc://agent/v0/schema/graph-traversal-envelope.json",
         "adoc://agent/v0/schema/patch-input.json",
         "adoc://agent/v0/schema/patch-check.json",
         "adoc://agent/v0/schema/project-status.json",
         "adoc://agent/v0/schema/mcp-command.json",
+        "adoc://agent/v0/schema/adoc.diff.v0.schema.json",
+        "adoc://agent/v0/schema/adoc.review.v0.schema.json",
     ];
 
     let resources = server.list_agent_resources();
@@ -336,6 +345,10 @@ fn lists_versioned_prompts_and_pinned_aliases() {
             "adoc_inspect_project_status",
             "adoc_dogfood_billing_pilot_v0",
             "adoc_dogfood_billing_pilot",
+            "adoc_review_pull_request_v0",
+            "adoc_review_pull_request",
+            "adoc_explain_what_changed_v0",
+            "adoc_explain_what_changed",
         ]
     );
 
@@ -526,6 +539,152 @@ fn stdio_server_smoke_lists_agent_resources() {
     drop(stdin);
     let _ = child.kill();
     let _ = child.wait();
+}
+
+#[test]
+fn adoc_diff_returns_diff_envelope_for_two_commit_fixture() {
+    let fixture = build_v3_review_fixture("diff-tool");
+    let server = AgentDocMcpServer::new(fixture.root.clone());
+
+    let value = server
+        .run_diff(AdocDiffParams {
+            project_root: None,
+            base_ref: "main".to_string(),
+            head_ref: None,
+        })
+        .expect("adoc_diff runs");
+
+    assert_eq!(value["schema_version"], "adoc.diff.v0");
+    let changed = value["changed"].as_array().expect("changed array");
+    assert!(
+        changed.iter().any(|entry| entry["id"] == "billing.refunds"),
+        "expected billing.refunds in changed[]; got {value}"
+    );
+    let refunds = changed
+        .iter()
+        .find(|entry| entry["id"] == "billing.refunds")
+        .expect("billing.refunds entry");
+    assert!(refunds["base"]["content_hash"].is_string());
+    assert!(refunds["head"]["content_hash"].is_string());
+    assert_ne!(
+        refunds["base"]["content_hash"],
+        refunds["head"]["content_hash"]
+    );
+}
+
+#[test]
+fn adoc_diff_rejects_unresolvable_base_ref() {
+    let fixture = build_v3_review_fixture("diff-bad-ref");
+    let server = AgentDocMcpServer::new(fixture.root.clone());
+
+    let error = server
+        .run_diff(AdocDiffParams {
+            project_root: None,
+            base_ref: "definitely-not-a-real-ref".to_string(),
+            head_ref: None,
+        })
+        .expect_err("unresolvable ref must error");
+
+    assert!(
+        error.to_string().contains("definitely-not-a-real-ref"),
+        "error must surface the bad ref: {error}"
+    );
+}
+
+#[test]
+fn adoc_review_returns_review_envelope_with_obligations_and_impact() {
+    let fixture = build_v3_review_fixture("review-tool");
+    let server = AgentDocMcpServer::new(fixture.root.clone());
+
+    let value = server
+        .run_review(AdocReviewParams {
+            project_root: None,
+            base_ref: "main".to_string(),
+            head_ref: None,
+        })
+        .expect("adoc_review runs");
+
+    assert_eq!(value["schema_version"], "adoc.review.v0");
+    assert_eq!(value["diff"]["schema_version"], "adoc.diff.v0");
+
+    let impact = value["impact"].as_array().expect("impact array");
+    assert!(
+        impact.iter().any(|entry| entry["id"] == "billing.refunds"),
+        "billing.refunds should be impacted because crates/billing/src/refund.rs changed; got {value}"
+    );
+
+    let reviewers = value["required_reviewers"]
+        .as_array()
+        .expect("required_reviewers array");
+    assert!(
+        reviewers
+            .iter()
+            .any(|entry| entry["owner"] == "team-billing"),
+        "team-billing must be a required reviewer: {value}"
+    );
+
+    let obligations = value["proof_obligations"]
+        .as_array()
+        .expect("proof_obligations array");
+    assert!(
+        !obligations.is_empty(),
+        "verified-claim body change + impacted source path should produce proof obligations: {value}"
+    );
+}
+
+#[test]
+fn adoc_review_accepts_explicit_head_ref() {
+    let fixture = build_v3_review_fixture("review-head-ref");
+    let server = AgentDocMcpServer::new(fixture.root.clone());
+
+    let value = server
+        .run_review(AdocReviewParams {
+            project_root: None,
+            base_ref: "main".to_string(),
+            head_ref: Some("feature".to_string()),
+        })
+        .expect("adoc_review with explicit head_ref runs");
+
+    assert_eq!(value["schema_version"], "adoc.review.v0");
+    assert!(
+        value["diff"]["changed"]
+            .as_array()
+            .expect("changed array")
+            .iter()
+            .any(|entry| entry["id"] == "billing.refunds")
+    );
+}
+
+#[test]
+fn project_status_readiness_review_is_true_in_git_repo_with_head() {
+    let fixture = build_v3_review_fixture("readiness-review-ok");
+    let server = AgentDocMcpServer::new(fixture.root.clone());
+
+    let value = server
+        .run_project_status(ProjectStatusParams {
+            project_root: None,
+            refresh: None,
+            no_embeddings: false,
+        })
+        .expect("status succeeds");
+
+    assert_eq!(value["readiness"]["review"], true);
+}
+
+#[test]
+fn project_status_readiness_review_is_false_in_non_git_dir() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let server = AgentDocMcpServer::new(workspace.path().to_path_buf());
+
+    let value = server
+        .run_project_status(ProjectStatusParams {
+            project_root: None,
+            refresh: None,
+            no_embeddings: false,
+        })
+        .expect("status succeeds");
+
+    assert_eq!(value["readiness"]["review"], false);
 }
 
 fn write_json_line(stdin: &mut impl Write, value: serde_json::Value) {

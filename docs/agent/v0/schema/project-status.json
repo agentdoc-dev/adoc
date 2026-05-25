@@ -50,11 +50,15 @@
     },
     "readiness": {
       "type": "object",
-      "required": ["retrieval", "semantic_search", "patch_validation"],
+      "required": ["retrieval", "semantic_search", "patch_validation", "review"],
       "properties": {
         "retrieval": { "type": "boolean" },
         "semantic_search": { "type": "boolean" },
-        "patch_validation": { "type": "boolean" }
+        "patch_validation": { "type": "boolean" },
+        "review": {
+          "description": "V3.6: true when the system `git` binary is available and the project root resolves a `HEAD` ref — i.e. when `adoc_diff` / `adoc_review` have at least a default base ref to compare against. False if git is missing or the directory has no commits.",
+          "type": "boolean"
+        }
       },
       "additionalProperties": false
     },

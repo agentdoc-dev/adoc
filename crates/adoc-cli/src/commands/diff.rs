@@ -23,6 +23,7 @@ pub(crate) fn diff(input: DiffCommandInput, resolved: ResolvedFormat) -> i32 {
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
     let outcome = match DiffUseCase::new(context).run(DiffInput {
         base_ref: input.base_ref,
+        head_ref: None,
     }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),

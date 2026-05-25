@@ -1,7 +1,12 @@
+mod support;
+
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+
+use support::build_v3_review_fixture;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -249,4 +254,139 @@ fn stdio_server_runs_documented_mcp_agent_gateway_quickstart() {
         "adoc.patch.check.v0"
     );
     assert_eq!(structured_content(&patch)["valid"], true);
+}
+
+/// V3.6 acceptance: the stdio server, given a 2-commit git fixture project,
+/// returns valid `adoc.diff.v0` and `adoc.review.v0` envelopes via the
+/// `adoc_diff` and `adoc_review` MCP tool calls. No file writes occur outside
+/// the system tmp directory used by the worktree adapter.
+#[test]
+fn stdio_server_emits_diff_and_review_envelopes_for_v3_6_acceptance() {
+    let fixture = build_v3_review_fixture("stdio-v3-6");
+    let project_root = fixture.root.clone();
+    let before = list_files(&project_root);
+
+    let mut server = StdioServer::spawn(&project_root);
+
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": { "name": "adoc-mcp-stdio-v3-6", "version": "0" }
+        }
+    }));
+    let init = server.receive();
+    assert_eq!(init["id"], 1);
+
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized"
+    }));
+
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "adoc_project_status",
+            "arguments": {}
+        }
+    }));
+    let status = server.receive();
+    assert_eq!(status["id"], 2);
+    assert_eq!(
+        structured_content(&status)["readiness"]["review"],
+        true,
+        "readiness.review must be true in a 2-commit git fixture"
+    );
+
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {
+            "name": "adoc_diff",
+            "arguments": { "base_ref": "main" }
+        }
+    }));
+    let diff = server.receive();
+    assert_eq!(diff["id"], 3);
+    assert!(diff.get("error").is_none(), "adoc_diff error: {diff:#?}");
+    let diff_content = structured_content(&diff);
+    assert_eq!(diff_content["schema_version"], "adoc.diff.v0");
+    assert!(
+        diff_content["changed"]
+            .as_array()
+            .expect("changed array")
+            .iter()
+            .any(|entry| entry["id"] == "billing.refunds"),
+        "adoc_diff should report billing.refunds as changed: {diff_content}"
+    );
+
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {
+            "name": "adoc_review",
+            "arguments": { "base_ref": "main" }
+        }
+    }));
+    let review = server.receive();
+    assert_eq!(review["id"], 4);
+    assert!(
+        review.get("error").is_none(),
+        "adoc_review error: {review:#?}"
+    );
+    let review_content = structured_content(&review);
+    assert_eq!(review_content["schema_version"], "adoc.review.v0");
+    assert_eq!(review_content["diff"]["schema_version"], "adoc.diff.v0");
+    assert!(
+        review_content["impact"]
+            .as_array()
+            .expect("impact array")
+            .iter()
+            .any(|entry| entry["id"] == "billing.refunds"),
+        "billing.refunds should be impacted because refund.rs changed: {review_content}"
+    );
+    assert!(
+        !review_content["proof_obligations"]
+            .as_array()
+            .expect("proof_obligations array")
+            .is_empty(),
+        "verified-claim body change must produce at least one proof obligation: {review_content}"
+    );
+
+    // V3.6 boundary acceptance: nothing under the project root may have been
+    // written by adoc_diff / adoc_review. The git worktree adapter writes only
+    // under `std::env::temp_dir()`, not the project root.
+    let after = list_files(&project_root);
+    let new_files: Vec<&PathBuf> = after.difference(&before).collect();
+    assert!(
+        new_files.is_empty(),
+        "adoc_diff / adoc_review must not write under the project root; new files: {new_files:?}"
+    );
+}
+
+fn list_files(root: &Path) -> BTreeSet<PathBuf> {
+    let mut out = BTreeSet::new();
+    walk(root, &mut out);
+    out
+}
+
+fn walk(dir: &Path, out: &mut BTreeSet<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk(&path, out);
+        } else {
+            out.insert(path);
+        }
+    }
 }

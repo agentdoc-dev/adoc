@@ -6,5 +6,8 @@
 
 pub(crate) mod changed_files;
 pub(crate) mod error;
+pub(crate) mod readiness;
 pub(crate) mod util;
 pub(crate) mod worktree;
+
+pub(crate) use readiness::is_review_available;
