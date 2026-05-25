@@ -8,10 +8,11 @@ use adoc_core::{
     GraphDirection, GraphRelationKind, PatchJsonInput, RetrievalEnvelope, check_patch_json,
 };
 use adoc_local::{
-    BuildInput, BuildUseCase, CheckInput, CheckUseCase, GraphInput, GraphUseCase, InitInput,
-    InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase, PathPolicy, ProjectConfig,
-    ProjectRootPathPolicy, ProjectStatusInput, ProjectStatusRefresh, ProjectStatusUseCase,
-    SearchInput, SearchUseCase, WhyInput, WhyUseCase,
+    BuildInput, BuildUseCase, CheckInput, CheckUseCase, DiffInput, DiffUseCase, GraphInput,
+    GraphUseCase, InitInput, InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase,
+    PathPolicy, ProjectConfig, ProjectRootPathPolicy, ProjectStatusInput, ProjectStatusRefresh,
+    ProjectStatusUseCase, ReviewInput, ReviewUseCase, SearchInput, SearchUseCase, WhyInput,
+    WhyUseCase,
 };
 use rmcp::{
     ServerHandler,
@@ -164,6 +165,24 @@ impl AgentDocMcpServer {
         }
     }
 
+    pub fn run_diff(&self, params: AdocDiffParams) -> McpAdapterResult<serde_json::Value> {
+        let context = self.context(params.project_root)?;
+        let outcome = DiffUseCase::new(context).run(DiffInput {
+            base_ref: params.base_ref,
+            head_ref: params.head_ref,
+        })?;
+        serde_json::to_value(outcome.envelope).map_err(Into::into)
+    }
+
+    pub fn run_review(&self, params: AdocReviewParams) -> McpAdapterResult<serde_json::Value> {
+        let context = self.context(params.project_root)?;
+        let outcome = ReviewUseCase::new(context).run(ReviewInput {
+            base_ref: params.base_ref,
+            head_ref: params.head_ref,
+        })?;
+        serde_json::to_value(outcome.envelope).map_err(Into::into)
+    }
+
     pub fn run_project_status(
         &self,
         params: ProjectStatusParams,
@@ -302,6 +321,32 @@ impl AgentDocMcpServer {
         Parameters(params): Parameters<AdocPatchCheckParams>,
     ) -> Result<CallToolResult, ErrorData> {
         self.run_patch_check(params)
+            .map(CallToolResult::structured)
+            .map_err(adapter_error)
+    }
+
+    #[tool(
+        name = "adoc_diff",
+        description = "Return the mechanical adoc.diff.v0 envelope for Knowledge Objects between a base git ref and the workdir (or an optional head ref). Read-only; requires readiness.review."
+    )]
+    pub fn adoc_diff(
+        &self,
+        Parameters(params): Parameters<AdocDiffParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_diff(params)
+            .map(CallToolResult::structured)
+            .map_err(adapter_error)
+    }
+
+    #[tool(
+        name = "adoc_review",
+        description = "Return the enriched adoc.review.v0 report (diff plus source-path impact, required reviewers, and proof obligations) between a base git ref and the workdir (or an optional head ref). Read-only; requires readiness.review."
+    )]
+    pub fn adoc_review(
+        &self,
+        Parameters(params): Parameters<AdocReviewParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_review(params)
             .map(CallToolResult::structured)
             .map_err(adapter_error)
     }
@@ -449,6 +494,24 @@ pub struct AdocPatchCheckParams {
 pub enum PatchInput {
     Path { patch_path: PathBuf },
     Inline { patch: serde_json::Value },
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AdocDiffParams {
+    pub project_root: Option<PathBuf>,
+    pub base_ref: String,
+    #[serde(default)]
+    pub head_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AdocReviewParams {
+    pub project_root: Option<PathBuf>,
+    pub base_ref: String,
+    #[serde(default)]
+    pub head_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]

@@ -15,9 +15,10 @@ use adoc_core::{
     ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters, SearchMode,
     SearchQuery, Severity, SnapshotSelector, build_workspace_with_embedding_provider,
     check_patch as core_check_patch, compile_workspace, diff_objects,
-    embed_query_with_embedding_provider, inspect_graph_artifact, inspect_search_artifact,
-    load_graph_session, load_retrieval_session_with_embedding_provider, load_review_from_git,
-    load_review_with_changed_files_from_git, search as core_search, traverse_graph, why_object,
+    embed_query_with_embedding_provider, git_review_available, inspect_graph_artifact,
+    inspect_search_artifact, load_graph_session, load_retrieval_session_with_embedding_provider,
+    load_review_from_git, load_review_with_changed_files_from_git, search as core_search,
+    traverse_graph, why_object,
 };
 use serde::Serialize;
 
@@ -157,6 +158,7 @@ pub struct PatchCheckOutcome {
 #[derive(Debug, Clone)]
 pub struct DiffInput {
     pub base_ref: String,
+    pub head_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -170,6 +172,7 @@ pub struct DiffOutcome {
 #[derive(Debug, Clone)]
 pub struct ReviewInput {
     pub base_ref: String,
+    pub head_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -231,6 +234,7 @@ pub struct ProjectStatusReadiness {
     pub retrieval: bool,
     pub semantic_search: bool,
     pub patch_validation: bool,
+    pub review: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -817,7 +821,7 @@ where
     let review_input = CoreReviewInput {
         project_root,
         base: SnapshotSelector::GitRef(GitRef::new(input.base_ref)),
-        head: SnapshotSelector::Workdir,
+        head: snapshot_selector_from_head_ref(input.head_ref),
     };
     let load =
         load_review_from_git(review_input).map_err(|source| LocalError::Review { source })?;
@@ -840,7 +844,7 @@ where
     let review_input = CoreReviewInput {
         project_root,
         base: SnapshotSelector::GitRef(GitRef::new(input.base_ref)),
-        head: SnapshotSelector::Workdir,
+        head: snapshot_selector_from_head_ref(input.head_ref),
     };
     let load = load_review_with_changed_files_from_git(review_input)
         .map_err(|source| LocalError::Review { source })?;
@@ -849,6 +853,13 @@ where
         envelope,
         exit_code: 0,
     })
+}
+
+fn snapshot_selector_from_head_ref(head_ref: Option<String>) -> SnapshotSelector {
+    match head_ref {
+        Some(spec) => SnapshotSelector::GitRef(GitRef::new(spec)),
+        None => SnapshotSelector::Workdir,
+    }
 }
 
 fn patch_check_with_context<P>(
@@ -909,6 +920,7 @@ where
         retrieval: graph_ready,
         semantic_search: graph_ready && search_ready && semantic_enabled,
         patch_validation: graph_ready,
+        review: git_review_available(context.config_start()),
     };
 
     Ok(ProjectStatusOutcome {

@@ -42,6 +42,27 @@ const DOGFOOD_BODY: &str = r#"Run the AgentDoc V2.2 billing pilot dogfood flow.
 
 Use examples/billing-pilot as the project root. Inspect project status, refresh with check or build when needed, search for billing evidence, fetch exact records with adoc_why, traverse related context with adoc_graph, answer with Object ID citations, and validate any inline adoc.patch.v0 proposal with adoc_patch_check."#;
 
+const REVIEW_PR_BODY: &str = r#"Review a pull request with AgentDoc V3.6 review tools.
+
+Workflow:
+1. Call adoc_project_status with refresh "none" and confirm readiness.review is true.
+2. If readiness.review is false, surface the missing prerequisite (system git binary, repository, or HEAD commit) and stop.
+3. Call adoc_review with base_ref (and optional head_ref) to receive the adoc.review.v0 envelope.
+4. Cite each entry in changed[] by Object ID. Surface impact[] entries with their matched changed paths, required_reviewers[] as actionable handoffs, and every proof_obligations[] entry as required follow-up.
+5. If a remediation patch is appropriate, build a single-operation adoc.patch.v0 proposal and validate it with adoc_patch_check. Do not present the patch as approved if obligations remain.
+
+Do not apply patches, rewrite AgentDoc Source, approve knowledge, or create hosted review state."#;
+
+const EXPLAIN_CHANGED_BODY: &str = r#"Explain what changed between two AgentDoc snapshots.
+
+Workflow:
+1. Call adoc_project_status with refresh "none" and confirm readiness.review is true.
+2. Call adoc_diff with base_ref (and optional head_ref) to receive the adoc.diff.v0 envelope.
+3. Walk created[], deleted[], and changed[] in Object ID order. For each changed entry, summarise the field_changes (body, status, owner, verified_at, evidence add/remove, relation add/remove, impacts add/remove).
+4. Cite Object IDs and reference content_hash when describing before/after state. Use adoc_why or adoc_search if the agent needs richer context around a specific Object ID.
+
+The diff is read-only. Do not propose changes from this prompt; use adoc_review or adoc_propose_patch for those flows."#;
+
 const PROMPTS: &[PromptSpec] = &[
     PromptSpec {
         name: "adoc_answer_with_citations_v0",
@@ -98,6 +119,34 @@ const PROMPTS: &[PromptSpec] = &[
         description: "Pinned alias for adoc_dogfood_billing_pilot_v0.",
         body: DOGFOOD_BODY,
         arguments: dogfood_arguments,
+    },
+    PromptSpec {
+        name: "adoc_review_pull_request_v0",
+        canonical_name: "adoc_review_pull_request_v0",
+        description: "Review a pull request with AgentDoc V3.6 review tools.",
+        body: REVIEW_PR_BODY,
+        arguments: review_arguments,
+    },
+    PromptSpec {
+        name: "adoc_review_pull_request",
+        canonical_name: "adoc_review_pull_request_v0",
+        description: "Pinned alias for adoc_review_pull_request_v0.",
+        body: REVIEW_PR_BODY,
+        arguments: review_arguments,
+    },
+    PromptSpec {
+        name: "adoc_explain_what_changed_v0",
+        canonical_name: "adoc_explain_what_changed_v0",
+        description: "Explain Knowledge Object changes via adoc_diff.",
+        body: EXPLAIN_CHANGED_BODY,
+        arguments: review_arguments,
+    },
+    PromptSpec {
+        name: "adoc_explain_what_changed",
+        canonical_name: "adoc_explain_what_changed_v0",
+        description: "Pinned alias for adoc_explain_what_changed_v0.",
+        body: EXPLAIN_CHANGED_BODY,
+        arguments: review_arguments,
     },
 ];
 
@@ -214,6 +263,26 @@ fn dogfood_arguments() -> Vec<PromptArgument> {
         arg(
             "refresh",
             "String; allowed values: none, check, build.",
+            false,
+        ),
+    ]
+}
+
+fn review_arguments() -> Vec<PromptArgument> {
+    vec![
+        arg(
+            "base_ref",
+            "Git ref to compare against (branch, tag, SHA, or revspec like HEAD~2).",
+            true,
+        ),
+        arg(
+            "head_ref",
+            "Optional git ref for the head side; omit to compare against the workdir.",
+            false,
+        ),
+        arg(
+            "project_root",
+            "Optional AgentDoc project root path.",
             false,
         ),
     ]

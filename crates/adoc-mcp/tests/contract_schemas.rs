@@ -362,3 +362,40 @@ fn validates_adoc_review_v0_envelope_against_schema() {
     // schema — the two contracts are independently consumable.
     assert_valid("adoc.diff.v0.schema.json", &value["diff"]);
 }
+
+/// V3.6 contract: MCP must serve the V3 schema files verbatim (no transformation,
+/// no drift between the bundled `include_str!` and the source-of-truth file).
+#[test]
+fn mcp_serves_v3_schema_resources_byte_equal_to_on_disk_files() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let server = AgentDocMcpServer::new(workspace.path().to_path_buf());
+
+    for (uri, file) in [
+        (
+            "adoc://agent/v0/schema/adoc.diff.v0.schema.json",
+            "adoc.diff.v0.schema.json",
+        ),
+        (
+            "adoc://agent/v0/schema/adoc.review.v0.schema.json",
+            "adoc.review.v0.schema.json",
+        ),
+    ] {
+        let result = server
+            .read_agent_resource(uri)
+            .unwrap_or_else(|error| panic!("resource {uri} reads: {error}"));
+        let served = match &result.contents[0] {
+            rmcp::model::ResourceContents::TextResourceContents { text, .. } => text.clone(),
+            other => panic!("expected text resource for {uri}, got {other:?}"),
+        };
+        let disk = fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../docs/agent/v0/schema")
+                .join(file),
+        )
+        .unwrap_or_else(|error| panic!("disk schema {file} reads: {error}"));
+        assert_eq!(
+            served, disk,
+            "MCP-served schema {uri} drifted from docs/agent/v0/schema/{file}"
+        );
+    }
+}
