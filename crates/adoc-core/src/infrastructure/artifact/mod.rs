@@ -3,7 +3,7 @@ pub(crate) mod patch_json;
 pub(crate) mod search_json;
 
 pub(crate) use graph_json::GraphJsonArtifact;
-pub(crate) use patch_json::{PatchJsonArtifact, read_patch_document_value};
+pub(crate) use patch_json::{PatchJsonArtifact, read_patch_document, read_patch_document_value};
 pub(crate) use search_json::SearchJsonArtifact;
 
 #[cfg(test)]

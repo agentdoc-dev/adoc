@@ -9,7 +9,7 @@ use crate::domain::knowledge_object::draft::{KnowledgeObjectDraft, validate_draf
 use crate::domain::obligation::ProofObligation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PatchDocument {
+pub struct PatchDocument {
     pub(crate) target: String,
     pub(crate) intent: PatchIntent,
     pub(crate) reason: String,

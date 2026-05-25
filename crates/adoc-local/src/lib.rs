@@ -17,6 +17,6 @@ pub use use_cases::{
     ProjectArtifactLoadStatus, ProjectArtifactStatus, ProjectStatusArtifacts, ProjectStatusConfig,
     ProjectStatusInput, ProjectStatusOutcome, ProjectStatusPaths, ProjectStatusReadiness,
     ProjectStatusRefresh, ProjectStatusRefreshReport, ProjectStatusUseCase,
-    ResolvedRetrievalRecord, ReviewInput, ReviewOutcome, ReviewUseCase, SearchInput, SearchOutcome,
-    SearchUseCase, WhyInput, WhyOutcome, WhyUseCase,
+    ResolvedRetrievalRecord, ReviewInput, ReviewOutcome, ReviewPatchSource, ReviewUseCase,
+    SearchInput, SearchOutcome, SearchUseCase, WhyInput, WhyOutcome, WhyUseCase,
 };

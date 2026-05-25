@@ -42,14 +42,14 @@ const DOGFOOD_BODY: &str = r#"Run the AgentDoc V2.2 billing pilot dogfood flow.
 
 Use examples/billing-pilot as the project root. Inspect project status, refresh with check or build when needed, search for billing evidence, fetch exact records with adoc_why, traverse related context with adoc_graph, answer with Object ID citations, and validate any inline adoc.patch.v0 proposal with adoc_patch_check."#;
 
-const REVIEW_PR_BODY: &str = r#"Review a pull request with AgentDoc V3.6 review tools.
+const REVIEW_PR_BODY: &str = r#"Review a pull request with AgentDoc V3.6+ review tools.
 
 Workflow:
 1. Call adoc_project_status with refresh "none" and confirm readiness.review is true.
 2. If readiness.review is false, surface the missing prerequisite (system git binary, repository, or HEAD commit) and stop.
 3. Call adoc_review with base_ref (and optional head_ref) to receive the adoc.review.v0 envelope.
 4. Cite each entry in changed[] by Object ID. Surface impact[] entries with their matched changed paths, required_reviewers[] as actionable handoffs, and every proof_obligations[] entry as required follow-up.
-5. If a remediation patch is appropriate, build a single-operation adoc.patch.v0 proposal and validate it with adoc_patch_check. Do not present the patch as approved if obligations remain.
+5. If a remediation patch is appropriate, re-call adoc_review with the optional patch parameter (V3.7) to validate the patch in the review context. The returned envelope embeds the adoc.patch.check.v0 report and unions patch-driven obligations into the top-level proof_obligations[]. Do not present the patch as approved if obligations remain. For pure patch validation without the review context, adoc_patch_check is still available.
 
 Do not apply patches, rewrite AgentDoc Source, approve knowledge, or create hosted review state."#;
 

@@ -257,8 +257,8 @@ The `owner` of a changed verified claim or an Impacted Object, aggregated and de
 _Avoid_: GitHub/GitLab reviewer mapping (deferred), per-line reviewers, file-pattern owners
 
 **Review Report**:
-The V3 aggregate `{ diff, impact[], required_reviewers[], proof_obligations[], patch_check? }`. Serialized as `adoc.review.v0`. New fields added across V3.4–V3.7 are JSON-optional with empty defaults; schema version stays `v0` for the whole milestone.
-_Avoid_: bumping schema per slice, including rendered HTML, mutating source
+The V3 aggregate `{ diff, impact[], required_reviewers[], proof_obligations[], patch_check? }`. Serialized as `adoc.review.v0`. New fields added across V3.4–V3.7 are JSON-optional with empty defaults; schema version stays `v0` for the whole milestone. V3.7 adds `patch_check`, the embedded `adoc.patch.check.v0` envelope produced when `adoc review --patch` (or the MCP `adoc_review` tool with a `patch` parameter) is invoked; its own `proof_obligations` are also unioned into the top-level `proof_obligations[]` (deduped by `(object_id, reason)`) so tolerant readers see the complete obligation set without descending into `patch_check`. The patch is never applied — V3 explicitly rejects hypothetical post-patch diffs.
+_Avoid_: bumping schema per slice, including rendered HTML, mutating source, applying the patch, computing a speculative post-patch diff
 
 **Snapshot Workspace**:
 A RAII handle wrapping a filesystem path. Two variants: workdir (no-op cleanup on drop) or a temporary linked git worktree (drop runs `git worktree remove`). Returned by `SnapshotWorkspaceProvider::checkout`. Existing `FsSourceProvider` reads from the path unchanged.

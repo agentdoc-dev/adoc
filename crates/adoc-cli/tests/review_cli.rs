@@ -411,6 +411,236 @@ fn review_unresolvable_ref_exits_nonzero_with_actionable_stderr() {
     assert!(stderr.contains("definitely-not-a-real-ref"));
 }
 
+// ----- V3.7 patch composition -----
+
+/// Helper for V3.7 tests: run `adoc review main --format json` against the
+/// given fixture, parse the envelope, and return the head-side content_hash
+/// for the named changed Knowledge Object. Allows tests to construct a patch
+/// JSON file whose `base_hash` validates cleanly against the head graph.
+fn head_content_hash_for(workspace: &TestWorkspace, object_id: &str) -> String {
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+    assert!(
+        output.status.success(),
+        "expected adoc review (no patch) to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("envelope parses");
+    envelope["diff"]["changed"]
+        .as_array()
+        .expect("changed array")
+        .iter()
+        .find(|entry| entry["id"] == object_id)
+        .unwrap_or_else(|| panic!("{object_id} not in diff.changed; envelope:\n{envelope:#}"))
+        ["head"]["content_hash"]
+        .as_str()
+        .expect("content_hash string")
+        .to_string()
+}
+
+#[test]
+fn review_with_valid_patch_embeds_patch_check_and_unions_obligations() {
+    let workspace = build_billing_pilot_with_impacts("review-patch-valid");
+    let base_hash = head_content_hash_for(&workspace, "billing.refunds");
+
+    let patch_json = format!(
+        concat!(
+            "{{\n",
+            "  \"schema_version\": \"adoc.patch.v0\",\n",
+            "  \"op\": \"replace_body\",\n",
+            "  \"target\": \"billing.refunds\",\n",
+            "  \"base_hash\": \"{}\",\n",
+            "  \"changes\": {{ \"body\": \"Patched body.\" }},\n",
+            "  \"reason\": \"V3.7 fixture\"\n",
+            "}}\n",
+        ),
+        base_hash,
+    );
+    workspace.write("patch.json", &patch_json);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "review",
+            "main",
+            "--patch",
+            "patch.json",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc review --patch runs");
+
+    assert!(
+        output.status.success(),
+        "expected adoc review --patch to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("envelope parses");
+
+    let patch_check = &value["patch_check"];
+    assert!(
+        patch_check.is_object(),
+        "patch_check must be present when --patch supplied; got: {value:#}"
+    );
+    assert_eq!(patch_check["schema_version"], "adoc.patch.check.v0");
+    assert_eq!(patch_check["valid"], serde_json::json!(true));
+    assert_eq!(patch_check["target"], "billing.refunds");
+
+    // V3.7 acceptance: top-level proof_obligations is the union of
+    // diff-driven (V3.4) and patch-driven (V2) obligations. The V3.4 trio
+    // (stale-verified + re-verify-body + impact-review) must still appear;
+    // additional patch-side obligations may be merged in.
+    let obligations = value["proof_obligations"]
+        .as_array()
+        .expect("proof_obligations array");
+    let pairs: Vec<(String, String)> = obligations
+        .iter()
+        .map(|o| {
+            (
+                o["object_id"].as_str().expect("object_id").to_string(),
+                o["reason"].as_str().expect("reason").to_string(),
+            )
+        })
+        .collect();
+    for expected in &[
+        (
+            "billing.holds-policy".to_string(),
+            "stale verified claim".to_string(),
+        ),
+        ("billing.refunds".to_string(), "re-verify body".to_string()),
+        (
+            "billing.refunds".to_string(),
+            "review impacted claim".to_string(),
+        ),
+    ] {
+        assert!(
+            pairs.contains(expected),
+            "missing diff-driven obligation {expected:?} after union; got: {pairs:?}"
+        );
+    }
+
+    // No (object_id, reason) appears twice in the unioned list.
+    let mut seen = std::collections::BTreeSet::new();
+    for pair in &pairs {
+        assert!(
+            seen.insert(pair.clone()),
+            "duplicate (object_id, reason) {pair:?} in unioned obligations: {pairs:?}"
+        );
+    }
+}
+
+#[test]
+fn review_with_stale_patch_base_hash_surfaces_in_envelope_diagnostics() {
+    let workspace = build_billing_pilot_with_impacts("review-patch-stale");
+
+    let patch_json = concat!(
+        "{\n",
+        "  \"schema_version\": \"adoc.patch.v0\",\n",
+        "  \"op\": \"replace_body\",\n",
+        "  \"target\": \"billing.refunds\",\n",
+        "  \"base_hash\": \"sha256:wrong\",\n",
+        "  \"changes\": { \"body\": \"Patched body.\" },\n",
+        "  \"reason\": \"V3.7 stale fixture\"\n",
+        "}\n",
+    );
+    workspace.write("stale-patch.json", patch_json);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "review",
+            "main",
+            "--patch",
+            "stale-patch.json",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc review --patch runs");
+
+    // adoc review exits 0 even when the embedded patch_check is invalid —
+    // matches the V2 patch-check convention that data-level rejection rides
+    // inside the envelope, not the exit code (which is reserved for snapshot
+    // / compile / parse-time failures).
+    assert!(
+        output.status.success(),
+        "expected adoc review to exit zero even with stale patch base_hash\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("envelope parses");
+    let patch_check = &value["patch_check"];
+    assert!(patch_check.is_object(), "patch_check present: {value:#}");
+    assert_eq!(patch_check["valid"], serde_json::json!(false));
+    let diagnostics = patch_check["diagnostics"]
+        .as_array()
+        .expect("diagnostics array");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|d| d["code"] == "patch.base_hash_mismatch"),
+        "expected patch.base_hash_mismatch diagnostic; got: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn review_without_patch_omits_patch_check_field_from_envelope() {
+    let workspace = build_billing_pilot_with_impacts("review-no-patch-omits-field");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+    assert!(output.status.success());
+
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("envelope parses");
+    assert!(
+        value.get("patch_check").is_none(),
+        "patch_check must be omitted (not null) when --patch absent; got: {value:#}"
+    );
+}
+
+#[test]
+fn review_with_missing_patch_file_exits_nonzero_with_actionable_stderr() {
+    let workspace = build_billing_pilot_with_impacts("review-patch-missing-file");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "review",
+            "main",
+            "--patch",
+            "no-such-patch.json",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc review runs");
+
+    assert!(
+        !output.status.success(),
+        "expected missing patch file to exit non-zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let stderr = stderr(&output);
+    assert!(
+        stderr.contains("review")
+            && (stderr.contains("patch") || stderr.contains("no-such-patch.json")),
+        "expected stderr to mention review/patch context; got:\n{stderr}"
+    );
+}
+
 #[test]
 fn check_rejects_impacts_parent_segment_path() {
     let workspace = TestWorkspace::new("review-impacts-parent-segment");

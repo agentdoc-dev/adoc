@@ -14,7 +14,7 @@ pub use application::graph::{
     GraphTraversalEnvelope, traverse_graph,
 };
 pub use application::patch::{
-    PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput, PatchJsonInput,
+    PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput, PatchJsonInput, PatchParseError,
 };
 pub use application::retrieval::{
     RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
@@ -23,6 +23,7 @@ pub use application::retrieval::{
 pub use application::review::{
     DIFF_SCHEMA_VERSION, ObjectDiffEnvelope, REVIEW_SCHEMA_VERSION, ReviewEnvelope, ReviewError,
     ReviewInput, ReviewLoadResult, ReviewSession, diff_objects, proof_obligations,
+    review_with_patch,
 };
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::graph::{
@@ -30,7 +31,7 @@ pub use domain::graph::{
     GraphTraversalResult,
 };
 pub use domain::obligation::ProofObligation;
-pub use domain::patch::{AffectedRelation, PatchDiff, PatchOperation};
+pub use domain::patch::{AffectedRelation, PatchDiff, PatchDocument, PatchOperation};
 pub use domain::ports::snapshot_workspace::{GitRef, SnapshotError, SnapshotSelector};
 pub use domain::retrieval::{
     RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSource, SearchMode,
@@ -169,6 +170,29 @@ pub fn load_review_with_changed_files_from_git(
 /// `adoc.project.status.v0`. Never panics; any failure becomes `false`.
 pub fn git_review_available(repo_root: &std::path::Path) -> bool {
     infrastructure::git::is_review_available(repo_root)
+}
+
+/// V3.7 — parse an `adoc.patch.v0` JSON document from the file at `path`.
+/// Mirrors V2's `check_patch` file-reading discipline but exposes the parsed
+/// [`PatchDocument`] for callers that want to compose patch validation with
+/// other application surfaces (e.g. `adoc review --patch`). Patch validation
+/// against a graph is still done through [`check_patch`] / [`check_patch_json`]
+/// or, for review composition, [`review_with_patch`].
+pub fn parse_patch_from_path(path: &std::path::Path) -> Result<PatchDocument, PatchParseError> {
+    infrastructure::artifact::read_patch_document(path).map_err(|diagnostics| {
+        PatchParseError::Read {
+            path: path.to_path_buf(),
+            diagnostics,
+        }
+    })
+}
+
+/// V3.7 — parse an `adoc.patch.v0` JSON document from an in-memory
+/// `serde_json::Value`. Used by the MCP inline-patch path on
+/// `adoc_review { patch: { source: "inline", patch: {...} } }`.
+pub fn parse_patch_from_value(value: serde_json::Value) -> Result<PatchDocument, PatchParseError> {
+    infrastructure::artifact::read_patch_document_value(value, "Inline patch document")
+        .map_err(|diagnostics| PatchParseError::Inline { diagnostics })
 }
 
 pub fn check_patch_json(input: PatchJsonInput) -> PatchCheckResult {
@@ -367,6 +391,51 @@ mod tests {
 
     use super::*;
     use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
+
+    #[test]
+    fn parse_patch_from_path_missing_returns_read_error_with_diagnostics() {
+        let path = std::path::PathBuf::from("/nonexistent/v3.7/patch.json");
+        let err = parse_patch_from_path(&path).expect_err("missing file must error");
+        match err {
+            PatchParseError::Read {
+                path: reported,
+                diagnostics,
+            } => {
+                assert_eq!(reported, path);
+                assert!(
+                    !diagnostics.is_empty(),
+                    "diagnostics must explain the failure"
+                );
+            }
+            other => panic!("expected Read variant, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_patch_from_value_with_wrong_shape_returns_inline_error() {
+        let value = serde_json::json!({ "not": "a patch" });
+        let err = parse_patch_from_value(value).expect_err("malformed JSON must error");
+        match err {
+            PatchParseError::Inline { diagnostics } => {
+                assert!(!diagnostics.is_empty());
+                assert_eq!(diagnostics[0].code, DiagnosticCode::PatchInvalidDocument);
+            }
+            other => panic!("expected Inline variant, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_patch_from_value_with_valid_v0_returns_patch_document() {
+        let value = serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "replace_body",
+            "target": "billing.credits",
+            "base_hash": "sha256:billing.credits",
+            "changes": { "body": "New body." },
+            "reason": "demo"
+        });
+        let _parsed = parse_patch_from_value(value).expect("valid patch parses");
+    }
 
     #[test]
     fn build_workspace_enabled_maps_default_embedding_provider_load_failure() {

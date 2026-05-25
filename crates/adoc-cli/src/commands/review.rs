@@ -1,8 +1,11 @@
 use std::fmt::Write as FmtWrite;
 use std::io;
+use std::path::PathBuf;
 
 use adoc_core::{ImpactedObject, ProofObligation, RequiredReviewer, ReviewEnvelope};
-use adoc_local::{LocalContext, ReviewInput, ReviewUseCase, UnrestrictedPathPolicy};
+use adoc_local::{
+    LocalContext, ReviewInput, ReviewPatchSource, ReviewUseCase, UnrestrictedPathPolicy,
+};
 
 use crate::error::CliError;
 use crate::presentation::style::key::cyan_key;
@@ -14,6 +17,8 @@ use super::{current_dir, eprint_diagnostics, report};
 
 pub(crate) struct ReviewCommandInput {
     pub(crate) base_ref: String,
+    /// V3.7 — optional adoc.patch.v0 JSON path passed via `--patch`.
+    pub(crate) patch: Option<PathBuf>,
 }
 
 pub(crate) fn review(input: ReviewCommandInput, resolved: ResolvedFormat) -> i32 {
@@ -25,6 +30,7 @@ pub(crate) fn review(input: ReviewCommandInput, resolved: ResolvedFormat) -> i32
     let outcome = match ReviewUseCase::new(context).run(ReviewInput {
         base_ref: input.base_ref,
         head_ref: None,
+        patch: input.patch.map(ReviewPatchSource::Path),
     }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),

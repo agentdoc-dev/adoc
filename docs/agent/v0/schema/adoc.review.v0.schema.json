@@ -35,9 +35,13 @@
       "items": { "$ref": "#/$defs/requiredReviewer" }
     },
     "proof_obligations": {
-      "description": "V3.4 proof obligations triggered by diff field changes and impact entries. Deduplicated by (object_id, reason). Sorted by (object_id, reason). Empty when no triggers fire.",
+      "description": "V3.4 proof obligations triggered by diff field changes and impact entries. V3.7 unions in patch_check.proof_obligations (when patch_check is present), deduplicated by (object_id, reason). Sorted by (object_id, reason). Empty when no triggers fire.",
       "type": "array",
       "items": { "$ref": "#/$defs/proofObligation" }
+    },
+    "patch_check": {
+      "description": "V3.7 — optional embedded adoc.patch.check.v0 validation result. Present only when `adoc review` was invoked with `--patch` (or the MCP `adoc_review` tool with a `patch` parameter). Patch-driven proof obligations are also unioned into the top-level `proof_obligations` array.",
+      "$ref": "#/$defs/patchCheck"
     },
     "diagnostics": {
       "description": "Compile diagnostics surfaced during either snapshot's compile.",
@@ -84,6 +88,37 @@
         }
       },
       "additionalProperties": false
+    },
+    "patchCheck": {
+      "description": "V3.7 — embedded adoc.patch.check.v0 envelope. The outer shape is enforced here; full validation lives in patch-check.json.",
+      "type": "object",
+      "required": [
+        "schema_version",
+        "valid",
+        "accepted_for_review",
+        "operation",
+        "diffs",
+        "affected_relations",
+        "proof_obligations",
+        "required_follow_up",
+        "diagnostics"
+      ],
+      "properties": {
+        "schema_version": { "const": "adoc.patch.check.v0" },
+        "valid": { "type": "boolean" },
+        "accepted_for_review": { "type": "boolean" },
+        "target": { "type": "string" },
+        "operation": { "type": "string" },
+        "diffs": { "type": "array", "items": { "type": "object" } },
+        "affected_relations": { "type": "array", "items": { "type": "object" } },
+        "proof_obligations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/proofObligation" }
+        },
+        "required_follow_up": { "type": "array", "items": { "type": "string" } },
+        "diagnostics": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": true
     }
   }
 }

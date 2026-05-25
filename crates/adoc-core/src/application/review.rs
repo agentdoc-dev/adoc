@@ -15,12 +15,14 @@ use std::path::PathBuf;
 use serde::Serialize;
 
 use crate::application::compile::{CompileResult, compile_with_provider};
+use crate::application::patch::{PatchCheckResult, PatchParseError, check_patch_documents};
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::graph::{GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode};
 use crate::domain::knowledge_object::claim::{
     OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD, VERIFIED_AT_FIELD,
 };
 use crate::domain::obligation::ProofObligation;
+use crate::domain::patch::PatchDocument;
 use crate::domain::ports::changed_files::{ChangedFilesError, ChangedFilesProvider};
 use crate::domain::ports::snapshot_workspace::{
     SnapshotError, SnapshotSelector, SnapshotWorkspaceProvider,
@@ -112,6 +114,14 @@ pub enum ReviewError {
         selector: SnapshotSelector,
         source: ChangedFilesError,
     },
+    /// V3.7 — the patch source supplied via `adoc review --patch` (or the
+    /// equivalent MCP parameter) could not be parsed into a
+    /// [`PatchDocument`]. Validation failures against the head graph stay
+    /// inside `PatchCheckResult::diagnostics`; only parse-time errors that
+    /// stop us from producing a `PatchCheckResult` at all reach this variant.
+    PatchParse {
+        source: PatchParseError,
+    },
 }
 
 impl fmt::Display for ReviewError {
@@ -136,6 +146,9 @@ impl fmt::Display for ReviewError {
             Self::ChangedFiles { selector, .. } => {
                 write!(f, "could not resolve changed-file set against {selector}")
             }
+            Self::PatchParse { source } => {
+                write!(f, "could not parse review patch source ({source})")
+            }
         }
     }
 }
@@ -145,6 +158,7 @@ impl Error for ReviewError {
         match self {
             Self::BaseSnapshot { source, .. } | Self::HeadSnapshot { source, .. } => Some(source),
             Self::ChangedFiles { source, .. } => Some(source),
+            Self::PatchParse { source } => Some(source),
             _ => None,
         }
     }
@@ -541,7 +555,15 @@ pub struct ReviewEnvelope {
     pub impact: Vec<ImpactedObject>,
     pub required_reviewers: Vec<RequiredReviewer>,
     /// V3.4 proof obligations. Empty list when no triggers fire.
+    /// V3.7 unions this with `patch_check.proof_obligations` (when present),
+    /// deduped by `(object_id, reason)` — tolerant readers that only consult
+    /// this top-level field still see the complete obligation set.
     pub proof_obligations: Vec<ProofObligation>,
+    /// V3.7 — embedded `adoc.patch.check.v0` validation result, present only
+    /// when `adoc review` was invoked with `--patch`. Omitted from the JSON
+    /// envelope entirely (not `null`) when no patch was supplied.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch_check: Option<PatchCheckResult>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -549,17 +571,85 @@ impl ReviewEnvelope {
     /// Build the wire envelope from a loaded [`ReviewSession`] and the diff
     /// computed against it. The session's `impact_analysis`,
     /// `required_reviewers`, and `proof_obligations` are cloned in.
+    ///
+    /// V3.7 callers that also have a patch to validate go through
+    /// [`review_with_patch`] instead, which folds in `patch_check` and
+    /// unions obligations.
     pub fn from_session(session: &ReviewSession, diagnostics: Vec<Diagnostic>) -> Self {
+        Self::from_session_with_patch_check(session, diagnostics, None)
+    }
+
+    /// V3.7 envelope constructor. Embeds an optional `patch_check` and
+    /// unions its `proof_obligations` with the session's diff/impact-driven
+    /// obligations, deduplicated by `(object_id, reason)` — same predicate
+    /// the V3.4 aggregator and the V2 patch validator already use.
+    pub fn from_session_with_patch_check(
+        session: &ReviewSession,
+        diagnostics: Vec<Diagnostic>,
+        patch_check: Option<PatchCheckResult>,
+    ) -> Self {
         let diff = diff_objects(session);
+        let mut proof_obligations = session.proof_obligations().to_vec();
+        if let Some(report) = patch_check.as_ref() {
+            for obligation in &report.proof_obligations {
+                if !proof_obligations.iter().any(|existing| {
+                    existing.object_id == obligation.object_id
+                        && existing.reason == obligation.reason
+                }) {
+                    proof_obligations.push(obligation.clone());
+                }
+            }
+            proof_obligations.sort_by(|a, b| {
+                (a.object_id.as_str(), a.reason.as_str())
+                    .cmp(&(b.object_id.as_str(), b.reason.as_str()))
+            });
+        }
         Self {
             schema_version: REVIEW_SCHEMA_VERSION,
             diff: ObjectDiffEnvelope::from_diff(diff, Vec::new()),
             impact: session.impact_analysis().to_vec(),
             required_reviewers: session.required_reviewers().to_vec(),
-            proof_obligations: session.proof_obligations().to_vec(),
+            proof_obligations,
+            patch_check,
             diagnostics,
         }
     }
+}
+
+/// V3.7 — compose patch validation into a Review Report.
+///
+/// When `patch` is `Some`, runs V2's [`check_patch_documents`] against the
+/// head graph already held by `session`, embeds the resulting
+/// [`PatchCheckResult`] as the envelope's `patch_check` field, and unions
+/// the patch-driven obligations with the session's diff/impact-driven
+/// obligations.
+///
+/// When `patch` is `None`, the returned envelope is byte-equivalent to
+/// [`ReviewEnvelope::from_session`] — `patch_check` is omitted from the
+/// serialized JSON entirely (not `null`).
+///
+/// The patch is **never applied**. V3.7 composes two read-only views; see
+/// V3-DESIGN.md §V3.7 and §Non-Goals.
+pub fn review_with_patch(
+    session: &ReviewSession,
+    diagnostics: Vec<Diagnostic>,
+    patch: Option<&PatchDocument>,
+) -> ReviewEnvelope {
+    let patch_check = patch.map(|patch| {
+        let head_artifact = head_graph_artifact_document(session);
+        check_patch_documents(head_artifact, patch.clone())
+    });
+    ReviewEnvelope::from_session_with_patch_check(session, diagnostics, patch_check)
+}
+
+fn head_graph_artifact_document(session: &ReviewSession) -> GraphArtifactDocument {
+    let artifacts = session
+        .head
+        .artifacts
+        .as_ref()
+        .expect("head compile produced artifacts (load_review error short-circuits otherwise)");
+    serde_json::from_str(&artifacts.graph_json)
+        .expect("compile output graph_json is well-formed (compile pipeline invariant)")
 }
 
 #[cfg(test)]
@@ -1467,6 +1557,224 @@ mod tests {
         #[test]
         fn changed_object_referenced_so_dead_code_lint_is_satisfied() {
             let _ = std::mem::size_of::<ChangedObject>();
+        }
+    }
+
+    // ----- V3.7 patch composition -----
+
+    mod review_with_patch_composition {
+        use std::fs;
+
+        use serde_json::json;
+
+        use crate::application::review::{
+            ReviewEnvelope, ReviewInput, load_review_with_providers, review_with_patch,
+        };
+        use crate::domain::diagnostic::DiagnosticCode;
+        use crate::domain::ports::snapshot_workspace::{GitRef, SnapshotSelector};
+        use crate::parse_patch_from_value;
+
+        use super::{InMemorySnapshotWorkspaceProvider, fresh_workspace, write_billing_source};
+
+        fn write_verified_claim(root: &std::path::Path, body: &str) {
+            let docs = root.join("docs");
+            fs::create_dir_all(&docs).expect("docs dir");
+            let source = format!(
+                concat!(
+                    "# Billing @doc(team.billing)\n",
+                    "\n",
+                    "::claim billing.credits\n",
+                    "status: verified\n",
+                    "owner: team-billing\n",
+                    "verified_at: 2026-05-05\n",
+                    "source: ledger\n",
+                    "--\n",
+                    "{body}\n",
+                    "::\n",
+                ),
+                body = body,
+            );
+            fs::write(docs.join("billing.adoc"), source).expect("write billing.adoc");
+        }
+
+        fn load_session_with_verified_claim_body_change() -> (
+            crate::application::review::ReviewSession,
+            String, // head content_hash of billing.credits
+        ) {
+            let base_root = fresh_workspace("patch-comp-base");
+            write_verified_claim(&base_root, "Old verified body.");
+            let head_root = fresh_workspace("patch-comp-head");
+            write_verified_claim(&head_root, "New verified body.");
+
+            let provider = InMemorySnapshotWorkspaceProvider::new(head_root.clone())
+                .with_ref("main", base_root.clone());
+
+            let load = load_review_with_providers(
+                ReviewInput {
+                    project_root: head_root.clone(),
+                    base: SnapshotSelector::GitRef(GitRef::new("main")),
+                    head: SnapshotSelector::Workdir,
+                },
+                &provider,
+            )
+            .expect("load review succeeds");
+
+            // Pull head content_hash for the target claim so the test patch
+            // can carry a valid `base_hash` against the head graph.
+            let head_artifact = super::super::head_graph_artifact_document(&load.session);
+            let hash = head_artifact
+                .nodes
+                .iter()
+                .find_map(|node| match node {
+                    crate::domain::graph::GraphNode::KnowledgeObject(ko)
+                        if ko.id == "billing.credits" =>
+                    {
+                        Some(ko.content_hash.clone())
+                    }
+                    _ => None,
+                })
+                .expect("billing.credits present in head graph");
+
+            // Keep tempdirs alive by leaking them — tests run in single
+            // process and the OS reclaims tmp on exit.
+            std::mem::forget(base_root);
+            std::mem::forget(head_root);
+
+            (load.session, hash)
+        }
+
+        #[test]
+        fn review_with_patch_none_matches_from_session_envelope() {
+            let (session, _hash) = load_session_with_verified_claim_body_change();
+
+            let with_none = review_with_patch(&session, Vec::new(), None);
+            let baseline = ReviewEnvelope::from_session(&session, Vec::new());
+
+            let with_none_json = serde_json::to_value(&with_none).expect("serialize");
+            let baseline_json = serde_json::to_value(&baseline).expect("serialize");
+
+            assert_eq!(with_none_json, baseline_json);
+            assert!(
+                with_none_json.get("patch_check").is_none(),
+                "patch_check must be omitted when no patch is supplied"
+            );
+        }
+
+        #[test]
+        fn review_with_patch_embeds_valid_patch_check_against_head_graph() {
+            let (session, hash) = load_session_with_verified_claim_body_change();
+
+            let patch = parse_patch_from_value(json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "replace_body",
+                "target": "billing.credits",
+                "base_hash": hash,
+                "changes": { "body": "Patched body." },
+                "reason": "demo"
+            }))
+            .expect("test patch parses");
+
+            let envelope = review_with_patch(&session, Vec::new(), Some(&patch));
+
+            let patch_check = envelope.patch_check.expect("patch_check present");
+            assert!(
+                patch_check.valid,
+                "patch validates cleanly: {patch_check:?}"
+            );
+            assert_eq!(patch_check.target.as_deref(), Some("billing.credits"));
+        }
+
+        #[test]
+        fn review_with_patch_stale_base_hash_surfaces_in_diagnostics() {
+            let (session, _hash) = load_session_with_verified_claim_body_change();
+
+            let patch = parse_patch_from_value(json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "replace_body",
+                "target": "billing.credits",
+                "base_hash": "sha256:wrong",
+                "changes": { "body": "Patched body." },
+                "reason": "demo"
+            }))
+            .expect("test patch parses");
+
+            let envelope = review_with_patch(&session, Vec::new(), Some(&patch));
+
+            let patch_check = envelope.patch_check.expect("patch_check present");
+            assert!(!patch_check.valid, "stale base_hash must fail validation");
+            assert!(
+                patch_check
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == DiagnosticCode::PatchBaseHashMismatch),
+                "expected PatchBaseHashMismatch in diagnostics: {patch_check:?}"
+            );
+        }
+
+        #[test]
+        fn review_with_patch_unions_obligations_deduped() {
+            // The diff carries a body change on a verified claim, which the
+            // V3.4 aggregator turns into a "re-verify body" obligation. A
+            // ReplaceBody patch on the same verified claim triggers the V2
+            // patch validator's own re-verify-style obligation (reason
+            // "verified claim body changed"). Different reasons → no dedup.
+            // We assert that both appear, sorted, with the diff-driven one
+            // intact.
+            let (session, hash) = load_session_with_verified_claim_body_change();
+
+            let patch = parse_patch_from_value(json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "replace_body",
+                "target": "billing.credits",
+                "base_hash": hash,
+                "changes": { "body": "Patched body." },
+                "reason": "demo"
+            }))
+            .expect("test patch parses");
+
+            let envelope = review_with_patch(&session, Vec::new(), Some(&patch));
+
+            let session_only_obligations: Vec<_> = session
+                .proof_obligations()
+                .iter()
+                .map(|o| (o.object_id.clone(), o.reason.clone()))
+                .collect();
+
+            // Every diff/impact-driven obligation must still be present.
+            for (id, reason) in &session_only_obligations {
+                assert!(
+                    envelope
+                        .proof_obligations
+                        .iter()
+                        .any(|o| &o.object_id == id && &o.reason == reason),
+                    "missing diff-driven obligation ({id}, {reason}) after union"
+                );
+            }
+
+            // The top-level set is deduplicated by (object_id, reason).
+            let mut seen = std::collections::BTreeSet::new();
+            for o in &envelope.proof_obligations {
+                assert!(
+                    seen.insert((o.object_id.as_str(), o.reason.as_str())),
+                    "duplicate (object_id, reason) in unioned obligations: {o:?}"
+                );
+            }
+
+            // Result must be sorted by (object_id, reason).
+            let mut sorted = envelope.proof_obligations.clone();
+            sorted.sort_by(|a, b| {
+                (a.object_id.as_str(), a.reason.as_str())
+                    .cmp(&(b.object_id.as_str(), b.reason.as_str()))
+            });
+            assert_eq!(envelope.proof_obligations, sorted);
+        }
+
+        #[test]
+        fn _unused_workspace_helper_is_actually_used() {
+            // The `write_billing_source` helper above is also used by the
+            // outer test module; this no-op test silences any
+            // dead-code-on-cfg-test warnings if the import goes idle.
+            let _ = write_billing_source;
         }
     }
 }

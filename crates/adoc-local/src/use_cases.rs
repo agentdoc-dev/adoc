@@ -11,14 +11,14 @@ use adoc_core::{
     EmbeddingProviderSelection, GitRef, GraphArtifactInspectionInput, GraphDirection,
     GraphInput as CoreGraphInput, GraphRelationKind, GraphTraversalEnvelope, GraphTraversalQuery,
     GraphTraversalResult, ObjectDiffEnvelope, PatchCheckResult, PatchInput, RetrievalEnvelope,
-    RetrievalInput, RetrievalLoadResult, RetrievalRecord, ReviewEnvelope,
+    RetrievalInput, RetrievalLoadResult, RetrievalRecord, ReviewEnvelope, ReviewError,
     ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters, SearchMode,
     SearchQuery, Severity, SnapshotSelector, build_workspace_with_embedding_provider,
     check_patch as core_check_patch, compile_workspace, diff_objects,
     embed_query_with_embedding_provider, git_review_available, inspect_graph_artifact,
     inspect_search_artifact, load_graph_session, load_retrieval_session_with_embedding_provider,
-    load_review_from_git, load_review_with_changed_files_from_git, search as core_search,
-    traverse_graph, why_object,
+    load_review_from_git, load_review_with_changed_files_from_git, parse_patch_from_path,
+    parse_patch_from_value, review_with_patch, search as core_search, traverse_graph, why_object,
 };
 use serde::Serialize;
 
@@ -173,6 +173,19 @@ pub struct DiffOutcome {
 pub struct ReviewInput {
     pub base_ref: String,
     pub head_ref: Option<String>,
+    /// V3.7 — optional patch source threaded through into
+    /// [`adoc_core::review_with_patch`]. `None` produces the V3.3/V3.4/V3.6
+    /// envelope unchanged.
+    pub patch: Option<ReviewPatchSource>,
+}
+
+/// V3.7 — orchestration-layer patch source for `adoc review --patch` and the
+/// equivalent MCP parameter. Mirrors V2.1's [`PatchInput`] shape (path vs
+/// inline JSON) so the same driving adapters can populate either variant.
+#[derive(Debug, Clone)]
+pub enum ReviewPatchSource {
+    Path(PathBuf),
+    Inline(serde_json::Value),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -841,6 +854,27 @@ where
     P: PathPolicy,
 {
     let project_root = context.config_start().to_path_buf();
+    // V3.7: parse the patch source before snapshotting so a malformed patch
+    // doesn't pay the cost of a worktree checkout. Path-policy resolution
+    // happens here at the orchestration boundary; adoc-core never sees a
+    // raw filesystem path.
+    let patch_document = match input.patch {
+        Some(ReviewPatchSource::Path(path)) => {
+            let resolved = context.path_policy().resolve_read_path(&path)?;
+            Some(
+                parse_patch_from_path(&resolved).map_err(|source| LocalError::Review {
+                    source: ReviewError::PatchParse { source },
+                })?,
+            )
+        }
+        Some(ReviewPatchSource::Inline(value)) => Some(parse_patch_from_value(value).map_err(
+            |source| LocalError::Review {
+                source: ReviewError::PatchParse { source },
+            },
+        )?),
+        None => None,
+    };
+
     let review_input = CoreReviewInput {
         project_root,
         base: SnapshotSelector::GitRef(GitRef::new(input.base_ref)),
@@ -848,7 +882,7 @@ where
     };
     let load = load_review_with_changed_files_from_git(review_input)
         .map_err(|source| LocalError::Review { source })?;
-    let envelope = ReviewEnvelope::from_session(&load.session, load.diagnostics);
+    let envelope = review_with_patch(&load.session, load.diagnostics, patch_document.as_ref());
     Ok(ReviewOutcome {
         envelope,
         exit_code: 0,

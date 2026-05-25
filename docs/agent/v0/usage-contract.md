@@ -11,6 +11,6 @@ The stable read contracts are `adoc.retrieval.v0`, `adoc.graph.traversal.v0`, `a
 - Use `adoc_search`, `adoc_why`, and `adoc_graph` for answer evidence.
 - Use `adoc_diff` for a mechanical Knowledge-Object diff between a base ref and the workdir; use `adoc_review` for the enriched pull-request report. Check `readiness.review` on `adoc.project.status.v0` before calling either.
 - Cite `Object ID`, `kind`, `status`, `owner`, evidence fields, and caveats when they are present.
-- Propose changes as `adoc.patch.v0` JSON and validate with `adoc_patch_check`.
+- Propose changes as `adoc.patch.v0` JSON and validate with `adoc_patch_check`. To validate a patch in the context of a pull-request review, call `adoc_review` with the optional `patch` parameter — the returned envelope embeds the `adoc.patch.check.v0` report and unions patch-driven proof obligations into the top-level list. V3 never applies patches.
 - Do not apply patches, rewrite AgentDoc Source, approve knowledge, or create hosted review state.
 - The review tools are read-only inspection of recomputed graphs; they do not approve knowledge or persist review state.
