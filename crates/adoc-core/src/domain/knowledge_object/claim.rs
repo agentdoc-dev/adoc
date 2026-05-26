@@ -904,6 +904,54 @@ mod tests {
     }
 
     #[test]
+    fn claim_build_from_parsed_rejects_backslash_impacts_path() {
+        // Windows-shape author input never matches `git diff --name-only`
+        // output, so the schema validator must surface it as
+        // `SchemaImpactsInvalidPath` rather than letting it through silently.
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                (
+                    "impacts".to_string(),
+                    "crates\\billing\\refund.rs".to_string(),
+                ),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(claim.impacts().is_none());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::SchemaImpactsInvalidPath
+        );
+    }
+
+    #[test]
+    fn claim_build_from_parsed_rejects_drive_letter_impacts_path() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                ("impacts".to_string(), "C:/billing/refund.rs".to_string()),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(claim.impacts().is_none());
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::SchemaImpactsInvalidPath
+        );
+    }
+
+    #[test]
     fn claim_build_from_parsed_reports_empty_impacts_field() {
         let mut diagnostics = Vec::new();
         let parsed = parsed_claim(

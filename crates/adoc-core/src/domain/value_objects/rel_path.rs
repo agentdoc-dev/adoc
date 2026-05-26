@@ -2,9 +2,11 @@
 //! `decision` Knowledge Objects.
 //!
 //! Constructed only via [`RelPath::try_new`]. Rejects values that could escape
-//! the repository root (absolute paths, `..` segments) or carry no path
-//! information (empty / whitespace-only). The accepted form matches what
-//! `git diff --name-only` emits: forward-slash separated, no leading slash.
+//! the repository root (absolute paths, `..` segments), carry no path
+//! information (empty / whitespace-only), or use a path shape that will never
+//! match `git diff --name-only` output (backslash separators, Windows drive
+//! letters). The accepted form matches what `git diff --name-only` emits:
+//! forward-slash separated, no leading slash.
 
 use std::fmt;
 
@@ -14,6 +16,8 @@ use std::fmt;
 /// - Non-empty after trimming ASCII whitespace.
 /// - Not absolute (does not start with `/`).
 /// - Contains no `..` path segment.
+/// - Contains no `\` (backslash) — git emits forward slashes only.
+/// - Does not start with a Windows drive letter (`C:`, `d:`, ...).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RelPath(String);
 
@@ -26,11 +30,19 @@ pub enum RelPathError {
     Absolute,
     /// The value contained a `..` path segment.
     ParentSegment,
+    /// The value contained a `\` (backslash). The V3.3 contract is
+    /// Unix-shape; mixing path separators would silently never match
+    /// `git diff --name-only` output and quietly under-report impact.
+    Backslash,
+    /// The value started with a Windows drive letter (e.g. `C:foo` or
+    /// `D:/foo`). Same reasoning as [`RelPathError::Backslash`] — these
+    /// would never match `git diff --name-only` output on any platform.
+    WindowsDriveLetter,
 }
 
 impl RelPath {
     /// Construct a `RelPath` from a string slice. Rejects empty / absolute /
-    /// parent-traversal inputs.
+    /// parent-traversal / Windows-shape inputs.
     pub fn try_new(value: &str) -> Result<Self, RelPathError> {
         let trimmed = value.trim_matches(|c: char| c.is_ascii_whitespace());
         if trimmed.is_empty() {
@@ -38,6 +50,12 @@ impl RelPath {
         }
         if trimmed.starts_with('/') {
             return Err(RelPathError::Absolute);
+        }
+        if trimmed.contains('\\') {
+            return Err(RelPathError::Backslash);
+        }
+        if starts_with_drive_letter(trimmed) {
+            return Err(RelPathError::WindowsDriveLetter);
         }
         if trimmed.split('/').any(|segment| segment == "..") {
             return Err(RelPathError::ParentSegment);
@@ -49,6 +67,14 @@ impl RelPath {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+fn starts_with_drive_letter(value: &str) -> bool {
+    let mut chars = value.chars();
+    matches!(
+        (chars.next(), chars.next()),
+        (Some(c), Some(':')) if c.is_ascii_alphabetic()
+    )
 }
 
 impl fmt::Display for RelPath {
@@ -65,6 +91,12 @@ impl fmt::Display for RelPathError {
             Self::ParentSegment => {
                 f.write_str("path contains a `..` segment; only descending paths are allowed")
             }
+            Self::Backslash => f.write_str(
+                "path contains a backslash; use forward slashes (git emits forward slashes only)",
+            ),
+            Self::WindowsDriveLetter => f.write_str(
+                "path starts with a Windows drive letter; use a repo-relative forward-slash path",
+            ),
         }
     }
 }
@@ -181,5 +213,63 @@ mod tests {
             RelPathError::ParentSegment.to_string(),
             "path contains a `..` segment; only descending paths are allowed"
         );
+        assert_eq!(
+            RelPathError::Backslash.to_string(),
+            "path contains a backslash; use forward slashes (git emits forward slashes only)"
+        );
+        assert_eq!(
+            RelPathError::WindowsDriveLetter.to_string(),
+            "path starts with a Windows drive letter; use a repo-relative forward-slash path"
+        );
+    }
+
+    #[test]
+    fn try_new_rejects_backslash_separator() {
+        // Windows-shape author input would silently never match
+        // `git diff --name-only` output (git emits forward slashes only).
+        assert_eq!(
+            RelPath::try_new("crates\\billing\\src\\refund.rs"),
+            Err(RelPathError::Backslash)
+        );
+    }
+
+    #[test]
+    fn try_new_rejects_single_backslash_anywhere() {
+        // A stray backslash inside an otherwise-Unix path is still rejected;
+        // matching git output requires every separator to be `/`.
+        assert_eq!(
+            RelPath::try_new("docs/team\\billing.md"),
+            Err(RelPathError::Backslash)
+        );
+    }
+
+    #[test]
+    fn try_new_rejects_windows_drive_letter() {
+        // Authors writing the impacts: field on Windows can't substitute a
+        // drive-letter path — git output is repo-relative and forward-slash
+        // shaped, so this would never match the changed-file set.
+        assert_eq!(
+            RelPath::try_new("C:/billing/refund.rs"),
+            Err(RelPathError::WindowsDriveLetter)
+        );
+    }
+
+    #[test]
+    fn try_new_rejects_drive_letter_without_slash() {
+        // `C:foo` is the legacy Windows "current dir on drive C" form;
+        // reject it for the same reason as `C:/foo`.
+        assert_eq!(
+            RelPath::try_new("d:billing/refund.rs"),
+            Err(RelPathError::WindowsDriveLetter)
+        );
+    }
+
+    #[test]
+    fn try_new_accepts_colon_inside_a_segment() {
+        // A `:` that isn't part of a drive-letter prefix is allowed —
+        // filenames like `docs/release-notes:final.md` are valid on POSIX
+        // filesystems.
+        let path = RelPath::try_new("docs/release-notes:final.md").expect("valid path");
+        assert_eq!(path.as_str(), "docs/release-notes:final.md");
     }
 }
