@@ -430,32 +430,26 @@ mod tests {
         fs::write(docs.join("billing.adoc"), source).expect("write billing.adoc");
     }
 
-    fn fresh_workspace(label: &str) -> PathBuf {
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("clock")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "adoc-review-test-{label}-{}-{nonce}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&path).expect("create workspace");
-        path
+    fn fresh_workspace(label: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("adoc-review-test-{label}-"))
+            .tempdir()
+            .expect("create workspace")
     }
 
     #[test]
     fn load_review_with_providers_checks_out_base_and_head_in_order() {
         let base_root = fresh_workspace("base");
-        write_billing_source(&base_root, "Credits apply after payment.");
+        write_billing_source(base_root.path(), "Credits apply after payment.");
         let head_root = fresh_workspace("head");
-        write_billing_source(&head_root, "Credits apply after ledger commit.");
+        write_billing_source(head_root.path(), "Credits apply after ledger commit.");
 
-        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.clone())
-            .with_ref("main", base_root.clone());
+        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf())
+            .with_ref("main", base_root.path().to_path_buf());
 
         let result = load_review_with_providers(
             ReviewInput {
-                project_root: head_root.clone(),
+                project_root: head_root.path().to_path_buf(),
                 base: SnapshotSelector::GitRef(GitRef::new("main")),
                 head: SnapshotSelector::Workdir,
             },
@@ -469,29 +463,27 @@ mod tests {
         assert!(matches!(recorded[1], SnapshotSelector::Workdir));
         assert!(result.session.base().artifacts.is_some());
         assert!(result.session.head().artifacts.is_some());
-
-        let _ = (base_root, head_root); // keep tempdirs alive for compile
     }
 
     #[test]
     fn load_review_returns_base_compile_blocked_when_base_compile_has_errors() {
         let base_root = fresh_workspace("base-blocked");
-        fs::create_dir_all(base_root.join("docs")).expect("docs");
+        fs::create_dir_all(base_root.path().join("docs")).expect("docs");
         // Raw HTML inside an .adoc source triggers a compile error.
         fs::write(
-            base_root.join("docs/bad.adoc"),
+            base_root.path().join("docs/bad.adoc"),
             "# Guide @doc(team.guide)\n\n<div>raw</div>\n",
         )
         .expect("write bad source");
         let head_root = fresh_workspace("head-blocked-fine");
-        write_billing_source(&head_root, "Clean head.");
+        write_billing_source(head_root.path(), "Clean head.");
 
-        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.clone())
-            .with_ref("main", base_root.clone());
+        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf())
+            .with_ref("main", base_root.path().to_path_buf());
 
         let error = load_review_with_providers(
             ReviewInput {
-                project_root: head_root.clone(),
+                project_root: head_root.path().to_path_buf(),
                 base: SnapshotSelector::GitRef(GitRef::new("main")),
                 head: SnapshotSelector::Workdir,
             },
@@ -508,20 +500,18 @@ mod tests {
             }
             other => panic!("expected BaseCompileBlocked, got: {other:?}"),
         }
-
-        let _ = (base_root, head_root);
     }
 
     #[test]
     fn load_review_returns_base_snapshot_error_when_provider_fails() {
         let head_root = fresh_workspace("head-snap-error");
-        write_billing_source(&head_root, "Clean head.");
+        write_billing_source(head_root.path(), "Clean head.");
 
-        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.clone());
+        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf());
 
         let error = load_review_with_providers(
             ReviewInput {
-                project_root: head_root.clone(),
+                project_root: head_root.path().to_path_buf(),
                 base: SnapshotSelector::GitRef(GitRef::new("unseeded")),
                 head: SnapshotSelector::Workdir,
             },
@@ -536,7 +526,6 @@ mod tests {
             },
             other => panic!("expected BaseSnapshot, got: {other:?}"),
         }
-        let _ = head_root;
     }
 
     #[test]
@@ -545,9 +534,9 @@ mod tests {
         let head_root = fresh_workspace("diff-head");
 
         // Base: one claim that will change body, one that will be deleted.
-        fs::create_dir_all(base_root.join("docs")).expect("docs");
+        fs::create_dir_all(base_root.path().join("docs")).expect("docs");
         fs::write(
-            base_root.join("docs/billing.adoc"),
+            base_root.path().join("docs/billing.adoc"),
             concat!(
                 "# Billing @doc(team.billing)\n",
                 "\n",
@@ -567,9 +556,9 @@ mod tests {
         .expect("write base source");
 
         // Head: changed credits body, no legacy claim, new holds claim.
-        fs::create_dir_all(head_root.join("docs")).expect("docs");
+        fs::create_dir_all(head_root.path().join("docs")).expect("docs");
         fs::write(
-            head_root.join("docs/billing.adoc"),
+            head_root.path().join("docs/billing.adoc"),
             concat!(
                 "# Billing @doc(team.billing)\n",
                 "\n",
@@ -588,12 +577,12 @@ mod tests {
         )
         .expect("write head source");
 
-        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.clone())
-            .with_ref("main", base_root.clone());
+        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf())
+            .with_ref("main", base_root.path().to_path_buf());
 
         let load = load_review_with_providers(
             ReviewInput {
-                project_root: head_root.clone(),
+                project_root: head_root.path().to_path_buf(),
                 base: SnapshotSelector::GitRef(GitRef::new("main")),
                 head: SnapshotSelector::Workdir,
             },
@@ -613,8 +602,6 @@ mod tests {
             diff.changed()[0].base.content_hash,
             diff.changed()[0].head.content_hash
         );
-
-        let _ = (base_root, head_root);
     }
 
     #[test]
@@ -809,7 +796,7 @@ mod tests {
         use crate::domain::ports::snapshot_workspace::{GitRef, SnapshotSelector};
         use crate::parse_patch_from_value;
 
-        use super::{InMemorySnapshotWorkspaceProvider, fresh_workspace, write_billing_source};
+        use super::{InMemorySnapshotWorkspaceProvider, fresh_workspace};
 
         fn write_verified_claim(root: &std::path::Path, body: &str) {
             let docs = root.join("docs");
@@ -837,16 +824,16 @@ mod tests {
             String, // head content_hash of billing.credits
         ) {
             let base_root = fresh_workspace("patch-comp-base");
-            write_verified_claim(&base_root, "Old verified body.");
+            write_verified_claim(base_root.path(), "Old verified body.");
             let head_root = fresh_workspace("patch-comp-head");
-            write_verified_claim(&head_root, "New verified body.");
+            write_verified_claim(head_root.path(), "New verified body.");
 
-            let provider = InMemorySnapshotWorkspaceProvider::new(head_root.clone())
-                .with_ref("main", base_root.clone());
+            let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf())
+                .with_ref("main", base_root.path().to_path_buf());
 
             let load = load_review_with_providers(
                 ReviewInput {
-                    project_root: head_root.clone(),
+                    project_root: head_root.path().to_path_buf(),
                     base: SnapshotSelector::GitRef(GitRef::new("main")),
                     head: SnapshotSelector::Workdir,
                 },
@@ -870,10 +857,12 @@ mod tests {
                 })
                 .expect("billing.credits present in head graph");
 
-            // Keep tempdirs alive by leaking them — tests run in single
-            // process and the OS reclaims tmp on exit.
-            std::mem::forget(base_root);
-            std::mem::forget(head_root);
+            // Patch-composition tests share a session across multiple
+            // assertions returned via tuple. `keep` consumes the TempDir
+            // without running its Drop, so the on-disk workspace outlives
+            // this function (the OS reclaims `$TMPDIR` on process exit).
+            let _ = base_root.keep();
+            let _ = head_root.keep();
 
             (load.session, hash)
         }
@@ -1002,14 +991,6 @@ mod tests {
                     .cmp(&(b.object_id.as_str(), b.reason.as_str()))
             });
             assert_eq!(envelope.proof_obligations, sorted);
-        }
-
-        #[test]
-        fn _unused_workspace_helper_is_actually_used() {
-            // The `write_billing_source` helper above is also used by the
-            // outer test module; this no-op test silences any
-            // dead-code-on-cfg-test warnings if the import goes idle.
-            let _ = write_billing_source;
         }
     }
 }
