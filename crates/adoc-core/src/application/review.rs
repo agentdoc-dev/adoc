@@ -282,7 +282,6 @@ fn compile_snapshot<S: SnapshotWorkspaceProvider>(
     let source_provider = FsSourceProvider::new(workspace.path().to_path_buf())
         .with_identity_prefix(PathBuf::from(REVIEW_IDENTITY_PREFIX));
     let result = compile_with_provider(&source_provider);
-    drop(workspace); // explicit RAII cleanup before returning
     Ok(result)
 }
 
