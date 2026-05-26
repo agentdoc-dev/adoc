@@ -1,10 +1,14 @@
 //! `ChangedFilesProvider` adapter backed by the system `git` binary.
 //!
-//! Resolves the file set between a base ref and HEAD via
-//! `git diff --name-only <ref>...`. The three-dot form returns files changed
-//! in the current branch's history since the merge base with `<ref>` — the
+//! Resolves the file set between a base ref and head via
+//! `git diff --name-only <base>...[<head>]`. The three-dot form returns files
+//! changed in the head side's history since the merge base with `<base>` — the
 //! canonical CI shape ("what did this branch touch since main") and the form
-//! V3-DESIGN.md §V3.3 names.
+//! V3-DESIGN.md §V3.3 names. When `head` is `Workdir` the implicit form
+//! `<base>...` (resolves to `<base>...HEAD`) preserves the historical
+//! workdir-comparison behaviour; when `head` is an explicit `GitRef` the
+//! adapter materialises `<base>...<head>` so impact analysis honours the
+//! caller-supplied ref rather than silently reporting against `HEAD`.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -30,19 +34,39 @@ impl GitChangedFilesProvider {
 }
 
 impl ChangedFilesProvider for GitChangedFilesProvider {
-    fn changed_files(&self, base: &SnapshotSelector) -> Result<Vec<RelPath>, ChangedFilesError> {
-        match base {
+    fn changed_files(
+        &self,
+        base: &SnapshotSelector,
+        head: &SnapshotSelector,
+    ) -> Result<Vec<RelPath>, ChangedFilesError> {
+        match (base, head) {
             // No base to diff against — `adoc review` against the workdir
-            // alone has no meaningful changed-file set.
-            SnapshotSelector::Workdir => Ok(Vec::new()),
-            SnapshotSelector::GitRef(spec) => self.diff_against(spec.as_str()),
+            // alone has no meaningful changed-file set, regardless of head.
+            (SnapshotSelector::Workdir, _) => Ok(Vec::new()),
+            (SnapshotSelector::GitRef(b), SnapshotSelector::Workdir) => {
+                self.diff_against(b.as_str(), None)
+            }
+            (SnapshotSelector::GitRef(b), SnapshotSelector::GitRef(h)) => {
+                self.diff_against(b.as_str(), Some(h.as_str()))
+            }
         }
     }
 }
 
 impl GitChangedFilesProvider {
-    fn diff_against(&self, spec: &str) -> Result<Vec<RelPath>, ChangedFilesError> {
-        let three_dot = format!("{spec}...");
+    fn diff_against(
+        &self,
+        base: &str,
+        head: Option<&str>,
+    ) -> Result<Vec<RelPath>, ChangedFilesError> {
+        let three_dot = match head {
+            // `<base>...<head>` — symmetric difference resolving to the
+            // changes on `<head>`'s side since the merge base with `<base>`.
+            Some(head_spec) => format!("{base}...{head_spec}"),
+            // `<base>...` — same shape with `HEAD` implicit, preserving the
+            // workdir-comparison behaviour the V3.3 acceptance tests pin.
+            None => format!("{base}..."),
+        };
         let output = run_git(&self.repo_root, &["diff", "--name-only", &three_dot])?;
         if !output.status.success() {
             // Route exit-code failures through `GitError::CommandFailed` so
@@ -155,7 +179,7 @@ mod tests {
 
         assert!(
             provider
-                .changed_files(&SnapshotSelector::Workdir)
+                .changed_files(&SnapshotSelector::Workdir, &SnapshotSelector::Workdir)
                 .expect("workdir is ok")
                 .is_empty()
         );
@@ -178,7 +202,10 @@ mod tests {
         let provider = GitChangedFilesProvider::new(repo.root.clone());
 
         let mut paths: Vec<String> = provider
-            .changed_files(&SnapshotSelector::GitRef(GitRef::new("main")))
+            .changed_files(
+                &SnapshotSelector::GitRef(GitRef::new("main")),
+                &SnapshotSelector::Workdir,
+            )
             .expect("diff names list")
             .into_iter()
             .map(|p| p.as_str().to_string())
@@ -207,13 +234,59 @@ mod tests {
         let provider = GitChangedFilesProvider::new(repo.root.clone());
 
         let paths: Vec<String> = provider
-            .changed_files(&SnapshotSelector::GitRef(GitRef::new("main")))
+            .changed_files(
+                &SnapshotSelector::GitRef(GitRef::new("main")),
+                &SnapshotSelector::Workdir,
+            )
             .expect("diff names list")
             .into_iter()
             .map(|p| p.as_str().to_string())
             .collect();
 
         assert_eq!(paths, vec!["café.txt".to_string()]);
+    }
+
+    #[test]
+    fn gitref_head_lists_changes_against_that_head_not_workdir_head() {
+        // Codex P1 regression: with an explicit `head_ref`, the changed-file
+        // set must reflect `base...head_ref`, NOT `base...HEAD`. Otherwise
+        // `adoc review --base main --head HEAD~1` reports impact for the
+        // workdir checkout, which is wrong.
+        let repo = Repo::new();
+        fs::write(repo.root.join("a.txt"), "hi\n").unwrap();
+        run(&repo.root, &["add", "-A"]);
+        run(&repo.root, &["commit", "-m", "base"]);
+
+        // feature branch with a single committed change against main.
+        run(&repo.root, &["checkout", "-b", "feature"]);
+        fs::write(repo.root.join("feature-only.txt"), "feature\n").unwrap();
+        run(&repo.root, &["add", "-A"]);
+        run(&repo.root, &["commit", "-m", "feature commit"]);
+
+        // Then a second commit on feature that should NOT appear when
+        // diffing against HEAD~1.
+        fs::write(repo.root.join("workdir-only.txt"), "workdir\n").unwrap();
+        run(&repo.root, &["add", "-A"]);
+        run(&repo.root, &["commit", "-m", "workdir-only commit"]);
+
+        let provider = GitChangedFilesProvider::new(repo.root.clone());
+
+        let mut paths: Vec<String> = provider
+            .changed_files(
+                &SnapshotSelector::GitRef(GitRef::new("main")),
+                &SnapshotSelector::GitRef(GitRef::new("HEAD~1")),
+            )
+            .expect("diff names list")
+            .into_iter()
+            .map(|p| p.as_str().to_string())
+            .collect();
+        paths.sort();
+
+        assert_eq!(
+            paths,
+            vec!["feature-only.txt".to_string()],
+            "diff must reflect base...HEAD~1, excluding the workdir-only commit"
+        );
     }
 
     #[test]
@@ -226,9 +299,10 @@ mod tests {
         let provider = GitChangedFilesProvider::new(repo.root.clone());
 
         let error = provider
-            .changed_files(&SnapshotSelector::GitRef(GitRef::new(
-                "definitely-not-a-real-ref",
-            )))
+            .changed_files(
+                &SnapshotSelector::GitRef(GitRef::new("definitely-not-a-real-ref")),
+                &SnapshotSelector::Workdir,
+            )
             .expect_err("bad ref must error");
 
         match error {

@@ -23,9 +23,17 @@ use crate::domain::value_objects::rel_path::RelPath;
 use super::snapshot_workspace::SnapshotSelector;
 
 /// Port returning the set of repo-relative files that differ between `base`
-/// and the current workdir (or `Workdir` for a no-op empty set).
+/// and `head`. When `head` is a `GitRef`, adapters must compare against that
+/// explicit ref (not the implicit current `HEAD`/workdir); when `head` is
+/// `Workdir`, adapters fall back to the prior `<base>...HEAD` shape so that
+/// `adoc review` against the working tree keeps reporting the on-branch
+/// change set, including any commits the user has made since `base` diverged.
 pub(crate) trait ChangedFilesProvider {
-    fn changed_files(&self, base: &SnapshotSelector) -> Result<Vec<RelPath>, ChangedFilesError>;
+    fn changed_files(
+        &self,
+        base: &SnapshotSelector,
+        head: &SnapshotSelector,
+    ) -> Result<Vec<RelPath>, ChangedFilesError>;
 }
 
 /// Errors surfacing from a [`ChangedFilesProvider`] implementation. Mirrors
