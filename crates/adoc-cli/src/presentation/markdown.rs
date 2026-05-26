@@ -29,7 +29,7 @@ use std::fmt::Write as FmtWrite;
 use std::io;
 
 use adoc_core::{
-    ChangedObject, FieldChange, ImpactedObject, ObjectDiffEnvelope, ProofObligation, RelationKind,
+    ChangedObject, FieldChange, ImpactedObject, ObjectDiffEnvelope, ProofObligation,
     RequiredReviewer, ReviewEnvelope,
 };
 
@@ -210,7 +210,7 @@ fn icon_for_status(
 fn field_change_summary_labels(changes: &[FieldChange]) -> String {
     let mut labels: Vec<&'static str> = Vec::new();
     for change in changes {
-        let label = field_change_summary_label(change);
+        let label = change.summary_label();
         if !labels.contains(&label) {
             labels.push(label);
         }
@@ -219,23 +219,6 @@ fn field_change_summary_labels(changes: &[FieldChange]) -> String {
         return "no field changes detected".to_string();
     }
     labels.join(", ")
-}
-
-fn field_change_summary_label(change: &FieldChange) -> &'static str {
-    match change {
-        FieldChange::Body { .. } => "body changed",
-        FieldChange::Status { .. } => "status changed",
-        FieldChange::Owner { .. } => "owner changed",
-        FieldChange::VerifiedAt { .. } => "verified_at changed",
-        FieldChange::EvidenceAdded { .. } => "evidence added",
-        FieldChange::EvidenceRemoved { .. } => "evidence removed",
-        FieldChange::RelationAdded { .. } => "relation added",
-        FieldChange::RelationRemoved { .. } => "relation removed",
-        FieldChange::ImpactsAdded { .. } => "impacts added",
-        FieldChange::ImpactsRemoved { .. } => "impacts removed",
-        // `FieldChange` is `#[non_exhaustive]`; future slices may add variants.
-        _ => "field change",
-    }
 }
 
 fn render_field_changes(output: &mut String, changes: &[FieldChange]) {
@@ -276,12 +259,10 @@ fn render_field_changes(output: &mut String, changes: &[FieldChange]) {
                 writeln!(output, "- evidence.{field}: {value}").expect("write to String");
             }
             FieldChange::RelationAdded { kind, target } => {
-                writeln!(output, "+ {}: {target}", relation_kind_label(*kind))
-                    .expect("write to String");
+                writeln!(output, "+ {}: {target}", kind.as_str()).expect("write to String");
             }
             FieldChange::RelationRemoved { kind, target } => {
-                writeln!(output, "- {}: {target}", relation_kind_label(*kind))
-                    .expect("write to String");
+                writeln!(output, "- {}: {target}", kind.as_str()).expect("write to String");
             }
             FieldChange::ImpactsAdded { path } => {
                 writeln!(output, "+ impacts: {path}").expect("write to String");
@@ -357,14 +338,6 @@ fn render_obligations(output: &mut String, obligations: &[ProofObligation]) {
 
 fn optional(value: Option<&str>) -> &str {
     value.unwrap_or("(none)")
-}
-
-fn relation_kind_label(kind: RelationKind) -> &'static str {
-    match kind {
-        RelationKind::DependsOn => "depends_on",
-        RelationKind::Supersedes => "supersedes",
-        RelationKind::RelatedTo => "related_to",
-    }
 }
 
 #[cfg(test)]
