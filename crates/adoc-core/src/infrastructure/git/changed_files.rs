@@ -45,11 +45,10 @@ impl GitChangedFilesProvider {
         let three_dot = format!("{spec}...");
         let output = run_git(&self.repo_root, &["diff", "--name-only", &three_dot])?;
         if !output.status.success() {
-            return Err(ChangedFilesError::Git(GitError::CommandFailed {
-                command: format!("git diff --name-only {three_dot}"),
-                code: output.status.code(),
-                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            }));
+            return Err(ChangedFilesError::UnresolvableBase {
+                spec: spec.to_string(),
+                reason: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            });
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
         let mut paths = Vec::new();
@@ -77,13 +76,16 @@ fn run_git(repo_root: &Path, args: &[&str]) -> Result<Output, ChangedFilesError>
         command.arg(arg);
     }
     clear_git_env(&mut command);
-    command.output().map_err(|source| match source.kind() {
-        std::io::ErrorKind::NotFound => ChangedFilesError::Git(GitError::GitNotFound),
-        _ => ChangedFilesError::Git(GitError::CommandSpawn {
-            program: "git".to_string(),
-            source,
-        }),
-    })
+    command
+        .output()
+        .map_err(|source| match source.kind() {
+            std::io::ErrorKind::NotFound => GitError::GitNotFound,
+            _ => GitError::CommandSpawn {
+                program: "git".to_string(),
+                source,
+            },
+        })
+        .map_err(ChangedFilesError::from)
 }
 
 #[cfg(test)]
@@ -191,10 +193,10 @@ mod tests {
             .expect_err("bad ref must error");
 
         match error {
-            ChangedFilesError::Git(GitError::CommandFailed { command, .. }) => {
-                assert!(command.contains("definitely-not-a-real-ref"));
+            ChangedFilesError::UnresolvableBase { spec, .. } => {
+                assert_eq!(spec, "definitely-not-a-real-ref");
             }
-            other => panic!("expected CommandFailed, got: {other:?}"),
+            other => panic!("expected UnresolvableBase, got: {other:?}"),
         }
     }
 }

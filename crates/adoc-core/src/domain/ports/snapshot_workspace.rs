@@ -7,20 +7,18 @@
 //! only wiring site; domain and application layers depend on the port and
 //! never reach into the adapter.
 //!
-//! `SnapshotError::Git(GitError)` deliberately structurally wraps the
-//! `GitError` defined in `infrastructure/git/error.rs` — V3-DESIGN.md
-//! §"Rust error enums" makes this choice explicit so the application layer
-//! can inspect ref-resolution failures by structural pattern, not by
-//! stringly-typed casts. This is the one allowed domain→infrastructure
-//! reference in V3.1; every other domain → infrastructure boundary still
-//! flows via diagnostics or `Box<dyn Error>`.
+//! `SnapshotError` is a domain vocabulary — it talks about snapshot
+//! concepts (an unresolvable ref, an unavailable workspace, an unavailable
+//! provider) and is independent of the concrete adapter. The git adapter
+//! supplies an `impl From<GitError> for SnapshotError` in
+//! `infrastructure/git` that classifies its own failures into these
+//! variants; the application layer pattern-matches the domain variants
+//! without knowing git exists.
 
 use std::error::Error;
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
-
-use crate::infrastructure::git::error::GitError;
 
 /// Identifier of the snapshot the diff is run against.
 #[derive(Debug, Clone)]
@@ -120,20 +118,47 @@ pub(crate) trait SnapshotWorkspaceProvider {
 }
 
 /// Errors surfacing from a [`SnapshotWorkspaceProvider`] implementation. The
-/// `Git` variant carries the structured cause from the git-CLI adapter; the
-/// `Io` variant carries unstructured filesystem failures the adapter could
-/// not classify.
+/// variants describe snapshot concepts, not adapter mechanics. Concrete
+/// adapters (the git-CLI adapter today) classify their own failures into
+/// these variants via `From` impls; the application layer pattern-matches
+/// here, never on adapter-specific error types.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum SnapshotError {
-    Git(GitError),
+    /// The underlying provider is unusable for reasons outside the
+    /// requested operation (binary missing, repository not initialized,
+    /// configuration broken). `reason` is a human-readable explanation
+    /// supplied by the adapter.
+    ProviderUnavailable { reason: String },
+    /// The supplied selector references a snapshot the provider could not
+    /// resolve (e.g. `git rev-parse` failed on the ref spec).
+    UnresolvableRef { spec: String, reason: String },
+    /// The provider could not materialize the workspace at `tmp` (e.g.
+    /// `git worktree add`/`remove` failed). `source` is present when the
+    /// failure was an `io::Error` the adapter could pass through.
+    WorktreeUnavailable {
+        tmp: PathBuf,
+        reason: String,
+        source: Option<io::Error>,
+    },
+    /// Unstructured filesystem failure the adapter could not classify.
     Io(io::Error),
 }
 
 impl fmt::Display for SnapshotError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Git(error) => write!(f, "git operation failed: {error}"),
+            Self::ProviderUnavailable { reason } => {
+                write!(f, "snapshot provider unavailable: {reason}")
+            }
+            Self::UnresolvableRef { spec, reason } => {
+                write!(f, "could not resolve snapshot ref `{spec}`: {reason}")
+            }
+            Self::WorktreeUnavailable { tmp, reason, .. } => write!(
+                f,
+                "snapshot workspace unavailable at {}: {reason}",
+                tmp.display()
+            ),
             Self::Io(error) => write!(f, "snapshot I/O failed: {error}"),
         }
     }
@@ -142,15 +167,13 @@ impl fmt::Display for SnapshotError {
 impl Error for SnapshotError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::Git(error) => Some(error),
-            Self::Io(error) => Some(error),
+            Self::WorktreeUnavailable {
+                source: Some(error),
+                ..
+            }
+            | Self::Io(error) => Some(error),
+            _ => None,
         }
-    }
-}
-
-impl From<GitError> for SnapshotError {
-    fn from(value: GitError) -> Self {
-        Self::Git(value)
     }
 }
 
@@ -204,12 +227,39 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_error_git_variant_wraps_git_error_source() {
-        let git_error = GitError::GitNotFound;
-        let error = SnapshotError::Git(git_error);
+    fn snapshot_error_unresolvable_ref_renders_spec_and_reason() {
+        let error = SnapshotError::UnresolvableRef {
+            spec: "nonexistent".to_string(),
+            reason: "fatal: bad revision".to_string(),
+        };
+
+        let message = format!("{error}");
+        assert!(message.contains("nonexistent"));
+        assert!(message.contains("bad revision"));
+        assert!(error.source().is_none());
+    }
+
+    #[test]
+    fn snapshot_error_worktree_unavailable_with_io_source_chains() {
+        let io_error = io::Error::other("permission denied");
+        let error = SnapshotError::WorktreeUnavailable {
+            tmp: PathBuf::from("/tmp/wt"),
+            reason: "could not remove".to_string(),
+            source: Some(io_error),
+        };
 
         assert!(error.source().is_some());
-        assert!(format!("{error}").contains("git operation failed"));
+        assert!(format!("{error}").contains("/tmp/wt"));
+    }
+
+    #[test]
+    fn snapshot_error_provider_unavailable_carries_reason() {
+        let error = SnapshotError::ProviderUnavailable {
+            reason: "git binary not found on PATH".to_string(),
+        };
+
+        assert!(format!("{error}").contains("git binary"));
+        assert!(error.source().is_none());
     }
 
     #[test]
