@@ -3,7 +3,8 @@
 //! `FieldChange` is the V3.2 vocabulary that explains *what* differs inside a
 //! Knowledge Object whose `content_hash` flipped between two snapshots. It is
 //! pure data — the projection logic lives in
-//! [`crate::application::review::field_changes`].
+//! `application::review::project_changed` and is decorated onto each
+//! `Changed` entry by `application::review::diff_objects`.
 //!
 //! Sealed `#[non_exhaustive]` enum: V3.3 will add `ImpactsAdded` /
 //! `ImpactsRemoved` and tolerant readers must already ignore unknown variants.

@@ -313,7 +313,7 @@ fn compile_snapshot<S: SnapshotWorkspaceProvider>(
 /// pages, prose blocks, and edges are excluded per V3-DESIGN.md §V3.1.
 ///
 /// Each `Changed` entry is decorated with its V3.2
-/// [`FieldChange`] projection via [`field_changes`].
+/// [`FieldChange`] projection via [`project_changed`].
 pub fn diff_objects(session: &ReviewSession) -> ObjectDiff {
     let base = extract_knowledge_objects(&session.base);
     let head = extract_knowledge_objects(&session.head);
@@ -323,27 +323,6 @@ pub fn diff_objects(session: &ReviewSession) -> ObjectDiff {
         entry.field_changes = projection;
     }
     diff
-}
-
-/// Pure projection over an [`ObjectChange`] — explains, in V3.2's typed
-/// vocabulary, what differs between the base and head sides of a `Changed`
-/// entry. `Created` and `Deleted` variants project to an empty vector; the
-/// full before/after record already lives in the diff envelope.
-///
-/// See V3-DESIGN.md §V3.2 for the variant list and §"Boundary Invariants"
-/// for the set-diff (not list-diff) semantics on relations.
-// V3.4 will reuse this projection for obligation dispatch via
-// `obligations_for_change(&ObjectChange)`. V3.2 itself decorates the diff
-// inline via `project_changed`, so the public function is currently
-// exercised only by tests; `#[allow(dead_code)]` documents the deferred
-// consumer rather than silencing a real warning (matches the
-// `ObjectChange` precedent in `domain/review/object_change.rs:20`).
-#[allow(dead_code)]
-pub fn field_changes(change: &ObjectChange) -> Vec<FieldChange> {
-    match change {
-        ObjectChange::Created { .. } | ObjectChange::Deleted { .. } => Vec::new(),
-        ObjectChange::Changed(c) => project_changed(c),
-    }
 }
 
 const V0_EVIDENCE_FIELDS: [&str; 3] = [SOURCE_FIELD, TEST_FIELD, REVIEWED_BY_FIELD];
@@ -940,10 +919,10 @@ mod tests {
     mod field_changes_projection {
         use std::collections::BTreeMap;
 
-        use crate::application::review::{V0_EVIDENCE_FIELDS, field_changes, project_changed};
+        use crate::application::review::{V0_EVIDENCE_FIELDS, project_changed};
         use crate::domain::graph::{GraphKnowledgeObjectNode, GraphRelations, GraphSourceSpan};
         use crate::domain::review::field_change::{FieldChange, RelationKind};
-        use crate::domain::review::object_change::{ChangedObject, ObjectChange};
+        use crate::domain::review::object_change::ChangedObject;
 
         fn node(
             id: &str,
@@ -1328,36 +1307,6 @@ mod tests {
                     },
                 ]
             );
-        }
-
-        #[test]
-        fn field_changes_returns_empty_for_created_variant() {
-            let record = baseline("x");
-            let change = ObjectChange::Created { record };
-
-            assert!(field_changes(&change).is_empty());
-        }
-
-        #[test]
-        fn field_changes_returns_empty_for_deleted_variant() {
-            let record = baseline("x");
-            let change = ObjectChange::Deleted { record };
-
-            assert!(field_changes(&change).is_empty());
-        }
-
-        #[test]
-        fn field_changes_dispatches_to_project_changed_for_changed_variant() {
-            let base = baseline("old");
-            let head = baseline("new");
-            let inner = changed_from(base, head);
-
-            // Wrapping the same ChangedObject in an ObjectChange::Changed must
-            // produce the same projection as calling project_changed directly.
-            let projected = field_changes(&ObjectChange::Changed(Box::new(inner.clone())));
-
-            assert_eq!(projected, project_changed(&inner));
-            assert_eq!(projected.len(), 1);
         }
 
         #[test]
