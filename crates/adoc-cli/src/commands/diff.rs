@@ -1,7 +1,7 @@
 use std::fmt::Write as FmtWrite;
 use std::io;
 
-use adoc_core::{ChangedObject, FieldChange, ObjectDiffEnvelope, RelationKind};
+use adoc_core::{ChangedObject, FieldChange, ObjectDiffEnvelope};
 use adoc_local::{DiffInput, DiffUseCase, LocalContext, UnrestrictedPathPolicy};
 
 use crate::error::CliError;
@@ -136,46 +136,10 @@ fn render_changed_section(output: &mut String, entries: &[ChangedObject], styled
 }
 
 fn render_field_change(output: &mut String, change: &FieldChange, styled: bool) {
-    let line = match change {
-        FieldChange::Body { .. } => "body: changed".to_string(),
-        FieldChange::Status { before, after } => {
-            format!("status: {} → {}", optional(before), optional(after))
-        }
-        FieldChange::Owner { before, after } => {
-            format!("owner: {} → {}", optional(before), optional(after))
-        }
-        FieldChange::VerifiedAt { before, after } => {
-            format!("verified_at: {} → {}", optional(before), optional(after))
-        }
-        FieldChange::EvidenceAdded { field, .. } => format!("evidence: +{field}"),
-        FieldChange::EvidenceRemoved { field, .. } => format!("evidence: -{field}"),
-        FieldChange::RelationAdded { kind, target } => {
-            format!("{}: +{target}", relation_kind_label(*kind))
-        }
-        FieldChange::RelationRemoved { kind, target } => {
-            format!("{}: -{target}", relation_kind_label(*kind))
-        }
-        FieldChange::ImpactsAdded { path } => format!("impacts: +{path}"),
-        FieldChange::ImpactsRemoved { path } => format!("impacts: -{path}"),
-        // Unknown future variants surface as a labelled stub so the CLI keeps
-        // rendering when the wire envelope ships ahead of the presenter.
-        _ => "field_change: (unsupported variant; upgrade the CLI)".to_string(),
-    };
+    let line = change.to_string();
     if styled {
         writeln!(output, "      {}", faint_label(&line)).expect("write to String");
     } else {
         writeln!(output, "      {line}").expect("write to String");
-    }
-}
-
-fn optional(value: &Option<String>) -> &str {
-    value.as_deref().unwrap_or("(none)")
-}
-
-fn relation_kind_label(kind: RelationKind) -> &'static str {
-    match kind {
-        RelationKind::DependsOn => "depends_on",
-        RelationKind::Supersedes => "supersedes",
-        RelationKind::RelatedTo => "related_to",
     }
 }
