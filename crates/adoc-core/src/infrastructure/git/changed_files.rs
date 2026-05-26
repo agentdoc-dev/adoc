@@ -72,6 +72,11 @@ impl GitChangedFilesProvider {
 fn run_git(repo_root: &Path, args: &[&str]) -> Result<Output, ChangedFilesError> {
     let mut command = Command::new("git");
     command.arg("-C").arg(repo_root);
+    // Disable git's default C-style quoting of non-ASCII paths so we receive
+    // UTF-8 directly. Without this, a file like `café.txt` would appear as
+    // `"caf\303\251.txt"` in `git diff --name-only` output and silently fail
+    // `RelPath::try_new`, dropping the path from the impact set entirely.
+    command.arg("-c").arg("core.quotePath=false");
     for arg in args {
         command.arg(arg);
     }
@@ -175,6 +180,34 @@ mod tests {
         paths.sort();
 
         assert_eq!(paths, vec!["a.txt".to_string(), "c.txt".to_string()]);
+    }
+
+    #[test]
+    fn gitref_selector_lists_non_ascii_filename_unquoted() {
+        // Regression: git's default `core.quotePath=true` would emit
+        // `"caf\303\251.txt"` for café.txt, which fails `RelPath::try_new`
+        // and silently drops the path. The adapter forces
+        // `-c core.quotePath=false` so non-ASCII paths come through as UTF-8.
+        let repo = Repo::new();
+        fs::write(repo.root.join("a.txt"), "hi\n").unwrap();
+        run(&repo.root, &["add", "-A"]);
+        run(&repo.root, &["commit", "-m", "base"]);
+
+        run(&repo.root, &["checkout", "-b", "feature"]);
+        fs::write(repo.root.join("café.txt"), "non-ascii\n").unwrap();
+        run(&repo.root, &["add", "-A"]);
+        run(&repo.root, &["commit", "-m", "add cafe"]);
+
+        let provider = GitChangedFilesProvider::new(repo.root.clone());
+
+        let paths: Vec<String> = provider
+            .changed_files(&SnapshotSelector::GitRef(GitRef::new("main")))
+            .expect("diff names list")
+            .into_iter()
+            .map(|p| p.as_str().to_string())
+            .collect();
+
+        assert_eq!(paths, vec!["café.txt".to_string()]);
     }
 
     #[test]
