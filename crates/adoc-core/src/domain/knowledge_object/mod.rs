@@ -15,6 +15,7 @@ pub(crate) mod claim;
 pub(crate) mod decision;
 pub(crate) mod draft;
 pub(crate) mod glossary;
+pub(crate) mod metadata;
 pub(crate) mod projection;
 pub(crate) mod warning;
 

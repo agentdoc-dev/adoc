@@ -11,11 +11,11 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::graph::GraphKnowledgeObjectNode;
+use crate::domain::knowledge_object::metadata::KnowledgeObjectMetadata;
 
 use super::impact::ImpactedObject;
 use super::object_diff::ObjectDiff;
 
-const OWNER_FIELD: &str = "owner";
 const CLAIM_KIND: &str = "claim";
 const DECISION_KIND: &str = "decision";
 const VERIFIED_STATUS: &str = "verified";
@@ -91,7 +91,7 @@ pub fn required_reviewers(diff: &ObjectDiff, impact: &[ImpactedObject]) -> Vec<R
 }
 
 fn owner_of(node: &GraphKnowledgeObjectNode) -> Option<&str> {
-    node.fields.get(OWNER_FIELD).map(String::as_str)
+    KnowledgeObjectMetadata::from_node(node).owner
 }
 
 fn is_verified_subject(node: &GraphKnowledgeObjectNode) -> bool {
@@ -109,6 +109,7 @@ fn is_verified_subject(node: &GraphKnowledgeObjectNode) -> bool {
 mod tests {
     use super::*;
     use crate::domain::graph::GraphKnowledgeObjectNode;
+    use crate::domain::knowledge_object::claim::OWNER_FIELD;
     use crate::domain::review::object_diff::test_support::test_node;
 
     fn verified_claim(id: &str, owner: Option<&str>) -> GraphKnowledgeObjectNode {

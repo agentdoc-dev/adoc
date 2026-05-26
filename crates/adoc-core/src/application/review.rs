@@ -18,9 +18,7 @@ use crate::application::compile::{CompileResult, compile_with_provider};
 use crate::application::patch::{PatchCheckResult, PatchParseError, check_patch_documents};
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::graph::{GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode};
-use crate::domain::knowledge_object::claim::{
-    OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD, VERIFIED_AT_FIELD,
-};
+use crate::domain::knowledge_object::metadata::KnowledgeObjectMetadata;
 use crate::domain::obligation::ProofObligation;
 use crate::domain::patch::PatchDocument;
 use crate::domain::ports::changed_files::{ChangedFilesError, ChangedFilesProvider};
@@ -309,12 +307,12 @@ pub fn diff_objects(session: &ReviewSession) -> ObjectDiff {
     diff
 }
 
-const V0_EVIDENCE_FIELDS: [&str; 3] = [SOURCE_FIELD, TEST_FIELD, REVIEWED_BY_FIELD];
-
 fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
     let mut out = Vec::new();
     let base = &c.base;
     let head = &c.head;
+    let base_meta = KnowledgeObjectMetadata::from_node(base);
+    let head_meta = KnowledgeObjectMetadata::from_node(head);
 
     if base.body != head.body {
         out.push(FieldChange::Body {
@@ -330,21 +328,17 @@ fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
         });
     }
 
-    let owner_before = base.fields.get(OWNER_FIELD).cloned();
-    let owner_after = head.fields.get(OWNER_FIELD).cloned();
-    if owner_before != owner_after {
+    if base_meta.owner != head_meta.owner {
         out.push(FieldChange::Owner {
-            before: owner_before,
-            after: owner_after,
+            before: base_meta.owner.map(str::to_string),
+            after: head_meta.owner.map(str::to_string),
         });
     }
 
-    let verified_at_before = base.fields.get(VERIFIED_AT_FIELD).cloned();
-    let verified_at_after = head.fields.get(VERIFIED_AT_FIELD).cloned();
-    if verified_at_before != verified_at_after {
+    if base_meta.verified_at != head_meta.verified_at {
         out.push(FieldChange::VerifiedAt {
-            before: verified_at_before,
-            after: verified_at_after,
+            before: base_meta.verified_at.map(str::to_string),
+            after: head_meta.verified_at.map(str::to_string),
         });
     }
 
@@ -352,17 +346,17 @@ fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
     // an evidence field emits nothing — consumers see the diff in the full
     // before/after records, and V3.4's "Evidence removal → re-evidence"
     // obligation rule must not fire on edits that only update the value.
-    for key in V0_EVIDENCE_FIELDS {
-        let base_value = base.fields.get(key);
-        let head_value = head.fields.get(key);
+    for ((field, base_value), (_, head_value)) in
+        base_meta.evidence.iter().zip(head_meta.evidence.iter())
+    {
         match (base_value, head_value) {
             (None, Some(after)) => out.push(FieldChange::EvidenceAdded {
-                field: key.to_string(),
-                value: after.clone(),
+                field: field.as_str().to_string(),
+                value: (*after).to_string(),
             }),
             (Some(before), None) => out.push(FieldChange::EvidenceRemoved {
-                field: key.to_string(),
-                value: before.clone(),
+                field: field.as_str().to_string(),
+                value: (*before).to_string(),
             }),
             _ => {}
         }
@@ -896,8 +890,9 @@ mod tests {
     mod field_changes_projection {
         use std::collections::BTreeMap;
 
-        use crate::application::review::{V0_EVIDENCE_FIELDS, project_changed};
+        use crate::application::review::project_changed;
         use crate::domain::graph::{GraphKnowledgeObjectNode, GraphRelations, GraphSourceSpan};
+        use crate::domain::knowledge_object::metadata::EvidenceField;
         use crate::domain::review::field_change::{FieldChange, RelationKind};
         use crate::domain::review::object_change::ChangedObject;
 
@@ -1287,8 +1282,9 @@ mod tests {
         }
 
         #[test]
-        fn v0_evidence_fields_constant_is_aligned_with_claim_module() {
-            assert_eq!(V0_EVIDENCE_FIELDS, ["source", "test", "reviewed_by"]);
+        fn evidence_field_canonical_order_matches_v0_wire_contract() {
+            let wire: Vec<&'static str> = EvidenceField::ALL.iter().map(|f| f.as_str()).collect();
+            assert_eq!(wire, vec!["source", "test", "reviewed_by"]);
         }
 
         #[test]

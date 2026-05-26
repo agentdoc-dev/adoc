@@ -13,9 +13,8 @@
 //! in [`crate::application::review::proof_obligations`].
 
 use crate::domain::graph::GraphKnowledgeObjectNode;
-use crate::domain::knowledge_object::claim::{
-    OWNER_FIELD, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD, VERIFIED_AT_FIELD,
-};
+use crate::domain::knowledge_object::claim::{OWNER_FIELD, SOURCE_FIELD, VERIFIED_AT_FIELD};
+use crate::domain::knowledge_object::metadata::EvidenceField;
 use crate::domain::obligation::ProofObligation;
 
 use super::field_change::FieldChange;
@@ -26,8 +25,6 @@ const CLAIM_KIND: &str = "claim";
 const VERIFIED_STATUS: &str = "verified";
 const NEEDS_REVIEW_STATUS: &str = "needs_review";
 const DRAFT_STATUS: &str = "draft";
-
-const V0_EVIDENCE_FIELDS: [&str; 3] = [SOURCE_FIELD, TEST_FIELD, REVIEWED_BY_FIELD];
 
 // Stable reason strings — module-scoped so tests and the application-layer
 // dedup compare against constants instead of duplicating literals.
@@ -146,16 +143,17 @@ fn is_verified_claim(node: &GraphKnowledgeObjectNode) -> bool {
 }
 
 fn present_evidence_fields(node: &GraphKnowledgeObjectNode) -> Vec<String> {
-    V0_EVIDENCE_FIELDS
+    EvidenceField::ALL
         .iter()
-        .filter(|key| node.fields.contains_key(**key))
-        .map(|key| (*key).to_string())
+        .filter(|field| node.fields.contains_key(field.as_str()))
+        .map(|field| field.as_str().to_string())
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::knowledge_object::claim::{REVIEWED_BY_FIELD, TEST_FIELD};
     use crate::domain::review::field_change::RelationKind;
     use crate::domain::review::object_diff::test_support::test_node;
 
