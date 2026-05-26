@@ -260,30 +260,14 @@ pub(crate) fn load_review_with_changed_files<
 /// `(object_id, reason)` and returns the result sorted by the same key for
 /// deterministic JSON output.
 pub fn proof_obligations(diff: &ObjectDiff, impact: &[ImpactedObject]) -> Vec<ProofObligation> {
-    let mut all: Vec<ProofObligation> = Vec::new();
-    for changed in &diff.changed {
+    // Diff-driven obligations come first so they win ties with impact-driven
+    // ones on the same (object_id, reason). See [`ProofObligation::merge_dedup_sorted`].
+    let from_diff = diff.changed.iter().flat_map(|changed| {
         let change = ObjectChange::Changed(Box::new(changed.clone()));
-        all.extend(obligations_for_change(&change));
-    }
-    for entry in impact {
-        all.extend(obligations_for_impact(entry));
-    }
-
-    // Dedup by (object_id, reason), preserving the first occurrence so that
-    // diff-driven obligations win ties with impact-driven ones on the same
-    // (object_id, reason).
-    let mut deduped: Vec<ProofObligation> = Vec::with_capacity(all.len());
-    for obligation in all {
-        if !deduped.iter().any(|existing| {
-            existing.object_id == obligation.object_id && existing.reason == obligation.reason
-        }) {
-            deduped.push(obligation);
-        }
-    }
-    deduped.sort_by(|a, b| {
-        (a.object_id.as_str(), a.reason.as_str()).cmp(&(b.object_id.as_str(), b.reason.as_str()))
+        obligations_for_change(&change)
     });
-    deduped
+    let from_impact = impact.iter().flat_map(obligations_for_impact);
+    ProofObligation::merge_dedup_sorted(from_diff.chain(from_impact))
 }
 
 /// Constant identity prefix used to rebase both base- and head-side source
@@ -568,21 +552,14 @@ impl ReviewEnvelope {
         patch_check: Option<PatchCheckResult>,
     ) -> Self {
         let diff = diff_objects(session);
-        let mut proof_obligations = session.proof_obligations().to_vec();
-        if let Some(report) = patch_check.as_ref() {
-            for obligation in &report.proof_obligations {
-                if !proof_obligations.iter().any(|existing| {
-                    existing.object_id == obligation.object_id
-                        && existing.reason == obligation.reason
-                }) {
-                    proof_obligations.push(obligation.clone());
-                }
-            }
-            proof_obligations.sort_by(|a, b| {
-                (a.object_id.as_str(), a.reason.as_str())
-                    .cmp(&(b.object_id.as_str(), b.reason.as_str()))
-            });
-        }
+        // Session obligations come first so they win ties on (object_id, reason)
+        // with patch-check obligations that target the same row.
+        let session_obligations = session.proof_obligations().iter().cloned();
+        let patch_obligations = patch_check
+            .iter()
+            .flat_map(|report| report.proof_obligations.iter().cloned());
+        let proof_obligations =
+            ProofObligation::merge_dedup_sorted(session_obligations.chain(patch_obligations));
         Self {
             schema_version: REVIEW_SCHEMA_VERSION,
             diff: ObjectDiffEnvelope::from_diff(diff, Vec::new()),
