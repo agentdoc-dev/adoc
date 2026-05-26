@@ -544,10 +544,12 @@ mod tests {
     }
 
     #[test]
-    fn diff_objects_decoration_step_populates_field_changes_on_each_changed_entry() {
-        // Property test of the contract callers (application::review::diff_objects)
-        // depend on: a freshly-computed ObjectDiff has empty field_changes
-        // until decorated by project_changed.
+    fn object_diff_compute_populates_field_changes_inline() {
+        // Domain-internal invariant: `ObjectDiff::compute` self-decorates
+        // each `Changed` entry with its V3.2 field-change projection so
+        // downstream callers (V3.4 obligations, V3.5 presenters) read off a
+        // ready-to-use aggregate. Pre-decoration entries are now an
+        // unreachable internal state of `compute`.
         let mut base = baseline("old");
         base.content_hash = "sha256:base-hash".to_string();
         let mut head = baseline("new");
@@ -558,17 +560,9 @@ mod tests {
             std::slice::from_ref(&head),
         );
 
-        // Un-decorated diff: decoration is the application layer's job.
         assert_eq!(diff.changed().len(), 1);
-        assert!(diff.changed()[0].field_changes().is_empty());
-
-        // Run the same decoration step diff_objects() performs.
-        let mut decorated = diff;
-        for entry in decorated.changed_mut() {
-            entry.field_changes = project_changed(entry);
-        }
         assert_eq!(
-            decorated.changed()[0].field_changes(),
+            diff.changed()[0].field_changes(),
             &[FieldChange::Body {
                 before: "old".to_string(),
                 after: "new".to_string(),

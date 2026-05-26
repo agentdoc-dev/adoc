@@ -28,7 +28,6 @@ use crate::domain::review::impact::{ImpactedObject, compute_impact};
 use crate::domain::review::object_change::ObjectChange;
 use crate::domain::review::object_diff::ObjectDiff;
 use crate::domain::review::obligation_rules::{obligations_for_change, obligations_for_impact};
-use crate::domain::review::projection::project_changed;
 use crate::domain::review::reviewer::{RequiredReviewer, required_reviewers};
 use crate::infrastructure::source::fs::FsSourceProvider;
 
@@ -290,16 +289,12 @@ fn compile_snapshot<S: SnapshotWorkspaceProvider>(
 /// Pure projection — does not allocate I/O. Knowledge Object scope only;
 /// pages, prose blocks, and edges are excluded per V3-DESIGN.md §V3.1.
 ///
-/// Each `Changed` entry is decorated with its V3.2
-/// [`FieldChange`] projection via [`project_changed`].
+/// [`ObjectDiff::compute`] self-decorates each `Changed` entry with its V3.2
+/// `FieldChange` projection, so this function is a pure compose-and-call.
 pub fn diff_objects(session: &ReviewSession) -> ObjectDiff {
     let base = extract_knowledge_objects(&session.base);
     let head = extract_knowledge_objects(&session.head);
-    let mut diff = ObjectDiff::compute(&base, &head);
-    for entry in diff.changed_mut() {
-        entry.field_changes = project_changed(entry);
-    }
-    diff
+    ObjectDiff::compute(&base, &head)
 }
 
 fn extract_knowledge_objects(result: &CompileResult) -> Vec<GraphKnowledgeObjectNode> {
@@ -629,7 +624,6 @@ mod tests {
 
         use crate::application::review::proof_obligations;
         use crate::domain::graph::{GraphKnowledgeObjectNode, GraphRelations, GraphSourceSpan};
-        use crate::domain::review::field_change::FieldChange;
         use crate::domain::review::impact::ImpactedObject;
         use crate::domain::review::object_change::ChangedObject;
         use crate::domain::review::object_diff::ObjectDiff;
@@ -661,18 +655,10 @@ mod tests {
             let base = verified_claim(id, "sha256:a");
             let mut head = verified_claim(id, "sha256:b");
             head.body = "new body".to_string();
-            let mut diff =
-                ObjectDiff::compute(std::slice::from_ref(&base), std::slice::from_ref(&head));
-            // Decorate the diff entry with its FieldChange — production code
-            // does this via `diff_objects`, but the unit test bypasses the
-            // compile pipeline.
-            for entry in diff.changed_mut() {
-                entry.field_changes = vec![FieldChange::Body {
-                    before: base.body.clone(),
-                    after: head.body.clone(),
-                }];
-            }
-            diff
+            // `ObjectDiff::compute` self-decorates the `Changed` entry with
+            // its V3.2 field-change projection (body diff), so this helper
+            // is now a thin wrapper.
+            ObjectDiff::compute(std::slice::from_ref(&base), std::slice::from_ref(&head))
         }
 
         #[test]
