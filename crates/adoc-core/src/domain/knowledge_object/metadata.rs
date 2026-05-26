@@ -59,14 +59,7 @@ impl<'a> KnowledgeObjectMetadata<'a> {
         Self {
             owner: node.fields.get(OWNER_FIELD).map(String::as_str),
             verified_at: node.fields.get(VERIFIED_AT_FIELD).map(String::as_str),
-            evidence: [
-                (EvidenceField::Source, evidence_value(EvidenceField::Source)),
-                (EvidenceField::Test, evidence_value(EvidenceField::Test)),
-                (
-                    EvidenceField::ReviewedBy,
-                    evidence_value(EvidenceField::ReviewedBy),
-                ),
-            ],
+            evidence: EvidenceField::ALL.map(|field| (field, evidence_value(field))),
         }
     }
 }
