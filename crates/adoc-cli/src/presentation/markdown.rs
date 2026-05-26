@@ -58,31 +58,99 @@ impl MarkdownReviewPresenter {
     }
 }
 
+/// One section of the rendered Markdown output. Variants carry exactly the
+/// data each section needs; the order they're emitted is the order of the
+/// slice passed to `drive`. Section-omission ("don't print empty sections")
+/// is a property of the enum, not control flow in `render_markdown`.
+enum ReviewSection<'a> {
+    ReviewersHeader(&'a [RequiredReviewer]),
+    Summary {
+        created: usize,
+        deleted: usize,
+        changed: usize,
+    },
+    ChangedDetails {
+        entries: &'a [ChangedObject],
+        obligations: &'a [ProofObligation],
+    },
+    CreatedIds(Vec<&'a str>),
+    DeletedIds(Vec<&'a str>),
+    Impact(&'a [ImpactedObject]),
+    Obligations(&'a [ProofObligation]),
+}
+
+impl<'a> ReviewSection<'a> {
+    fn is_empty(&self) -> bool {
+        match self {
+            Self::ReviewersHeader(reviewers) => reviewers.is_empty(),
+            // Summary is the diff heading — always rendered, even when every
+            // count is zero, so the reader can tell "no changes" from "tool
+            // didn't run".
+            Self::Summary { .. } => false,
+            Self::ChangedDetails { entries, .. } => entries.is_empty(),
+            Self::CreatedIds(ids) | Self::DeletedIds(ids) => ids.is_empty(),
+            Self::Impact(impact) => impact.is_empty(),
+            Self::Obligations(obligations) => obligations.is_empty(),
+        }
+    }
+
+    fn render(&self, output: &mut String) {
+        match self {
+            Self::ReviewersHeader(reviewers) => render_reviewers_header(output, reviewers),
+            Self::Summary {
+                created,
+                deleted,
+                changed,
+            } => render_summary(output, *created, *deleted, *changed),
+            Self::ChangedDetails {
+                entries,
+                obligations,
+            } => render_changed(output, entries, obligations),
+            Self::CreatedIds(ids) => render_id_list_section(output, "Created", ids),
+            Self::DeletedIds(ids) => render_id_list_section(output, "Deleted", ids),
+            Self::Impact(impact) => render_impact(output, impact),
+            Self::Obligations(obligations) => render_obligations(output, obligations),
+        }
+    }
+}
+
 fn render_markdown(
     diff: &ObjectDiffEnvelope,
     reviewers: &[RequiredReviewer],
     impact: &[ImpactedObject],
     obligations: &[ProofObligation],
 ) -> String {
+    let created_ids: Vec<&str> = diff.created_ids().collect();
+    let deleted_ids: Vec<&str> = diff.deleted_ids().collect();
+
+    let sections = [
+        ReviewSection::ReviewersHeader(reviewers),
+        ReviewSection::Summary {
+            created: diff.created_count(),
+            deleted: diff.deleted_count(),
+            changed: diff.changed_count(),
+        },
+        ReviewSection::ChangedDetails {
+            entries: diff.changed(),
+            obligations,
+        },
+        ReviewSection::CreatedIds(created_ids),
+        ReviewSection::DeletedIds(deleted_ids),
+        ReviewSection::Impact(impact),
+        ReviewSection::Obligations(obligations),
+    ];
+
     let mut output = String::new();
-    if !reviewers.is_empty() {
-        render_reviewers_header(&mut output, reviewers);
-    }
-    render_summary(&mut output, diff);
-    render_changed(&mut output, diff, obligations);
-    if diff.created_count() > 0 {
-        render_id_list_section(&mut output, "Created", diff.created_ids());
-    }
-    if diff.deleted_count() > 0 {
-        render_id_list_section(&mut output, "Deleted", diff.deleted_ids());
-    }
-    if !impact.is_empty() {
-        render_impact(&mut output, impact);
-    }
-    if !obligations.is_empty() {
-        render_obligations(&mut output, obligations);
-    }
+    drive(&mut output, &sections);
     output
+}
+
+fn drive(output: &mut String, sections: &[ReviewSection<'_>]) {
+    for section in sections {
+        if !section.is_empty() {
+            section.render(output);
+        }
+    }
 }
 
 fn render_reviewers_header(output: &mut String, reviewers: &[RequiredReviewer]) {
@@ -91,23 +159,16 @@ fn render_reviewers_header(output: &mut String, reviewers: &[RequiredReviewer]) 
     writeln!(output).expect("write to String");
 }
 
-fn render_summary(output: &mut String, envelope: &ObjectDiffEnvelope) {
+fn render_summary(output: &mut String, created: usize, deleted: usize, changed: usize) {
     writeln!(
         output,
-        "## Diff: {} created, {} deleted, {} changed",
-        envelope.created_count(),
-        envelope.deleted_count(),
-        envelope.changed_count()
+        "## Diff: {created} created, {deleted} deleted, {changed} changed",
     )
     .expect("write to String");
 }
 
-fn render_changed(
-    output: &mut String,
-    envelope: &ObjectDiffEnvelope,
-    obligations: &[ProofObligation],
-) {
-    for entry in envelope.changed() {
+fn render_changed(output: &mut String, entries: &[ChangedObject], obligations: &[ProofObligation]) {
+    for entry in entries {
         writeln!(output).expect("write to String");
         let icon = icon_for(entry, obligations);
         let labels = field_change_summary_labels(entry.field_changes());
@@ -253,11 +314,7 @@ fn render_body_diff(output: &mut String, before: &str, after: &str) {
     writeln!(output, "```").expect("write to String");
 }
 
-fn render_id_list_section<'a, I: Iterator<Item = &'a str>>(
-    output: &mut String,
-    label: &str,
-    ids: I,
-) {
+fn render_id_list_section(output: &mut String, label: &str, ids: &[&str]) {
     writeln!(output).expect("write to String");
     writeln!(output, "## {label}").expect("write to String");
     for id in ids {
@@ -402,5 +459,34 @@ mod tests {
             output,
             "```diff\n- old line 1\n- old line 2\n+ new line 1\n```\n"
         );
+    }
+
+    #[test]
+    fn empty_section_is_skipped_by_drive() {
+        // Property test of the ReviewSection enum: an empty section never
+        // renders. The "diff command never emits ❌" invariant from V3-DESIGN
+        // §V3.5 reduces to "diff passes an empty obligations slice" — the
+        // Obligations section then has is_empty() = true and is skipped.
+        let mut output = String::new();
+        let empty_obligations: &[ProofObligation] = &[];
+        drive(
+            &mut output,
+            &[ReviewSection::Obligations(empty_obligations)],
+        );
+        assert_eq!(output, "");
+    }
+
+    #[test]
+    fn summary_section_always_renders_even_with_all_zero_counts() {
+        let mut output = String::new();
+        drive(
+            &mut output,
+            &[ReviewSection::Summary {
+                created: 0,
+                deleted: 0,
+                changed: 0,
+            }],
+        );
+        assert_eq!(output, "## Diff: 0 created, 0 deleted, 0 changed\n");
     }
 }
