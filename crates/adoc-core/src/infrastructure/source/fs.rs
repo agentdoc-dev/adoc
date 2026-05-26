@@ -9,35 +9,19 @@ use crate::domain::source::SourceFile;
 /// Iteration order is the lexicographic ordering of paths so that compilation
 /// is deterministic across platforms.
 ///
-/// When `identity_prefix` is `Some(...)`, the resulting [`SourceFile`]s use
-/// `identity_prefix.join(path.strip_prefix(root))` as both their identity
-/// path and their `path` field. The V3.1 review flow uses this to make
-/// `content_hash` values path-invariant across compiles of the same source
-/// tree at different filesystem roots (the worktree vs the workdir).
+/// Callers that need identity-rebased paths (the V3 review pipeline, which
+/// compares two snapshots of the same source tree at different filesystem
+/// roots) wrap this provider via the trait-level
+/// [`SourceProvider::with_identity_prefix`] decorator — there is no
+/// inherent rebase constructor on `FsSourceProvider`.
 #[derive(Debug, Clone)]
 pub(crate) struct FsSourceProvider {
     root: PathBuf,
-    identity_prefix: Option<PathBuf>,
 }
 
 impl FsSourceProvider {
     pub(crate) fn new(root: PathBuf) -> Self {
-        Self {
-            root,
-            identity_prefix: None,
-        }
-    }
-
-    /// Construct an `FsSourceProvider` that rebases every yielded source's
-    /// path and identity onto `identity_prefix`. Used by the V3 review
-    /// pipeline to give matching files in two snapshots the same
-    /// `SourceSpan.file`, which in turn makes `content_hash` values stable
-    /// across re-compiles.
-    pub(crate) fn with_identity_prefix(root: PathBuf, identity_prefix: PathBuf) -> Self {
-        Self {
-            root,
-            identity_prefix: Some(identity_prefix),
-        }
+        Self { root }
     }
 }
 
@@ -54,17 +38,10 @@ impl SourceProvider for FsSourceProvider {
             match source_path {
                 Ok(source_path) => match fs::read_to_string(&source_path.path) {
                     Ok(text) => {
-                        let (path_for_source, identity) = match &self.identity_prefix {
-                            Some(prefix) => {
-                                let rebased = prefix.join(&source_path.identity_path);
-                                (rebased.clone(), rebased)
-                            }
-                            None => (source_path.path, source_path.identity_path),
-                        };
                         results.push(Ok(SourceFile::new_with_identity_path(
-                            path_for_source,
+                            source_path.path,
                             text,
-                            identity,
+                            source_path.identity_path,
                         )));
                     }
                     Err(error) => results.push(Err(SourceLoadError::unreadable(

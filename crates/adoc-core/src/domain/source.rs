@@ -69,6 +69,21 @@ impl SourceFile {
         }
     }
 
+    /// Return this `SourceFile` with both `path` and `identity_path`
+    /// rebased onto `prefix`. The text and line index are preserved
+    /// byte-identically — only the location metadata changes.
+    ///
+    /// Used by [`crate::domain::ports::source_provider::IdentityRebaseDecorator`]
+    /// so V3's review pipeline can compile the same source tree at two
+    /// different filesystem roots without the diff seeing every
+    /// `content_hash` change as a path change.
+    pub(crate) fn rebased_to_prefix(mut self, prefix: &Path) -> Self {
+        let rebased = prefix.join(&self.identity_path);
+        self.path = rebased.clone();
+        self.identity_path = rebased;
+        self
+    }
+
     pub(crate) fn span_for_line(&self, line_number: u32, text: &str) -> SourceSpan {
         let start = self.line_index.position_for_line(line_number);
         let end = SourcePosition {
