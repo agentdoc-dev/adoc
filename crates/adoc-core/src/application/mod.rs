@@ -8,4 +8,5 @@ pub(crate) mod resolve_knowledge_objects;
 pub(crate) mod resolve_object_references;
 pub(crate) mod retrieval;
 pub(crate) mod review;
+pub(crate) mod review_envelope;
 pub(crate) mod search_artifact;

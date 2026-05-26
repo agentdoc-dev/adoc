@@ -21,10 +21,10 @@ pub use application::retrieval::{
     RetrievalSession, SearchFilters, SearchQuery, SearchResult, WhyResult, search, why_object,
 };
 pub use application::review::{
-    DIFF_SCHEMA_VERSION, ObjectDiffEnvelope, REVIEW_SCHEMA_VERSION, ReviewEnvelope, ReviewError,
-    ReviewInput, ReviewLoadResult, ReviewSession, diff_objects, proof_obligations,
-    review_with_patch,
+    DIFF_SCHEMA_VERSION, REVIEW_SCHEMA_VERSION, ReviewError, ReviewInput, ReviewLoadResult,
+    ReviewSession, diff_objects, proof_obligations, review_with_patch,
 };
+pub use application::review_envelope::{ObjectDiffEnvelope, ReviewEnvelope};
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::graph::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
