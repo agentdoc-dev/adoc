@@ -9,4 +9,5 @@ pub(crate) mod impact;
 pub(crate) mod object_change;
 pub(crate) mod object_diff;
 pub(crate) mod obligation_rules;
+pub(crate) mod projection;
 pub(crate) mod reviewer;
