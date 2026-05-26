@@ -45,10 +45,16 @@ impl GitChangedFilesProvider {
         let three_dot = format!("{spec}...");
         let output = run_git(&self.repo_root, &["diff", "--name-only", &three_dot])?;
         if !output.status.success() {
-            return Err(ChangedFilesError::UnresolvableBase {
-                spec: spec.to_string(),
-                reason: String::from_utf8_lossy(&output.stderr).trim().to_string(),
-            });
+            // Route exit-code failures through `GitError::CommandFailed` so
+            // the `From<GitError> for ChangedFilesError` impl is the single
+            // classification site. The arm extracts the failing spec from
+            // stderr (git quotes it as `'<spec>...'`).
+            return Err(GitError::CommandFailed {
+                command: format!("git diff --name-only {three_dot}"),
+                code: output.status.code(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            }
+            .into());
         }
         let stdout = String::from_utf8_lossy(&output.stdout);
         let mut paths = Vec::new();

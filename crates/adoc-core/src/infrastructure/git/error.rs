@@ -172,7 +172,10 @@ impl From<GitError> for ChangedFilesError {
             } => {
                 // V3.3 only invokes one git command for changed-files —
                 // `git diff --name-only <ref>...` — so a `CommandFailed`
-                // here always reflects an unresolvable base ref.
+                // here always reflects an unresolvable base ref. This is
+                // the single classification site for git-diff failures
+                // after `diff_against` routes exit-code-nonzero through
+                // `GitError::CommandFailed`.
                 let _ = command;
                 let _ = code;
                 ChangedFilesError::UnresolvableBase {
@@ -181,9 +184,11 @@ impl From<GitError> for ChangedFilesError {
                 }
             }
             GitError::CommandSpawn { source, .. } => ChangedFilesError::Io(source),
-            // The ChangedFiles adapter never creates worktrees, but the
-            // From impl needs to be total — fall through to provider-level
-            // failure so the caller sees a coherent message.
+            // Structurally exhaustive, adapter-unreachable from
+            // `ChangedFiles`: the changed-files adapter never creates
+            // worktrees. Fall through to provider-level failure so the
+            // caller sees a coherent message if a future code path inside
+            // this adapter ever starts producing one of these variants.
             GitError::WorktreeCreate { tmp, stderr }
             | GitError::WorktreeRemove { tmp, stderr, .. } => {
                 ChangedFilesError::ProviderUnavailable {
@@ -195,14 +200,17 @@ impl From<GitError> for ChangedFilesError {
 }
 
 /// Best-effort extraction of the ref spec from a `git diff` stderr line.
-/// Used only by the `From<GitError> for ChangedFilesError` mapping for
+/// Used by the `From<GitError> for ChangedFilesError` mapping for
 /// `CommandFailed`, where the structured fields no longer carry the spec
-/// but stderr typically embeds it (e.g. "fatal: bad revision 'foo'").
+/// but stderr typically embeds it (e.g. "fatal: bad revision 'foo'" or the
+/// three-dot form "fatal: ambiguous argument 'foo...'"). Strips trailing
+/// range dots so the recovered spec matches what the caller originally
+/// passed in.
 fn extract_base_spec(stderr: &str) -> Option<String> {
     let trimmed = stderr.trim();
     let after_quote = trimmed.split_once('\'')?.1;
     let inner = after_quote.split_once('\'')?.0;
-    Some(inner.to_string())
+    Some(inner.trim_end_matches('.').to_string())
 }
 
 #[cfg(test)]
