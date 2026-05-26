@@ -4,7 +4,7 @@
 //! [`ProofObligation`] value object promoted in ADR-0020:
 //!
 //! - [`obligations_for_change`] dispatches on a [`FieldChange`] projection
-//!   inside a [`ObjectChange::Changed`] entry.
+//!   inside a [`ChangedObject`] entry.
 //! - [`obligations_for_impact`] emits one impact-review obligation against
 //!   the impacted claim's `source` evidence.
 //!
@@ -19,7 +19,7 @@ use crate::domain::obligation::ProofObligation;
 
 use super::field_change::FieldChange;
 use super::impact::ImpactedObject;
-use super::object_change::{ChangedObject, ObjectChange};
+use super::object_change::ChangedObject;
 
 const CLAIM_KIND: &str = "claim";
 const VERIFIED_STATUS: &str = "verified";
@@ -37,16 +37,13 @@ pub(crate) const REASON_REVERIFY_AT_CLEARED: &str = "re-verify (verified_at clea
 pub(crate) const REASON_REVIEW_IMPACT: &str = "review impacted claim";
 pub(crate) const REASON_REEVIDENCE_PREFIX: &str = "re-evidence";
 
-/// Dispatch the V3.4 trigger table against one Object Change.
+/// Dispatch the V3.4 trigger table against one `Changed` entry.
 ///
-/// `Created` and `Deleted` variants emit no obligations in V3.4. `Changed`
-/// entries walk their [`FieldChange`] projection (populated by
-/// [`crate::application::review::diff_objects`]) and dispatch per the
-/// documented table.
-pub(crate) fn obligations_for_change(change: &ObjectChange) -> Vec<ProofObligation> {
-    let ObjectChange::Changed(changed) = change else {
-        return Vec::new();
-    };
+/// V3.4 emits no obligations for `Created` or `Deleted` `ObjectChange`
+/// variants, so the aggregator (`application::review::proof_obligations`)
+/// calls this directly against `ObjectDiff::changed[..]` without paying the
+/// wrapper-clone cost of round-tripping through `ObjectChange::Changed`.
+pub(crate) fn obligations_for_change(changed: &ChangedObject) -> Vec<ProofObligation> {
     let mut out = Vec::new();
     for field_change in changed.field_changes() {
         push_for_field_change(&mut out, changed, field_change);
@@ -179,10 +176,10 @@ mod tests {
         base: GraphKnowledgeObjectNode,
         head: GraphKnowledgeObjectNode,
         field_changes: Vec<FieldChange>,
-    ) -> ObjectChange {
+    ) -> ChangedObject {
         let mut c = ChangedObject::new(id.to_string(), base, head);
         c.field_changes = field_changes;
-        ObjectChange::Changed(Box::new(c))
+        c
     }
 
     // -- Acceptance: V3-DESIGN.md §V3.4 --
@@ -244,26 +241,6 @@ mod tests {
         assert_eq!(obligations[0].object_id, "billing.refunds");
         assert_eq!(obligations[0].reason, REASON_REVIEW_IMPACT);
         assert_eq!(obligations[0].required_evidence, vec!["source"]);
-    }
-
-    // -- ObjectChange variant coverage --
-
-    #[test]
-    fn created_variant_emits_no_obligations() {
-        let change = ObjectChange::Created {
-            record: verified_claim("billing.holds"),
-        };
-
-        assert!(obligations_for_change(&change).is_empty());
-    }
-
-    #[test]
-    fn deleted_variant_emits_no_obligations() {
-        let change = ObjectChange::Deleted {
-            record: verified_claim("billing.legacy"),
-        };
-
-        assert!(obligations_for_change(&change).is_empty());
     }
 
     // -- Per-trigger dispatch table coverage --
