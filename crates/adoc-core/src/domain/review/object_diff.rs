@@ -15,6 +15,7 @@ use serde::Serialize;
 use crate::domain::graph::GraphKnowledgeObjectNode;
 
 use super::object_change::ChangedObject;
+use super::projection::project_changed;
 
 /// The Object Diff aggregate. Knowledge Object scope only; sorted by Object
 /// ID within each array; deterministic across runs.
@@ -57,11 +58,19 @@ impl ObjectDiff {
                 (Some(base_node), None) => deleted.push((*base_node).clone()),
                 (Some(base_node), Some(head_node)) => {
                     if base_node.content_hash != head_node.content_hash {
-                        changed.push(ChangedObject::new(
+                        let mut entry = ChangedObject::new(
                             id.to_string(),
                             (*base_node).clone(),
                             (*head_node).clone(),
-                        ));
+                        );
+                        // Self-decorate the V3.2 field-change projection so
+                        // every freshly-computed `ObjectDiff` already carries
+                        // its typed view. The application layer used to
+                        // decorate via `changed_mut` after the fact; pulling
+                        // it inside `compute` keeps the aggregate's
+                        // invariants in one place.
+                        entry.field_changes = project_changed(&entry);
+                        changed.push(entry);
                     }
                 }
                 (None, None) => {
@@ -80,16 +89,6 @@ impl ObjectDiff {
 
     pub fn is_empty(&self) -> bool {
         self.created.is_empty() && self.deleted.is_empty() && self.changed.is_empty()
-    }
-
-    /// Mutable access to the `changed` slice. The application layer uses this
-    /// to decorate each entry with its V3.2 [`super::field_change::FieldChange`]
-    /// projection after `compute` runs. Kept `pub(crate)` so the
-    /// application layer can decorate without re-cloning the diff, while the
-    /// public Rust API surface continues to expose only the read-only
-    /// serialized envelope.
-    pub(crate) fn changed_mut(&mut self) -> &mut Vec<ChangedObject> {
-        &mut self.changed
     }
 
     // Accessor methods are used by inline domain and application unit tests.
