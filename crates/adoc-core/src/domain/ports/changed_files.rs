@@ -6,6 +6,12 @@
 //! in `lib.rs` is the only wiring site; domain and application layers depend
 //! only on the port.
 //!
+//! `ChangedFilesError` is a domain vocabulary — it talks about base-ref
+//! resolution and provider availability, not git mechanics. The git adapter
+//! supplies an `impl From<GitError> for ChangedFilesError` in
+//! `infrastructure/git` that classifies its own failures into these
+//! variants.
+//!
 //! See V3-DESIGN.md §V3.3 and ADR-0019.
 
 use std::error::Error;
@@ -23,20 +29,30 @@ pub(crate) trait ChangedFilesProvider {
 }
 
 /// Errors surfacing from a [`ChangedFilesProvider`] implementation. Mirrors
-/// [`super::snapshot_workspace::SnapshotError`] — the `Git` variant wraps the
-/// structured cause from the git-CLI adapter; `Io` carries unstructured
-/// filesystem failures.
+/// the structure of [`super::snapshot_workspace::SnapshotError`] — variants
+/// are domain concepts, not adapter mechanics.
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum ChangedFilesError {
-    Git(crate::infrastructure::git::error::GitError),
+    /// The underlying provider is unusable (binary missing, repository
+    /// not initialized, configuration broken).
+    ProviderUnavailable { reason: String },
+    /// The supplied base selector could not be resolved against the
+    /// current workdir history (e.g. `git diff` failed on the ref spec).
+    UnresolvableBase { spec: String, reason: String },
+    /// Unstructured filesystem failure the adapter could not classify.
     Io(io::Error),
 }
 
 impl fmt::Display for ChangedFilesError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Git(error) => write!(f, "git operation failed: {error}"),
+            Self::ProviderUnavailable { reason } => {
+                write!(f, "changed-files provider unavailable: {reason}")
+            }
+            Self::UnresolvableBase { spec, reason } => {
+                write!(f, "could not resolve base ref `{spec}`: {reason}")
+            }
             Self::Io(error) => write!(f, "changed-files I/O failed: {error}"),
         }
     }
@@ -45,28 +61,35 @@ impl fmt::Display for ChangedFilesError {
 impl Error for ChangedFilesError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::Git(error) => Some(error),
             Self::Io(error) => Some(error),
+            _ => None,
         }
-    }
-}
-
-impl From<crate::infrastructure::git::error::GitError> for ChangedFilesError {
-    fn from(value: crate::infrastructure::git::error::GitError) -> Self {
-        Self::Git(value)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::git::error::GitError;
 
     #[test]
-    fn git_variant_exposes_source() {
-        let error = ChangedFilesError::Git(GitError::GitNotFound);
-        assert!(error.source().is_some());
-        assert!(format!("{error}").contains("git operation failed"));
+    fn provider_unavailable_variant_renders_reason() {
+        let error = ChangedFilesError::ProviderUnavailable {
+            reason: "git binary not found on PATH".to_string(),
+        };
+        assert!(format!("{error}").contains("git binary"));
+        assert!(error.source().is_none());
+    }
+
+    #[test]
+    fn unresolvable_base_variant_renders_spec_and_reason() {
+        let error = ChangedFilesError::UnresolvableBase {
+            spec: "missing-branch".to_string(),
+            reason: "fatal: unknown revision".to_string(),
+        };
+        let message = format!("{error}");
+        assert!(message.contains("missing-branch"));
+        assert!(message.contains("unknown revision"));
+        assert!(error.source().is_none());
     }
 
     #[test]

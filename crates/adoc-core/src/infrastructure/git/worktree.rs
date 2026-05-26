@@ -66,10 +66,11 @@ fn verify_ref(repo_root: &Path, spec: &str) -> Result<(), SnapshotError> {
         &["rev-parse", "--verify", &format!("{spec}^{{commit}}")],
     )?;
     if !output.status.success() {
-        return Err(SnapshotError::Git(GitError::RefNotResolvable {
+        return Err(GitError::RefNotResolvable {
             spec: spec.to_string(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        }));
+        }
+        .into());
     }
     Ok(())
 }
@@ -82,7 +83,7 @@ fn add_worktree(repo_root: &Path, tmp: &Path, spec: &str) -> Result<(), Snapshot
             "add",
             "--detach",
             tmp.to_str().ok_or_else(|| {
-                SnapshotError::Git(GitError::WorktreeCreate {
+                SnapshotError::from(GitError::WorktreeCreate {
                     tmp: tmp.to_path_buf(),
                     stderr: "worktree path is not valid UTF-8".to_string(),
                 })
@@ -91,10 +92,11 @@ fn add_worktree(repo_root: &Path, tmp: &Path, spec: &str) -> Result<(), Snapshot
         ],
     )?;
     if !output.status.success() {
-        return Err(SnapshotError::Git(GitError::WorktreeCreate {
+        return Err(GitError::WorktreeCreate {
             tmp: tmp.to_path_buf(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        }));
+        }
+        .into());
     }
     Ok(())
 }
@@ -122,13 +124,16 @@ fn run_git(repo_root: &Path, args: &[&str]) -> Result<Output, SnapshotError> {
         command.arg(arg);
     }
     clear_git_env(&mut command);
-    command.output().map_err(|source| match source.kind() {
-        std::io::ErrorKind::NotFound => SnapshotError::Git(GitError::GitNotFound),
-        _ => SnapshotError::Git(GitError::CommandSpawn {
-            program: "git".to_string(),
-            source,
-        }),
-    })
+    command
+        .output()
+        .map_err(|source| match source.kind() {
+            std::io::ErrorKind::NotFound => GitError::GitNotFound,
+            _ => GitError::CommandSpawn {
+                program: "git".to_string(),
+                source,
+            },
+        })
+        .map_err(SnapshotError::from)
 }
 
 fn generate_worktree_path() -> PathBuf {
@@ -269,10 +274,10 @@ mod tests {
             .expect_err("bad ref must error");
 
         match error {
-            SnapshotError::Git(GitError::RefNotResolvable { spec, .. }) => {
+            SnapshotError::UnresolvableRef { spec, .. } => {
                 assert_eq!(spec, "definitely-not-a-real-ref");
             }
-            other => panic!("expected RefNotResolvable, got: {other:?}"),
+            other => panic!("expected UnresolvableRef, got: {other:?}"),
         }
     }
 
@@ -286,13 +291,8 @@ mod tests {
             .checkout(&SnapshotSelector::GitRef(GitRef::new("HEAD")))
             .expect_err("non-repo must error");
 
-        // The exact variant depends on git's stderr; we just need the error
-        // type to be a `Git(_)` mapped value and have a non-empty message.
-        match error {
-            SnapshotError::Git(inner) => {
-                assert!(!format!("{inner}").is_empty());
-            }
-            other => panic!("expected Git error, got: {other:?}"),
-        }
+        // The exact variant depends on git's stderr; we just need the
+        // error to render a non-empty message via the adapter mapping.
+        assert!(!format!("{error}").is_empty());
     }
 }

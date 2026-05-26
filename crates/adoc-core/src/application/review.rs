@@ -612,7 +612,6 @@ mod tests {
     use crate::domain::ports::snapshot_workspace::{
         GitRef, SnapshotError, SnapshotSelector, SnapshotWorkspace, SnapshotWorkspaceProvider,
     };
-    use crate::infrastructure::git::error::GitError;
 
     use super::*;
 
@@ -653,11 +652,9 @@ mod tests {
                     .refs
                     .get(spec.as_str())
                     .map(|path| SnapshotWorkspace::workdir(path.clone()))
-                    .ok_or_else(|| {
-                        SnapshotError::Git(GitError::RefNotResolvable {
-                            spec: spec.as_str().to_string(),
-                            stderr: "ref not seeded in test double".to_string(),
-                        })
+                    .ok_or_else(|| SnapshotError::UnresolvableRef {
+                        spec: spec.as_str().to_string(),
+                        reason: "ref not seeded in test double".to_string(),
                     }),
             }
         }
