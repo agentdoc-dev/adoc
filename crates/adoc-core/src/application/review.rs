@@ -25,7 +25,6 @@ use crate::domain::ports::snapshot_workspace::{
 };
 use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::review::impact::{ImpactedObject, compute_impact};
-use crate::domain::review::object_change::ObjectChange;
 use crate::domain::review::object_diff::ObjectDiff;
 use crate::domain::review::obligation_rules::{obligations_for_change, obligations_for_impact};
 use crate::domain::review::reviewer::{RequiredReviewer, required_reviewers};
@@ -258,10 +257,7 @@ pub(crate) fn load_review_with_changed_files<
 pub fn proof_obligations(diff: &ObjectDiff, impact: &[ImpactedObject]) -> Vec<ProofObligation> {
     // Diff-driven obligations come first so they win ties with impact-driven
     // ones on the same (object_id, reason). See [`ProofObligation::merge_dedup_sorted`].
-    let from_diff = diff.changed.iter().flat_map(|changed| {
-        let change = ObjectChange::Changed(Box::new(changed.clone()));
-        obligations_for_change(&change)
-    });
+    let from_diff = diff.changed.iter().flat_map(obligations_for_change);
     let from_impact = impact.iter().flat_map(obligations_for_impact);
     ProofObligation::merge_dedup_sorted(from_diff.chain(from_impact))
 }
