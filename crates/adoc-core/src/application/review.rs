@@ -23,6 +23,7 @@ use crate::domain::ports::changed_files::{ChangedFilesError, ChangedFilesProvide
 use crate::domain::ports::snapshot_workspace::{
     SnapshotError, SnapshotSelector, SnapshotWorkspaceProvider,
 };
+use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::review::impact::{ImpactedObject, compute_impact};
 use crate::domain::review::object_change::ObjectChange;
 use crate::domain::review::object_diff::ObjectDiff;
@@ -278,10 +279,8 @@ fn compile_snapshot<S: SnapshotWorkspaceProvider>(
     selector: &SnapshotSelector,
 ) -> Result<CompileResult, SnapshotError> {
     let workspace = snapshot_provider.checkout(selector)?;
-    let source_provider = FsSourceProvider::with_identity_prefix(
-        workspace.path().to_path_buf(),
-        PathBuf::from(REVIEW_IDENTITY_PREFIX),
-    );
+    let source_provider = FsSourceProvider::new(workspace.path().to_path_buf())
+        .with_identity_prefix(PathBuf::from(REVIEW_IDENTITY_PREFIX));
     let result = compile_with_provider(&source_provider);
     drop(workspace); // explicit RAII cleanup before returning
     Ok(result)
