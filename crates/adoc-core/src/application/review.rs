@@ -221,13 +221,14 @@ pub(crate) fn load_review_with_changed_files<
     changed_files_provider: &C,
 ) -> Result<ReviewLoadResult, ReviewError> {
     let base_selector = input.base.clone();
+    let head_selector = input.head.clone();
     let ReviewLoadResult {
         session,
         diagnostics,
     } = load_review_with_providers(input, snapshot_provider)?;
 
     let changed = changed_files_provider
-        .changed_files(&base_selector)
+        .changed_files(&base_selector, &head_selector)
         .map_err(|source| ReviewError::ChangedFiles {
             selector: base_selector,
             source,
