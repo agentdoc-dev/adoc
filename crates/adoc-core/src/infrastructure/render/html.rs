@@ -6,7 +6,7 @@ use crate::domain::knowledge_object::{
     claim::Evidence,
     projection::{KnowledgeObjectMetadata, MetadataDiscriminant, MetadataField},
 };
-use crate::domain::url_safety::is_url_safe;
+use crate::domain::url_safety::verdict;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct HtmlRenderer;
@@ -555,7 +555,7 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
             // renderer with link URLs the compat validator already flagged.
             // Drop the `href` on unsafe schemes so rendered HTML can never
             // execute the link; the inline text is still rendered.
-            if is_url_safe(url) {
+            if verdict(url).is_safe() {
                 html.push_str("<a href=\"");
                 html.push_str(&escape_html(url));
                 html.push_str("\">");
@@ -573,7 +573,7 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
         }
         InlineSegment::Image { alt, url, .. } => {
             let alt_text = crate::domain::inline::plain_text(alt);
-            if is_url_safe(url) {
+            if verdict(url).is_safe() {
                 html.push_str("<img src=\"");
                 html.push_str(&escape_html(url));
                 html.push_str("\" alt=\"");

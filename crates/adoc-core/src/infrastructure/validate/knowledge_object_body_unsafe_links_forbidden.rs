@@ -1,4 +1,4 @@
-use super::unsafe_link_forbidden::check_inlines;
+use super::unsafe_link_forbidden::check_body_inlines;
 
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::Diagnostic;
@@ -13,7 +13,7 @@ impl ValidationRule for KnowledgeObjectBodyUnsafeLinksForbidden {
             let BlockAst::KnowledgeObject(knowledge_object) = block else {
                 continue;
             };
-            check_inlines(knowledge_object.body().inlines(), sink);
+            check_body_inlines(knowledge_object.body().inlines(), sink);
         }
     }
 }

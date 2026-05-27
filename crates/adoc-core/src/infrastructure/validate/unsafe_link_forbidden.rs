@@ -1,79 +1,52 @@
-use crate::domain::ast::{BlockAst, PageAst};
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::ast::PageAst;
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::inline::InlineSegment;
 use crate::domain::rules::ValidationRule;
 use crate::domain::source::SourceFile;
-use crate::domain::url_safety::is_url_safe;
+use crate::domain::url_safety::{allowed_schemes_summary, verdict};
+use crate::infrastructure::validate::url_walker::{UrlVisitor, walk_inlines, walk_page};
 
 /// Rejects link URLs whose scheme isn't on the strict-mode allowlist. Walks
 /// every link in the page's AST (including nested labels and links inside
-/// emphasis/strong wrappers) and emits one diagnostic per offender.
+/// emphasis/strong wrappers) and emits one diagnostic per offender. Images
+/// are ignored — they are V4 Compatibility Mode constructs handled by
+/// `UnsafeImageSrcDropped` and never appear in `.adoc` source.
 pub(crate) struct UnsafeLinkForbidden;
 
 impl ValidationRule for UnsafeLinkForbidden {
     fn check(&self, page: &PageAst, _source: &SourceFile, sink: &mut Vec<Diagnostic>) {
-        for block in &page.blocks {
-            check_block(block, sink);
-        }
+        let mut visitor = StrictLinkVisitor { sink };
+        walk_page(page, &mut visitor);
     }
 }
 
-fn check_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
-    match block {
-        BlockAst::Heading(heading) => check_inlines(&heading.inlines, sink),
-        BlockAst::Paragraph(paragraph) => check_inlines(&paragraph.inlines, sink),
-        BlockAst::List(list) => {
-            for item in &list.items {
-                check_inlines(&item.inlines, sink);
-            }
-        }
-        BlockAst::CodeBlock(_) => {}
-        // Knowledge Object body inlines are available only after resolution,
-        // so `KnowledgeObjectBodyUnsafeLinksForbidden` handles them in the
-        // resolved-page phase.
-        BlockAst::KnowledgeObject(_) | BlockAst::KnowledgeObjectPending(_) => {}
-        // Strict-mode rule, never reached for Markdown sources where
-        // QuarantinedHtml and the V4 Markdown block variants originate.
-        BlockAst::QuarantinedHtml(_)
-        | BlockAst::Table(_)
-        | BlockAst::FootnoteDefinition(_)
-        | BlockAst::UnknownExtension(_) => {}
-    }
+/// Walk a Knowledge Object body's inlines with the strict link rule. Used by
+/// `KnowledgeObjectBodyUnsafeLinksForbidden` so resolved-phase callers share
+/// the verdict logic with the source-phase rule.
+pub(super) fn check_body_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic>) {
+    let mut visitor = StrictLinkVisitor { sink };
+    walk_inlines(inlines, &mut visitor);
 }
 
-pub(super) fn check_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic>) {
-    for segment in inlines {
-        match segment {
-            InlineSegment::Link { text, url, span } => {
-                if !is_url_safe(url) {
-                    sink.push(
-                        Diagnostic::error(
-                            DiagnosticCode::ParseUnsafeLink,
-                            format!(
-                                "Link URL scheme is not allowed in strict mode: {url}; use http, https, or mailto",
-                            ),
-                        )
-                        .with_span(span.clone()),
-                    );
-                }
-                check_inlines(text, sink);
-            }
-            InlineSegment::Emphasis(inner)
-            | InlineSegment::Strong(inner)
-            | InlineSegment::Strikethrough(inner) => {
-                check_inlines(inner, sink);
-            }
-            InlineSegment::Image { .. } => {
-                // Image variants are V4 compat-only; strict pipeline ignores.
-            }
-            InlineSegment::Text(_)
-            | InlineSegment::Code(_)
-            | InlineSegment::ObjectReferencePending { .. }
-            | InlineSegment::ObjectReference { .. }
-            | InlineSegment::QuarantinedHtml { .. }
-            | InlineSegment::FootnoteReference { .. }
-            | InlineSegment::UnknownExtension { .. } => {}
+struct StrictLinkVisitor<'a> {
+    sink: &'a mut Vec<Diagnostic>,
+}
+
+impl UrlVisitor for StrictLinkVisitor<'_> {
+    fn on_link(&mut self, _text: &[InlineSegment], url: &str, span: &SourceSpan) {
+        if verdict(url).is_safe() {
+            return;
         }
+        self.sink.push(
+            Diagnostic::error(
+                DiagnosticCode::ParseUnsafeLink,
+                format!(
+                    "Link URL scheme is not allowed in strict mode: {url}; use {}",
+                    allowed_schemes_summary(),
+                ),
+            )
+            .with_span(span.clone()),
+        );
     }
 }
 
@@ -184,5 +157,23 @@ mod tests {
             span.start.column, 6,
             "extra spaces after # markers must shift the inline column accordingly"
         );
+    }
+
+    #[test]
+    fn unsafe_link_rule_help_lists_every_allowed_scheme() {
+        // Regression gate: the rejection message must format from the
+        // allowlist, never restate a hard-coded scheme list. If a future
+        // change adds `tel:` to ALLOWED_SCHEMES, this assertion catches the
+        // message drift automatically.
+        use crate::domain::url_safety::ALLOWED_SCHEMES;
+        let diagnostics =
+            validate_text("# Page @doc(team.page)\n\nsee [click](javascript:alert)\n");
+        let message = &diagnostics[0].message;
+        for scheme in ALLOWED_SCHEMES {
+            assert!(
+                message.contains(scheme),
+                "rejection message {message:?} must mention `{scheme}`",
+            );
+        }
     }
 }
