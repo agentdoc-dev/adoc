@@ -8,6 +8,13 @@ use crate::domain::knowledge_object::{
 };
 use crate::domain::url_safety::verdict;
 
+/// CSS class used to wrap **Quarantined HTML** content (block and inline) in
+/// the rendered output. ADR-0023's renderer-as-security-boundary rule means
+/// this class is the user-visible artifact of compat-mode raw-HTML handling;
+/// authoring it here is the single source of truth. Tests pin the literal
+/// string in their HTML assertions — see `crates/adoc-cli/tests/markdown_pilot.rs`.
+const QUARANTINED_HTML_CLASS: &str = "quarantined-html";
+
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct HtmlRenderer;
 
@@ -105,7 +112,9 @@ fn render_block(block: &BlockAst, html: &mut String) {
         // escaped text inside a quarantine block. The browser never
         // interprets the original markup; the reader sees it as code.
         BlockAst::QuarantinedHtml(quarantined_html) => {
-            html.push_str("<pre class=\"quarantined-html\">");
+            html.push_str("<pre class=\"");
+            html.push_str(QUARANTINED_HTML_CLASS);
+            html.push_str("\">");
             html.push_str(&escape_html(&quarantined_html.source_text));
             html.push_str("</pre>\n");
         }
@@ -586,7 +595,9 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
             }
         }
         InlineSegment::QuarantinedHtml { source_text, .. } => {
-            html.push_str("<code class=\"quarantined-html\">");
+            html.push_str("<code class=\"");
+            html.push_str(QUARANTINED_HTML_CLASS);
+            html.push_str("\">");
             html.push_str(&escape_html(source_text));
             html.push_str("</code>");
         }

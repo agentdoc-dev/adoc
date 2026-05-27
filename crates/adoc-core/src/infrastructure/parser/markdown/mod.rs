@@ -8,9 +8,23 @@
 //!
 //! Byte-offset ranges returned by `pulldown-cmark` are translated to absolute
 //! [`crate::domain::diagnostic::SourceSpan`] values via the [`SourceFile`]'s
-//! line index. Front-matter is skipped textually (see [`super::front_matter`])
-//! before the events are produced, and the skipped byte count is added back
-//! to every event range so spans stay anchored to the original source.
+//! line index. Front-matter is skipped textually (see
+//! [`crate::infrastructure::parser::front_matter`]) before the events are
+//! produced, and the skipped byte count is added back to every event range
+//! so spans stay anchored to the original source.
+//!
+//! ## Module layout
+//!
+//! - [`frame`] — `Frame` stack and lifecycle for the event-driven driver.
+//! - [`post_parse`] — paragraph-to-`UnknownExtension` rewrite (Pandoc /
+//!   attribute-block detection). Shares the
+//!   [`crate::infrastructure::parser::extension_classifier`] with the
+//!   `UnknownExtension` compat validator.
+//! - this file — the `State` event-stream driver and the public
+//!   [`parse_markdown_page`] entry point.
+
+mod frame;
+mod post_parse;
 
 use std::ops::Range;
 
@@ -28,8 +42,10 @@ use crate::domain::identity::PageId;
 use crate::domain::inline::InlineSegment;
 use crate::domain::source::{DerivedPageIdError, SourceFile, derive_page_id};
 
-use super::extension_classifier::{LineExtension, classify_line};
-use super::front_matter::skip_front_matter;
+use crate::infrastructure::parser::front_matter::skip_front_matter;
+
+use frame::{Frame, find_enclosing_table};
+use post_parse::rewrite_pandoc_and_attribute_paragraphs;
 
 pub(crate) fn parse_markdown_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     let mut diagnostics = Vec::new();
@@ -93,53 +109,6 @@ pub(crate) fn parse_markdown_page(source: &SourceFile) -> (PageAst, Vec<Diagnost
     (page, diagnostics)
 }
 
-fn rewrite_pandoc_and_attribute_paragraphs(blocks: &mut [BlockAst], source: &SourceFile) {
-    for block in blocks.iter_mut() {
-        let Some(replacement) = paragraph_to_unknown_extension(block, source) else {
-            continue;
-        };
-        *block = replacement;
-    }
-}
-
-fn paragraph_to_unknown_extension(block: &BlockAst, source: &SourceFile) -> Option<BlockAst> {
-    let BlockAst::Paragraph(paragraph) = block else {
-        return None;
-    };
-    let start_line = paragraph.span.start.line as usize;
-    let end_line = paragraph.span.end.line as usize;
-    let mut kind: Option<UnknownExtensionKind> = None;
-    for (index, line) in source.text.lines().enumerate() {
-        let line_number = index + 1;
-        if line_number < start_line {
-            continue;
-        }
-        if line_number > end_line {
-            break;
-        }
-        match classify_line(line) {
-            LineExtension::PandocDirective { .. } => {
-                kind = Some(UnknownExtensionKind::PandocDirective);
-                // Pandoc takes priority over any later attribute-block match.
-                break;
-            }
-            LineExtension::AttributeBlock { .. } => {
-                kind = Some(UnknownExtensionKind::AttributeBlock);
-                // Don't break — Pandoc takes priority if both match on
-                // different lines of the same paragraph.
-            }
-            LineExtension::None => {}
-        }
-    }
-    let kind = kind?;
-    let source_text = crate::domain::inline::to_source(&paragraph.inlines);
-    Some(BlockAst::UnknownExtension(UnknownExtensionAst {
-        source_text,
-        span: paragraph.span.clone(),
-        kind,
-    }))
-}
-
 fn invalid_derived_page_id_diagnostic(
     source: &SourceFile,
     error: DerivedPageIdError,
@@ -155,97 +124,6 @@ fn invalid_derived_page_id_diagnostic(
     .with_span(source.span_for_line_columns(1, 1, 1))
     .with_object_id(&error.value)
     .with_help(crate::domain::identity::OBJECT_ID_GRAMMAR_HELP)
-}
-
-/// In-progress block-builder state captured on the stack as the event stream
-/// opens and closes container tags. Each variant collects inline segments or
-/// child items until its corresponding `TagEnd` event arrives.
-enum Frame {
-    Paragraph {
-        inlines: Vec<InlineSegment>,
-        span: SourceSpan,
-    },
-    Heading {
-        level: u8,
-        inlines: Vec<InlineSegment>,
-        span: SourceSpan,
-    },
-    List {
-        kind: ListKind,
-        items: Vec<ListItem>,
-        span: SourceSpan,
-    },
-    Item {
-        inlines: Vec<InlineSegment>,
-        span: SourceSpan,
-        task_state: Option<bool>,
-    },
-    Emphasis(Vec<InlineSegment>),
-    Strong(Vec<InlineSegment>),
-    Strikethrough(Vec<InlineSegment>),
-    Link {
-        url: String,
-        text: Vec<InlineSegment>,
-        span: SourceSpan,
-    },
-    Image {
-        url: String,
-        alt: Vec<InlineSegment>,
-        span: SourceSpan,
-    },
-    /// Fenced code block. Code text is streamed as `Event::Text` between
-    /// `Tag::CodeBlock(..)` and `TagEnd::CodeBlock`. The first inline holds
-    /// the language sentinel; subsequent inlines are appended to `code`.
-    /// The span is recomputed from the closing `TagEnd::CodeBlock` event
-    /// range so we do not carry one on the frame.
-    CodeBlock {
-        inlines: Vec<InlineSegment>,
-    },
-    /// Block-level raw HTML that V4.1 quarantines. The frame collects raw
-    /// HTML events until `TagEnd::HtmlBlock`; the slice of the original
-    /// source text becomes the `QuarantinedHtml` source.
-    HtmlBlock {
-        span: SourceSpan,
-    },
-    /// Generic GFM construct V4.2 does not render natively (block quote,
-    /// definition list, metadata block). The inline buffer collects child
-    /// text so the final `BlockAst::Paragraph` carries the source text.
-    PassthroughBlock {
-        inlines: Vec<InlineSegment>,
-        span: SourceSpan,
-    },
-    /// GFM table. Header cells live in `header`; body rows accumulate in
-    /// `rows`. The active row builds in `current_row`; the active cell
-    /// builds in the top-of-stack `Frame::TableCell`.
-    Table {
-        header: Vec<TableCell>,
-        rows: Vec<Vec<TableCell>>,
-        current_row: Vec<TableCell>,
-        in_header: bool,
-        alignments: Vec<ColumnAlignment>,
-        span: SourceSpan,
-    },
-    /// Active table-head wrapper. The state machine flips `Table::in_header`
-    /// to `false` on `TagEnd::TableHead`; this frame exists so the event
-    /// stream balances.
-    TableHead,
-    /// Active table-row wrapper; serves the same balancing purpose as
-    /// `TableHead`.
-    TableRow,
-    /// Active table cell. Inline segments collect into `inlines`; on
-    /// `TagEnd::TableCell` the parent `Frame::Table` consumes the cell.
-    TableCell {
-        inlines: Vec<InlineSegment>,
-        span: SourceSpan,
-    },
-    /// GFM footnote definition. `label` carries the `[^label]` text; the
-    /// content stream collects block-level children which the renderer
-    /// emits inside the resulting `<aside>`.
-    FootnoteDefinition {
-        label: String,
-        content: Vec<BlockAst>,
-        span: SourceSpan,
-    },
 }
 
 struct State<'a> {
@@ -758,17 +636,6 @@ impl<'a> State<'a> {
         let end = (range.end + self.front_matter_offset).min(self.source.text.len());
         self.source.text[start..end].to_string()
     }
-}
-
-/// Locate the nearest enclosing `Frame::Table` on the stack. Needed because
-/// `TableHead` / `TableRow` are pure structural frames that sit between the
-/// `Table` aggregate and its leaf `TableCell` frames; `stack.last_mut()`
-/// after popping a cell would point at one of those structural frames, not
-/// at the table itself.
-fn find_enclosing_table(stack: &mut [Frame]) -> Option<&mut Frame> {
-    stack
-        .iter_mut()
-        .rfind(|frame| matches!(frame, Frame::Table { .. }))
 }
 
 fn column_alignment(alignment: Alignment) -> ColumnAlignment {
