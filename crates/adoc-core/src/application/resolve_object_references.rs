@@ -44,6 +44,7 @@ fn resolve_page(
                 resolve_knowledge_object_references(knowledge_object, declared_ids, diagnostics);
             }
             BlockAst::CodeBlock(_) => {}
+            BlockAst::QuarantinedHtml(_) => {}
             BlockAst::KnowledgeObjectPending(_) => {
                 unreachable!("knowledge objects must resolve before object references")
             }
@@ -135,9 +136,13 @@ fn resolve_inlines(
                     );
                 }
             }
+            InlineSegment::Image { alt, .. } => {
+                resolve_inlines(alt, declared_ids, diagnostics);
+            }
             InlineSegment::Text(_)
             | InlineSegment::Code(_)
-            | InlineSegment::ObjectReference { .. } => {}
+            | InlineSegment::ObjectReference { .. }
+            | InlineSegment::QuarantinedHtml { .. } => {}
         }
     }
 }

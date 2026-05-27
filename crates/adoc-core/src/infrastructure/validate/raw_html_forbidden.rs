@@ -36,6 +36,10 @@ impl ValidationRule for RawHtmlForbidden {
                         flag_raw_html_in_span(source, span, sink);
                     }
                 }
+                // Strict-mode rule, never reached for Markdown sources where
+                // QuarantinedHtml originates. Kept exhaustive so adding the
+                // variant elsewhere doesn't silently bypass strict checks.
+                BlockAst::QuarantinedHtml(_) => {}
             }
         }
     }

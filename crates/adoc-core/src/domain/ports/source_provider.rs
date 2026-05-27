@@ -85,7 +85,7 @@ impl SourceLoadError {
     pub(crate) fn unsupported_source_extension(path: PathBuf) -> Self {
         Self {
             path,
-            message: "unsupported source extension; expected a .adoc file".to_string(),
+            message: "unsupported source extension; expected a .adoc or .md file".to_string(),
             kind: SourceLoadErrorKind::UnsupportedSourceExtension,
         }
     }

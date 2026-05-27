@@ -69,6 +69,9 @@ pub enum DiagnosticCode {
     PatchPlacementInvalid,
     SchemaImpactsInvalidPath,
     SchemaImpactsEmpty,
+    CompatRawHtmlQuarantined,
+    CompatUnsafeLinkDropped,
+    CompatUnsafeImageSrcDropped,
 }
 
 impl DiagnosticCode {
@@ -120,6 +123,9 @@ impl DiagnosticCode {
             DiagnosticCode::PatchPlacementInvalid,
             DiagnosticCode::SchemaImpactsInvalidPath,
             DiagnosticCode::SchemaImpactsEmpty,
+            DiagnosticCode::CompatRawHtmlQuarantined,
+            DiagnosticCode::CompatUnsafeLinkDropped,
+            DiagnosticCode::CompatUnsafeImageSrcDropped,
         ]
     }
 
@@ -171,6 +177,9 @@ impl DiagnosticCode {
             DiagnosticCode::PatchPlacementInvalid => "patch.placement_invalid",
             DiagnosticCode::SchemaImpactsInvalidPath => "schema.impacts_invalid_path",
             DiagnosticCode::SchemaImpactsEmpty => "schema.impacts_empty",
+            DiagnosticCode::CompatRawHtmlQuarantined => "compat.raw_html_quarantined",
+            DiagnosticCode::CompatUnsafeLinkDropped => "compat.unsafe_link_dropped",
+            DiagnosticCode::CompatUnsafeImageSrcDropped => "compat.unsafe_image_src_dropped",
         }
     }
 
@@ -233,7 +242,7 @@ impl DiagnosticCode {
                 "Check that the source directory exists and can be read by the current user."
             }
             DiagnosticCode::IoUnsupportedSourceExtension => {
-                "Use supported source files with the `.adoc` extension."
+                "Use supported source files with the `.adoc` or `.md` extension."
             }
             DiagnosticCode::IoArtifactMissing => {
                 "Build docs.graph.json before loading the retrieval artifact."
@@ -309,6 +318,15 @@ impl DiagnosticCode {
             }
             DiagnosticCode::SchemaImpactsEmpty => {
                 "Remove the `impacts:` field entirely instead of leaving it empty; impacts must list at least one path."
+            }
+            DiagnosticCode::CompatRawHtmlQuarantined => {
+                "Replace raw HTML with Markdown syntax, or migrate the page to .adoc for strict validation."
+            }
+            DiagnosticCode::CompatUnsafeLinkDropped => {
+                "Use a safe link scheme such as https, http, mailto, or a relative path; the unsafe href was dropped from the rendered HTML."
+            }
+            DiagnosticCode::CompatUnsafeImageSrcDropped => {
+                "Use a safe image scheme such as https, http, or a relative path; the unsafe src was dropped from the rendered HTML."
             }
         }
     }
@@ -388,6 +406,9 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "patch.placement_invalid",
     "schema.impacts_invalid_path",
     "schema.impacts_empty",
+    "compat.raw_html_quarantined",
+    "compat.unsafe_link_dropped",
+    "compat.unsafe_image_src_dropped",
 ];
 
 impl Diagnostic {

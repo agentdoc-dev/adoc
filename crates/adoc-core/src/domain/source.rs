@@ -98,6 +98,23 @@ impl SourceFile {
         }
     }
 
+    /// Translate a byte offset into the source text into a [`SourcePosition`].
+    ///
+    /// Used by the Markdown parser to map `pulldown-cmark` byte-offset ranges
+    /// back to the file's line/column coordinate system the rest of the
+    /// pipeline expects. Out-of-range offsets clamp to the file end.
+    pub(crate) fn position_for_offset(&self, offset: usize) -> SourcePosition {
+        self.line_index.position_for_offset(&self.text, offset)
+    }
+
+    pub(crate) fn span_for_offsets(&self, start_offset: usize, end_offset: usize) -> SourceSpan {
+        SourceSpan {
+            file: self.path.clone(),
+            start: self.position_for_offset(start_offset),
+            end: self.position_for_offset(end_offset),
+        }
+    }
+
     pub(crate) fn span_for_line_columns(
         &self,
         line_number: u32,
@@ -178,6 +195,24 @@ impl LineIndex {
         }
     }
 
+    fn position_for_offset(&self, text: &str, offset: usize) -> SourcePosition {
+        let clamped_offset = offset.min(text.len());
+        // line_starts is strictly increasing, so binary-search by the largest
+        // start <= clamped_offset to find the containing line index.
+        let line_index = match self.line_starts.binary_search(&clamped_offset) {
+            Ok(exact) => exact,
+            Err(insertion) => insertion.saturating_sub(1),
+        };
+        let line_start = self.line_starts[line_index];
+        let preceding = &text[line_start..clamped_offset];
+        let column = preceding.chars().count() as u32 + 1;
+        SourcePosition {
+            line: (line_index as u32) + 1,
+            column,
+            offset: clamped_offset as u32,
+        }
+    }
+
     fn offset_for_line_column(&self, text: &str, line_number: u32, column: u32) -> u32 {
         let line_index = line_number.saturating_sub(1) as usize;
         let line_start = self.line_starts.get(line_index).copied().unwrap_or(0);
@@ -220,6 +255,35 @@ impl LineIndex {
         let line_start = self.line_starts.get(line_index).copied().unwrap_or(0);
         let line_end = self.line_end_offset(text, line_index);
         text[line_start..line_end].chars().count() as u32
+    }
+}
+
+/// Validation regime applied to a single source file.
+///
+/// V4 introduces Compatibility Mode for Markdown sources alongside the
+/// existing Strict Mode for native AgentDoc sources. The mode is determined
+/// solely by file extension (ADR-0022): `.adoc` always selects `Strict`, `.md`
+/// always selects `Compat`. No CLI flag, config block, or front-matter
+/// directive can change the mapping.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SourceMode {
+    Strict,
+    Compat,
+}
+
+/// Pick the [`SourceMode`] for `source` based on its file extension.
+///
+/// Only `.adoc` and `.md` reach the parser because file discovery already
+/// rejects every other extension at the [`SourceProvider`] boundary, so a
+/// missing or unknown extension defaults to `Strict`.
+pub(crate) fn source_mode(source: &SourceFile) -> SourceMode {
+    match source
+        .path
+        .extension()
+        .and_then(|extension| extension.to_str())
+    {
+        Some("md") => SourceMode::Compat,
+        _ => SourceMode::Strict,
     }
 }
 

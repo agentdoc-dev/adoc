@@ -931,10 +931,12 @@ fn check_rejects_adjacent_inline_raw_html_tag() {
 }
 
 #[test]
-fn check_rejects_single_file_with_non_adoc_extension() {
-    let workspace = TestWorkspace::new("check-rejects-single-md-file");
+fn check_rejects_single_file_with_unsupported_extension() {
+    // V4 broadens supported extensions to `.adoc` and `.md`. Anything else
+    // — `.txt`, `.json`, etc. — still fails fast at the source provider.
+    let workspace = TestWorkspace::new("check-rejects-single-txt-file");
     let source = workspace.write(
-        "guide.md",
+        "guide.txt",
         "# Guide\n\n<div>This must not compile as AgentDoc Source.</div>\n",
     );
 

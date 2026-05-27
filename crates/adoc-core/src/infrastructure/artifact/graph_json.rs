@@ -183,6 +183,20 @@ fn block_to_graph_node(block: &BlockAst, id: &str, page_id: &str, order: u32) ->
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before graph emission")
         }
+        // V4 Compatibility Mode: block-level raw HTML quarantined from Markdown
+        // sources is exposed as a prose block whose text is the original source
+        // text per ADR-0023. No new graph kind is introduced.
+        BlockAst::QuarantinedHtml(quarantined_html) => GraphNode::Paragraph(GraphBlockNode {
+            id: id.to_string(),
+            page_id: page_id.to_string(),
+            order,
+            level: None,
+            text: Some(quarantined_html.source_text.clone()),
+            language: None,
+            code: None,
+            items: Vec::new(),
+            source_span: source_span(&quarantined_html.span),
+        }),
     }
 }
 
@@ -316,6 +330,7 @@ fn push_reference_edges(edges: &mut Vec<GraphEdge>, block: &BlockAst, source: &s
             push_inline_reference_edges(edges, source, knowledge_object.body().inlines());
         }
         BlockAst::CodeBlock(_) => {}
+        BlockAst::QuarantinedHtml(_) => {}
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before graph emission")
         }
@@ -342,9 +357,13 @@ fn push_inline_reference_edges(
                     order: None,
                 });
             }
+            InlineSegment::Image { alt, .. } => {
+                push_inline_reference_edges(edges, source, alt);
+            }
             InlineSegment::Text(_)
             | InlineSegment::Code(_)
-            | InlineSegment::ObjectReferencePending { .. } => {}
+            | InlineSegment::ObjectReferencePending { .. }
+            | InlineSegment::QuarantinedHtml { .. } => {}
         }
     }
 }

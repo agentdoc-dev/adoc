@@ -35,6 +35,13 @@ pub(crate) enum BlockAst {
     /// drops it after emitting `schema.*`/`id.invalid` diagnostics. By the
     /// time the renderer or artifact emitter sees the AST, no Pending exists.
     KnowledgeObjectPending(Box<ParsedTypedBlock>),
+    /// Block-level raw HTML found in Markdown source (V4 Compatibility Mode
+    /// only). Never produced by the `.adoc` parser. The renderer wraps the
+    /// stored source text in `<pre class="quarantined-html">` with HTML
+    /// escaping; the graph emitter treats it as a prose block whose content
+    /// is the original source text. The compat validator pipeline emits a
+    /// `compat.raw_html_quarantined` warning per occurrence.
+    QuarantinedHtml(QuarantinedHtmlAst),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +84,12 @@ pub(crate) enum ListKind {
 pub(crate) struct CodeBlockAst {
     pub(crate) language: Option<String>,
     pub(crate) code: String,
+    pub(crate) span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct QuarantinedHtmlAst {
+    pub(crate) source_text: String,
     pub(crate) span: SourceSpan,
 }
 

@@ -655,14 +655,18 @@ fn compile_workspace_links_cross_file_prose_reference_to_claim() {
 }
 
 #[test]
-fn compile_workspace_ignores_non_adoc_files_during_directory_scan() {
-    let workspace = TestWorkspace::new("ignore-non-adoc-files");
+fn compile_workspace_ignores_non_source_files_during_directory_scan() {
+    // V4 broadens the source set to `*.{adoc,md}`. Files with any other
+    // extension (e.g. `.txt`, `.json`) stay outside the scan and never reach
+    // the parser; the rest of this test exercises the negative half of the
+    // V4 contract — only the listed extensions are compiled.
+    let workspace = TestWorkspace::new("ignore-non-source-files");
     let source = workspace.write(
         "guide.adoc",
         "# Guide @doc(team.guide)\n\nCompiled source content.\n",
     );
     workspace.write(
-        "notes.md",
+        "notes.txt",
         "# Notes\n\n<div>This raw HTML would fail if the file were compiled.</div>\n",
     );
 
@@ -672,7 +676,7 @@ fn compile_workspace_ignores_non_adoc_files_during_directory_scan() {
 
     assert!(
         !result.has_errors(),
-        "non-.adoc files must be ignored, got: {:?}",
+        "non-source files must be ignored, got: {:?}",
         result.diagnostics
     );
     let artifacts = result.artifacts.expect("artifacts must be produced");
@@ -687,10 +691,10 @@ fn compile_workspace_ignores_non_adoc_files_during_directory_scan() {
 }
 
 #[test]
-fn compile_workspace_rejects_single_file_with_non_adoc_extension() {
-    let workspace = TestWorkspace::new("reject-single-md-file");
+fn compile_workspace_rejects_single_file_with_unsupported_extension() {
+    let workspace = TestWorkspace::new("reject-single-txt-file");
     let source = workspace.write(
-        "notes.md",
+        "notes.txt",
         "# Notes\n\n<div>This must not compile as AgentDoc Source.</div>\n",
     );
 
@@ -710,6 +714,11 @@ fn compile_workspace_rejects_single_file_with_non_adoc_extension() {
     assert!(
         diagnostic.message.contains(".adoc"),
         "diagnostic should tell callers the supported extension: {}",
+        diagnostic.message
+    );
+    assert!(
+        diagnostic.message.contains(".md"),
+        "V4 broadens the message to mention .md compatibility: {}",
         diagnostic.message
     );
 }
