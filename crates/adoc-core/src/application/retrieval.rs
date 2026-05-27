@@ -273,8 +273,46 @@ pub fn search(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
 }
 
 fn search_hybrid(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
+    finalize_search_result(session, search_hybrid_impl(session, query))
+}
+
+fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
+    finalize_search_result(session, search_lexical_impl(session, query))
+}
+
+fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
+    finalize_search_result(session, search_semantic_impl(session, query))
+}
+
+/// V4.3 migration hint: when the search yields zero records against a graph
+/// that has prose blocks but no Knowledge Objects, emit a structured warning
+/// explaining the structural absence. The diagnostic rides in the existing
+/// `adoc.retrieval.v0.diagnostics[]` array; schema version is unchanged.
+fn finalize_search_result(session: &RetrievalSession, mut result: SearchResult) -> SearchResult {
+    if let Some(hint) = maybe_migration_hint(session, &result.records) {
+        result.diagnostics.push(hint);
+    }
+    result
+}
+
+fn maybe_migration_hint(
+    session: &RetrievalSession,
+    records: &[RetrievalRecord],
+) -> Option<Diagnostic> {
+    let graph = session.graph_session();
+    if records.is_empty() && graph.knowledge_object_count() == 0 && graph.prose_block_count() >= 1 {
+        Some(Diagnostic::warning(
+            DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration,
+            "no Knowledge Objects found; consider migrating .md files to .adoc or wait for `adoc migrate` (V4.5+)",
+        ))
+    } else {
+        None
+    }
+}
+
+fn search_hybrid_impl(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
     let Some(vector_index) = session.vector_index() else {
-        return search_lexical(session, query);
+        return search_lexical_impl(session, query);
     };
     if query.query_vector.is_none() {
         return missing_query_vector_result(SearchMode::Hybrid);
@@ -354,7 +392,7 @@ fn search_hybrid(session: &RetrievalSession, query: SearchQuery) -> SearchResult
     }
 }
 
-fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
+fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
     let Some(index) = session.vector_index() else {
         return SearchResult {
             records: Vec::new(),
@@ -460,7 +498,7 @@ fn missing_query_vector_result(mode: SearchMode) -> SearchResult {
     }
 }
 
-fn search_lexical(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
+fn search_lexical_impl(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
     let candidates = match SearchScope::resolve(session, &query.filters) {
         Ok(scope) => scope.metadata_and_graph_candidates(session, &query.filters),
         Err(diagnostics) => {

@@ -254,6 +254,26 @@ fn stdio_server_runs_documented_mcp_agent_gateway_quickstart() {
         "adoc.patch.check.v0"
     );
     assert_eq!(structured_content(&patch)["valid"], true);
+
+    // V4.3: the compat guide must be served via stdio.
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "resources/read",
+        "params": { "uri": "adoc://agent/v0/compat-guide" }
+    }));
+    let compat_guide = server.receive();
+    assert_eq!(compat_guide["id"], 9);
+    assert!(
+        compat_guide.get("error").is_none(),
+        "compat-guide response: {compat_guide:#?}"
+    );
+    let compat_text = compat_guide["result"]["contents"][0]["text"]
+        .as_str()
+        .expect("compat-guide text");
+    assert!(compat_text.starts_with("# "));
+    assert!(compat_text.contains("Compatibility Mode"));
+    assert!(compat_text.contains("retrieval.no_knowledge_objects_consider_migration"));
 }
 
 /// V3.6 acceptance: the stdio server, given a 2-commit git fixture project,

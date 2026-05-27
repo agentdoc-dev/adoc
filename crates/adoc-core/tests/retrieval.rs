@@ -1792,3 +1792,211 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
         Some("billing.duplicate")
     );
 }
+
+// ---------------------------------------------------------------------------
+// V4.3 migration-hint diagnostic
+// ---------------------------------------------------------------------------
+
+fn prose_only_graph_artifact(prose_blocks: usize) -> tempfile::NamedTempFile {
+    let mut nodes: Vec<Value> = Vec::with_capacity(1 + prose_blocks);
+    nodes.push(json!({
+        "type": "page",
+        "id": "compat.page",
+        "order": 0,
+        "title": "Compat Page",
+        "source_path": "docs/compat.md"
+    }));
+    for index in 0..prose_blocks {
+        nodes.push(json!({
+            "type": "paragraph",
+            "id": format!("compat.page#p{}", index),
+            "page_id": "compat.page",
+            "order": index as u32,
+            "text": "Markdown prose lives here.",
+            "source_span": {
+                "path": "docs/compat.md",
+                "line": (index + 1) as u32,
+                "column": 1
+            }
+        }));
+    }
+    let document = json!({
+        "schema_version": "adoc.graph.v2",
+        "nodes": nodes,
+        "edges": [],
+        "diagnostics": []
+    });
+    write_temp_artifact(
+        "prose-only",
+        &serde_json::to_string_pretty(&document).expect("prose-only fixture serializes"),
+    )
+}
+
+fn empty_graph_artifact() -> tempfile::NamedTempFile {
+    let document = json!({
+        "schema_version": "adoc.graph.v2",
+        "nodes": [],
+        "edges": [],
+        "diagnostics": []
+    });
+    write_temp_artifact(
+        "empty-graph",
+        &serde_json::to_string_pretty(&document).expect("empty graph fixture serializes"),
+    )
+}
+
+fn load_prose_only_session(prose_blocks: usize) -> RetrievalSession {
+    let artifact = prose_only_graph_artifact(prose_blocks);
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
+    });
+    assert!(
+        result.diagnostics.is_empty(),
+        "prose-only fixture should load cleanly, got {:?}",
+        result.diagnostics
+    );
+    result.session.expect("prose-only session loads")
+}
+
+fn load_empty_graph_session() -> RetrievalSession {
+    let artifact = empty_graph_artifact();
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
+    });
+    assert!(
+        result.diagnostics.is_empty(),
+        "empty-graph fixture should load cleanly, got {:?}",
+        result.diagnostics
+    );
+    result.session.expect("empty-graph session loads")
+}
+
+#[test]
+fn lexical_search_emits_migration_hint_when_only_prose_blocks() {
+    let session = load_prose_only_session(2);
+
+    let result = search(
+        &session,
+        lexical_query("refund", 10, SearchFilters::default()),
+    );
+
+    assert!(result.records.is_empty());
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration
+    );
+    assert!(
+        result.diagnostics[0].message.contains("Knowledge Objects"),
+        "diagnostic message should reference Knowledge Objects, got {:?}",
+        result.diagnostics[0].message
+    );
+}
+
+#[test]
+fn empty_query_lexical_search_emits_migration_hint_for_prose_only_project() {
+    // Per the V4.3 "skip empty-query short-circuit" decision, the empty-query
+    // branch should still emit the hint when the graph holds prose-only nodes.
+    let session = load_prose_only_session(1);
+
+    let result = search(&session, lexical_query("", 10, SearchFilters::default()));
+
+    assert!(result.records.is_empty());
+    assert_eq!(result.diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration
+    );
+}
+
+#[test]
+fn hybrid_search_falls_back_to_lexical_and_emits_single_migration_hint() {
+    // No search artifact ⇒ hybrid falls through to lexical via `_impl`.
+    // The hint must fire exactly once (no double-emission across fallback).
+    let session = load_prose_only_session(1);
+
+    let result = search(
+        &session,
+        hybrid_query("anything", vec![0.0; 4], 5, SearchFilters::default()),
+    );
+
+    assert!(result.records.is_empty());
+    assert_eq!(
+        result.diagnostics.len(),
+        1,
+        "hybrid→lexical fallback must not double-emit the migration hint"
+    );
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration
+    );
+}
+
+#[test]
+fn search_does_not_emit_migration_hint_when_kos_present() {
+    let session = load_session_from_objects(vec![retrieval_search_object(
+        "billing.credits",
+        "claim",
+        Some("draft"),
+        None,
+        "docs/billing.adoc",
+        "Credits apply after payment.",
+    )]);
+
+    // Query that matches nothing in the body — records will be empty but a KO
+    // exists, so the hint must not fire.
+    let result = search(
+        &session,
+        lexical_query("zzz-no-match-zzz", 10, SearchFilters::default()),
+    );
+
+    assert!(result.records.is_empty());
+    assert!(
+        !result
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration),
+        "migration hint must not fire when Knowledge Objects exist, got {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn search_does_not_emit_migration_hint_for_empty_graph() {
+    let session = load_empty_graph_session();
+
+    let result = search(
+        &session,
+        lexical_query("anything", 10, SearchFilters::default()),
+    );
+
+    assert!(result.records.is_empty());
+    assert!(
+        result.diagnostics.is_empty(),
+        "migration hint must not fire for a fully empty graph, got {:?}",
+        result.diagnostics
+    );
+}
+
+#[test]
+fn migration_hint_appears_in_retrieval_envelope() {
+    let session = load_prose_only_session(1);
+    let result = search(
+        &session,
+        lexical_query("anything", 10, SearchFilters::default()),
+    );
+
+    let envelope: RetrievalEnvelope = result.into();
+    let value = serde_json::to_value(&envelope).expect("envelope serializes");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["records"].as_array().unwrap().len(), 0);
+    let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0]["code"],
+        "retrieval.no_knowledge_objects_consider_migration"
+    );
+    assert_eq!(diagnostics[0]["severity"], "warning");
+}

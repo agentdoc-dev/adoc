@@ -266,6 +266,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/project-status-guide",
         "adoc://agent/v0/dogfood-billing-pilot",
         "adoc://agent/v0/review-workflow",
+        "adoc://agent/v0/compat-guide",
         "adoc://agent/v0/schema/retrieval",
         "adoc://agent/v0/schema/graph-traversal",
         "adoc://agent/v0/schema/patch",
