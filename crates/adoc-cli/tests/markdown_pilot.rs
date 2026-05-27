@@ -1,18 +1,22 @@
-//! End-to-end test for the V4.1 + V4.2 Markdown Pilot seed.
+//! V4.4 end-to-end test for the Markdown Pilot.
 //!
-//! Validates the V4.1 + V4.2 acceptance contract from `docs/V4-DESIGN.md`:
-//! `adoc check examples/markdown-pilot/` exits 0 with exactly the expected
-//! warning set — two `compat.raw_html_quarantined`, one
-//! `compat.unsafe_link_dropped`, one `compat.unsafe_image_src_dropped`, and
-//! four `compat.unknown_extension` (one per unsupported construct), with
-//! zero errors. `adoc build` produces safe HTML (no live `<script>`, no
-//! `javascript:` href, no `data:` image src), renders GFM tables / task
-//! lists / strikethrough / footnotes natively, and a graph artifact whose
-//! nodes are restricted to `page` / prose types (no Knowledge Objects), per
-//! ADR-0023.
+//! Validates `examples/markdown-pilot/` against the full V4 acceptance
+//! contract from `docs/V4-DESIGN.md`:
 //!
-//! V4.4 grows this fixture set and the assertions in this file; V4.1 and
-//! V4.2 ship the seed.
+//! - V4.1: raw HTML quarantined, unsafe link/image schemes dropped, safe
+//!   HTML rendered, prose-only graph nodes for `.md` source.
+//! - V4.2: GFM extensions rendered (tables, task lists, strikethrough,
+//!   footnotes); MDX/Pandoc/math/attribute-block constructs classified as
+//!   `compat.unknown_extension` and rendered as escaped code.
+//! - V4.3: `adoc search` over a `.md`-only project emits the migration
+//!   hint inside the existing `adoc.retrieval.v0` envelope.
+//! - V4.4: full-pilot acceptance over 15 `.md` + 2 `.adoc` files at
+//!   `examples/markdown-pilot/`, exact-match diagnostic and node counts,
+//!   plus mixed-mode `adoc diff` / `adoc review` behavior against a git
+//!   fixture carrying both file kinds.
+//!
+//! Mode boundary (ADR-0022): `.md` files run under Compatibility Mode,
+//! `.adoc` files under Strict Mode, in one combined pipeline.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -34,8 +38,23 @@ fn repo_root() -> PathBuf {
 
 const PILOT_PATH: &str = "examples/markdown-pilot/";
 
+/// V4.1 + V4.2 + V4.4 acceptance: `adoc check` over the full pilot exits
+/// 0 with the exact compat-warning budget published in
+/// `docs/markdown-pilot.md`.
+///
+/// Diagnostic budget:
+/// - 2 × `compat.raw_html_quarantined` (one `<div>` + one `<script>` in
+///   `runbooks/incident-response.md`)
+/// - 1 × `compat.unsafe_link_dropped` (`javascript:` link in
+///   `runbooks/on-call-rotation.md`)
+/// - 1 × `compat.unsafe_image_src_dropped` (`data:` image src in
+///   `tutorials/deploying.md`)
+/// - 4 × `compat.unknown_extension` (MDX + Pandoc in
+///   `tutorials/troubleshooting.md`, display math in
+///   `reference/glossary-notes.md`, attribute block in
+///   `reference/architecture-notes.md`)
 #[test]
-fn markdown_pilot_v4_1_seed_checks_with_expected_diagnostic_set() {
+fn markdown_pilot_check_emits_exact_diagnostic_budget() {
     let repo_root = repo_root();
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&repo_root)
@@ -45,7 +64,7 @@ fn markdown_pilot_v4_1_seed_checks_with_expected_diagnostic_set() {
 
     assert!(
         output.status.success(),
-        "V4.1 seed must check with exit code 0 (warnings do not fail check)\nstdout:\n{}\nstderr:\n{}",
+        "pilot must check with exit code 0 (compat warnings do not fail check)\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -65,24 +84,23 @@ fn markdown_pilot_v4_1_seed_checks_with_expected_diagnostic_set() {
 
     assert_eq!(
         raw_html_count, 2,
-        "expected two compat.raw_html_quarantined warnings (one per raw HTML block in raw-html.md)\nstdout:\n{stdout}"
+        "expected two compat.raw_html_quarantined warnings\nstdout:\n{stdout}"
     );
     assert_eq!(
         unsafe_link_count, 1,
-        "expected one compat.unsafe_link_dropped warning (javascript-link.md)\nstdout:\n{stdout}"
+        "expected one compat.unsafe_link_dropped warning\nstdout:\n{stdout}"
     );
     assert_eq!(
         unsafe_image_count, 1,
-        "expected one compat.unsafe_image_src_dropped warning (data-image.md)\nstdout:\n{stdout}"
+        "expected one compat.unsafe_image_src_dropped warning\nstdout:\n{stdout}"
     );
-    // V4.2: one diagnostic per unsupported construct — MDX, Pandoc, math, attr block.
     assert_eq!(
         unknown_extension_count, 4,
-        "expected four compat.unknown_extension warnings (unknown-mdx.md, unknown-pandoc.md, unknown-math.md, unknown-attr-block.md)\nstdout:\n{stdout}"
+        "expected four compat.unknown_extension warnings (MDX, Pandoc, display math, attribute block)\nstdout:\n{stdout}"
     );
     assert_eq!(
         error_count, 0,
-        "V4.1 + V4.2 must produce zero errors over the seed\nstdout:\n{stdout}"
+        "pilot must produce zero errors (mixed-mode .adoc files are strict-valid)\nstdout:\n{stdout}"
     );
     assert!(
         stdout.contains("0 errors, 8 warnings"),
@@ -90,10 +108,14 @@ fn markdown_pilot_v4_1_seed_checks_with_expected_diagnostic_set() {
     );
 }
 
+/// V4.1 + V4.2 + V4.4 acceptance: `adoc build` over the full pilot
+/// produces safe HTML and a graph artifact carrying both `.md` page
+/// nodes and `.adoc` Knowledge Object nodes (mixed-mode dispatch per
+/// ADR-0022).
 #[test]
-fn markdown_pilot_v4_1_seed_builds_safe_html_and_prose_only_graph() {
+fn markdown_pilot_build_emits_safe_html_and_mixed_graph() {
     let repo_root = repo_root();
-    let workspace = TestWorkspace::new("markdown-pilot-v4-1-build");
+    let workspace = TestWorkspace::new("markdown-pilot-build");
     let output_directory = workspace.root.join("dist");
     let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .current_dir(&repo_root)
@@ -111,27 +133,28 @@ fn markdown_pilot_v4_1_seed_builds_safe_html_and_prose_only_graph() {
 
     assert!(
         build_output.status.success(),
-        "expected V4.1 seed to build cleanly\nstdout:\n{}\nstderr:\n{}",
+        "expected pilot to build cleanly\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&build_output.stdout),
         String::from_utf8_lossy(&build_output.stderr)
     );
 
-    let html = std::fs::read_to_string(output_directory.join("docs.html"))
-        .expect("V4.1 seed HTML is written");
+    // --- HTML safety + GFM rendering ---
+    let html =
+        std::fs::read_to_string(output_directory.join("docs.html")).expect("pilot HTML is written");
 
     let quarantine_wrappers = html.matches(r#"<pre class="quarantined-html">"#).count();
     assert_eq!(
         quarantine_wrappers, 2,
-        "expected two block-level quarantine wrappers, one per raw HTML block"
+        "expected two block-level quarantine wrappers (one per raw HTML block in incident-response.md)"
     );
     assert!(
-        html.contains("&lt;div&gt;"),
+        html.contains("&lt;div"),
         "raw <div> markup must be present as escaped text inside the quarantine wrapper"
     );
     assert!(
         !html.contains(
             r#"<script>
-  // Inline scripts"#
+  // Legacy"#
         ),
         "raw <script> from the fixture must never reach the rendered HTML uninterpreted"
     );
@@ -144,78 +167,116 @@ fn markdown_pilot_v4_1_seed_builds_safe_html_and_prose_only_graph() {
         "no live data: image src may appear in the rendered HTML"
     );
 
-    // V4.2 GFM markers: table, task list checkboxes, strikethrough, footnote.
     assert!(
         html.contains(r#"<table class="adoc-table">"#),
-        "expected GFM table to render as <table>; got HTML lacking <table>"
+        "expected GFM tables to render as <table> (auth.md scopes, on-call-rotation.md rotation)"
     );
     assert!(
         html.contains(r#"<input type="checkbox" disabled checked"#),
-        "expected GFM task list checked items to render as <input type=\"checkbox\">"
+        "expected webhooks.md task list checked items to render as <input type=\"checkbox\">"
     );
     assert!(
         html.contains(r#"<del>"#),
-        "expected GFM strikethrough to render as <del>"
+        "expected GFM strikethrough (`X-RateLimit-Quota`, `legacy.unknown`) to render as <del>"
     );
     assert!(
         html.contains(r#"<aside class="adoc-footnote""#),
-        "expected GFM footnote definition to render as <aside>"
+        "expected webhooks.md footnote definition to render as <aside>"
     );
 
-    // V4.2 UnknownExtension markers: MDX, Pandoc, math, attribute-block all
-    // render the source text as escaped <code> via the unknown-extension
-    // wrapper. The renderer never executes the original markup.
     let unknown_block_wrappers = html.matches(r#"class="adoc-unknown-extension""#).count();
     assert!(
         unknown_block_wrappers >= 4,
-        "expected at least four adoc-unknown-extension wrappers (MDX, Pandoc, math, attribute block); got {unknown_block_wrappers}"
+        "expected at least four adoc-unknown-extension wrappers (MDX, Pandoc, display math, attribute block); got {unknown_block_wrappers}"
     );
     assert!(
         !html.contains("<DashboardWidget"),
         "MDX component tag must be quarantined as escaped text, never reach raw HTML"
     );
 
+    // --- Graph artifact: mixed-mode page + KO nodes ---
     let graph_text = std::fs::read_to_string(output_directory.join("docs.graph.json"))
-        .expect("V4.1 + V4.2 seed graph JSON is written");
+        .expect("pilot graph JSON is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph JSON is valid");
     assert_eq!(graph["schema_version"], "adoc.graph.v2");
 
     let nodes = graph["nodes"]
         .as_array()
         .expect("graph JSON nodes is an array");
-    let knowledge_objects = nodes
-        .iter()
-        .filter(|node| node["type"] == "knowledge_object")
-        .count();
-    assert_eq!(
-        knowledge_objects, 0,
-        "Markdown source must never produce Knowledge Object nodes per ADR-0023"
-    );
 
     let page_count = nodes.iter().filter(|node| node["type"] == "page").count();
     assert_eq!(
-        page_count, 13,
-        "expected thirteen page nodes (5 V4.1 + 8 V4.2 fixtures)"
+        page_count, 17,
+        "expected seventeen page nodes (15 .md + 2 .adoc)"
     );
+
+    let knowledge_objects: Vec<&Value> = nodes
+        .iter()
+        .filter(|node| node["type"] == "knowledge_object")
+        .collect();
+    assert_eq!(
+        knowledge_objects.len(),
+        6,
+        "expected six Knowledge Object nodes (4 claims + 2 decisions from knowledge/*.adoc)"
+    );
+
+    let claim_count = knowledge_objects
+        .iter()
+        .filter(|object| object["kind"] == "claim")
+        .count();
+    let decision_count = knowledge_objects
+        .iter()
+        .filter(|object| object["kind"] == "decision")
+        .count();
+    assert_eq!(claim_count, 4, "expected four claim KOs");
+    assert_eq!(decision_count, 2, "expected two decision KOs");
+
+    let pilot_verified_claim_ids = [
+        "billing.refunds.issue-credit",
+        "billing.refunds.audit-required",
+        "billing.settlement.posts-once",
+        "billing.webhooks.signature-required",
+    ];
+    for expected_id in pilot_verified_claim_ids {
+        let claim = knowledge_objects
+            .iter()
+            .find(|object| object["id"] == expected_id)
+            .unwrap_or_else(|| panic!("expected verified claim {expected_id} in graph"));
+        assert_eq!(
+            claim["status"], "verified",
+            "{expected_id} must be verified for diff/review obligation coverage"
+        );
+    }
 }
 
-/// V4.3 acceptance: `adoc search` over a project containing only `.md` files
-/// exits 0 with empty `records[]` and exactly one
-/// `retrieval.no_knowledge_objects_consider_migration` diagnostic. The hint
-/// rides inside the existing `adoc.retrieval.v0.diagnostics[]` array — schema
-/// version unchanged.
+/// V4.3 acceptance: `adoc search` over a `.md`-only project returns an
+/// empty result set with exactly one
+/// `retrieval.no_knowledge_objects_consider_migration` diagnostic riding
+/// inside the existing `adoc.retrieval.v0.diagnostics[]` array. The full
+/// mixed-mode pilot has Knowledge Objects, so the hint sub-test uses a
+/// dedicated `.md`-only TestWorkspace fixture.
 #[test]
-fn markdown_pilot_v4_3_search_emits_migration_hint_for_prose_only_project() {
-    let repo_root = repo_root();
-    let workspace = TestWorkspace::new("markdown-pilot-v4-3-search");
-    let output_directory = workspace.root.join("dist");
+fn markdown_pilot_search_emits_migration_hint_for_md_only_project() {
+    let workspace = TestWorkspace::new("markdown-pilot-md-only-search");
+    workspace.write(
+        "pages/intro.md",
+        "# Intro\n\nA short prose introduction with no Knowledge Objects.\n",
+    );
+    workspace.write(
+        "pages/usage.md",
+        "# Usage\n\nFollow the standard onboarding steps; no KOs here either.\n",
+    );
 
+    let output_directory = workspace.root.join("dist");
+    // Build from the workspace root (not `pages/`) so the path-derived
+    // page IDs include the `pages.` prefix and satisfy the two-segment
+    // Object ID grammar (`pages.intro`, `pages.usage`).
     let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
-        .current_dir(&repo_root)
+        .current_dir(&workspace.root)
         .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
         .args([
             "build",
-            PILOT_PATH,
+            ".",
             "--out",
             output_directory
                 .to_str()
@@ -225,7 +286,7 @@ fn markdown_pilot_v4_3_search_emits_migration_hint_for_prose_only_project() {
         .expect("adoc build runs");
     assert!(
         build_output.status.success(),
-        "V4.3 search test prerequisite (build) must succeed\nstderr:\n{}",
+        "search-hint test prerequisite (build) must succeed\nstderr:\n{}",
         String::from_utf8_lossy(&build_output.stderr)
     );
 
@@ -247,7 +308,7 @@ fn markdown_pilot_v4_3_search_emits_migration_hint_for_prose_only_project() {
 
     assert!(
         search_output.status.success(),
-        "V4.3 search must exit 0 over a .md-only project (the hint is a warning, not an error)\nstdout:\n{}\nstderr:\n{}",
+        "search over a .md-only project must exit 0 (the hint is a warning)\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&search_output.stdout),
         String::from_utf8_lossy(&search_output.stderr)
     );
@@ -258,7 +319,7 @@ fn markdown_pilot_v4_3_search_emits_migration_hint_for_prose_only_project() {
     let records = envelope["records"].as_array().expect("records is an array");
     assert!(
         records.is_empty(),
-        "Markdown-only project must return zero records, got {records:?}"
+        ".md-only project must return zero records, got {records:?}"
     );
 
     let diagnostics = envelope["diagnostics"]
@@ -281,5 +342,169 @@ fn markdown_pilot_v4_3_search_emits_migration_hint_for_prose_only_project() {
             .contains("Knowledge Objects"),
         "expected migration-hint message to mention Knowledge Objects, got {:?}",
         migration_hints[0]["message"]
+    );
+}
+
+/// V4.4 acceptance: `adoc diff` and `adoc review` operate cleanly over a
+/// mixed-mode pilot (one `.md` page carrying compat-warning constructs,
+/// one `.adoc` file carrying a verified claim). A body change on the
+/// verified claim must produce exactly one Changed Object Change in the
+/// diff envelope and at least one proof obligation (re-verify) in the
+/// review envelope. The `.md` sibling proves the V3 surface does not
+/// trip on Compatibility-Mode pages — they contribute prose to the
+/// graph but no Knowledge Objects, so diff/review treat them as inert.
+#[test]
+fn markdown_pilot_diff_and_review_handle_mixed_mode_change() {
+    let workspace = TestWorkspace::new("markdown-pilot-mixed-diff-review");
+    git_init_fixture(&workspace);
+
+    let base_adoc = concat!(
+        "# Pilot Billing @doc(pilot.billing.claims)\n",
+        "\n",
+        "::claim pilot.refunds.issue-credit\n",
+        "status: verified\n",
+        "owner: team-billing\n",
+        "verified_at: 2026-05-12\n",
+        "source: refund service production trace 2026-05-10\n",
+        "test: cargo test refund_issue_credit_records_ledger_entry\n",
+        "reviewed_by: qa-billing\n",
+        "--\n",
+        "Refund operators issue account credit only after the refund workflow writes its audit record.\n",
+        "::\n",
+    );
+    let prose_md = concat!(
+        "# Refund Reference\n",
+        "\n",
+        "Refunds settle within five business days. See the verified claim\n",
+        "for the canonical audit-trail contract.\n",
+    );
+    workspace.write("knowledge/billing.adoc", base_adoc);
+    workspace.write("api/refunds.md", prose_md);
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "base pilot"]);
+
+    run_git(&workspace, &["checkout", "-b", "feature"]);
+    let head_adoc = base_adoc.replace(
+        "Refund operators issue account credit only after the refund workflow writes its audit record.",
+        "Refund operators issue account credit only after the refund workflow writes its audit record AND finance reviews the credit memo.",
+    );
+    workspace.write("knowledge/billing.adoc", &head_adoc);
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "head: tighten refund body"]);
+
+    // --- adoc diff: exactly one Changed entry, no created/deleted ---
+    let diff_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+        .args(["diff", "main", "--format", "json"])
+        .output()
+        .expect("adoc diff runs");
+    assert!(
+        diff_output.status.success(),
+        "adoc diff must succeed on mixed-mode fixture\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&diff_output.stdout),
+        String::from_utf8_lossy(&diff_output.stderr)
+    );
+    let diff_envelope: Value =
+        serde_json::from_slice(&diff_output.stdout).expect("diff stdout is JSON");
+    assert_eq!(diff_envelope["schema_version"], "adoc.diff.v0");
+    assert_eq!(
+        diff_envelope["created"]
+            .as_array()
+            .expect("created array")
+            .len(),
+        0,
+        "mixed-mode body change must not produce created entries"
+    );
+    assert_eq!(
+        diff_envelope["deleted"]
+            .as_array()
+            .expect("deleted array")
+            .len(),
+        0,
+        "mixed-mode body change must not produce deleted entries"
+    );
+    let changed = diff_envelope["changed"].as_array().expect("changed array");
+    assert_eq!(
+        changed.len(),
+        1,
+        "expected exactly one Changed entry for the body edit on pilot.refunds.issue-credit, got: {changed:#?}"
+    );
+    assert_eq!(changed[0]["id"], "pilot.refunds.issue-credit");
+    let field_changes = changed[0]["field_changes"]
+        .as_array()
+        .expect("field_changes array present on body-edit");
+    assert_eq!(
+        field_changes.len(),
+        1,
+        "expected exactly one field_change (body) for the verified-claim body edit"
+    );
+    assert_eq!(field_changes[0]["type"], "body");
+
+    // --- adoc review: well-formed envelope, body change triggers
+    // re-verify obligation on the verified claim ---
+    let review_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+    assert!(
+        review_output.status.success(),
+        "adoc review must succeed on mixed-mode fixture\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&review_output.stdout),
+        String::from_utf8_lossy(&review_output.stderr)
+    );
+    let review_envelope: Value =
+        serde_json::from_slice(&review_output.stdout).expect("review stdout is JSON");
+    assert_eq!(review_envelope["schema_version"], "adoc.review.v0");
+
+    let obligations = review_envelope["proof_obligations"]
+        .as_array()
+        .expect("review envelope carries proof_obligations array");
+    let reverify_obligations: Vec<&Value> = obligations
+        .iter()
+        .filter(|o| o["object_id"] == "pilot.refunds.issue-credit")
+        .collect();
+    assert!(
+        !reverify_obligations.is_empty(),
+        "expected at least one proof obligation on the modified verified claim, got: {obligations:#?}"
+    );
+}
+
+/// Init a temp git repository for the mixed-mode diff/review fixture.
+/// Mirrors the env-var scrubbing pattern from `diff_cli.rs` so prek and
+/// other hooks running inside an outer git context do not lock the
+/// per-fixture tempdir.
+fn git_init_fixture(workspace: &TestWorkspace) {
+    run_git(workspace, &["init", "--initial-branch=main"]);
+    run_git(workspace, &["config", "user.email", "test@adoc.dev"]);
+    run_git(workspace, &["config", "user.name", "adoc tests"]);
+    run_git(workspace, &["config", "commit.gpgsign", "false"]);
+}
+
+fn run_git(workspace: &TestWorkspace, args: &[&str]) {
+    let mut command = Command::new("git");
+    command.args(args).current_dir(&workspace.root);
+    for var in [
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_WORK_TREE",
+        "GIT_NAMESPACE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_COMMON_DIR",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+    ] {
+        command.env_remove(var);
+    }
+    let output = command
+        .output()
+        .unwrap_or_else(|error| panic!("git {args:?} should spawn: {error}"));
+    assert!(
+        output.status.success(),
+        "git {args:?} should succeed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
 }

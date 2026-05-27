@@ -1,0 +1,21 @@
+# Pilot Billing Decisions @doc(pilot.billing.decisions)
+
+Architecture decisions that anchor the verified claims in
+[[billing.refunds.issue-credit]] and [[billing.settlement.posts-once]].
+
+::decision billing.decision.ledger-first
+status: accepted
+decided_by: billing-architecture
+owner: team-billing
+--
+All balance-changing payment workflows write ledger entries before exposing customer-visible credit or refund state.
+::
+
+::decision billing.decision.refunds-credit
+status: accepted
+decided_by: billing-architecture
+owner: team-billing
+depends_on: [billing.refunds.audit-required, billing.decision.ledger-first]
+--
+Refund workflows issue account credit through the ledger-first path so agents can cite [[billing.refunds.issue-credit]] when explaining customer balances.
+::
