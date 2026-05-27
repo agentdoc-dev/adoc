@@ -1,9 +1,10 @@
-use crate::domain::ast::{BlockAst, PageAst};
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::ast::PageAst;
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::inline::InlineSegment;
 use crate::domain::rules::ValidationRule;
 use crate::domain::source::SourceFile;
-use crate::domain::url_safety::is_url_safe;
+use crate::domain::url_safety::verdict;
+use crate::infrastructure::validate::url_walker::{UrlVisitor, walk_page};
 
 /// Compat-mode rule that warns when a Markdown image embed uses an unsafe
 /// URL scheme. The renderer drops the `src` attribute and keeps the alt text
@@ -12,75 +13,29 @@ pub(crate) struct UnsafeImageSrcDropped;
 
 impl ValidationRule for UnsafeImageSrcDropped {
     fn check(&self, page: &PageAst, _source: &SourceFile, sink: &mut Vec<Diagnostic>) {
-        for block in &page.blocks {
-            walk_block(block, sink);
-        }
+        let mut visitor = ImageVisitor { sink };
+        walk_page(page, &mut visitor);
     }
 }
 
-fn walk_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
-    match block {
-        BlockAst::Heading(heading) => walk_inlines(&heading.inlines, sink),
-        BlockAst::Paragraph(paragraph) => walk_inlines(&paragraph.inlines, sink),
-        BlockAst::List(list) => {
-            for item in &list.items {
-                walk_inlines(&item.inlines, sink);
-            }
-        }
-        BlockAst::Table(table) => {
-            for cell in &table.header {
-                walk_inlines(&cell.inlines, sink);
-            }
-            for row in &table.rows {
-                for cell in row {
-                    walk_inlines(&cell.inlines, sink);
-                }
-            }
-        }
-        BlockAst::FootnoteDefinition(footnote) => {
-            for child in &footnote.content {
-                walk_block(child, sink);
-            }
-        }
-        BlockAst::CodeBlock(_)
-        | BlockAst::QuarantinedHtml(_)
-        | BlockAst::KnowledgeObject(_)
-        | BlockAst::KnowledgeObjectPending(_)
-        | BlockAst::UnknownExtension(_) => {}
-    }
+struct ImageVisitor<'a> {
+    sink: &'a mut Vec<Diagnostic>,
 }
 
-fn walk_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic>) {
-    for segment in inlines {
-        match segment {
-            InlineSegment::Image { alt, url, span } => {
-                if !is_url_safe(url) {
-                    sink.push(
-                        Diagnostic::warning(
-                            DiagnosticCode::CompatUnsafeImageSrcDropped,
-                            format!(
-                                "Image src `{url}` uses an unsafe scheme; the src will be dropped from the rendered HTML."
-                            ),
-                        )
-                        .with_span(span.clone()),
-                    );
-                }
-                walk_inlines(alt, sink);
-            }
-            InlineSegment::Emphasis(inner)
-            | InlineSegment::Strong(inner)
-            | InlineSegment::Strikethrough(inner) => {
-                walk_inlines(inner, sink);
-            }
-            InlineSegment::Link { text, .. } => walk_inlines(text, sink),
-            InlineSegment::Text(_)
-            | InlineSegment::Code(_)
-            | InlineSegment::ObjectReference { .. }
-            | InlineSegment::ObjectReferencePending { .. }
-            | InlineSegment::QuarantinedHtml { .. }
-            | InlineSegment::FootnoteReference { .. }
-            | InlineSegment::UnknownExtension { .. } => {}
+impl UrlVisitor for ImageVisitor<'_> {
+    fn on_image(&mut self, _alt: &[InlineSegment], url: &str, span: &SourceSpan) {
+        if verdict(url).is_safe() {
+            return;
         }
+        self.sink.push(
+            Diagnostic::warning(
+                DiagnosticCode::CompatUnsafeImageSrcDropped,
+                format!(
+                    "Image src `{url}` uses an unsafe scheme; the src will be dropped from the rendered HTML."
+                ),
+            )
+            .with_span(span.clone()),
+        );
     }
 }
 
