@@ -45,3 +45,7 @@ The Markdown Pilot (V4.4) gates this invariant: any change that produces Knowled
 This decision makes Compatibility Mode a strictly weaker contract than Strict Mode at the knowledge layer. Authors gain ingestion (their `.md` content compiles, renders, and is path-addressable); they do not gain knowledge representation. That is the right pressure for adoption: teams that want their knowledge to participate in citations, diff, review, and patch validation must move it to `.adoc`.
 
 If product evidence later supports auto-typing — for example, a measured rate of successful manual confirmation of inferred claims — it lands as an opt-in flag with its own ADR, never as silent default behavior.
+
+## Addendum: the warning-only invariant is enforced by types
+
+The original decision recorded "Compat rules emit `Severity::Warning` only — never `Severity::Error`" as a per-rule discipline. Compat rules now implement `CompatRule` (sibling of `ValidationRule` in `domain/rules/mod.rs`) whose sink type is `CompatDiagnostic` — a newtype over `Diagnostic` whose only constructor is `warning(code, message)`. There is no `CompatDiagnostic::error` and no `From<Diagnostic>` impl, so a future commit that tries to raise a compat code to `Error` is a type error at the rule, not a code-review catch. The compat registry in `infrastructure/validate/compat/mod.rs` unwraps once via `CompatDiagnostic::into_diagnostic` at the seam between compat-only rules and the unified diagnostic stream.
