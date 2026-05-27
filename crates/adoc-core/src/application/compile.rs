@@ -12,7 +12,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::ports::artifact_writer::ArtifactWriter;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
-use crate::domain::source::{SourceFile, SourceMode, source_mode};
+use crate::domain::source::{SourceFile, SourceMode};
 use crate::infrastructure::artifact::GraphJsonArtifact;
 use crate::infrastructure::parser::{parse_markdown_page, parse_page};
 use crate::infrastructure::render::HtmlRenderer;
@@ -116,14 +116,13 @@ fn run_compile_pipeline<P: SourceProvider>(
     // sequence of named domain operations rather than one walls-of-text loop.
     // Pages move through the pipeline without cloning. See ADR-0006 addendum.
     //
-    // V4 threads a `SourceMode` per parsed source so the validators dispatch
-    // between strict and compatibility rule sets. Knowledge Object resolution
-    // is mode-agnostic — Markdown sources produce no `KnowledgeObjectPending`
-    // blocks, so the resolver is a no-op for them — and operates on the
-    // 2-tuple shape it always has.
-    let (parsed_with_mode, mut diagnostics) = load_pages(provider);
-    diagnostics.extend(validate_source_pages(&parsed_with_mode));
-    let mut parsed = strip_modes(parsed_with_mode);
+    // V4 stores `SourceMode` on each `SourceFile` at the SourceProvider
+    // boundary (ADR-0022) so the validators dispatch between strict and
+    // compatibility rule sets without re-deriving from the path. Knowledge
+    // Object resolution is mode-agnostic — Markdown sources produce no
+    // `KnowledgeObjectPending` blocks, so the resolver is a no-op for them.
+    let (mut parsed, mut diagnostics) = load_pages(provider);
+    diagnostics.extend(validate_source_pages(&parsed));
     suppress_unknown_kind_shape_diagnostics(&parsed, &mut diagnostics);
     let resolved_knowledge_objects = resolve_knowledge_objects(&mut parsed);
     diagnostics.extend(resolved_knowledge_objects.diagnostics);
@@ -131,9 +130,8 @@ fn run_compile_pipeline<P: SourceProvider>(
         &mut parsed,
         &resolved_knowledge_objects.declared_ids,
     ));
-    let parsed_with_mode = attach_modes(parsed);
-    diagnostics.extend(validate_resolved_pages(&parsed_with_mode, today));
-    let workspace = assemble_workspace_with_mode(parsed_with_mode);
+    diagnostics.extend(validate_resolved_pages(&parsed, today));
+    let workspace = assemble_workspace(parsed);
     diagnostics.extend(validate_workspace(&workspace));
     if let Some(options) = &build_options {
         diagnostics.extend(build_embedding_diagnostics(options));
@@ -168,46 +166,28 @@ fn build_embedding_diagnostics(options: &BuildOptions<'_>) -> Vec<Diagnostic> {
 
 /// Load every source the provider yields, parse each successfully-loaded one
 /// into a `PageAst`, and translate load failures into I/O diagnostics. Returns
-/// `(source, page, mode)` triples for downstream validation plus the parse-time
-/// and load-time diagnostics in source order. The mode is determined purely
-/// by file extension per ADR-0022.
-fn load_pages<P: SourceProvider>(
-    provider: &P,
-) -> (Vec<(SourceFile, PageAst, SourceMode)>, Vec<Diagnostic>) {
+/// `(source, page)` pairs for downstream validation plus the parse-time and
+/// load-time diagnostics in source order. The parser is dispatched by
+/// `source.mode()` — Strict for `.adoc`, Compat for `.md` per ADR-0022 — and
+/// the mode is carried along on the source itself so downstream stages never
+/// re-derive it.
+fn load_pages<P: SourceProvider>(provider: &P) -> (Vec<(SourceFile, PageAst)>, Vec<Diagnostic>) {
     let mut parsed = Vec::new();
     let mut diagnostics = Vec::new();
     for result in provider.load_sources() {
         match result {
             Ok(source) => {
-                let mode = source_mode(&source);
-                let (page, parse_diagnostics) = match mode {
+                let (page, parse_diagnostics) = match source.mode() {
                     SourceMode::Strict => parse_page(&source),
                     SourceMode::Compat => parse_markdown_page(&source),
                 };
                 diagnostics.extend(parse_diagnostics);
-                parsed.push((source, page, mode));
+                parsed.push((source, page));
             }
             Err(load_error) => diagnostics.push(load_error_diagnostic(load_error)),
         }
     }
     (parsed, diagnostics)
-}
-
-fn strip_modes(parsed: Vec<(SourceFile, PageAst, SourceMode)>) -> Vec<(SourceFile, PageAst)> {
-    parsed
-        .into_iter()
-        .map(|(source, page, _mode)| (source, page))
-        .collect()
-}
-
-fn attach_modes(parsed: Vec<(SourceFile, PageAst)>) -> Vec<(SourceFile, PageAst, SourceMode)> {
-    parsed
-        .into_iter()
-        .map(|(source, page)| {
-            let mode = source_mode(&source);
-            (source, page, mode)
-        })
-        .collect()
 }
 
 fn load_error_diagnostic(load_error: SourceLoadError) -> Diagnostic {
@@ -238,14 +218,14 @@ fn load_error_diagnostic(load_error: SourceLoadError) -> Diagnostic {
     }
 }
 
-/// Run every source-page rule against the (source, page, mode) triples in
-/// order, dispatching by mode: strict rules for `.adoc`, compat rules for
+/// Run every source-page rule against the `(source, page)` pairs in order,
+/// dispatching by `source.mode()`: strict rules for `.adoc`, compat rules for
 /// `.md`. Markdown source never sees a strict-mode diagnostic and `.adoc`
 /// source never sees a compat-mode diagnostic.
-fn validate_source_pages(parsed: &[(SourceFile, PageAst, SourceMode)]) -> Vec<Diagnostic> {
+fn validate_source_pages(parsed: &[(SourceFile, PageAst)]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    for (source, page, mode) in parsed {
-        match mode {
+    for (source, page) in parsed {
+        match source.mode() {
             SourceMode::Strict => diagnostics.extend(validate_source_page(page, source)),
             SourceMode::Compat => diagnostics.extend(validate_compat_source_page(page, source)),
         }
@@ -255,30 +235,19 @@ fn validate_source_pages(parsed: &[(SourceFile, PageAst, SourceMode)]) -> Vec<Di
 
 /// Run every resolved-page rule after Knowledge Object resolution. Compat
 /// sources have no Knowledge Objects and no resolved-page diagnostics; the
-/// loop skips them.
-fn validate_resolved_pages(
-    parsed: &[(SourceFile, PageAst, SourceMode)],
-    today: NaiveDate,
-) -> Vec<Diagnostic> {
+/// loop skips them based on `source.mode()`.
+fn validate_resolved_pages(parsed: &[(SourceFile, PageAst)], today: NaiveDate) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    for (source, page, mode) in parsed {
-        if matches!(mode, SourceMode::Strict) {
+    for (source, page) in parsed {
+        if matches!(source.mode(), SourceMode::Strict) {
             diagnostics.extend(validate_resolved_page(page, source, today));
         }
     }
     diagnostics
 }
 
-/// Consume the (source, page, mode) triples into the final aggregate. Sources
-/// and modes are dropped here — they're no longer needed once per-page rules
-/// have run.
-fn assemble_workspace_with_mode(parsed: Vec<(SourceFile, PageAst, SourceMode)>) -> WorkspaceAst {
-    WorkspaceAst {
-        pages: parsed.into_iter().map(|(_, page, _)| page).collect(),
-    }
-}
-
-#[cfg(test)]
+/// Consume the `(source, page)` pairs into the final aggregate. Sources are
+/// dropped here — they're no longer needed once per-page rules have run.
 fn assemble_workspace(parsed: Vec<(SourceFile, PageAst)>) -> WorkspaceAst {
     WorkspaceAst {
         pages: parsed.into_iter().map(|(_, page)| page).collect(),
@@ -709,7 +678,7 @@ mod tests {
             .with_source(source_file("b.adoc", "# B\n"));
 
         let (parsed, _) = load_pages(&provider);
-        let workspace = assemble_workspace(strip_modes(parsed));
+        let workspace = assemble_workspace(parsed);
 
         assert_eq!(workspace.pages.len(), 2);
         assert_eq!(workspace.pages[0].title.as_deref(), Some("A"));
@@ -721,7 +690,7 @@ mod tests {
         let provider =
             InMemorySourceProvider::new().with_source(source_file("guide.adoc", "# Guide\n"));
         let (parsed, _) = load_pages(&provider);
-        let workspace = assemble_workspace(strip_modes(parsed));
+        let workspace = assemble_workspace(parsed);
 
         let artifacts = build_artifacts(&workspace, &[]);
 
@@ -778,8 +747,7 @@ mod tests {
             ),
         );
         let provider2 = InMemorySourceProvider::new().with_source(source);
-        let (parsed_with_mode, _) = load_pages(&provider2);
-        let mut parsed = strip_modes(parsed_with_mode);
+        let (mut parsed, _) = load_pages(&provider2);
         resolve_knowledge_objects(&mut parsed);
 
         let page = &parsed[0].1;
