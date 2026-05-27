@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::{fs, io};
 
 use crate::domain::ports::source_provider::{SourceLoadError, SourceProvider};
-use crate::domain::source::SourceFile;
+use crate::domain::source::{SOURCE_EXTENSIONS, SourceFile};
 
 /// Reads `.adoc` files from a directory tree (or a single file) on disk.
 ///
@@ -140,7 +140,7 @@ fn source_path_result_path(result: &Result<SourcePath, SourceLoadError>) -> &Pat
 fn is_source_path(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension == "adoc" || extension == "md")
+        .is_some_and(|extension| SOURCE_EXTENSIONS.contains(&extension))
 }
 
 #[cfg(test)]

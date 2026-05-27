@@ -272,12 +272,16 @@ _Avoid_: typed enum over branch/tag/sha, validating refs in the constructor
 The second validation mode, introduced in V4, that applies to **Markdown Source** only. Raw HTML and unsafe link/image schemes that are errors under **Strict Mode** become `Severity::Warning` diagnostics under Compatibility Mode. Mode is selected purely by file extension — `.md` files are parsed under Compatibility Mode, `.adoc` files stay under **Strict Mode**. See ADR-0022.
 _Avoid_: `--compat` flag on `.adoc`, project-wide compat toggle, third validation mode, runtime mode switching
 
+**Source Mode**:
+A property of a `SourceFile` set at the `SourceProvider` boundary from the file extension (ADR-0022): `Strict` for `.adoc`, `Compat` for `.md`. The classifier runs once during source construction; downstream pipeline stages read `source.mode()` instead of re-deriving from the path. Lives as `SourceMode` in `crates/adoc-core/src/domain/source.rs` alongside the `SOURCE_EXTENSIONS` discovery list, so adding a third extension is a single edit.
+_Avoid_: re-deriving mode from the path in application stages, threading mode through tuples alongside the source, classifying mode in adapter code
+
 **Markdown Source**:
 The `.md` files AgentDoc ingests in V4 **Compatibility Mode**. Parsed by the **Markdown Parser** into a Page AST populated only with prose blocks. Never produces **Knowledge Objects**, relations, references, or typed metadata — durable structure still requires `.adoc` typed blocks. See ADR-0023.
 _Avoid_: auto-typed claims from Markdown, inferred glossary terms from definition lists, Markdown as authoring source of truth
 
 **Markdown Parser**:
-The V4 parser for **Markdown Source**, wrapping `pulldown-cmark` with CommonMark and GFM feature flags. Lives at `crates/adoc-core/src/parser/markdown.rs`. Produces the same `Page` AST the `.adoc` parser produces, populated only with `ProseBlock` children. Spans are byte-offsets from `pulldown-cmark`, mapped to `LineIndex` for diagnostics. See ADR-0021.
+The V4 parser for **Markdown Source**, wrapping `pulldown-cmark` with CommonMark and GFM feature flags. Lives at `crates/adoc-core/src/infrastructure/parser/markdown.rs` per ADR-0009's `domain <- application <- infrastructure` layout. Produces the same `Page` AST the `.adoc` parser produces, populated only with `ProseBlock` children. Spans are byte-offsets from `pulldown-cmark`, mapped to `LineIndex` for diagnostics. See ADR-0021.
 _Avoid_: hand-written CommonMark parser, comrak/markdown-rs alternates, port-based abstraction over a pure-computation parser
 
 **V4 Markdown Subset**:
@@ -289,7 +293,7 @@ Raw HTML found inside **Markdown Source**, rendered as escaped text inside `<pre
 _Avoid_: passing raw HTML through to the rendered output, dropping raw HTML silently, allowlisting iframe/script/style elements
 
 **Compat Validation Rule**:
-A validation rule run after **Markdown Parser** parsing, against pages whose source is **Markdown Source**. Lives under `crates/adoc-core/src/validator/compat/` per ADR-0007. Emits `Severity::Warning` only — never `Severity::Error`. Examples: `RawHtmlQuarantine`, `UnsafeLinkDropped`, `UnsafeImageSrcDropped`, `UnknownExtension`. Runs in a parallel pipeline to `validator/strict/`; the composition root in `compile_workspace()` dispatches by file extension.
+A validation rule run after **Markdown Parser** parsing, against pages whose source is **Markdown Source**. Lives under `crates/adoc-core/src/infrastructure/validate/compat/` per ADR-0007 and ADR-0009. Emits `Severity::Warning` only — never `Severity::Error`. Examples: `RawHtmlQuarantine`, `UnsafeLinkDropped`, `UnsafeImageSrcDropped`, `UnknownExtension`. Runs in a parallel pipeline to the strict registry; the orchestrator in `compile_with_provider` dispatches by `source.mode()`.
 _Avoid_: shared validator pipeline with a mode flag, raising compat rules to `Error` severity, applying compat rules to `.adoc` pages
 
 **Markdown Pilot**:

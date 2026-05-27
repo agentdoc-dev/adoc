@@ -52,6 +52,9 @@ pub(crate) struct SourceFile {
     pub(crate) identity_path: PathBuf,
     pub(crate) text: String,
     pub(crate) line_index: LineIndex,
+    /// Validation regime, fixed at construction from the file extension per
+    /// ADR-0022. Never re-derived downstream — read via [`SourceFile::mode`].
+    pub(crate) mode: SourceMode,
 }
 
 impl SourceFile {
@@ -61,12 +64,21 @@ impl SourceFile {
         identity_path: PathBuf,
     ) -> Self {
         let line_index = LineIndex::new(&text);
+        let mode = mode_for_path(&path);
         Self {
             path,
             identity_path,
             text,
             line_index,
+            mode,
         }
+    }
+
+    /// Returns the [`SourceMode`] classified from the file extension at
+    /// construction time. ADR-0022 fixes the path as the only mode signal,
+    /// so re-deriving downstream is forbidden — call this accessor instead.
+    pub(crate) fn mode(&self) -> SourceMode {
+        self.mode
     }
 
     /// Return this `SourceFile` with both `path` and `identity_path`
@@ -258,6 +270,13 @@ impl LineIndex {
     }
 }
 
+/// File extensions AgentDoc accepts as input source.
+///
+/// One authored list shared by `FsSourceProvider` (the file-discovery glob)
+/// and the [`SourceMode`] classifier. Adding a third extension is a one-line
+/// edit here; everything else flows from it.
+pub(crate) const SOURCE_EXTENSIONS: &[&str] = &["adoc", "md"];
+
 /// Validation regime applied to a single source file.
 ///
 /// V4 introduces Compatibility Mode for Markdown sources alongside the
@@ -271,17 +290,17 @@ pub(crate) enum SourceMode {
     Compat,
 }
 
-/// Pick the [`SourceMode`] for `source` based on its file extension.
+/// Classify the [`SourceMode`] of a file from its extension.
 ///
-/// Only `.adoc` and `.md` reach the parser because file discovery already
-/// rejects every other extension at the [`SourceProvider`] boundary, so a
-/// missing or unknown extension defaults to `Strict`.
-pub(crate) fn source_mode(source: &SourceFile) -> SourceMode {
-    match source
-        .path
-        .extension()
-        .and_then(|extension| extension.to_str())
-    {
+/// Only `.adoc` and `.md` reach the parser because [`FsSourceProvider`]
+/// rejects every other extension at the IO boundary using
+/// [`SOURCE_EXTENSIONS`], so a missing or unknown extension defaults to
+/// `Strict` for safety. The result is stored on [`SourceFile::mode`] at
+/// construction; downstream callers must not re-derive.
+///
+/// [`FsSourceProvider`]: crate::infrastructure::source::FsSourceProvider
+fn mode_for_path(path: &Path) -> SourceMode {
+    match path.extension().and_then(|extension| extension.to_str()) {
         Some("md") => SourceMode::Compat,
         _ => SourceMode::Strict,
     }
