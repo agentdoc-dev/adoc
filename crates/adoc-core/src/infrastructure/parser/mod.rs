@@ -7,6 +7,7 @@
 //! rules run in the validation pass per ADR-0007.
 
 mod builders;
+pub(crate) mod extension_classifier;
 mod front_matter;
 mod inline;
 mod markdown;

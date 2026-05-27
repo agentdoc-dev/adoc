@@ -1,24 +1,26 @@
-use crate::domain::ast::{BlockAst, PageAst, UnknownExtensionKind};
+use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::domain::inline::InlineSegment;
 use crate::domain::rules::ValidationRule;
 use crate::domain::source::SourceFile;
+use crate::infrastructure::parser::extension_classifier::{LineExtension, classify_line};
 
-/// Reports `compat.unknown_extension` for Markdown constructs outside the
-/// V4 supported set. Two detection paths:
+/// Reports `compat.unknown_extension` for Markdown constructs outside the V4
+/// supported set. Two complementary signals:
 ///
-/// 1. **AST walk** — surfaces math fences and MDX components that the
-///    parser already classified into `BlockAst::UnknownExtension` /
-///    `InlineSegment::UnknownExtension`. The parser emits its own diagnostic
-///    at parse time, so this pass only reports for AST entries the parser
-///    did NOT already report (covers parser internals later inserting
-///    `UnknownExtension` for non-event-driven kinds).
+/// 1. **Parser-emitted diagnostics** — math fences and MDX components are
+///    flagged at parse time and surface in the upstream diagnostic stream;
+///    this rule does not re-emit for them.
 ///
-/// 2. **Source-text scan** — pulldown-cmark cannot distinguish Pandoc
+/// 2. **Source-text scan** — `pulldown-cmark` cannot distinguish Pandoc
 ///    directives (`:::warning`) and custom attribute blocks (`{.class}` /
-///    `{#id}`) from plain paragraph text, so we walk the source lines
-///    post-parse. Lines inside a fenced code block are skipped via the
+///    `{#id}`) from plain paragraph text. The shared
+///    [`crate::infrastructure::parser::extension_classifier`] classifies each
+///    source line; lines inside a fenced code block are skipped via the
 ///    block-level span exclusion list.
+///
+/// The Markdown parser uses the same classifier when rewriting paragraphs
+/// into `BlockAst::UnknownExtension`, so this rule and the parser agree on
+/// what shape is "unknown".
 pub(crate) struct UnknownExtension;
 
 impl ValidationRule for UnknownExtension {
@@ -32,7 +34,7 @@ impl ValidationRule for UnknownExtension {
             if code_block_lines.contains(&line_number) {
                 continue;
             }
-            scan_line(source, line_number, line, sink);
+            emit_for_line(source, line_number, line, sink);
         }
     }
 }
@@ -60,92 +62,25 @@ fn collect_code_block_lines(block: &BlockAst, out: &mut Vec<u32>) {
     }
 }
 
-fn scan_line(source: &SourceFile, line_number: u32, line: &str, sink: &mut Vec<Diagnostic>) {
-    let trimmed = line.trim_start();
-    let indent_chars = (line.len() - trimmed.len()) as u32;
-
-    // Pandoc / extension directive opener (`:::name`). The closing bare
-    // `:::` is silent so a paired directive emits exactly one diagnostic.
-    if trimmed.starts_with(":::") {
-        let after = trimmed.trim_start_matches(':');
-        let head = after.trim_start();
-        if head
-            .chars()
-            .next()
-            .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
-        {
-            let span = source.span_for_line_columns(
-                line_number,
-                indent_chars + 1,
-                indent_chars + (trimmed.len() as u32) + 1,
-            );
-            sink.push(make_warning(
-                span,
+fn emit_for_line(source: &SourceFile, line_number: u32, line: &str, sink: &mut Vec<Diagnostic>) {
+    match classify_line(line) {
+        LineExtension::PandocDirective { column, len } => {
+            sink.push(unknown_extension_warning(
+                source.span_for_line_columns(line_number, column, column + len),
                 "Pandoc-style fenced directive (`:::`)",
-                UnknownExtensionKind::PandocDirective,
             ));
         }
-        return;
-    }
-
-    // Custom attribute block: either at start-of-line (`{.class}` standalone)
-    // or trailing at end-of-line after content (e.g. `text {.callout}`).
-    if let Some((column, len)) = find_attribute_block(line) {
-        let span = source.span_for_line_columns(line_number, column, column + len);
-        sink.push(make_warning(
-            span,
-            "attribute block (`{.class}` / `{#id}`)",
-            UnknownExtensionKind::AttributeBlock,
-        ));
-    }
-}
-
-/// Returns the 1-indexed column and length of an attribute block in `line`,
-/// if present. Recognized shapes: `{.class}`, `{#id}`, `{key=value}`.
-fn find_attribute_block(line: &str) -> Option<(u32, u32)> {
-    let bytes = line.as_bytes();
-    let mut byte = 0usize;
-    while byte < bytes.len() {
-        if bytes[byte] == b'{' {
-            let end = line[byte..].find('}')?;
-            let inner = &line[byte + 1..byte + end];
-            if inner_is_attribute_block(inner) {
-                let column = char_column(line, byte);
-                let len = (end + 1) as u32;
-                return Some((column, len));
-            }
-            byte += end + 1;
-        } else {
-            byte += 1;
+        LineExtension::AttributeBlock { column, len } => {
+            sink.push(unknown_extension_warning(
+                source.span_for_line_columns(line_number, column, column + len),
+                "attribute block (`{.class}` / `{#id}`)",
+            ));
         }
+        LineExtension::None => {}
     }
-    None
 }
 
-fn inner_is_attribute_block(inner: &str) -> bool {
-    let trimmed = inner.trim();
-    if trimmed.is_empty() {
-        return false;
-    }
-    let first = trimmed.as_bytes()[0];
-    if first == b'.' || first == b'#' {
-        return trimmed.len() > 1 && trimmed.as_bytes()[1] != b' ';
-    }
-    // `key=value` requires `=` not at the start.
-    if let Some(equals) = trimmed.find('=')
-        && equals > 0
-    {
-        return true;
-    }
-    false
-}
-
-fn char_column(line: &str, byte_offset: usize) -> u32 {
-    let prefix = &line[..byte_offset];
-    (prefix.chars().count() as u32) + 1
-}
-
-fn make_warning(span: SourceSpan, label: &str, _kind: UnknownExtensionKind) -> Diagnostic {
+fn unknown_extension_warning(span: SourceSpan, label: &str) -> Diagnostic {
     Diagnostic::warning(
         DiagnosticCode::CompatUnknownExtension,
         format!(
@@ -153,93 +88,6 @@ fn make_warning(span: SourceSpan, label: &str, _kind: UnknownExtensionKind) -> D
         ),
     )
     .with_span(span)
-}
-
-/// Walks the AST for parser-classified UnknownExtension nodes and emits a
-/// diagnostic for each. The parser also emits at parse time; the validator
-/// runs as a defense-in-depth pass so a future AST source that inserts an
-/// UnknownExtension without going through the parser path still gets a
-/// diagnostic.
-#[allow(dead_code)]
-fn walk_ast_unknown_extensions(
-    page: &PageAst,
-    sink: &mut Vec<Diagnostic>,
-    skip_spans: &[SourceSpan],
-) {
-    for block in &page.blocks {
-        walk_block_for_unknown(block, sink, skip_spans);
-    }
-}
-
-fn walk_block_for_unknown(block: &BlockAst, sink: &mut Vec<Diagnostic>, skip_spans: &[SourceSpan]) {
-    match block {
-        BlockAst::UnknownExtension(unknown) => {
-            if skip_spans.iter().all(|skip| skip != &unknown.span) {
-                sink.push(make_warning(
-                    unknown.span.clone(),
-                    "construct",
-                    unknown.kind,
-                ));
-            }
-        }
-        BlockAst::Heading(heading) => walk_inlines_for_unknown(&heading.inlines, sink, skip_spans),
-        BlockAst::Paragraph(paragraph) => {
-            walk_inlines_for_unknown(&paragraph.inlines, sink, skip_spans)
-        }
-        BlockAst::List(list) => {
-            for item in &list.items {
-                walk_inlines_for_unknown(&item.inlines, sink, skip_spans);
-            }
-        }
-        BlockAst::Table(table) => {
-            for cell in &table.header {
-                walk_inlines_for_unknown(&cell.inlines, sink, skip_spans);
-            }
-            for row in &table.rows {
-                for cell in row {
-                    walk_inlines_for_unknown(&cell.inlines, sink, skip_spans);
-                }
-            }
-        }
-        BlockAst::FootnoteDefinition(footnote) => {
-            for child in &footnote.content {
-                walk_block_for_unknown(child, sink, skip_spans);
-            }
-        }
-        BlockAst::CodeBlock(_)
-        | BlockAst::QuarantinedHtml(_)
-        | BlockAst::KnowledgeObject(_)
-        | BlockAst::KnowledgeObjectPending(_) => {}
-    }
-}
-
-fn walk_inlines_for_unknown(
-    inlines: &[InlineSegment],
-    sink: &mut Vec<Diagnostic>,
-    skip_spans: &[SourceSpan],
-) {
-    for segment in inlines {
-        match segment {
-            InlineSegment::UnknownExtension { span, kind, .. } => {
-                if skip_spans.iter().all(|skip| skip != span) {
-                    sink.push(make_warning(span.clone(), "construct", *kind));
-                }
-            }
-            InlineSegment::Emphasis(inner)
-            | InlineSegment::Strong(inner)
-            | InlineSegment::Strikethrough(inner) => {
-                walk_inlines_for_unknown(inner, sink, skip_spans)
-            }
-            InlineSegment::Link { text, .. } => walk_inlines_for_unknown(text, sink, skip_spans),
-            InlineSegment::Image { alt, .. } => walk_inlines_for_unknown(alt, sink, skip_spans),
-            InlineSegment::Text(_)
-            | InlineSegment::Code(_)
-            | InlineSegment::ObjectReference { .. }
-            | InlineSegment::ObjectReferencePending { .. }
-            | InlineSegment::QuarantinedHtml { .. }
-            | InlineSegment::FootnoteReference { .. } => {}
-        }
-    }
 }
 
 #[cfg(test)]
