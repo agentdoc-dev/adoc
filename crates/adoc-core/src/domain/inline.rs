@@ -23,6 +23,25 @@ pub(crate) enum InlineSegment {
         id: ObjectId,
         span: SourceSpan,
     },
+    /// Inline image from Markdown source (V4 Compatibility Mode only).
+    /// Never produced by the `.adoc` parser. The renderer emits an `<img>`
+    /// tag when the URL scheme is allowed and drops the `src` attribute
+    /// otherwise (preserving the alt text). The compat validator emits
+    /// `compat.unsafe_image_src_dropped` for unsafe schemes.
+    Image {
+        alt: Vec<InlineSegment>,
+        url: String,
+        span: SourceSpan,
+    },
+    /// Inline raw HTML inside a Markdown paragraph (V4 Compatibility Mode
+    /// only). Never produced by the `.adoc` parser. The renderer wraps the
+    /// stored source text in `<code class="quarantined-html">` with HTML
+    /// escaping. The compat validator pipeline emits a
+    /// `compat.raw_html_quarantined` warning per occurrence.
+    QuarantinedHtml {
+        source_text: String,
+        span: SourceSpan,
+    },
 }
 
 /// Where an inline scan starts in the source file. Owns its `LineCursor` so
@@ -156,6 +175,16 @@ fn append_source(segments: &[InlineSegment], buffer: &mut String) {
                 buffer.push_str(id.as_str());
                 buffer.push_str("]]");
             }
+            InlineSegment::Image { alt, url, .. } => {
+                buffer.push_str("![");
+                append_source(alt, buffer);
+                buffer.push_str("](");
+                buffer.push_str(url);
+                buffer.push(')');
+            }
+            InlineSegment::QuarantinedHtml { source_text, .. } => {
+                buffer.push_str(source_text);
+            }
         }
     }
 }
@@ -173,6 +202,10 @@ fn append_plain_text(segments: &[InlineSegment], buffer: &mut String) {
             }
             InlineSegment::ObjectReference { id, .. } => {
                 buffer.push_str(id.as_str());
+            }
+            InlineSegment::Image { alt, .. } => append_plain_text(alt, buffer),
+            InlineSegment::QuarantinedHtml { source_text, .. } => {
+                buffer.push_str(source_text);
             }
         }
     }

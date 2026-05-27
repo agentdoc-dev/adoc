@@ -31,6 +31,9 @@ fn check_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
         // so `KnowledgeObjectBodyUnsafeLinksForbidden` handles them in the
         // resolved-page phase.
         BlockAst::KnowledgeObject(_) | BlockAst::KnowledgeObjectPending(_) => {}
+        // Strict-mode rule, never reached for Markdown sources where
+        // QuarantinedHtml originates.
+        BlockAst::QuarantinedHtml(_) => {}
     }
 }
 
@@ -54,10 +57,14 @@ pub(super) fn check_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic
             InlineSegment::Emphasis(inner) | InlineSegment::Strong(inner) => {
                 check_inlines(inner, sink);
             }
+            InlineSegment::Image { .. } => {
+                // Image variants are V4 compat-only; strict pipeline ignores.
+            }
             InlineSegment::Text(_)
             | InlineSegment::Code(_)
             | InlineSegment::ObjectReferencePending { .. }
-            | InlineSegment::ObjectReference { .. } => {}
+            | InlineSegment::ObjectReference { .. }
+            | InlineSegment::QuarantinedHtml { .. } => {}
         }
     }
 }

@@ -7,9 +7,13 @@
 //! rules run in the validation pass per ADR-0007.
 
 mod builders;
+mod front_matter;
 mod inline;
+mod markdown;
 mod state;
 mod typed_block;
+
+pub(crate) use markdown::parse_markdown_page;
 
 use builders::{CodeBlockBuilder, ListBuilder, ParagraphBuilder};
 use state::ParseState;

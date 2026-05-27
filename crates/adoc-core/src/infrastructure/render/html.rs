@@ -87,6 +87,14 @@ fn render_block(block: &BlockAst, html: &mut String) {
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before rendering")
         }
+        // V4 Compatibility Mode: render raw HTML from Markdown source as
+        // escaped text inside a quarantine block. The browser never
+        // interprets the original markup; the reader sees it as code.
+        BlockAst::QuarantinedHtml(quarantined_html) => {
+            html.push_str("<pre class=\"quarantined-html\">");
+            html.push_str(&escape_html(&quarantined_html.source_text));
+            html.push_str("</pre>\n");
+        }
     }
 }
 
@@ -453,11 +461,22 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
             html.push_str("</strong>");
         }
         InlineSegment::Link { text, url, .. } => {
-            html.push_str("<a href=\"");
-            html.push_str(&escape_html(url));
-            html.push_str("\">");
-            render_inlines(text, html);
-            html.push_str("</a>");
+            // V4 Compatibility Mode allows Markdown sources to reach the
+            // renderer with link URLs the compat validator already flagged.
+            // Drop the `href` on unsafe schemes so rendered HTML can never
+            // execute the link; the inline text is still rendered.
+            match safe_href(url) {
+                Some(safe_url) => {
+                    html.push_str("<a href=\"");
+                    html.push_str(&escape_html(safe_url));
+                    html.push_str("\">");
+                    render_inlines(text, html);
+                    html.push_str("</a>");
+                }
+                None => {
+                    render_inlines(text, html);
+                }
+            }
         }
         InlineSegment::ObjectReference { id, .. } => {
             render_object_ref_anchor(id.as_str(), html);
@@ -465,7 +484,78 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
         InlineSegment::ObjectReferencePending { .. } => {
             unreachable!("object references must resolve before rendering")
         }
+        InlineSegment::Image { alt, url, .. } => match safe_src(url) {
+            Some(safe_url) => {
+                let alt_text = crate::domain::inline::plain_text(alt);
+                html.push_str("<img src=\"");
+                html.push_str(&escape_html(safe_url));
+                html.push_str("\" alt=\"");
+                html.push_str(&escape_html(&alt_text));
+                html.push_str("\" />");
+            }
+            None => {
+                let alt_text = crate::domain::inline::plain_text(alt);
+                html.push_str("<span class=\"quarantined-image\">");
+                html.push_str(&escape_html(&alt_text));
+                html.push_str("</span>");
+            }
+        },
+        InlineSegment::QuarantinedHtml { source_text, .. } => {
+            html.push_str("<code class=\"quarantined-html\">");
+            html.push_str(&escape_html(source_text));
+            html.push_str("</code>");
+        }
     }
+}
+
+/// Return `Some(url)` when the link scheme is on the V4 allowlist for the
+/// HTML renderer, otherwise `None`. Allowlist: `http`, `https`, `mailto`,
+/// plus relative paths (no scheme) and root-relative paths. Blocked:
+/// `javascript`, `data`, `vbscript`, plus any scheme containing whitespace.
+fn safe_href(url: &str) -> Option<&str> {
+    if url_scheme_is_safe(url) {
+        Some(url)
+    } else {
+        None
+    }
+}
+
+/// Mirror of [`safe_href`] for `<img src>`. The current allowlist matches
+/// `safe_href` because images do not need a distinct scheme set in V4.
+fn safe_src(url: &str) -> Option<&str> {
+    if url_scheme_is_safe(url) {
+        Some(url)
+    } else {
+        None
+    }
+}
+
+fn url_scheme_is_safe(url: &str) -> bool {
+    if url.bytes().any(|byte| byte.is_ascii_whitespace()) {
+        return false;
+    }
+    let Some(colon) = url.find(':') else {
+        return true;
+    };
+    let scheme = &url[..colon];
+    if scheme.is_empty() {
+        return true;
+    }
+    if !scheme.starts_with(|character: char| character.is_ascii_alphabetic()) {
+        return true;
+    }
+    if !scheme.chars().all(|character| {
+        character.is_ascii_alphanumeric()
+            || character == '+'
+            || character == '-'
+            || character == '.'
+    }) {
+        return true;
+    }
+    matches!(
+        scheme.to_ascii_lowercase().as_str(),
+        "http" | "https" | "mailto"
+    )
 }
 
 fn escape_html(value: &str) -> String {

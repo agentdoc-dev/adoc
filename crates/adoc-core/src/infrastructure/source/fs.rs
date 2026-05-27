@@ -27,7 +27,7 @@ impl FsSourceProvider {
 
 impl SourceProvider for FsSourceProvider {
     fn load_sources(&self) -> Vec<Result<SourceFile, SourceLoadError>> {
-        if self.root.is_file() && !is_adoc_source_path(&self.root) {
+        if self.root.is_file() && !is_source_path(&self.root) {
             return vec![Err(SourceLoadError::unsupported_source_extension(
                 self.root.clone(),
             ))];
@@ -84,12 +84,12 @@ fn source_paths(root: &Path) -> Vec<Result<SourcePath, SourceLoadError>> {
     }
 
     let mut paths = Vec::new();
-    collect_adoc_files(root, root, &mut paths);
+    collect_source_files(root, root, &mut paths);
     paths.sort_by(|left, right| source_path_result_path(left).cmp(source_path_result_path(right)));
     paths
 }
 
-fn collect_adoc_files(
+fn collect_source_files(
     root: &Path,
     directory: &Path,
     paths: &mut Vec<Result<SourcePath, SourceLoadError>>,
@@ -105,8 +105,8 @@ fn collect_adoc_files(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_adoc_files(root, &path, paths);
-        } else if is_adoc_source_path(&path) {
+            collect_source_files(root, &path, paths);
+        } else if is_source_path(&path) {
             let identity_path = path
                 .strip_prefix(root)
                 .map(PathBuf::from)
@@ -137,9 +137,10 @@ fn source_path_result_path(result: &Result<SourcePath, SourceLoadError>) -> &Pat
     }
 }
 
-fn is_adoc_source_path(path: &Path) -> bool {
+fn is_source_path(path: &Path) -> bool {
     path.extension()
-        .is_some_and(|extension| extension == "adoc")
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension == "adoc" || extension == "md")
 }
 
 #[cfg(test)]
