@@ -28,6 +28,7 @@ use crate::domain::identity::PageId;
 use crate::domain::inline::InlineSegment;
 use crate::domain::source::{DerivedPageIdError, SourceFile, derive_page_id};
 
+use super::extension_classifier::{LineExtension, classify_line};
 use super::front_matter::skip_front_matter;
 
 pub(crate) fn parse_markdown_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
@@ -116,23 +117,18 @@ fn paragraph_to_unknown_extension(block: &BlockAst, source: &SourceFile) -> Opti
         if line_number > end_line {
             break;
         }
-        let trimmed = line.trim_start();
-        if trimmed.starts_with(":::") {
-            let after = trimmed.trim_start_matches(':');
-            let head = after.trim_start();
-            if head
-                .chars()
-                .next()
-                .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
-            {
+        match classify_line(line) {
+            LineExtension::PandocDirective { .. } => {
                 kind = Some(UnknownExtensionKind::PandocDirective);
+                // Pandoc takes priority over any later attribute-block match.
                 break;
             }
-        }
-        if line_contains_attribute_block(line) {
-            kind = Some(UnknownExtensionKind::AttributeBlock);
-            // Don't break — Pandoc takes priority if both match on
-            // different lines of the same paragraph.
+            LineExtension::AttributeBlock { .. } => {
+                kind = Some(UnknownExtensionKind::AttributeBlock);
+                // Don't break — Pandoc takes priority if both match on
+                // different lines of the same paragraph.
+            }
+            LineExtension::None => {}
         }
     }
     let kind = kind?;
@@ -142,36 +138,6 @@ fn paragraph_to_unknown_extension(block: &BlockAst, source: &SourceFile) -> Opti
         span: paragraph.span.clone(),
         kind,
     }))
-}
-
-fn line_contains_attribute_block(line: &str) -> bool {
-    let bytes = line.as_bytes();
-    let mut byte = 0usize;
-    while byte < bytes.len() {
-        if bytes[byte] == b'{' {
-            let Some(end) = line[byte..].find('}') else {
-                return false;
-            };
-            let inner = line[byte + 1..byte + end].trim();
-            if inner.is_empty() {
-                byte += end + 1;
-                continue;
-            }
-            let first = inner.as_bytes()[0];
-            if (first == b'.' || first == b'#') && inner.len() > 1 && inner.as_bytes()[1] != b' ' {
-                return true;
-            }
-            if let Some(equals) = inner.find('=')
-                && equals > 0
-            {
-                return true;
-            }
-            byte += end + 1;
-        } else {
-            byte += 1;
-        }
-    }
-    false
 }
 
 fn invalid_derived_page_id_diagnostic(
