@@ -37,16 +37,17 @@ Implemented:
 - V2.1 local MCP gateway: MCP tools for init, check, build, why, graph, search, and patch-check over the shared local workflow layer.
 - V2.2 agent usage contract: MCP-discoverable guidance resources, pinned workflow prompts, and `adoc_project_status` with `adoc.project.status.v0`.
 - V3 team CI and review: object diff (`adoc.diff.v0`), field-level projection, opt-in `impacts:` field on `claim`/`decision`, source-path impact and required reviewers, proof obligations, Markdown output, MCP `adoc_diff` / `adoc_review`, and patch composition (`adoc review --patch` embeds `adoc.patch.check.v0`).
+- V4 Markdown compatibility mode: `.md` ingestion via `pulldown-cmark` parser, parallel `compat/` validator pipeline, raw-HTML quarantine, unsafe link/image scheme drop, GFM extensions (tables, task lists, strikethrough, autolinks, footnotes), `compat.unknown_extension` classifier for MDX/Pandoc/math/attribute blocks, retrieval migration hint, `adoc://agent/v0/compat-guide` MCP resource, and the Markdown Pilot end-to-end harness ([markdown-pilot.md](markdown-pilot.md)). Closes PRD MVP must-have #14. The implementation contract is [V4-DESIGN.md](V4-DESIGN.md); the architecture decisions are [adr/0021-use-pulldown-cmark-for-markdown-ingestion.md](adr/0021-use-pulldown-cmark-for-markdown-ingestion.md), [adr/0022-file-extension-as-the-only-mode-signal.md](adr/0022-file-extension-as-the-only-mode-signal.md), and [adr/0023-markdown-source-is-prose-only-ingestion.md](adr/0023-markdown-source-is-prose-only-ingestion.md).
 - Billing pilot retrieval harness: 30+ Knowledge Objects, retrieval-set fixtures, property-style search invariants, and docs for retrieval maintenance.
+- Markdown Pilot end-to-end harness: 15 `.md` + 2 `.adoc` files modeled on real product docs (API reference, runbooks, tutorials, reference notes), exact-match diagnostic and graph-node budgets, mixed-mode diff/review coverage, and maintenance contract at [markdown-pilot.md](markdown-pilot.md).
 
 Next:
 
-- V4 Markdown compatibility mode. Four vertical slices V4.1 through V4.4. The implementation contract is [V4-DESIGN.md](V4-DESIGN.md). The architecture decisions are [adr/0021-use-pulldown-cmark-for-markdown-ingestion.md](adr/0021-use-pulldown-cmark-for-markdown-ingestion.md), [adr/0022-file-extension-as-the-only-mode-signal.md](adr/0022-file-extension-as-the-only-mode-signal.md), and [adr/0023-markdown-source-is-prose-only-ingestion.md](adr/0023-markdown-source-is-prose-only-ingestion.md). V4 closes PRD MVP must-have #14 (compatibility mode); PRD MVP must-have #18 (`adoc migrate`) is explicitly deferred to V4.5.
-- No active slice; the next pick is driven by measured pain on the V0–V3 surfaces.
+- No active slice; the next pick is driven by measured pain on the V0–V3 surfaces or by demand for the deferred V4.5 / V1.7 work below.
 
 Later:
 
-- V4.5 Markdown migration (`adoc migrate`, suggested-claim extraction, import report, `adoc.migrate.report.v0` envelope, MCP integration). Sequenced after V4 once compatibility-mode usage surfaces measured friction.
+- V4.5 Markdown migration (`adoc migrate`, suggested-claim extraction, import report, `adoc.migrate.report.v0` envelope, MCP integration). Sequenced after V4 once compatibility-mode usage surfaces measured friction. PRD MVP must-have #18.
 - V1.7 prose retrieval. Extends BM25 and embedding pipelines to index prose blocks symmetrically across `.adoc` and `.md` sources. Independent of V4 sequencing; can ship before or after.
 - Semantic diff and CI review enhancements, expanded object types (V5), includes and custom schemas (V6), richer graph tooling, web surfaces (V7), hosted storage, and governance.
 

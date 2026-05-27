@@ -1,0 +1,48 @@
+# Pilot Billing Claims @doc(pilot.billing.claims)
+
+Native AgentDoc claims for the Markdown pilot. The Markdown pages under
+`api/`, `runbooks/`, `tutorials/`, and `reference/` reference the IDs
+declared here when they need a citable contract.
+
+::claim billing.refunds.issue-credit
+status: verified
+owner: team-billing
+verified_at: 2026-05-12
+source: refund service production trace 2026-05-10
+test: cargo test refund_issue_credit_records_ledger_entry
+reviewed_by: qa-billing
+--
+Refund operators issue account credit only after the refund workflow writes its audit record and ledger movement.
+::
+
+::claim billing.refunds.audit-required
+status: verified
+owner: team-billing
+verified_at: 2026-05-12
+source: refund operations runbook v3
+reviewed_by: support-leads
+--
+Each refund that issues account credit must keep an auditable link to the original payment and the operator action that approved the refund.
+::
+
+::claim billing.settlement.posts-once
+status: verified
+owner: team-billing
+verified_at: 2026-05-12
+source: settlement service idempotency report 2026-05-10
+test: cargo test settlement_posts_once_per_capture
+reviewed_by: qa-billing
+--
+Each captured payment settlement writes exactly one ledger movement before downstream invoice or entitlement updates run.
+::
+
+::claim billing.webhooks.signature-required
+status: verified
+owner: team-platform
+verified_at: 2026-05-12
+source: webhook delivery service spec 2026-05-08
+test: cargo test webhook_signature_must_validate
+reviewed_by: security-review
+--
+Webhook deliveries are rejected at the edge if the signature header is missing or does not validate against the configured endpoint secret.
+::
