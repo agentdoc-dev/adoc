@@ -293,8 +293,8 @@ The Markdown feature set V4 supports end-to-end: CommonMark core (headings, para
 _Avoid_: Markdown extensions out of scope in V4 (math, definition lists, embedded MDX components), partial GFM support, ad-hoc extension whitelisting
 
 **Quarantined HTML**:
-Raw HTML found inside **Markdown Source**, rendered as escaped text inside `<pre class="adoc-quarantined-html">…</pre>` blocks. Visible to the reader as code, never interpreted as markup. The **Graph Artifact** stores the original source text on the wrapping `prose_block` node; quarantine is a renderer-side transform driven by the `compat.raw_html_quarantined` diagnostic.
-_Avoid_: passing raw HTML through to the rendered output, dropping raw HTML silently, allowlisting iframe/script/style elements
+Raw HTML found inside **Markdown Source**, rendered as escaped text inside `<pre class="quarantined-html">…</pre>` (or `<code class="quarantined-html">…</code>` for inline). The CSS class string is authored once as `QUARANTINED_HTML_CLASS` in `crates/adoc-core/src/infrastructure/render/html.rs`. Visible to the reader as code, never interpreted as markup. The **Graph Artifact** stores the original source text on the wrapping `prose_block` node; quarantine is a renderer-side transform driven by the `compat.raw_html_quarantined` diagnostic.
+_Avoid_: passing raw HTML through to the rendered output, dropping raw HTML silently, allowlisting iframe/script/style elements, hard-coding the class string outside `QUARANTINED_HTML_CLASS`
 
 **Compat Validation Rule**:
 A validation rule run after **Markdown Parser** parsing, against pages whose source is **Markdown Source**. Lives under `crates/adoc-core/src/infrastructure/validate/compat/` per ADR-0007 and ADR-0009. Emits `Severity::Warning` only — never `Severity::Error`. Examples: `RawHtmlQuarantine`, `UnsafeLinkDropped`, `UnsafeImageSrcDropped`, `UnknownExtension`. Runs in a parallel pipeline to the strict registry; the orchestrator in `compile_with_provider` dispatches by `source.mode()`.
