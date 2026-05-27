@@ -43,11 +43,64 @@ fn resolve_page(
             BlockAst::KnowledgeObject(knowledge_object) => {
                 resolve_knowledge_object_references(knowledge_object, declared_ids, diagnostics);
             }
+            BlockAst::Table(table) => {
+                for cell in &mut table.header {
+                    resolve_inlines(&mut cell.inlines, declared_ids, diagnostics);
+                }
+                for row in &mut table.rows {
+                    for cell in row {
+                        resolve_inlines(&mut cell.inlines, declared_ids, diagnostics);
+                    }
+                }
+            }
+            BlockAst::FootnoteDefinition(footnote) => {
+                resolve_page_blocks(&mut footnote.content, declared_ids, diagnostics);
+            }
             BlockAst::CodeBlock(_) => {}
-            BlockAst::QuarantinedHtml(_) => {}
+            BlockAst::QuarantinedHtml(_) | BlockAst::UnknownExtension(_) => {}
             BlockAst::KnowledgeObjectPending(_) => {
                 unreachable!("knowledge objects must resolve before object references")
             }
+        }
+    }
+}
+
+fn resolve_page_blocks(
+    blocks: &mut [BlockAst],
+    declared_ids: &BTreeSet<ObjectId>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for block in blocks {
+        match block {
+            BlockAst::Heading(heading) => {
+                resolve_inlines(&mut heading.inlines, declared_ids, diagnostics);
+            }
+            BlockAst::Paragraph(paragraph) => {
+                resolve_inlines(&mut paragraph.inlines, declared_ids, diagnostics);
+            }
+            BlockAst::List(list) => {
+                for item in &mut list.items {
+                    resolve_inlines(&mut item.inlines, declared_ids, diagnostics);
+                }
+            }
+            BlockAst::Table(table) => {
+                for cell in &mut table.header {
+                    resolve_inlines(&mut cell.inlines, declared_ids, diagnostics);
+                }
+                for row in &mut table.rows {
+                    for cell in row {
+                        resolve_inlines(&mut cell.inlines, declared_ids, diagnostics);
+                    }
+                }
+            }
+            BlockAst::FootnoteDefinition(footnote) => {
+                resolve_page_blocks(&mut footnote.content, declared_ids, diagnostics);
+            }
+            BlockAst::CodeBlock(_)
+            | BlockAst::QuarantinedHtml(_)
+            | BlockAst::UnknownExtension(_)
+            | BlockAst::KnowledgeObject(_)
+            | BlockAst::KnowledgeObjectPending(_) => {}
         }
     }
 }
@@ -100,7 +153,9 @@ fn resolve_inlines(
 ) {
     for segment in inlines {
         match segment {
-            InlineSegment::Emphasis(inner) | InlineSegment::Strong(inner) => {
+            InlineSegment::Emphasis(inner)
+            | InlineSegment::Strong(inner)
+            | InlineSegment::Strikethrough(inner) => {
                 resolve_inlines(inner, declared_ids, diagnostics);
             }
             InlineSegment::Link { text, .. } => {
@@ -142,7 +197,9 @@ fn resolve_inlines(
             InlineSegment::Text(_)
             | InlineSegment::Code(_)
             | InlineSegment::ObjectReference { .. }
-            | InlineSegment::QuarantinedHtml { .. } => {}
+            | InlineSegment::QuarantinedHtml { .. }
+            | InlineSegment::FootnoteReference { .. }
+            | InlineSegment::UnknownExtension { .. } => {}
         }
     }
 }

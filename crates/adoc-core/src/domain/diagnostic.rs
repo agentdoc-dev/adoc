@@ -72,6 +72,8 @@ pub enum DiagnosticCode {
     CompatRawHtmlQuarantined,
     CompatUnsafeLinkDropped,
     CompatUnsafeImageSrcDropped,
+    CompatUnknownExtension,
+    ParseMalformedMarkdown,
 }
 
 impl DiagnosticCode {
@@ -126,6 +128,8 @@ impl DiagnosticCode {
             DiagnosticCode::CompatRawHtmlQuarantined,
             DiagnosticCode::CompatUnsafeLinkDropped,
             DiagnosticCode::CompatUnsafeImageSrcDropped,
+            DiagnosticCode::CompatUnknownExtension,
+            DiagnosticCode::ParseMalformedMarkdown,
         ]
     }
 
@@ -180,6 +184,8 @@ impl DiagnosticCode {
             DiagnosticCode::CompatRawHtmlQuarantined => "compat.raw_html_quarantined",
             DiagnosticCode::CompatUnsafeLinkDropped => "compat.unsafe_link_dropped",
             DiagnosticCode::CompatUnsafeImageSrcDropped => "compat.unsafe_image_src_dropped",
+            DiagnosticCode::CompatUnknownExtension => "compat.unknown_extension",
+            DiagnosticCode::ParseMalformedMarkdown => "parse.malformed_markdown",
         }
     }
 
@@ -328,6 +334,12 @@ impl DiagnosticCode {
             DiagnosticCode::CompatUnsafeImageSrcDropped => {
                 "Use a safe image scheme such as https, http, or a relative path; the unsafe src was dropped from the rendered HTML."
             }
+            DiagnosticCode::CompatUnknownExtension => {
+                "Remove the unsupported Markdown construct or migrate the page to .adoc; the source text was rendered as an escaped code block."
+            }
+            DiagnosticCode::ParseMalformedMarkdown => {
+                "Check that Markdown blocks (tables, lists, fenced code) are well-formed; the parser tolerated the imbalance and rendered best-effort output."
+            }
         }
     }
 
@@ -409,6 +421,8 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "compat.raw_html_quarantined",
     "compat.unsafe_link_dropped",
     "compat.unsafe_image_src_dropped",
+    "compat.unknown_extension",
+    "parse.malformed_markdown",
 ];
 
 impl Diagnostic {

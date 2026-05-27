@@ -1,16 +1,18 @@
-//! End-to-end test for the V4.1 Markdown Pilot seed.
+//! End-to-end test for the V4.1 + V4.2 Markdown Pilot seed.
 //!
-//! Validates the V4.1 acceptance contract from `docs/V4-DESIGN.md`:
+//! Validates the V4.1 + V4.2 acceptance contract from `docs/V4-DESIGN.md`:
 //! `adoc check examples/markdown-pilot/` exits 0 with exactly the expected
 //! warning set — two `compat.raw_html_quarantined`, one
 //! `compat.unsafe_link_dropped`, one `compat.unsafe_image_src_dropped`, and
+//! four `compat.unknown_extension` (one per unsupported construct), with
 //! zero errors. `adoc build` produces safe HTML (no live `<script>`, no
-//! `javascript:` href, no `data:` image src) and a graph artifact whose
+//! `javascript:` href, no `data:` image src), renders GFM tables / task
+//! lists / strikethrough / footnotes natively, and a graph artifact whose
 //! nodes are restricted to `page` / prose types (no Knowledge Objects), per
 //! ADR-0023.
 //!
-//! V4.4 grows this fixture set and the assertions in this file; V4.1 ships
-//! the seed.
+//! V4.4 grows this fixture set and the assertions in this file; V4.1 and
+//! V4.2 ship the seed.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -58,6 +60,7 @@ fn markdown_pilot_v4_1_seed_checks_with_expected_diagnostic_set() {
     let unsafe_image_count = stdout
         .matches("warning[compat.unsafe_image_src_dropped]")
         .count();
+    let unknown_extension_count = stdout.matches("warning[compat.unknown_extension]").count();
     let error_count = stdout.matches("error[").count();
 
     assert_eq!(
@@ -72,13 +75,18 @@ fn markdown_pilot_v4_1_seed_checks_with_expected_diagnostic_set() {
         unsafe_image_count, 1,
         "expected one compat.unsafe_image_src_dropped warning (data-image.md)\nstdout:\n{stdout}"
     );
+    // V4.2: one diagnostic per unsupported construct — MDX, Pandoc, math, attr block.
+    assert_eq!(
+        unknown_extension_count, 4,
+        "expected four compat.unknown_extension warnings (unknown-mdx.md, unknown-pandoc.md, unknown-math.md, unknown-attr-block.md)\nstdout:\n{stdout}"
+    );
     assert_eq!(
         error_count, 0,
-        "V4.1 must produce zero errors over the seed\nstdout:\n{stdout}"
+        "V4.1 + V4.2 must produce zero errors over the seed\nstdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("0 errors, 4 warnings"),
-        "expected aggregate summary `0 errors, 4 warnings`\nstdout:\n{stdout}"
+        stdout.contains("0 errors, 8 warnings"),
+        "expected aggregate summary `0 errors, 8 warnings`\nstdout:\n{stdout}"
     );
 }
 
@@ -136,8 +144,39 @@ fn markdown_pilot_v4_1_seed_builds_safe_html_and_prose_only_graph() {
         "no live data: image src may appear in the rendered HTML"
     );
 
+    // V4.2 GFM markers: table, task list checkboxes, strikethrough, footnote.
+    assert!(
+        html.contains(r#"<table class="adoc-table">"#),
+        "expected GFM table to render as <table>; got HTML lacking <table>"
+    );
+    assert!(
+        html.contains(r#"<input type="checkbox" disabled checked"#),
+        "expected GFM task list checked items to render as <input type=\"checkbox\">"
+    );
+    assert!(
+        html.contains(r#"<del>"#),
+        "expected GFM strikethrough to render as <del>"
+    );
+    assert!(
+        html.contains(r#"<aside class="adoc-footnote""#),
+        "expected GFM footnote definition to render as <aside>"
+    );
+
+    // V4.2 UnknownExtension markers: MDX, Pandoc, math, attribute-block all
+    // render the source text as escaped <code> via the unknown-extension
+    // wrapper. The renderer never executes the original markup.
+    let unknown_block_wrappers = html.matches(r#"class="adoc-unknown-extension""#).count();
+    assert!(
+        unknown_block_wrappers >= 4,
+        "expected at least four adoc-unknown-extension wrappers (MDX, Pandoc, math, attribute block); got {unknown_block_wrappers}"
+    );
+    assert!(
+        !html.contains("<DashboardWidget"),
+        "MDX component tag must be quarantined as escaped text, never reach raw HTML"
+    );
+
     let graph_text = std::fs::read_to_string(output_directory.join("docs.graph.json"))
-        .expect("V4.1 seed graph JSON is written");
+        .expect("V4.1 + V4.2 seed graph JSON is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph JSON is valid");
     assert_eq!(graph["schema_version"], "adoc.graph.v2");
 
@@ -155,7 +194,7 @@ fn markdown_pilot_v4_1_seed_builds_safe_html_and_prose_only_graph() {
 
     let page_count = nodes.iter().filter(|node| node["type"] == "page").count();
     assert_eq!(
-        page_count, 5,
-        "expected five page nodes (prose-only, raw-html, javascript-link, data-image, safe-content)"
+        page_count, 13,
+        "expected thirteen page nodes (5 V4.1 + 8 V4.2 fixtures)"
     );
 }

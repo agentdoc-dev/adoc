@@ -17,22 +17,42 @@ pub(crate) struct RawHtmlQuarantine;
 impl ValidationRule for RawHtmlQuarantine {
     fn check(&self, page: &PageAst, _source: &SourceFile, sink: &mut Vec<Diagnostic>) {
         for block in &page.blocks {
-            match block {
-                BlockAst::QuarantinedHtml(html) => {
-                    sink.push(quarantine_warning(html.span.clone()));
-                }
-                BlockAst::Heading(heading) => check_inlines(&heading.inlines, sink),
-                BlockAst::Paragraph(paragraph) => check_inlines(&paragraph.inlines, sink),
-                BlockAst::List(list) => {
-                    for item in &list.items {
-                        check_inlines(&item.inlines, sink);
-                    }
-                }
-                BlockAst::CodeBlock(_)
-                | BlockAst::KnowledgeObject(_)
-                | BlockAst::KnowledgeObjectPending(_) => {}
+            visit_block(block, sink);
+        }
+    }
+}
+
+fn visit_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
+    match block {
+        BlockAst::QuarantinedHtml(html) => {
+            sink.push(quarantine_warning(html.span.clone()));
+        }
+        BlockAst::Heading(heading) => check_inlines(&heading.inlines, sink),
+        BlockAst::Paragraph(paragraph) => check_inlines(&paragraph.inlines, sink),
+        BlockAst::List(list) => {
+            for item in &list.items {
+                check_inlines(&item.inlines, sink);
             }
         }
+        BlockAst::Table(table) => {
+            for cell in &table.header {
+                check_inlines(&cell.inlines, sink);
+            }
+            for row in &table.rows {
+                for cell in row {
+                    check_inlines(&cell.inlines, sink);
+                }
+            }
+        }
+        BlockAst::FootnoteDefinition(footnote) => {
+            for child in &footnote.content {
+                visit_block(child, sink);
+            }
+        }
+        BlockAst::CodeBlock(_)
+        | BlockAst::KnowledgeObject(_)
+        | BlockAst::KnowledgeObjectPending(_)
+        | BlockAst::UnknownExtension(_) => {}
     }
 }
 
@@ -42,7 +62,9 @@ fn check_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic>) {
             InlineSegment::QuarantinedHtml { span, .. } => {
                 sink.push(quarantine_warning(span.clone()));
             }
-            InlineSegment::Emphasis(inner) | InlineSegment::Strong(inner) => {
+            InlineSegment::Emphasis(inner)
+            | InlineSegment::Strong(inner)
+            | InlineSegment::Strikethrough(inner) => {
                 check_inlines(inner, sink);
             }
             InlineSegment::Link { text, .. } => check_inlines(text, sink),
@@ -50,7 +72,9 @@ fn check_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic>) {
             InlineSegment::Text(_)
             | InlineSegment::Code(_)
             | InlineSegment::ObjectReference { .. }
-            | InlineSegment::ObjectReferencePending { .. } => {}
+            | InlineSegment::ObjectReferencePending { .. }
+            | InlineSegment::FootnoteReference { .. }
+            | InlineSegment::UnknownExtension { .. } => {}
         }
     }
 }
