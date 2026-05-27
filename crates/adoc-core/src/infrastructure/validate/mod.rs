@@ -17,11 +17,10 @@ mod compat;
 mod knowledge_object_body_unsafe_links_forbidden;
 mod knowledge_object_lifecycle;
 mod knowledge_object_unique_ids;
+pub(crate) mod mode_pipeline;
 mod raw_html_forbidden;
 mod unsafe_link_forbidden;
 pub(crate) mod url_walker;
-
-pub(crate) use compat::validate_compat_source_page;
 
 use chrono::NaiveDate;
 use knowledge_object_body_unsafe_links_forbidden::KnowledgeObjectBodyUnsafeLinksForbidden;

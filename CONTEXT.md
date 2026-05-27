@@ -276,6 +276,10 @@ _Avoid_: `--compat` flag on `.adoc`, project-wide compat toggle, third validatio
 A property of a `SourceFile` set at the `SourceProvider` boundary from the file extension (ADR-0022): `Strict` for `.adoc`, `Compat` for `.md`. The classifier runs once during source construction; downstream pipeline stages read `source.mode()` instead of re-deriving from the path. Lives as `SourceMode` in `crates/adoc-core/src/domain/source.rs` alongside the `SOURCE_EXTENSIONS` discovery list, so adding a third extension is a single edit.
 _Avoid_: re-deriving mode from the path in application stages, threading mode through tuples alongside the source, classifying mode in adapter code
 
+**Mode Pipeline**:
+The per-mode bundle of validation entry points (`parse`, `validate_source_page`, `validate_resolved_page`) returned by `pipeline_for(SourceMode)` in `crates/adoc-core/src/infrastructure/validate/mode_pipeline.rs`. The orchestrator iterates pages and calls into the pipeline instead of `match mode { Strict => …, Compat => … }`; mode dispatch is data, not code. Compat's `validate_resolved_page` is `ResolvedPagePolicy::Empty` rather than an `if mode == Strict` branch — the "Compat skips resolved-page rules" invariant lives in the table row. Extends ADR-0007's "rule registries are data" to mode selection.
+_Avoid_: per-mode match arms in the orchestrator, parser/validator imports outside `mode_pipeline.rs`, skipping a phase by `if` rather than by `ResolvedPagePolicy` shape
+
 **Markdown Source**:
 The `.md` files AgentDoc ingests in V4 **Compatibility Mode**. Parsed by the **Markdown Parser** into a Page AST populated only with prose blocks. Never produces **Knowledge Objects**, relations, references, or typed metadata — durable structure still requires `.adoc` typed blocks. See ADR-0023.
 _Avoid_: auto-typed claims from Markdown, inferred glossary terms from definition lists, Markdown as authoring source of truth
