@@ -12,13 +12,11 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::ports::artifact_writer::ArtifactWriter;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
-use crate::domain::source::{SourceFile, SourceMode};
+use crate::domain::source::SourceFile;
 use crate::infrastructure::artifact::GraphJsonArtifact;
-use crate::infrastructure::parser::{parse_markdown_page, parse_page};
 use crate::infrastructure::render::HtmlRenderer;
-use crate::infrastructure::validate::{
-    validate_compat_source_page, validate_resolved_page, validate_source_page, validate_workspace,
-};
+use crate::infrastructure::validate::mode_pipeline::pipeline_for;
+use crate::infrastructure::validate::validate_workspace;
 
 use super::search_artifact::{
     build_search_artifact, cache_count_diagnostic, embedding_error_diagnostic,
@@ -177,10 +175,8 @@ fn load_pages<P: SourceProvider>(provider: &P) -> (Vec<(SourceFile, PageAst)>, V
     for result in provider.load_sources() {
         match result {
             Ok(source) => {
-                let (page, parse_diagnostics) = match source.mode() {
-                    SourceMode::Strict => parse_page(&source),
-                    SourceMode::Compat => parse_markdown_page(&source),
-                };
+                let pipeline = pipeline_for(source.mode());
+                let (page, parse_diagnostics) = (pipeline.parse)(&source);
                 diagnostics.extend(parse_diagnostics);
                 parsed.push((source, page));
             }
@@ -219,29 +215,26 @@ fn load_error_diagnostic(load_error: SourceLoadError) -> Diagnostic {
 }
 
 /// Run every source-page rule against the `(source, page)` pairs in order,
-/// dispatching by `source.mode()`: strict rules for `.adoc`, compat rules for
-/// `.md`. Markdown source never sees a strict-mode diagnostic and `.adoc`
-/// source never sees a compat-mode diagnostic.
+/// dispatching by the per-mode pipeline selected from `source.mode()`. The
+/// orchestrator does not know which rules run — that selection is data in
+/// [`pipeline_for`].
 fn validate_source_pages(parsed: &[(SourceFile, PageAst)]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for (source, page) in parsed {
-        match source.mode() {
-            SourceMode::Strict => diagnostics.extend(validate_source_page(page, source)),
-            SourceMode::Compat => diagnostics.extend(validate_compat_source_page(page, source)),
-        }
+        let pipeline = pipeline_for(source.mode());
+        diagnostics.extend((pipeline.validate_source_page)(page, source));
     }
     diagnostics
 }
 
-/// Run every resolved-page rule after Knowledge Object resolution. Compat
-/// sources have no Knowledge Objects and no resolved-page diagnostics; the
-/// loop skips them based on `source.mode()`.
+/// Run every resolved-page rule after Knowledge Object resolution. The
+/// per-mode pipeline owns the policy — Compat returns an empty Vec because
+/// its `ResolvedPagePolicy` is `Empty`, not because the orchestrator branches.
 fn validate_resolved_pages(parsed: &[(SourceFile, PageAst)], today: NaiveDate) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     for (source, page) in parsed {
-        if matches!(source.mode(), SourceMode::Strict) {
-            diagnostics.extend(validate_resolved_page(page, source, today));
-        }
+        let pipeline = pipeline_for(source.mode());
+        diagnostics.extend(pipeline.validate_resolved_page.run(page, source, today));
     }
     diagnostics
 }
