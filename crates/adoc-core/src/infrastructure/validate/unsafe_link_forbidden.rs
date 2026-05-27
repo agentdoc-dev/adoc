@@ -32,8 +32,11 @@ fn check_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
         // resolved-page phase.
         BlockAst::KnowledgeObject(_) | BlockAst::KnowledgeObjectPending(_) => {}
         // Strict-mode rule, never reached for Markdown sources where
-        // QuarantinedHtml originates.
-        BlockAst::QuarantinedHtml(_) => {}
+        // QuarantinedHtml and the V4 Markdown block variants originate.
+        BlockAst::QuarantinedHtml(_)
+        | BlockAst::Table(_)
+        | BlockAst::FootnoteDefinition(_)
+        | BlockAst::UnknownExtension(_) => {}
     }
 }
 
@@ -54,7 +57,9 @@ pub(super) fn check_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic
                 }
                 check_inlines(text, sink);
             }
-            InlineSegment::Emphasis(inner) | InlineSegment::Strong(inner) => {
+            InlineSegment::Emphasis(inner)
+            | InlineSegment::Strong(inner)
+            | InlineSegment::Strikethrough(inner) => {
                 check_inlines(inner, sink);
             }
             InlineSegment::Image { .. } => {
@@ -64,7 +69,9 @@ pub(super) fn check_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic
             | InlineSegment::Code(_)
             | InlineSegment::ObjectReferencePending { .. }
             | InlineSegment::ObjectReference { .. }
-            | InlineSegment::QuarantinedHtml { .. } => {}
+            | InlineSegment::QuarantinedHtml { .. }
+            | InlineSegment::FootnoteReference { .. }
+            | InlineSegment::UnknownExtension { .. } => {}
         }
     }
 }

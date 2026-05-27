@@ -197,6 +197,42 @@ fn block_to_graph_node(block: &BlockAst, id: &str, page_id: &str, order: u32) ->
             items: Vec::new(),
             source_span: source_span(&quarantined_html.span),
         }),
+        // V4.2: GFM Table, FootnoteDefinition, and UnknownExtension also
+        // project to a single prose block whose text is the original source
+        // text. The graph schema (`adoc.graph.v2`) is unchanged.
+        BlockAst::Table(table) => GraphNode::Paragraph(GraphBlockNode {
+            id: id.to_string(),
+            page_id: page_id.to_string(),
+            order,
+            level: None,
+            text: Some(table.source_text.clone()),
+            language: None,
+            code: None,
+            items: Vec::new(),
+            source_span: source_span(&table.span),
+        }),
+        BlockAst::FootnoteDefinition(footnote) => GraphNode::Paragraph(GraphBlockNode {
+            id: id.to_string(),
+            page_id: page_id.to_string(),
+            order,
+            level: None,
+            text: Some(footnote.source_text.clone()),
+            language: None,
+            code: None,
+            items: Vec::new(),
+            source_span: source_span(&footnote.span),
+        }),
+        BlockAst::UnknownExtension(unknown) => GraphNode::Paragraph(GraphBlockNode {
+            id: id.to_string(),
+            page_id: page_id.to_string(),
+            order,
+            level: None,
+            text: Some(unknown.source_text.clone()),
+            language: None,
+            code: None,
+            items: Vec::new(),
+            source_span: source_span(&unknown.span),
+        }),
     }
 }
 
@@ -326,11 +362,26 @@ fn push_reference_edges(edges: &mut Vec<GraphEdge>, block: &BlockAst, source: &s
                 push_inline_reference_edges(edges, source, &item.inlines);
             }
         }
+        BlockAst::Table(table) => {
+            for cell in &table.header {
+                push_inline_reference_edges(edges, source, &cell.inlines);
+            }
+            for row in &table.rows {
+                for cell in row {
+                    push_inline_reference_edges(edges, source, &cell.inlines);
+                }
+            }
+        }
+        BlockAst::FootnoteDefinition(footnote) => {
+            for child in &footnote.content {
+                push_reference_edges(edges, child, source);
+            }
+        }
         BlockAst::KnowledgeObject(knowledge_object) => {
             push_inline_reference_edges(edges, source, knowledge_object.body().inlines());
         }
         BlockAst::CodeBlock(_) => {}
-        BlockAst::QuarantinedHtml(_) => {}
+        BlockAst::QuarantinedHtml(_) | BlockAst::UnknownExtension(_) => {}
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before graph emission")
         }
@@ -344,7 +395,9 @@ fn push_inline_reference_edges(
 ) {
     for segment in inlines {
         match segment {
-            InlineSegment::Emphasis(inner) | InlineSegment::Strong(inner) => {
+            InlineSegment::Emphasis(inner)
+            | InlineSegment::Strong(inner)
+            | InlineSegment::Strikethrough(inner) => {
                 push_inline_reference_edges(edges, source, inner);
             }
             InlineSegment::Link { text, .. } => push_inline_reference_edges(edges, source, text),
@@ -363,7 +416,9 @@ fn push_inline_reference_edges(
             InlineSegment::Text(_)
             | InlineSegment::Code(_)
             | InlineSegment::ObjectReferencePending { .. }
-            | InlineSegment::QuarantinedHtml { .. } => {}
+            | InlineSegment::QuarantinedHtml { .. }
+            | InlineSegment::FootnoteReference { .. }
+            | InlineSegment::UnknownExtension { .. } => {}
         }
     }
 }

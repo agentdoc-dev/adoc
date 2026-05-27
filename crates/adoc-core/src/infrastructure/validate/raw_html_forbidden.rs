@@ -37,9 +37,13 @@ impl ValidationRule for RawHtmlForbidden {
                     }
                 }
                 // Strict-mode rule, never reached for Markdown sources where
-                // QuarantinedHtml originates. Kept exhaustive so adding the
-                // variant elsewhere doesn't silently bypass strict checks.
-                BlockAst::QuarantinedHtml(_) => {}
+                // QuarantinedHtml and the V4 Markdown block variants
+                // originate. Kept exhaustive so adding the variant elsewhere
+                // doesn't silently bypass strict checks.
+                BlockAst::QuarantinedHtml(_)
+                | BlockAst::Table(_)
+                | BlockAst::FootnoteDefinition(_)
+                | BlockAst::UnknownExtension(_) => {}
             }
         }
     }

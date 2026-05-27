@@ -1,4 +1,4 @@
-use crate::domain::ast::{BlockAst, ListKind, WorkspaceAst};
+use crate::domain::ast::{BlockAst, ColumnAlignment, ListKind, UnknownExtensionKind, WorkspaceAst};
 use crate::domain::graph::GraphRelationKind;
 use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
@@ -60,11 +60,24 @@ fn render_block(block: &BlockAst, html: &mut String) {
                 ListKind::Ordered => "ol",
                 ListKind::Unordered => "ul",
             };
+            // V4.2: when any item carries a task_state, the list is a GFM
+            // task list. Mark the parent so CSS can hide bullets if desired.
+            let is_task_list = list.items.iter().any(|item| item.task_state.is_some());
             html.push('<');
             html.push_str(tag);
+            if is_task_list {
+                html.push_str(" class=\"adoc-task-list\"");
+            }
             html.push_str(">\n");
             for item in &list.items {
                 html.push_str("<li>");
+                if let Some(checked) = item.task_state {
+                    html.push_str("<input type=\"checkbox\" disabled");
+                    if checked {
+                        html.push_str(" checked");
+                    }
+                    html.push_str(" /> ");
+                }
                 render_inlines(&item.inlines, html);
                 html.push_str("</li>\n");
             }
@@ -95,6 +108,82 @@ fn render_block(block: &BlockAst, html: &mut String) {
             html.push_str(&escape_html(&quarantined_html.source_text));
             html.push_str("</pre>\n");
         }
+        BlockAst::Table(table) => render_table(table, html),
+        BlockAst::FootnoteDefinition(footnote) => {
+            html.push_str("<aside class=\"adoc-footnote\" id=\"fn-");
+            html.push_str(&escape_html(&footnote.label));
+            html.push_str("\">\n");
+            for child in &footnote.content {
+                render_block(child, html);
+            }
+            html.push_str("<a class=\"adoc-footnote-backref\" href=\"#fnref-");
+            html.push_str(&escape_html(&footnote.label));
+            html.push_str("\">&#8617;</a>\n</aside>\n");
+        }
+        BlockAst::UnknownExtension(unknown) => {
+            html.push_str("<pre class=\"adoc-unknown-extension\" data-kind=\"");
+            html.push_str(unknown_extension_kind_token(unknown.kind));
+            html.push_str("\"><code>");
+            html.push_str(&escape_html(&unknown.source_text));
+            html.push_str("</code></pre>\n");
+        }
+    }
+}
+
+fn render_table(table: &crate::domain::ast::TableAst, html: &mut String) {
+    html.push_str("<table class=\"adoc-table\">\n");
+    if !table.header.is_empty() {
+        html.push_str("<thead><tr>");
+        for (index, cell) in table.header.iter().enumerate() {
+            html.push_str("<th");
+            if let Some(class) = column_alignment_class(table.alignments.get(index).copied()) {
+                html.push_str(" class=\"");
+                html.push_str(class);
+                html.push('"');
+            }
+            html.push('>');
+            render_inlines(&cell.inlines, html);
+            html.push_str("</th>");
+        }
+        html.push_str("</tr></thead>\n");
+    }
+    if !table.rows.is_empty() {
+        html.push_str("<tbody>\n");
+        for row in &table.rows {
+            html.push_str("<tr>");
+            for (index, cell) in row.iter().enumerate() {
+                html.push_str("<td");
+                if let Some(class) = column_alignment_class(table.alignments.get(index).copied()) {
+                    html.push_str(" class=\"");
+                    html.push_str(class);
+                    html.push('"');
+                }
+                html.push('>');
+                render_inlines(&cell.inlines, html);
+                html.push_str("</td>");
+            }
+            html.push_str("</tr>\n");
+        }
+        html.push_str("</tbody>\n");
+    }
+    html.push_str("</table>\n");
+}
+
+fn column_alignment_class(alignment: Option<ColumnAlignment>) -> Option<&'static str> {
+    match alignment? {
+        ColumnAlignment::Default => None,
+        ColumnAlignment::Left => Some("adoc-table-cell-left"),
+        ColumnAlignment::Center => Some("adoc-table-cell-center"),
+        ColumnAlignment::Right => Some("adoc-table-cell-right"),
+    }
+}
+
+fn unknown_extension_kind_token(kind: UnknownExtensionKind) -> &'static str {
+    match kind {
+        UnknownExtensionKind::MdxComponent => "mdx-component",
+        UnknownExtensionKind::PandocDirective => "pandoc-directive",
+        UnknownExtensionKind::AttributeBlock => "attribute-block",
+        UnknownExtensionKind::MathFence => "math-fence",
     }
 }
 
@@ -505,6 +594,29 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
             html.push_str(&escape_html(source_text));
             html.push_str("</code>");
         }
+        InlineSegment::Strikethrough(inner) => {
+            html.push_str("<del>");
+            render_inlines(inner, html);
+            html.push_str("</del>");
+        }
+        InlineSegment::FootnoteReference { label, .. } => {
+            html.push_str("<sup class=\"adoc-footnote-ref\" id=\"fnref-");
+            html.push_str(&escape_html(label));
+            html.push_str("\"><a href=\"#fn-");
+            html.push_str(&escape_html(label));
+            html.push_str("\">[");
+            html.push_str(&escape_html(label));
+            html.push_str("]</a></sup>");
+        }
+        InlineSegment::UnknownExtension {
+            source_text, kind, ..
+        } => {
+            html.push_str("<code class=\"adoc-unknown-extension\" data-kind=\"");
+            html.push_str(unknown_extension_kind_token(*kind));
+            html.push_str("\">");
+            html.push_str(&escape_html(source_text));
+            html.push_str("</code>");
+        }
     }
 }
 
@@ -675,6 +787,7 @@ mod tests {
                             InlineSegment::Code("adoc check".to_string()),
                         ],
                         span: span(),
+                        task_state: None,
                     }],
                     span: span(),
                 }),

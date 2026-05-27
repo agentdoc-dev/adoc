@@ -26,10 +26,26 @@ fn walk_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
                 walk_inlines(&item.inlines, sink);
             }
         }
+        BlockAst::Table(table) => {
+            for cell in &table.header {
+                walk_inlines(&cell.inlines, sink);
+            }
+            for row in &table.rows {
+                for cell in row {
+                    walk_inlines(&cell.inlines, sink);
+                }
+            }
+        }
+        BlockAst::FootnoteDefinition(footnote) => {
+            for child in &footnote.content {
+                walk_block(child, sink);
+            }
+        }
         BlockAst::CodeBlock(_)
         | BlockAst::QuarantinedHtml(_)
         | BlockAst::KnowledgeObject(_)
-        | BlockAst::KnowledgeObjectPending(_) => {}
+        | BlockAst::KnowledgeObjectPending(_)
+        | BlockAst::UnknownExtension(_) => {}
     }
 }
 
@@ -50,7 +66,9 @@ fn walk_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic>) {
                 }
                 walk_inlines(alt, sink);
             }
-            InlineSegment::Emphasis(inner) | InlineSegment::Strong(inner) => {
+            InlineSegment::Emphasis(inner)
+            | InlineSegment::Strong(inner)
+            | InlineSegment::Strikethrough(inner) => {
                 walk_inlines(inner, sink);
             }
             InlineSegment::Link { text, .. } => walk_inlines(text, sink),
@@ -58,7 +76,9 @@ fn walk_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic>) {
             | InlineSegment::Code(_)
             | InlineSegment::ObjectReference { .. }
             | InlineSegment::ObjectReferencePending { .. }
-            | InlineSegment::QuarantinedHtml { .. } => {}
+            | InlineSegment::QuarantinedHtml { .. }
+            | InlineSegment::FootnoteReference { .. }
+            | InlineSegment::UnknownExtension { .. } => {}
         }
     }
 }

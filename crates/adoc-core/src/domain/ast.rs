@@ -42,6 +42,21 @@ pub(crate) enum BlockAst {
     /// is the original source text. The compat validator pipeline emits a
     /// `compat.raw_html_quarantined` warning per occurrence.
     QuarantinedHtml(QuarantinedHtmlAst),
+    /// GFM table from Markdown source (V4 Compatibility Mode only). The
+    /// renderer walks `header`, `rows`, and `alignments` to emit a
+    /// `<table>`; the graph emitter projects this to a single prose block
+    /// whose `source_text` is the original Markdown table.
+    Table(TableAst),
+    /// GFM footnote definition from Markdown source (V4 Compatibility Mode
+    /// only). The renderer emits an `<aside>` block keyed by `label`; the
+    /// graph emitter projects this to a single prose block.
+    FootnoteDefinition(FootnoteDefinitionAst),
+    /// Block-level Markdown construct outside the V4 supported set (MDX
+    /// component, Pandoc directive, math fence, custom attribute block).
+    /// The renderer emits the original `source_text` inside an escaped
+    /// `<code>` block; the compat validator emits one
+    /// `compat.unknown_extension` warning per occurrence.
+    UnknownExtension(UnknownExtensionAst),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,10 +83,15 @@ pub(crate) struct ListAst {
 /// it occupies. Reified per ADR-0007/-0006 so each item carries its own
 /// position; future per-item rules walk `item.span` directly instead of
 /// re-deriving offsets from the enclosing list.
+///
+/// `task_state` is populated only for GFM task list items (V4 Compatibility
+/// Mode): `Some(true)` for `- [x]`, `Some(false)` for `- [ ]`, `None` for
+/// plain list items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ListItem {
     pub(crate) inlines: Vec<InlineSegment>,
     pub(crate) span: SourceSpan,
+    pub(crate) task_state: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +111,63 @@ pub(crate) struct CodeBlockAst {
 pub(crate) struct QuarantinedHtmlAst {
     pub(crate) source_text: String,
     pub(crate) span: SourceSpan,
+}
+
+/// Column alignment for a GFM table column, derived from the alignment row
+/// (`:---`, `:---:`, `---:`, `---`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ColumnAlignment {
+    Default,
+    Left,
+    Center,
+    Right,
+}
+
+/// One cell in a GFM table. Cells in the header row carry the column
+/// header inlines; cells in the body rows carry data inlines.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TableCell {
+    pub(crate) inlines: Vec<InlineSegment>,
+    pub(crate) span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TableAst {
+    pub(crate) header: Vec<TableCell>,
+    pub(crate) rows: Vec<Vec<TableCell>>,
+    pub(crate) alignments: Vec<ColumnAlignment>,
+    pub(crate) source_text: String,
+    pub(crate) span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FootnoteDefinitionAst {
+    pub(crate) label: String,
+    pub(crate) content: Vec<BlockAst>,
+    pub(crate) source_text: String,
+    pub(crate) span: SourceSpan,
+}
+
+/// Why a Markdown construct landed in `UnknownExtension`. Drives the
+/// diagnostic message and lets future tooling distinguish the categories.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UnknownExtensionKind {
+    /// `<MyComponent prop="x" />` outside a code block. Distinguished from
+    /// raw HTML by a PascalCase tag name (JSX/MDX convention).
+    MdxComponent,
+    /// `:::warning ... :::` Pandoc/extension directive at line start.
+    PandocDirective,
+    /// `{.class}` / `{#id}` custom attribute block.
+    AttributeBlock,
+    /// `$...$` inline math or `$$...$$` display math fence.
+    MathFence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UnknownExtensionAst {
+    pub(crate) source_text: String,
+    pub(crate) span: SourceSpan,
+    pub(crate) kind: UnknownExtensionKind,
 }
 
 /// Parser-produced shell of a typed block before validation. Carries the raw

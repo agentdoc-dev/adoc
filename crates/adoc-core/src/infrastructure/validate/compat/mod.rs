@@ -8,10 +8,12 @@
 //! V0 behavior.
 
 mod raw_html_quarantine;
+mod unknown_extension;
 mod unsafe_image_src_dropped;
 mod unsafe_link_dropped;
 
 use raw_html_quarantine::RawHtmlQuarantine;
+use unknown_extension::UnknownExtension;
 use unsafe_image_src_dropped::UnsafeImageSrcDropped;
 use unsafe_link_dropped::UnsafeLinkDropped;
 
@@ -24,6 +26,7 @@ const COMPAT_SOURCE_PAGE_RULES: &[&dyn ValidationRule] = &[
     &RawHtmlQuarantine,
     &UnsafeLinkDropped,
     &UnsafeImageSrcDropped,
+    &UnknownExtension,
 ];
 
 /// Run every compat source-page rule against `page`. The runner mirrors

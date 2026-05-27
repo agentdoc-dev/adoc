@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::domain::ast::UnknownExtensionKind;
 use crate::domain::diagnostic::{SourcePosition, SourceSpan};
 use crate::domain::identity::ObjectId;
 use crate::domain::source::{LineCursor, SourceFile};
@@ -10,6 +11,9 @@ pub(crate) enum InlineSegment {
     Code(String),
     Emphasis(Vec<InlineSegment>),
     Strong(Vec<InlineSegment>),
+    /// GFM strikethrough (`~~text~~`). Produced only by the Markdown parser
+    /// (V4 Compatibility Mode). The renderer emits `<del>...</del>`.
+    Strikethrough(Vec<InlineSegment>),
     Link {
         text: Vec<InlineSegment>,
         url: String,
@@ -41,6 +45,22 @@ pub(crate) enum InlineSegment {
     QuarantinedHtml {
         source_text: String,
         span: SourceSpan,
+    },
+    /// GFM footnote reference (`[^label]`). The renderer emits a
+    /// `<sup><a href="#fn-{label}">[label]</a></sup>` anchor pointing at
+    /// the matching `BlockAst::FootnoteDefinition`.
+    FootnoteReference {
+        label: String,
+        span: SourceSpan,
+    },
+    /// Inline Markdown construct outside the V4 supported set — `$...$`
+    /// inline math, an inline MDX component, or an inline attribute block.
+    /// The renderer emits the original `source_text` inside an escaped
+    /// `<code class="adoc-unknown-extension">`.
+    UnknownExtension {
+        source_text: String,
+        span: SourceSpan,
+        kind: UnknownExtensionKind,
     },
 }
 
@@ -158,6 +178,11 @@ fn append_source(segments: &[InlineSegment], buffer: &mut String) {
                 append_source(inner, buffer);
                 buffer.push_str("**");
             }
+            InlineSegment::Strikethrough(inner) => {
+                buffer.push_str("~~");
+                append_source(inner, buffer);
+                buffer.push_str("~~");
+            }
             InlineSegment::Link { text, url, .. } => {
                 buffer.push('[');
                 append_source(text, buffer);
@@ -185,6 +210,14 @@ fn append_source(segments: &[InlineSegment], buffer: &mut String) {
             InlineSegment::QuarantinedHtml { source_text, .. } => {
                 buffer.push_str(source_text);
             }
+            InlineSegment::FootnoteReference { label, .. } => {
+                buffer.push_str("[^");
+                buffer.push_str(label);
+                buffer.push(']');
+            }
+            InlineSegment::UnknownExtension { source_text, .. } => {
+                buffer.push_str(source_text);
+            }
         }
     }
 }
@@ -193,9 +226,9 @@ fn append_plain_text(segments: &[InlineSegment], buffer: &mut String) {
     for segment in segments {
         match segment {
             InlineSegment::Text(text) | InlineSegment::Code(text) => buffer.push_str(text),
-            InlineSegment::Emphasis(inner) | InlineSegment::Strong(inner) => {
-                append_plain_text(inner, buffer)
-            }
+            InlineSegment::Emphasis(inner)
+            | InlineSegment::Strong(inner)
+            | InlineSegment::Strikethrough(inner) => append_plain_text(inner, buffer),
             InlineSegment::Link { text, .. } => append_plain_text(text, buffer),
             InlineSegment::ObjectReferencePending { raw_id, .. } => {
                 buffer.push_str(raw_id);
@@ -205,6 +238,14 @@ fn append_plain_text(segments: &[InlineSegment], buffer: &mut String) {
             }
             InlineSegment::Image { alt, .. } => append_plain_text(alt, buffer),
             InlineSegment::QuarantinedHtml { source_text, .. } => {
+                buffer.push_str(source_text);
+            }
+            InlineSegment::FootnoteReference { label, .. } => {
+                buffer.push('[');
+                buffer.push_str(label);
+                buffer.push(']');
+            }
+            InlineSegment::UnknownExtension { source_text, .. } => {
                 buffer.push_str(source_text);
             }
         }

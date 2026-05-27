@@ -14,13 +14,16 @@
 
 use std::ops::Range;
 
-use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, LinkType, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{
+    Alignment, CodeBlockKind, Event, HeadingLevel, LinkType, Options, Parser, Tag, TagEnd,
+};
 
 use crate::domain::ast::{
-    BlockAst, CodeBlockAst, HeadingAst, ListAst, ListItem, ListKind, PageAst, ParagraphAst,
-    QuarantinedHtmlAst,
+    BlockAst, CodeBlockAst, ColumnAlignment, FootnoteDefinitionAst, HeadingAst, ListAst, ListItem,
+    ListKind, PageAst, ParagraphAst, QuarantinedHtmlAst, TableAst, TableCell, UnknownExtensionAst,
+    UnknownExtensionKind,
 };
-use crate::domain::diagnostic::{Diagnostic, SourceSpan};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::PageId;
 use crate::domain::inline::InlineSegment;
 use crate::domain::source::{DerivedPageIdError, SourceFile, derive_page_id};
@@ -46,6 +49,10 @@ pub(crate) fn parse_markdown_page(source: &SourceFile) -> (PageAst, Vec<Diagnost
     options.insert(Options::ENABLE_TASKLISTS);
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_FOOTNOTES);
+    // V4.2: tokenize `$...$` and `$$...$$` as InlineMath / DisplayMath
+    // events so the parser can divert them deterministically to
+    // `UnknownExtension { kind: MathFence }` with a diagnostic.
+    options.insert(Options::ENABLE_MATH);
 
     let parser = Parser::new_ext(markdown_text, options).into_offset_iter();
 
@@ -55,19 +62,116 @@ pub(crate) fn parse_markdown_page(source: &SourceFile) -> (PageAst, Vec<Diagnost
         blocks: Vec::new(),
         title: None,
         stack: Vec::new(),
+        diagnostics,
     };
 
     for (event, range) in parser {
         state.consume(event, range);
     }
 
+    let State {
+        mut blocks,
+        title,
+        diagnostics,
+        ..
+    } = state;
+
+    // Post-parse rewrite: paragraphs whose source matches a Pandoc directive
+    // opener (`:::name`) or an attribute block (`{.class}` / `{#id}`) become
+    // `BlockAst::UnknownExtension`. The compat validator emits the diagnostic
+    // via its source-text scan; this pass only adjusts the AST so the
+    // renderer can emit `<pre class="adoc-unknown-extension">`.
+    rewrite_pandoc_and_attribute_paragraphs(&mut blocks, source);
+
     let page = PageAst {
         id: page_id,
-        title: state.title,
+        title,
         source_path: source.path.clone(),
-        blocks: state.blocks,
+        blocks,
     };
     (page, diagnostics)
+}
+
+fn rewrite_pandoc_and_attribute_paragraphs(blocks: &mut [BlockAst], source: &SourceFile) {
+    for block in blocks.iter_mut() {
+        let Some(replacement) = paragraph_to_unknown_extension(block, source) else {
+            continue;
+        };
+        *block = replacement;
+    }
+}
+
+fn paragraph_to_unknown_extension(block: &BlockAst, source: &SourceFile) -> Option<BlockAst> {
+    let BlockAst::Paragraph(paragraph) = block else {
+        return None;
+    };
+    let start_line = paragraph.span.start.line as usize;
+    let end_line = paragraph.span.end.line as usize;
+    let mut kind: Option<UnknownExtensionKind> = None;
+    for (index, line) in source.text.lines().enumerate() {
+        let line_number = index + 1;
+        if line_number < start_line {
+            continue;
+        }
+        if line_number > end_line {
+            break;
+        }
+        let trimmed = line.trim_start();
+        if trimmed.starts_with(":::") {
+            let after = trimmed.trim_start_matches(':');
+            let head = after.trim_start();
+            if head
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+            {
+                kind = Some(UnknownExtensionKind::PandocDirective);
+                break;
+            }
+        }
+        if line_contains_attribute_block(line) {
+            kind = Some(UnknownExtensionKind::AttributeBlock);
+            // Don't break — Pandoc takes priority if both match on
+            // different lines of the same paragraph.
+        }
+    }
+    let kind = kind?;
+    let source_text = crate::domain::inline::to_source(&paragraph.inlines);
+    Some(BlockAst::UnknownExtension(UnknownExtensionAst {
+        source_text,
+        span: paragraph.span.clone(),
+        kind,
+    }))
+}
+
+fn line_contains_attribute_block(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    let mut byte = 0usize;
+    while byte < bytes.len() {
+        if bytes[byte] == b'{' {
+            let Some(end) = line[byte..].find('}') else {
+                return false;
+            };
+            let inner = line[byte + 1..byte + end].trim();
+            if inner.is_empty() {
+                byte += end + 1;
+                continue;
+            }
+            let first = inner.as_bytes()[0];
+            if (first == b'.' || first == b'#') && inner.len() > 1 && inner.as_bytes()[1] != b' ' {
+                return true;
+            }
+            if let Some(equals) = inner.find('=')
+                && equals > 0
+            {
+                return true;
+            }
+            byte += end + 1;
+        } else {
+            byte += 1;
+        }
+    }
+    false
 }
 
 fn invalid_derived_page_id_diagnostic(
@@ -108,6 +212,7 @@ enum Frame {
     Item {
         inlines: Vec<InlineSegment>,
         span: SourceSpan,
+        task_state: Option<bool>,
     },
     Emphasis(Vec<InlineSegment>),
     Strong(Vec<InlineSegment>),
@@ -122,12 +227,57 @@ enum Frame {
         alt: Vec<InlineSegment>,
         span: SourceSpan,
     },
-    /// Fallback frame for GFM constructs V4.1 does not render natively (tables,
-    /// footnote definitions, block quotes). The frame's inline buffer collects
-    /// child text so the final `BlockAst::Paragraph` carries the source text;
-    /// V4.2 will replace this with proper variant rendering.
+    /// Fenced code block. Code text is streamed as `Event::Text` between
+    /// `Tag::CodeBlock(..)` and `TagEnd::CodeBlock`. The first inline holds
+    /// the language sentinel; subsequent inlines are appended to `code`.
+    /// The span is recomputed from the closing `TagEnd::CodeBlock` event
+    /// range so we do not carry one on the frame.
+    CodeBlock {
+        inlines: Vec<InlineSegment>,
+    },
+    /// Block-level raw HTML that V4.1 quarantines. The frame collects raw
+    /// HTML events until `TagEnd::HtmlBlock`; the slice of the original
+    /// source text becomes the `QuarantinedHtml` source.
+    HtmlBlock {
+        span: SourceSpan,
+    },
+    /// Generic GFM construct V4.2 does not render natively (block quote,
+    /// definition list, metadata block). The inline buffer collects child
+    /// text so the final `BlockAst::Paragraph` carries the source text.
     PassthroughBlock {
         inlines: Vec<InlineSegment>,
+        span: SourceSpan,
+    },
+    /// GFM table. Header cells live in `header`; body rows accumulate in
+    /// `rows`. The active row builds in `current_row`; the active cell
+    /// builds in the top-of-stack `Frame::TableCell`.
+    Table {
+        header: Vec<TableCell>,
+        rows: Vec<Vec<TableCell>>,
+        current_row: Vec<TableCell>,
+        in_header: bool,
+        alignments: Vec<ColumnAlignment>,
+        span: SourceSpan,
+    },
+    /// Active table-head wrapper. The state machine flips `Table::in_header`
+    /// to `false` on `TagEnd::TableHead`; this frame exists so the event
+    /// stream balances.
+    TableHead,
+    /// Active table-row wrapper; serves the same balancing purpose as
+    /// `TableHead`.
+    TableRow,
+    /// Active table cell. Inline segments collect into `inlines`; on
+    /// `TagEnd::TableCell` the parent `Frame::Table` consumes the cell.
+    TableCell {
+        inlines: Vec<InlineSegment>,
+        span: SourceSpan,
+    },
+    /// GFM footnote definition. `label` carries the `[^label]` text; the
+    /// content stream collects block-level children which the renderer
+    /// emits inside the resulting `<aside>`.
+    FootnoteDefinition {
+        label: String,
+        content: Vec<BlockAst>,
         span: SourceSpan,
     },
 }
@@ -138,6 +288,7 @@ struct State<'a> {
     blocks: Vec<BlockAst>,
     title: Option<String>,
     stack: Vec<Frame>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> State<'a> {
@@ -163,20 +314,54 @@ impl<'a> State<'a> {
                         span,
                     }));
             }
-            Event::FootnoteReference(_) => {
-                // V4.1 carries footnote text through the surrounding paragraph;
-                // V4.2 will produce proper backref anchors.
+            Event::FootnoteReference(label) => {
+                let span = self.span_for(range);
+                self.push_inline(InlineSegment::FootnoteReference {
+                    label: label.into_string(),
+                    span,
+                });
             }
             Event::TaskListMarker(checked) => {
-                let marker = if checked { "[x] " } else { "[ ] " };
-                self.push_inline(InlineSegment::Text(marker.to_string()));
+                // GFM emits the marker before the item's text; the active
+                // frame is the enclosing `Frame::Item`. We attach the state
+                // to the item itself; when it closes we copy `task_state`
+                // onto the produced `ListItem`.
+                if let Some(Frame::Item { task_state, .. }) = self.stack.last_mut() {
+                    *task_state = Some(checked);
+                }
             }
-            // GFM math extension (`$...$`, `$$...$$`) is outside the V4.1
-            // supported set; pass the source through as inline code so the
-            // page still renders without invoking the math feature flag.
-            // V4.2 will replace this with a `compat.unknown_extension` warning.
-            Event::InlineMath(value) | Event::DisplayMath(value) => {
-                self.push_inline(InlineSegment::Code(value.into_string()));
+            Event::InlineMath(value) => {
+                let span = self.span_for(range.clone());
+                let source_text = self.slice_for(range);
+                self.diagnostics
+                    .push(unknown_extension_warning(span.clone(), "$...$ inline math"));
+                self.push_inline(InlineSegment::UnknownExtension {
+                    source_text: if source_text.is_empty() {
+                        value.into_string()
+                    } else {
+                        source_text
+                    },
+                    span,
+                    kind: UnknownExtensionKind::MathFence,
+                });
+            }
+            Event::DisplayMath(value) => {
+                let span = self.span_for(range.clone());
+                let source_text = self.slice_for(range);
+                self.diagnostics.push(unknown_extension_warning(
+                    span.clone(),
+                    "$$...$$ display math",
+                ));
+                let block = BlockAst::UnknownExtension(UnknownExtensionAst {
+                    source_text: if source_text.is_empty() {
+                        value.into_string()
+                    } else {
+                        source_text
+                    },
+                    span,
+                    kind: UnknownExtensionKind::MathFence,
+                });
+                self.push_block(block);
             }
         }
     }
@@ -208,6 +393,7 @@ impl<'a> State<'a> {
             Tag::Item => self.stack.push(Frame::Item {
                 inlines: Vec::new(),
                 span,
+                task_state: None,
             }),
             Tag::Emphasis => self.stack.push(Frame::Emphasis(Vec::new())),
             Tag::Strong => self.stack.push(Frame::Strong(Vec::new())),
@@ -233,39 +419,56 @@ impl<'a> State<'a> {
                 span,
             }),
             Tag::CodeBlock(code_kind) => {
-                // Code blocks have their content streamed as Text events
-                // between Start and End. We capture them on the stack as a
-                // pseudo-paragraph so the language and text flow naturally.
-                self.stack.push(Frame::PassthroughBlock {
+                let _ = span;
+                self.stack.push(Frame::CodeBlock {
                     inlines: vec![InlineSegment::Text(String::new())],
-                    span: span.clone(),
                 });
-                // Stash the language in a sentinel inline; finalize_code_block
-                // recovers it. Simpler than a dedicated variant for now.
+                // Stash the language in a sentinel inline; `extract_code_block`
+                // recovers it. Simpler than a dedicated frame field.
                 if let CodeBlockKind::Fenced(language) = code_kind {
                     let language = language.into_string();
                     if !language.is_empty()
-                        && let Some(Frame::PassthroughBlock { inlines, .. }) = self.stack.last_mut()
+                        && let Some(Frame::CodeBlock { inlines, .. }) = self.stack.last_mut()
                     {
                         inlines[0] = InlineSegment::Code(language);
                     }
                 }
             }
             Tag::HtmlBlock => {
-                self.stack.push(Frame::PassthroughBlock {
-                    inlines: Vec::new(),
+                self.stack.push(Frame::HtmlBlock { span });
+            }
+            Tag::Table(alignments) => {
+                let alignments: Vec<ColumnAlignment> =
+                    alignments.into_iter().map(column_alignment).collect();
+                self.stack.push(Frame::Table {
+                    header: Vec::new(),
+                    rows: Vec::new(),
+                    current_row: Vec::new(),
+                    in_header: false,
+                    alignments,
                     span,
                 });
             }
-            // GFM extras V4.1 does not render natively. Collect inline text into
-            // a passthrough block so V4.2 can split these out without changing
-            // the surrounding code.
+            Tag::TableHead => {
+                if let Some(Frame::Table { in_header, .. }) = find_enclosing_table(&mut self.stack)
+                {
+                    *in_header = true;
+                }
+                self.stack.push(Frame::TableHead);
+            }
+            Tag::TableRow => self.stack.push(Frame::TableRow),
+            Tag::TableCell => self.stack.push(Frame::TableCell {
+                inlines: Vec::new(),
+                span,
+            }),
+            Tag::FootnoteDefinition(label) => self.stack.push(Frame::FootnoteDefinition {
+                label: label.into_string(),
+                content: Vec::new(),
+                span,
+            }),
+            // GFM extras V4.2 still does not render natively. Collect inline
+            // text into a passthrough block so the source text is visible.
             Tag::BlockQuote(_)
-            | Tag::Table(_)
-            | Tag::TableHead
-            | Tag::TableRow
-            | Tag::TableCell
-            | Tag::FootnoteDefinition(_)
             | Tag::DefinitionList
             | Tag::DefinitionListTitle
             | Tag::DefinitionListDefinition
@@ -280,12 +483,13 @@ impl<'a> State<'a> {
 
     fn end(&mut self, end: TagEnd, range: Range<usize>) {
         let Some(frame) = self.stack.pop() else {
+            self.report_malformed(range);
             return;
         };
         match (frame, end) {
             (Frame::Paragraph { inlines, span }, TagEnd::Paragraph) => {
-                self.blocks
-                    .push(BlockAst::Paragraph(ParagraphAst { inlines, span }));
+                let block = BlockAst::Paragraph(ParagraphAst { inlines, span });
+                self.push_block(block);
             }
             (
                 Frame::Heading {
@@ -298,19 +502,33 @@ impl<'a> State<'a> {
                 if self.title.is_none() && level == 1 {
                     self.title = Some(crate::domain::inline::plain_text(&inlines));
                 }
-                self.blocks.push(BlockAst::Heading(HeadingAst {
+                let block = BlockAst::Heading(HeadingAst {
                     level,
                     inlines,
                     span,
-                }));
+                });
+                self.push_block(block);
             }
             (Frame::List { kind, items, span }, TagEnd::List(_)) => {
-                self.blocks
-                    .push(BlockAst::List(ListAst { kind, items, span }));
+                let block = BlockAst::List(ListAst { kind, items, span });
+                self.push_block(block);
             }
-            (Frame::Item { inlines, span }, TagEnd::Item) => {
+            (
+                Frame::Item {
+                    inlines,
+                    span,
+                    task_state,
+                },
+                TagEnd::Item,
+            ) => {
                 if let Some(Frame::List { items, .. }) = self.stack.last_mut() {
-                    items.push(ListItem { inlines, span });
+                    items.push(ListItem {
+                        inlines,
+                        span,
+                        task_state,
+                    });
+                } else {
+                    self.report_malformed(range);
                 }
             }
             (Frame::Emphasis(inner), TagEnd::Emphasis) => {
@@ -320,9 +538,7 @@ impl<'a> State<'a> {
                 self.push_inline(InlineSegment::Strong(inner));
             }
             (Frame::Strikethrough(inner), TagEnd::Strikethrough) => {
-                // V4.1 renders strikethrough as plain inline text per ADR
-                // 0023's prose-first stance; V4.2 will emit a `<del>` wrapper.
-                self.push_inline(InlineSegment::Emphasis(inner));
+                self.push_inline(InlineSegment::Strikethrough(inner));
             }
             (Frame::Link { url, text, span }, TagEnd::Link) => {
                 self.push_inline(InlineSegment::Link { text, url, span });
@@ -330,33 +546,120 @@ impl<'a> State<'a> {
             (Frame::Image { url, alt, span }, TagEnd::Image) => {
                 self.push_inline(InlineSegment::Image { alt, url, span });
             }
-            (Frame::PassthroughBlock { inlines, span: _ }, TagEnd::CodeBlock) => {
+            (Frame::CodeBlock { inlines }, TagEnd::CodeBlock) => {
                 let span = self.span_for(range);
                 let (language, code) = extract_code_block(inlines);
-                self.blocks.push(BlockAst::CodeBlock(CodeBlockAst {
+                let block = BlockAst::CodeBlock(CodeBlockAst {
                     language,
                     code,
                     span,
-                }));
+                });
+                self.push_block(block);
             }
-            (Frame::PassthroughBlock { inlines: _, span }, TagEnd::HtmlBlock) => {
+            (Frame::HtmlBlock { span }, TagEnd::HtmlBlock) => {
                 let source_text = self.slice_for(range);
-                self.blocks
-                    .push(BlockAst::QuarantinedHtml(QuarantinedHtmlAst {
+                let block = if first_tag_is_uppercase(&source_text) {
+                    self.diagnostics.push(unknown_extension_warning(
+                        span.clone(),
+                        "MDX component (PascalCase block tag)",
+                    ));
+                    BlockAst::UnknownExtension(UnknownExtensionAst {
                         source_text,
                         span,
-                    }));
+                        kind: UnknownExtensionKind::MdxComponent,
+                    })
+                } else {
+                    BlockAst::QuarantinedHtml(QuarantinedHtmlAst { source_text, span })
+                };
+                self.push_block(block);
             }
-            // GFM table/blockquote/footnote/definition-list close. Emit as
-            // a paragraph so the source text is visible and reachable from
-            // the graph until V4.2's GFM rendering lands.
+            (
+                Frame::Table {
+                    header,
+                    mut rows,
+                    current_row,
+                    alignments,
+                    span,
+                    ..
+                },
+                TagEnd::Table,
+            ) => {
+                if !current_row.is_empty() {
+                    rows.push(current_row);
+                }
+                let source_text = self.slice_for(range);
+                let block = BlockAst::Table(TableAst {
+                    header,
+                    rows,
+                    alignments,
+                    source_text,
+                    span,
+                });
+                self.push_block(block);
+            }
+            (Frame::TableHead, TagEnd::TableHead) => {
+                if let Some(Frame::Table { in_header, .. }) = find_enclosing_table(&mut self.stack)
+                {
+                    *in_header = false;
+                }
+            }
+            (Frame::TableRow, TagEnd::TableRow) => {
+                if let Some(Frame::Table {
+                    rows, current_row, ..
+                }) = find_enclosing_table(&mut self.stack)
+                {
+                    let row = std::mem::take(current_row);
+                    if !row.is_empty() {
+                        rows.push(row);
+                    }
+                }
+            }
+            (Frame::TableCell { inlines, span }, TagEnd::TableCell) => {
+                let cell = TableCell { inlines, span };
+                if let Some(Frame::Table {
+                    header,
+                    current_row,
+                    in_header,
+                    ..
+                }) = find_enclosing_table(&mut self.stack)
+                {
+                    if *in_header {
+                        header.push(cell);
+                    } else {
+                        current_row.push(cell);
+                    }
+                }
+            }
+            (
+                Frame::FootnoteDefinition {
+                    label,
+                    content,
+                    span,
+                },
+                TagEnd::FootnoteDefinition,
+            ) => {
+                let source_text = self.slice_for(range);
+                let block = BlockAst::FootnoteDefinition(FootnoteDefinitionAst {
+                    label,
+                    content,
+                    source_text,
+                    span,
+                });
+                self.push_block(block);
+            }
+            // Generic passthrough close (block quote, definition list,
+            // metadata block). Emit as a paragraph so the source text is
+            // visible and reachable from the graph.
             (Frame::PassthroughBlock { inlines, span }, _) if !inlines.is_empty() => {
-                self.blocks
-                    .push(BlockAst::Paragraph(ParagraphAst { inlines, span }));
+                let block = BlockAst::Paragraph(ParagraphAst { inlines, span });
+                self.push_block(block);
             }
-            // Mismatched start/end pairs are tolerated silently — the source
-            // is treated as best-effort under Compatibility Mode.
-            _ => {}
+            (Frame::PassthroughBlock { .. }, _) => {}
+            // Mismatched start/end pairs surface as a best-effort warning;
+            // the page still renders, but the imbalance is recorded.
+            _ => {
+                self.report_malformed(range);
+            }
         }
     }
 
@@ -366,46 +669,116 @@ impl<'a> State<'a> {
                 Frame::Paragraph { inlines, .. }
                 | Frame::Heading { inlines, .. }
                 | Frame::Item { inlines, .. }
-                | Frame::PassthroughBlock { inlines, .. } => inlines.push(segment),
+                | Frame::PassthroughBlock { inlines, .. }
+                | Frame::CodeBlock { inlines, .. }
+                | Frame::TableCell { inlines, .. } => inlines.push(segment),
                 Frame::Emphasis(inner) | Frame::Strong(inner) | Frame::Strikethrough(inner) => {
                     inner.push(segment)
                 }
                 Frame::Link { text, .. } => text.push(segment),
                 Frame::Image { alt, .. } => alt.push(segment),
-                Frame::List { .. } => {
-                    // List frames receive items, not inline segments.
+                Frame::List { .. }
+                | Frame::HtmlBlock { .. }
+                | Frame::Table { .. }
+                | Frame::TableHead
+                | Frame::TableRow
+                | Frame::FootnoteDefinition { .. } => {
+                    // These frames don't accept stray inline segments;
+                    // ignore (pulldown-cmark events bracket inline content
+                    // inside an Item / TableCell / Paragraph child frame).
                 }
             }
         }
     }
 
-    fn push_block_html(&mut self, html: String, range: Range<usize>) {
+    /// Routes a finalized block to either the page-level `blocks` vec or
+    /// (when nested inside a footnote definition) to the active footnote's
+    /// content list.
+    fn push_block(&mut self, block: BlockAst) {
+        if let Some(Frame::FootnoteDefinition { content, .. }) = self.stack.last_mut() {
+            content.push(block);
+        } else {
+            self.blocks.push(block);
+        }
+    }
+
+    fn report_malformed(&mut self, range: Range<usize>) {
         let span = self.span_for(range);
-        if let Some(Frame::PassthroughBlock { inlines, .. }) = self.stack.last_mut() {
-            inlines.push(InlineSegment::QuarantinedHtml {
-                source_text: html,
-                span: span.clone(),
-            });
-        } else if self.stack.is_empty() {
-            self.blocks
-                .push(BlockAst::QuarantinedHtml(QuarantinedHtmlAst {
+        self.diagnostics.push(
+            Diagnostic::warning(
+                DiagnosticCode::ParseMalformedMarkdown,
+                "Markdown parser saw an unbalanced event sequence; rendering best-effort output.",
+            )
+            .with_span(span),
+        );
+    }
+
+    fn push_block_html(&mut self, html: String, range: Range<usize>) {
+        // When inside an HtmlBlock frame, defer to `TagEnd::HtmlBlock` so the
+        // block carries its full source slice and the MDX/quarantine
+        // classification fires only once.
+        if let Some(Frame::HtmlBlock { .. }) = self.stack.last() {
+            return;
+        }
+        let span = self.span_for(range);
+        let is_mdx = first_tag_is_uppercase(&html);
+        if self.stack.is_empty() {
+            let block = if is_mdx {
+                self.diagnostics.push(unknown_extension_warning(
+                    span.clone(),
+                    "MDX component (PascalCase tag)",
+                ));
+                BlockAst::UnknownExtension(UnknownExtensionAst {
                     source_text: html,
                     span,
-                }));
+                    kind: UnknownExtensionKind::MdxComponent,
+                })
+            } else {
+                BlockAst::QuarantinedHtml(QuarantinedHtmlAst {
+                    source_text: html,
+                    span,
+                })
+            };
+            self.blocks.push(block);
+        } else {
+            let segment = if is_mdx {
+                self.diagnostics.push(unknown_extension_warning(
+                    span.clone(),
+                    "MDX component (PascalCase tag)",
+                ));
+                InlineSegment::UnknownExtension {
+                    source_text: html,
+                    span,
+                    kind: UnknownExtensionKind::MdxComponent,
+                }
+            } else {
+                InlineSegment::QuarantinedHtml {
+                    source_text: html,
+                    span,
+                }
+            };
+            self.push_inline(segment);
+        }
+    }
+
+    fn push_inline_html(&mut self, html: String, range: Range<usize>) {
+        let span = self.span_for(range);
+        if first_tag_is_uppercase(&html) {
+            self.diagnostics.push(unknown_extension_warning(
+                span.clone(),
+                "MDX component (PascalCase inline tag)",
+            ));
+            self.push_inline(InlineSegment::UnknownExtension {
+                source_text: html,
+                span,
+                kind: UnknownExtensionKind::MdxComponent,
+            });
         } else {
             self.push_inline(InlineSegment::QuarantinedHtml {
                 source_text: html,
                 span,
             });
         }
-    }
-
-    fn push_inline_html(&mut self, html: String, range: Range<usize>) {
-        let span = self.span_for(range);
-        self.push_inline(InlineSegment::QuarantinedHtml {
-            source_text: html,
-            span,
-        });
     }
 
     fn span_for(&self, range: Range<usize>) -> SourceSpan {
@@ -419,6 +792,55 @@ impl<'a> State<'a> {
         let end = (range.end + self.front_matter_offset).min(self.source.text.len());
         self.source.text[start..end].to_string()
     }
+}
+
+/// Locate the nearest enclosing `Frame::Table` on the stack. Needed because
+/// `TableHead` / `TableRow` are pure structural frames that sit between the
+/// `Table` aggregate and its leaf `TableCell` frames; `stack.last_mut()`
+/// after popping a cell would point at one of those structural frames, not
+/// at the table itself.
+fn find_enclosing_table(stack: &mut [Frame]) -> Option<&mut Frame> {
+    stack
+        .iter_mut()
+        .rfind(|frame| matches!(frame, Frame::Table { .. }))
+}
+
+fn column_alignment(alignment: Alignment) -> ColumnAlignment {
+    match alignment {
+        Alignment::None => ColumnAlignment::Default,
+        Alignment::Left => ColumnAlignment::Left,
+        Alignment::Center => ColumnAlignment::Center,
+        Alignment::Right => ColumnAlignment::Right,
+    }
+}
+
+/// True when the first ASCII alphabetic character of `html` (skipping `<`
+/// and any leading `/`) is uppercase — the convention JSX/MDX uses to
+/// distinguish components from HTML elements. Empty input or any non-tag
+/// shape returns false.
+pub(crate) fn first_tag_is_uppercase(html: &str) -> bool {
+    let mut bytes = html.as_bytes().iter().copied();
+    // Skip optional leading `<` and `/` (closing-tag form `</Component>`).
+    let first = loop {
+        let Some(byte) = bytes.next() else {
+            return false;
+        };
+        if byte == b'<' || byte == b'/' {
+            continue;
+        }
+        break byte;
+    };
+    first.is_ascii_uppercase()
+}
+
+fn unknown_extension_warning(span: SourceSpan, kind_label: &str) -> Diagnostic {
+    Diagnostic::warning(
+        DiagnosticCode::CompatUnknownExtension,
+        format!(
+            "Markdown {kind_label} is outside the V4 supported set; the source was rendered as an escaped code block instead of being interpreted.",
+        ),
+    )
+    .with_span(span)
 }
 
 fn heading_level_to_u8(level: HeadingLevel) -> u8 {
@@ -606,5 +1028,146 @@ mod tests {
             .expect("list exists");
         assert!(matches!(list.kind, ListKind::Unordered));
         assert_eq!(list.items.len(), 3);
+    }
+
+    #[test]
+    fn parse_markdown_page_emits_table_with_alignments_and_rows() {
+        let source = source("| H1 | H2 | H3 |\n| :- | :-: | -: |\n| a | b | c |\n| d | e | f |\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        let table = page
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::Table(table) => Some(table),
+                _ => None,
+            })
+            .expect("table block exists");
+        assert_eq!(table.header.len(), 3);
+        assert_eq!(table.rows.len(), 2);
+        assert_eq!(table.rows[0].len(), 3);
+        assert_eq!(
+            table.alignments,
+            vec![
+                ColumnAlignment::Left,
+                ColumnAlignment::Center,
+                ColumnAlignment::Right,
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_markdown_page_captures_task_list_state_per_item() {
+        let source = source("- [x] done\n- [ ] open\n- plain\n");
+        let (page, _diagnostics) = parse_markdown_page(&source);
+        let list = page
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::List(list) => Some(list),
+                _ => None,
+            })
+            .expect("list exists");
+        assert_eq!(list.items[0].task_state, Some(true));
+        assert_eq!(list.items[1].task_state, Some(false));
+        assert_eq!(list.items[2].task_state, None);
+    }
+
+    #[test]
+    fn parse_markdown_page_emits_strikethrough_variant() {
+        let source = source("Status ~~draft~~ done.\n");
+        let (page, _diagnostics) = parse_markdown_page(&source);
+        let paragraph = page
+            .blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::Paragraph(paragraph) => Some(paragraph),
+                _ => None,
+            })
+            .expect("paragraph exists");
+        assert!(
+            paragraph
+                .inlines
+                .iter()
+                .any(|segment| matches!(segment, InlineSegment::Strikethrough(_))),
+            "expected strikethrough variant in {:?}",
+            paragraph.inlines
+        );
+    }
+
+    #[test]
+    fn parse_markdown_page_emits_footnote_reference_and_definition() {
+        let source = source("See note[^a].\n\n[^a]: First note body.\n");
+        let (page, _diagnostics) = parse_markdown_page(&source);
+        let has_ref = page.blocks.iter().any(|block| {
+            if let BlockAst::Paragraph(paragraph) = block {
+                paragraph
+                    .inlines
+                    .iter()
+                    .any(|segment| matches!(segment, InlineSegment::FootnoteReference { .. }))
+            } else {
+                false
+            }
+        });
+        let has_def = page
+            .blocks
+            .iter()
+            .any(|block| matches!(block, BlockAst::FootnoteDefinition(_)));
+        assert!(has_ref, "expected FootnoteReference inline");
+        assert!(has_def, "expected FootnoteDefinition block");
+    }
+
+    #[test]
+    fn parse_markdown_page_classifies_pascalcase_html_as_mdx() {
+        let source = source("Before\n\n<MyComponent prop=\"x\" />\n\nAfter\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+        let is_mdx = page.blocks.iter().any(|block| {
+            matches!(block, BlockAst::UnknownExtension(unknown)
+                if unknown.kind == UnknownExtensionKind::MdxComponent)
+        });
+        assert!(is_mdx, "expected UnknownExtension(MdxComponent) block");
+        let unknown_diag_count = diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::CompatUnknownExtension)
+            .count();
+        assert_eq!(
+            unknown_diag_count, 1,
+            "expected exactly one compat.unknown_extension; got {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn parse_markdown_page_classifies_lowercase_html_as_quarantine() {
+        let source = source("Before\n\n<div>raw</div>\n\nAfter\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+        let is_quarantined = page
+            .blocks
+            .iter()
+            .any(|block| matches!(block, BlockAst::QuarantinedHtml(_)));
+        assert!(is_quarantined, "expected QuarantinedHtml block");
+        let unknown_diag_count = diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::CompatUnknownExtension)
+            .count();
+        assert_eq!(
+            unknown_diag_count, 0,
+            "lowercase tag must not trigger compat.unknown_extension; got {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn parse_markdown_page_diverts_display_math_to_unknown_extension() {
+        let source = source("Capacity:\n\n$$\nE=mc^2\n$$\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+        let math_block = page.blocks.iter().any(|block| {
+            matches!(block, BlockAst::UnknownExtension(unknown)
+                if unknown.kind == UnknownExtensionKind::MathFence)
+        });
+        assert!(math_block, "expected UnknownExtension(MathFence) block");
+        let unknown_diag_count = diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::CompatUnknownExtension)
+            .count();
+        assert_eq!(unknown_diag_count, 1, "{diagnostics:?}");
     }
 }
