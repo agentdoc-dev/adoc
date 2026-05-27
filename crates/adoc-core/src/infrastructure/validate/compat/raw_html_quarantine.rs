@@ -1,7 +1,7 @@
 use crate::domain::ast::{BlockAst, PageAst};
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::diagnostic::{CompatDiagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::inline::InlineSegment;
-use crate::domain::rules::ValidationRule;
+use crate::domain::rules::CompatRule;
 use crate::domain::source::SourceFile;
 
 /// Compatibility-mode counterpart to `RawHtmlForbidden` (strict mode).
@@ -14,15 +14,15 @@ use crate::domain::source::SourceFile;
 /// `<code class="quarantined-html">`); this rule only reports.
 pub(crate) struct RawHtmlQuarantine;
 
-impl ValidationRule for RawHtmlQuarantine {
-    fn check(&self, page: &PageAst, _source: &SourceFile, sink: &mut Vec<Diagnostic>) {
+impl CompatRule for RawHtmlQuarantine {
+    fn check(&self, page: &PageAst, _source: &SourceFile, sink: &mut Vec<CompatDiagnostic>) {
         for block in &page.blocks {
             visit_block(block, sink);
         }
     }
 }
 
-fn visit_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
+fn visit_block(block: &BlockAst, sink: &mut Vec<CompatDiagnostic>) {
     match block {
         BlockAst::QuarantinedHtml(html) => {
             sink.push(quarantine_warning(html.span.clone()));
@@ -56,7 +56,7 @@ fn visit_block(block: &BlockAst, sink: &mut Vec<Diagnostic>) {
     }
 }
 
-fn check_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic>) {
+fn check_inlines(inlines: &[InlineSegment], sink: &mut Vec<CompatDiagnostic>) {
     for segment in inlines {
         match segment {
             InlineSegment::QuarantinedHtml { span, .. } => {
@@ -79,8 +79,8 @@ fn check_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic>) {
     }
 }
 
-fn quarantine_warning(span: crate::domain::diagnostic::SourceSpan) -> Diagnostic {
-    Diagnostic::warning(
+fn quarantine_warning(span: SourceSpan) -> CompatDiagnostic {
+    CompatDiagnostic::warning(
         DiagnosticCode::CompatRawHtmlQuarantined,
         "Raw HTML in Markdown source was quarantined; rendered as escaped text instead of interpreted markup.",
     )
@@ -91,7 +91,7 @@ fn quarantine_warning(span: crate::domain::diagnostic::SourceSpan) -> Diagnostic
 mod tests {
     use std::path::PathBuf;
 
-    use super::*;
+    use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
     use crate::domain::source::SourceFile;
     use crate::infrastructure::parser::parse_markdown_page;
 

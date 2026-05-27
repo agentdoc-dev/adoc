@@ -501,6 +501,49 @@ impl Diagnostic {
     }
 }
 
+/// A [`Diagnostic`] whose severity is always [`Severity::Warning`].
+///
+/// ADR-0023 requires every Compatibility-Mode validation rule to emit only
+/// warnings — never errors. Encoded as a newtype around `Diagnostic` whose
+/// only constructor is [`CompatDiagnostic::warning`]; the registry boundary
+/// calls [`CompatDiagnostic::into_diagnostic`] to unwrap once and forwards
+/// the inner value to the orchestrator's diagnostic stream.
+///
+/// Adding an `error`/`info` constructor here, or impl'ing `From<Diagnostic>`,
+/// would erase the invariant and is intentionally absent. Compat rules
+/// implement [`crate::domain::rules::CompatRule`] (not `ValidationRule`) so
+/// their sink type carries this newtype at compile time.
+#[derive(Debug, Clone)]
+pub(crate) struct CompatDiagnostic(Diagnostic);
+
+impl CompatDiagnostic {
+    /// Construct a warning-severity compat diagnostic. The only way to make
+    /// one of these — `error`/`info` constructors do not exist.
+    pub(crate) fn warning(code: DiagnosticCode, message: impl Into<String>) -> Self {
+        Self(Diagnostic::warning(code, message))
+    }
+
+    pub(crate) fn with_span(self, span: SourceSpan) -> Self {
+        Self(self.0.with_span(span))
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn with_object_id(self, object_id: impl Into<String>) -> Self {
+        Self(self.0.with_object_id(object_id))
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn with_help(self, help: impl Into<String>) -> Self {
+        Self(self.0.with_help(help))
+    }
+
+    /// Unwrap to the inner [`Diagnostic`]. Called by the compat registry at
+    /// the seam between compat-only rules and the unified diagnostic stream.
+    pub(crate) fn into_diagnostic(self) -> Diagnostic {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Severity {
@@ -596,6 +639,17 @@ mod tests {
         let diagnostic =
             Diagnostic::error(DiagnosticCode::IdInvalid, "bad id").with_help("fix your id");
         assert_eq!(diagnostic.help.as_deref(), Some("fix your id"));
+    }
+
+    #[test]
+    fn compat_diagnostic_is_always_warning_severity() {
+        // ADR-0023 invariant: every Compat Validation Rule emits warnings
+        // only. The type system enforces this — `CompatDiagnostic::warning`
+        // is the only constructor — so this test only pins that the unwrap
+        // hands back the warning severity. There is no `CompatDiagnostic::error`
+        // to call; absence is the invariant.
+        let compat = CompatDiagnostic::warning(DiagnosticCode::CompatRawHtmlQuarantined, "msg");
+        assert_eq!(compat.into_diagnostic().severity, Severity::Warning);
     }
 
     #[test]

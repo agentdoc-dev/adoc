@@ -1,7 +1,7 @@
 use crate::domain::ast::PageAst;
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
+use crate::domain::diagnostic::{CompatDiagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::inline::InlineSegment;
-use crate::domain::rules::ValidationRule;
+use crate::domain::rules::CompatRule;
 use crate::domain::source::SourceFile;
 use crate::domain::url_safety::verdict;
 use crate::infrastructure::validate::url_walker::{UrlVisitor, walk_page};
@@ -15,15 +15,15 @@ use crate::infrastructure::validate::url_walker::{UrlVisitor, walk_page};
 /// attribute; this rule only reports.
 pub(crate) struct UnsafeLinkDropped;
 
-impl ValidationRule for UnsafeLinkDropped {
-    fn check(&self, page: &PageAst, _source: &SourceFile, sink: &mut Vec<Diagnostic>) {
+impl CompatRule for UnsafeLinkDropped {
+    fn check(&self, page: &PageAst, _source: &SourceFile, sink: &mut Vec<CompatDiagnostic>) {
         let mut visitor = LinkVisitor { sink };
         walk_page(page, &mut visitor);
     }
 }
 
 struct LinkVisitor<'a> {
-    sink: &'a mut Vec<Diagnostic>,
+    sink: &'a mut Vec<CompatDiagnostic>,
 }
 
 impl UrlVisitor for LinkVisitor<'_> {
@@ -32,7 +32,7 @@ impl UrlVisitor for LinkVisitor<'_> {
             return;
         }
         self.sink.push(
-            Diagnostic::warning(
+            CompatDiagnostic::warning(
                 DiagnosticCode::CompatUnsafeLinkDropped,
                 format!(
                     "Link href `{url}` uses an unsafe scheme; the href will be dropped from the rendered HTML."
@@ -47,7 +47,7 @@ impl UrlVisitor for LinkVisitor<'_> {
 mod tests {
     use std::path::PathBuf;
 
-    use super::*;
+    use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
     use crate::domain::source::SourceFile;
     use crate::infrastructure::parser::parse_markdown_page;
 

@@ -1,6 +1,6 @@
 use crate::domain::ast::{BlockAst, PageAst};
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
-use crate::domain::rules::ValidationRule;
+use crate::domain::diagnostic::{CompatDiagnostic, DiagnosticCode, SourceSpan};
+use crate::domain::rules::CompatRule;
 use crate::domain::source::SourceFile;
 use crate::infrastructure::parser::extension_classifier::{LineExtension, classify_line};
 
@@ -23,8 +23,8 @@ use crate::infrastructure::parser::extension_classifier::{LineExtension, classif
 /// what shape is "unknown".
 pub(crate) struct UnknownExtension;
 
-impl ValidationRule for UnknownExtension {
-    fn check(&self, page: &PageAst, source: &SourceFile, sink: &mut Vec<Diagnostic>) {
+impl CompatRule for UnknownExtension {
+    fn check(&self, page: &PageAst, source: &SourceFile, sink: &mut Vec<CompatDiagnostic>) {
         let mut code_block_lines = Vec::new();
         for block in &page.blocks {
             collect_code_block_lines(block, &mut code_block_lines);
@@ -62,7 +62,12 @@ fn collect_code_block_lines(block: &BlockAst, out: &mut Vec<u32>) {
     }
 }
 
-fn emit_for_line(source: &SourceFile, line_number: u32, line: &str, sink: &mut Vec<Diagnostic>) {
+fn emit_for_line(
+    source: &SourceFile,
+    line_number: u32,
+    line: &str,
+    sink: &mut Vec<CompatDiagnostic>,
+) {
     match classify_line(line) {
         LineExtension::PandocDirective { column, len } => {
             sink.push(unknown_extension_warning(
@@ -80,8 +85,8 @@ fn emit_for_line(source: &SourceFile, line_number: u32, line: &str, sink: &mut V
     }
 }
 
-fn unknown_extension_warning(span: SourceSpan, label: &str) -> Diagnostic {
-    Diagnostic::warning(
+fn unknown_extension_warning(span: SourceSpan, label: &str) -> CompatDiagnostic {
+    CompatDiagnostic::warning(
         DiagnosticCode::CompatUnknownExtension,
         format!(
             "Markdown {label} is outside the V4 supported set; the source was rendered as an escaped code block instead of being interpreted.",
@@ -94,7 +99,7 @@ fn unknown_extension_warning(span: SourceSpan, label: &str) -> Diagnostic {
 mod tests {
     use std::path::PathBuf;
 
-    use super::*;
+    use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
     use crate::domain::source::SourceFile;
     use crate::infrastructure::parser::parse_markdown_page;
 
