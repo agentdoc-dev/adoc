@@ -3,6 +3,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::inline::InlineSegment;
 use crate::domain::rules::ValidationRule;
 use crate::domain::source::SourceFile;
+use crate::domain::url_safety::is_url_safe;
 
 /// Rejects link URLs whose scheme isn't on the strict-mode allowlist. Walks
 /// every link in the page's AST (including nested labels and links inside
@@ -76,39 +77,10 @@ pub(super) fn check_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic
     }
 }
 
-fn is_url_safe(url: &str) -> bool {
-    if url.bytes().any(|byte| byte.is_ascii_whitespace()) {
-        return false;
-    }
-    let Some(colon) = url.find(':') else {
-        return true;
-    };
-    let scheme = &url[..colon];
-    if scheme.is_empty() {
-        return true;
-    }
-    if !scheme.starts_with(|character: char| character.is_ascii_alphabetic()) {
-        return true;
-    }
-    if !scheme.chars().all(|character| {
-        character.is_ascii_alphanumeric()
-            || character == '+'
-            || character == '-'
-            || character == '.'
-    }) {
-        return true;
-    }
-    matches!(
-        scheme.to_ascii_lowercase().as_str(),
-        "http" | "https" | "mailto"
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use super::is_url_safe;
     use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
     use crate::domain::source::SourceFile;
     use crate::infrastructure::parser::parse_page;
@@ -124,31 +96,6 @@ mod tests {
         diagnostics.extend(validate_source_page(&page, &source));
         diagnostics
     }
-
-    #[test]
-    fn is_url_safe_accepts_http_https_and_mailto() {
-        assert!(is_url_safe("https://example.test/path"));
-        assert!(is_url_safe("http://example.test"));
-        assert!(is_url_safe("mailto:hello@example.test"));
-    }
-
-    #[test]
-    fn is_url_safe_accepts_relative_url() {
-        assert!(is_url_safe("/docs/page.html"));
-    }
-
-    #[test]
-    fn is_url_safe_rejects_javascript_scheme() {
-        assert!(!is_url_safe("javascript:alert(1)"));
-    }
-
-    #[test]
-    fn is_url_safe_rejects_url_with_internal_whitespace() {
-        assert!(!is_url_safe("java\tscript:alert(1)"));
-        assert!(!is_url_safe("javascript :alert(1)"));
-    }
-
-    // --- unsafe link rule (migrated from inline.rs / parser.rs) ---
 
     #[test]
     fn unsafe_link_rule_emits_diagnostic_for_javascript_url() {

@@ -3,6 +3,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::inline::InlineSegment;
 use crate::domain::rules::ValidationRule;
 use crate::domain::source::SourceFile;
+use crate::domain::url_safety::is_url_safe;
 
 /// Compatibility-mode counterpart to `UnsafeLinkForbidden` (strict mode).
 ///
@@ -85,34 +86,6 @@ fn walk_inlines(inlines: &[InlineSegment], sink: &mut Vec<Diagnostic>) {
             | InlineSegment::UnknownExtension { .. } => {}
         }
     }
-}
-
-fn is_url_safe(url: &str) -> bool {
-    if url.bytes().any(|byte| byte.is_ascii_whitespace()) {
-        return false;
-    }
-    let Some(colon) = url.find(':') else {
-        return true;
-    };
-    let scheme = &url[..colon];
-    if scheme.is_empty() {
-        return true;
-    }
-    if !scheme.starts_with(|character: char| character.is_ascii_alphabetic()) {
-        return true;
-    }
-    if !scheme.chars().all(|character| {
-        character.is_ascii_alphanumeric()
-            || character == '+'
-            || character == '-'
-            || character == '.'
-    }) {
-        return true;
-    }
-    matches!(
-        scheme.to_ascii_lowercase().as_str(),
-        "http" | "https" | "mailto"
-    )
 }
 
 #[cfg(test)]
