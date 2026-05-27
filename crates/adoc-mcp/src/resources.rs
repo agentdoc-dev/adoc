@@ -71,6 +71,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/review-workflow.md"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/compat-guide",
+        name: "agent-compat-guide",
+        title: "Markdown Compatibility Guide",
+        description: "V4 Markdown compatibility mode: how .md sources appear in the graph and what is citable.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/compat-guide.md"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/retrieval",
         name: "schema-retrieval",
         title: "Retrieval Schema Reference",

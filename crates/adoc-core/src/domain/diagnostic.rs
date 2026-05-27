@@ -74,6 +74,7 @@ pub enum DiagnosticCode {
     CompatUnsafeImageSrcDropped,
     CompatUnknownExtension,
     ParseMalformedMarkdown,
+    RetrievalNoKnowledgeObjectsConsiderMigration,
 }
 
 impl DiagnosticCode {
@@ -130,6 +131,7 @@ impl DiagnosticCode {
             DiagnosticCode::CompatUnsafeImageSrcDropped,
             DiagnosticCode::CompatUnknownExtension,
             DiagnosticCode::ParseMalformedMarkdown,
+            DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration,
         ]
     }
 
@@ -186,6 +188,9 @@ impl DiagnosticCode {
             DiagnosticCode::CompatUnsafeImageSrcDropped => "compat.unsafe_image_src_dropped",
             DiagnosticCode::CompatUnknownExtension => "compat.unknown_extension",
             DiagnosticCode::ParseMalformedMarkdown => "parse.malformed_markdown",
+            DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration => {
+                "retrieval.no_knowledge_objects_consider_migration"
+            }
         }
     }
 
@@ -340,6 +345,9 @@ impl DiagnosticCode {
             DiagnosticCode::ParseMalformedMarkdown => {
                 "Check that Markdown blocks (tables, lists, fenced code) are well-formed; the parser tolerated the imbalance and rendered best-effort output."
             }
+            DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration => {
+                "Migrate .md files to .adoc with typed Knowledge Objects, or wait for `adoc migrate` (V4.5+); Markdown source contributes prose blocks but no citable Knowledge Objects."
+            }
         }
     }
 
@@ -423,6 +431,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "compat.unsafe_image_src_dropped",
     "compat.unknown_extension",
     "parse.malformed_markdown",
+    "retrieval.no_knowledge_objects_consider_migration",
 ];
 
 impl Diagnostic {

@@ -52,6 +52,14 @@ impl GraphSession {
     ) -> std::collections::BTreeMap<String, Option<String>> {
         self.index.related_statuses(targets)
     }
+
+    pub(crate) fn prose_block_count(&self) -> usize {
+        self.index.prose_block_count()
+    }
+
+    pub(crate) fn knowledge_object_count(&self) -> usize {
+        self.index.knowledge_object_count()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

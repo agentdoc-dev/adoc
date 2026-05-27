@@ -198,3 +198,88 @@ fn markdown_pilot_v4_1_seed_builds_safe_html_and_prose_only_graph() {
         "expected thirteen page nodes (5 V4.1 + 8 V4.2 fixtures)"
     );
 }
+
+/// V4.3 acceptance: `adoc search` over a project containing only `.md` files
+/// exits 0 with empty `records[]` and exactly one
+/// `retrieval.no_knowledge_objects_consider_migration` diagnostic. The hint
+/// rides inside the existing `adoc.retrieval.v0.diagnostics[]` array — schema
+/// version unchanged.
+#[test]
+fn markdown_pilot_v4_3_search_emits_migration_hint_for_prose_only_project() {
+    let repo_root = repo_root();
+    let workspace = TestWorkspace::new("markdown-pilot-v4-3-search");
+    let output_directory = workspace.root.join("dist");
+
+    let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&repo_root)
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+        .args([
+            "build",
+            PILOT_PATH,
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+    assert!(
+        build_output.status.success(),
+        "V4.3 search test prerequisite (build) must succeed\nstderr:\n{}",
+        String::from_utf8_lossy(&build_output.stderr)
+    );
+
+    let graph_artifact = output_directory.join("docs.graph.json");
+    let search_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "search",
+            "anything",
+            "--artifact",
+            graph_artifact
+                .to_str()
+                .expect("graph artifact path is utf-8"),
+            "--lexical",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc search runs");
+
+    assert!(
+        search_output.status.success(),
+        "V4.3 search must exit 0 over a .md-only project (the hint is a warning, not an error)\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&search_output.stdout),
+        String::from_utf8_lossy(&search_output.stderr)
+    );
+
+    let envelope: Value =
+        serde_json::from_slice(&search_output.stdout).expect("search stdout is JSON");
+    assert_eq!(envelope["schema_version"], "adoc.retrieval.v0");
+    let records = envelope["records"].as_array().expect("records is an array");
+    assert!(
+        records.is_empty(),
+        "Markdown-only project must return zero records, got {records:?}"
+    );
+
+    let diagnostics = envelope["diagnostics"]
+        .as_array()
+        .expect("diagnostics is an array");
+    let migration_hints: Vec<&Value> = diagnostics
+        .iter()
+        .filter(|d| d["code"] == "retrieval.no_knowledge_objects_consider_migration")
+        .collect();
+    assert_eq!(
+        migration_hints.len(),
+        1,
+        "expected exactly one migration-hint diagnostic, got diagnostics: {diagnostics:?}"
+    );
+    assert_eq!(migration_hints[0]["severity"], "warning");
+    assert!(
+        migration_hints[0]["message"]
+            .as_str()
+            .expect("diagnostic message is a string")
+            .contains("Knowledge Objects"),
+        "expected migration-hint message to mention Knowledge Objects, got {:?}",
+        migration_hints[0]["message"]
+    );
+}

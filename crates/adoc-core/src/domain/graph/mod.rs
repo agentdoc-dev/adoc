@@ -220,6 +220,10 @@ pub(crate) struct GraphIndex {
     edges: Vec<GraphEdge>,
     outgoing: BTreeMap<ObjectId, Vec<usize>>,
     incoming: BTreeMap<ObjectId, Vec<usize>>,
+    /// Count of prose-block nodes (Heading, Paragraph, List, CodeBlock) in the
+    /// loaded artifact. Used by V4.3 retrieval to detect prose-only projects
+    /// and emit the migration hint diagnostic. Not serialized.
+    prose_block_count: usize,
 }
 
 impl GraphIndex {
@@ -227,10 +231,20 @@ impl GraphIndex {
         let mut nodes = BTreeMap::new();
         let mut page_ids = BTreeSet::new();
         let mut diagnostics = Vec::new();
+        let mut prose_block_count: usize = 0;
 
         for node in document.nodes {
             if let GraphNode::Page(page) = &node {
                 page_ids.insert(page.id.clone());
+            }
+            if matches!(
+                node,
+                GraphNode::Heading(_)
+                    | GraphNode::Paragraph(_)
+                    | GraphNode::List(_)
+                    | GraphNode::CodeBlock(_)
+            ) {
+                prose_block_count += 1;
             }
             let Some(knowledge_object) = node.as_knowledge_object().cloned() else {
                 continue;
@@ -320,10 +334,19 @@ impl GraphIndex {
                 edges,
                 outgoing,
                 incoming,
+                prose_block_count,
             })
         } else {
             Err(diagnostics)
         }
+    }
+
+    pub(crate) fn prose_block_count(&self) -> usize {
+        self.prose_block_count
+    }
+
+    pub(crate) fn knowledge_object_count(&self) -> usize {
+        self.nodes.len()
     }
 
     pub(crate) fn traverse(&self, query: GraphTraversalQuery) -> GraphTraversalResult {
