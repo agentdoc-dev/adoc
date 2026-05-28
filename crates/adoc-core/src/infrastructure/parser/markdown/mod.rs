@@ -182,12 +182,7 @@ impl<'a> State<'a> {
                 // patterns like `$5 to $50`; this guard covers the residual
                 // tight-range false positive where the closing `$` is preceded
                 // by a non-whitespace character such as `-`.
-                if value
-                    .as_ref()
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c.is_ascii_digit())
-                {
+                if is_currency_like(value.as_ref()) {
                     // Treat as literal prose — no diagnostic, verbatim dollar text.
                     let literal = if source_text.is_empty() {
                         format!("${}$", value.as_ref())
@@ -212,20 +207,40 @@ impl<'a> State<'a> {
             Event::DisplayMath(value) => {
                 let span = self.span_for(range.clone());
                 let source_text = self.slice_for(range);
-                self.diagnostics.push(unknown_extension_warning(
-                    span.clone(),
-                    "$$...$$ display math",
-                ));
-                let block = BlockAst::UnknownExtension(UnknownExtensionAst {
-                    source_text: if source_text.is_empty() {
-                        value.into_string()
+                // Mirror the InlineMath currency guard: digit-leading content
+                // (e.g. `$$50$$`) is almost certainly a currency amount, not
+                // real math. Emit as a verbatim literal paragraph — no
+                // diagnostic, no MathFence node.
+                if is_currency_like(value.as_ref()) {
+                    let literal = if source_text.is_empty() {
+                        format!("$${}$$", value.as_ref())
                     } else {
                         source_text
-                    },
-                    span,
-                    kind: UnknownExtensionKind::MathFence,
-                });
-                self.push_block(block);
+                    };
+                    // DisplayMath fires at block level (outside any paragraph
+                    // frame), so wrap the text in a thin Paragraph block so it
+                    // renders as ordinary prose.
+                    let block = BlockAst::Paragraph(ParagraphAst {
+                        inlines: vec![InlineSegment::Text(literal)],
+                        span,
+                    });
+                    self.push_block(block);
+                } else {
+                    self.diagnostics.push(unknown_extension_warning(
+                        span.clone(),
+                        "$$...$$ display math",
+                    ));
+                    let block = BlockAst::UnknownExtension(UnknownExtensionAst {
+                        source_text: if source_text.is_empty() {
+                            value.into_string()
+                        } else {
+                            source_text
+                        },
+                        span,
+                        kind: UnknownExtensionKind::MathFence,
+                    });
+                    self.push_block(block);
+                }
             }
         }
     }
@@ -689,6 +704,15 @@ pub(crate) fn first_tag_is_uppercase(html: &str) -> bool {
         break byte;
     };
     first.is_ascii_uppercase()
+}
+
+/// Returns `true` when the math-fence content begins with an ASCII digit,
+/// indicating that the `$...$` or `$$...$$` delimiters almost certainly wrap a
+/// currency amount (e.g. `$5-$10`, `$$50$$`) rather than a mathematical
+/// expression.  This is the single source of truth used by both the
+/// `Event::InlineMath` and `Event::DisplayMath` arms.
+fn is_currency_like(value: &str) -> bool {
+    value.chars().next().is_some_and(|c| c.is_ascii_digit())
 }
 
 fn unknown_extension_warning(span: SourceSpan, kind_label: &str) -> Diagnostic {
@@ -1226,8 +1250,62 @@ mod tests {
         );
     }
 
-    /// Regression: display math `$$a^2$$` must still be diverted unchanged.
-    /// The `Event::DisplayMath` arm is not touched by this change.
+    // --- Display math / currency false-positive guard tests ---
+
+    /// Digit-leading display math (e.g. `$$50$$`) is almost certainly a
+    /// currency amount, not real math. The guard must emit it as verbatim
+    /// literal prose with NO diagnostic and NO `MathFence` block.
+    #[test]
+    fn parse_markdown_page_display_math_currency_is_literal_not_math() {
+        let source = source("Price:\n\n$$50$$\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+
+        // Zero compat.unknown_extension diagnostics.
+        let math_diag_count = count_math_fence_diagnostics(&diagnostics);
+        assert_eq!(
+            math_diag_count, 0,
+            "digit-leading display math must produce zero compat.unknown_extension diagnostics; got {diagnostics:?}"
+        );
+
+        // No MathFence block anywhere in the page.
+        let has_math_fence_block = page.blocks.iter().any(|block| {
+            matches!(block, BlockAst::UnknownExtension(u)
+                if u.kind == UnknownExtensionKind::MathFence)
+        });
+        assert!(
+            !has_math_fence_block,
+            "digit-leading display math must NOT produce a MathFence block; got {:?}",
+            page.blocks
+        );
+
+        // The verbatim `$$50$$` text must appear as ordinary prose (paragraph
+        // containing a Text segment that includes the dollar characters).
+        let prose_text: String = page
+            .blocks
+            .iter()
+            .filter_map(|block| match block {
+                BlockAst::Paragraph(p) => Some(
+                    p.inlines
+                        .iter()
+                        .filter_map(|seg| match seg {
+                            InlineSegment::Text(t) => Some(t.as_str()),
+                            _ => None,
+                        })
+                        .collect::<String>(),
+                ),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            prose_text.contains("$$50$$") || prose_text.contains("50"),
+            "verbatim currency text must appear in a paragraph; full prose: {prose_text:?}, blocks: {:?}",
+            page.blocks
+        );
+    }
+
+    /// Regression: genuine non-digit display math `$$a^2$$` must still be
+    /// diverted to `compat.unknown_extension` + `MathFence`. The guard must NOT
+    /// fire when content does not begin with an ASCII digit.
     #[test]
     fn parse_markdown_page_display_math_is_still_diverted() {
         let source = source("Area:\n\n$$a^2$$\n");
