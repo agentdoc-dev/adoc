@@ -12,6 +12,7 @@ use crate::domain::values::{Body, NonEmpty};
 pub(super) const IMPACTS_FIELD: &str = "impacts";
 
 pub(crate) mod claim;
+pub(crate) mod constraint;
 pub(crate) mod decision;
 pub(crate) mod draft;
 pub(crate) mod glossary;
@@ -20,6 +21,7 @@ pub(crate) mod projection;
 pub(crate) mod warning;
 
 use claim::Claim;
+use constraint::Constraint;
 use decision::Decision;
 use glossary::Glossary;
 use warning::Warning;
@@ -445,11 +447,17 @@ pub(crate) enum BlockKind {
     Decision,
     Glossary,
     Warning,
+    Constraint,
 }
 
 impl BlockKind {
-    pub(crate) const ALL: &'static [Self] =
-        &[Self::Claim, Self::Decision, Self::Glossary, Self::Warning];
+    pub(crate) const ALL: &'static [Self] = &[
+        Self::Claim,
+        Self::Decision,
+        Self::Glossary,
+        Self::Warning,
+        Self::Constraint,
+    ];
 
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
@@ -457,6 +465,7 @@ impl BlockKind {
             Self::Decision => "decision",
             Self::Glossary => "glossary",
             Self::Warning => "warning",
+            Self::Constraint => "constraint",
         }
     }
 
@@ -471,6 +480,7 @@ pub(crate) enum KnowledgeObject {
     Decision(Decision),
     Glossary(Glossary),
     Warning(Warning),
+    Constraint(Constraint),
 }
 
 impl KnowledgeObject {
@@ -480,6 +490,7 @@ impl KnowledgeObject {
             Self::Decision(_) => BlockKind::Decision,
             Self::Glossary(_) => BlockKind::Glossary,
             Self::Warning(_) => BlockKind::Warning,
+            Self::Constraint(_) => BlockKind::Constraint,
         }
     }
 
@@ -489,6 +500,7 @@ impl KnowledgeObject {
             Self::Decision(decision) => decision.id(),
             Self::Glossary(glossary) => glossary.id(),
             Self::Warning(warning) => warning.id(),
+            Self::Constraint(constraint) => constraint.id(),
         }
     }
 
@@ -498,6 +510,7 @@ impl KnowledgeObject {
             Self::Decision(decision) => decision.span(),
             Self::Glossary(glossary) => glossary.span(),
             Self::Warning(warning) => warning.span(),
+            Self::Constraint(constraint) => constraint.span(),
         }
     }
 
@@ -507,6 +520,7 @@ impl KnowledgeObject {
             Self::Decision(decision) => decision.body(),
             Self::Glossary(glossary) => glossary.body(),
             Self::Warning(warning) => warning.body(),
+            Self::Constraint(constraint) => constraint.body(),
         }
     }
 
@@ -516,6 +530,7 @@ impl KnowledgeObject {
             Self::Decision(decision) => decision.body_mut(),
             Self::Glossary(glossary) => glossary.body_mut(),
             Self::Warning(warning) => warning.body_mut(),
+            Self::Constraint(constraint) => constraint.body_mut(),
         }
     }
 
@@ -525,16 +540,18 @@ impl KnowledgeObject {
             Self::Decision(decision) => decision.relations(),
             Self::Glossary(glossary) => glossary.relations(),
             Self::Warning(warning) => warning.relations(),
+            Self::Constraint(constraint) => constraint.relations(),
         }
     }
 
     /// V3.3 opt-in `impacts:` list. Empty slice for kinds that do not carry
-    /// this field (`glossary`, `warning`) or for `claim`/`decision` instances
-    /// without it.
+    /// this field (`glossary`, `warning`) or for `claim`/`decision`/`constraint`
+    /// instances without it.
     pub(crate) fn impacts(&self) -> &[RelPath] {
         match self {
             Self::Claim(claim) => claim.impacts().unwrap_or(&[]),
             Self::Decision(decision) => decision.impacts().unwrap_or(&[]),
+            Self::Constraint(constraint) => constraint.impacts().unwrap_or(&[]),
             Self::Glossary(_) | Self::Warning(_) => &[],
         }
     }
@@ -545,6 +562,7 @@ impl KnowledgeObject {
             Self::Decision(decision) => decision.fields(),
             Self::Glossary(glossary) => glossary.fields(),
             Self::Warning(warning) => warning.fields(),
+            Self::Constraint(constraint) => constraint.fields(),
         }
     }
 }
@@ -558,6 +576,7 @@ mod tests {
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
     use crate::domain::inline::InlineSegment;
     use crate::domain::knowledge_object::claim::Claim;
+    use crate::domain::knowledge_object::constraint::Constraint;
     use crate::domain::knowledge_object::decision::{AcceptedVerdict, DecidedBy, Decision};
     use crate::domain::knowledge_object::glossary::Glossary;
     use crate::domain::knowledge_object::warning::Warning;
@@ -633,12 +652,26 @@ mod tests {
         )
     }
 
+    fn constraint_object() -> KnowledgeObject {
+        KnowledgeObject::Constraint(
+            Constraint::try_new(
+                "auth.session.no-local-storage",
+                Some("critical"),
+                "Constraint body.",
+                BTreeMap::from([("owner".to_string(), "platform-security".to_string())]),
+                span("constraint.adoc", 13, 1),
+            )
+            .expect("valid constraint"),
+        )
+    }
+
     #[test]
     fn block_kind_labels_match_source_fence_words() {
         assert_eq!(BlockKind::Claim.as_str(), "claim");
         assert_eq!(BlockKind::Decision.as_str(), "decision");
         assert_eq!(BlockKind::Glossary.as_str(), "glossary");
         assert_eq!(BlockKind::Warning.as_str(), "warning");
+        assert_eq!(BlockKind::Constraint.as_str(), "constraint");
     }
 
     #[test]
@@ -656,6 +689,10 @@ mod tests {
             BlockKind::from_fence_word("warning"),
             Some(BlockKind::Warning)
         );
+        assert_eq!(
+            BlockKind::from_fence_word("constraint"),
+            Some(BlockKind::Constraint)
+        );
         assert_eq!(BlockKind::from_fence_word("fact"), None);
         assert_eq!(BlockKind::from_fence_word("Claim"), None);
     }
@@ -668,7 +705,8 @@ mod tests {
                 BlockKind::Claim,
                 BlockKind::Decision,
                 BlockKind::Glossary,
-                BlockKind::Warning
+                BlockKind::Warning,
+                BlockKind::Constraint
             ]
         );
     }
@@ -727,6 +765,15 @@ mod tests {
                 "Warning body.",
                 "warning.adoc",
                 11,
+                "owner",
+            ),
+            (
+                constraint_object(),
+                BlockKind::Constraint,
+                "auth.session.no-local-storage",
+                "Constraint body.",
+                "constraint.adoc",
+                13,
                 "owner",
             ),
         ];

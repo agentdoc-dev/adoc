@@ -242,7 +242,7 @@ All `Severity::Error` unless explicitly noted; they fail `adoc check` and `adoc 
 
 Added to the existing V3.4 trigger table in `domain/obligation.rs`:
 
-- `FieldChange::Severity` on a verified `constraint` → re-verify obligation.
+- `FieldChange::Severity` on a verified `constraint` → re-verify obligation. _(Deferred past V5.1: constraint has no `verified` status until the constraint-status lifecycle slice, so this trigger is unreachable and intentionally not wired yet.)_
 - `FieldChange::EffectiveAt` on an `active` `policy` → re-approve obligation.
 - `FieldChange::ApprovedByRemoved` on an `active` `policy` → re-approve obligation against the removed approver.
 - `FieldChange::Trust` upgrade on an `agent_instruction` → security review obligation.
@@ -304,7 +304,7 @@ Scope:
 - New `domain/knowledge_object/constraint.rs` with the `Constraint` aggregate, including the required-field invariant in the constructor (`Constraint::try_new(id, severity, body, optional fields...)`).
 - Constraint's required-field invariants (`id`, `severity`, `body`) are enforced in the aggregate constructor + `build_from_parsed` and registered in the `RESOLVERS` table in `domain/services/resolve_pending_block.rs`, mirroring `warning`. (No `infrastructure/validate/objects/` rule file in V5.1 — that directory is introduced in V5.6 for the first cross-aggregate rule, contradiction reference resolution.)
 - `BlockKind::Constraint` variant. Renderer dispatch updated. Graph node emission updated.
-- `FieldChange::Severity { before, after }` variant added to `domain/review/field_change.rs`. Re-verify obligation triggered when a verified constraint's `Severity` changes (the trigger lands in this slice — V5.1 closes both the projection AND its dispatch into `obligations_for_change`).
+- `FieldChange::Severity { before, after }` variant added to `domain/review/field_change.rs`, and `project_changed` maps a constraint's status-slot severity delta to it. The verified-constraint re-verify obligation is **deferred**: constraint carries no `verified` lifecycle status in V5.1 (its required fields are `id`/`severity`/`body`), so the trigger has no reachable input. The existing `obligations_for_change` wildcard already emits nothing for `FieldChange::Severity`; the re-verify trigger lands with the constraint-status lifecycle slice.
 - Graph artifact bumped from `adoc.graph.v2` to `adoc.graph.v3`. Stale `adoc.graph.v2` artifacts are rejected by the existing graph reader with `DiagnosticCode::SchemaUnsupportedVersion` (no new diagnostic added).
 - `adoc.diff.v0` and `adoc.review.v0` tolerantly serialize the new variant; envelope version unchanged.
 - Constraint may declare `impacts:` per V3.3.

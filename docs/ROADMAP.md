@@ -606,7 +606,7 @@ Scope:
 - Replace `warning`'s private `WarningSeverity` enum with the shared `Severity` value object (behavior-preserving; `WarningSeverity` was already typed, so existing warning fixtures and diagnostics are unchanged).
 - Constraint required-field validation is aggregate-owned (mirrors `warning`), registered via the `RESOLVERS` table. `BlockKind::Constraint` variant. (The `infrastructure/validate/objects/` directory is introduced in V5.6 for the first cross-aggregate rule.)
 - Graph artifact bumped from `adoc.graph.v2` to `adoc.graph.v3`. Stale v2 artifacts are rejected by the existing reader with `SchemaUnsupportedVersion` (no new diagnostic).
-- `FieldChange::Severity` variant added; re-verify obligation triggers when a verified constraint's `Severity` changes (dispatch lands in this slice).
+- `FieldChange::Severity` variant added and projected for constraint severity deltas. The verified-constraint re-verify obligation is deferred — constraint has no `verified` status in V5.1, so the trigger is unreachable until the constraint-status lifecycle slice.
 - Constraint may declare `impacts:` per V3.3 source-path impact analysis.
 
 Acceptance: `adoc check` over a fixture with `::constraint auth.session.no-local-storage / severity: critical / owner: platform-security / -- / Session tokens must not be stored in localStorage. / ::` exits 0; `adoc build` emits the constraint with `kind: "constraint"`, `severity: "critical"`, and verbatim body. `severity: catastrophic` exits non-zero with `schema.constraint_invalid_severity`. `adoc diff` from a prior `severity: high` produces a `FieldChange::Severity` entry. The V0–V4 fixtures pass byte-identical except for the v3 graph rebuild.

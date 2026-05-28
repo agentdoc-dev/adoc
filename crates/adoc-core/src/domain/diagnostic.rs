@@ -34,6 +34,8 @@ pub enum DiagnosticCode {
     SchemaMissingField,
     SchemaDuplicateField,
     SchemaInvalidStatus,
+    SchemaConstraintMissingSeverity,
+    SchemaConstraintInvalidSeverity,
     ClaimVerifiedMissingEvidence,
     ClaimStatusCasing,
     LifecycleExpired,
@@ -91,6 +93,8 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaMissingField,
             DiagnosticCode::SchemaDuplicateField,
             DiagnosticCode::SchemaInvalidStatus,
+            DiagnosticCode::SchemaConstraintMissingSeverity,
+            DiagnosticCode::SchemaConstraintInvalidSeverity,
             DiagnosticCode::ClaimVerifiedMissingEvidence,
             DiagnosticCode::ClaimStatusCasing,
             DiagnosticCode::LifecycleExpired,
@@ -148,6 +152,8 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaMissingField => "schema.missing_field",
             DiagnosticCode::SchemaDuplicateField => "schema.duplicate_field",
             DiagnosticCode::SchemaInvalidStatus => "schema.invalid_status",
+            DiagnosticCode::SchemaConstraintMissingSeverity => "schema.constraint_missing_severity",
+            DiagnosticCode::SchemaConstraintInvalidSeverity => "schema.constraint_invalid_severity",
             DiagnosticCode::ClaimVerifiedMissingEvidence => "claim.verified_missing_evidence",
             DiagnosticCode::ClaimStatusCasing => "claim.status_casing",
             DiagnosticCode::LifecycleExpired => "lifecycle.expired",
@@ -226,6 +232,12 @@ impl DiagnosticCode {
             }
             DiagnosticCode::SchemaInvalidStatus => {
                 "Use one of the allowed status values for this object kind."
+            }
+            DiagnosticCode::SchemaConstraintMissingSeverity => {
+                "Add a `severity` field to the constraint: one of low, medium, high, critical."
+            }
+            DiagnosticCode::SchemaConstraintInvalidSeverity => {
+                "Use a valid constraint severity: one of low, medium, high, critical."
             }
             DiagnosticCode::ClaimVerifiedMissingEvidence => {
                 "Add evidence entries before marking the claim as verified."
@@ -391,6 +403,8 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.missing_field",
     "schema.duplicate_field",
     "schema.invalid_status",
+    "schema.constraint_missing_severity",
+    "schema.constraint_invalid_severity",
     "claim.verified_missing_evidence",
     "claim.status_casing",
     "lifecycle.expired",

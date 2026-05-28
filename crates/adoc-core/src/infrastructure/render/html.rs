@@ -227,6 +227,9 @@ fn render_knowledge_object(knowledge_object: &KnowledgeObject, html: &mut String
         KnowledgeObject::Warning(_) => {
             render_warning(knowledge_object, &metadata, html);
         }
+        KnowledgeObject::Constraint(_) => {
+            render_constraint(knowledge_object, &metadata, html);
+        }
     }
 }
 
@@ -247,7 +250,7 @@ fn render_warning(
     metadata: &KnowledgeObjectMetadata<'_>,
     html: &mut String,
 ) {
-    let discriminant = warning_severity_discriminant(metadata);
+    let discriminant = severity_discriminant(metadata);
     let class = format!("warning warning--{}", discriminant.value_as_str());
 
     render_object_section_open(knowledge_object, &class, html);
@@ -257,13 +260,26 @@ fn render_warning(
     html.push_str("</section>\n");
 }
 
-fn warning_severity_discriminant<'a>(
-    metadata: &KnowledgeObjectMetadata<'a>,
-) -> MetadataDiscriminant<'a> {
+fn render_constraint(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    let discriminant = severity_discriminant(metadata);
+    let class = format!("constraint constraint--{}", discriminant.value_as_str());
+
+    render_object_section_open(knowledge_object, &class, html);
+    render_object_header(knowledge_object, Some(discriminant), html);
+    render_object_body(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
+    html.push_str("</section>\n");
+}
+
+fn severity_discriminant<'a>(metadata: &KnowledgeObjectMetadata<'a>) -> MetadataDiscriminant<'a> {
     match metadata.discriminant() {
         Some(discriminant @ MetadataDiscriminant::Severity(_)) => discriminant,
-        Some(_) => unreachable!("warning metadata projection must use warning severity"),
-        None => unreachable!("warning metadata projection must include warning severity"),
+        Some(_) => unreachable!("severity-bearing kind metadata projection must use severity"),
+        None => unreachable!("severity-bearing kind metadata projection must include severity"),
     }
 }
 
