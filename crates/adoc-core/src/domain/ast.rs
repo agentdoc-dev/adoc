@@ -93,11 +93,18 @@ pub(crate) struct ListAst {
 /// `task_state` is populated only for GFM task list items (V4 Compatibility
 /// Mode): `Some(true)` for `- [x]`, `Some(false)` for `- [ ]`, `None` for
 /// plain list items.
+///
+/// `content` holds block-level children of a *loose* list item (a continuation
+/// paragraph separated by a blank line, or an indented sub-list). Tight list
+/// items leave this empty. The Markdown parser populates this field; the
+/// `.adoc` parser always leaves it as `Vec::new()` since the `.adoc` grammar
+/// does not support loose-list or nested-list syntax.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ListItem {
     pub(crate) inlines: Vec<InlineSegment>,
     pub(crate) span: SourceSpan,
     pub(crate) task_state: Option<bool>,
+    pub(crate) content: Vec<BlockAst>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

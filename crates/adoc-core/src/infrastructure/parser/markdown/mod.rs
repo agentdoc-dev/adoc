@@ -258,6 +258,7 @@ impl<'a> State<'a> {
                 inlines: Vec::new(),
                 span,
                 task_state: None,
+                content: Vec::new(),
             }),
             Tag::Emphasis => self.stack.push(Frame::Emphasis(Vec::new())),
             Tag::Strong => self.stack.push(Frame::Strong(Vec::new())),
@@ -382,6 +383,7 @@ impl<'a> State<'a> {
                     inlines,
                     span,
                     task_state,
+                    content,
                 },
                 TagEnd::Item,
             ) => {
@@ -390,6 +392,7 @@ impl<'a> State<'a> {
                         inlines,
                         span,
                         task_state,
+                        content,
                     });
                 } else {
                     self.report_malformed(range);
@@ -555,14 +558,16 @@ impl<'a> State<'a> {
         }
     }
 
-    /// Routes a finalized block to either the page-level `blocks` vec or
-    /// (when nested inside a footnote definition) to the active footnote's
-    /// content list.
+    /// Routes a finalized block into the innermost container frame on the
+    /// stack. Precedence: `FootnoteDefinition` → `Item` → page-level `blocks`.
+    /// This ensures that blocks produced while a list item is open (loose-list
+    /// continuation paragraphs, nested sub-lists, etc.) land inside the item's
+    /// `content` rather than escaping to page level.
     fn push_block(&mut self, block: BlockAst) {
-        if let Some(Frame::FootnoteDefinition { content, .. }) = self.stack.last_mut() {
-            content.push(block);
-        } else {
-            self.blocks.push(block);
+        match self.stack.last_mut() {
+            Some(Frame::FootnoteDefinition { content, .. }) => content.push(block),
+            Some(Frame::Item { content, .. }) => content.push(block),
+            _ => self.blocks.push(block),
         }
     }
 
@@ -1242,5 +1247,147 @@ mod tests {
             math_diag_count, 1,
             "display math must produce exactly one compat.unknown_extension diagnostic; got {diagnostics:?}"
         );
+    }
+
+    // --- Loose list / nested list / tight list regression tests ---
+
+    /// A loose list item (blank-line-separated continuation paragraph) must
+    /// have its continuation paragraph in `item.content`, NOT at page level.
+    #[test]
+    fn loose_list_continuation_paragraph_stays_inside_item_content() {
+        // Two blank lines between the item text and the continuation create a
+        // loose list. pulldown-cmark emits a Paragraph event while Frame::Item
+        // is still on the stack.
+        let src = source("- first item\n\n  continuation text\n");
+        let (page, _diagnostics) = parse_markdown_page(&src);
+
+        // The page must contain exactly one block: the list.
+        let list_count = page
+            .blocks
+            .iter()
+            .filter(|b| matches!(b, BlockAst::List(_)))
+            .count();
+        assert_eq!(
+            list_count, 1,
+            "expected exactly one list block at page level; got {:?}",
+            page.blocks
+        );
+
+        // There must be no standalone Paragraph at page level.
+        let page_paragraph_count = page
+            .blocks
+            .iter()
+            .filter(|b| matches!(b, BlockAst::Paragraph(_)))
+            .count();
+        assert_eq!(
+            page_paragraph_count, 0,
+            "continuation paragraph must NOT appear at page level; got {:?}",
+            page.blocks
+        );
+
+        // The list item's content must hold the continuation paragraph.
+        let list = page
+            .blocks
+            .iter()
+            .find_map(|b| match b {
+                BlockAst::List(l) => Some(l),
+                _ => None,
+            })
+            .expect("list block must exist");
+        assert_eq!(list.items.len(), 1, "expected one list item");
+        let item = &list.items[0];
+        assert!(
+            !item.content.is_empty(),
+            "loose item content must be non-empty"
+        );
+        assert!(
+            item.content
+                .iter()
+                .any(|b| matches!(b, BlockAst::Paragraph(_))),
+            "expected a Paragraph in item.content; got {:?}",
+            item.content
+        );
+    }
+
+    /// A nested sub-list must land inside the parent item's `content`, NOT at
+    /// page level as a sibling of the parent list.
+    #[test]
+    fn nested_sub_list_stays_inside_parent_item_content() {
+        let src = source("- parent item\n  - child one\n  - child two\n");
+        let (page, _diagnostics) = parse_markdown_page(&src);
+
+        // Only one top-level list block.
+        let list_count = page
+            .blocks
+            .iter()
+            .filter(|b| matches!(b, BlockAst::List(_)))
+            .count();
+        assert_eq!(
+            list_count, 1,
+            "expected exactly one list at page level; got {:?}",
+            page.blocks
+        );
+
+        let outer_list = page
+            .blocks
+            .iter()
+            .find_map(|b| match b {
+                BlockAst::List(l) => Some(l),
+                _ => None,
+            })
+            .expect("outer list exists");
+
+        assert_eq!(outer_list.items.len(), 1, "outer list must have one item");
+        let parent_item = &outer_list.items[0];
+
+        // Sub-list is inside parent item's content.
+        let sub_list_in_content = parent_item
+            .content
+            .iter()
+            .any(|b| matches!(b, BlockAst::List(_)));
+        assert!(
+            sub_list_in_content,
+            "nested sub-list must be in parent item's content; got {:?}",
+            parent_item.content
+        );
+
+        // The sub-list itself must have two items.
+        let sub_list = parent_item
+            .content
+            .iter()
+            .find_map(|b| match b {
+                BlockAst::List(l) => Some(l),
+                _ => None,
+            })
+            .expect("sub-list must exist in item.content");
+        assert_eq!(sub_list.items.len(), 2, "sub-list must have two items");
+    }
+
+    /// Tight list regression: a plain tight list must have empty `content` on
+    /// every item, and the page must contain exactly the list block.
+    #[test]
+    fn tight_list_items_have_empty_content_and_page_structure_is_unchanged() {
+        let src = source("- one\n- two\n- three\n");
+        let (page, _diagnostics) = parse_markdown_page(&src);
+
+        // Exactly one block at page level — the list.
+        assert_eq!(
+            page.blocks.len(),
+            1,
+            "expected exactly one page-level block; got {:?}",
+            page.blocks
+        );
+        let list = match &page.blocks[0] {
+            BlockAst::List(l) => l,
+            other => panic!("expected List, got {other:?}"),
+        };
+        assert_eq!(list.items.len(), 3);
+        for (idx, item) in list.items.iter().enumerate() {
+            assert!(
+                item.content.is_empty(),
+                "tight list item {idx} must have empty content; got {:?}",
+                item.content
+            );
+        }
     }
 }

@@ -39,6 +39,7 @@ pub(super) enum Frame {
         inlines: Vec<InlineSegment>,
         span: SourceSpan,
         task_state: Option<bool>,
+        content: Vec<BlockAst>,
     },
     Emphasis(Vec<InlineSegment>),
     Strong(Vec<InlineSegment>),

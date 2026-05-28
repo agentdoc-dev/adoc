@@ -157,9 +157,15 @@ fn collect_code_block_lines(block: &BlockAst, out: &mut Vec<u32>) {
                 collect_code_block_lines(child, out);
             }
         }
+        BlockAst::List(list) => {
+            for item in &list.items {
+                for child in &item.content {
+                    collect_code_block_lines(child, out);
+                }
+            }
+        }
         BlockAst::Heading(_)
         | BlockAst::Paragraph(_)
-        | BlockAst::List(_)
         | BlockAst::Table(_)
         | BlockAst::KnowledgeObject(_)
         | BlockAst::KnowledgeObjectPending(_)
