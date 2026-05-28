@@ -174,6 +174,7 @@ fn block_to_graph_node(block: &BlockAst, id: &str, page_id: &str, order: u32) ->
                         for child in &item.content {
                             collect_block_text(child, &mut parts);
                         }
+                        parts.retain(|s| !s.is_empty());
                         parts.join(" ")
                     }
                 })
@@ -649,5 +650,62 @@ mod tests {
             .expect("list graph node must exist");
 
         assert_eq!(list_node.items, vec!["one".to_string(), "two".to_string()]);
+    }
+
+    /// A loose list item whose `inlines` is empty (text lives in a child
+    /// `Paragraph`) must project to the child text with NO leading space.
+    ///
+    /// Regression: before the fix `parts.join(" ")` produced `" child text"`
+    /// because the empty `to_source(&item.inlines)` string was kept in `parts`.
+    #[test]
+    fn loose_list_item_projection_has_no_leading_space() {
+        let page = PageAst {
+            id: PageId::from_string("team.guide").expect("test id"),
+            title: None,
+            source_path: PathBuf::from("guide.md"),
+            blocks: vec![BlockAst::List(ListAst {
+                kind: ListKind::Unordered,
+                items: vec![ListItem {
+                    // Loose item: inlines is empty; text lives in child Paragraph.
+                    inlines: vec![],
+                    span: dummy_span(),
+                    task_state: None,
+                    content: vec![BlockAst::Paragraph(ParagraphAst {
+                        inlines: vec![InlineSegment::Text("child text".to_string())],
+                        span: dummy_span(),
+                    })],
+                }],
+                span: dummy_span(),
+            })],
+        };
+        let workspace = WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build(&workspace, &[]);
+
+        let list_node = artifact
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                GraphNode::List(block) => Some(block),
+                _ => None,
+            })
+            .expect("list graph node must exist");
+
+        assert_eq!(list_node.items.len(), 1);
+        let projected = &list_node.items[0];
+        assert_eq!(
+            projected, "child text",
+            "loose item with empty inlines must project to child text without leading space; got {:?}",
+            projected
+        );
+        assert!(
+            !projected.starts_with(' '),
+            "projected text must not start with a space; got {:?}",
+            projected
+        );
+        assert!(
+            !projected.ends_with(' '),
+            "projected text must not end with a space; got {:?}",
+            projected
+        );
     }
 }
