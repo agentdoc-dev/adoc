@@ -125,7 +125,7 @@ fn sha256_prefixed(bytes: &[u8]) -> String {
 
 fn graph_json_from_objects(objects: Vec<Value>, edges: Vec<Value>) -> String {
     let document = json!({
-        "schema_version": "adoc.graph.v2",
+        "schema_version": "adoc.graph.v3",
         "nodes": objects,
         "edges": edges,
         "diagnostics": []
@@ -1708,7 +1708,7 @@ fn load_retrieval_session_rejects_invalid_object_ids_inside_artifact() {
     let artifact = write_temp_artifact(
         "invalid-object-id",
         r#"{
-          "schema_version": "adoc.graph.v2",
+          "schema_version": "adoc.graph.v3",
           "nodes": [
             {
               "type": "knowledge_object",
@@ -1744,7 +1744,7 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
     let artifact = write_temp_artifact(
         "duplicate",
         r#"{
-          "schema_version": "adoc.graph.v2",
+          "schema_version": "adoc.graph.v3",
           "nodes": [
             {
               "type": "knowledge_object",
@@ -1821,7 +1821,7 @@ fn prose_only_graph_artifact(prose_blocks: usize) -> tempfile::NamedTempFile {
         }));
     }
     let document = json!({
-        "schema_version": "adoc.graph.v2",
+        "schema_version": "adoc.graph.v3",
         "nodes": nodes,
         "edges": [],
         "diagnostics": []
@@ -1834,7 +1834,7 @@ fn prose_only_graph_artifact(prose_blocks: usize) -> tempfile::NamedTempFile {
 
 fn empty_graph_artifact() -> tempfile::NamedTempFile {
     let document = json!({
-        "schema_version": "adoc.graph.v2",
+        "schema_version": "adoc.graph.v3",
         "nodes": [],
         "edges": [],
         "diagnostics": []

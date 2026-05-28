@@ -58,7 +58,7 @@ mod tests {
 
         let graph_document = GraphJsonArtifact.build(&workspace, &[]);
 
-        assert_eq!(graph_document.schema_version, "adoc.graph.v2");
+        assert_eq!(graph_document.schema_version, "adoc.graph.v3");
         assert!(graph_document.nodes.is_empty());
         assert!(graph_document.edges.is_empty());
     }

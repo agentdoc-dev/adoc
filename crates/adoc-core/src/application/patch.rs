@@ -229,7 +229,7 @@ mod tests {
 
     fn graph_document(objects: Vec<GraphKnowledgeObjectNode>) -> GraphArtifactDocument {
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v2".to_string(),
+            schema_version: "adoc.graph.v3".to_string(),
             nodes: std::iter::once(GraphNode::Page(GraphPageNode {
                 id: "team.page".to_string(),
                 order: 0,

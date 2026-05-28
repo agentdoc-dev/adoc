@@ -21,7 +21,7 @@ fn valid_source() -> &'static str {
 
 fn valid_graph_json() -> String {
     serde_json::to_string_pretty(&json!({
-        "schema_version": "adoc.graph.v2",
+        "schema_version": "adoc.graph.v3",
         "nodes": [
             {
                 "type": "page",
@@ -107,7 +107,7 @@ fn graph_artifact_inspector_reports_missing_malformed_and_unsupported() {
     );
 
     let unsupported_path = root.join("unsupported.graph.json");
-    let unsupported_json = valid_graph_json().replace("adoc.graph.v2", "adoc.graph.v99");
+    let unsupported_json = valid_graph_json().replace("adoc.graph.v3", "adoc.graph.v99");
     write(&unsupported_path, &unsupported_json);
     let unsupported = inspect_graph_artifact(GraphArtifactInspectionInput {
         graph_artifact_path: unsupported_path,
@@ -133,7 +133,7 @@ fn graph_artifact_inspector_rejects_invalid_object_ids_and_counts_valid_objects(
         graph_artifact_path: valid_path,
     });
     assert_eq!(valid.load_status, ArtifactLoadStatus::Readable);
-    assert_eq!(valid.schema_version.as_deref(), Some("adoc.graph.v2"));
+    assert_eq!(valid.schema_version.as_deref(), Some("adoc.graph.v3"));
     assert_eq!(valid.object_count, Some(1));
 
     let invalid_path = root.join("invalid.graph.json");
