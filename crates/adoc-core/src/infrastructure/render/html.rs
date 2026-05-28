@@ -15,6 +15,12 @@ use crate::domain::url_safety::verdict;
 /// string in their HTML assertions — see `crates/adoc-cli/tests/markdown_pilot.rs`.
 const QUARANTINED_HTML_CLASS: &str = "quarantined-html";
 
+/// CSS class used to wrap an inline image whose `src` URL failed the safety
+/// verdict. The alt text is rendered inside the span so the document remains
+/// readable; the class name is pinned by integration tests — output must not
+/// change.
+const QUARANTINED_IMAGE_CLASS: &str = "quarantined-image";
+
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct HtmlRenderer;
 
@@ -589,7 +595,9 @@ fn render_inline(segment: &InlineSegment, html: &mut String) {
                 html.push_str(&escape_html(&alt_text));
                 html.push_str("\" />");
             } else {
-                html.push_str("<span class=\"quarantined-image\">");
+                html.push_str("<span class=\"");
+                html.push_str(QUARANTINED_IMAGE_CLASS);
+                html.push_str("\">");
                 html.push_str(&escape_html(&alt_text));
                 html.push_str("</span>");
             }

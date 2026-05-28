@@ -38,9 +38,10 @@ pub(crate) enum UrlVerdict {
     /// URL has a recognized, well-formed scheme that is not on the allowlist.
     /// Carries the lowercase scheme (without trailing `:`).
     UnsafeScheme { scheme: String },
-    /// URL contains ASCII whitespace anywhere — rejected before scheme parsing
-    /// because whitespace can hide attribute-splitting attacks.
-    UnsafeWhitespace,
+    /// URL contains ASCII whitespace or other control characters anywhere —
+    /// rejected before scheme parsing because they can hide attribute-splitting
+    /// attacks (C0 controls, DEL `\x7F`, and ASCII whitespace `\x20`).
+    UnsafeControlCharacter,
 }
 
 impl UrlVerdict {
@@ -56,10 +57,14 @@ impl UrlVerdict {
 /// not a well-formed scheme (empty, starting with a non-letter, containing
 /// characters outside `[A-Za-z0-9+\-.]`) are treated as non-schemes and
 /// accepted; downstream consumers see the literal text and decide what to
-/// do with it. URLs containing ASCII whitespace anywhere are always rejected.
+/// do with it. URLs containing ASCII whitespace or any ASCII control character
+/// anywhere are always rejected (defense-in-depth against attribute-splitting).
 pub(crate) fn verdict(url: &str) -> UrlVerdict {
-    if url.bytes().any(|byte| byte.is_ascii_whitespace()) {
-        return UrlVerdict::UnsafeWhitespace;
+    if url
+        .bytes()
+        .any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+    {
+        return UrlVerdict::UnsafeControlCharacter;
     }
     let Some(colon) = url.find(':') else {
         return UrlVerdict::Safe;
@@ -194,7 +199,7 @@ mod tests {
     fn rejects_url_with_leading_whitespace() {
         assert_eq!(
             verdict(" javascript:alert(1)"),
-            UrlVerdict::UnsafeWhitespace
+            UrlVerdict::UnsafeControlCharacter
         );
     }
 
@@ -202,11 +207,35 @@ mod tests {
     fn rejects_url_with_internal_whitespace() {
         assert_eq!(
             verdict("java\tscript:alert(1)"),
-            UrlVerdict::UnsafeWhitespace
+            UrlVerdict::UnsafeControlCharacter
         );
         assert_eq!(
             verdict("javascript :alert(1)"),
-            UrlVerdict::UnsafeWhitespace
+            UrlVerdict::UnsafeControlCharacter
+        );
+    }
+
+    #[test]
+    fn rejects_url_with_nul_byte() {
+        assert_eq!(
+            verdict("java\u{0}script:alert(1)"),
+            UrlVerdict::UnsafeControlCharacter
+        );
+    }
+
+    #[test]
+    fn rejects_url_with_unit_separator_control_char() {
+        assert_eq!(
+            verdict("http\u{1F}s://example.test"),
+            UrlVerdict::UnsafeControlCharacter
+        );
+    }
+
+    #[test]
+    fn rejects_url_with_del_char() {
+        assert_eq!(
+            verdict("https://example\u{7F}.test"),
+            UrlVerdict::UnsafeControlCharacter
         );
     }
 
