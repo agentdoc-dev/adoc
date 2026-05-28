@@ -57,6 +57,10 @@ impl GraphSession {
         self.index.prose_block_count()
     }
 
+    pub(crate) fn has_markdown_pages(&self) -> bool {
+        self.index.has_markdown_pages()
+    }
+
     pub(crate) fn knowledge_object_count(&self) -> usize {
         self.index.knowledge_object_count()
     }
