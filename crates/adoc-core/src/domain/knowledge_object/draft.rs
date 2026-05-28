@@ -10,7 +10,7 @@ use crate::domain::knowledge_object::claim::{
 use crate::domain::knowledge_object::decision::{
     ACCEPTED_STATUS, DECIDED_BY_FIELD, DecidedBy, DecisionStatus,
 };
-use crate::domain::knowledge_object::warning::WarningSeverity;
+use crate::domain::value_objects::severity::Severity;
 use crate::domain::values::NonEmptyText;
 
 #[derive(Debug, Clone, Copy)]
@@ -102,7 +102,7 @@ impl DraftValidator<'_> {
     }
 
     fn validate_warning(&mut self) {
-        if WarningSeverity::try_new(self.draft.status.unwrap_or("")).is_err() {
+        if Severity::try_new(self.draft.status.unwrap_or("")).is_err() {
             match self.draft.status {
                 Some(severity) => self.error(format!("warning has invalid severity `{severity}`")),
                 None => self.error("warning requires severity"),

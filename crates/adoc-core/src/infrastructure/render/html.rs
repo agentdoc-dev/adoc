@@ -261,7 +261,7 @@ fn warning_severity_discriminant<'a>(
     metadata: &KnowledgeObjectMetadata<'a>,
 ) -> MetadataDiscriminant<'a> {
     match metadata.discriminant() {
-        Some(discriminant @ MetadataDiscriminant::WarningSeverity(_)) => discriminant,
+        Some(discriminant @ MetadataDiscriminant::Severity(_)) => discriminant,
         Some(_) => unreachable!("warning metadata projection must use warning severity"),
         None => unreachable!("warning metadata projection must include warning severity"),
     }
@@ -443,7 +443,7 @@ fn render_object_header(
 fn discriminant_field_name(discriminant: MetadataDiscriminant<'_>) -> &'static str {
     match discriminant {
         MetadataDiscriminant::ClaimStatus(_) | MetadataDiscriminant::DecisionStatus(_) => "status",
-        MetadataDiscriminant::WarningSeverity(_) => "severity",
+        MetadataDiscriminant::Severity(_) => "severity",
     }
 }
 
