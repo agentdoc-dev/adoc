@@ -15,6 +15,7 @@
 
 use std::collections::BTreeSet;
 
+use crate::domain::knowledge_object::BlockKind;
 use crate::domain::knowledge_object::metadata::KnowledgeObjectMetadata;
 
 use super::field_change::{FieldChange, RelationKind};
@@ -41,9 +42,15 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
     }
 
     if base.status != head.status {
-        out.push(FieldChange::Status {
-            before: base.status.clone(),
-            after: head.status.clone(),
+        let before = base.status.clone();
+        let after = head.status.clone();
+        // Severity-bearing kinds store the shared `Severity` value object in the
+        // graph node's `status` slot, so project the delta as a Severity change
+        // rather than a lifecycle Status change.
+        out.push(if head.kind.as_str() == BlockKind::Constraint.as_str() {
+            FieldChange::Severity { before, after }
+        } else {
+            FieldChange::Status { before, after }
         });
     }
 
@@ -244,6 +251,41 @@ mod tests {
             vec![FieldChange::Status {
                 before: Some("draft".to_string()),
                 after: Some("verified".to_string()),
+            }]
+        );
+    }
+
+    #[test]
+    fn constraint_severity_change_emits_severity_field_change_not_status() {
+        let constraint_node = |content_hash: &str, severity: &str| GraphKnowledgeObjectNode {
+            id: "auth.session.no-local-storage".to_string(),
+            kind: "constraint".to_string(),
+            content_hash: content_hash.to_string(),
+            status: Some(severity.to_string()),
+            body: "Session tokens must not be stored in localStorage.".to_string(),
+            page_id: "team.auth".to_string(),
+            source_span: GraphSourceSpan {
+                path: "docs/auth.adoc".to_string(),
+                line: 1,
+                column: 1,
+            },
+            fields: BTreeMap::new(),
+            relations: GraphRelations::default(),
+            impacts: Vec::new(),
+        };
+
+        let base = constraint_node("sha256:a", "high");
+        let head = constraint_node("sha256:b", "critical");
+
+        assert_eq!(
+            project_changed(&ChangedObject::new(
+                "auth.session.no-local-storage".to_string(),
+                base,
+                head,
+            )),
+            vec![FieldChange::Severity {
+                before: Some("high".to_string()),
+                after: Some("critical".to_string()),
             }]
         );
     }

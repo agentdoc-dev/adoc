@@ -8,8 +8,8 @@ use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
 use crate::domain::knowledge_object::{
-    BlockKind, KnowledgeObject, claim::Claim, decision::Decision, glossary::Glossary,
-    warning::Warning,
+    BlockKind, KnowledgeObject, claim::Claim, constraint::Constraint, decision::Decision,
+    glossary::Glossary, warning::Warning,
 };
 
 type KnowledgeObjectBuilder = fn(ParsedTypedBlock, &mut Vec<Diagnostic>) -> Option<KnowledgeObject>;
@@ -37,6 +37,10 @@ const RESOLVERS: &[KnowledgeObjectResolver] = &[
     KnowledgeObjectResolver {
         kind: BlockKind::Warning,
         build: build_warning,
+    },
+    KnowledgeObjectResolver {
+        kind: BlockKind::Constraint,
+        build: build_constraint,
     },
 ];
 
@@ -99,6 +103,13 @@ fn build_warning(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<KnowledgeObject> {
     Warning::build_from_parsed(parsed, diagnostics).map(KnowledgeObject::Warning)
+}
+
+fn build_constraint(
+    parsed: ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<KnowledgeObject> {
+    Constraint::build_from_parsed(parsed, diagnostics).map(KnowledgeObject::Constraint)
 }
 
 fn unknown_kind_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
@@ -223,7 +234,7 @@ mod tests {
 
         assert_eq!(
             help,
-            "supported kinds: claim, decision, glossary, warning. Kinds \
+            "supported kinds: claim, decision, glossary, warning, constraint. Kinds \
             procedure, example, agent, policy, contradiction, source, and custom schemas are deferred."
         );
         for kind in BlockKind::ALL {

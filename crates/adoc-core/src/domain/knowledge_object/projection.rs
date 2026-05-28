@@ -95,6 +95,9 @@ impl KnowledgeObject {
             }
             Self::Glossary(_) => None,
             Self::Warning(warning) => Some(MetadataDiscriminant::Severity(warning.severity())),
+            Self::Constraint(constraint) => {
+                Some(MetadataDiscriminant::Severity(constraint.severity()))
+            }
         };
 
         KnowledgeObjectMetadata {

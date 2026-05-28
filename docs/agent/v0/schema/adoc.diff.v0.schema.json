@@ -117,6 +117,16 @@
           "type": "object",
           "required": ["type", "before", "after"],
           "properties": {
+            "type": { "const": "severity" },
+            "before": { "type": ["string", "null"] },
+            "after": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "before", "after"],
+          "properties": {
             "type": { "const": "owner" },
             "before": { "type": ["string", "null"] },
             "after": { "type": ["string", "null"] }

@@ -31,6 +31,13 @@ pub enum FieldChange {
         before: Option<String>,
         after: Option<String>,
     },
+    /// V5.1: the `severity` of a severity-bearing kind (`constraint`) changed.
+    /// Stored in the graph node's `status` slot but projected distinctly so the
+    /// shared `Severity` value object reads as severity, not lifecycle status.
+    Severity {
+        before: Option<String>,
+        after: Option<String>,
+    },
     Owner {
         before: Option<String>,
         after: Option<String>,
@@ -80,6 +87,7 @@ impl FieldChange {
         match self {
             FieldChange::Body { .. } => "body changed",
             FieldChange::Status { .. } => "status changed",
+            FieldChange::Severity { .. } => "severity changed",
             FieldChange::Owner { .. } => "owner changed",
             FieldChange::VerifiedAt { .. } => "verified_at changed",
             FieldChange::EvidenceAdded { .. } => "evidence added",
@@ -107,6 +115,12 @@ impl fmt::Display for FieldChange {
             FieldChange::Status { before, after } => write!(
                 f,
                 "status: {} → {}",
+                optional(before.as_deref()),
+                optional(after.as_deref())
+            ),
+            FieldChange::Severity { before, after } => write!(
+                f,
+                "severity: {} → {}",
                 optional(before.as_deref()),
                 optional(after.as_deref())
             ),
@@ -194,6 +208,20 @@ mod tests {
         assert_eq!(value["type"], "status");
         assert_eq!(value["before"], "draft");
         assert_eq!(value["after"], "verified");
+    }
+
+    #[test]
+    fn severity_variant_serializes_with_snake_case_tag_and_optional_sides() {
+        let change = FieldChange::Severity {
+            before: Some("high".to_string()),
+            after: Some("critical".to_string()),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(value["type"], "severity");
+        assert_eq!(value["before"], "high");
+        assert_eq!(value["after"], "critical");
     }
 
     #[test]
