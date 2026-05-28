@@ -124,6 +124,11 @@ fn render_block(block: &BlockAst, html: &mut String) {
             html.push_str(&escape_html(&quarantined_html.source_text));
             html.push_str("</pre>\n");
         }
+        // V4 Compatibility Mode: a thematic break is valid Markdown — render
+        // it as a real horizontal rule element, not a quarantine block.
+        BlockAst::ThematicBreak(_) => {
+            html.push_str("<hr />\n");
+        }
         BlockAst::Table(table) => render_table(table, html),
         BlockAst::FootnoteDefinition(footnote) => {
             html.push_str("<aside class=\"adoc-footnote\" id=\"fn-");
@@ -1209,6 +1214,34 @@ mod tests {
         assert!(
             html.contains("<dt>note</dt><dd>value &#39;x&#39; &amp; &lt;y&gt;</dd>"),
             "metadata not escaped: {html}"
+        );
+    }
+
+    #[test]
+    fn thematic_break_renders_as_hr_element() {
+        use crate::domain::ast::{PageAst, ThematicBreakAst};
+        use crate::domain::identity::PageId;
+
+        let span = dummy_span();
+        let page = PageAst {
+            id: PageId::from_string("team.guide").expect("test page id is valid"),
+            title: None,
+            source_path: PathBuf::from("guide.md"),
+            blocks: vec![BlockAst::ThematicBreak(ThematicBreakAst {
+                source_text: "---".to_string(),
+                span,
+            })],
+        };
+
+        let html = HtmlRenderer.render(&[page]);
+
+        assert!(
+            html.contains("<hr />"),
+            "expected <hr /> in rendered output; got: {html}"
+        );
+        assert!(
+            !html.contains("quarantined-html"),
+            "thematic break must not use quarantine class; got: {html}"
         );
     }
 

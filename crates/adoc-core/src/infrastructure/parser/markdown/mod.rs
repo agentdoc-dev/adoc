@@ -34,8 +34,8 @@ use pulldown_cmark::{
 
 use crate::domain::ast::{
     BlockAst, CodeBlockAst, ColumnAlignment, FootnoteDefinitionAst, HeadingAst, ListAst, ListItem,
-    ListKind, PageAst, ParagraphAst, QuarantinedHtmlAst, TableAst, TableCell, UnknownExtensionAst,
-    UnknownExtensionKind,
+    ListKind, PageAst, ParagraphAst, QuarantinedHtmlAst, TableAst, TableCell, ThematicBreakAst,
+    UnknownExtensionAst, UnknownExtensionKind,
 };
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::PageId;
@@ -147,16 +147,14 @@ impl<'a> State<'a> {
             Event::SoftBreak => self.push_inline(InlineSegment::Text(" ".to_string())),
             Event::HardBreak => self.push_inline(InlineSegment::Text("\n".to_string())),
             Event::Rule => {
-                // Thematic break renders as an empty quarantined block to
-                // preserve the structural cue without inventing a new AST
-                // variant. The graph artifact stores the source `---` text.
+                // Thematic break (`---`, `***`, `___`): valid Markdown, not raw
+                // HTML. Route through `push_block` so that a break inside a
+                // footnote definition lands in the footnote's content list
+                // rather than the page-level blocks vec.
                 let span = self.span_for(range.clone());
                 let source_text = self.slice_for(range);
-                self.blocks
-                    .push(BlockAst::QuarantinedHtml(QuarantinedHtmlAst {
-                        source_text,
-                        span,
-                    }));
+                let block = BlockAst::ThematicBreak(ThematicBreakAst { source_text, span });
+                self.push_block(block);
             }
             Event::FootnoteReference(label) => {
                 let span = self.span_for(range);
@@ -1002,5 +1000,59 @@ mod tests {
             .filter(|d| d.code == DiagnosticCode::CompatUnknownExtension)
             .count();
         assert_eq!(unknown_diag_count, 1, "{diagnostics:?}");
+    }
+
+    // --- Thematic break tests ---
+
+    #[test]
+    fn parse_markdown_page_emits_thematic_break_for_horizontal_rule() {
+        // `***` surrounded by blank lines is unambiguously a thematic break
+        // in CommonMark (no setext-heading ambiguity).
+        let source = source("Before.\n\n***\n\nAfter.\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+        let has_break = page
+            .blocks
+            .iter()
+            .any(|block| matches!(block, BlockAst::ThematicBreak(_)));
+        assert!(
+            has_break,
+            "expected ThematicBreak block; got {:?}",
+            page.blocks
+        );
+    }
+
+    #[test]
+    fn parse_markdown_page_thematic_break_is_not_quarantined_html() {
+        // Regression guard: `---` with surrounding blank lines must not become
+        // a QuarantinedHtml block (the original bug).
+        let source = source("Before.\n\n---\n\nAfter.\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+        assert!(
+            diagnostics.is_empty(),
+            "unexpected diagnostics: {diagnostics:?}"
+        );
+        let quarantine_count = page
+            .blocks
+            .iter()
+            .filter(|block| matches!(block, BlockAst::QuarantinedHtml(_)))
+            .count();
+        assert_eq!(
+            quarantine_count, 0,
+            "thematic break must not be quarantined as raw HTML; got {:?}",
+            page.blocks
+        );
+        let has_break = page
+            .blocks
+            .iter()
+            .any(|block| matches!(block, BlockAst::ThematicBreak(_)));
+        assert!(
+            has_break,
+            "expected ThematicBreak block; got {:?}",
+            page.blocks
+        );
     }
 }
