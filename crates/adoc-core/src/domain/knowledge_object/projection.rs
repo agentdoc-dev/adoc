@@ -4,8 +4,8 @@ use crate::domain::knowledge_object::{
         ClaimStatus, Evidence, OWNER_FIELD, Owner, VERIFIED_AT_FIELD, Verification, VerifiedAt,
     },
     decision::{DECIDED_BY_FIELD, DecidedBy, DecisionStatus},
-    warning::WarningSeverity,
 };
+use crate::domain::value_objects::severity::Severity;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct KnowledgeObjectMetadata<'a> {
@@ -27,7 +27,7 @@ impl<'a> KnowledgeObjectMetadata<'a> {
 pub(crate) enum MetadataDiscriminant<'a> {
     ClaimStatus(&'a ClaimStatus),
     DecisionStatus(&'a DecisionStatus),
-    WarningSeverity(&'a WarningSeverity),
+    Severity(&'a Severity),
 }
 
 impl<'a> MetadataDiscriminant<'a> {
@@ -35,7 +35,7 @@ impl<'a> MetadataDiscriminant<'a> {
         match self {
             Self::ClaimStatus(status) => status.as_str(),
             Self::DecisionStatus(status) => status.as_str(),
-            Self::WarningSeverity(severity) => severity.as_str(),
+            Self::Severity(severity) => severity.as_str(),
         }
     }
 }
@@ -94,9 +94,7 @@ impl KnowledgeObject {
                 Some(MetadataDiscriminant::DecisionStatus(decision.status()))
             }
             Self::Glossary(_) => None,
-            Self::Warning(warning) => {
-                Some(MetadataDiscriminant::WarningSeverity(warning.severity()))
-            }
+            Self::Warning(warning) => Some(MetadataDiscriminant::Severity(warning.severity())),
         };
 
         KnowledgeObjectMetadata {

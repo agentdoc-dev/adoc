@@ -6,3 +6,4 @@
 //! aggregate.
 
 pub(crate) mod rel_path;
+pub(crate) mod severity;

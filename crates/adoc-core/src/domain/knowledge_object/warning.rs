@@ -4,7 +4,8 @@ use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
 use crate::domain::knowledge_object::Relations;
-use crate::domain::values::{Body, OptionalFields, trim_ascii_edges};
+use crate::domain::value_objects::severity::{Severity, SeverityError};
+use crate::domain::values::{Body, OptionalFields};
 
 pub(crate) const SEVERITY_FIELD: &str = "severity";
 pub(crate) const VALID_SEVERITY_HELP: &str =
@@ -15,7 +16,7 @@ const WARNING_MISSING_BODY_HELP: &str = "Warnings require non-empty body text.";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Warning {
     id: ObjectId,
-    severity: WarningSeverity,
+    severity: Severity,
     body: Body,
     fields: OptionalFields,
     relations: Relations,
@@ -28,6 +29,15 @@ pub(crate) enum WarningError {
     MissingSeverity,
     InvalidSeverity(String),
     MissingBody,
+}
+
+impl From<SeverityError> for WarningError {
+    fn from(error: SeverityError) -> Self {
+        match error {
+            SeverityError::Missing => Self::MissingSeverity,
+            SeverityError::Invalid(value) => Self::InvalidSeverity(value),
+        }
+    }
 }
 
 impl Warning {
@@ -78,7 +88,7 @@ impl Warning {
         span: SourceSpan,
     ) -> Result<Self, WarningError> {
         let id = ObjectId::new(id_text).map_err(WarningError::InvalidId)?;
-        let severity = WarningSeverity::try_new(severity_text.unwrap_or(""))?;
+        let severity = Severity::try_new(severity_text.unwrap_or(""))?;
         let body = Body::from_plain_text(body_text).ok_or(WarningError::MissingBody)?;
         Self::from_parts(
             id,
@@ -92,7 +102,7 @@ impl Warning {
 
     fn from_parts(
         id: ObjectId,
-        severity: WarningSeverity,
+        severity: Severity,
         body: Body,
         optional_fields: BTreeMap<String, String>,
         relations: Relations,
@@ -115,9 +125,9 @@ impl Warning {
     fn parse_basics_from_parsed(
         parsed: &ParsedTypedBlock,
         severity_text: Option<&str>,
-    ) -> Result<(ObjectId, WarningSeverity, Body), WarningError> {
+    ) -> Result<(ObjectId, Severity, Body), WarningError> {
         let id = ObjectId::new(&parsed.id_text).map_err(WarningError::InvalidId)?;
-        let severity = WarningSeverity::try_new(severity_text.unwrap_or(""))?;
+        let severity = Severity::try_new(severity_text.unwrap_or(""))?;
         let body = super::body_from_parsed(parsed).ok_or(WarningError::MissingBody)?;
         Ok((id, severity, body))
     }
@@ -126,7 +136,7 @@ impl Warning {
         &self.id
     }
 
-    pub(crate) fn severity(&self) -> &WarningSeverity {
+    pub(crate) fn severity(&self) -> &Severity {
         &self.severity
     }
 
@@ -199,39 +209,6 @@ fn emit_warning_error(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WarningSeverity {
-    Low,
-    Medium,
-    High,
-    Critical,
-}
-
-impl WarningSeverity {
-    pub(crate) fn try_new(value: &str) -> Result<Self, WarningError> {
-        let trimmed = trim_ascii_edges(value);
-        if trimmed.is_empty() {
-            return Err(WarningError::MissingSeverity);
-        }
-        match trimmed {
-            "low" => Ok(Self::Low),
-            "medium" => Ok(Self::Medium),
-            "high" => Ok(Self::High),
-            "critical" => Ok(Self::Critical),
-            _ => Err(WarningError::InvalidSeverity(trimmed.to_string())),
-        }
-    }
-
-    pub(crate) fn as_str(&self) -> &str {
-        match self {
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-            Self::Critical => "critical",
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -292,40 +269,6 @@ mod tests {
                 .next()
                 .map(|(key, value)| (key.as_str(), value.as_str())),
             Some(("owner", "platform"))
-        );
-    }
-
-    #[test]
-    fn warning_severity_accepts_only_canonical_values() {
-        for value in ["low", "medium", "high", "critical"] {
-            let severity = WarningSeverity::try_new(value).expect("canonical severity");
-            assert_eq!(severity.as_str(), value);
-        }
-    }
-
-    #[test]
-    fn warning_severity_trims_ascii_edges_for_valid_values() {
-        let severity = WarningSeverity::try_new("  critical  ").expect("valid severity");
-        assert_eq!(severity.as_str(), "critical");
-    }
-
-    #[test]
-    fn warning_severity_rejects_empty_unknown_and_miscased_values() {
-        assert_eq!(
-            WarningSeverity::try_new(" \t "),
-            Err(WarningError::MissingSeverity)
-        );
-        assert_eq!(
-            WarningSeverity::try_new("panic"),
-            Err(WarningError::InvalidSeverity("panic".to_string()))
-        );
-        assert_eq!(
-            WarningSeverity::try_new("Critical"),
-            Err(WarningError::InvalidSeverity("Critical".to_string()))
-        );
-        assert_eq!(
-            WarningSeverity::try_new("HIGH"),
-            Err(WarningError::InvalidSeverity("HIGH".to_string()))
         );
     }
 
