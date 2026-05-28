@@ -221,7 +221,7 @@ fn project_status_tool_can_refresh_with_check_or_build() {
     assert_eq!(build["refresh"]["exit_code"], 0);
     assert_eq!(
         build["artifacts"]["graph"]["schema_version"],
-        "adoc.graph.v2"
+        "adoc.graph.v3"
     );
     assert_eq!(build["artifacts"]["graph"]["object_count"], 1);
     assert_eq!(build["readiness"]["patch_validation"], true);

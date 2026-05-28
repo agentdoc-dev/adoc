@@ -288,7 +288,7 @@ Implemented product surface:
 Implemented build and retrieval rules:
 
 - Retrieval is read-only over compiled artifacts. `adoc why`, `adoc graph`, and `adoc search` do not compile source.
-- The graph artifact uses current schema version `adoc.graph.v2` and carries page, prose block, and Knowledge Object nodes plus directed `contains`, `reference`, and relation edges.
+- The graph artifact uses current schema version `adoc.graph.v3` and carries page, prose block, and Knowledge Object nodes plus directed `contains`, `reference`, and relation edges.
 - The search artifact uses schema version `adoc.search.v0`, carries a model header, stores `graph_artifact_hash`, and contains one `{ id, content_hash, vector }` entry per Knowledge Object.
 - The default embedding provider is local FastEmbed with `bge-small-en-v1.5`; `embeddings.provider: deterministic` supports repeatable offline vectors, while `--no-embeddings` and config `embeddings.provider: none` keep graph-only builds cheap.
 - Graph retrieval remains an explicit candidate filter. There is no default graph proximity boost.

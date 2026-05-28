@@ -21,7 +21,7 @@ use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::Art
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GraphJsonArtifact;
 
-pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v2";
+pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v3";
 
 pub(crate) fn read_graph_artifact_document(
     path: &Path,
@@ -214,7 +214,7 @@ fn block_to_graph_node(block: &BlockAst, id: &str, page_id: &str, order: u32) ->
         }),
         // V4.2: GFM Table, FootnoteDefinition, and UnknownExtension also
         // project to a single prose block whose text is the original source
-        // text. The graph schema (`adoc.graph.v2`) is unchanged.
+        // text. The graph schema (`adoc.graph.v3`) is unchanged.
         BlockAst::Table(table) => GraphNode::Paragraph(GraphBlockNode {
             id: id.to_string(),
             page_id: page_id.to_string(),
