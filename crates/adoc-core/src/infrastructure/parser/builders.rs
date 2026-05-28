@@ -72,6 +72,7 @@ impl ListBuilder {
                 inlines: item_inlines,
                 span: item_span.clone(),
                 task_state: None,
+                content: Vec::new(),
             }],
             list_span: item_span,
         }
@@ -93,6 +94,7 @@ impl ListBuilder {
             inlines: item_inlines,
             span: item_span.clone(),
             task_state: None,
+            content: Vec::new(),
         });
         self.list_span.end = item_span.end;
     }

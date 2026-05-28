@@ -93,6 +93,9 @@ fn render_block(block: &BlockAst, html: &mut String) {
                     html.push_str(" /> ");
                 }
                 render_inlines(&item.inlines, html);
+                for child in &item.content {
+                    render_block(child, html);
+                }
                 html.push_str("</li>\n");
             }
             html.push_str("</");
@@ -758,6 +761,7 @@ mod tests {
                         ],
                         span: span(),
                         task_state: None,
+                        content: Vec::new(),
                     }],
                     span: span(),
                 }),
@@ -1295,5 +1299,159 @@ mod tests {
             html.contains("<dt>status</dt><dd>draft</dd>"),
             "missing preserved status metadata: {html}"
         );
+    }
+
+    // --- Loose list / nested list / tight list renderer tests ---
+
+    /// Tight list: rendered HTML must be byte-for-byte identical to the
+    /// pre-existing output pattern — no wrapper elements or extra whitespace
+    /// when `item.content` is empty.
+    #[test]
+    fn tight_list_renders_without_extra_content_elements() {
+        use crate::domain::ast::{ListAst, ListItem, ListKind, PageAst};
+        use crate::domain::identity::PageId;
+
+        let span = dummy_span;
+        let page = PageAst {
+            id: PageId::from_string("team.guide").expect("test page id"),
+            title: None,
+            source_path: PathBuf::from("guide.md"),
+            blocks: vec![BlockAst::List(ListAst {
+                kind: ListKind::Unordered,
+                items: vec![
+                    ListItem {
+                        inlines: vec![InlineSegment::Text("alpha".to_string())],
+                        span: span(),
+                        task_state: None,
+                        content: Vec::new(),
+                    },
+                    ListItem {
+                        inlines: vec![InlineSegment::Text("beta".to_string())],
+                        span: span(),
+                        task_state: None,
+                        content: Vec::new(),
+                    },
+                ],
+                span: span(),
+            })],
+        };
+
+        let html = HtmlRenderer.render(&[page]);
+
+        assert!(html.contains("<li>alpha</li>"), "tight item alpha: {html}");
+        assert!(html.contains("<li>beta</li>"), "tight item beta: {html}");
+        // Ensure the </li> closes immediately after the inline text with no
+        // embedded block-level tags.
+        assert!(
+            !html.contains("<li>alpha<p>"),
+            "tight item must not have a <p> inside: {html}"
+        );
+    }
+
+    /// Loose list: a continuation paragraph inside `item.content` must render
+    /// INSIDE the `<li>` — before `</li>` and before `</ul>`.
+    #[test]
+    fn loose_list_continuation_paragraph_renders_inside_li() {
+        use crate::domain::ast::{ListAst, ListItem, ListKind, PageAst, ParagraphAst};
+        use crate::domain::identity::PageId;
+
+        let span = dummy_span;
+        let page = PageAst {
+            id: PageId::from_string("team.guide").expect("test page id"),
+            title: None,
+            source_path: PathBuf::from("guide.md"),
+            blocks: vec![BlockAst::List(ListAst {
+                kind: ListKind::Unordered,
+                items: vec![ListItem {
+                    inlines: vec![InlineSegment::Text("intro line".to_string())],
+                    span: span(),
+                    task_state: None,
+                    content: vec![BlockAst::Paragraph(ParagraphAst {
+                        inlines: vec![InlineSegment::Text("continuation text".to_string())],
+                        span: span(),
+                    })],
+                }],
+                span: span(),
+            })],
+        };
+
+        let html = HtmlRenderer.render(&[page]);
+
+        // The continuation text must appear before `</li>`.
+        let cont_pos = html
+            .find("continuation text")
+            .expect("continuation text present");
+        let close_li = html.find("</li>").expect("</li> present");
+        let close_ul = html.find("</ul>").expect("</ul> present");
+
+        assert!(
+            cont_pos < close_li,
+            "continuation text must come before </li>; html: {html}"
+        );
+        assert!(
+            close_li < close_ul,
+            "</li> must come before </ul>; html: {html}"
+        );
+    }
+
+    /// Nested sub-list: a `BlockAst::List` inside `item.content` must render
+    /// as a nested `<ul>` inside the parent `<li>`.
+    #[test]
+    fn nested_sub_list_renders_inside_parent_li() {
+        use crate::domain::ast::{ListAst, ListItem, ListKind, PageAst};
+        use crate::domain::identity::PageId;
+
+        let span = dummy_span;
+        let sub_list = BlockAst::List(ListAst {
+            kind: ListKind::Unordered,
+            items: vec![
+                ListItem {
+                    inlines: vec![InlineSegment::Text("child one".to_string())],
+                    span: span(),
+                    task_state: None,
+                    content: Vec::new(),
+                },
+                ListItem {
+                    inlines: vec![InlineSegment::Text("child two".to_string())],
+                    span: span(),
+                    task_state: None,
+                    content: Vec::new(),
+                },
+            ],
+            span: span(),
+        });
+        let page = PageAst {
+            id: PageId::from_string("team.guide").expect("test page id"),
+            title: None,
+            source_path: PathBuf::from("guide.md"),
+            blocks: vec![BlockAst::List(ListAst {
+                kind: ListKind::Unordered,
+                items: vec![ListItem {
+                    inlines: vec![InlineSegment::Text("parent".to_string())],
+                    span: span(),
+                    task_state: None,
+                    content: vec![sub_list],
+                }],
+                span: span(),
+            })],
+        };
+
+        let html = HtmlRenderer.render(&[page]);
+
+        // Nested <ul> must appear inside <li>parent — before the parent's </li>.
+        let parent_li = html.find("<li>parent").expect("parent li present");
+        let inner_ul = html[parent_li..].find("<ul>").expect("inner <ul> present");
+        let close_li = html[parent_li..]
+            .find("</li>")
+            .expect("</li> after parent li");
+
+        assert!(
+            inner_ul < close_li,
+            "inner <ul> must appear before </li>; html: {html}"
+        );
+
+        // Both child items must appear.
+        assert!(html.contains("<li>child one</li>"), "child one: {html}");
+        assert!(html.contains("<li>child two</li>"), "child two: {html}");
     }
 }

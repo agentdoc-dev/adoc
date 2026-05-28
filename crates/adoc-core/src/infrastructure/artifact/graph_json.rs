@@ -162,7 +162,21 @@ fn block_to_graph_node(block: &BlockAst, id: &str, page_id: &str, order: u32) ->
             items: list
                 .items
                 .iter()
-                .map(|item| to_source(&item.inlines))
+                .map(|item| {
+                    // For tight items `item.content` is empty so this reduces
+                    // to `to_source(&item.inlines)` — identical to the old
+                    // behaviour.  For loose items the child-block text is
+                    // appended so the item's full prose is searchable.
+                    if item.content.is_empty() {
+                        to_source(&item.inlines)
+                    } else {
+                        let mut parts = vec![to_source(&item.inlines)];
+                        for child in &item.content {
+                            collect_block_text(child, &mut parts);
+                        }
+                        parts.join(" ")
+                    }
+                })
                 .collect(),
             source_span: source_span(&list.span),
         }),
@@ -366,6 +380,36 @@ fn push_relation_edges(edges: &mut Vec<GraphEdge>, knowledge_object: &KnowledgeO
     }
 }
 
+/// Recursively collect plain-text representation of a block into `parts`.
+/// Used by the list-item graph projection to surface child-block prose text
+/// (loose-list continuation paragraphs, nested sub-list item text) without
+/// adding new graph node types.
+fn collect_block_text(block: &BlockAst, parts: &mut Vec<String>) {
+    match block {
+        BlockAst::Paragraph(p) => parts.push(to_source(&p.inlines)),
+        BlockAst::Heading(h) => parts.push(to_source(&h.inlines)),
+        BlockAst::List(list) => {
+            for item in &list.items {
+                parts.push(to_source(&item.inlines));
+                for child in &item.content {
+                    collect_block_text(child, parts);
+                }
+            }
+        }
+        BlockAst::CodeBlock(c) => parts.push(c.code.clone()),
+        BlockAst::QuarantinedHtml(h) => parts.push(h.source_text.clone()),
+        BlockAst::Table(t) => parts.push(t.source_text.clone()),
+        BlockAst::FootnoteDefinition(f) => {
+            for child in &f.content {
+                collect_block_text(child, parts);
+            }
+        }
+        BlockAst::UnknownExtension(u) => parts.push(u.source_text.clone()),
+        BlockAst::ThematicBreak(t) => parts.push(t.source_text.clone()),
+        BlockAst::KnowledgeObject(_) | BlockAst::KnowledgeObjectPending(_) => {}
+    }
+}
+
 fn push_reference_edges(edges: &mut Vec<GraphEdge>, block: &BlockAst, source: &str) {
     match block {
         BlockAst::Heading(heading) => push_inline_reference_edges(edges, source, &heading.inlines),
@@ -375,6 +419,9 @@ fn push_reference_edges(edges: &mut Vec<GraphEdge>, block: &BlockAst, source: &s
         BlockAst::List(list) => {
             for item in &list.items {
                 push_inline_reference_edges(edges, source, &item.inlines);
+                for child in &item.content {
+                    push_reference_edges(edges, child, source);
+                }
             }
         }
         BlockAst::Table(table) => {
@@ -458,4 +505,149 @@ fn read_error_diagnostic(path: &Path, error: io::Error) -> Diagnostic {
         code,
         format!("Unable to read artifact '{}': {error}", path.display()),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::domain::ast::{BlockAst, ListAst, ListItem, ListKind, PageAst, ParagraphAst};
+    use crate::domain::diagnostic::{SourcePosition, SourceSpan};
+    use crate::domain::identity::PageId;
+    use crate::domain::inline::InlineSegment;
+    use crate::domain::ports::artifact_writer::ArtifactWriter;
+
+    fn dummy_span() -> SourceSpan {
+        SourceSpan {
+            file: PathBuf::from("guide.md"),
+            start: SourcePosition {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
+            end: SourcePosition {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
+        }
+    }
+
+    /// A loose list item whose `content` holds a continuation paragraph must:
+    /// 1. Project its text (inline + child para text) into the list node's
+    ///    `items` array — not as a separate top-level node.
+    /// 2. NOT produce a separate top-level Paragraph graph node for the child
+    ///    paragraph content.
+    #[test]
+    fn loose_list_child_paragraph_appears_under_list_not_at_page_level() {
+        let page = PageAst {
+            id: PageId::from_string("team.guide").expect("test id"),
+            title: None,
+            source_path: PathBuf::from("guide.md"),
+            blocks: vec![BlockAst::List(ListAst {
+                kind: ListKind::Unordered,
+                items: vec![ListItem {
+                    inlines: vec![InlineSegment::Text("first line".to_string())],
+                    span: dummy_span(),
+                    task_state: None,
+                    content: vec![BlockAst::Paragraph(ParagraphAst {
+                        inlines: vec![InlineSegment::Text("continuation text".to_string())],
+                        span: dummy_span(),
+                    })],
+                }],
+                span: dummy_span(),
+            })],
+        };
+        let workspace = WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build(&workspace, &[]);
+
+        // There must be exactly two nodes: the page node and the list node.
+        // No extra Paragraph node for the continuation.
+        let page_count = artifact
+            .nodes
+            .iter()
+            .filter(|n| matches!(n, GraphNode::Page(_)))
+            .count();
+        let list_count = artifact
+            .nodes
+            .iter()
+            .filter(|n| matches!(n, GraphNode::List(_)))
+            .count();
+        let para_count = artifact
+            .nodes
+            .iter()
+            .filter(|n| matches!(n, GraphNode::Paragraph(_)))
+            .count();
+        assert_eq!(
+            artifact.nodes.len(),
+            2,
+            "expected exactly two nodes (page + list); got {:?}",
+            artifact.nodes.len()
+        );
+        assert_eq!(page_count, 1, "expected one page node");
+        assert_eq!(list_count, 1, "expected one list node");
+        assert_eq!(
+            para_count, 0,
+            "continuation paragraph must NOT produce a separate Paragraph node"
+        );
+
+        // The list node's items must include the continuation text.
+        let list_node = artifact
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                GraphNode::List(block) => Some(block),
+                _ => None,
+            })
+            .expect("list graph node must exist");
+        assert_eq!(list_node.items.len(), 1);
+        assert!(
+            list_node.items[0].contains("continuation text"),
+            "list item projection must include child paragraph text; got {:?}",
+            list_node.items[0]
+        );
+    }
+
+    /// Tight list projection must be unchanged from before (only inline text
+    /// in items, no concatenation artefacts).
+    #[test]
+    fn tight_list_graph_projection_is_unchanged() {
+        let page = PageAst {
+            id: PageId::from_string("team.guide").expect("test id"),
+            title: None,
+            source_path: PathBuf::from("guide.md"),
+            blocks: vec![BlockAst::List(ListAst {
+                kind: ListKind::Unordered,
+                items: vec![
+                    ListItem {
+                        inlines: vec![InlineSegment::Text("one".to_string())],
+                        span: dummy_span(),
+                        task_state: None,
+                        content: Vec::new(),
+                    },
+                    ListItem {
+                        inlines: vec![InlineSegment::Text("two".to_string())],
+                        span: dummy_span(),
+                        task_state: None,
+                        content: Vec::new(),
+                    },
+                ],
+                span: dummy_span(),
+            })],
+        };
+        let workspace = WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build(&workspace, &[]);
+
+        let list_node = artifact
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                GraphNode::List(block) => Some(block),
+                _ => None,
+            })
+            .expect("list graph node must exist");
+
+        assert_eq!(list_node.items, vec!["one".to_string(), "two".to_string()]);
+    }
 }

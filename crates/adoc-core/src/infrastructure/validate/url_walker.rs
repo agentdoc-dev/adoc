@@ -68,6 +68,9 @@ fn walk_block<V: UrlVisitor>(block: &BlockAst, visitor: &mut V) {
         BlockAst::List(list) => {
             for item in &list.items {
                 walk_inlines(&item.inlines, visitor);
+                for child in &item.content {
+                    walk_block(child, visitor);
+                }
             }
         }
         BlockAst::Table(table) => {

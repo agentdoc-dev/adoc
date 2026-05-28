@@ -32,6 +32,9 @@ fn visit_block(block: &BlockAst, sink: &mut Vec<CompatDiagnostic>) {
         BlockAst::List(list) => {
             for item in &list.items {
                 check_inlines(&item.inlines, sink);
+                for child in &item.content {
+                    visit_block(child, sink);
+                }
             }
         }
         BlockAst::Table(table) => {
