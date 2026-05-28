@@ -300,7 +300,11 @@ fn maybe_migration_hint(
     records: &[RetrievalRecord],
 ) -> Option<Diagnostic> {
     let graph = session.graph_session();
-    if records.is_empty() && graph.knowledge_object_count() == 0 && graph.prose_block_count() >= 1 {
+    if records.is_empty()
+        && graph.knowledge_object_count() == 0
+        && graph.prose_block_count() >= 1
+        && graph.has_markdown_pages()
+    {
         Some(Diagnostic::warning(
             DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration,
             "no Knowledge Objects found; consider migrating .md files to .adoc or wait for `adoc migrate` (V4.5+)",
@@ -686,8 +690,8 @@ mod tests {
     use crate::application::hashing::sha256_prefixed;
     use crate::domain::artifact::{SearchArtifactDocument, SearchEmbedding, SearchModelHeader};
     use crate::domain::graph::{
-        GraphArtifactDocument, GraphEdge, GraphEdgeKind, GraphKnowledgeObjectNode, GraphNode,
-        GraphRelationKind, GraphRelations, GraphSourceSpan,
+        GraphArtifactDocument, GraphBlockNode, GraphEdge, GraphEdgeKind, GraphKnowledgeObjectNode,
+        GraphNode, GraphPageNode, GraphRelationKind, GraphRelations, GraphSourceSpan,
     };
     use crate::domain::ports::artifact_reader::ArtifactReader;
 
@@ -887,5 +891,107 @@ mod tests {
             edges,
             diagnostics: Vec::new(),
         }
+    }
+
+    /// Build a graph document that has prose blocks and page(s) with the
+    /// specified source paths, but no Knowledge Objects.  Used by the
+    /// migration-hint tests below.
+    fn prose_only_graph_document(page_source_paths: &[&str]) -> GraphArtifactDocument {
+        let mut nodes: Vec<GraphNode> = page_source_paths
+            .iter()
+            .enumerate()
+            .map(|(i, path)| {
+                GraphNode::Page(GraphPageNode {
+                    id: format!("page.{i}"),
+                    order: i as u32,
+                    title: None,
+                    source_path: (*path).to_string(),
+                })
+            })
+            .collect();
+        // Add one prose block so prose_block_count >= 1
+        nodes.push(GraphNode::Paragraph(GraphBlockNode {
+            id: "para.0".to_string(),
+            page_id: "page.0".to_string(),
+            order: 0,
+            level: None,
+            text: Some("Some prose.".to_string()),
+            language: None,
+            code: None,
+            items: Vec::new(),
+            source_span: GraphSourceSpan {
+                path: page_source_paths[0].to_string(),
+                line: 1,
+                column: 1,
+            },
+        }));
+        GraphArtifactDocument {
+            schema_version: "adoc.graph.v2".to_string(),
+            nodes,
+            edges: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    fn load_session_from_document(document: GraphArtifactDocument) -> RetrievalSession {
+        load_retrieval_session_with_readers(
+            RetrievalInput {
+                artifact_path: PathBuf::from("ignored.graph.json"),
+                search_artifact_path: None,
+            },
+            &StubSearchArtifactReader {
+                document: search_document("sha256:unused"),
+            },
+            &StubGraphArtifactReader { document },
+            None,
+        )
+        .session
+        .expect("session loads")
+    }
+
+    fn empty_search_query() -> SearchQuery {
+        SearchQuery {
+            text: String::new(),
+            mode: SearchMode::Lexical,
+            filters: SearchFilters::default(),
+            top: NonZeroUsize::new(10).expect("non-zero"),
+            query_vector: None,
+        }
+    }
+
+    /// An `.adoc`-only project with prose but no Knowledge Objects must NOT
+    /// receive the migration hint — there are no `.md` files to migrate.
+    #[test]
+    fn migration_hint_not_emitted_for_adoc_only_project() {
+        let document = prose_only_graph_document(&["docs/guide.adoc", "docs/team.adoc"]);
+        let session = load_session_from_document(document);
+        let result = search(&session, empty_search_query());
+
+        let hint = result
+            .diagnostics
+            .iter()
+            .find(|d| d.code == DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration);
+        assert!(
+            hint.is_none(),
+            "migration hint must NOT fire for an adoc-only project, but got: {hint:?}"
+        );
+    }
+
+    /// A graph with at least one `.md` page, prose blocks, and no Knowledge
+    /// Objects MUST emit the migration hint.
+    #[test]
+    fn migration_hint_emitted_when_markdown_page_present() {
+        let document = prose_only_graph_document(&["docs/guide.md", "docs/team.adoc"]);
+        let session = load_session_from_document(document);
+        let result = search(&session, empty_search_query());
+
+        let hint = result
+            .diagnostics
+            .iter()
+            .find(|d| d.code == DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration);
+        assert!(
+            hint.is_some(),
+            "migration hint must fire when a .md page is present in a prose-only graph"
+        );
     }
 }

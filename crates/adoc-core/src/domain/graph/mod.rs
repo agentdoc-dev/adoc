@@ -224,6 +224,11 @@ pub(crate) struct GraphIndex {
     /// loaded artifact. Used by V4.3 retrieval to detect prose-only projects
     /// and emit the migration hint diagnostic. Not serialized.
     prose_block_count: usize,
+    /// `true` when at least one `Page` node in the loaded artifact has a
+    /// `source_path` ending in `.md`. Gates the migration hint: an
+    /// `.adoc`-only project (prose, no typed Knowledge Objects) must NOT
+    /// be told to migrate `.md` files that do not exist. Not serialized.
+    has_markdown_pages: bool,
 }
 
 impl GraphIndex {
@@ -232,10 +237,14 @@ impl GraphIndex {
         let mut page_ids = BTreeSet::new();
         let mut diagnostics = Vec::new();
         let mut prose_block_count: usize = 0;
+        let mut has_markdown_pages = false;
 
         for node in document.nodes {
             if let GraphNode::Page(page) = &node {
                 page_ids.insert(page.id.clone());
+                if page.source_path.ends_with(".md") {
+                    has_markdown_pages = true;
+                }
             }
             if matches!(
                 node,
@@ -335,6 +344,7 @@ impl GraphIndex {
                 outgoing,
                 incoming,
                 prose_block_count,
+                has_markdown_pages,
             })
         } else {
             Err(diagnostics)
@@ -343,6 +353,10 @@ impl GraphIndex {
 
     pub(crate) fn prose_block_count(&self) -> usize {
         self.prose_block_count
+    }
+
+    pub(crate) fn has_markdown_pages(&self) -> bool {
+        self.has_markdown_pages
     }
 
     pub(crate) fn knowledge_object_count(&self) -> usize {
@@ -670,5 +684,50 @@ mod tests {
             .expect("fake but prefixed hash is accepted");
 
         assert!(graph.contains_object(&ObjectId::new_unchecked("billing.credits".to_string())));
+    }
+
+    fn prose_only_document(source_paths: &[&str]) -> GraphArtifactDocument {
+        let nodes = source_paths
+            .iter()
+            .enumerate()
+            .map(|(i, path)| {
+                GraphNode::Page(GraphPageNode {
+                    id: format!("page.{i}"),
+                    order: i as u32,
+                    title: None,
+                    source_path: (*path).to_string(),
+                })
+            })
+            .collect();
+        GraphArtifactDocument {
+            schema_version: "adoc.graph.v2".to_string(),
+            nodes,
+            edges: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn from_document_sets_has_markdown_pages_when_md_page_present() {
+        let graph =
+            GraphIndex::from_document(prose_only_document(&["docs/team.adoc", "docs/guide.md"]))
+                .expect("indexes without errors");
+
+        assert!(
+            graph.has_markdown_pages(),
+            "has_markdown_pages must be true when at least one .md page is present"
+        );
+    }
+
+    #[test]
+    fn from_document_clears_has_markdown_pages_for_adoc_only_pages() {
+        let graph =
+            GraphIndex::from_document(prose_only_document(&["docs/team.adoc", "docs/ref.adoc"]))
+                .expect("indexes without errors");
+
+        assert!(
+            !graph.has_markdown_pages(),
+            "has_markdown_pages must be false when all pages are .adoc"
+        );
     }
 }
