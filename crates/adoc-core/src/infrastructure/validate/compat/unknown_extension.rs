@@ -60,11 +60,15 @@ impl CompatRule for UnknownExtension {
 /// [CommonMark](https://spec.commonmark.org/0.31.2/#code-spans) inline-code
 /// rule: a run of N backticks opens a span; it is
 /// closed by the next run of exactly N backticks. Unmatched openers are left
-/// as-is. The output has the same byte length as the input so column offsets
-/// computed from the masked string stay accurate — each character in a masked
-/// span is replaced with one ASCII space regardless of its original byte width
-/// (which preserves the invariant because classifiers only look for ASCII
-/// pattern characters).
+/// as-is. The output has the same number of characters at the same character
+/// positions as the input — each character in a masked span is replaced with
+/// one ASCII space regardless of its original byte width — so column offsets
+/// derived from character positions in the masked string remain accurate
+/// (classifiers only look for ASCII pattern characters, and diagnostic spans
+/// always point into the original unmasked line, not the masked copy).
+///
+/// Note: byte length is NOT preserved for multibyte input (a multibyte
+/// character becomes a single ASCII space, shrinking byte length).
 ///
 /// Only single-line spans are handled — multi-line inline code is rare and
 /// the validator already works line-by-line.
@@ -124,12 +128,15 @@ fn mask_inline_code(line: &str) -> String {
 
     // Build the masked string: copy characters from `line`, replacing any
     // character whose byte range overlaps a masked region with a space.
-    // This preserves byte-length equality because we replace each char
-    // (potentially multi-byte) with one ASCII space, but the classifiers that
-    // consume the masked string only look at ASCII pattern characters, so
-    // columns derived from ASCII characters in the unmasked portions remain
-    // correct. (Column arithmetic for a diagnostic span always points into
-    // the original unmasked `line`, not the masked copy.)
+    // This preserves character-position equality — each character (regardless
+    // of its byte width) is replaced by exactly one ASCII space, keeping every
+    // character at the same character index as in the original string.  Byte
+    // length is NOT preserved for multibyte input (a multibyte character
+    // becomes a single-byte space).  Classifiers that consume the masked string
+    // only look at ASCII pattern characters, so columns derived from character
+    // positions in the unmasked portions remain correct.  (Column arithmetic for
+    // a diagnostic span always points into the original unmasked `line`, not the
+    // masked copy.)
     let mut out = String::with_capacity(line.len());
     for (char_byte_offset, ch) in line.char_indices() {
         let char_byte_end = char_byte_offset + ch.len_utf8();
