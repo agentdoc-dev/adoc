@@ -38,6 +38,10 @@ impl CompatRule for UnknownExtension {
         let front_matter_end_offset = skip_front_matter(&source.text);
         let body_start_line = source.position_for_offset(front_matter_end_offset).line;
 
+        // Track the masked form of the previous scanned line (after all skips)
+        // so that definition-list detection can check the preceding term line.
+        let mut prev_masked: Option<String> = None;
+
         for (line_number_zero_based, line) in source.text.lines().enumerate() {
             let line_number = (line_number_zero_based as u32) + 1;
             if line_number < body_start_line {
@@ -49,7 +53,27 @@ impl CompatRule for UnknownExtension {
             // F2b: Mask inline-code spans before classifying so that attribute
             // shapes inside backtick spans do not produce spurious diagnostics.
             let masked = mask_inline_code(line);
+
+            // Definition-list detection: emit exactly once per list — only when
+            // the current line is a definition line AND the previous scanned
+            // (non-excluded) line is term-like.  Using the masked form for both
+            // checks inherits the inline-code safety of the existing classifier.
+            if let Some((colon_col, matched_len)) = is_definition_line(&masked) {
+                let prev_is_term = prev_masked.as_deref().is_some_and(is_term_like);
+                if prev_is_term {
+                    sink.push(unknown_extension_warning(
+                        source.span_for_line_columns(
+                            line_number,
+                            colon_col,
+                            colon_col + matched_len,
+                        ),
+                        "definition list",
+                    ));
+                }
+            }
+
             emit_for_line(source, line_number, &masked, sink);
+            prev_masked = Some(masked);
         }
     }
 }
@@ -225,6 +249,112 @@ fn emit_for_line(
         }
         LineExtension::None => {}
     }
+}
+
+/// Returns `Some((colon_column_1based, matched_len))` when `masked` is a
+/// definition line: up to 3 leading spaces, a single colon, then at least one
+/// space or tab, then a non-whitespace character.
+///
+/// CRITICAL collision-avoidance: the character immediately after the `:` must
+/// be a space or tab. This means `:::warning` (2nd char is `:`) and `:::` do
+/// NOT match, so Pandoc fences are never mis-classified as definition lines.
+fn is_definition_line(masked: &str) -> Option<(u32, u32)> {
+    let bytes = masked.as_bytes();
+    let len = bytes.len();
+
+    // Count leading spaces (0–3 allowed).
+    let mut indent = 0usize;
+    while indent < len && bytes[indent] == b' ' {
+        indent += 1;
+    }
+    if indent > 3 {
+        return None;
+    }
+
+    // Must have a colon at position `indent`.
+    if indent >= len || bytes[indent] != b':' {
+        return None;
+    }
+
+    // The character immediately after the colon MUST be a space or tab —
+    // this is the key guard that prevents `:::` fences from matching.
+    let after_colon = indent + 1;
+    if after_colon >= len || (bytes[after_colon] != b' ' && bytes[after_colon] != b'\t') {
+        return None;
+    }
+
+    // There must be at least one non-whitespace character after the
+    // leading whitespace following the colon.
+    let rest = &masked[after_colon..];
+    if rest.trim_start_matches([' ', '\t']).is_empty() {
+        return None;
+    }
+
+    // Colon column is 1-based; the colon is at byte index `indent`.
+    let colon_col = (indent as u32) + 1;
+    // Span the entire trimmed line from the colon to end of content.
+    let line_trimmed_end = masked.trim_end().len() as u32;
+    let matched_len = line_trimmed_end.saturating_sub(indent as u32);
+
+    Some((colon_col, matched_len))
+}
+
+/// Returns `true` when `masked` looks like a valid definition-list term: it is
+/// non-empty after trimming and does **not** start with a block-level marker
+/// that would preclude a paragraph term (headings, blockquotes, table pipes,
+/// list bullets, code fences, or a colon that would make it another definition
+/// line).
+fn is_term_like(masked: &str) -> bool {
+    let trimmed = masked.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    // Reject lines that are themselves definition lines.
+    if is_definition_line(masked).is_some() {
+        return false;
+    }
+
+    let bytes = trimmed.as_bytes();
+    let first = bytes[0];
+
+    // Reject headings, blockquotes, table pipes.
+    if first == b'#' || first == b'>' || first == b'|' || first == b':' {
+        return false;
+    }
+
+    // Reject unordered list bullets: `- `, `* `, `+ `.
+    if (first == b'-' || first == b'*' || first == b'+')
+        && bytes
+            .get(1)
+            .copied()
+            .is_some_and(|b| b == b' ' || b == b'\t')
+    {
+        return false;
+    }
+
+    // Reject ordered list markers: `<digits>.` or `<digits>)`.
+    if first.is_ascii_digit() {
+        let mut i = 1usize;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        if let Some(&marker) = bytes.get(i)
+            && (marker == b'.' || marker == b')')
+        {
+            return false;
+        }
+    }
+
+    // Reject code fences: ``` ` ``` (3+) or `~~~` (3+).
+    if (first == b'`' || first == b'~')
+        && bytes.get(1).copied() == Some(first)
+        && bytes.get(2).copied() == Some(first)
+    {
+        return false;
+    }
+
+    true
 }
 
 fn unknown_extension_warning(span: SourceSpan, label: &str) -> CompatDiagnostic {
@@ -485,6 +615,102 @@ mod tests {
             count_unknown(&diagnostics),
             1,
             "attribute block in plain paragraph must still be flagged: {diagnostics:?}"
+        );
+    }
+
+    // --- Definition-list detection ---
+
+    #[test]
+    fn warns_on_definition_list() {
+        // Tight form: Term immediately above `: Definition`.
+        let diagnostics = validate("Term\n: Definition\n");
+        assert_eq!(
+            count_unknown(&diagnostics),
+            1,
+            "definition list must emit exactly one compat.unknown_extension: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn does_not_relabel_pandoc_directive_as_definition_list() {
+        // `:::warning` must be flagged as a Pandoc directive, NOT as a
+        // definition list.  The key collision-avoidance assertion.
+        let diagnostics = validate(":::warning\nBody.\n:::\n");
+        assert_eq!(
+            count_unknown(&diagnostics),
+            1,
+            "expected exactly one compat.unknown_extension for the Pandoc directive: {diagnostics:?}"
+        );
+        // The single diagnostic must refer to the Pandoc directive, not to a
+        // definition list.
+        let unknown: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::CompatUnknownExtension)
+            .collect();
+        let msg = &unknown[0].message;
+        assert!(
+            msg.contains("Pandoc") || msg.contains("directive"),
+            "diagnostic message should mention Pandoc directive, got: {msg}"
+        );
+        assert!(
+            !msg.contains("definition list"),
+            "diagnostic message must NOT mention definition list, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn does_not_warn_on_orphan_definition_line() {
+        // A `: def` line with no preceding term must NOT emit.
+        let diagnostics = validate(": orphan with no term above\n");
+        assert_eq!(
+            count_unknown(&diagnostics),
+            0,
+            "orphan definition line (no term) must not emit: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn definition_list_with_multiple_definitions_warns_once() {
+        // `Term\n: first\n: second` — the second `: second` line has `: first`
+        // as its previous line, which is itself a definition line and therefore
+        // not term-like.  Only one warning for the first `: first` line.
+        let diagnostics = validate("Term\n: first\n: second\n");
+        assert_eq!(
+            count_unknown(&diagnostics),
+            1,
+            "multiple definitions under one term must produce exactly one warning: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn does_not_warn_on_colon_fence_variants() {
+        // `:::note` style — may produce a PandocDirective diagnostic but must
+        // never produce a definition-list diagnostic.
+        let diagnostics = validate(":::note\ncontent\n:::\n");
+        let unknown: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::CompatUnknownExtension)
+            .collect();
+        for d in &unknown {
+            assert!(
+                !d.message.contains("definition list"),
+                "colon fence must not emit a definition-list diagnostic, got: {}",
+                d.message
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_warn_on_loose_definition_list_with_blank_line() {
+        // Tight form only: `Term\n\n: def` has a blank line separating term
+        // from definition.  The blank line becomes `prev_masked`, which is
+        // empty and therefore NOT term-like, so no warning is emitted.
+        // This is the documented limitation of the tight-form-only approach.
+        let diagnostics = validate("Term\n\n: def\n");
+        assert_eq!(
+            count_unknown(&diagnostics),
+            0,
+            "loose form (blank line between term and def) is intentionally not detected: {diagnostics:?}"
         );
     }
 }
