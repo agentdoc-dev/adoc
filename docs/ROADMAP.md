@@ -10,7 +10,7 @@ V0 parser approach: a structured hand-written, line-oriented parser in `adoc-cor
 
 V0 core API: expose one high-level `compile_workspace()` entry point from `adoc-core`. Keep parser, validator, renderer, and artifact modules internal until another real consumer needs lower-level access.
 
-The implementation-level V0 contract lives in [V0-DESIGN.md](V0-DESIGN.md). V1 is captured in [V1-DESIGN.md](V1-DESIGN.md). V3 is captured in [V3-DESIGN.md](V3-DESIGN.md).
+The implementation-level V0 contract lives in [V0-DESIGN.md](V0-DESIGN.md). V1 is captured in [V1-DESIGN.md](V1-DESIGN.md). V3 is captured in [V3-DESIGN.md](V3-DESIGN.md). V4 is captured in [V4-DESIGN.md](V4-DESIGN.md). V5 is captured in [V5-DESIGN.md](V5-DESIGN.md).
 
 ## Roadmap Rules
 
@@ -43,13 +43,15 @@ Implemented:
 
 Next:
 
-- No active slice; the next pick is driven by measured pain on the V0–V3 surfaces or by demand for the deferred V4.5 / V1.7 work below.
+- V5 Expanded Knowledge Model — the design is captured in [V5-DESIGN.md](V5-DESIGN.md). The first slice is V5.1 (Constraint + Severity foundation + `adoc.graph.v2` → `adoc.graph.v3` bump). Closes PRD MVP must-have #4 for the seven object types not yet implemented (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model).
 
 Later:
 
 - V4.5 Markdown migration (`adoc migrate`, suggested-claim extraction, import report, `adoc.migrate.report.v0` envelope, MCP integration). Sequenced after V4 once compatibility-mode usage surfaces measured friction. PRD MVP must-have #18.
-- V1.7 prose retrieval. Extends BM25 and embedding pipelines to index prose blocks symmetrically across `.adoc` and `.md` sources. Independent of V4 sequencing; can ship before or after.
-- Semantic diff and CI review enhancements, expanded object types (V5), includes and custom schemas (V6), richer graph tooling, web surfaces (V7), hosted storage, and governance.
+- V1.7 prose retrieval. Extends BM25 and embedding pipelines to index prose blocks symmetrically across `.adoc` and `.md` sources. Independent of V4 / V5 sequencing; can ship before or after.
+- V5.10 Lifecycle automation: scheduled freshness-driven status transitions (`verified` → `stale` on `expires_at`), automatic claim-status propagation on contradiction resolution, evidence-quality scoring per PRD §15.3, and policy review-interval drift diagnostics. Sequenced after V5.9 once the Expanded Knowledge Model is in real use and lifecycle pain is measured.
+- V6 composition and advanced graphs: `@include`, nested typed blocks, custom schema registry, automated contradiction detection. Sequenced after V5 because all of V6 assumes the V5 Expanded Object Set is stable.
+- V7 web surfaces and governance: read-only object explorer, review dashboard, ownership and approval workflows, agent activity log, SSO/RBAC/audit/compliance, hosted storage.
 
 ## V0: Native CLI Compiler
 
@@ -587,32 +589,181 @@ Questions to resolve later:
 
 ## V5: Expanded Knowledge Model
 
-V5 grows the object vocabulary and lifecycle after the first workflows are stable.
+V5 grows the **Knowledge Object** vocabulary from the **Core Object Set** (`claim`, `decision`, `warning`, `glossary`) to the **Expanded Object Set** by adding seven new typed kinds — `constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source` — plus a shared `Severity` value object and a typed `EvidenceKind` vocabulary. V5 closes PRD MVP must-have #4 (Core schema validation) for the seven object types not yet implemented, plus large portions of PRD §13.3–§13.15 (Core Block Types), §14.3 (Proof Obligations), and §15 (Evidence Model).
 
-Suggested tracer-bullet slices:
+V5 builds directly on the V4 compatibility-mode work: every new kind is a `.adoc` Strict Mode construct; `.md` ingestion stays prose-only. V5 bumps exactly one wire envelope — `adoc.graph.v2` → `adoc.graph.v3`, additive only — and otherwise preserves every other contract version pinned by V0–V4 (`adoc.search.v0`, `adoc.retrieval.v0`, `adoc.patch.v0`, `adoc.patch.check.v0`, `adoc.diff.v0`, `adoc.review.v0`, `adoc.project.status.v0`).
 
-- Add `constraint` first because the PRD treats it as a core object type and it is close to existing claim/decision validation.
-- Add `procedure` with ordered-step rendering and graph JSON.
-- Add `example` with declared checks but no sandbox execution at first.
-- Add `agent` instruction objects with explicit allowed and forbidden actions.
-- Add `policy` with approval metadata.
-- Add `contradiction` as an explicit manually-authored object before automated detection.
-- Add `source` as a reusable evidence object if repeated evidence becomes noisy.
+The implementation-level V5 contract lives in [V5-DESIGN.md](V5-DESIGN.md). The architecture decisions to be recorded at slice start are ADR-0024 (Severity is a first-class shared value object), ADR-0025 (Agent Instruction objects are authored, rendered, and retrievable — not runtime-enforced permissions), ADR-0026 (Contradiction is manually authored in V5; automated detection deferred), ADR-0027 (Source objects coexist with inline evidence; inline evidence is not deprecated), and ADR-0028 (graph artifact bumps to `adoc.graph.v3`; additive object kinds and per-kind fields).
+
+### V5.1: Constraint and Severity Foundation Slice
+
+Goal: introduce the `constraint` Knowledge Object and the shared `Severity` value object end-to-end. Bump the graph artifact to `adoc.graph.v3`.
+
+Scope:
+
+- New `domain/value_objects/severity.rs` with `Severity` (`Critical | High | Medium | Low`), `#[non_exhaustive]`, fallible parse, total once constructed.
+- New `domain/knowledge_object/constraint.rs` aggregate with the required-field invariant (`id`, `severity`, `body`) enforced in the constructor.
+- Replace `warning`'s private `WarningSeverity` enum with the shared `Severity` value object (behavior-preserving; `WarningSeverity` was already typed, so existing warning fixtures and diagnostics are unchanged).
+- Constraint required-field validation is aggregate-owned (mirrors `warning`), registered via the `RESOLVERS` table. `BlockKind::Constraint` variant. (The `infrastructure/validate/objects/` directory is introduced in V5.6 for the first cross-aggregate rule.)
+- Graph artifact bumped from `adoc.graph.v2` to `adoc.graph.v3`. Stale v2 artifacts are rejected by the existing reader with `SchemaUnsupportedVersion` (no new diagnostic).
+- `FieldChange::Severity` variant added; re-verify obligation triggers when a verified constraint's `Severity` changes (dispatch lands in this slice).
+- Constraint may declare `impacts:` per V3.3 source-path impact analysis.
+
+Acceptance: `adoc check` over a fixture with `::constraint auth.session.no-local-storage / severity: critical / owner: platform-security / -- / Session tokens must not be stored in localStorage. / ::` exits 0; `adoc build` emits the constraint with `kind: "constraint"`, `severity: "critical"`, and verbatim body. `severity: catastrophic` exits non-zero with `schema.constraint_invalid_severity`. `adoc diff` from a prior `severity: high` produces a `FieldChange::Severity` entry. The V0–V4 fixtures pass byte-identical except for the v3 graph rebuild.
+
+Deferred: per-kind constraint-status lifecycle expansion, V5 Pilot fixture (V5.9).
+
+### V5.2: Procedure Slice
+
+Goal: introduce the `procedure` Knowledge Object with ordered-step HTML rendering.
+
+Scope:
+
+- New `domain/knowledge_object/procedure.rs` aggregate. Required: `id`, `status`, `body`. Optional: `role_required`, `permissions_required`, `estimated_time`, `environment`, `rollback`, `risks`.
+- New `infrastructure/validate/objects/procedure_required_fields.rs`. `BlockKind::Procedure` variant.
+- Renderer emits the body's ordered-list block(s) as HTML `<ol>` with sequential step numbers; the graph artifact stores body as canonical prose text.
+- Verified procedure rule: `owner` + `verified_at` + at least one evidence field; `human_review` is accepted as evidence.
+
+Acceptance: a procedure with four numbered body steps renders as `<ol><li>...</li></ol>` with four items in source order; graph records `kind: "procedure"` and verified metadata. A procedure missing `status:` exits non-zero with `schema.procedure_missing_status`.
+
+Deferred: rollback-on-failure semantics, dependent-procedure traversal, V5 Pilot fixture (V5.9).
+
+### V5.3: Example Slice (Declaration-Only)
+
+Goal: introduce the `example` Knowledge Object with `lang`, `format`, `checks`, and `sandbox` declarations. Closes PRD §33.2 Should-Have "Executable example declaration."
+
+Scope:
+
+- New `domain/value_objects/lang.rs` (`Lang` newtype) and `domain/value_objects/sandbox.rs` (`SandboxName` newtype).
+- New `domain/knowledge_object/example.rs` aggregate. Required: `id`, one of `lang`/`format`, `body`. Optional: `checks`, `sandbox`. Verified status requires both `checks` AND `sandbox`.
+- New `infrastructure/validate/objects/example_required_fields.rs` and `infrastructure/validate/objects/example_verified_executable.rs`.
+- Renderer emits a fenced code block in the declared `lang` with `checks` and `sandbox` shown as metadata; a "Not executed by adoc" caveat sits next to `checks`.
+
+Acceptance: a verified example with `lang: ts / checks: npm run test -- credits / sandbox: node-test` exits 0; the same example with `status: verified` but no `sandbox:` exits non-zero with `schema.example_verified_requires_sandbox`.
+
+Deferred: sandbox execution runtime, free-form formats, V5 Pilot fixture (V5.9).
+
+### V5.4: Policy Slice
+
+Goal: introduce the `policy` Knowledge Object with approval metadata.
+
+Scope:
+
+- New `domain/value_objects/approved_by.rs`, `domain/value_objects/effective_date.rs`, `domain/value_objects/review_interval.rs`.
+- New `domain/knowledge_object/policy.rs` aggregate. Required: `id`, `status`, `owner`, `approved_by` (`NonEmpty<ApprovedBy>`), `effective_at`, `body`. Optional: `review_interval`. Supported statuses: `proposed | active | archived | revoked`. **No `verified` status on policy** — policy authority comes from approvers, not verification.
+- New `infrastructure/validate/objects/policy_required_fields.rs` and `infrastructure/validate/objects/policy_active_approval.rs` (active-status requires non-empty `approved_by` and `effective_at <= today`).
+- Renderer emits an approval header block listing approvers and effective date prominently.
+- `FieldChange::EffectiveAt`, `FieldChange::ApprovedByAdded`, `FieldChange::ApprovedByRemoved` added; re-approve obligation triggers on either.
+
+Acceptance: an `active` policy with `approved_by: security-lead`, `effective_at: 2026-04-01`, `review_interval: 90d` exits 0; the same policy with `status: active` and no `approved_by:` exits non-zero with `schema.policy_missing_approved_by`.
+
+Deferred: review-interval drift diagnostics (V5.10+), approval-chain validation, V5 Pilot fixture (V5.9).
+
+### V5.5: Agent Instruction Slice
+
+Goal: introduce the `agent_instruction` Knowledge Object with disjoint action sets and an explicit "not enforced at runtime" caveat. Per ADR-0025, V5 `agent_instruction` objects are read-only declarative knowledge, never runtime ACLs.
+
+Scope:
+
+- New `domain/value_objects/trust.rs` (`Trust`: `Informal | Team | Authoritative | Regulated | System`).
+- New `domain/value_objects/scope.rs` (initial V5 surface is a glob string; richer V6+ scope deferred).
+- New `domain/value_objects/action.rs` exposing `AllowedAction` and `ForbiddenAction` newtypes (opaque to the validator; no enumerated action vocabulary).
+- New `domain/value_objects/action_set.rs` with `DisjointActionSets::try_new(allowed, forbidden) -> Result<Self, OverlapError>`.
+- New `domain/knowledge_object/agent_instruction.rs` aggregate. `BlockKind::AgentInstruction` variant.
+- New `infrastructure/validate/objects/agent_instruction_required_fields.rs` and `infrastructure/validate/objects/agent_disjoint_actions.rs`.
+- **Renderer emits a prominent banner: "Agent Instruction. Authored knowledge, NOT runtime ACL."** below which the body renders as normal prose.
+- `FieldChange::Trust`, `FieldChange::Scope`, `FieldChange::AllowedActionsAdded`, `FieldChange::AllowedActionsRemoved`, `FieldChange::ForbiddenActionsAdded`, `FieldChange::ForbiddenActionsRemoved` added.
+- New Agent Guidance Resource `adoc://agent/v0/agent-instruction-guide` and update to `adoc://agent/v0/answer-contract` describing how agents should cite `agent_instruction` objects (read-only, never as an authorization signal).
+
+Acceptance: an instruction with `allowed_actions: [summarize, cite, suggest_edits]` and `forbidden_actions: [execute_shell, access_secrets, modify_auth_code]` exits 0; the same instruction with overlapping `[cite]` in both exits non-zero with `schema.agent_instruction_actions_not_disjoint` naming `cite` as the overlap.
+
+Deferred: scope-matching at retrieval time, runtime action enforcement, multi-agent identity validation, V5 Pilot fixture (V5.9).
+
+### V5.6: Contradiction Slice (Manual)
+
+Goal: introduce the `contradiction` Knowledge Object as a manually-authored cross-reference between two or more existing `claim` objects. Per ADR-0026, V5 contradictions are manually authored; automated detection is V6+.
+
+Scope:
+
+- New `domain/value_objects/contradiction_claims.rs` (`NonEmpty<ObjectId>` with arity ≥ 2, deduplicated, sorted).
+- New `domain/knowledge_object/contradiction.rs` aggregate. Required: `id`, `severity`, `status`, `claims`, `body`. Statuses: `unresolved | resolved | dismissed`.
+- New `infrastructure/validate/objects/contradiction_required_fields.rs` and `infrastructure/validate/objects/contradiction_claims_resolve.rs` (each `claims[]` entry must resolve to an existing Knowledge Object with `kind == "claim"`).
+- Renderer emits a side-by-side or stacked block linking the conflicting claims, the severity badge, and the prose body.
+- A `claim` may carry `status: contradicted` authored manually; V5 does NOT auto-propagate.
+- `FieldChange::ContradictionClaimsAdded`, `FieldChange::ContradictionClaimsRemoved` added.
+- New Agent Guidance Resource `adoc://agent/v0/contradiction-guide`: agents must surface any active contradiction touching a cited claim before answering definitively.
+
+Acceptance: a contradiction listing two pre-existing claims exits 0; a contradiction listing one claim exits non-zero with `schema.contradiction_claims_too_few`; a contradiction referencing a nonexistent claim exits non-zero with `schema.contradiction_claim_not_found`.
+
+Deferred: automated contradiction detection (V6+), automatic claim status propagation, resolution workflow, V5 Pilot fixture (V5.9).
+
+### V5.7: Source Object Slice
+
+Goal: introduce the `source` Knowledge Object as a reusable evidence pointer. Per ADR-0027, inline V0 evidence fields continue to be accepted in V5 — source objects coexist; references to them are an opt-in upgrade.
+
+Scope:
+
+- New `domain/value_objects/evidence_kind.rs` (`EvidenceKind` enum covering PRD §15.1 set).
+- New `domain/knowledge_object/source.rs` aggregate. Required: `id`, `kind: EvidenceKind`, exactly one of `path: RelPath` or `url: Url`, `body`. Optional: `owner`, `symbol`, `commit`, `last_seen_at`, `hash`. Path-XOR-URL invariant in the constructor.
+- New `infrastructure/validate/objects/source_required_fields.rs`. `BlockKind::Source` variant.
+- Renderer emits a metadata block with the evidence kind badge, the path or URL link, and the prose body.
+
+Acceptance: a `source_code` source with `path: apps/backend/src/features/credits/consume.use-case.ts` exits 0; a source with both `path:` and `url:` exits non-zero with `schema.source_conflicting_path_and_url`.
+
+Deferred: source-object reference resolution in inline evidence (V5.8), source-object impact analysis, V5 Pilot fixture (V5.9).
+
+### V5.8: V5 Evidence Model Slice
+
+Goal: expand inline evidence on `claim` and `decision` to the typed `EvidenceKind` vocabulary; both inline string evidence and `source` object references accepted.
+
+Scope:
+
+- Extension of `domain/knowledge_object/claim.rs` and `domain/knowledge_object/decision.rs` with an `Evidence` enum: `Evidence::Inline { kind: EvidenceKind, value: String }` or `Evidence::ObjectRef(ObjectId)`.
+- V0 evidence fields (`source:`, `test:`, `reviewed_by:`) continue to parse byte-identical; each classifies to a typed kind.
+- New field syntax `evidence_ref: <object-id>` on `claim` and `decision`; validator resolves target existence and kind (`schema.evidence_target_not_found`, `schema.evidence_target_not_a_source`).
+- Per PRD §15.4, verified-status validators upgraded to type-aware checks: `claim` verified requires at least one of `source_code | test | human_review | external_url` evidence; `decision` verified requires `human_review` or approver evidence.
+- `application/patch.rs` extended to allow `update_field` patches targeting `evidence` with either inline-string or object-ref shape.
+
+Acceptance: V0 billing-pilot fixtures exit 0 with byte-identical diagnostics to V4; a new claim combining inline `test:` evidence with `evidence_ref: billing.consume-use-case` exits 0 and records the evidence as a typed list; `evidence_ref: missing.thing` exits non-zero with `schema.evidence_target_not_found`.
+
+Deferred: evidence-quality scoring (V5.10+), automated evidence freshness checks (V5.10+), V5 Pilot fixture (V5.9).
+
+### V5.9: V5 Expanded Pilot Slice
+
+Goal: prove V5 end-to-end against a realistic mixed-domain docs tree. Mirrors the Billing Pilot (V1.6) and Markdown Pilot (V4.4) pattern.
+
+Scope:
+
+- Growth of `examples/expanded-pilot/` to 10–15 `.adoc` files across auth, billing, and security domains, exercising every new V5 kind and the V5 evidence model. At minimum: one `constraint` with `impacts:`; one verified `procedure` with `role_required` and `rollback`; one verified executable `example`; one non-executable `example`; one `active` `policy` with multi-approver `approved_by`; one `agent_instruction` with disjoint action sets; one `contradiction` referencing two pre-existing claims (both manually `status: contradicted`); two `source` objects (one `source_code`, one `external_url`); one `claim` using V5.8 evidence references.
+- New `crates/adoc-cli/tests/expanded_pilot.rs` end-to-end test asserting `adoc check`, `adoc build`, `adoc why`, `adoc graph`, `adoc search`, `adoc diff`, `adoc review`, and `adoc patch --check` all behave per V5.1–V5.8 design. Diagnostic counts and graph node counts are exact-match.
+- New `docs/expanded-pilot.md` documenting the pilot's maintenance contract.
+- MCP dogfood test extension exercising the new guidance resources.
+- Update to "Implemented" section above.
+
+Acceptance: `cargo test -p adoc-cli --test expanded_pilot` exits 0 with the documented diagnostic counts. `dist/docs.html` is hand-reviewed: every kind renders distinctly, the `agent_instruction` shows the runtime-not-enforced banner, the contradiction shows side-by-side conflicting claim links.
+
+Deferred: V5.10 lifecycle automation, V6 composition, V7 web and governance, automated contradiction detection.
 
 Design guidance:
 
-- Add one object type only when it has a complete authoring, validation, rendering, and agent-output story.
-- Do not introduce custom schemas before the core object set feels stable.
-- Keep automated contradiction detection out until explicit contradiction objects are useful.
-- Treat executable examples as a separate runtime/sandbox problem.
-- Agent instruction objects may be authored, rendered, and retrieved before the full permission engine exists, but they must be clearly marked as not enforcing runtime permissions yet.
-- `source` objects should coexist with inline evidence at first; do not force evidence normalization too early.
+- Add one object type per slice only when it has a complete authoring → validation → rendering → graph emission → retrieval → diff/review story. V5.1 is the foundation slice that bundles the shared `Severity` value object with the first new kind so both ship validated by a real use site.
+- Keep new value objects in `domain/value_objects/` and new aggregates in `domain/knowledge_object/`. Each aggregate exposes only fallible constructors; struct-literal construction is forbidden outside the module.
+- Keep per-kind required-field invariants in the aggregate constructor (mirroring `claim`/`decision`/`warning`), registered via the `RESOLVERS` table. Introduce `infrastructure/validate/objects/<kind>.rs` only for cross-aggregate rules that cannot be enforced at construction (first appears in V5.6). OCP via exhaustive `match` on `BlockKind`.
+- Do not introduce custom schemas before the V5 Expanded Object Set feels stable; that's V6+.
+- Keep automated contradiction detection out until explicit contradictions earn their place in real docs.
+- Treat executable examples as a declaration-only contract in V5. Running the `checks` command is a separate runtime/sandbox milestone.
+- `agent_instruction` objects are authored, rendered, retrieved — never runtime ACLs. The renderer banner and the `adoc://agent/v0/agent-instruction-guide` resource are non-negotiable per ADR-0025.
+- `source` objects coexist with inline evidence at first; inline string evidence is NOT deprecated in V5.7.
+- Each slice bumps no envelope version. Only V5.1 bumps `adoc.graph.v2` → `adoc.graph.v3`, and that bump is additive only.
 
 Questions to resolve later:
 
-- Should `agent` instruction objects require a permission model immediately?
-- Should `source` objects replace inline evidence or coexist with it?
-- Should verified lifecycle rules expand object-by-object or all at once?
+- Should `agent_instruction` objects gain a runtime permission model in V5.10+ or wait for a dedicated permission-engine milestone?
+- Should `source` objects replace inline evidence in V5.10+, or continue to coexist indefinitely?
+- Should verified lifecycle rules expand object-by-object or all at once when evidence-quality scoring lands in V5.10+?
+- Should `agent_instruction` scope upgrade from a glob string to a structured PRD §16.2 scope object in V6+?
+- Should `contradiction` resolution propagate automatically to referenced claims' `status` field, or stay author-driven?
+- Should `adoc.project.status.v0` gain `knowledge_objects_by_kind` counts in V5.10+ if MCP agents need them?
 
 ## V6: Composition and Advanced Graphs
 

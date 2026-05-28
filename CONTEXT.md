@@ -304,6 +304,62 @@ _Avoid_: shared validator pipeline with a mode flag, raising compat rules to `Er
 The V4.4 evaluation fixture: `examples/markdown-pilot/` carries 15–20 hand-curated `.md` files modeled on real product docs, exercising the **V4 Markdown Subset**, **Quarantined HTML**, unsafe link/image dropping, and the empty-retrieval diagnostic. Paired end-to-end test in `crates/adoc-cli/tests/markdown_pilot.rs`. Mirrors the Billing Pilot pattern used to gate V0–V3.
 _Avoid_: ad-hoc Markdown fixtures scattered across crates, large random Markdown corpora without curated diagnostic expectations
 
+**Expanded Object Set**:
+The V5 superset of the **Core Object Set**, comprising `claim`, `decision`, `warning`, `glossary` (V0) plus `constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source` (V5). Every member is a **Knowledge Object** with stable identity, lifecycle, and (where the type requires it) evidence. Lives in code as variants of the `BlockKind` enum in `domain/knowledge_object/mod.rs`; each kind has its own aggregate file under `domain/knowledge_object/<kind>.rs`.
+_Avoid_: ad-hoc string `kind` field, custom-schema-driven kinds before V6, kinds without a complete authoring/validation/rendering/graph story
+
+**Severity**:
+A shared value object with variants `Critical | High | Medium | Low`, used by `constraint`, `warning`, and `contradiction`. Lives at `domain/value_objects/severity.rs`; `#[non_exhaustive]`, `TryFrom<&str>`, total once constructed. Extracted from `warning`'s existing `WarningSeverity` enum into a shared value object (V5.1); the parse grammar is unchanged and the extraction is behavior-preserving.
+_Avoid_: free-form severity string, per-kind severity duplication, severity comparison as numeric ordering before measured demand
+
+**Constraint Object**:
+A **Knowledge Object** representing a rule that must remain true (PRD §13.3). Required fields: `id`, `severity` (**Severity**), `body`. Constraints may declare `impacts:` per V3.3. Verified constraints require an `enforced_by` evidence reference. Lives at `domain/knowledge_object/constraint.rs`.
+_Avoid_: claim that happens to read like a rule, constraint without severity, blanket constraints without a clear violated-when condition
+
+**Procedure Object**:
+A **Knowledge Object** representing an ordered sequence of steps (PRD §13.4). Required fields: `id`, `status`, `body`. Optional: `role_required`, `permissions_required`, `estimated_time`, `environment`, `rollback`, `risks`. The body's ordered-list structure is preserved through to HTML; the **Graph Artifact** stores body as canonical prose text. Lives at `domain/knowledge_object/procedure.rs`.
+_Avoid_: prose passed off as procedure, unordered step lists, procedures with hidden role requirements
+
+**Example Object**:
+A **Knowledge Object** carrying a code, API, workflow, or usage example (PRD §13.5). Required fields: `id`, `lang` (or `format`), `body`. Verified examples additionally require both `checks` and `sandbox` declarations; V5 does NOT execute the checks. Lives at `domain/knowledge_object/example.rs`.
+_Avoid_: example without `lang`, verified example without `checks` + `sandbox`, running `checks` from `adoc check` (deferred runtime concern)
+
+**Policy Object**:
+A **Knowledge Object** representing an authoritative organizational rule (PRD §13.12). Required fields: `id`, `status`, `owner`, `approved_by` (`NonEmpty<ApprovedBy>`), `effective_at`, `body`. Optional: `review_interval`. Supported statuses: `proposed | active | archived | revoked`. Policy does NOT support `verified` status — policy authority comes from approvers, not verification. Lives at `domain/knowledge_object/policy.rs`.
+_Avoid_: policy without approver, future `effective_at`, `verified` status on policy, prose treated as policy
+
+**Agent Instruction Object**:
+A **Knowledge Object** declaring an explicit instruction targeted at AI agents (PRD §13.13). Required fields: `id`, `scope`, `trust`, `allowed_actions`, `forbidden_actions`, `body`. `allowed_actions` and `forbidden_actions` are **Disjoint Action Sets**. **Per ADR-0025, agent_instruction objects are NOT runtime ACLs.** They are authored, rendered, and retrievable knowledge. The MCP gateway does not consult them when deciding whether to run a tool. Lives at `domain/knowledge_object/agent_instruction.rs`.
+_Avoid_: treating agent_instruction as runtime permission grant, agent_instruction inferred from prose, omitting the "NOT enforced at runtime" renderer banner
+
+**Contradiction Object**:
+A **Knowledge Object** declaring an explicit conflict between two or more existing Knowledge Objects (PRD §13.14, §7.6). Required fields: `id`, `severity` (**Severity**), `status`, `claims` (`NonEmpty<ObjectId>` with arity ≥ 2), `body`. **Per ADR-0026, V5 contradictions are manually authored.** Automated pairwise scanning is deferred to V6+. A `claim` listed in an active contradiction may carry `status: contradicted` set manually by the author; V5 does NOT auto-propagate. Lives at `domain/knowledge_object/contradiction.rs`.
+_Avoid_: automated contradiction detection in V5, contradiction with one claim, auto-transition of referenced claim status
+
+**Source Object**:
+A reusable evidence **Knowledge Object** (PRD §13.15). Required fields: `id`, `kind` (**Evidence Kind**), exactly one of `path: RelPath` or `url: Url`, `body`. The `body` is the prose explanation of what this source contains. Per ADR-0027, **Source Objects** coexist with inline V0 evidence fields on `claim` and `decision`; references to source objects are an opt-in upgrade, never a forced migration. Lives at `domain/knowledge_object/source.rs`.
+_Avoid_: source object with both `path:` and `url:`, source object with neither, deprecating inline evidence in V5
+
+**Evidence Kind**:
+A value object enumerating the PRD §15.1 evidence types: `source_code`, `test`, `commit`, `pull_request`, `issue`, `design_doc`, `human_review`, `external_url`, `api_schema`, `runtime_metric`, `incident`, `support_ticket`, `audit_record`, `policy_reference`, `dataset`, `experiment`. Lives at `domain/value_objects/evidence_kind.rs`; `#[non_exhaustive]`, case-sensitive `TryFrom<&str>`, unknown kinds emit `schema.evidence_unknown_kind`.
+_Avoid_: free-form evidence kind strings, deriving evidence kind from field name alone, accepting alias spellings
+
+**V5 Evidence Model**:
+The expanded evidence vocabulary on `claim` and `decision` introduced in V5.8. The V0 fields `source`, `test`, `reviewed_by` continue to accept string values for backwards compatibility. New evidence forms accept either an inline literal (matching the V0 string shape) or an `evidence_ref: <object-id>` Object ID reference to a **Source Object**. The minimum-evidence-by-kind table from PRD §15.4 is encoded in the verified-status validators per object kind.
+_Avoid_: deprecating V0 inline evidence in V5, evidence quality scoring in V5 (deferred to V5.10+), evidence freshness checks in V5 (deferred to V5.10+)
+
+**Disjoint Action Sets**:
+The V5.5 invariant that an **Agent Instruction Object**'s `allowed_actions` and `forbidden_actions` sets share no common member. Enforced in `domain/value_objects/action_set.rs` via a value-object factory `DisjointActionSets::try_new(allowed, forbidden) -> Result<Self, OverlapError>` that is the only public path to a valid disjoint pair. Violations emit `schema.agent_instruction_actions_not_disjoint` and name each overlapping action.
+_Avoid_: per-rule disjoint check that runs after aggregate construction, partial set validation, opaque overlap diagnostic without naming the overlapping actions
+
+**Graph Artifact V3**:
+The V5 graph artifact, `dist/docs.graph.json`, with schema version `adoc.graph.v3`. Additive bump from V2 — every V0–V4 node and edge shape is preserved byte-identical; new fields appear only on the seven new V5 kinds (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`). Older `adoc.graph.v2` artifacts are rejected by the existing reader with `SchemaUnsupportedVersion` and require a rebuild. The bump invalidates the **Search Artifact** for every project on first V5 build because the `graph_artifact_hash` changes — full re-embed expected.
+_Avoid_: silently dropping unknown kinds at the v2 boundary, claiming the v3 bump is non-additive, bumping `adoc.search.v0` along with the graph (it stays at v0)
+
+**V5 Expanded Pilot**:
+The V5.9 evaluation fixture: `examples/expanded-pilot/` carries 10–15 hand-curated `.adoc` files across auth, billing, and security domains, exercising every new V5 kind, the **Severity** value object, the **V5 Evidence Model**, **Disjoint Action Sets**, and at least one **Contradiction Object** referencing two pre-existing `claim` objects. Paired end-to-end test in `crates/adoc-cli/tests/expanded_pilot.rs`. Mirrors the Billing Pilot (V1.6) and **Markdown Pilot** (V4.4) pattern.
+_Avoid_: ad-hoc V5 fixtures scattered across crates, V5 fixtures without the contradiction case, drift between the pilot and the `docs/expanded-pilot.md` maintenance contract
+
 ## Relationships
 
 - **AgentDoc Source** contains prose and typed blocks that compile into **Knowledge Objects**.
@@ -362,6 +418,20 @@ _Avoid_: ad-hoc Markdown fixtures scattered across crates, large random Markdown
 - The **Markdown Pilot** gates V4 acceptance the way the **Pilot Retrieval Set** gates V1 ranking changes.
 - A **Markdown Source** page never participates in `adoc.diff.v0`, `adoc.review.v0`, **Patch Validation**, or as a citation in retrieval — those surfaces remain Knowledge-Object-scoped.
 - `adoc search` over a project containing only **Markdown Source** emits `retrieval.no_knowledge_objects_consider_migration` and points users at the future `adoc migrate` workflow (V4.5+).
+- The **Expanded Object Set** extends the **Core Object Set** with `constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source` — all of which are **Knowledge Objects** and inherit the existing **Object ID**, lifecycle, **Patch Validation**, and **Review Report** contracts.
+- A **Severity** value object is shared by `constraint`, `warning`, and `contradiction`; no per-kind severity grammar.
+- A **Constraint Object** may declare `impacts:` per V3.3; **Source-Path Impact** analysis treats verified constraints symmetrically with verified claims when computing **Required Reviewer** sets.
+- A **Procedure Object** body preserves ordered-list structure through to HTML; the **Graph Artifact** stores body as canonical prose text — the renderer is responsible for visual ordering.
+- A verified **Example Object** declares `checks` and `sandbox` but V5 does NOT execute them; runtime sandbox execution is a later milestone.
+- A **Policy Object** does not support `verified` status; authority comes from `approved_by` plus a non-future `effective_at`.
+- An **Agent Instruction Object** is read-only declarative knowledge per ADR-0025; the **MCP Agent Gateway** does not consult `allowed_actions` or `forbidden_actions` at runtime.
+- **Disjoint Action Sets** are enforced at value-object construction time in `domain/value_objects/action_set.rs`; the validator only catches schema-level overlaps that originate at parse time.
+- A **Contradiction Object** is manually authored in V5 per ADR-0026; automated pairwise scanning of verified claims is V6+.
+- A **Source Object** coexists with V0 inline evidence per ADR-0027; references via `evidence_ref:` are an opt-in V5.8 upgrade, never a forced migration.
+- The **V5 Evidence Model** encodes PRD §15.4 minimum-evidence-by-kind rules in per-kind verified-status validators; the V0 evidence fields continue to parse byte-identical.
+- The **Graph Artifact V3** bump (`adoc.graph.v2` → `adoc.graph.v3`) is the only schema-version change in V5; `adoc.search.v0`, `adoc.retrieval.v0`, `adoc.patch.v0`, `adoc.patch.check.v0`, `adoc.diff.v0`, `adoc.review.v0`, `adoc.project.status.v0` all stay at their current versions.
+- The **V5 Expanded Pilot** gates V5 acceptance the way the **Pilot Retrieval Set** gates V1 ranking changes and the **Markdown Pilot** gates V4 ingestion.
+- A **Proof Obligation** triggers re-verify on a verified `constraint` `Severity` change, re-approve on an `active` `policy` `effective_at` or `approved_by` change, and security review on an `agent_instruction` `Trust` upgrade or `forbidden_actions` removal.
 
 ## Example dialogue
 
@@ -412,3 +482,12 @@ _Avoid_: ad-hoc Markdown fixtures scattered across crates, large random Markdown
 - "Compatibility mode could be selected by CLI flag, config block, or file extension" - resolved: file extension only; no flag, no config (ADR-0022).
 - "Prose blocks could become retrievable in V4 to make Markdown-only projects searchable" - resolved: V4 keeps the Knowledge-Object-only retrieval invariant; prose retrieval is its own milestone (**V1.7 Prose Retrieval**), applied symmetrically to `.md` and `.adoc` prose.
 - "Raw HTML in Markdown could be passed through to the rendered output" - resolved: raw HTML becomes **Quarantined HTML**, escaped as visible text inside `<pre class="adoc-quarantined-html">`; the renderer is the security boundary, never the parser.
+- "V5 could add all seven new object types in one slice" - resolved: V5.1 lands `constraint` + `Severity` (foundation); V5.2–V5.7 each add one kind; V5.8 expands the inline evidence model; V5.9 is the **V5 Expanded Pilot** that proves all of V5 end-to-end. One kind per slice mirrors V0.4's per-object discipline.
+- "Severity could be duplicated per-kind rather than shared" - resolved: **Severity** is a shared value object (ADR-0024); `warning`'s existing private `WarningSeverity` enum is extracted into it and reused by `constraint` (and later `contradiction`). The extraction is behavior-preserving — warning's severity grammar and diagnostics are unchanged — and a shared type means severity means the same thing on every kind that carries it.
+- "`agent_instruction` could double as runtime ACL for the MCP Agent Gateway" - resolved: **Agent Instruction Objects** are authored, rendered, retrievable knowledge ONLY per ADR-0025. The MCP gateway never consults `allowed_actions` or `forbidden_actions` at runtime; the renderer banner and the `adoc://agent/v0/agent-instruction-guide` resource make this explicit to humans and agents. Runtime permission enforcement is a future permission-engine milestone.
+- "V5 could include automated contradiction detection via pairwise verified-claim scanning" - resolved: per ADR-0026, V5 ships only manually-authored **Contradiction Objects**. Automated detection is V6+; pairwise scanning requires the V6 graph store to be stable.
+- "Verified-status rules could expand object-by-object across V5" - resolved: per-kind verified-status checks land in the slice that introduces the kind (V5.1 constraint, V5.2 procedure, V5.3 example, V5.4 policy active-status, V5.6 contradiction); V5.8 promotes the inline evidence model to **Evidence Kind** typing for `claim` and `decision`. Evidence-quality scoring (PRD §15.3) and freshness-driven status transitions are deferred to V5.10+ where they can be designed against measured pain.
+- "`source` objects could deprecate inline evidence in V5.7" - resolved: per ADR-0027, **Source Objects** coexist with inline V0 evidence. V5.7 only introduces the new object type; V5.8 adds `evidence_ref:` to reference one. Inline evidence stays the canonical short form; references upgrade to a graph edge only when an author opts in.
+- "V5 could ship without a graph artifact schema bump" - resolved: the v2→v3 bump is unavoidable because new `kind` values appear in the graph payload (ADR-0028). The bump is **additive only** — every V0–V4 node and edge shape is byte-identical; new fields appear only on the seven new V5 kinds. The **Search Artifact** stays at `adoc.search.v0` because the **Embedding Composition** formula is unchanged.
+- "Verified examples could be executed by `adoc check` to validate the `checks` declaration" - resolved: V5 ships declaration-only **Example Objects**. Verified status requires both `checks` and `sandbox` present, but neither is executed; sandbox runtime is a later milestone.
+- "Policy could support `verified` status by analogy with `claim`" - resolved: V5 policy supports `proposed | active | archived | revoked` only. Policy authority comes from `approved_by` plus `effective_at`, not from verification. Revisit only if the V5 Expanded Pilot reveals real demand.
