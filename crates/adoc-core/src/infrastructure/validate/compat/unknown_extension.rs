@@ -26,9 +26,9 @@ pub(crate) struct UnknownExtension;
 
 impl CompatRule for UnknownExtension {
     fn check(&self, page: &PageAst, source: &SourceFile, sink: &mut Vec<CompatDiagnostic>) {
-        let mut code_block_lines = Vec::new();
+        let mut excluded_lines = Vec::new();
         for block in &page.blocks {
-            collect_code_block_lines(block, &mut code_block_lines);
+            collect_excluded_lines(block, &mut excluded_lines);
         }
 
         // F2a: Determine the first body line so front-matter content is never
@@ -43,7 +43,7 @@ impl CompatRule for UnknownExtension {
             if line_number < body_start_line {
                 continue;
             }
-            if code_block_lines.contains(&line_number) {
+            if excluded_lines.contains(&line_number) {
                 continue;
             }
             // F2b: Mask inline-code spans before classifying so that attribute
@@ -152,31 +152,53 @@ fn mask_inline_code(line: &str) -> String {
     out
 }
 
-fn collect_code_block_lines(block: &BlockAst, out: &mut Vec<u32>) {
+/// Collects the 1-based line numbers that must be excluded from the source-text
+/// scan. Lines belonging to the following block types are excluded because the
+/// diagnostic message ("rendered as an escaped code block") would be factually
+/// wrong, or because no matching `UnknownExtension` AST node will exist:
+///
+/// - `CodeBlock` — content is rendered verbatim; the construct is intentional.
+/// - `Table` — rendered as a real `<table>`; attribute-shaped cell content is
+///   not an unknown extension.
+/// - `QuarantinedHtml` — the whole block is already flagged with a separate
+///   `compat.raw_html_quarantined` diagnostic; interior lines must not also
+///   trigger `compat.unknown_extension`.
+///
+/// `FootnoteDefinition` and `List` items are recursed so that code blocks
+/// nested inside them are also excluded.
+fn collect_excluded_lines(block: &BlockAst, out: &mut Vec<u32>) {
     match block {
         BlockAst::CodeBlock(code) => {
             for line in code.span.start.line..=code.span.end.line {
                 out.push(line);
             }
         }
+        BlockAst::Table(table) => {
+            for line in table.span.start.line..=table.span.end.line {
+                out.push(line);
+            }
+        }
+        BlockAst::QuarantinedHtml(html) => {
+            for line in html.span.start.line..=html.span.end.line {
+                out.push(line);
+            }
+        }
         BlockAst::FootnoteDefinition(footnote) => {
             for child in &footnote.content {
-                collect_code_block_lines(child, out);
+                collect_excluded_lines(child, out);
             }
         }
         BlockAst::List(list) => {
             for item in &list.items {
                 for child in &item.content {
-                    collect_code_block_lines(child, out);
+                    collect_excluded_lines(child, out);
                 }
             }
         }
         BlockAst::Heading(_)
         | BlockAst::Paragraph(_)
-        | BlockAst::Table(_)
         | BlockAst::KnowledgeObject(_)
         | BlockAst::KnowledgeObjectPending(_)
-        | BlockAst::QuarantinedHtml(_)
         | BlockAst::UnknownExtension(_)
         | BlockAst::ThematicBreak(_) => {}
     }
@@ -419,6 +441,50 @@ mod tests {
             count_unknown(&diagnostics),
             1,
             "unmatched backtick must not suppress attribute block: {diagnostics:?}"
+        );
+    }
+
+    // --- Table and QuarantinedHtml exclusion ---
+
+    #[test]
+    fn does_not_warn_on_attribute_shape_inside_table_cell() {
+        // A GFM table whose cell content contains `{#id}` must produce zero
+        // compat.unknown_extension diagnostics because the table is rendered as a
+        // real <table>; the diagnostic message ("rendered as escaped code block")
+        // would be factually wrong.
+        let text = "| Header | Value |\n| --- | --- |\n| {#id} | y |\n";
+        let diagnostics = validate(text);
+        assert_eq!(
+            count_unknown(&diagnostics),
+            0,
+            "attribute shape inside table cell must not emit compat.unknown_extension: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn does_not_warn_on_brace_shape_inside_quarantined_html() {
+        // A lowercase raw-HTML block that gets quarantined: the brace-shaped
+        // content on an interior line must not emit compat.unknown_extension
+        // because the entire block is already a QuarantinedHtml node.
+        let text = "<div class=\"note\">\nSee {#section-3}.\n</div>\n";
+        let diagnostics = validate(text);
+        assert_eq!(
+            count_unknown(&diagnostics),
+            0,
+            "attribute shape inside quarantined HTML must not emit compat.unknown_extension: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn still_warns_on_attribute_block_in_plain_paragraph() {
+        // Guard: the exclusions must not silence the scan globally. A bare
+        // attribute block in a plain paragraph must still produce exactly one
+        // compat.unknown_extension diagnostic.
+        let diagnostics = validate("Plain text with {#id} attached.\n");
+        assert_eq!(
+            count_unknown(&diagnostics),
+            1,
+            "attribute block in plain paragraph must still be flagged: {diagnostics:?}"
         );
     }
 }
