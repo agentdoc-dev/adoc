@@ -164,7 +164,8 @@ fn collect_code_block_lines(block: &BlockAst, out: &mut Vec<u32>) {
         | BlockAst::KnowledgeObject(_)
         | BlockAst::KnowledgeObjectPending(_)
         | BlockAst::QuarantinedHtml(_)
-        | BlockAst::UnknownExtension(_) => {}
+        | BlockAst::UnknownExtension(_)
+        | BlockAst::ThematicBreak(_) => {}
     }
 }
 

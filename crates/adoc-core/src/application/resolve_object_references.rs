@@ -57,7 +57,9 @@ fn resolve_page(
                 resolve_page_blocks(&mut footnote.content, declared_ids, diagnostics);
             }
             BlockAst::CodeBlock(_) => {}
-            BlockAst::QuarantinedHtml(_) | BlockAst::UnknownExtension(_) => {}
+            BlockAst::QuarantinedHtml(_)
+            | BlockAst::UnknownExtension(_)
+            | BlockAst::ThematicBreak(_) => {}
             BlockAst::KnowledgeObjectPending(_) => {
                 unreachable!("knowledge objects must resolve before object references")
             }
@@ -99,6 +101,7 @@ fn resolve_page_blocks(
             BlockAst::CodeBlock(_)
             | BlockAst::QuarantinedHtml(_)
             | BlockAst::UnknownExtension(_)
+            | BlockAst::ThematicBreak(_)
             | BlockAst::KnowledgeObject(_)
             | BlockAst::KnowledgeObjectPending(_) => {}
         }

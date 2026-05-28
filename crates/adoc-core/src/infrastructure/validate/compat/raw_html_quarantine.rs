@@ -52,7 +52,9 @@ fn visit_block(block: &BlockAst, sink: &mut Vec<CompatDiagnostic>) {
         BlockAst::CodeBlock(_)
         | BlockAst::KnowledgeObject(_)
         | BlockAst::KnowledgeObjectPending(_)
-        | BlockAst::UnknownExtension(_) => {}
+        | BlockAst::UnknownExtension(_)
+        // A thematic break is valid Markdown — never quarantined as raw HTML.
+        | BlockAst::ThematicBreak(_) => {}
     }
 }
 
@@ -137,5 +139,34 @@ mod tests {
     fn quarantine_rule_is_silent_on_clean_prose() {
         let diagnostics = validate("# Title\n\nNormal prose.\n");
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
+    #[test]
+    fn quarantine_rule_does_not_warn_on_thematic_break() {
+        // Regression test for the original bug: `---` on its own line (with
+        // blank lines around it so pulldown-cmark sees a rule, not a setext
+        // heading) must not emit compat.raw_html_quarantined.
+        let diagnostics = validate("Before.\n\n---\n\nAfter.\n");
+        let raw_html_diag_count = diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::CompatRawHtmlQuarantined)
+            .count();
+        assert_eq!(
+            raw_html_diag_count, 0,
+            "thematic break must not emit compat.raw_html_quarantined; got {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn quarantine_rule_does_not_warn_on_thematic_break_triple_star() {
+        let diagnostics = validate("Before.\n\n***\n\nAfter.\n");
+        let raw_html_diag_count = diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::CompatRawHtmlQuarantined)
+            .count();
+        assert_eq!(
+            raw_html_diag_count, 0,
+            "thematic break (***) must not emit compat.raw_html_quarantined; got {diagnostics:?}"
+        );
     }
 }

@@ -89,6 +89,7 @@ fn walk_block<V: UrlVisitor>(block: &BlockAst, visitor: &mut V) {
         | BlockAst::QuarantinedHtml(_)
         | BlockAst::KnowledgeObject(_)
         | BlockAst::KnowledgeObjectPending(_)
-        | BlockAst::UnknownExtension(_) => {}
+        | BlockAst::UnknownExtension(_)
+        | BlockAst::ThematicBreak(_) => {}
     }
 }

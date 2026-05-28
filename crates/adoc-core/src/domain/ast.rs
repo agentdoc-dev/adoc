@@ -42,6 +42,12 @@ pub(crate) enum BlockAst {
     /// is the original source text. The compat validator pipeline emits a
     /// `compat.raw_html_quarantined` warning per occurrence.
     QuarantinedHtml(QuarantinedHtmlAst),
+    /// A Markdown thematic break (`---`, `***`, or `___` on its own line) from
+    /// V4 Compatibility Mode source. Never produced by the `.adoc` parser.
+    /// The renderer emits `<hr />`; the graph emitter projects it as a prose
+    /// block carrying the original source text. No `compat.raw_html_quarantined`
+    /// warning is emitted — a thematic break is valid Markdown, not raw HTML.
+    ThematicBreak(ThematicBreakAst),
     /// GFM table from Markdown source (V4 Compatibility Mode only). The
     /// renderer walks `header`, `rows`, and `alignments` to emit a
     /// `<table>`; the graph emitter projects this to a single prose block
@@ -109,6 +115,12 @@ pub(crate) struct CodeBlockAst {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct QuarantinedHtmlAst {
+    pub(crate) source_text: String,
+    pub(crate) span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ThematicBreakAst {
     pub(crate) source_text: String,
     pub(crate) span: SourceSpan,
 }

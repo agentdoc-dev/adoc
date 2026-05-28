@@ -43,7 +43,8 @@ impl ValidationRule for RawHtmlForbidden {
                 BlockAst::QuarantinedHtml(_)
                 | BlockAst::Table(_)
                 | BlockAst::FootnoteDefinition(_)
-                | BlockAst::UnknownExtension(_) => {}
+                | BlockAst::UnknownExtension(_)
+                | BlockAst::ThematicBreak(_) => {}
             }
         }
     }

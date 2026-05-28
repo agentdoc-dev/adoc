@@ -233,6 +233,21 @@ fn block_to_graph_node(block: &BlockAst, id: &str, page_id: &str, order: u32) ->
             items: Vec::new(),
             source_span: source_span(&unknown.span),
         }),
+        // V4 Compatibility Mode: a thematic break carries its source text
+        // (`---`, `***`, etc.) as a structural cue in the graph. No new
+        // graph node kind is introduced; project as a prose block like the
+        // other compat-only variants.
+        BlockAst::ThematicBreak(thematic_break) => GraphNode::Paragraph(GraphBlockNode {
+            id: id.to_string(),
+            page_id: page_id.to_string(),
+            order,
+            level: None,
+            text: Some(thematic_break.source_text.clone()),
+            language: None,
+            code: None,
+            items: Vec::new(),
+            source_span: source_span(&thematic_break.span),
+        }),
     }
 }
 
@@ -381,7 +396,9 @@ fn push_reference_edges(edges: &mut Vec<GraphEdge>, block: &BlockAst, source: &s
             push_inline_reference_edges(edges, source, knowledge_object.body().inlines());
         }
         BlockAst::CodeBlock(_) => {}
-        BlockAst::QuarantinedHtml(_) | BlockAst::UnknownExtension(_) => {}
+        BlockAst::QuarantinedHtml(_)
+        | BlockAst::UnknownExtension(_)
+        | BlockAst::ThematicBreak(_) => {}
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before graph emission")
         }
