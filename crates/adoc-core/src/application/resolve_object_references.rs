@@ -38,6 +38,7 @@ fn resolve_page(
             BlockAst::List(list) => {
                 for item in &mut list.items {
                     resolve_inlines(&mut item.inlines, declared_ids, diagnostics);
+                    resolve_page_blocks(&mut item.content, declared_ids, diagnostics);
                 }
             }
             BlockAst::KnowledgeObject(knowledge_object) => {
@@ -83,6 +84,7 @@ fn resolve_page_blocks(
             BlockAst::List(list) => {
                 for item in &mut list.items {
                     resolve_inlines(&mut item.inlines, declared_ids, diagnostics);
+                    resolve_page_blocks(&mut item.content, declared_ids, diagnostics);
                 }
             }
             BlockAst::Table(table) => {
