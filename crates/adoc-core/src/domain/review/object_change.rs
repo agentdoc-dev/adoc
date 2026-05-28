@@ -32,7 +32,7 @@ pub(crate) enum ObjectChange {
 ///
 /// Fields are `pub` so external consumers can read the projection;
 /// instances are only constructed by
-/// [`super::object_diff::ObjectDiff::compute`] via the `pub(super)` factory.
+/// `super::object_diff::ObjectDiff::compute` via the `pub(super)` factory.
 ///
 /// `field_changes` is the V3.2 typed projection over the base/head pair; it is
 /// populated by [`crate::application::review::diff_objects`] after the

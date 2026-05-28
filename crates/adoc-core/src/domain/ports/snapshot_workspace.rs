@@ -117,7 +117,7 @@ pub(crate) trait SnapshotWorkspaceProvider {
     fn checkout(&self, selector: &SnapshotSelector) -> Result<SnapshotWorkspace, SnapshotError>;
 }
 
-/// Errors surfacing from a [`SnapshotWorkspaceProvider`] implementation. The
+/// Errors surfacing from a `SnapshotWorkspaceProvider` implementation. The
 /// variants describe snapshot concepts, not adapter mechanics. Concrete
 /// adapters (the git-CLI adapter today) classify their own failures into
 /// these variants via `From` impls; the application layer pattern-matches
