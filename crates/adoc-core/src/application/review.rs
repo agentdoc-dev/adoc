@@ -252,7 +252,7 @@ pub(crate) fn load_review_with_changed_files<
 
 /// V3.4 aggregator. Walks each `Changed` entry in `diff` and each entry in
 /// `impact`, applying the trigger rules in
-/// [`crate::domain::review::obligation_rules`]. Deduplicates by
+/// `crate::domain::review::obligation_rules`. Deduplicates by
 /// `(object_id, reason)` and returns the result sorted by the same key for
 /// deterministic JSON output.
 pub fn proof_obligations(diff: &ObjectDiff, impact: &[ImpactedObject]) -> Vec<ProofObligation> {
@@ -286,7 +286,7 @@ fn compile_snapshot<S: SnapshotWorkspaceProvider>(
 /// Pure projection — does not allocate I/O. Knowledge Object scope only;
 /// pages, prose blocks, and edges are excluded per V3-DESIGN.md §V3.1.
 ///
-/// [`ObjectDiff::compute`] self-decorates each `Changed` entry with its V3.2
+/// `ObjectDiff::compute` self-decorates each `Changed` entry with its V3.2
 /// `FieldChange` projection, so this function is a pure compose-and-call.
 pub fn diff_objects(session: &ReviewSession) -> ObjectDiff {
     let base = extract_knowledge_objects(&session.base);
@@ -312,9 +312,9 @@ fn extract_knowledge_objects(result: &CompileResult) -> Vec<GraphKnowledgeObject
 
 /// V3.7 — compose patch validation into a Review Report.
 ///
-/// When `patch` is `Some`, runs V2's [`check_patch_documents`] against the
+/// When `patch` is `Some`, runs V2's `check_patch_documents` against the
 /// head graph already held by `session`, embeds the resulting
-/// [`PatchCheckResult`] as the envelope's `patch_check` field, and unions
+/// `PatchCheckResult` as the envelope's `patch_check` field, and unions
 /// the patch-driven obligations with the session's diff/impact-driven
 /// obligations.
 ///

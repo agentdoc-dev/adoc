@@ -35,8 +35,8 @@ pub struct ImpactedObject {
 /// Flag verified claims / accepted decisions whose `impacts` list intersects
 /// `changed_files`.
 ///
-/// Considers the **head** side of [`ObjectDiff::changed`] entries and the
-/// records in [`ObjectDiff::created`]. Deleted entries never appear in the
+/// Considers the **head** side of `ObjectDiff::changed` entries and the
+/// records in `ObjectDiff::created`. Deleted entries never appear in the
 /// impact list — proof obligations for deletions are V3.4 territory.
 ///
 /// The returned vector is sorted by Object ID, with each entry's `paths`

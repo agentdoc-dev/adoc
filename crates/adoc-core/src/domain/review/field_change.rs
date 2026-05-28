@@ -141,7 +141,7 @@ fn optional(value: Option<&str>) -> &str {
 }
 
 /// Discriminator for the three V0 relation slots on a Knowledge Object.
-/// Mirrors the field names on [`crate::domain::graph::GraphRelations`].
+/// Mirrors the field names on `crate::domain::graph::GraphRelations`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RelationKind {
