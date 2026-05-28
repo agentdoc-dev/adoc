@@ -175,17 +175,39 @@ impl<'a> State<'a> {
             Event::InlineMath(value) => {
                 let span = self.span_for(range.clone());
                 let source_text = self.slice_for(range);
-                self.diagnostics
-                    .push(unknown_extension_warning(span.clone(), "$...$ inline math"));
-                self.push_inline(InlineSegment::UnknownExtension {
-                    source_text: if source_text.is_empty() {
-                        value.into_string()
+                // Narrow currency/digit guard: if the delimited content begins
+                // with an ASCII digit the construct is almost certainly a
+                // currency amount (e.g. `$5-$10`) rather than real math.
+                // pulldown-cmark's flanking rules already handle space-separated
+                // patterns like `$5 to $50`; this guard covers the residual
+                // tight-range false positive where the closing `$` is preceded
+                // by a non-whitespace character such as `-`.
+                if value
+                    .as_ref()
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit())
+                {
+                    // Treat as literal prose — no diagnostic, verbatim dollar text.
+                    let literal = if source_text.is_empty() {
+                        format!("${}$", value.as_ref())
                     } else {
                         source_text
-                    },
-                    span,
-                    kind: UnknownExtensionKind::MathFence,
-                });
+                    };
+                    self.push_inline(InlineSegment::Text(literal));
+                } else {
+                    self.diagnostics
+                        .push(unknown_extension_warning(span.clone(), "$...$ inline math"));
+                    self.push_inline(InlineSegment::UnknownExtension {
+                        source_text: if source_text.is_empty() {
+                            value.into_string()
+                        } else {
+                            source_text
+                        },
+                        span,
+                        kind: UnknownExtensionKind::MathFence,
+                    });
+                }
             }
             Event::DisplayMath(value) => {
                 let span = self.span_for(range.clone());
@@ -1053,6 +1075,172 @@ mod tests {
             has_break,
             "expected ThematicBreak block; got {:?}",
             page.blocks
+        );
+    }
+
+    // --- Inline math / currency false-positive guard tests ---
+
+    /// Collect all inline segments (flattened one level) from the first
+    /// paragraph block in `page`.
+    fn paragraph_inlines(page: &PageAst) -> &[InlineSegment] {
+        page.blocks
+            .iter()
+            .find_map(|block| match block {
+                BlockAst::Paragraph(p) => Some(p.inlines.as_slice()),
+                _ => None,
+            })
+            .expect("expected a paragraph block")
+    }
+
+    fn count_math_fence_diagnostics(diagnostics: &[Diagnostic]) -> usize {
+        diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::CompatUnknownExtension)
+            .count()
+    }
+
+    fn count_math_fence_inline_segments(inlines: &[InlineSegment]) -> usize {
+        inlines
+            .iter()
+            .filter(|seg| {
+                matches!(
+                    seg,
+                    InlineSegment::UnknownExtension {
+                        kind: UnknownExtensionKind::MathFence,
+                        ..
+                    }
+                )
+            })
+            .count()
+    }
+
+    fn inline_plain_text(inlines: &[InlineSegment]) -> String {
+        inlines
+            .iter()
+            .map(|seg| match seg {
+                InlineSegment::Text(t) => t.as_str(),
+                InlineSegment::UnknownExtension { source_text, .. } => source_text.as_str(),
+                _ => "",
+            })
+            .collect()
+    }
+
+    /// Tight currency range `$5-$10`: pulldown parses `$5-$` as inline math
+    /// (content `5-`) because the closing `$` is preceded by `-`, a
+    /// non-whitespace char. The digit-leading guard must intercept this and
+    /// emit literal text instead of a MathFence diagnostic.
+    #[test]
+    fn parse_markdown_page_currency_tight_range_is_literal_text_not_math() {
+        let source = source("Plans run $5-$10 per month.\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+
+        let math_diag_count = count_math_fence_diagnostics(&diagnostics);
+        assert_eq!(
+            math_diag_count, 0,
+            "tight currency range must not produce a compat.unknown_extension diagnostic; got {diagnostics:?}"
+        );
+
+        let inlines = paragraph_inlines(&page);
+        let math_seg_count = count_math_fence_inline_segments(inlines);
+        assert_eq!(
+            math_seg_count, 0,
+            "tight currency range must not produce a MathFence inline segment; got {inlines:?}"
+        );
+
+        let text = inline_plain_text(inlines);
+        assert!(
+            text.contains("$5-$") || text.contains('$'),
+            "dollar text must be present in rendered output; got {text:?}"
+        );
+    }
+
+    /// Characterization: space-separated currency `$5 to $50` — pulldown's
+    /// flanking rules already prevent math parsing here (closing `$` is
+    /// preceded by a space). Zero MathFence diagnostics or segments expected
+    /// both before and after the guard.
+    #[test]
+    fn parse_markdown_page_space_separated_currency_is_not_math() {
+        let source = source("Plans run $5 to $50.\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+
+        let math_diag_count = count_math_fence_diagnostics(&diagnostics);
+        assert_eq!(
+            math_diag_count, 0,
+            "space-separated currency must not trigger compat.unknown_extension; got {diagnostics:?}"
+        );
+
+        let inlines = paragraph_inlines(&page);
+        let math_seg_count = count_math_fence_inline_segments(inlines);
+        assert_eq!(
+            math_seg_count, 0,
+            "space-separated currency must not produce MathFence segments; got {inlines:?}"
+        );
+    }
+
+    /// Characterization: shell variable references `$HOME` and `$PATH` —
+    /// pulldown's flanking rules already prevent math parsing (isolated `$`
+    /// before a word, no closing `$` delimiter). Zero MathFence expected.
+    #[test]
+    fn parse_markdown_page_shell_variables_are_not_math() {
+        let source = source("export $HOME; echo $PATH\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+
+        let math_diag_count = count_math_fence_diagnostics(&diagnostics);
+        assert_eq!(
+            math_diag_count, 0,
+            "shell variables must not trigger compat.unknown_extension; got {diagnostics:?}"
+        );
+
+        let inlines = paragraph_inlines(&page);
+        let math_seg_count = count_math_fence_inline_segments(inlines);
+        assert_eq!(
+            math_seg_count, 0,
+            "shell variables must not produce MathFence segments; got {inlines:?}"
+        );
+    }
+
+    /// Regression: genuine inline math `$x = y$` must still be diverted to
+    /// `compat.unknown_extension` + MathFence. The content begins with `x`,
+    /// not a digit, so the guard must NOT fire.
+    #[test]
+    fn parse_markdown_page_genuine_inline_math_is_still_diverted() {
+        let source = source("The formula $x = y$ is key.\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+
+        let math_diag_count = count_math_fence_diagnostics(&diagnostics);
+        assert_eq!(
+            math_diag_count, 1,
+            "genuine inline math must produce exactly one compat.unknown_extension diagnostic; got {diagnostics:?}"
+        );
+
+        let inlines = paragraph_inlines(&page);
+        let math_seg_count = count_math_fence_inline_segments(inlines);
+        assert_eq!(
+            math_seg_count, 1,
+            "genuine inline math must produce exactly one MathFence inline segment; got {inlines:?}"
+        );
+    }
+
+    /// Regression: display math `$$a^2$$` must still be diverted unchanged.
+    /// The `Event::DisplayMath` arm is not touched by this change.
+    #[test]
+    fn parse_markdown_page_display_math_is_still_diverted() {
+        let source = source("Area:\n\n$$a^2$$\n");
+        let (page, diagnostics) = parse_markdown_page(&source);
+
+        let math_block = page.blocks.iter().any(|block| {
+            matches!(block, BlockAst::UnknownExtension(unknown)
+                if unknown.kind == UnknownExtensionKind::MathFence)
+        });
+        assert!(
+            math_block,
+            "expected UnknownExtension(MathFence) block for display math"
+        );
+
+        let math_diag_count = count_math_fence_diagnostics(&diagnostics);
+        assert_eq!(
+            math_diag_count, 1,
+            "display math must produce exactly one compat.unknown_extension diagnostic; got {diagnostics:?}"
         );
     }
 }
