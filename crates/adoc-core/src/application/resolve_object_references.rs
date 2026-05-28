@@ -29,41 +29,13 @@ fn resolve_page(
 ) {
     for block in &mut page.blocks {
         match block {
-            BlockAst::Heading(heading) => {
-                resolve_inlines(&mut heading.inlines, declared_ids, diagnostics);
-            }
-            BlockAst::Paragraph(paragraph) => {
-                resolve_inlines(&mut paragraph.inlines, declared_ids, diagnostics);
-            }
-            BlockAst::List(list) => {
-                for item in &mut list.items {
-                    resolve_inlines(&mut item.inlines, declared_ids, diagnostics);
-                    resolve_page_blocks(&mut item.content, declared_ids, diagnostics);
-                }
-            }
             BlockAst::KnowledgeObject(knowledge_object) => {
                 resolve_knowledge_object_references(knowledge_object, declared_ids, diagnostics);
             }
-            BlockAst::Table(table) => {
-                for cell in &mut table.header {
-                    resolve_inlines(&mut cell.inlines, declared_ids, diagnostics);
-                }
-                for row in &mut table.rows {
-                    for cell in row {
-                        resolve_inlines(&mut cell.inlines, declared_ids, diagnostics);
-                    }
-                }
-            }
-            BlockAst::FootnoteDefinition(footnote) => {
-                resolve_page_blocks(&mut footnote.content, declared_ids, diagnostics);
-            }
-            BlockAst::CodeBlock(_) => {}
-            BlockAst::QuarantinedHtml(_)
-            | BlockAst::UnknownExtension(_)
-            | BlockAst::ThematicBreak(_) => {}
             BlockAst::KnowledgeObjectPending(_) => {
                 unreachable!("knowledge objects must resolve before object references")
             }
+            other => resolve_page_blocks(std::slice::from_mut(other), declared_ids, diagnostics),
         }
     }
 }
@@ -313,5 +285,132 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::IdInvalid);
         assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing"));
+    }
+
+    // --- rerouted-path coverage ---
+
+    #[test]
+    fn resolves_reference_inside_list_item() {
+        use crate::domain::ast::{ListAst, ListItem, ListKind};
+
+        let item = ListItem {
+            inlines: vec![InlineSegment::ObjectReferencePending {
+                raw_id: "billing.credits".to_string(),
+                span: span(),
+            }],
+            span: span(),
+            task_state: None,
+            content: Vec::new(),
+        };
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("team.guide").expect("valid"),
+            title: None,
+            source_path: std::path::PathBuf::from("guide.adoc"),
+            blocks: vec![BlockAst::List(ListAst {
+                kind: ListKind::Unordered,
+                items: vec![item],
+                span: span(),
+            })],
+        };
+        let declared_ids = BTreeSet::from([ObjectId::new("billing.credits").expect("valid id")]);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_object_references(&mut pairs, &declared_ids);
+
+        assert!(diagnostics.is_empty(), "got {diagnostics:?}");
+        let BlockAst::List(list) = &pairs[0].1.blocks[0] else {
+            panic!("expected list");
+        };
+        assert!(matches!(
+            &list.items[0].inlines[0],
+            InlineSegment::ObjectReference { id, .. } if id.as_str() == "billing.credits"
+        ));
+    }
+
+    #[test]
+    fn resolves_reference_inside_table_cell() {
+        use crate::domain::ast::{ColumnAlignment, TableAst, TableCell};
+
+        let cell = TableCell {
+            inlines: vec![InlineSegment::ObjectReferencePending {
+                raw_id: "billing.credits".to_string(),
+                span: span(),
+            }],
+            span: span(),
+        };
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("team.guide").expect("valid"),
+            title: None,
+            source_path: std::path::PathBuf::from("guide.adoc"),
+            blocks: vec![BlockAst::Table(TableAst {
+                header: vec![cell],
+                rows: Vec::new(),
+                alignments: vec![ColumnAlignment::Default],
+                source_text: String::new(),
+                span: span(),
+            })],
+        };
+        let declared_ids = BTreeSet::from([ObjectId::new("billing.credits").expect("valid id")]);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_object_references(&mut pairs, &declared_ids);
+
+        assert!(diagnostics.is_empty(), "got {diagnostics:?}");
+        let BlockAst::Table(table) = &pairs[0].1.blocks[0] else {
+            panic!("expected table");
+        };
+        assert!(matches!(
+            &table.header[0].inlines[0],
+            InlineSegment::ObjectReference { id, .. } if id.as_str() == "billing.credits"
+        ));
+    }
+
+    #[test]
+    fn resolves_reference_inside_knowledge_object_body() {
+        use std::collections::BTreeMap;
+
+        use crate::domain::knowledge_object::claim::Claim;
+
+        let mut claim = Claim::try_new(
+            "billing.credits",
+            Some("plain"),
+            "body text",
+            BTreeMap::new(),
+            None,
+            span(),
+        )
+        .expect("valid claim");
+        claim.body_mut().inlines_mut().clear();
+        claim
+            .body_mut()
+            .inlines_mut()
+            .push(InlineSegment::ObjectReferencePending {
+                raw_id: "other.object".to_string(),
+                span: span(),
+            });
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("team.guide").expect("valid"),
+            title: None,
+            source_path: std::path::PathBuf::from("guide.adoc"),
+            blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
+                claim,
+            )))],
+        };
+        let declared_ids = BTreeSet::from([ObjectId::new("other.object").expect("valid id")]);
+        let mut pairs = vec![(source(), page)];
+
+        let diagnostics = resolve_object_references(&mut pairs, &declared_ids);
+
+        assert!(diagnostics.is_empty(), "got {diagnostics:?}");
+        let BlockAst::KnowledgeObject(ko) = &pairs[0].1.blocks[0] else {
+            panic!("expected knowledge object");
+        };
+        let KnowledgeObject::Claim(claim) = ko.as_ref() else {
+            panic!("expected claim");
+        };
+        assert!(matches!(
+            &claim.body().inlines()[0],
+            InlineSegment::ObjectReference { id, .. } if id.as_str() == "other.object"
+        ));
     }
 }
