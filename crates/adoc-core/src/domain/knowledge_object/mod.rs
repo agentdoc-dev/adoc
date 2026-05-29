@@ -15,6 +15,7 @@ pub(crate) mod claim;
 pub(crate) mod constraint;
 pub(crate) mod decision;
 pub(crate) mod draft;
+pub(crate) mod example;
 pub(crate) mod glossary;
 pub(crate) mod metadata;
 pub(crate) mod procedure;
@@ -24,6 +25,7 @@ pub(crate) mod warning;
 use claim::Claim;
 use constraint::Constraint;
 use decision::Decision;
+use example::Example;
 use glossary::Glossary;
 use procedure::Procedure;
 use warning::Warning;
@@ -451,6 +453,7 @@ pub(crate) enum BlockKind {
     Warning,
     Constraint,
     Procedure,
+    Example,
 }
 
 impl BlockKind {
@@ -461,6 +464,7 @@ impl BlockKind {
         Self::Warning,
         Self::Constraint,
         Self::Procedure,
+        Self::Example,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -471,6 +475,7 @@ impl BlockKind {
             Self::Warning => "warning",
             Self::Constraint => "constraint",
             Self::Procedure => "procedure",
+            Self::Example => "example",
         }
     }
 
@@ -487,6 +492,7 @@ pub(crate) enum KnowledgeObject {
     Warning(Warning),
     Constraint(Constraint),
     Procedure(Procedure),
+    Example(Example),
 }
 
 impl KnowledgeObject {
@@ -498,6 +504,7 @@ impl KnowledgeObject {
             Self::Warning(_) => BlockKind::Warning,
             Self::Constraint(_) => BlockKind::Constraint,
             Self::Procedure(_) => BlockKind::Procedure,
+            Self::Example(_) => BlockKind::Example,
         }
     }
 
@@ -509,6 +516,7 @@ impl KnowledgeObject {
             Self::Warning(warning) => warning.id(),
             Self::Constraint(constraint) => constraint.id(),
             Self::Procedure(procedure) => procedure.id(),
+            Self::Example(example) => example.id(),
         }
     }
 
@@ -520,6 +528,7 @@ impl KnowledgeObject {
             Self::Warning(warning) => warning.span(),
             Self::Constraint(constraint) => constraint.span(),
             Self::Procedure(procedure) => procedure.span(),
+            Self::Example(example) => example.span(),
         }
     }
 
@@ -531,6 +540,7 @@ impl KnowledgeObject {
             Self::Warning(warning) => warning.body(),
             Self::Constraint(constraint) => constraint.body(),
             Self::Procedure(procedure) => procedure.body(),
+            Self::Example(example) => example.body(),
         }
     }
 
@@ -542,6 +552,7 @@ impl KnowledgeObject {
             Self::Warning(warning) => warning.body_mut(),
             Self::Constraint(constraint) => constraint.body_mut(),
             Self::Procedure(procedure) => procedure.body_mut(),
+            Self::Example(example) => example.body_mut(),
         }
     }
 
@@ -553,11 +564,12 @@ impl KnowledgeObject {
             Self::Warning(warning) => warning.relations(),
             Self::Constraint(constraint) => constraint.relations(),
             Self::Procedure(procedure) => procedure.relations(),
+            Self::Example(example) => example.relations(),
         }
     }
 
     /// V3.3 opt-in `impacts:` list. Empty slice for kinds that do not carry
-    /// this field (`glossary`, `warning`) or for `claim`/`decision`/`constraint`/`procedure`
+    /// this field (`glossary`, `warning`) or for `claim`/`decision`/`constraint`/`procedure`/`example`
     /// instances without it.
     pub(crate) fn impacts(&self) -> &[RelPath] {
         match self {
@@ -565,6 +577,7 @@ impl KnowledgeObject {
             Self::Decision(decision) => decision.impacts().unwrap_or(&[]),
             Self::Constraint(constraint) => constraint.impacts().unwrap_or(&[]),
             Self::Procedure(procedure) => procedure.impacts().unwrap_or(&[]),
+            Self::Example(example) => example.impacts().unwrap_or(&[]),
             Self::Glossary(_) | Self::Warning(_) => &[],
         }
     }
@@ -577,6 +590,7 @@ impl KnowledgeObject {
             Self::Warning(warning) => warning.fields(),
             Self::Constraint(constraint) => constraint.fields(),
             Self::Procedure(procedure) => procedure.fields(),
+            Self::Example(example) => example.fields(),
         }
     }
 }
@@ -592,7 +606,9 @@ mod tests {
     use crate::domain::knowledge_object::claim::Claim;
     use crate::domain::knowledge_object::constraint::Constraint;
     use crate::domain::knowledge_object::decision::{AcceptedVerdict, DecidedBy, Decision};
+    use crate::domain::knowledge_object::example::Example;
     use crate::domain::knowledge_object::glossary::Glossary;
+    use crate::domain::knowledge_object::procedure::Procedure;
     use crate::domain::knowledge_object::warning::Warning;
 
     fn span(file: &str, line: u32, column: u32) -> SourceSpan {
@@ -679,6 +695,37 @@ mod tests {
         )
     }
 
+    fn procedure_object() -> KnowledgeObject {
+        KnowledgeObject::Procedure(
+            Procedure::try_new(
+                "auth.key.rotate",
+                Some("draft"),
+                "1. Open the console.",
+                BTreeMap::from([("owner".to_string(), "platform".to_string())]),
+                None,
+                span("procedure.adoc", 15, 1),
+            )
+            .expect("valid procedure"),
+        )
+    }
+
+    fn example_object() -> KnowledgeObject {
+        KnowledgeObject::Example(
+            Example::try_new(
+                "auth.credits.example",
+                Some("draft"),
+                Some("ts"),
+                None,
+                "const x = 1 + 1;",
+                None,
+                None,
+                BTreeMap::from([("owner".to_string(), "platform".to_string())]),
+                span("example.adoc", 17, 1),
+            )
+            .expect("valid example"),
+        )
+    }
+
     #[test]
     fn block_kind_labels_match_source_fence_words() {
         assert_eq!(BlockKind::Claim.as_str(), "claim");
@@ -687,6 +734,7 @@ mod tests {
         assert_eq!(BlockKind::Warning.as_str(), "warning");
         assert_eq!(BlockKind::Constraint.as_str(), "constraint");
         assert_eq!(BlockKind::Procedure.as_str(), "procedure");
+        assert_eq!(BlockKind::Example.as_str(), "example");
     }
 
     #[test]
@@ -712,6 +760,10 @@ mod tests {
             BlockKind::from_fence_word("procedure"),
             Some(BlockKind::Procedure)
         );
+        assert_eq!(
+            BlockKind::from_fence_word("example"),
+            Some(BlockKind::Example)
+        );
         assert_eq!(BlockKind::from_fence_word("fact"), None);
         assert_eq!(BlockKind::from_fence_word("Claim"), None);
     }
@@ -726,7 +778,8 @@ mod tests {
                 BlockKind::Glossary,
                 BlockKind::Warning,
                 BlockKind::Constraint,
-                BlockKind::Procedure
+                BlockKind::Procedure,
+                BlockKind::Example,
             ]
         );
     }
@@ -794,6 +847,24 @@ mod tests {
                 "Constraint body.",
                 "constraint.adoc",
                 13,
+                "owner",
+            ),
+            (
+                procedure_object(),
+                BlockKind::Procedure,
+                "auth.key.rotate",
+                "1. Open the console.",
+                "procedure.adoc",
+                15,
+                "owner",
+            ),
+            (
+                example_object(),
+                BlockKind::Example,
+                "auth.credits.example",
+                "const x = 1 + 1;",
+                "example.adoc",
+                17,
                 "owner",
             ),
         ];

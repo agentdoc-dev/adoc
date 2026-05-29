@@ -40,6 +40,11 @@ pub enum DiagnosticCode {
     SchemaProcedureMissingBody,
     SchemaProcedureBodyMustStartWithOrderedList,
     ProcedureVerifiedMissingEvidence,
+    SchemaExampleMissingLang,
+    SchemaExampleInvalidLang,
+    SchemaExampleInvalidSandbox,
+    SchemaExampleVerifiedRequiresChecks,
+    SchemaExampleVerifiedRequiresSandbox,
     ClaimVerifiedMissingEvidence,
     ClaimStatusCasing,
     LifecycleExpired,
@@ -103,6 +108,11 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaProcedureMissingBody,
             DiagnosticCode::SchemaProcedureBodyMustStartWithOrderedList,
             DiagnosticCode::ProcedureVerifiedMissingEvidence,
+            DiagnosticCode::SchemaExampleMissingLang,
+            DiagnosticCode::SchemaExampleInvalidLang,
+            DiagnosticCode::SchemaExampleInvalidSandbox,
+            DiagnosticCode::SchemaExampleVerifiedRequiresChecks,
+            DiagnosticCode::SchemaExampleVerifiedRequiresSandbox,
             DiagnosticCode::ClaimVerifiedMissingEvidence,
             DiagnosticCode::ClaimStatusCasing,
             DiagnosticCode::LifecycleExpired,
@@ -169,6 +179,15 @@ impl DiagnosticCode {
             }
             DiagnosticCode::ProcedureVerifiedMissingEvidence => {
                 "procedure.verified_missing_evidence"
+            }
+            DiagnosticCode::SchemaExampleMissingLang => "schema.example_missing_lang",
+            DiagnosticCode::SchemaExampleInvalidLang => "schema.example_invalid_lang",
+            DiagnosticCode::SchemaExampleInvalidSandbox => "schema.example_invalid_sandbox",
+            DiagnosticCode::SchemaExampleVerifiedRequiresChecks => {
+                "schema.example_verified_requires_checks"
+            }
+            DiagnosticCode::SchemaExampleVerifiedRequiresSandbox => {
+                "schema.example_verified_requires_sandbox"
             }
             DiagnosticCode::ClaimVerifiedMissingEvidence => "claim.verified_missing_evidence",
             DiagnosticCode::ClaimStatusCasing => "claim.status_casing",
@@ -266,6 +285,21 @@ impl DiagnosticCode {
             }
             DiagnosticCode::ProcedureVerifiedMissingEvidence => {
                 "Add at least one evidence field (`source`, `human_review`, or `reviewed_by`) before marking the procedure as verified."
+            }
+            DiagnosticCode::SchemaExampleMissingLang => {
+                "An example requires either `lang` or `format`."
+            }
+            DiagnosticCode::SchemaExampleInvalidLang => {
+                "Valid `lang` is a lowercase token matching [a-z][a-z0-9_+-]* (e.g. `ts`, `python`, `c++`)."
+            }
+            DiagnosticCode::SchemaExampleInvalidSandbox => {
+                "Valid `sandbox` is a lowercase token matching [a-z][a-z0-9_+:-]* (e.g. `node-test`, `docker:node-test`)."
+            }
+            DiagnosticCode::SchemaExampleVerifiedRequiresChecks => {
+                "A verified example requires both `checks` and `sandbox`."
+            }
+            DiagnosticCode::SchemaExampleVerifiedRequiresSandbox => {
+                "A verified example requires both `checks` and `sandbox`."
             }
             DiagnosticCode::ClaimVerifiedMissingEvidence => {
                 "Add evidence entries before marking the claim as verified."
@@ -437,6 +471,11 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.procedure_missing_body",
     "schema.procedure_body_must_start_with_ordered_list",
     "procedure.verified_missing_evidence",
+    "schema.example_missing_lang",
+    "schema.example_invalid_lang",
+    "schema.example_invalid_sandbox",
+    "schema.example_verified_requires_checks",
+    "schema.example_verified_requires_sandbox",
     "claim.verified_missing_evidence",
     "claim.status_casing",
     "lifecycle.expired",

@@ -234,6 +234,9 @@ fn render_knowledge_object(knowledge_object: &KnowledgeObject, html: &mut String
         KnowledgeObject::Procedure(_) => {
             render_procedure(knowledge_object, &metadata, html);
         }
+        KnowledgeObject::Example(_) => {
+            render_example(knowledge_object, &metadata, html);
+        }
     }
 }
 
@@ -386,6 +389,58 @@ fn render_ordered_step_item(line: &[InlineSegment], marker_len: usize, html: &mu
         html.push_str(&escape_html(stripped));
     }
     render_inlines(rest, html);
+}
+
+fn render_example(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    render_object_section_open(knowledge_object, "example", html);
+    render_object_header(knowledge_object, metadata.discriminant(), html);
+
+    // Render optional checks/sandbox metadata above the code body.
+    let KnowledgeObject::Example(example) = knowledge_object else {
+        unreachable!("render_example called with non-example object");
+    };
+    if example.checks().is_some() || example.sandbox().is_some() {
+        html.push_str("<div class=\"example__meta\">\n<dl>\n");
+        if let Some(checks) = example.checks() {
+            html.push_str("<dt>checks</dt><dd>");
+            html.push_str(&escape_html(checks));
+            html.push_str("<span class=\"example__caveat\"> Not executed by adoc</span>");
+            html.push_str("</dd>\n");
+        }
+        if let Some(sandbox) = example.sandbox() {
+            html.push_str("<dt>sandbox</dt><dd>");
+            html.push_str(&escape_html(sandbox.as_str()));
+            html.push_str("</dd>\n");
+        }
+        html.push_str("</dl>\n</div>\n");
+    }
+
+    // Render body as a fenced code block using the declared lang or format.
+    let body_source = knowledge_object.body().to_source();
+    if let Some(lang) = example.lang() {
+        html.push_str("<pre><code class=\"language-");
+        html.push_str(&escape_html(lang.as_str()));
+        html.push_str("\">");
+        html.push_str(&escape_html(&body_source));
+        html.push_str("</code></pre>\n");
+    } else if let Some(format) = example.format() {
+        html.push_str("<pre><code class=\"format-");
+        html.push_str(&escape_html(format));
+        html.push_str("\">");
+        html.push_str(&escape_html(&body_source));
+        html.push_str("</code></pre>\n");
+    } else {
+        html.push_str("<pre><code>");
+        html.push_str(&escape_html(&body_source));
+        html.push_str("</code></pre>\n");
+    }
+
+    render_object_metadata(knowledge_object, metadata, html);
+    html.push_str("</section>\n");
 }
 
 fn severity_discriminant<'a>(metadata: &KnowledgeObjectMetadata<'a>) -> MetadataDiscriminant<'a> {
@@ -574,7 +629,8 @@ fn discriminant_field_name(discriminant: MetadataDiscriminant<'_>) -> &'static s
     match discriminant {
         MetadataDiscriminant::ClaimStatus(_)
         | MetadataDiscriminant::DecisionStatus(_)
-        | MetadataDiscriminant::ProcedureStatus(_) => "status",
+        | MetadataDiscriminant::ProcedureStatus(_)
+        | MetadataDiscriminant::ExampleStatus(_) => "status",
         MetadataDiscriminant::Severity(_) => "severity",
     }
 }
@@ -1031,6 +1087,23 @@ mod tests {
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Procedure(procedure)))
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn make_example(
+        id: &str,
+        status: Option<&str>,
+        lang: Option<&str>,
+        body: &str,
+        checks: Option<&str>,
+        sandbox: Option<&str>,
+        fields: std::collections::BTreeMap<String, String>,
+        span: SourceSpan,
+    ) -> BlockAst {
+        use crate::domain::knowledge_object::{KnowledgeObject, example::Example};
+        let example = Example::try_new(id, status, lang, None, body, checks, sandbox, fields, span)
+            .expect("test example must be valid");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Example(example)))
+    }
+
     #[test]
     fn procedure_renders_four_numbered_steps_as_ordered_list_in_source_order() {
         let block = make_procedure(
@@ -1071,6 +1144,72 @@ mod tests {
         assert!(
             !body.contains("1. Open"),
             "ordered-list marker must be stripped: {html}"
+        );
+    }
+
+    #[test]
+    fn example_renders_lang_code_block_with_status_and_checks() {
+        let block = make_example(
+            "auth.credits.example",
+            Some("draft"),
+            Some("ts"),
+            "const x = 1 + 1;",
+            Some("npm test"),
+            Some("node-test"),
+            std::collections::BTreeMap::new(),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            html.contains("<section class=\"example\" id=\"auth.credits.example\">"),
+            "missing example section: {html}"
+        );
+        assert!(
+            html.contains("<span class=\"example__status\">draft</span>"),
+            "missing status badge: {html}"
+        );
+        assert!(
+            html.contains("<pre><code class=\"language-ts\">const x = 1 + 1;</code></pre>"),
+            "missing code block with lang: {html}"
+        );
+        assert!(
+            html.contains("<span class=\"example__caveat\"> Not executed by adoc</span>"),
+            "missing caveat text: {html}"
+        );
+        assert!(
+            html.contains("<dt>checks</dt>"),
+            "missing checks field: {html}"
+        );
+        assert!(
+            html.contains("<dt>sandbox</dt><dd>node-test</dd>"),
+            "missing sandbox field: {html}"
+        );
+    }
+
+    #[test]
+    fn example_without_status_renders_no_status_badge() {
+        let block = make_example(
+            "auth.credits.example",
+            None,
+            Some("ts"),
+            "const x = 1 + 1;",
+            None,
+            None,
+            std::collections::BTreeMap::new(),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            !html.contains("example__status"),
+            "unexpected status badge: {html}"
+        );
+        assert!(
+            html.contains("<pre><code class=\"language-ts\">"),
+            "missing lang code block: {html}"
         );
     }
 
