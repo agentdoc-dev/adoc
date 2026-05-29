@@ -5,5 +5,7 @@
 //! handles, version strings) belong here too once they outgrow their original
 //! aggregate.
 
+pub(crate) mod lang;
 pub(crate) mod rel_path;
+pub(crate) mod sandbox;
 pub(crate) mod severity;
