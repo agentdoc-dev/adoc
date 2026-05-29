@@ -321,7 +321,7 @@ A **Knowledge Object** representing an ordered sequence of steps (PRD §13.4). R
 _Avoid_: prose passed off as procedure, body that does not start with an ordered list, free-form procedure status, procedures with hidden role requirements
 
 **Example Object**:
-A **Knowledge Object** carrying a code, API, workflow, or usage example (PRD §13.5). Required fields: `id`, `lang` (or `format`), `body`. Verified examples additionally require both `checks` and `sandbox` declarations; V5 does NOT execute the checks. Lives at `domain/knowledge_object/example.rs`.
+A **Knowledge Object** carrying a code, API, workflow, or usage example (PRD §13.5). Required fields: `id`, `lang` (or `format`), `body`. Optional `status` is a closed enum `draft | verified | deprecated` (absent ⇒ unverified); typos reuse `schema.invalid_status`. Verified examples additionally require both `checks` and `sandbox` declarations; here "verified" means *executable-declared* (no **Verification** evidence is involved), and V5 does NOT execute the checks. Lives at `domain/knowledge_object/example.rs`.
 _Avoid_: example without `lang`, verified example without `checks` + `sandbox`, running `checks` from `adoc check` (deferred runtime concern)
 
 **Policy Object**:
