@@ -4,6 +4,7 @@ use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
     KnowledgeObject, Relations,
     claim::Evidence,
+    procedure::ordered_step_marker_len,
     projection::{KnowledgeObjectMetadata, MetadataDiscriminant, MetadataField},
 };
 use crate::domain::url_safety::verdict;
@@ -230,6 +231,9 @@ fn render_knowledge_object(knowledge_object: &KnowledgeObject, html: &mut String
         KnowledgeObject::Constraint(_) => {
             render_constraint(knowledge_object, &metadata, html);
         }
+        KnowledgeObject::Procedure(_) => {
+            render_procedure(knowledge_object, &metadata, html);
+        }
     }
 }
 
@@ -273,6 +277,115 @@ fn render_constraint(
     render_object_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
+}
+
+fn render_procedure(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    render_object_section_open(knowledge_object, "procedure", html);
+    render_object_header(knowledge_object, metadata.discriminant(), html);
+    render_procedure_body(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
+    html.push_str("</section>\n");
+}
+
+/// Render a procedure body as numbered steps. The aggregate guarantees the
+/// body begins with an ordered list (V5.2 strict rule); each ordered-list line
+/// becomes an `<li>` inside a single `<ol>`, and any non-list prose lines
+/// render as paragraphs. The graph stores the body as canonical prose — visual
+/// ordering lives here, in the renderer (V5-DESIGN §V5.2).
+fn render_procedure_body(knowledge_object: &KnowledgeObject, html: &mut String) {
+    html.push_str("<div class=\"procedure__body\">\n");
+
+    let lines = split_inline_lines(knowledge_object.body().inlines());
+    let mut in_list = false;
+    for line in &lines {
+        if line.is_empty() {
+            continue;
+        }
+        match ordered_step_marker_on_line(line) {
+            Some(marker_len) => {
+                if !in_list {
+                    html.push_str("<ol>\n");
+                    in_list = true;
+                }
+                html.push_str("<li>");
+                render_ordered_step_item(line, marker_len, html);
+                html.push_str("</li>\n");
+            }
+            None => {
+                if in_list {
+                    html.push_str("</ol>\n");
+                    in_list = false;
+                }
+                html.push_str("<p>");
+                render_inlines(line, html);
+                html.push_str("</p>\n");
+            }
+        }
+    }
+    if in_list {
+        html.push_str("</ol>\n");
+    }
+
+    html.push_str("</div>\n");
+}
+
+/// Split body inlines into per-line groups. A line break is a newline inside a
+/// `Text` segment (`InlineSegment::Text("\n")` produced by the parser, or an
+/// embedded `\n` in a single-segment body). Inline formatting (code, links,
+/// object refs) within a line is preserved.
+fn split_inline_lines(inlines: &[InlineSegment]) -> Vec<Vec<InlineSegment>> {
+    let mut lines: Vec<Vec<InlineSegment>> = vec![Vec::new()];
+    for segment in inlines {
+        let InlineSegment::Text(text) = segment else {
+            lines
+                .last_mut()
+                .expect("lines is seeded with one group")
+                .push(segment.clone());
+            continue;
+        };
+        let mut parts = text.split('\n');
+        if let Some(first) = parts.next()
+            && !first.is_empty()
+        {
+            lines
+                .last_mut()
+                .expect("lines is seeded with one group")
+                .push(InlineSegment::Text(first.to_string()));
+        }
+        for part in parts {
+            lines.push(Vec::new());
+            if !part.is_empty() {
+                lines
+                    .last_mut()
+                    .expect("a group was just pushed")
+                    .push(InlineSegment::Text(part.to_string()));
+            }
+        }
+    }
+    lines
+}
+
+fn ordered_step_marker_on_line(line: &[InlineSegment]) -> Option<usize> {
+    match line.first() {
+        Some(InlineSegment::Text(text)) => ordered_step_marker_len(text),
+        _ => None,
+    }
+}
+
+fn render_ordered_step_item(line: &[InlineSegment], marker_len: usize, html: &mut String) {
+    let Some((InlineSegment::Text(text), rest)) = line.split_first() else {
+        render_inlines(line, html);
+        return;
+    };
+    let stripped = &text[marker_len..];
+    if !stripped.is_empty() {
+        html.push_str(&escape_html(stripped));
+    }
+    render_inlines(rest, html);
 }
 
 fn severity_discriminant<'a>(metadata: &KnowledgeObjectMetadata<'a>) -> MetadataDiscriminant<'a> {
@@ -400,6 +513,7 @@ fn render_evidence(evidence: &Evidence, html: &mut String) {
         Evidence::Source(_) => "source",
         Evidence::Test(_) => "test",
         Evidence::ReviewedBy(_) => "reviewed-by",
+        Evidence::HumanReview(_) => "human-review",
     };
     html.push_str("<div class=\"claim__evidence-item claim__evidence-item--");
     html.push_str(modifier);
@@ -458,7 +572,9 @@ fn render_object_header(
 
 fn discriminant_field_name(discriminant: MetadataDiscriminant<'_>) -> &'static str {
     match discriminant {
-        MetadataDiscriminant::ClaimStatus(_) | MetadataDiscriminant::DecisionStatus(_) => "status",
+        MetadataDiscriminant::ClaimStatus(_)
+        | MetadataDiscriminant::DecisionStatus(_)
+        | MetadataDiscriminant::ProcedureStatus(_) => "status",
         MetadataDiscriminant::Severity(_) => "severity",
     }
 }
@@ -900,6 +1016,62 @@ mod tests {
         let glossary =
             Glossary::try_new(id, body, fields, span).expect("test glossary must be valid");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Glossary(glossary)))
+    }
+
+    fn make_procedure(
+        id: &str,
+        status: &str,
+        body: &str,
+        fields: std::collections::BTreeMap<String, String>,
+        span: SourceSpan,
+    ) -> BlockAst {
+        use crate::domain::knowledge_object::{KnowledgeObject, procedure::Procedure};
+        let procedure = Procedure::try_new(id, Some(status), body, fields, None, span)
+            .expect("test procedure must be valid");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Procedure(procedure)))
+    }
+
+    #[test]
+    fn procedure_renders_four_numbered_steps_as_ordered_list_in_source_order() {
+        let block = make_procedure(
+            "auth.key.rotate",
+            "draft",
+            "1. Open the console.\n2. Rotate the key.\n3. Redeploy.\n4. Verify health.",
+            std::collections::BTreeMap::new(),
+            dummy_span(),
+        );
+        let mut html = String::new();
+        render_block(&block, &mut html);
+
+        assert!(
+            html.contains("<section class=\"procedure\" id=\"auth.key.rotate\">"),
+            "missing procedure section: {html}"
+        );
+        assert!(
+            html.contains("<span class=\"procedure__status\">draft</span>"),
+            "missing status badge: {html}"
+        );
+
+        let body_start = html.find("<div class=\"procedure__body\">").expect("body");
+        let body = &html[body_start..];
+        let ol = body.find("<ol>").expect("missing <ol>");
+        let close_ol = body.find("</ol>").expect("missing </ol>");
+        let items = body[ol..close_ol].matches("<li>").count();
+        assert_eq!(items, 4, "expected four steps, got {items}: {html}");
+
+        // Steps render in source order with their numeric markers stripped.
+        let one = body.find("<li>Open the console.</li>").expect("step 1");
+        let two = body.find("<li>Rotate the key.</li>").expect("step 2");
+        let three = body.find("<li>Redeploy.</li>").expect("step 3");
+        let four = body.find("<li>Verify health.</li>").expect("step 4");
+        assert!(
+            one < two && two < three && three < four,
+            "wrong order: {html}"
+        );
+        assert!(
+            !body.contains("1. Open"),
+            "ordered-list marker must be stripped: {html}"
+        );
     }
 
     #[test]

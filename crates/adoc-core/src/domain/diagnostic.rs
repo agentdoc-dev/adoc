@@ -36,6 +36,10 @@ pub enum DiagnosticCode {
     SchemaInvalidStatus,
     SchemaConstraintMissingSeverity,
     SchemaConstraintInvalidSeverity,
+    SchemaProcedureMissingStatus,
+    SchemaProcedureMissingBody,
+    SchemaProcedureBodyMustStartWithOrderedList,
+    ProcedureVerifiedMissingEvidence,
     ClaimVerifiedMissingEvidence,
     ClaimStatusCasing,
     LifecycleExpired,
@@ -95,6 +99,10 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaInvalidStatus,
             DiagnosticCode::SchemaConstraintMissingSeverity,
             DiagnosticCode::SchemaConstraintInvalidSeverity,
+            DiagnosticCode::SchemaProcedureMissingStatus,
+            DiagnosticCode::SchemaProcedureMissingBody,
+            DiagnosticCode::SchemaProcedureBodyMustStartWithOrderedList,
+            DiagnosticCode::ProcedureVerifiedMissingEvidence,
             DiagnosticCode::ClaimVerifiedMissingEvidence,
             DiagnosticCode::ClaimStatusCasing,
             DiagnosticCode::LifecycleExpired,
@@ -154,6 +162,14 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaInvalidStatus => "schema.invalid_status",
             DiagnosticCode::SchemaConstraintMissingSeverity => "schema.constraint_missing_severity",
             DiagnosticCode::SchemaConstraintInvalidSeverity => "schema.constraint_invalid_severity",
+            DiagnosticCode::SchemaProcedureMissingStatus => "schema.procedure_missing_status",
+            DiagnosticCode::SchemaProcedureMissingBody => "schema.procedure_missing_body",
+            DiagnosticCode::SchemaProcedureBodyMustStartWithOrderedList => {
+                "schema.procedure_body_must_start_with_ordered_list"
+            }
+            DiagnosticCode::ProcedureVerifiedMissingEvidence => {
+                "procedure.verified_missing_evidence"
+            }
             DiagnosticCode::ClaimVerifiedMissingEvidence => "claim.verified_missing_evidence",
             DiagnosticCode::ClaimStatusCasing => "claim.status_casing",
             DiagnosticCode::LifecycleExpired => "lifecycle.expired",
@@ -238,6 +254,18 @@ impl DiagnosticCode {
             }
             DiagnosticCode::SchemaConstraintInvalidSeverity => {
                 "Use a valid constraint severity: one of low, medium, high, critical."
+            }
+            DiagnosticCode::SchemaProcedureMissingStatus => {
+                "Add a `status` field to the procedure: one of draft, verified, deprecated."
+            }
+            DiagnosticCode::SchemaProcedureMissingBody => {
+                "Add a non-empty body to the procedure describing its ordered steps."
+            }
+            DiagnosticCode::SchemaProcedureBodyMustStartWithOrderedList => {
+                "Begin the procedure body with an ordered list; write the steps as `1. ...`, `2. ...`."
+            }
+            DiagnosticCode::ProcedureVerifiedMissingEvidence => {
+                "Add at least one evidence field (`source`, `human_review`, or `reviewed_by`) before marking the procedure as verified."
             }
             DiagnosticCode::ClaimVerifiedMissingEvidence => {
                 "Add evidence entries before marking the claim as verified."
@@ -405,6 +433,10 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.invalid_status",
     "schema.constraint_missing_severity",
     "schema.constraint_invalid_severity",
+    "schema.procedure_missing_status",
+    "schema.procedure_missing_body",
+    "schema.procedure_body_must_start_with_ordered_list",
+    "procedure.verified_missing_evidence",
     "claim.verified_missing_evidence",
     "claim.status_casing",
     "lifecycle.expired",

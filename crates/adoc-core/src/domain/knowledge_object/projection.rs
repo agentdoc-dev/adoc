@@ -4,6 +4,7 @@ use crate::domain::knowledge_object::{
         ClaimStatus, Evidence, OWNER_FIELD, Owner, VERIFIED_AT_FIELD, Verification, VerifiedAt,
     },
     decision::{DECIDED_BY_FIELD, DecidedBy, DecisionStatus},
+    procedure::ProcedureStatus,
 };
 use crate::domain::value_objects::severity::Severity;
 
@@ -27,6 +28,7 @@ impl<'a> KnowledgeObjectMetadata<'a> {
 pub(crate) enum MetadataDiscriminant<'a> {
     ClaimStatus(&'a ClaimStatus),
     DecisionStatus(&'a DecisionStatus),
+    ProcedureStatus(&'a ProcedureStatus),
     Severity(&'a Severity),
 }
 
@@ -35,6 +37,7 @@ impl<'a> MetadataDiscriminant<'a> {
         match self {
             Self::ClaimStatus(status) => status.as_str(),
             Self::DecisionStatus(status) => status.as_str(),
+            Self::ProcedureStatus(status) => status.as_str(),
             Self::Severity(severity) => severity.as_str(),
         }
     }
@@ -97,6 +100,10 @@ impl KnowledgeObject {
             Self::Warning(warning) => Some(MetadataDiscriminant::Severity(warning.severity())),
             Self::Constraint(constraint) => {
                 Some(MetadataDiscriminant::Severity(constraint.severity()))
+            }
+            Self::Procedure(procedure) => {
+                append_verification_fields(&mut fields, procedure.verification());
+                Some(MetadataDiscriminant::ProcedureStatus(procedure.status()))
             }
         };
 
