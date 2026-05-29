@@ -620,13 +620,16 @@ Goal: introduce the `procedure` Knowledge Object with ordered-step HTML renderin
 Scope:
 
 - New `domain/knowledge_object/procedure.rs` aggregate. Required: `id`, `status`, `body`. Optional: `role_required`, `permissions_required`, `estimated_time`, `environment`, `rollback`, `risks`.
-- New `infrastructure/validate/objects/procedure_required_fields.rs`. `BlockKind::Procedure` variant.
-- Renderer emits the body's ordered-list block(s) as HTML `<ol>` with sequential step numbers; the graph artifact stores body as canonical prose text.
-- Verified procedure rule: `owner` + `verified_at` + at least one evidence field; `human_review` is accepted as evidence.
+- `status` is a closed enum `draft | verified | deprecated` (ADR-0029), mirroring `decision`'s closed `DecisionStatus` rather than claim's free string.
+- Required-field validation is aggregate-owned (mirrors V5.1 `constraint`; the `infrastructure/validate/objects/` directory is still introduced later in V5.6 for the first cross-aggregate rule). `BlockKind::Procedure` variant registered via the `RESOLVERS` table.
+- Renderer emits the body's ordered-list lines as HTML `<ol>` with sequential step numbers; the graph artifact stores body as canonical prose text. A procedure body must begin with an ordered list, else `schema.procedure_body_must_start_with_ordered_list` (ADR-0029, resolving the V5-DESIGN working assumption).
+- Verified procedure rule: `verified` status requires `owner` + `verified_at` + at least one evidence field; evidence is `source`, `human_review`, or `reviewed_by` (the verified-claim rule with `human_review` accepted in place of `test`). The shared `Evidence` value object gains a `HumanReview` variant; claim's accepted evidence set is unchanged.
+- New diagnostics: `schema.procedure_missing_status`, `schema.procedure_missing_body`, `schema.procedure_body_must_start_with_ordered_list`, `procedure.verified_missing_evidence` (invalid status reuses `schema.invalid_status`).
+- Procedure may declare `impacts:` per V3.3.
 
-Acceptance: a procedure with four numbered body steps renders as `<ol><li>...</li></ol>` with four items in source order; graph records `kind: "procedure"` and verified metadata. A procedure missing `status:` exits non-zero with `schema.procedure_missing_status`.
+Acceptance: a procedure with four numbered body steps renders as `<ol><li>...</li></ol>` with four items in source order; graph records `kind: "procedure"` and verified metadata. A procedure missing `status:` exits non-zero with `schema.procedure_missing_status`; a procedure whose body does not start with an ordered list exits non-zero with `schema.procedure_body_must_start_with_ordered_list`.
 
-Deferred: rollback-on-failure semantics, dependent-procedure traversal, V5 Pilot fixture (V5.9).
+Deferred: rollback-on-failure semantics, dependent-procedure traversal, procedure verification re-verify obligations, V5 Pilot fixture (V5.9).
 
 ### V5.3: Example Slice (Declaration-Only)
 

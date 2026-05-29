@@ -482,6 +482,9 @@ All new diagnostic codes are `Severity::Error`. V5 schema rules fail `adoc check
 | V5.1 | `schema.invalid_status` (existing, unchanged) | Warning with severity not in `{critical, high, medium, low}` — warning keeps its existing diagnostic; the Severity extraction is behavior-preserving. A future cleanup may unify warning + constraint severity codes. |
 | V5.2 | `schema.procedure_missing_status` | Procedure block without `status:` |
 | V5.2 | `schema.procedure_missing_body` | Procedure block without body content |
+| V5.2 | `schema.procedure_body_must_start_with_ordered_list` | Procedure body whose first content line is not an ordered-list step (ADR-0029) |
+| V5.2 | `procedure.verified_missing_evidence` | `verified` procedure without any of `source`, `human_review`, `reviewed_by` |
+| V5.2 | `schema.invalid_status` (existing, reused) | Procedure `status:` not in `{draft, verified, deprecated}` |
 | V5.3 | `schema.example_missing_lang` | Example block without `lang:` or `format:` |
 | V5.3 | `schema.example_verified_requires_checks` | Example with `status: verified` and no `checks:` |
 | V5.3 | `schema.example_verified_requires_sandbox` | Example with `status: verified` and no `sandbox:` |
@@ -587,7 +590,7 @@ Frozen by ADRs 0024–0028 and applied to every V5 slice:
 
 These are resolved at slice implementation time, not in this contract:
 
-- Procedure body rendering: whether the renderer detects ordered lists inside arbitrary prose or whether procedure bodies require a top-level ordered list. Working assumption: a procedure body's first content block must be an ordered list; otherwise emit `schema.procedure_body_must_start_with_ordered_list`. Confirm in V5.2.
+- ~~Procedure body rendering: whether the renderer detects ordered lists inside arbitrary prose or whether procedure bodies require a top-level ordered list.~~ **Resolved in V5.2 (ADR-0029):** a procedure body's first content line must be an ordered-list step (`1. ...`); otherwise `schema.procedure_body_must_start_with_ordered_list`. The renderer detects ordered-list lines in the canonical body and emits one `<ol><li>` per step; the body remains flat prose in the graph. `status` is the closed enum `draft | verified | deprecated`, and `verified` accepts `human_review` evidence in place of claim's `test`.
 - Example syntax sugar: whether the body of `::example` blocks supports backtick-fenced code spans inside the body (preserving language) or requires bare code text with `lang:` as the only syntax-binding field. Working assumption: bare body text with `lang:` field is canonical; fenced inner spans are stripped. Confirm in V5.3 against the pilot fixture.
 - Policy `verified` status: PRD §13.12 does not explicitly forbid `verified` policies, but the V5 schema disallows it (`active | proposed | archived | revoked` only). If the V5.4 pilot reveals real demand for `verified` policy semantics, lift to `active + verified` co-status. Default decision: stay narrow.
 - Agent instruction scope grammar: V5.5 starts with a glob string. Whether to upgrade to a structured scope object (per PRD §16.2) is a V6+ question.
