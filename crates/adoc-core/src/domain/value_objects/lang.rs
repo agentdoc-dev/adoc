@@ -7,9 +7,6 @@
 //! letter, ASCII digit, `_`, `+`, `-`. Examples: `ts`, `python`, `c++`,
 //! `objective-c`, `node_18`.
 
-// Not yet referenced by any aggregate; suppressed until the V5.3 wiring step.
-#![allow(dead_code)]
-
 use std::fmt;
 
 use crate::domain::values::trim_ascii_edges;

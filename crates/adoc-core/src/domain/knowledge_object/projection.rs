@@ -4,6 +4,7 @@ use crate::domain::knowledge_object::{
         ClaimStatus, Evidence, OWNER_FIELD, Owner, VERIFIED_AT_FIELD, Verification, VerifiedAt,
     },
     decision::{DECIDED_BY_FIELD, DecidedBy, DecisionStatus},
+    example::{CHECKS_FIELD, ExampleStatus, FORMAT_FIELD, LANG_FIELD, SANDBOX_FIELD},
     procedure::ProcedureStatus,
 };
 use crate::domain::value_objects::severity::Severity;
@@ -29,6 +30,7 @@ pub(crate) enum MetadataDiscriminant<'a> {
     ClaimStatus(&'a ClaimStatus),
     DecisionStatus(&'a DecisionStatus),
     ProcedureStatus(&'a ProcedureStatus),
+    ExampleStatus(&'a ExampleStatus),
     Severity(&'a Severity),
 }
 
@@ -38,6 +40,7 @@ impl<'a> MetadataDiscriminant<'a> {
             Self::ClaimStatus(status) => status.as_str(),
             Self::DecisionStatus(status) => status.as_str(),
             Self::ProcedureStatus(status) => status.as_str(),
+            Self::ExampleStatus(status) => status.as_str(),
             Self::Severity(severity) => severity.as_str(),
         }
     }
@@ -105,6 +108,10 @@ impl KnowledgeObject {
                 append_verification_fields(&mut fields, procedure.verification());
                 Some(MetadataDiscriminant::ProcedureStatus(procedure.status()))
             }
+            Self::Example(example) => {
+                append_example_fields(&mut fields, example);
+                example.status().map(MetadataDiscriminant::ExampleStatus)
+            }
         };
 
         KnowledgeObjectMetadata {
@@ -125,6 +132,36 @@ fn append_verification_fields<'a>(
     fields.push(MetadataField::Owner(verification.owner()));
     fields.push(MetadataField::VerifiedAt(verification.verified_at()));
     fields.extend(verification.evidence().iter().map(MetadataField::Evidence));
+}
+
+fn append_example_fields<'a>(
+    fields: &mut Vec<MetadataField<'a>>,
+    example: &'a crate::domain::knowledge_object::example::Example,
+) {
+    if let Some(lang) = example.lang() {
+        fields.push(MetadataField::Stored {
+            key: LANG_FIELD,
+            value: lang.as_str(),
+        });
+    }
+    if let Some(format) = example.format() {
+        fields.push(MetadataField::Stored {
+            key: FORMAT_FIELD,
+            value: format,
+        });
+    }
+    if let Some(checks) = example.checks() {
+        fields.push(MetadataField::Stored {
+            key: CHECKS_FIELD,
+            value: checks,
+        });
+    }
+    if let Some(sandbox) = example.sandbox() {
+        fields.push(MetadataField::Stored {
+            key: SANDBOX_FIELD,
+            value: sandbox.as_str(),
+        });
+    }
 }
 
 #[cfg(test)]
@@ -359,5 +396,67 @@ mod tests {
             field_entries(&projection),
             vec![entry("owner", "team-billing"), entry("status", "draft")]
         );
+    }
+
+    #[test]
+    fn example_projection_appends_typed_fields_and_maps_status_discriminant() {
+        use crate::domain::knowledge_object::example::Example;
+
+        let object = KnowledgeObject::Example(
+            Example::try_new(
+                "auth.credits.example",
+                Some("draft"),
+                Some("ts"),
+                None,
+                "const x = 1 + 1;",
+                Some("npm test"),
+                Some("node-test"),
+                BTreeMap::new(),
+                span(),
+            )
+            .expect("valid example"),
+        );
+
+        let projection = object.metadata_projection();
+
+        assert_eq!(
+            projection
+                .discriminant()
+                .map(MetadataDiscriminant::value_as_str),
+            Some("draft")
+        );
+        assert_eq!(
+            field_entries(&projection),
+            vec![
+                entry(LANG_FIELD, "ts"),
+                entry(CHECKS_FIELD, "npm test"),
+                entry(SANDBOX_FIELD, "node-test"),
+            ]
+        );
+    }
+
+    #[test]
+    fn example_projection_has_no_discriminant_when_status_absent() {
+        use crate::domain::knowledge_object::example::Example;
+
+        let object = KnowledgeObject::Example(
+            Example::try_new(
+                "auth.credits.example",
+                None,
+                Some("ts"),
+                None,
+                "const x = 1 + 1;",
+                None,
+                None,
+                BTreeMap::new(),
+                span(),
+            )
+            .expect("valid example"),
+        );
+
+        let projection = object.metadata_projection();
+
+        assert_eq!(projection.discriminant(), None);
+        assert_eq!(field_entries(&projection), vec![entry(LANG_FIELD, "ts")]);
     }
 }

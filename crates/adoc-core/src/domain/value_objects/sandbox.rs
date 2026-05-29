@@ -9,9 +9,6 @@
 //! Dots (`.`) are explicitly disallowed.
 //! Examples: `node-test`, `python:bookworm`, `docker:node-test`.
 
-// Not yet referenced by any aggregate; suppressed until the V5.3 wiring step.
-#![allow(dead_code)]
-
 use std::fmt;
 
 use crate::domain::values::trim_ascii_edges;

@@ -9,7 +9,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
 use crate::domain::knowledge_object::{
     BlockKind, KnowledgeObject, claim::Claim, constraint::Constraint, decision::Decision,
-    glossary::Glossary, procedure::Procedure, warning::Warning,
+    example::Example, glossary::Glossary, procedure::Procedure, warning::Warning,
 };
 
 type KnowledgeObjectBuilder = fn(ParsedTypedBlock, &mut Vec<Diagnostic>) -> Option<KnowledgeObject>;
@@ -20,7 +20,7 @@ struct KnowledgeObjectResolver {
 }
 
 const UNKNOWN_KIND_DEFERRED_HELP: &str =
-    "Kinds example, agent, policy, contradiction, source, and custom schemas are deferred.";
+    "Kinds agent, policy, contradiction, source, and custom schemas are deferred.";
 
 const RESOLVERS: &[KnowledgeObjectResolver] = &[
     KnowledgeObjectResolver {
@@ -46,6 +46,10 @@ const RESOLVERS: &[KnowledgeObjectResolver] = &[
     KnowledgeObjectResolver {
         kind: BlockKind::Procedure,
         build: build_procedure,
+    },
+    KnowledgeObjectResolver {
+        kind: BlockKind::Example,
+        build: build_example,
     },
 ];
 
@@ -122,6 +126,13 @@ fn build_procedure(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<KnowledgeObject> {
     Procedure::build_from_parsed(parsed, diagnostics).map(KnowledgeObject::Procedure)
+}
+
+fn build_example(
+    parsed: ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<KnowledgeObject> {
+    Example::build_from_parsed(parsed, diagnostics).map(KnowledgeObject::Example)
 }
 
 fn unknown_kind_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
@@ -246,8 +257,8 @@ mod tests {
 
         assert_eq!(
             help,
-            "supported kinds: claim, decision, glossary, warning, constraint, procedure. Kinds \
-            example, agent, policy, contradiction, source, and custom schemas are deferred."
+            "supported kinds: claim, decision, glossary, warning, constraint, procedure, example. \
+            Kinds agent, policy, contradiction, source, and custom schemas are deferred."
         );
         for kind in BlockKind::ALL {
             assert!(
