@@ -13,6 +13,11 @@ pub(crate) const VERIFIED_AT_FIELD: &str = "verified_at";
 pub(crate) const SOURCE_FIELD: &str = "source";
 pub(crate) const TEST_FIELD: &str = "test";
 pub(crate) const REVIEWED_BY_FIELD: &str = "reviewed_by";
+/// V5.2 evidence field accepted by `verified` procedures (not claims), where a
+/// manual run stands in for an automated `test`. The shared `Evidence` type
+/// carries it so procedures reuse claim's `Verification`; claim's own accepted
+/// evidence set is unchanged.
+pub(crate) const HUMAN_REVIEW_FIELD: &str = "human_review";
 pub(crate) const VERIFIED_STATUS: &str = "verified";
 
 const VERIFIED_CLAIM_HELP: &str = "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`.";
@@ -493,6 +498,9 @@ pub(crate) enum Evidence {
     Source(EvidenceValue),
     Test(EvidenceValue),
     ReviewedBy(EvidenceValue),
+    /// V5.2: a manual run recorded against a `verified` procedure. Produced
+    /// only for procedures; claim verification never constructs this variant.
+    HumanReview(EvidenceValue),
 }
 
 impl Evidence {
@@ -508,17 +516,25 @@ impl Evidence {
         EvidenceValue::try_new(value).map(Self::ReviewedBy)
     }
 
+    pub(crate) fn human_review(value: &str) -> Option<Self> {
+        EvidenceValue::try_new(value).map(Self::HumanReview)
+    }
+
     pub(crate) fn field_key(&self) -> &'static str {
         match self {
             Evidence::Source(_) => SOURCE_FIELD,
             Evidence::Test(_) => TEST_FIELD,
             Evidence::ReviewedBy(_) => REVIEWED_BY_FIELD,
+            Evidence::HumanReview(_) => HUMAN_REVIEW_FIELD,
         }
     }
 
     pub(crate) fn value(&self) -> &EvidenceValue {
         match self {
-            Evidence::Source(value) | Evidence::Test(value) | Evidence::ReviewedBy(value) => value,
+            Evidence::Source(value)
+            | Evidence::Test(value)
+            | Evidence::ReviewedBy(value)
+            | Evidence::HumanReview(value) => value,
         }
     }
 }

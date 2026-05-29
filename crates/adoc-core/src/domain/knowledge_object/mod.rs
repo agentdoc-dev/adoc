@@ -17,6 +17,7 @@ pub(crate) mod decision;
 pub(crate) mod draft;
 pub(crate) mod glossary;
 pub(crate) mod metadata;
+pub(crate) mod procedure;
 pub(crate) mod projection;
 pub(crate) mod warning;
 
@@ -24,6 +25,7 @@ use claim::Claim;
 use constraint::Constraint;
 use decision::Decision;
 use glossary::Glossary;
+use procedure::Procedure;
 use warning::Warning;
 
 pub(super) fn reject_duplicate_fields(
@@ -448,6 +450,7 @@ pub(crate) enum BlockKind {
     Glossary,
     Warning,
     Constraint,
+    Procedure,
 }
 
 impl BlockKind {
@@ -457,6 +460,7 @@ impl BlockKind {
         Self::Glossary,
         Self::Warning,
         Self::Constraint,
+        Self::Procedure,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -466,6 +470,7 @@ impl BlockKind {
             Self::Glossary => "glossary",
             Self::Warning => "warning",
             Self::Constraint => "constraint",
+            Self::Procedure => "procedure",
         }
     }
 
@@ -481,6 +486,7 @@ pub(crate) enum KnowledgeObject {
     Glossary(Glossary),
     Warning(Warning),
     Constraint(Constraint),
+    Procedure(Procedure),
 }
 
 impl KnowledgeObject {
@@ -491,6 +497,7 @@ impl KnowledgeObject {
             Self::Glossary(_) => BlockKind::Glossary,
             Self::Warning(_) => BlockKind::Warning,
             Self::Constraint(_) => BlockKind::Constraint,
+            Self::Procedure(_) => BlockKind::Procedure,
         }
     }
 
@@ -501,6 +508,7 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.id(),
             Self::Warning(warning) => warning.id(),
             Self::Constraint(constraint) => constraint.id(),
+            Self::Procedure(procedure) => procedure.id(),
         }
     }
 
@@ -511,6 +519,7 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.span(),
             Self::Warning(warning) => warning.span(),
             Self::Constraint(constraint) => constraint.span(),
+            Self::Procedure(procedure) => procedure.span(),
         }
     }
 
@@ -521,6 +530,7 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.body(),
             Self::Warning(warning) => warning.body(),
             Self::Constraint(constraint) => constraint.body(),
+            Self::Procedure(procedure) => procedure.body(),
         }
     }
 
@@ -531,6 +541,7 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.body_mut(),
             Self::Warning(warning) => warning.body_mut(),
             Self::Constraint(constraint) => constraint.body_mut(),
+            Self::Procedure(procedure) => procedure.body_mut(),
         }
     }
 
@@ -541,17 +552,19 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.relations(),
             Self::Warning(warning) => warning.relations(),
             Self::Constraint(constraint) => constraint.relations(),
+            Self::Procedure(procedure) => procedure.relations(),
         }
     }
 
     /// V3.3 opt-in `impacts:` list. Empty slice for kinds that do not carry
-    /// this field (`glossary`, `warning`) or for `claim`/`decision`/`constraint`
+    /// this field (`glossary`, `warning`) or for `claim`/`decision`/`constraint`/`procedure`
     /// instances without it.
     pub(crate) fn impacts(&self) -> &[RelPath] {
         match self {
             Self::Claim(claim) => claim.impacts().unwrap_or(&[]),
             Self::Decision(decision) => decision.impacts().unwrap_or(&[]),
             Self::Constraint(constraint) => constraint.impacts().unwrap_or(&[]),
+            Self::Procedure(procedure) => procedure.impacts().unwrap_or(&[]),
             Self::Glossary(_) | Self::Warning(_) => &[],
         }
     }
@@ -563,6 +576,7 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.fields(),
             Self::Warning(warning) => warning.fields(),
             Self::Constraint(constraint) => constraint.fields(),
+            Self::Procedure(procedure) => procedure.fields(),
         }
     }
 }
@@ -672,6 +686,7 @@ mod tests {
         assert_eq!(BlockKind::Glossary.as_str(), "glossary");
         assert_eq!(BlockKind::Warning.as_str(), "warning");
         assert_eq!(BlockKind::Constraint.as_str(), "constraint");
+        assert_eq!(BlockKind::Procedure.as_str(), "procedure");
     }
 
     #[test]
@@ -693,6 +708,10 @@ mod tests {
             BlockKind::from_fence_word("constraint"),
             Some(BlockKind::Constraint)
         );
+        assert_eq!(
+            BlockKind::from_fence_word("procedure"),
+            Some(BlockKind::Procedure)
+        );
         assert_eq!(BlockKind::from_fence_word("fact"), None);
         assert_eq!(BlockKind::from_fence_word("Claim"), None);
     }
@@ -706,7 +725,8 @@ mod tests {
                 BlockKind::Decision,
                 BlockKind::Glossary,
                 BlockKind::Warning,
-                BlockKind::Constraint
+                BlockKind::Constraint,
+                BlockKind::Procedure
             ]
         );
     }
