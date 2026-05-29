@@ -317,8 +317,8 @@ A **Knowledge Object** representing a rule that must remain true (PRD §13.3). R
 _Avoid_: claim that happens to read like a rule, constraint without severity, blanket constraints without a clear violated-when condition
 
 **Procedure Object**:
-A **Knowledge Object** representing an ordered sequence of steps (PRD §13.4). Required fields: `id`, `status`, `body`. Optional: `role_required`, `permissions_required`, `estimated_time`, `environment`, `rollback`, `risks`. The body's ordered-list structure is preserved through to HTML; the **Graph Artifact** stores body as canonical prose text. Lives at `domain/knowledge_object/procedure.rs`.
-_Avoid_: prose passed off as procedure, unordered step lists, procedures with hidden role requirements
+A **Knowledge Object** representing an ordered sequence of steps (PRD §13.4). Required fields: `id`, `status`, `body`. Optional: `role_required`, `permissions_required`, `estimated_time`, `environment`, `rollback`, `risks`. `status` is a closed enum `draft | verified | deprecated` (ADR-0029); a `verified` procedure requires `owner`, `verified_at`, and at least one evidence field — `source`, `human_review`, or `reviewed_by` (the verified-claim rule with `human_review` accepted in place of `test`). The body must begin with an ordered list, else `schema.procedure_body_must_start_with_ordered_list`; the renderer emits it as `<ol>` numbered steps while the **Graph Artifact** stores body as canonical prose text (ADR-0029). Lives at `domain/knowledge_object/procedure.rs`.
+_Avoid_: prose passed off as procedure, body that does not start with an ordered list, free-form procedure status, procedures with hidden role requirements
 
 **Example Object**:
 A **Knowledge Object** carrying a code, API, workflow, or usage example (PRD §13.5). Required fields: `id`, `lang` (or `format`), `body`. Verified examples additionally require both `checks` and `sandbox` declarations; V5 does NOT execute the checks. Lives at `domain/knowledge_object/example.rs`.
