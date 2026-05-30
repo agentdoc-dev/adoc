@@ -70,6 +70,19 @@ pub enum FieldChange {
     ImpactsRemoved {
         path: String,
     },
+    /// V5.4: the `effective_at` date on a policy object changed.
+    EffectiveAt {
+        before: Option<String>,
+        after: Option<String>,
+    },
+    /// V5.4: a new approver appeared in the `approved_by` list on a policy.
+    ApprovedByAdded {
+        value: String,
+    },
+    /// V5.4: an approver that was present in `approved_by` was removed.
+    ApprovedByRemoved {
+        value: String,
+    },
 }
 
 impl FieldChange {
@@ -96,6 +109,9 @@ impl FieldChange {
             FieldChange::RelationRemoved { .. } => "relation removed",
             FieldChange::ImpactsAdded { .. } => "impacts added",
             FieldChange::ImpactsRemoved { .. } => "impacts removed",
+            FieldChange::EffectiveAt { .. } => "effective_at changed",
+            FieldChange::ApprovedByAdded { .. } => "approved_by added",
+            FieldChange::ApprovedByRemoved { .. } => "approved_by removed",
         }
     }
 }
@@ -146,6 +162,14 @@ impl fmt::Display for FieldChange {
             }
             FieldChange::ImpactsAdded { path } => write!(f, "impacts: +{path}"),
             FieldChange::ImpactsRemoved { path } => write!(f, "impacts: -{path}"),
+            FieldChange::EffectiveAt { before, after } => write!(
+                f,
+                "effective_at: {} → {}",
+                optional(before.as_deref()),
+                optional(after.as_deref())
+            ),
+            FieldChange::ApprovedByAdded { value } => write!(f, "approved_by: +{value}"),
+            FieldChange::ApprovedByRemoved { value } => write!(f, "approved_by: -{value}"),
         }
     }
 }
@@ -532,5 +556,109 @@ mod tests {
         let cloned = original.clone();
 
         assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn effective_at_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::EffectiveAt {
+            before: Some("2026-01-01".to_string()),
+            after: None,
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(value["type"], "effective_at");
+        assert_eq!(value["before"], "2026-01-01");
+        assert!(value["after"].is_null());
+    }
+
+    #[test]
+    fn approved_by_added_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::ApprovedByAdded {
+            value: "security-lead".to_string(),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(
+            value,
+            json!({ "type": "approved_by_added", "value": "security-lead" })
+        );
+    }
+
+    #[test]
+    fn approved_by_removed_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::ApprovedByRemoved {
+            value: "old-approver".to_string(),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(
+            value,
+            json!({ "type": "approved_by_removed", "value": "old-approver" })
+        );
+    }
+
+    #[test]
+    fn summary_label_covers_v5_4_policy_variants() {
+        let cases = [
+            (
+                FieldChange::EffectiveAt {
+                    before: None,
+                    after: None,
+                },
+                "effective_at changed",
+            ),
+            (
+                FieldChange::ApprovedByAdded {
+                    value: String::new(),
+                },
+                "approved_by added",
+            ),
+            (
+                FieldChange::ApprovedByRemoved {
+                    value: String::new(),
+                },
+                "approved_by removed",
+            ),
+        ];
+        for (change, expected) in cases {
+            assert_eq!(change.summary_label(), expected);
+        }
+    }
+
+    #[test]
+    fn display_renders_v5_4_policy_variants_in_canonical_form() {
+        assert_eq!(
+            FieldChange::EffectiveAt {
+                before: None,
+                after: Some("2026-06-01".to_string()),
+            }
+            .to_string(),
+            "effective_at: (none) → 2026-06-01"
+        );
+        assert_eq!(
+            FieldChange::EffectiveAt {
+                before: Some("2026-01-01".to_string()),
+                after: Some("2026-06-01".to_string()),
+            }
+            .to_string(),
+            "effective_at: 2026-01-01 → 2026-06-01"
+        );
+        assert_eq!(
+            FieldChange::ApprovedByAdded {
+                value: "security-lead".to_string(),
+            }
+            .to_string(),
+            "approved_by: +security-lead"
+        );
+        assert_eq!(
+            FieldChange::ApprovedByRemoved {
+                value: "old-approver".to_string(),
+            }
+            .to_string(),
+            "approved_by: -old-approver"
+        );
     }
 }

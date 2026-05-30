@@ -18,6 +18,8 @@ use std::collections::BTreeSet;
 use crate::domain::knowledge_object::BlockKind;
 use crate::domain::knowledge_object::metadata::KnowledgeObjectMetadata;
 
+const EFFECTIVE_AT_FIELD: &str = "effective_at";
+
 use super::field_change::{FieldChange, RelationKind};
 use super::object_change::ChangedObject;
 
@@ -109,6 +111,17 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
 
     project_impacts(&mut out, &base.impacts, &head.impacts);
 
+    let base_effective = base.fields.get(EFFECTIVE_AT_FIELD).map(String::as_str);
+    let head_effective = head.fields.get(EFFECTIVE_AT_FIELD).map(String::as_str);
+    if base_effective != head_effective {
+        out.push(FieldChange::EffectiveAt {
+            before: base_effective.map(str::to_string),
+            after: head_effective.map(str::to_string),
+        });
+    }
+
+    project_approved_by(&mut out, &base.approved_by, &head.approved_by);
+
     out
 }
 
@@ -123,6 +136,21 @@ fn project_impacts(out: &mut Vec<FieldChange>, base: &[String], head: &[String])
     for path in base_set.difference(&head_set) {
         out.push(FieldChange::ImpactsRemoved {
             path: (*path).to_string(),
+        });
+    }
+}
+
+fn project_approved_by(out: &mut Vec<FieldChange>, base: &[String], head: &[String]) {
+    let base_set: BTreeSet<&str> = base.iter().map(String::as_str).collect();
+    let head_set: BTreeSet<&str> = head.iter().map(String::as_str).collect();
+    for value in head_set.difference(&base_set) {
+        out.push(FieldChange::ApprovedByAdded {
+            value: (*value).to_string(),
+        });
+    }
+    for value in base_set.difference(&head_set) {
+        out.push(FieldChange::ApprovedByRemoved {
+            value: (*value).to_string(),
         });
     }
 }
@@ -585,6 +613,78 @@ mod tests {
     fn evidence_field_canonical_order_matches_v0_wire_contract() {
         let wire: Vec<&'static str> = EvidenceField::ALL.iter().map(|f| f.as_str()).collect();
         assert_eq!(wire, vec!["source", "test", "reviewed_by"]);
+    }
+
+    #[test]
+    fn effective_at_change_emits_one_effective_at_field_change() {
+        let mut base = baseline("x");
+        base.fields
+            .insert("effective_at".to_string(), "2026-01-01".to_string());
+        let mut head = baseline("x");
+        head.fields
+            .insert("effective_at".to_string(), "2026-06-01".to_string());
+
+        assert_eq!(
+            project_changed(&changed_from(base, head)),
+            vec![FieldChange::EffectiveAt {
+                before: Some("2026-01-01".to_string()),
+                after: Some("2026-06-01".to_string()),
+            }]
+        );
+    }
+
+    #[test]
+    fn effective_at_removal_emits_effective_at_field_change_with_none_after() {
+        let mut base = baseline("x");
+        base.fields
+            .insert("effective_at".to_string(), "2026-01-01".to_string());
+        let head = baseline("x");
+
+        assert_eq!(
+            project_changed(&changed_from(base, head)),
+            vec![FieldChange::EffectiveAt {
+                before: Some("2026-01-01".to_string()),
+                after: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn approved_by_added_when_approver_appears_in_head() {
+        let base = baseline("x");
+        let mut head = baseline("x");
+        head.approved_by = vec!["security-lead".to_string()];
+
+        assert_eq!(
+            project_changed(&changed_from(base, head)),
+            vec![FieldChange::ApprovedByAdded {
+                value: "security-lead".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn approved_by_removed_when_approver_disappears_in_head() {
+        let mut base = baseline("x");
+        base.approved_by = vec!["security-lead".to_string()];
+        let head = baseline("x");
+
+        assert_eq!(
+            project_changed(&changed_from(base, head)),
+            vec![FieldChange::ApprovedByRemoved {
+                value: "security-lead".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn approved_by_reorder_with_same_set_produces_empty_projection() {
+        let mut base = baseline("x");
+        base.approved_by = vec!["approver-b".to_string(), "approver-a".to_string()];
+        let mut head = baseline("x");
+        head.approved_by = vec!["approver-a".to_string(), "approver-b".to_string()];
+
+        assert!(project_changed(&changed_from(base, head)).is_empty());
     }
 
     #[test]
