@@ -18,6 +18,7 @@ mod knowledge_object_body_unsafe_links_forbidden;
 mod knowledge_object_lifecycle;
 mod knowledge_object_unique_ids;
 pub(crate) mod mode_pipeline;
+mod policy_active_approval;
 mod raw_html_forbidden;
 mod unsafe_link_forbidden;
 pub(crate) mod url_walker;
@@ -26,6 +27,7 @@ use chrono::NaiveDate;
 use knowledge_object_body_unsafe_links_forbidden::KnowledgeObjectBodyUnsafeLinksForbidden;
 use knowledge_object_lifecycle::KnowledgeObjectLifecycle;
 use knowledge_object_unique_ids::KnowledgeObjectUniqueIds;
+use policy_active_approval::PolicyActiveApproval;
 use raw_html_forbidden::RawHtmlForbidden;
 use unsafe_link_forbidden::UnsafeLinkForbidden;
 
@@ -56,7 +58,12 @@ pub(crate) fn validate_resolved_page(
     today: NaiveDate,
 ) -> Vec<Diagnostic> {
     let lifecycle = KnowledgeObjectLifecycle::new(today);
-    let rules: [&dyn ValidationRule; 2] = [&KnowledgeObjectBodyUnsafeLinksForbidden, &lifecycle];
+    let policy_active_approval = PolicyActiveApproval::new(today);
+    let rules: [&dyn ValidationRule; 3] = [
+        &KnowledgeObjectBodyUnsafeLinksForbidden,
+        &lifecycle,
+        &policy_active_approval,
+    ];
     validate_page_with_rules(page, source, &rules)
 }
 

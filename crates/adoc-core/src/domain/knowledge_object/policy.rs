@@ -436,7 +436,6 @@ impl PolicyStatus {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn is_active(self) -> bool {
         matches!(self, Self::Active)
     }
