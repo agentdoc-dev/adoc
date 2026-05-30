@@ -80,6 +80,13 @@ pub enum DiagnosticCode {
     PatchPlacementInvalid,
     SchemaImpactsInvalidPath,
     SchemaImpactsEmpty,
+    SchemaPolicyMissingStatus,
+    SchemaPolicyMissingOwner,
+    SchemaPolicyMissingApprovedBy,
+    SchemaPolicyMissingEffectiveAt,
+    SchemaPolicyInvalidEffectiveAt,
+    SchemaPolicyInvalidReviewInterval,
+    SchemaPolicyMissingBody,
     CompatRawHtmlQuarantined,
     CompatUnsafeLinkDropped,
     CompatUnsafeImageSrcDropped,
@@ -148,6 +155,13 @@ impl DiagnosticCode {
             DiagnosticCode::PatchPlacementInvalid,
             DiagnosticCode::SchemaImpactsInvalidPath,
             DiagnosticCode::SchemaImpactsEmpty,
+            DiagnosticCode::SchemaPolicyMissingStatus,
+            DiagnosticCode::SchemaPolicyMissingOwner,
+            DiagnosticCode::SchemaPolicyMissingApprovedBy,
+            DiagnosticCode::SchemaPolicyMissingEffectiveAt,
+            DiagnosticCode::SchemaPolicyInvalidEffectiveAt,
+            DiagnosticCode::SchemaPolicyInvalidReviewInterval,
+            DiagnosticCode::SchemaPolicyMissingBody,
             DiagnosticCode::CompatRawHtmlQuarantined,
             DiagnosticCode::CompatUnsafeLinkDropped,
             DiagnosticCode::CompatUnsafeImageSrcDropped,
@@ -224,6 +238,15 @@ impl DiagnosticCode {
             DiagnosticCode::PatchPlacementInvalid => "patch.placement_invalid",
             DiagnosticCode::SchemaImpactsInvalidPath => "schema.impacts_invalid_path",
             DiagnosticCode::SchemaImpactsEmpty => "schema.impacts_empty",
+            DiagnosticCode::SchemaPolicyMissingStatus => "schema.policy_missing_status",
+            DiagnosticCode::SchemaPolicyMissingOwner => "schema.policy_missing_owner",
+            DiagnosticCode::SchemaPolicyMissingApprovedBy => "schema.policy_missing_approved_by",
+            DiagnosticCode::SchemaPolicyMissingEffectiveAt => "schema.policy_missing_effective_at",
+            DiagnosticCode::SchemaPolicyInvalidEffectiveAt => "schema.policy_invalid_effective_at",
+            DiagnosticCode::SchemaPolicyInvalidReviewInterval => {
+                "schema.policy_invalid_review_interval"
+            }
+            DiagnosticCode::SchemaPolicyMissingBody => "schema.policy_missing_body",
             DiagnosticCode::CompatRawHtmlQuarantined => "compat.raw_html_quarantined",
             DiagnosticCode::CompatUnsafeLinkDropped => "compat.unsafe_link_dropped",
             DiagnosticCode::CompatUnsafeImageSrcDropped => "compat.unsafe_image_src_dropped",
@@ -404,6 +427,27 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaImpactsEmpty => {
                 "Remove the `impacts:` field entirely instead of leaving it empty; impacts must list at least one path."
             }
+            DiagnosticCode::SchemaPolicyMissingStatus => {
+                "Add a `status` field to the policy: one of proposed, active, archived, revoked."
+            }
+            DiagnosticCode::SchemaPolicyMissingOwner => {
+                "Add a non-empty `owner` field to the policy."
+            }
+            DiagnosticCode::SchemaPolicyMissingApprovedBy => {
+                "Add an `approved_by` field listing at least one approver (scalar or `[a, b]` list)."
+            }
+            DiagnosticCode::SchemaPolicyMissingEffectiveAt => {
+                "Add an `effective_at` field in `YYYY-MM-DD` format."
+            }
+            DiagnosticCode::SchemaPolicyInvalidEffectiveAt => {
+                "Use a valid `YYYY-MM-DD` date for `effective_at`."
+            }
+            DiagnosticCode::SchemaPolicyInvalidReviewInterval => {
+                "Use a valid review interval in `[0-9]+d` form for `review_interval` (e.g. `90d`)."
+            }
+            DiagnosticCode::SchemaPolicyMissingBody => {
+                "Add a non-empty body to the policy describing its rules."
+            }
             DiagnosticCode::CompatRawHtmlQuarantined => {
                 "Replace raw HTML with Markdown syntax, or migrate the page to .adoc for strict validation."
             }
@@ -511,6 +555,13 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "patch.placement_invalid",
     "schema.impacts_invalid_path",
     "schema.impacts_empty",
+    "schema.policy_missing_status",
+    "schema.policy_missing_owner",
+    "schema.policy_missing_approved_by",
+    "schema.policy_missing_effective_at",
+    "schema.policy_invalid_effective_at",
+    "schema.policy_invalid_review_interval",
+    "schema.policy_missing_body",
     "compat.raw_html_quarantined",
     "compat.unsafe_link_dropped",
     "compat.unsafe_image_src_dropped",

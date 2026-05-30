@@ -14,7 +14,7 @@ use crate::domain::graph::{
 };
 use crate::domain::inline::{InlineSegment, to_source};
 use crate::domain::knowledge_object::{
-    KnowledgeObject, RelationTarget, Relations, projection::MetadataField,
+    KnowledgeObject, RelationTarget, Relations, policy::Policy, projection::MetadataField,
 };
 use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::ArtifactWriter};
 
@@ -285,6 +285,8 @@ fn knowledge_object_to_graph_node_without_hash(
         .discriminant()
         .map(|discriminant| discriminant.value_as_str().to_string());
 
+    let approved_by = policy_approved_by(knowledge_object);
+
     GraphKnowledgeObjectNode {
         id: knowledge_object.id().as_str().to_string(),
         kind: knowledge_object.kind().as_str().to_string(),
@@ -296,7 +298,24 @@ fn knowledge_object_to_graph_node_without_hash(
         fields: metadata_fields_to_graph(metadata.fields()),
         relations: relations_to_graph(knowledge_object.relations()),
         impacts: impacts_to_graph(knowledge_object.impacts()),
+        approved_by,
     }
+}
+
+fn policy_approved_by(knowledge_object: &KnowledgeObject) -> Vec<String> {
+    let KnowledgeObject::Policy(policy) = knowledge_object else {
+        return Vec::new();
+    };
+    policy_to_approved_by_vec(policy)
+}
+
+fn policy_to_approved_by_vec(policy: &Policy) -> Vec<String> {
+    policy
+        .approved_by()
+        .as_slice()
+        .iter()
+        .map(|a| a.as_str().to_string())
+        .collect()
 }
 
 fn impacts_to_graph(impacts: &[crate::domain::value_objects::rel_path::RelPath]) -> Vec<String> {
@@ -320,6 +339,10 @@ struct KnowledgeObjectHashPayload<'a> {
     /// `impacts:` keep their existing `content_hash`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     impacts: &'a Vec<String>,
+    /// V5.4: omitted from canonical JSON when empty so non-policy nodes keep
+    /// their existing `content_hash`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    approved_by: &'a Vec<String>,
 }
 
 pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNode) -> String {
@@ -333,6 +356,7 @@ pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNod
         fields: &node.fields,
         relations: &node.relations,
         impacts: &node.impacts,
+        approved_by: &node.approved_by,
     };
     let canonical_json =
         serde_json::to_vec(&payload).expect("knowledge object hash payload serializes");

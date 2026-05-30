@@ -266,6 +266,7 @@ mod tests {
             fields,
             relations: GraphRelations::default(),
             impacts: Vec::new(),
+            approved_by: Vec::new(),
         }
     }
 

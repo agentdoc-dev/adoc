@@ -5,10 +5,6 @@
 //! `claim`'s `Owner` field. An approver name may contain spaces, punctuation,
 //! or mixed case (e.g. `"Alice Smith"`, `"security-team"`).
 
-// Not yet wired to any Knowledge Object builder — suppress until the V5.4
-// policy aggregate is added.
-#![allow(dead_code)]
-
 use std::fmt;
 
 use crate::domain::values::NonEmptyText;

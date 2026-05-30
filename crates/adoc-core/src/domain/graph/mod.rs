@@ -144,6 +144,10 @@ pub(crate) struct GraphKnowledgeObjectNode {
     /// without `impacts` remain byte-stable.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) impacts: Vec<String>,
+    /// V5.4 policy approver list. Populated for `policy` nodes only; skipped
+    /// when empty so fixtures for other kinds remain byte-stable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) approved_by: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -639,6 +643,7 @@ mod tests {
                     fields: BTreeMap::new(),
                     relations: GraphRelations::default(),
                     impacts: Vec::new(),
+                    approved_by: Vec::new(),
                 }),
             ],
             edges: Vec::new(),

@@ -5,8 +5,11 @@ use crate::domain::knowledge_object::{
     },
     decision::{DECIDED_BY_FIELD, DecidedBy, DecisionStatus},
     example::{CHECKS_FIELD, ExampleStatus, FORMAT_FIELD, LANG_FIELD, SANDBOX_FIELD},
+    policy::PolicyStatus,
     procedure::ProcedureStatus,
 };
+use crate::domain::value_objects::effective_date::EffectiveDate;
+use crate::domain::value_objects::review_interval::ReviewInterval;
 use crate::domain::value_objects::severity::Severity;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +32,7 @@ impl<'a> KnowledgeObjectMetadata<'a> {
 pub(crate) enum MetadataDiscriminant<'a> {
     ClaimStatus(&'a ClaimStatus),
     DecisionStatus(&'a DecisionStatus),
+    PolicyStatus(&'a PolicyStatus),
     ProcedureStatus(&'a ProcedureStatus),
     ExampleStatus(&'a ExampleStatus),
     Severity(&'a Severity),
@@ -39,6 +43,7 @@ impl<'a> MetadataDiscriminant<'a> {
         match self {
             Self::ClaimStatus(status) => status.as_str(),
             Self::DecisionStatus(status) => status.as_str(),
+            Self::PolicyStatus(status) => status.as_str(),
             Self::ProcedureStatus(status) => status.as_str(),
             Self::ExampleStatus(status) => status.as_str(),
             Self::Severity(severity) => severity.as_str(),
@@ -46,13 +51,26 @@ impl<'a> MetadataDiscriminant<'a> {
     }
 }
 
+const EFFECTIVE_AT_FIELD: &str = "effective_at";
+const REVIEW_INTERVAL_FIELD: &str = "review_interval";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MetadataField<'a> {
-    Stored { key: &'a str, value: &'a str },
+    Stored {
+        key: &'a str,
+        value: &'a str,
+    },
     Owner(&'a Owner),
     VerifiedAt(&'a VerifiedAt),
     Evidence(&'a Evidence),
     DecidedBy(&'a DecidedBy),
+    /// V5.4: policy `effective_at` — borrows the typed value; `value_as_str`
+    /// returns the canonical `YYYY-MM-DD` string stored inside `EffectiveDate`
+    /// without allocation.
+    EffectiveAt(&'a EffectiveDate),
+    /// V5.4: policy `review_interval` — borrows the typed value; `value_as_str`
+    /// returns the `[0-9]+d` string stored inside `ReviewInterval`.
+    ReviewInterval(&'a ReviewInterval),
 }
 
 impl MetadataField<'_> {
@@ -63,6 +81,8 @@ impl MetadataField<'_> {
             Self::VerifiedAt(_) => VERIFIED_AT_FIELD,
             Self::Evidence(evidence) => evidence.field_key(),
             Self::DecidedBy(_) => DECIDED_BY_FIELD,
+            Self::EffectiveAt(_) => EFFECTIVE_AT_FIELD,
+            Self::ReviewInterval(_) => REVIEW_INTERVAL_FIELD,
         }
     }
 
@@ -73,6 +93,8 @@ impl MetadataField<'_> {
             Self::VerifiedAt(verified_at) => verified_at.as_str(),
             Self::Evidence(evidence) => evidence.value().as_str(),
             Self::DecidedBy(decided_by) => decided_by.as_str(),
+            Self::EffectiveAt(effective_at) => effective_at.as_str(),
+            Self::ReviewInterval(review_interval) => review_interval.as_str(),
         }
     }
 }
@@ -103,6 +125,14 @@ impl KnowledgeObject {
             Self::Warning(warning) => Some(MetadataDiscriminant::Severity(warning.severity())),
             Self::Constraint(constraint) => {
                 Some(MetadataDiscriminant::Severity(constraint.severity()))
+            }
+            Self::Policy(policy) => {
+                fields.push(MetadataField::Owner(policy.owner()));
+                fields.push(MetadataField::EffectiveAt(policy.effective_at()));
+                if let Some(ri) = policy.review_interval() {
+                    fields.push(MetadataField::ReviewInterval(ri));
+                }
+                Some(MetadataDiscriminant::PolicyStatus(policy.status()))
             }
             Self::Procedure(procedure) => {
                 append_verification_fields(&mut fields, procedure.verification());

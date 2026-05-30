@@ -182,6 +182,7 @@ mod tests {
             fields,
             relations,
             impacts: Vec::new(),
+            approved_by: Vec::new(),
         }
     }
 
@@ -272,6 +273,7 @@ mod tests {
             fields: BTreeMap::new(),
             relations: GraphRelations::default(),
             impacts: Vec::new(),
+            approved_by: Vec::new(),
         };
 
         let base = constraint_node("sha256:a", "high");

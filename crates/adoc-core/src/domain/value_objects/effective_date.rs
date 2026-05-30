@@ -5,10 +5,6 @@
 //! (e.g. `2026-04-01`). The inner [`chrono::NaiveDate`] is the parsed value,
 //! enabling `<= today` comparisons in validation rules.
 
-// Not yet wired to any Knowledge Object builder — suppress until the V5.4
-// policy aggregate is added.
-#![allow(dead_code)]
-
 use std::fmt;
 
 use chrono::NaiveDate;
@@ -19,9 +15,13 @@ use crate::domain::values::trim_ascii_edges;
 ///
 /// Once constructed the inner value is the parsed [`NaiveDate`]; the canonical
 /// string form is its `YYYY-MM-DD` rendering, which is what [`fmt::Display`]
-/// produces.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EffectiveDate(NaiveDate);
+/// and [`EffectiveDate::as_str`] produce. The canonical string is stored
+/// alongside the date so that `as_str()` returns a `&str` without allocation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EffectiveDate {
+    date: NaiveDate,
+    canonical: String,
+}
 
 /// Why an effective date string failed to parse.
 #[non_exhaustive]
@@ -43,19 +43,23 @@ impl EffectiveDate {
             return Err(EffectiveDateError::Missing);
         }
         NaiveDate::parse_from_str(trimmed, "%Y-%m-%d")
-            .map(Self)
+            .map(|date| Self {
+                canonical: date.format("%Y-%m-%d").to_string(),
+                date,
+            })
             .map_err(|_| EffectiveDateError::Invalid(trimmed.to_string()))
     }
 
-    /// The inner [`NaiveDate`], available for `<= today` comparisons.
-    pub(crate) fn date(&self) -> NaiveDate {
-        self.0
+    /// The canonical `YYYY-MM-DD` string representation, borrowed without
+    /// allocation. Identical to the [`fmt::Display`] output.
+    pub(crate) fn as_str(&self) -> &str {
+        &self.canonical
     }
 }
 
 impl fmt::Display for EffectiveDate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.format("%Y-%m-%d"))
+        f.write_str(&self.canonical)
     }
 }
 
@@ -67,7 +71,7 @@ mod tests {
     fn effective_date_accepts_valid_iso_date() {
         let date = EffectiveDate::try_new("2026-04-01").expect("valid date");
         assert_eq!(date.to_string(), "2026-04-01");
-        assert_eq!(date.date(), NaiveDate::from_ymd_opt(2026, 4, 1).unwrap());
+        assert_eq!(date.as_str(), "2026-04-01");
     }
 
     #[test]
