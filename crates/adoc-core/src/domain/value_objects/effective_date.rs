@@ -55,6 +55,12 @@ impl EffectiveDate {
     pub(crate) fn as_str(&self) -> &str {
         &self.canonical
     }
+
+    /// The inner parsed date value, enabling `<= today` comparisons without
+    /// re-parsing the canonical string.
+    pub(crate) fn date(&self) -> NaiveDate {
+        self.date
+    }
 }
 
 impl fmt::Display for EffectiveDate {
@@ -72,6 +78,12 @@ mod tests {
         let date = EffectiveDate::try_new("2026-04-01").expect("valid date");
         assert_eq!(date.to_string(), "2026-04-01");
         assert_eq!(date.as_str(), "2026-04-01");
+    }
+
+    #[test]
+    fn effective_date_returns_inner_naive_date_via_date_accessor() {
+        let date = EffectiveDate::try_new("2026-04-01").unwrap();
+        assert_eq!(date.date(), NaiveDate::from_ymd_opt(2026, 4, 1).unwrap());
     }
 
     #[test]

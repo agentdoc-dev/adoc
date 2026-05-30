@@ -87,6 +87,7 @@ pub enum DiagnosticCode {
     SchemaPolicyInvalidEffectiveAt,
     SchemaPolicyInvalidReviewInterval,
     SchemaPolicyMissingBody,
+    SchemaPolicyFutureEffectiveAt,
     CompatRawHtmlQuarantined,
     CompatUnsafeLinkDropped,
     CompatUnsafeImageSrcDropped,
@@ -162,6 +163,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaPolicyInvalidEffectiveAt,
             DiagnosticCode::SchemaPolicyInvalidReviewInterval,
             DiagnosticCode::SchemaPolicyMissingBody,
+            DiagnosticCode::SchemaPolicyFutureEffectiveAt,
             DiagnosticCode::CompatRawHtmlQuarantined,
             DiagnosticCode::CompatUnsafeLinkDropped,
             DiagnosticCode::CompatUnsafeImageSrcDropped,
@@ -247,6 +249,7 @@ impl DiagnosticCode {
                 "schema.policy_invalid_review_interval"
             }
             DiagnosticCode::SchemaPolicyMissingBody => "schema.policy_missing_body",
+            DiagnosticCode::SchemaPolicyFutureEffectiveAt => "schema.policy_future_effective_at",
             DiagnosticCode::CompatRawHtmlQuarantined => "compat.raw_html_quarantined",
             DiagnosticCode::CompatUnsafeLinkDropped => "compat.unsafe_link_dropped",
             DiagnosticCode::CompatUnsafeImageSrcDropped => "compat.unsafe_image_src_dropped",
@@ -448,6 +451,9 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaPolicyMissingBody => {
                 "Add a non-empty body to the policy describing its rules."
             }
+            DiagnosticCode::SchemaPolicyFutureEffectiveAt => {
+                "An `active` policy must have an `effective_at` date on or before today."
+            }
             DiagnosticCode::CompatRawHtmlQuarantined => {
                 "Replace raw HTML with Markdown syntax, or migrate the page to .adoc for strict validation."
             }
@@ -562,6 +568,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.policy_invalid_effective_at",
     "schema.policy_invalid_review_interval",
     "schema.policy_missing_body",
+    "schema.policy_future_effective_at",
     "compat.raw_html_quarantined",
     "compat.unsafe_link_dropped",
     "compat.unsafe_image_src_dropped",
