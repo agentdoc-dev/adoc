@@ -22,7 +22,9 @@ use super::impact::ImpactedObject;
 use super::object_change::ChangedObject;
 
 const CLAIM_KIND: &str = "claim";
+const POLICY_KIND: &str = "policy";
 const VERIFIED_STATUS: &str = "verified";
+const ACTIVE_STATUS: &str = "active";
 const NEEDS_REVIEW_STATUS: &str = "needs_review";
 const DRAFT_STATUS: &str = "draft";
 
@@ -36,6 +38,8 @@ pub(crate) const REASON_NEW_OWNER_ACK: &str = "new owner must acknowledge";
 pub(crate) const REASON_REVERIFY_AT_CLEARED: &str = "re-verify (verified_at cleared)";
 pub(crate) const REASON_REVIEW_IMPACT: &str = "review impacted claim";
 pub(crate) const REASON_REEVIDENCE_PREFIX: &str = "re-evidence";
+pub(crate) const REASON_REAPPROVE_EFFECTIVE_AT: &str = "re-approve (effective_at changed)";
+pub(crate) const REASON_REAPPROVE_APPROVER_REMOVED: &str = "re-approve (approver removed)";
 
 /// Dispatch the V3.4 trigger table against one `Changed` entry.
 ///
@@ -116,8 +120,27 @@ fn push_for_field_change(
                 required_evidence: vec![field.clone()],
             });
         }
-        // EvidenceAdded, RelationAdded/Removed, ImpactsAdded/Removed, plus
-        // future non-exhaustive variants — explicitly emit nothing.
+        FieldChange::EffectiveAt { .. } if is_active_policy(head) => {
+            out.push(ProofObligation {
+                object_id: id.to_string(),
+                reason: REASON_REAPPROVE_EFFECTIVE_AT.to_string(),
+                required_evidence: vec![
+                    crate::domain::knowledge_object::APPROVED_BY_FIELD.to_string(),
+                ],
+            });
+        }
+        FieldChange::ApprovedByRemoved { .. } if is_active_policy(head) => {
+            out.push(ProofObligation {
+                object_id: id.to_string(),
+                reason: REASON_REAPPROVE_APPROVER_REMOVED.to_string(),
+                required_evidence: vec![
+                    crate::domain::knowledge_object::APPROVED_BY_FIELD.to_string(),
+                ],
+            });
+        }
+        // EvidenceAdded, ApprovedByAdded, RelationAdded/Removed,
+        // ImpactsAdded/Removed, plus future non-exhaustive variants —
+        // explicitly emit nothing.
         _ => {}
     }
 }
@@ -137,6 +160,10 @@ pub(crate) fn obligations_for_impact(impact: &ImpactedObject) -> Vec<ProofObliga
 
 fn is_verified_claim(node: &GraphKnowledgeObjectNode) -> bool {
     node.kind == CLAIM_KIND && node.status.as_deref() == Some(VERIFIED_STATUS)
+}
+
+fn is_active_policy(node: &GraphKnowledgeObjectNode) -> bool {
+    node.kind == POLICY_KIND && node.status.as_deref() == Some(ACTIVE_STATUS)
 }
 
 fn present_evidence_fields(node: &GraphKnowledgeObjectNode) -> Vec<String> {
@@ -504,6 +531,111 @@ mod tests {
                     target: "billing.old".to_string(),
                 },
             ],
+        );
+
+        assert!(obligations_for_change(&change).is_empty());
+    }
+
+    fn active_policy(id: &str) -> GraphKnowledgeObjectNode {
+        let mut node = test_node(id, "sha256:dummy");
+        node.kind = POLICY_KIND.to_string();
+        node.status = Some(ACTIVE_STATUS.to_string());
+        node
+    }
+
+    fn proposed_policy(id: &str) -> GraphKnowledgeObjectNode {
+        let mut node = test_node(id, "sha256:dummy");
+        node.kind = POLICY_KIND.to_string();
+        node.status = Some("proposed".to_string());
+        node
+    }
+
+    #[test]
+    fn effective_at_change_on_active_policy_emits_reapprove_obligation() {
+        let base = active_policy("security.data-retention");
+        let head = active_policy("security.data-retention");
+        let change = changed_with(
+            "security.data-retention",
+            base,
+            head,
+            vec![FieldChange::EffectiveAt {
+                before: Some("2026-01-01".to_string()),
+                after: Some("2026-06-01".to_string()),
+            }],
+        );
+
+        let obligations = obligations_for_change(&change);
+
+        assert_eq!(obligations.len(), 1);
+        assert_eq!(obligations[0].object_id, "security.data-retention");
+        assert_eq!(obligations[0].reason, REASON_REAPPROVE_EFFECTIVE_AT);
+        assert_eq!(obligations[0].required_evidence, vec!["approved_by"]);
+    }
+
+    #[test]
+    fn approver_removed_from_active_policy_emits_reapprove_obligation() {
+        let base = active_policy("security.data-retention");
+        let head = active_policy("security.data-retention");
+        let change = changed_with(
+            "security.data-retention",
+            base,
+            head,
+            vec![FieldChange::ApprovedByRemoved {
+                value: "security-lead".to_string(),
+            }],
+        );
+
+        let obligations = obligations_for_change(&change);
+
+        assert_eq!(obligations.len(), 1);
+        assert_eq!(obligations[0].reason, REASON_REAPPROVE_APPROVER_REMOVED);
+        assert_eq!(obligations[0].required_evidence, vec!["approved_by"]);
+    }
+
+    #[test]
+    fn approver_added_to_active_policy_emits_no_obligation() {
+        let base = active_policy("security.data-retention");
+        let head = active_policy("security.data-retention");
+        let change = changed_with(
+            "security.data-retention",
+            base,
+            head,
+            vec![FieldChange::ApprovedByAdded {
+                value: "new-approver".to_string(),
+            }],
+        );
+
+        assert!(obligations_for_change(&change).is_empty());
+    }
+
+    #[test]
+    fn effective_at_change_on_non_active_policy_emits_no_obligation() {
+        let base = proposed_policy("security.data-retention");
+        let head = proposed_policy("security.data-retention");
+        let change = changed_with(
+            "security.data-retention",
+            base,
+            head,
+            vec![FieldChange::EffectiveAt {
+                before: Some("2026-01-01".to_string()),
+                after: Some("2026-06-01".to_string()),
+            }],
+        );
+
+        assert!(obligations_for_change(&change).is_empty());
+    }
+
+    #[test]
+    fn approver_removed_from_non_active_policy_emits_no_obligation() {
+        let base = proposed_policy("security.data-retention");
+        let head = proposed_policy("security.data-retention");
+        let change = changed_with(
+            "security.data-retention",
+            base,
+            head,
+            vec![FieldChange::ApprovedByRemoved {
+                value: "security-lead".to_string(),
+            }],
         );
 
         assert!(obligations_for_change(&change).is_empty());

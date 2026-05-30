@@ -11,7 +11,7 @@ use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::values::{Body, NonEmpty};
 
 pub(super) const IMPACTS_FIELD: &str = "impacts";
-pub(super) const APPROVED_BY_FIELD: &str = "approved_by";
+pub(crate) const APPROVED_BY_FIELD: &str = "approved_by";
 
 pub(crate) mod claim;
 pub(crate) mod constraint;
