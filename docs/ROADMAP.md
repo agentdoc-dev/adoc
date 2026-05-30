@@ -43,7 +43,7 @@ Implemented:
 
 Next:
 
-- V5 Expanded Knowledge Model — the design is captured in [V5-DESIGN.md](V5-DESIGN.md). V5.1 (Constraint + Severity foundation + `adoc.graph.v2` → `adoc.graph.v3` bump), V5.2 (Procedure), and V5.3 (Example, declaration-only) are implemented; the next slice is V5.4 (Policy). Closes PRD MVP must-have #4 for the seven object types not yet implemented (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model).
+- V5 Expanded Knowledge Model — the design is captured in [V5-DESIGN.md](V5-DESIGN.md). V5.1 (Constraint + Severity foundation + `adoc.graph.v2` → `adoc.graph.v3` bump), V5.2 (Procedure), V5.3 (Example, declaration-only), and V5.4 (Policy) are implemented; the next slice is V5.5 (Agent Instruction). Closes PRD MVP must-have #4 for the seven object types not yet implemented (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model).
 
 Later:
 
@@ -654,9 +654,9 @@ Scope:
 
 - New `domain/value_objects/approved_by.rs`, `domain/value_objects/effective_date.rs`, `domain/value_objects/review_interval.rs`.
 - New `domain/knowledge_object/policy.rs` aggregate. Required: `id`, `status`, `owner`, `approved_by` (`NonEmpty<ApprovedBy>`), `effective_at`, `body`. Optional: `review_interval`. Supported statuses: `proposed | active | archived | revoked`. **No `verified` status on policy** — policy authority comes from approvers, not verification.
-- New `infrastructure/validate/objects/policy_required_fields.rs` and `infrastructure/validate/objects/policy_active_approval.rs` (active-status requires non-empty `approved_by` and `effective_at <= today`).
-- Renderer emits an approval header block listing approvers and effective date prominently.
-- `FieldChange::EffectiveAt`, `FieldChange::ApprovedByAdded`, `FieldChange::ApprovedByRemoved` added; re-approve obligation triggers on either.
+- Required-field validation is aggregate-owned in `policy.rs` (`schema.policy_missing_*`), mirroring V5.1–V5.3 (ADR-0031); `infrastructure/validate/objects/` stays deferred. The clock-dependent active-status rule lives flat at `infrastructure/validate/policy_active_approval.rs` (`active` requires `effective_at <= today`, else `schema.policy_future_effective_at`), threaded `today` through the existing compile pipeline like `KnowledgeObjectLifecycle`.
+- `approved_by` is authored as a scalar or bracket list; the renderer emits an approval header block listing approvers and effective date prominently, and the graph node carries a dedicated `approved_by` slot.
+- `FieldChange::EffectiveAt`, `FieldChange::ApprovedByAdded`, `FieldChange::ApprovedByRemoved` added; on an `active` policy, an `effective_at` change or an approver removal triggers a re-approve obligation (adding an approver does not — ADR-0031).
 
 Acceptance: an `active` policy with `approved_by: security-lead`, `effective_at: 2026-04-01`, `review_interval: 90d` exits 0; the same policy with `status: active` and no `approved_by:` exits non-zero with `schema.policy_missing_approved_by`.
 
