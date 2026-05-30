@@ -6,10 +6,6 @@
 //! Uppercase (`90D`), bare numbers (`90`), spelled-out suffixes (`90days`), and
 //! embedded spaces (`9 0d`) are all rejected.
 
-// Not yet wired to any Knowledge Object builder — suppress until the V5.4
-// policy aggregate is added.
-#![allow(dead_code)]
-
 use std::fmt;
 
 use crate::domain::values::trim_ascii_edges;

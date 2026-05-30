@@ -6,10 +6,12 @@ use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourcePosition, SourceSpan};
 use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
+use crate::domain::value_objects::approved_by::ApprovedBy;
 use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::values::{Body, NonEmpty};
 
 pub(super) const IMPACTS_FIELD: &str = "impacts";
+pub(super) const APPROVED_BY_FIELD: &str = "approved_by";
 
 pub(crate) mod claim;
 pub(crate) mod constraint;
@@ -18,6 +20,7 @@ pub(crate) mod draft;
 pub(crate) mod example;
 pub(crate) mod glossary;
 pub(crate) mod metadata;
+pub(crate) mod policy;
 pub(crate) mod procedure;
 pub(crate) mod projection;
 pub(crate) mod warning;
@@ -27,6 +30,7 @@ use constraint::Constraint;
 use decision::Decision;
 use example::Example;
 use glossary::Glossary;
+use policy::Policy;
 use procedure::Procedure;
 use warning::Warning;
 
@@ -412,6 +416,102 @@ fn push_impact_segment(
     }
 }
 
+/// Parse the `approved_by:` field into a sorted, deduplicated, non-empty list
+/// of [`ApprovedBy`] values. Accepts both scalar (`approved_by: name`) and
+/// bracket-list (`approved_by: [a, b]`) syntax. Returns `None` when the field
+/// is absent or yields no valid entries after per-segment validation (the
+/// calling aggregate emits [`DiagnosticCode::SchemaPolicyMissingApprovedBy`]
+/// in that case — this helper does NOT emit the missing-field diagnostic).
+pub(super) fn extract_approved_by(
+    parsed: &mut ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<NonEmpty<ApprovedBy>> {
+    let value = parsed.raw_fields.remove(APPROVED_BY_FIELD)?;
+    let value_span = parsed
+        .raw_field_spans
+        .get(APPROVED_BY_FIELD)
+        .cloned()
+        .unwrap_or_else(|| parsed.span.clone());
+
+    let (content_start, content_end) =
+        relation_content_range(parsed, APPROVED_BY_FIELD, &value, &value_span, diagnostics)?;
+
+    let content = &value[content_start..content_end];
+    if content
+        .trim_matches(|c: char| c.is_ascii_whitespace())
+        .is_empty()
+    {
+        return None;
+    }
+
+    let mut approvers: BTreeSet<String> = BTreeSet::new();
+    let mut segment_start = content_start;
+    for (relative_comma_index, _) in content.match_indices(',') {
+        let comma_index = content_start + relative_comma_index;
+        push_approved_by_segment(
+            parsed,
+            &value,
+            segment_start,
+            comma_index,
+            &value_span,
+            &mut approvers,
+            diagnostics,
+            false,
+        );
+        segment_start = comma_index + 1;
+    }
+    push_approved_by_segment(
+        parsed,
+        &value,
+        segment_start,
+        content_end,
+        &value_span,
+        &mut approvers,
+        diagnostics,
+        true,
+    );
+
+    NonEmpty::from_vec(
+        approvers
+            .into_iter()
+            .filter_map(|s| ApprovedBy::try_new(&s))
+            .collect(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_approved_by_segment(
+    parsed: &ParsedTypedBlock,
+    value: &str,
+    start: usize,
+    end: usize,
+    value_span: &SourceSpan,
+    approvers: &mut BTreeSet<String>,
+    diagnostics: &mut Vec<Diagnostic>,
+    is_last: bool,
+) {
+    let raw = &value[start..end];
+    let Some((trimmed, _trimmed_start, _trimmed_end)) = trim_segment(raw) else {
+        if is_last {
+            return;
+        }
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaMissingField,
+                format!(
+                    "empty `approved_by` segment in `{}`; remove the extra comma or fill in the approver",
+                    parsed.id_text
+                ),
+            )
+            .with_span(relation_segment_span(value_span, value, start, end))
+            .with_object_id(&parsed.id_text),
+        );
+        return;
+    };
+
+    approvers.insert(trimmed.to_string());
+}
+
 fn empty_impacts_diagnostic(parsed: &ParsedTypedBlock, value_span: &SourceSpan) -> Diagnostic {
     Diagnostic::error(
         DiagnosticCode::SchemaImpactsEmpty,
@@ -452,6 +552,7 @@ pub(crate) enum BlockKind {
     Glossary,
     Warning,
     Constraint,
+    Policy,
     Procedure,
     Example,
 }
@@ -463,6 +564,7 @@ impl BlockKind {
         Self::Glossary,
         Self::Warning,
         Self::Constraint,
+        Self::Policy,
         Self::Procedure,
         Self::Example,
     ];
@@ -474,6 +576,7 @@ impl BlockKind {
             Self::Glossary => "glossary",
             Self::Warning => "warning",
             Self::Constraint => "constraint",
+            Self::Policy => "policy",
             Self::Procedure => "procedure",
             Self::Example => "example",
         }
@@ -491,6 +594,7 @@ pub(crate) enum KnowledgeObject {
     Glossary(Glossary),
     Warning(Warning),
     Constraint(Constraint),
+    Policy(Policy),
     Procedure(Procedure),
     Example(Example),
 }
@@ -503,6 +607,7 @@ impl KnowledgeObject {
             Self::Glossary(_) => BlockKind::Glossary,
             Self::Warning(_) => BlockKind::Warning,
             Self::Constraint(_) => BlockKind::Constraint,
+            Self::Policy(_) => BlockKind::Policy,
             Self::Procedure(_) => BlockKind::Procedure,
             Self::Example(_) => BlockKind::Example,
         }
@@ -515,6 +620,7 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.id(),
             Self::Warning(warning) => warning.id(),
             Self::Constraint(constraint) => constraint.id(),
+            Self::Policy(policy) => policy.id(),
             Self::Procedure(procedure) => procedure.id(),
             Self::Example(example) => example.id(),
         }
@@ -527,6 +633,7 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.span(),
             Self::Warning(warning) => warning.span(),
             Self::Constraint(constraint) => constraint.span(),
+            Self::Policy(policy) => policy.span(),
             Self::Procedure(procedure) => procedure.span(),
             Self::Example(example) => example.span(),
         }
@@ -539,6 +646,7 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.body(),
             Self::Warning(warning) => warning.body(),
             Self::Constraint(constraint) => constraint.body(),
+            Self::Policy(policy) => policy.body(),
             Self::Procedure(procedure) => procedure.body(),
             Self::Example(example) => example.body(),
         }
@@ -551,6 +659,7 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.body_mut(),
             Self::Warning(warning) => warning.body_mut(),
             Self::Constraint(constraint) => constraint.body_mut(),
+            Self::Policy(policy) => policy.body_mut(),
             Self::Procedure(procedure) => procedure.body_mut(),
             Self::Example(example) => example.body_mut(),
         }
@@ -563,19 +672,20 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.relations(),
             Self::Warning(warning) => warning.relations(),
             Self::Constraint(constraint) => constraint.relations(),
+            Self::Policy(policy) => policy.relations(),
             Self::Procedure(procedure) => procedure.relations(),
             Self::Example(example) => example.relations(),
         }
     }
 
     /// V3.3 opt-in `impacts:` list. Empty slice for kinds that do not carry
-    /// this field (`glossary`, `warning`) or for `claim`/`decision`/`constraint`/`procedure`/`example`
-    /// instances without it.
+    /// this field (`glossary`, `warning`) or for objects without it.
     pub(crate) fn impacts(&self) -> &[RelPath] {
         match self {
             Self::Claim(claim) => claim.impacts().unwrap_or(&[]),
             Self::Decision(decision) => decision.impacts().unwrap_or(&[]),
             Self::Constraint(constraint) => constraint.impacts().unwrap_or(&[]),
+            Self::Policy(policy) => policy.impacts().unwrap_or(&[]),
             Self::Procedure(procedure) => procedure.impacts().unwrap_or(&[]),
             Self::Example(example) => example.impacts().unwrap_or(&[]),
             Self::Glossary(_) | Self::Warning(_) => &[],
@@ -589,6 +699,7 @@ impl KnowledgeObject {
             Self::Glossary(glossary) => glossary.fields(),
             Self::Warning(warning) => warning.fields(),
             Self::Constraint(constraint) => constraint.fields(),
+            Self::Policy(policy) => policy.fields(),
             Self::Procedure(procedure) => procedure.fields(),
             Self::Example(example) => example.fields(),
         }
@@ -608,6 +719,7 @@ mod tests {
     use crate::domain::knowledge_object::decision::{AcceptedVerdict, DecidedBy, Decision};
     use crate::domain::knowledge_object::example::Example;
     use crate::domain::knowledge_object::glossary::Glossary;
+    use crate::domain::knowledge_object::policy::Policy;
     use crate::domain::knowledge_object::procedure::Procedure;
     use crate::domain::knowledge_object::warning::Warning;
 
@@ -695,6 +807,23 @@ mod tests {
         )
     }
 
+    fn policy_object() -> KnowledgeObject {
+        KnowledgeObject::Policy(
+            Policy::try_new(
+                "security.data-retention",
+                "active",
+                "security-lead",
+                vec!["security-lead"],
+                "2026-04-01",
+                None,
+                "Customer data is retained for no more than 365 days.",
+                BTreeMap::from([("audience".to_string(), "all".to_string())]),
+                span("policy.adoc", 19, 1),
+            )
+            .expect("valid policy"),
+        )
+    }
+
     fn procedure_object() -> KnowledgeObject {
         KnowledgeObject::Procedure(
             Procedure::try_new(
@@ -733,6 +862,7 @@ mod tests {
         assert_eq!(BlockKind::Glossary.as_str(), "glossary");
         assert_eq!(BlockKind::Warning.as_str(), "warning");
         assert_eq!(BlockKind::Constraint.as_str(), "constraint");
+        assert_eq!(BlockKind::Policy.as_str(), "policy");
         assert_eq!(BlockKind::Procedure.as_str(), "procedure");
         assert_eq!(BlockKind::Example.as_str(), "example");
     }
@@ -757,6 +887,10 @@ mod tests {
             Some(BlockKind::Constraint)
         );
         assert_eq!(
+            BlockKind::from_fence_word("policy"),
+            Some(BlockKind::Policy)
+        );
+        assert_eq!(
             BlockKind::from_fence_word("procedure"),
             Some(BlockKind::Procedure)
         );
@@ -778,6 +912,7 @@ mod tests {
                 BlockKind::Glossary,
                 BlockKind::Warning,
                 BlockKind::Constraint,
+                BlockKind::Policy,
                 BlockKind::Procedure,
                 BlockKind::Example,
             ]
@@ -848,6 +983,15 @@ mod tests {
                 "constraint.adoc",
                 13,
                 "owner",
+            ),
+            (
+                policy_object(),
+                BlockKind::Policy,
+                "security.data-retention",
+                "Customer data is retained for no more than 365 days.",
+                "policy.adoc",
+                19,
+                "audience",
             ),
             (
                 procedure_object(),

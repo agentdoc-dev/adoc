@@ -17,6 +17,6 @@
       }
     },
     "object_id": "billing.unknown",
-    "help": "supported kinds: claim, decision, glossary, warning, constraint, procedure, example. Kinds agent, policy, contradiction, source, and custom schemas are deferred."
+    "help": "supported kinds: claim, decision, glossary, warning, constraint, policy, procedure, example. Kinds agent, contradiction, source, and custom schemas are deferred."
   }
 ]

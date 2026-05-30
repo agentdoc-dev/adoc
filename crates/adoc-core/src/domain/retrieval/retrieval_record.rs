@@ -202,6 +202,7 @@ mod tests {
                 related_to: Vec::new(),
             },
             impacts: Vec::new(),
+            approved_by: Vec::new(),
         };
 
         let record = RetrievalRecord::from(&object);

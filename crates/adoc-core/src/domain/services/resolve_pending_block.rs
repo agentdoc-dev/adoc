@@ -9,7 +9,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
 use crate::domain::knowledge_object::{
     BlockKind, KnowledgeObject, claim::Claim, constraint::Constraint, decision::Decision,
-    example::Example, glossary::Glossary, procedure::Procedure, warning::Warning,
+    example::Example, glossary::Glossary, policy::Policy, procedure::Procedure, warning::Warning,
 };
 
 type KnowledgeObjectBuilder = fn(ParsedTypedBlock, &mut Vec<Diagnostic>) -> Option<KnowledgeObject>;
@@ -20,7 +20,7 @@ struct KnowledgeObjectResolver {
 }
 
 const UNKNOWN_KIND_DEFERRED_HELP: &str =
-    "Kinds agent, policy, contradiction, source, and custom schemas are deferred.";
+    "Kinds agent, contradiction, source, and custom schemas are deferred.";
 
 const RESOLVERS: &[KnowledgeObjectResolver] = &[
     KnowledgeObjectResolver {
@@ -42,6 +42,10 @@ const RESOLVERS: &[KnowledgeObjectResolver] = &[
     KnowledgeObjectResolver {
         kind: BlockKind::Constraint,
         build: build_constraint,
+    },
+    KnowledgeObjectResolver {
+        kind: BlockKind::Policy,
+        build: build_policy,
     },
     KnowledgeObjectResolver {
         kind: BlockKind::Procedure,
@@ -119,6 +123,13 @@ fn build_constraint(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<KnowledgeObject> {
     Constraint::build_from_parsed(parsed, diagnostics).map(KnowledgeObject::Constraint)
+}
+
+fn build_policy(
+    parsed: ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<KnowledgeObject> {
+    Policy::build_from_parsed(parsed, diagnostics).map(KnowledgeObject::Policy)
 }
 
 fn build_procedure(
@@ -257,8 +268,8 @@ mod tests {
 
         assert_eq!(
             help,
-            "supported kinds: claim, decision, glossary, warning, constraint, procedure, example. \
-            Kinds agent, policy, contradiction, source, and custom schemas are deferred."
+            "supported kinds: claim, decision, glossary, warning, constraint, policy, procedure, example. \
+            Kinds agent, contradiction, source, and custom schemas are deferred."
         );
         for kind in BlockKind::ALL {
             assert!(

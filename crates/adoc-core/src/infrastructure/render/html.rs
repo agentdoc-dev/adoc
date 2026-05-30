@@ -4,6 +4,7 @@ use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
     KnowledgeObject, Relations,
     claim::Evidence,
+    policy::Policy,
     procedure::ordered_step_marker_len,
     projection::{KnowledgeObjectMetadata, MetadataDiscriminant, MetadataField},
 };
@@ -231,6 +232,9 @@ fn render_knowledge_object(knowledge_object: &KnowledgeObject, html: &mut String
         KnowledgeObject::Constraint(_) => {
             render_constraint(knowledge_object, &metadata, html);
         }
+        KnowledgeObject::Policy(_) => {
+            render_policy(knowledge_object, &metadata, html);
+        }
         KnowledgeObject::Procedure(_) => {
             render_procedure(knowledge_object, &metadata, html);
         }
@@ -292,6 +296,43 @@ fn render_procedure(
     render_procedure_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
+}
+
+fn render_policy(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    render_object_section_open(knowledge_object, "policy", html);
+    render_object_header(knowledge_object, metadata.discriminant(), html);
+    render_object_body(knowledge_object, html);
+
+    // Approval block: list effective_at, each approver, and optional review_interval.
+    let KnowledgeObject::Policy(policy) = knowledge_object else {
+        unreachable!("render_policy called with non-policy object");
+    };
+    render_policy_approval(policy, html);
+
+    render_object_metadata(knowledge_object, metadata, html);
+    html.push_str("</section>\n");
+}
+
+fn render_policy_approval(policy: &Policy, html: &mut String) {
+    html.push_str("<div class=\"policy__approval\">\n<dl>\n");
+    html.push_str("<div class=\"policy__approval-item\"><dt>effective_at</dt><dd>");
+    html.push_str(&escape_html(policy.effective_at().as_str()));
+    html.push_str("</dd></div>\n");
+    for approver in policy.approved_by().as_slice() {
+        html.push_str("<div class=\"policy__approval-item\"><dt>approved_by</dt><dd>");
+        html.push_str(&escape_html(approver.as_str()));
+        html.push_str("</dd></div>\n");
+    }
+    if let Some(ri) = policy.review_interval() {
+        html.push_str("<div class=\"policy__approval-item\"><dt>review_interval</dt><dd>");
+        html.push_str(&escape_html(ri.as_str()));
+        html.push_str("</dd></div>\n");
+    }
+    html.push_str("</dl>\n</div>\n");
 }
 
 /// Render a procedure body as numbered steps. The aggregate guarantees the
@@ -629,6 +670,7 @@ fn discriminant_field_name(discriminant: MetadataDiscriminant<'_>) -> &'static s
     match discriminant {
         MetadataDiscriminant::ClaimStatus(_)
         | MetadataDiscriminant::DecisionStatus(_)
+        | MetadataDiscriminant::PolicyStatus(_)
         | MetadataDiscriminant::ProcedureStatus(_)
         | MetadataDiscriminant::ExampleStatus(_) => "status",
         MetadataDiscriminant::Severity(_) => "severity",
