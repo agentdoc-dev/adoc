@@ -249,6 +249,9 @@ fn render_knowledge_object(knowledge_object: &KnowledgeObject, html: &mut String
         KnowledgeObject::Contradiction(_) => {
             render_contradiction(knowledge_object, &metadata, html);
         }
+        KnowledgeObject::Source(_) => {
+            render_source(knowledge_object, &metadata, html);
+        }
     }
 }
 
@@ -335,6 +338,48 @@ fn render_contradiction(
         unreachable!("render_contradiction called with non-contradiction object");
     };
     render_contradiction_claims(contradiction, html);
+
+    render_object_body(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
+    html.push_str("</section>\n");
+}
+
+fn render_source(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    let KnowledgeObject::Source(source) = knowledge_object else {
+        unreachable!("render_source called with non-source object");
+    };
+
+    let kind_str = source.kind().as_str();
+    let class = format!("source source--{kind_str}");
+
+    render_object_section_open(knowledge_object, &class, html);
+
+    // Evidence kind badge.
+    html.push_str("<span class=\"source__kind-badge\">");
+    html.push_str(&escape_html(kind_str));
+    html.push_str("</span>\n");
+
+    render_object_header(knowledge_object, None, html);
+
+    // Path or URL metadata line.
+    html.push_str("<div class=\"source__target\">\n<dl>\n");
+    if let Some(path) = source.path() {
+        html.push_str("<dt>path</dt><dd><code>");
+        html.push_str(&escape_html(path.as_str()));
+        html.push_str("</code></dd>\n");
+    } else if let Some(url) = source.url() {
+        // The `Url` type only allows http, https, and mailto — always safe.
+        html.push_str("<dt>url</dt><dd><a href=\"");
+        html.push_str(&escape_html(url.as_str()));
+        html.push_str("\">");
+        html.push_str(&escape_html(url.as_str()));
+        html.push_str("</a></dd>\n");
+    }
+    html.push_str("</dl>\n</div>\n");
 
     render_object_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);

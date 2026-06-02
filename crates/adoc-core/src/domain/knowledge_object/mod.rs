@@ -25,6 +25,7 @@ pub(crate) mod metadata;
 pub(crate) mod policy;
 pub(crate) mod procedure;
 pub(crate) mod projection;
+pub(crate) mod source;
 pub(crate) mod warning;
 
 use agent_instruction::AgentInstruction;
@@ -36,6 +37,7 @@ use example::Example;
 use glossary::Glossary;
 use policy::Policy;
 use procedure::Procedure;
+use source::Source;
 use warning::Warning;
 
 pub(super) fn reject_duplicate_fields(
@@ -668,6 +670,7 @@ pub(crate) enum BlockKind {
     Example,
     AgentInstruction,
     Contradiction,
+    Source,
 }
 
 impl BlockKind {
@@ -682,6 +685,7 @@ impl BlockKind {
         Self::Example,
         Self::AgentInstruction,
         Self::Contradiction,
+        Self::Source,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -696,6 +700,7 @@ impl BlockKind {
             Self::Example => "example",
             Self::AgentInstruction => "agent_instruction",
             Self::Contradiction => "contradiction",
+            Self::Source => "source",
         }
     }
 
@@ -716,6 +721,7 @@ pub(crate) enum KnowledgeObject {
     Example(Example),
     AgentInstruction(AgentInstruction),
     Contradiction(Contradiction),
+    Source(Source),
 }
 
 impl KnowledgeObject {
@@ -731,6 +737,7 @@ impl KnowledgeObject {
             Self::Example(_) => BlockKind::Example,
             Self::AgentInstruction(_) => BlockKind::AgentInstruction,
             Self::Contradiction(_) => BlockKind::Contradiction,
+            Self::Source(_) => BlockKind::Source,
         }
     }
 
@@ -746,6 +753,7 @@ impl KnowledgeObject {
             Self::Example(example) => example.id(),
             Self::AgentInstruction(ai) => ai.id(),
             Self::Contradiction(contradiction) => contradiction.id(),
+            Self::Source(source) => source.id(),
         }
     }
 
@@ -761,6 +769,7 @@ impl KnowledgeObject {
             Self::Example(example) => example.span(),
             Self::AgentInstruction(ai) => ai.span(),
             Self::Contradiction(contradiction) => contradiction.span(),
+            Self::Source(source) => source.span(),
         }
     }
 
@@ -776,6 +785,7 @@ impl KnowledgeObject {
             Self::Example(example) => example.body(),
             Self::AgentInstruction(ai) => ai.body(),
             Self::Contradiction(contradiction) => contradiction.body(),
+            Self::Source(source) => source.body(),
         }
     }
 
@@ -791,6 +801,7 @@ impl KnowledgeObject {
             Self::Example(example) => example.body_mut(),
             Self::AgentInstruction(ai) => ai.body_mut(),
             Self::Contradiction(contradiction) => contradiction.body_mut(),
+            Self::Source(source) => source.body_mut(),
         }
     }
 
@@ -806,6 +817,7 @@ impl KnowledgeObject {
             Self::Example(example) => example.relations(),
             Self::AgentInstruction(ai) => ai.relations(),
             Self::Contradiction(contradiction) => contradiction.relations(),
+            Self::Source(source) => source.relations(),
         }
     }
 
@@ -823,7 +835,8 @@ impl KnowledgeObject {
             Self::Glossary(_)
             | Self::Warning(_)
             | Self::AgentInstruction(_)
-            | Self::Contradiction(_) => &[],
+            | Self::Contradiction(_)
+            | Self::Source(_) => &[],
         }
     }
 
@@ -839,6 +852,7 @@ impl KnowledgeObject {
             Self::Example(example) => example.fields(),
             Self::AgentInstruction(ai) => ai.fields(),
             Self::Contradiction(contradiction) => contradiction.fields(),
+            Self::Source(source) => source.fields(),
         }
     }
 }
@@ -860,6 +874,7 @@ mod tests {
     use crate::domain::knowledge_object::glossary::Glossary;
     use crate::domain::knowledge_object::policy::Policy;
     use crate::domain::knowledge_object::procedure::Procedure;
+    use crate::domain::knowledge_object::source::Source;
     use crate::domain::knowledge_object::warning::Warning;
 
     fn span(file: &str, line: u32, column: u32) -> SourceSpan {
@@ -1025,6 +1040,21 @@ mod tests {
         )
     }
 
+    fn source_object() -> KnowledgeObject {
+        KnowledgeObject::Source(
+            Source::try_new(
+                "billing.consume-use-case",
+                "source_code",
+                Some("src/features/credits/consume.ts"),
+                None,
+                "Source implementation for credit consumption.",
+                BTreeMap::from([("owner".to_string(), "backend-platform".to_string())]),
+                span("source.adoc", 25, 1),
+            )
+            .expect("valid source"),
+        )
+    }
+
     #[test]
     fn block_kind_labels_match_source_fence_words() {
         assert_eq!(BlockKind::Claim.as_str(), "claim");
@@ -1037,6 +1067,7 @@ mod tests {
         assert_eq!(BlockKind::Example.as_str(), "example");
         assert_eq!(BlockKind::AgentInstruction.as_str(), "agent_instruction");
         assert_eq!(BlockKind::Contradiction.as_str(), "contradiction");
+        assert_eq!(BlockKind::Source.as_str(), "source");
     }
 
     #[test]
@@ -1078,6 +1109,10 @@ mod tests {
             BlockKind::from_fence_word("contradiction"),
             Some(BlockKind::Contradiction)
         );
+        assert_eq!(
+            BlockKind::from_fence_word("source"),
+            Some(BlockKind::Source)
+        );
         assert_eq!(BlockKind::from_fence_word("fact"), None);
         assert_eq!(BlockKind::from_fence_word("Claim"), None);
     }
@@ -1097,6 +1132,7 @@ mod tests {
                 BlockKind::Example,
                 BlockKind::AgentInstruction,
                 BlockKind::Contradiction,
+                BlockKind::Source,
             ]
         );
     }
@@ -1209,6 +1245,15 @@ mod tests {
                 "Claim auth.a conflicts with auth.b.",
                 "contradiction.adoc",
                 23,
+                "owner",
+            ),
+            (
+                source_object(),
+                BlockKind::Source,
+                "billing.consume-use-case",
+                "Source implementation for credit consumption.",
+                "source.adoc",
+                25,
                 "owner",
             ),
         ];

@@ -737,6 +737,144 @@ mod tests {
         assert_eq!(list_node.items, vec!["one".to_string(), "two".to_string()]);
     }
 
+    /// A `source` Knowledge Object graph node must carry `kind: "source"` and
+    /// project the evidence kind + path through the `fields` map.
+    #[test]
+    fn source_knowledge_object_graph_node_has_kind_and_fields() {
+        use crate::domain::diagnostic::{SourcePosition, SourceSpan};
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::source::Source;
+
+        let span = SourceSpan {
+            file: PathBuf::from("docs/source.adoc"),
+            start: SourcePosition {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
+            end: SourcePosition {
+                line: 1,
+                column: 40,
+                offset: 39,
+            },
+        };
+
+        let source = Source::try_new(
+            "billing.consume-use-case",
+            "source_code",
+            Some("src/features/credits/consume.ts"),
+            None,
+            "Source implementation for credit consumption.",
+            std::collections::BTreeMap::new(),
+            span,
+        )
+        .expect("valid source");
+
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("docs.sources").expect("page id"),
+            title: None,
+            source_path: PathBuf::from("docs/sources.adoc"),
+            blocks: vec![BlockAst::KnowledgeObject(Box::new(
+                KnowledgeObject::Source(source),
+            ))],
+        };
+        let workspace = WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build(&workspace, &[]);
+
+        let ko_node = artifact
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                GraphNode::KnowledgeObject(ko) => Some(ko),
+                _ => None,
+            })
+            .expect("source KnowledgeObject graph node must exist");
+
+        assert_eq!(ko_node.kind, "source", "graph node kind must be 'source'");
+        assert_eq!(
+            ko_node.fields.get("kind").map(String::as_str),
+            Some("source_code"),
+            "evidence kind must appear in fields[\"kind\"]"
+        );
+        assert_eq!(
+            ko_node.fields.get("path").map(String::as_str),
+            Some("src/features/credits/consume.ts"),
+            "repo-relative path must appear in fields[\"path\"]"
+        );
+        assert!(
+            ko_node.status.is_none(),
+            "source has no status discriminant"
+        );
+    }
+
+    /// A `source` Knowledge Object graph node with a URL target must carry
+    /// the URL in `fields["url"]`.
+    #[test]
+    fn source_knowledge_object_graph_node_with_url_target() {
+        use crate::domain::diagnostic::{SourcePosition, SourceSpan};
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::source::Source;
+
+        let span = SourceSpan {
+            file: PathBuf::from("docs/source.adoc"),
+            start: SourcePosition {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
+            end: SourcePosition {
+                line: 1,
+                column: 40,
+                offset: 39,
+            },
+        };
+
+        let source = Source::try_new(
+            "billing.pr-ref",
+            "pull_request",
+            None,
+            Some("https://github.com/org/repo/pull/42"),
+            "PR implementing credit consumption.",
+            std::collections::BTreeMap::new(),
+            span,
+        )
+        .expect("valid source with url");
+
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("docs.sources").expect("page id"),
+            title: None,
+            source_path: PathBuf::from("docs/sources.adoc"),
+            blocks: vec![BlockAst::KnowledgeObject(Box::new(
+                KnowledgeObject::Source(source),
+            ))],
+        };
+        let workspace = WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build(&workspace, &[]);
+
+        let ko_node = artifact
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                GraphNode::KnowledgeObject(ko) => Some(ko),
+                _ => None,
+            })
+            .expect("source KnowledgeObject graph node must exist");
+
+        assert_eq!(ko_node.kind, "source");
+        assert_eq!(
+            ko_node.fields.get("kind").map(String::as_str),
+            Some("pull_request")
+        );
+        assert_eq!(
+            ko_node.fields.get("url").map(String::as_str),
+            Some("https://github.com/org/repo/pull/42")
+        );
+        assert!(
+            !ko_node.fields.contains_key("path"),
+            "url-target source must not have a path field"
+        );
+    }
+
     /// A loose list item whose `inlines` is empty (text lives in a child
     /// `Paragraph`) must project to the child text with NO leading space.
     ///
