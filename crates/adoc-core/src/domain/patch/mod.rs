@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphIndex, GraphKnowledgeObjectNode, GraphRelationKind};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
+use crate::domain::knowledge_object::EVIDENCE_REF_FIELD;
 use crate::domain::knowledge_object::draft::{KnowledgeObjectDraft, validate_draft};
 use crate::domain::obligation::ProofObligation;
 
@@ -277,6 +278,67 @@ impl PatchValidator<'_> {
                     format!("field `{key}` requires a non-empty value"),
                 ));
                 continue;
+            }
+            // V5.8 TB5: when the field being updated is `evidence_ref`, resolve
+            // each comma-separated Object ID against the head graph artifact.
+            // On a parse failure we emit an existing validation error and skip
+            // the diff (hard error — the value is syntactically invalid).
+            // On a resolution failure (not found / wrong kind) we emit the
+            // schema diagnostic AND still record the diff: the patch is a
+            // proposal and the diff is part of the record even when the ref is
+            // broken; reviewers need to see what was proposed. This mirrors the
+            // supersede path which records affected_relations even when targets
+            // are stale, and keeps the diff stream consistent with what other
+            // field updates produce.
+            if key == EVIDENCE_REF_FIELD {
+                let mut ref_parse_error = false;
+                for raw_segment in value.split(',') {
+                    let trimmed = raw_segment.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    let ref_id = match ObjectId::new(trimmed.to_string()) {
+                        Ok(id) => id,
+                        Err(_) => {
+                            self.diagnostics
+                                .push(invalid_object_id_diagnostic(trimmed, "evidence_ref target"));
+                            ref_parse_error = true;
+                            continue;
+                        }
+                    };
+                    match self.graph.object(&ref_id) {
+                        None => {
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    DiagnosticCode::SchemaEvidenceTargetNotFound,
+                                    format!(
+                                        "patch for `{target}` references unknown object `{ref_id}` in `evidence_ref`; no object with that id exists in the graph artifact",
+                                    ),
+                                )
+                                .with_object_id(target.as_str()),
+                            );
+                        }
+                        Some(node) if node.kind != "source" => {
+                            let actual_kind = node.kind.clone();
+                            self.diagnostics.push(
+                                Diagnostic::error(
+                                    DiagnosticCode::SchemaEvidenceTargetNotASource,
+                                    format!(
+                                        "patch for `{target}` references `{ref_id}` in `evidence_ref`, but that object is a `{actual_kind}`, not a `source`",
+                                    ),
+                                )
+                                .with_object_id(target.as_str()),
+                            );
+                        }
+                        Some(_) => {} // exists and is a source — OK
+                    }
+                }
+                // Only skip the diff if the value itself was syntactically
+                // invalid (unparseable IDs). Resolution failures still produce
+                // a diff because the proposal is recorded as-is.
+                if ref_parse_error {
+                    continue;
+                }
             }
             let old = object.fields.get(&key).cloned();
             self.diffs
@@ -624,6 +686,30 @@ mod tests {
         }
     }
 
+    fn source_object(id: &str) -> GraphKnowledgeObjectNode {
+        GraphKnowledgeObjectNode {
+            id: id.to_string(),
+            kind: "source".to_string(),
+            content_hash: format!("sha256:{id}"),
+            status: None,
+            body: format!("{id} body."),
+            page_id: "team.page".to_string(),
+            source_span: GraphSourceSpan {
+                path: "docs/team.adoc".to_string(),
+                line: 2,
+                column: 1,
+            },
+            fields: BTreeMap::new(),
+            relations: GraphRelations::default(),
+            impacts: Vec::new(),
+            approved_by: Vec::new(),
+            allowed_actions: Vec::new(),
+            forbidden_actions: Vec::new(),
+            contradiction_claims: Vec::new(),
+            evidence: Vec::new(),
+        }
+    }
+
     fn patch(intent: PatchIntent) -> PatchDocument {
         PatchDocument {
             target: "billing.credits".to_string(),
@@ -870,5 +956,130 @@ mod tests {
             DiagnosticCode::PatchValidationFailed
         );
         assert!(report.diagnostics[0].message.contains("changes.status"));
+    }
+
+    // ── V5.8 TB5: evidence_ref resolution in update_fields ───────────────────
+
+    #[test]
+    fn update_field_evidence_ref_to_existing_source_is_valid_with_diff() {
+        let graph = graph(vec![
+            object("billing.credits", "draft"),
+            source_object("billing.consume-use-case"),
+        ]);
+        let patch = patch(PatchIntent::UpdateFields {
+            base_hash: "sha256:billing.credits".to_string(),
+            fields: BTreeMap::from([(
+                "evidence_ref".to_string(),
+                "billing.consume-use-case".to_string(),
+            )]),
+        });
+
+        let report = validate_patch(&graph, patch);
+
+        assert!(
+            report.valid,
+            "expected valid; diagnostics: {:?}",
+            report.diagnostics
+        );
+        assert!(
+            report.diagnostics.is_empty(),
+            "expected no diagnostics; got: {:?}",
+            report.diagnostics
+        );
+        assert_eq!(report.diffs.len(), 1);
+        assert_eq!(report.diffs[0].field, "fields.evidence_ref");
+    }
+
+    #[test]
+    fn update_field_evidence_ref_to_missing_id_emits_target_not_found() {
+        let graph = graph(vec![object("billing.credits", "draft")]);
+        let patch = patch(PatchIntent::UpdateFields {
+            base_hash: "sha256:billing.credits".to_string(),
+            fields: BTreeMap::from([("evidence_ref".to_string(), "missing.thing".to_string())]),
+        });
+
+        let report = validate_patch(&graph, patch);
+
+        assert!(!report.valid);
+        assert_eq!(
+            report
+                .diagnostics
+                .iter()
+                .filter(|d| d.code == DiagnosticCode::SchemaEvidenceTargetNotFound)
+                .count(),
+            1,
+            "expected exactly one SchemaEvidenceTargetNotFound; got: {:?}",
+            report.diagnostics
+        );
+        // Diff is still recorded even on resolution failure (proposal as-is).
+        assert_eq!(report.diffs.len(), 1);
+        assert_eq!(report.diffs[0].field, "fields.evidence_ref");
+    }
+
+    #[test]
+    fn update_field_evidence_ref_to_wrong_kind_emits_not_a_source() {
+        // billing.credits is a claim; use it as a wrong-kind evidence_ref target.
+        let graph = graph(vec![
+            object("billing.credits", "draft"),
+            object("billing.other-claim", "draft"),
+        ]);
+        // Target is billing.other-claim (kind=claim, not source).
+        let patch_doc = patch(PatchIntent::UpdateFields {
+            base_hash: "sha256:billing.credits".to_string(),
+            fields: BTreeMap::from([(
+                "evidence_ref".to_string(),
+                "billing.other-claim".to_string(),
+            )]),
+        });
+
+        let report = validate_patch(&graph, patch_doc);
+
+        assert!(!report.valid);
+        let not_a_source: Vec<_> = report
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::SchemaEvidenceTargetNotASource)
+            .collect();
+        assert_eq!(
+            not_a_source.len(),
+            1,
+            "expected exactly one SchemaEvidenceTargetNotASource; got: {:?}",
+            report.diagnostics
+        );
+        assert!(
+            not_a_source[0].message.contains("claim"),
+            "message must name the actual kind; got: {}",
+            not_a_source[0].message
+        );
+        // Diff is still recorded.
+        assert_eq!(report.diffs.len(), 1);
+        assert_eq!(report.diffs[0].field, "fields.evidence_ref");
+    }
+
+    #[test]
+    fn update_field_non_evidence_ref_produces_no_new_diagnostics_regression() {
+        // A non-evidence_ref update_fields patch must produce byte-identical
+        // results to before TB5: no evidence diagnostics, diff recorded, valid.
+        let graph = graph(vec![object("billing.credits", "draft")]);
+        let patch = patch(PatchIntent::UpdateFields {
+            base_hash: "sha256:billing.credits".to_string(),
+            fields: BTreeMap::from([("owner".to_string(), "billing-team".to_string())]),
+        });
+
+        let report = validate_patch(&graph, patch);
+
+        assert!(report.valid);
+        assert!(
+            report.diagnostics.is_empty(),
+            "non-evidence field update must produce zero diagnostics; got: {:?}",
+            report.diagnostics
+        );
+        assert_eq!(report.diffs.len(), 1);
+        assert_eq!(report.diffs[0].field, "fields.owner");
+        assert!(report.diffs[0].old.is_none());
+        assert_eq!(
+            report.diffs[0].new,
+            Some(serde_json::Value::String("billing-team".to_string()))
+        );
     }
 }
