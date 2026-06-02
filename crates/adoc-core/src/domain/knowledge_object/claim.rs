@@ -7,6 +7,10 @@ use crate::domain::knowledge_object::Relations;
 use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::values::{Body, NonEmpty, NonEmptyText, OptionalFields, trim_ascii_edges};
 
+// Re-export the V5.8 typed Evidence so that modules that previously imported
+// it from `claim` continue to compile unchanged.
+pub(crate) use crate::domain::value_objects::evidence::Evidence;
+
 pub(crate) const STATUS_FIELD: &str = "status";
 pub(crate) const OWNER_FIELD: &str = "owner";
 pub(crate) const VERIFIED_AT_FIELD: &str = "verified_at";
@@ -272,19 +276,19 @@ fn build_verification(
     let mut evidence = Vec::new();
     if let Some(value) = fields
         .get(SOURCE_FIELD)
-        .and_then(|value| Evidence::source(value))
+        .and_then(|value| Evidence::from_field(SOURCE_FIELD, value))
     {
         evidence.push(value);
     }
     if let Some(value) = fields
         .get(TEST_FIELD)
-        .and_then(|value| Evidence::test(value))
+        .and_then(|value| Evidence::from_field(TEST_FIELD, value))
     {
         evidence.push(value);
     }
     if let Some(value) = fields
         .get(REVIEWED_BY_FIELD)
-        .and_then(|value| Evidence::reviewed_by(value))
+        .and_then(|value| Evidence::from_field(REVIEWED_BY_FIELD, value))
     {
         evidence.push(value);
     }
@@ -493,64 +497,10 @@ impl VerifiedAt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Evidence {
-    Source(EvidenceValue),
-    Test(EvidenceValue),
-    ReviewedBy(EvidenceValue),
-    /// V5.2: a manual run recorded against a `verified` procedure. Produced
-    /// only for procedures; claim verification never constructs this variant.
-    HumanReview(EvidenceValue),
-}
-
-impl Evidence {
-    pub(crate) fn source(value: &str) -> Option<Self> {
-        EvidenceValue::try_new(value).map(Self::Source)
-    }
-
-    pub(crate) fn test(value: &str) -> Option<Self> {
-        EvidenceValue::try_new(value).map(Self::Test)
-    }
-
-    pub(crate) fn reviewed_by(value: &str) -> Option<Self> {
-        EvidenceValue::try_new(value).map(Self::ReviewedBy)
-    }
-
-    pub(crate) fn human_review(value: &str) -> Option<Self> {
-        EvidenceValue::try_new(value).map(Self::HumanReview)
-    }
-
-    pub(crate) fn field_key(&self) -> &'static str {
-        match self {
-            Evidence::Source(_) => SOURCE_FIELD,
-            Evidence::Test(_) => TEST_FIELD,
-            Evidence::ReviewedBy(_) => REVIEWED_BY_FIELD,
-            Evidence::HumanReview(_) => HUMAN_REVIEW_FIELD,
-        }
-    }
-
-    pub(crate) fn value(&self) -> &EvidenceValue {
-        match self {
-            Evidence::Source(value)
-            | Evidence::Test(value)
-            | Evidence::ReviewedBy(value)
-            | Evidence::HumanReview(value) => value,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EvidenceValue(String);
-
-impl EvidenceValue {
-    pub(crate) fn try_new(value: &str) -> Option<Self> {
-        NonEmptyText::try_new(value).map(|value| Self(value.as_str().to_string()))
-    }
-
-    pub(crate) fn as_str(&self) -> &str {
-        &self.0
-    }
-}
+// Evidence and EvidenceValue are now defined in
+// `crate::domain::value_objects::evidence` and re-exported at the top of this
+// module via `pub(crate) use`. The old enum variants (Source/Test/ReviewedBy/
+// HumanReview) and `field_key()` have been removed in V5.8 (TB1).
 
 #[cfg(test)]
 mod tests {
@@ -558,6 +508,7 @@ mod tests {
 
     use super::*;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
+    use crate::domain::value_objects::evidence::EvidenceValue;
 
     fn span() -> SourceSpan {
         SourceSpan {
@@ -1053,19 +1004,25 @@ mod tests {
 
     #[test]
     fn non_empty_preserves_values() {
-        let evidence = NonEmpty::from_vec(vec![Evidence::source("runbook").expect("evidence")])
-            .expect("non-empty evidence");
+        use crate::domain::value_objects::evidence_kind::EvidenceKind;
+        let evidence = NonEmpty::from_vec(vec![
+            Evidence::inline(EvidenceKind::SourceCode, "runbook").expect("evidence"),
+        ])
+        .expect("non-empty evidence");
 
         assert_eq!(evidence.as_slice().len(), 1);
-        assert_eq!(evidence.as_slice()[0].field_key(), SOURCE_FIELD);
+        assert_eq!(evidence.as_slice()[0].kind(), EvidenceKind::SourceCode);
     }
 
     fn verification() -> Verification {
+        use crate::domain::value_objects::evidence_kind::EvidenceKind;
         Verification::new(
             Owner::try_new("team-billing").expect("owner"),
             VerifiedAt::try_new("2026-05-05").expect("verified_at"),
-            NonEmpty::from_vec(vec![Evidence::source("runbook").expect("evidence")])
-                .expect("non-empty evidence"),
+            NonEmpty::from_vec(vec![
+                Evidence::inline(EvidenceKind::SourceCode, "runbook").expect("evidence"),
+            ])
+            .expect("non-empty evidence"),
         )
     }
 }

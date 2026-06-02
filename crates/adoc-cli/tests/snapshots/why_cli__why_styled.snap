@@ -12,9 +12,9 @@ Statement:
   Refund credits are issued from the ledger after approval.
 
 Evidence:
-- source: ledger-export
+- source_code: ledger-export
 - test: cargo test refunds
-- reviewed_by: risk-team
+- human_review: risk-team
 
 Fields:
 - trust: team

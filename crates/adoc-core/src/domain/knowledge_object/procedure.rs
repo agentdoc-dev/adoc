@@ -263,19 +263,19 @@ fn build_verification(
     let mut evidence = Vec::new();
     if let Some(value) = fields
         .get(SOURCE_FIELD)
-        .and_then(|value| Evidence::source(value))
+        .and_then(|value| Evidence::from_field(SOURCE_FIELD, value))
     {
         evidence.push(value);
     }
     if let Some(value) = fields
         .get(HUMAN_REVIEW_FIELD)
-        .and_then(|value| Evidence::human_review(value))
+        .and_then(|value| Evidence::from_field(HUMAN_REVIEW_FIELD, value))
     {
         evidence.push(value);
     }
     if let Some(value) = fields
         .get(REVIEWED_BY_FIELD)
-        .and_then(|value| Evidence::reviewed_by(value))
+        .and_then(|value| Evidence::from_field(REVIEWED_BY_FIELD, value))
     {
         evidence.push(value);
     }
@@ -523,11 +523,13 @@ mod tests {
     }
 
     fn verification() -> Verification {
+        use crate::domain::value_objects::evidence_kind::EvidenceKind;
         Verification::new(
             Owner::try_new("platform-security").expect("owner"),
             VerifiedAt::try_new("2026-05-06").expect("verified_at"),
             NonEmpty::from_vec(vec![
-                Evidence::human_review("ran in staging").expect("human_review"),
+                Evidence::inline(EvidenceKind::HumanReview, "ran in staging")
+                    .expect("human_review"),
             ])
             .expect("non-empty evidence"),
         )

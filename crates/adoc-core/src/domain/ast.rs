@@ -280,8 +280,10 @@ mod tests {
             Some(Verification::new(
                 Owner::try_new("team").expect("owner"),
                 VerifiedAt::try_new("2026-05-05").expect("verified_at"),
-                NonEmpty::from_vec(vec![Evidence::source("source").expect("evidence")])
-                    .expect("non-empty evidence"),
+                NonEmpty::from_vec(vec![
+                    Evidence::from_field("source", "source").expect("evidence"),
+                ])
+                .expect("non-empty evidence"),
             )),
             span(),
         )

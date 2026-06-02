@@ -161,6 +161,19 @@ struct CanonicalKnowledgeObject {
     source_span: CanonicalSourceSpan,
     fields: std::collections::BTreeMap<String, String>,
     relations: CanonicalRelations,
+    /// V5.8: typed evidence array.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    evidence: Vec<CanonicalEvidence>,
+}
+
+/// V5.8: evidence entry in the graph node's `evidence` array.
+#[derive(Debug, Serialize, Deserialize)]
+struct CanonicalEvidence {
+    kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reference: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -265,9 +278,7 @@ fn verified_claim_graph_artifact() -> tempfile::NamedTempFile {
     let mut fields = std::collections::BTreeMap::new();
     fields.insert("owner".to_string(), "team-billing".to_string());
     fields.insert("verified_at".to_string(), "2026-05-05".to_string());
-    fields.insert("source".to_string(), "payments ledger".to_string());
-    fields.insert("test".to_string(), "cargo test billing_credits".to_string());
-    fields.insert("reviewed_by".to_string(), "qa-team".to_string());
+    // V5.8: evidence is in the typed "evidence" array, not in "fields".
     let object = json!({
         "type": "knowledge_object",
         "id": "billing.verified-credits",
@@ -286,7 +297,12 @@ fn verified_claim_graph_artifact() -> tempfile::NamedTempFile {
             "depends_on": [],
             "supersedes": [],
             "related_to": []
-        }
+        },
+        "evidence": [
+            { "kind": "source_code", "value": "payments ledger" },
+            { "kind": "test", "value": "cargo test billing_credits" },
+            { "kind": "human_review", "value": "qa-team" }
+        ]
     });
     write_temp_artifact(
         "verified-claim",
@@ -541,9 +557,12 @@ fn lexical_search_indexes_v0_evidence_fields() {
         "docs/billing.adoc",
         "Credits require review.",
     );
-    object["fields"]["source"] = json!("refund runbook");
-    object["fields"]["test"] = json!("cargo test refunds");
-    object["fields"]["reviewed_by"] = json!("qa-billing");
+    // V5.8: evidence is in the typed evidence array, not fields.
+    object["evidence"] = json!([
+        { "kind": "source_code", "value": "refund runbook" },
+        { "kind": "test", "value": "cargo test refunds" },
+        { "kind": "human_review", "value": "qa-billing" }
+    ]);
     let session = load_session_from_objects(vec![object]);
 
     let result = search(
@@ -566,8 +585,11 @@ fn retrieval_metadata_classification_is_shared_by_filters_records_and_lexical_in
         "Credits require review.",
     );
     object["fields"]["verified_at"] = json!("2026-05-05");
-    object["fields"]["reviewed_by"] = json!("qa-billing");
     object["fields"]["expires_at"] = json!("2026-06-01");
+    // V5.8: evidence is in the typed evidence array.
+    object["evidence"] = json!([
+        { "kind": "human_review", "value": "qa-billing" }
+    ]);
     let session = load_session_from_objects(vec![object]);
 
     let result = search(
@@ -587,8 +609,9 @@ fn retrieval_metadata_classification_is_shared_by_filters_records_and_lexical_in
     let record = &result.records[0];
     assert_eq!(record.owner.as_deref(), Some("team-billing"));
     assert_eq!(record.verified_at.as_deref(), Some("2026-05-05"));
+    // V5.8: reviewed_by maps to human_review EvidenceKind.
     assert_eq!(
-        record.evidence.get("reviewed_by").map(String::as_str),
+        record.evidence.get("human_review").map(String::as_str),
         Some("qa-billing")
     );
     assert_eq!(
@@ -1554,8 +1577,9 @@ fn why_object_returns_record_for_id_in_loaded_graph_artifact() {
         record.source.path,
         "tests/fixtures/claim/valid_verified_claim_with_all_evidence/input.adoc"
     );
+    // V5.8: source maps to source_code EvidenceKind.
     assert_eq!(
-        record.evidence.get("source").map(String::as_str),
+        record.evidence.get("source_code").map(String::as_str),
         Some("payments ledger")
     );
 }

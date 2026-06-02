@@ -46,7 +46,7 @@
   expected_ids: [billing.refunds.audit-required]
   must_appear_in_top: 1
   expected_evidence:
-    source: "refund operations runbook v3"
+    source_code: "refund operations runbook v3"
 
 - name: lexical evidence test query
   query: "cargo test adjustment_requires_reason_code"

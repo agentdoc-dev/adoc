@@ -279,7 +279,8 @@ fn review_main_json_envelope_includes_proof_obligations() {
         .collect();
     assert_eq!(
         re_verify_evidence,
-        vec!["source", "test", "reviewed_by"],
+        // V5.8: EvidenceKind strings.
+        vec!["source_code", "test", "human_review"],
         "V3.4 acceptance: body change on verified claim with three evidence fields"
     );
 
@@ -291,7 +292,8 @@ fn review_main_json_envelope_includes_proof_obligations() {
         .iter()
         .map(|v| v.as_str().expect("evidence is string"))
         .collect();
-    assert_eq!(impact_evidence, vec!["source"]);
+    // V5.8: source evidence is "source_code".
+    assert_eq!(impact_evidence, vec!["source_code"]);
 }
 
 #[test]

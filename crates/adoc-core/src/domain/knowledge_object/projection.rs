@@ -1,3 +1,4 @@
+use crate::domain::graph::GraphEvidence;
 use crate::domain::knowledge_object::{
     KnowledgeObject,
     claim::{
@@ -23,6 +24,10 @@ const URL_FIELD: &str = "url";
 pub(crate) struct KnowledgeObjectMetadata<'a> {
     discriminant: Option<MetadataDiscriminant<'a>>,
     fields: Vec<MetadataField<'a>>,
+    /// V5.8: typed evidence entries, separated from the flat `fields` map.
+    /// These are converted to `GraphEvidence` and stored in
+    /// `GraphKnowledgeObjectNode::evidence` rather than in `fields`.
+    evidence: Vec<&'a Evidence>,
 }
 
 impl<'a> KnowledgeObjectMetadata<'a> {
@@ -32,6 +37,21 @@ impl<'a> KnowledgeObjectMetadata<'a> {
 
     pub(crate) fn fields(&self) -> &[MetadataField<'a>] {
         &self.fields
+    }
+
+    /// The typed evidence entries for this object's verification. Empty for
+    /// non-verified objects. Used by `graph_json.rs` to populate the node's
+    /// `evidence` array.
+    pub(crate) fn evidence(&self) -> &[&'a Evidence] {
+        &self.evidence
+    }
+
+    /// Convert the typed evidence slice to the `GraphEvidence` wire format.
+    pub(crate) fn graph_evidence(&self) -> Vec<GraphEvidence> {
+        self.evidence
+            .iter()
+            .map(|ev| GraphEvidence::inline(ev.kind().as_str(), ev.value().as_str()))
+            .collect()
     }
 }
 
@@ -79,7 +99,6 @@ pub(crate) enum MetadataField<'a> {
     },
     Owner(&'a Owner),
     VerifiedAt(&'a VerifiedAt),
-    Evidence(&'a Evidence),
     DecidedBy(&'a DecidedBy),
     /// V5.4: policy `effective_at` — borrows the typed value; `value_as_str`
     /// returns the canonical `YYYY-MM-DD` string stored inside `EffectiveDate`
@@ -102,7 +121,6 @@ impl MetadataField<'_> {
             Self::Stored { key, .. } => key,
             Self::Owner(_) => OWNER_FIELD,
             Self::VerifiedAt(_) => VERIFIED_AT_FIELD,
-            Self::Evidence(evidence) => evidence.field_key(),
             Self::DecidedBy(_) => DECIDED_BY_FIELD,
             Self::EffectiveAt(_) => EFFECTIVE_AT_FIELD,
             Self::ReviewInterval(_) => REVIEW_INTERVAL_FIELD,
@@ -116,7 +134,6 @@ impl MetadataField<'_> {
             Self::Stored { value, .. } => value,
             Self::Owner(owner) => owner.as_str(),
             Self::VerifiedAt(verified_at) => verified_at.as_str(),
-            Self::Evidence(evidence) => evidence.value().as_str(),
             Self::DecidedBy(decided_by) => decided_by.as_str(),
             Self::EffectiveAt(effective_at) => effective_at.as_str(),
             Self::ReviewInterval(review_interval) => review_interval.as_str(),
@@ -137,9 +154,11 @@ impl KnowledgeObject {
             })
             .collect();
 
+        let mut evidence: Vec<&Evidence> = Vec::new();
+
         let discriminant = match self {
             Self::Claim(claim) => {
-                append_verification_fields(&mut fields, claim.verification());
+                append_verification_fields(&mut fields, &mut evidence, claim.verification());
                 Some(MetadataDiscriminant::ClaimStatus(claim.status()))
             }
             Self::Decision(decision) => {
@@ -162,7 +181,7 @@ impl KnowledgeObject {
                 Some(MetadataDiscriminant::PolicyStatus(policy.status()))
             }
             Self::Procedure(procedure) => {
-                append_verification_fields(&mut fields, procedure.verification());
+                append_verification_fields(&mut fields, &mut evidence, procedure.verification());
                 Some(MetadataDiscriminant::ProcedureStatus(procedure.status()))
             }
             Self::Example(example) => {
@@ -205,12 +224,14 @@ impl KnowledgeObject {
         KnowledgeObjectMetadata {
             discriminant,
             fields,
+            evidence,
         }
     }
 }
 
 fn append_verification_fields<'a>(
     fields: &mut Vec<MetadataField<'a>>,
+    evidence: &mut Vec<&'a Evidence>,
     verification: Option<&'a Verification>,
 ) {
     let Some(verification) = verification else {
@@ -219,7 +240,8 @@ fn append_verification_fields<'a>(
 
     fields.push(MetadataField::Owner(verification.owner()));
     fields.push(MetadataField::VerifiedAt(verification.verified_at()));
-    fields.extend(verification.evidence().iter().map(MetadataField::Evidence));
+    // V5.8: evidence goes to the typed `evidence` vec, NOT into the flat fields map.
+    evidence.extend(verification.evidence().iter());
 }
 
 fn append_example_fields<'a>(
@@ -329,6 +351,8 @@ mod tests {
 
     #[test]
     fn verified_claim_projection_appends_typed_verification_fields_after_stored_fields() {
+        use crate::domain::value_objects::evidence_kind::EvidenceKind;
+
         let object = KnowledgeObject::Claim(
             Claim::try_new(
                 "billing.verified",
@@ -339,9 +363,10 @@ mod tests {
                     Owner::try_new("team-billing").expect("owner"),
                     VerifiedAt::try_new("2026-05-06").expect("verified_at"),
                     NonEmpty::from_vec(vec![
-                        Evidence::source("ledger").expect("source"),
-                        Evidence::test("integration test").expect("test"),
-                        Evidence::reviewed_by("architecture").expect("reviewed_by"),
+                        Evidence::inline(EvidenceKind::SourceCode, "ledger").expect("source"),
+                        Evidence::inline(EvidenceKind::Test, "integration test").expect("test"),
+                        Evidence::inline(EvidenceKind::HumanReview, "architecture")
+                            .expect("reviewed_by"),
                     ])
                     .expect("non-empty evidence"),
                 )),
@@ -358,17 +383,23 @@ mod tests {
                 .map(MetadataDiscriminant::value_as_str),
             Some("verified")
         );
+        // V5.8: evidence is no longer in the flat fields — only stored fields and
+        // owner/verified_at appear here.
         assert_eq!(
             field_entries(&projection),
             vec![
                 entry("audience", "support"),
                 entry("owner", "team-billing"),
                 entry("verified_at", "2026-05-06"),
-                entry("source", "ledger"),
-                entry("test", "integration test"),
-                entry("reviewed_by", "architecture"),
             ]
         );
+        // Evidence is in the typed evidence slice.
+        let ev = projection.evidence();
+        assert_eq!(ev.len(), 3);
+        assert_eq!(ev[0].kind(), EvidenceKind::SourceCode);
+        assert_eq!(ev[0].value().as_str(), "ledger");
+        assert_eq!(ev[1].kind(), EvidenceKind::Test);
+        assert_eq!(ev[2].kind(), EvidenceKind::HumanReview);
     }
 
     #[test]

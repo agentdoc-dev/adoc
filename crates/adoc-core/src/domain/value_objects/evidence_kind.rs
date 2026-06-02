@@ -5,10 +5,6 @@
 //! unknown strings produce [`EvidenceKindError::Invalid`] carrying the offending
 //! value.
 
-// Not yet wired to any Knowledge Object aggregate — suppress until the V5.7
-// source aggregate is added.
-#![allow(dead_code)]
-
 use std::fmt;
 
 use crate::domain::values::trim_ascii_edges;

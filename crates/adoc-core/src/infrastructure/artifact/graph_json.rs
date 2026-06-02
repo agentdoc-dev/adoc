@@ -9,8 +9,9 @@ use crate::application::hashing::sha256_prefixed;
 use crate::domain::ast::{BlockAst, ListKind, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::graph::{
-    GraphArtifactDocument, GraphBlockNode, GraphEdge, GraphEdgeKind, GraphKnowledgeObjectNode,
-    GraphNode, GraphPageNode, GraphRelationKind, GraphRelations, GraphSourceSpan,
+    GraphArtifactDocument, GraphBlockNode, GraphEdge, GraphEdgeKind, GraphEvidence,
+    GraphKnowledgeObjectNode, GraphNode, GraphPageNode, GraphRelationKind, GraphRelations,
+    GraphSourceSpan,
 };
 use crate::domain::inline::{InlineSegment, to_source};
 use crate::domain::knowledge_object::{
@@ -305,6 +306,8 @@ fn knowledge_object_to_graph_node_without_hash(
         allowed_actions,
         forbidden_actions,
         contradiction_claims,
+        // V5.8: typed evidence array replaces flat source/test/reviewed_by fields.
+        evidence: metadata.graph_evidence(),
     }
 }
 
@@ -401,6 +404,10 @@ struct KnowledgeObjectHashPayload<'a> {
     /// keep their existing `content_hash`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     contradiction_claims: &'a Vec<String>,
+    /// V5.8: omitted from canonical JSON when empty so non-verified nodes keep
+    /// their existing `content_hash`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    evidence: &'a Vec<GraphEvidence>,
 }
 
 pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNode) -> String {
@@ -418,6 +425,7 @@ pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNod
         allowed_actions: &node.allowed_actions,
         forbidden_actions: &node.forbidden_actions,
         contradiction_claims: &node.contradiction_claims,
+        evidence: &node.evidence,
     };
     let canonical_json =
         serde_json::to_vec(&payload).expect("knowledge object hash payload serializes");

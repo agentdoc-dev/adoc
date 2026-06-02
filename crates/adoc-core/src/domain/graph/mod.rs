@@ -130,6 +130,36 @@ pub(crate) struct GraphBlockNode {
     pub(crate) source_span: GraphSourceSpan,
 }
 
+/// V5.8 inline evidence entry in the graph node's `evidence` array.
+///
+/// Serialized as `{ "kind": "<snake_case>", "value": "<inline text>" }`.
+/// The optional `reference` field is reserved for TB2 (`ObjectRef` variant)
+/// and is `None` for all inline entries written by TB1.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub(crate) struct GraphEvidence {
+    /// The canonical snake_case [`EvidenceKind`] string, e.g. `"source_code"`.
+    pub(crate) kind: String,
+    /// The inline evidence text value. `None` is reserved for future TB2
+    /// `ObjectRef` entries where the evidence points to another object rather
+    /// than carrying a literal string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) value: Option<String>,
+    /// Reserved for TB2: the object-reference target ID. Always `None` in TB1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) reference: Option<String>,
+}
+
+impl GraphEvidence {
+    /// Construct an inline `GraphEvidence` entry from a kind string and value.
+    pub(crate) fn inline(kind: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            value: Some(value.into()),
+            reference: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) struct GraphKnowledgeObjectNode {
     pub(crate) id: String,
@@ -166,6 +196,10 @@ pub(crate) struct GraphKnowledgeObjectNode {
     /// only; skipped when empty so fixtures for other kinds remain byte-stable.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) contradiction_claims: Vec<String>,
+    /// V5.8 typed evidence array. Replaces flat `source`/`test`/`reviewed_by`
+    /// fields. Skipped when empty so non-verified objects remain byte-stable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) evidence: Vec<GraphEvidence>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -665,6 +699,7 @@ mod tests {
                     allowed_actions: Vec::new(),
                     forbidden_actions: Vec::new(),
                     contradiction_claims: Vec::new(),
+                    evidence: Vec::new(),
                 }),
             ],
             edges: Vec::new(),

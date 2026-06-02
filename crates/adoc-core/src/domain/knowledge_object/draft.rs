@@ -143,18 +143,18 @@ impl DraftValidator<'_> {
             .draft
             .fields
             .get(SOURCE_FIELD)
-            .and_then(|value| Evidence::source(value))
+            .and_then(|value| Evidence::from_field(SOURCE_FIELD, value))
             .or_else(|| {
                 self.draft
                     .fields
                     .get(TEST_FIELD)
-                    .and_then(|value| Evidence::test(value))
+                    .and_then(|value| Evidence::from_field(TEST_FIELD, value))
             })
             .or_else(|| {
                 self.draft
                     .fields
                     .get(REVIEWED_BY_FIELD)
-                    .and_then(|value| Evidence::reviewed_by(value))
+                    .and_then(|value| Evidence::from_field(REVIEWED_BY_FIELD, value))
             })
             .is_some();
 

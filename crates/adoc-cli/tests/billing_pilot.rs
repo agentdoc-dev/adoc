@@ -191,9 +191,12 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
     assert!(why_stdout.contains("Owner: team-billing"));
     assert!(why_stdout.contains("Verified: 2026-05-06"));
     assert!(why_stdout.contains("Evidence:"));
-    assert!(why_stdout.contains("- source: billing service credit application trace 2026-05-05"));
+    // V5.8: evidence keys are now EvidenceKind strings.
+    assert!(
+        why_stdout.contains("- source_code: billing service credit application trace 2026-05-05")
+    );
     assert!(why_stdout.contains("- test: cargo test billing_credit_decrement_after_success"));
-    assert!(why_stdout.contains("- reviewed_by: qa-billing"));
+    assert!(why_stdout.contains("- human_review: qa-billing"));
     assert!(why_stdout.contains("Relations:"));
     assert!(why_stdout.contains("- depends_on: billing.credits.ledger-source"));
 

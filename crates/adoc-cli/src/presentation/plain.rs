@@ -141,15 +141,20 @@ pub(crate) fn has_relations(relations: &RetrievalRelations) -> bool {
 
 /// Appends evidence list items to `output`.  Does not emit a leading blank
 /// line or the `Evidence:` header; the caller owns those.
+///
+/// V5.8: evidence keys are now EvidenceKind strings. The canonical V0-derived
+/// kinds are emitted first in a fixed order; any other kinds follow in sorted
+/// order (BTreeMap iteration).
 pub(crate) fn evidence_items(output: &mut String, record: &RetrievalRecord) {
-    let evidence_fields = ["source", "test", "reviewed_by"];
-    for field in evidence_fields {
+    // V5.8 canonical kind order for the three V0-derived evidence types.
+    let canonical_kinds = ["source_code", "test", "human_review"];
+    for field in canonical_kinds {
         if let Some(value) = record.evidence.get(field) {
             writeln!(output, "- {field}: {value}").expect("writing to String cannot fail");
         }
     }
     for (field, value) in &record.evidence {
-        if !evidence_fields.contains(&field.as_str()) {
+        if !canonical_kinds.contains(&field.as_str()) {
             writeln!(output, "- {field}: {value}").expect("writing to String cannot fail");
         }
     }
@@ -396,6 +401,9 @@ mod tests {
 
     #[test]
     fn plain_presenter_renders_unknown_evidence_keys_after_known_order() {
+        // V5.8: evidence keys are EvidenceKind strings.
+        // canonical_kinds = ["source_code", "test", "human_review"] emitted first;
+        // then remaining keys in BTreeMap order (alphabetical).
         let record = RetrievalRecord {
             id: "billing.credits".to_string(),
             kind: "claim".to_string(),
@@ -411,8 +419,8 @@ mod tests {
             },
             evidence: BTreeMap::from([
                 ("artifact".to_string(), "ledger.csv".to_string()),
-                ("reviewed_by".to_string(), "risk".to_string()),
-                ("source".to_string(), "ledger".to_string()),
+                ("human_review".to_string(), "risk".to_string()),
+                ("source_code".to_string(), "ledger".to_string()),
                 ("z_probe".to_string(), "trace".to_string()),
             ]),
             fields: BTreeMap::new(),
@@ -424,8 +432,8 @@ mod tests {
 
         assert!(text.contains(concat!(
             "Evidence:\n",
-            "- source: ledger\n",
-            "- reviewed_by: risk\n",
+            "- source_code: ledger\n",
+            "- human_review: risk\n",
             "- artifact: ledger.csv\n",
             "- z_probe: trace\n",
         )));

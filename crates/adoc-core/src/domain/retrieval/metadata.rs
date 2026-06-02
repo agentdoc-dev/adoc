@@ -4,7 +4,6 @@ use crate::domain::graph::GraphKnowledgeObjectNode;
 
 pub(crate) const OWNER_FIELD: &str = "owner";
 pub(crate) const VERIFIED_AT_FIELD: &str = "verified_at";
-pub(crate) const EVIDENCE_FIELDS: [&str; 3] = ["source", "test", "reviewed_by"];
 
 pub(crate) fn owner(object: &GraphKnowledgeObjectNode) -> Option<&str> {
     object.fields.get(OWNER_FIELD).map(String::as_str)
@@ -14,34 +13,46 @@ pub(crate) fn verified_at(object: &GraphKnowledgeObjectNode) -> Option<&str> {
     object.fields.get(VERIFIED_AT_FIELD).map(String::as_str)
 }
 
-pub(crate) fn evidence_fields(fields: &BTreeMap<String, String>) -> BTreeMap<String, String> {
-    fields
+/// Returns a `BTreeMap` of evidence entries from the node's typed `evidence`
+/// array. Keys are the EvidenceKind strings (e.g. `"source_code"`, `"test"`,
+/// `"human_review"`); values are the inline text values.
+///
+/// V5.8: evidence is stored in `node.evidence`, not in `node.fields`.
+pub(crate) fn evidence_fields(object: &GraphKnowledgeObjectNode) -> BTreeMap<String, String> {
+    object
+        .evidence
         .iter()
-        .filter(|(key, _)| EVIDENCE_FIELDS.contains(&key.as_str()))
-        .map(|(key, value)| (key.clone(), value.clone()))
+        .filter_map(|entry| {
+            entry
+                .value
+                .as_ref()
+                .map(|v| (entry.kind.clone(), v.clone()))
+        })
         .collect()
 }
 
+/// Returns the "generic" fields — all `node.fields` entries except `owner`
+/// and `verified_at`.
+///
+/// V5.8: evidence no longer lives in `fields`, so the old exclusion of
+/// `source`/`test`/`reviewed_by` keys is no longer needed here.
 pub(crate) fn generic_fields(fields: &BTreeMap<String, String>) -> BTreeMap<String, String> {
     fields
         .iter()
-        .filter(|(key, _)| {
-            key.as_str() != OWNER_FIELD
-                && key.as_str() != VERIFIED_AT_FIELD
-                && !EVIDENCE_FIELDS.contains(&key.as_str())
-        })
+        .filter(|(key, _)| key.as_str() != OWNER_FIELD && key.as_str() != VERIFIED_AT_FIELD)
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect()
 }
 
 pub(crate) fn indexed_field_values(object: &GraphKnowledgeObjectNode) -> Vec<&str> {
     let mut values = Vec::new();
-    if let Some(owner) = owner(object) {
-        values.push(owner);
+    if let Some(o) = owner(object) {
+        values.push(o);
     }
-    for field in EVIDENCE_FIELDS {
-        if let Some(value) = object.fields.get(field) {
-            values.push(value.as_str());
+    // Index evidence values for search (by inline text).
+    for entry in &object.evidence {
+        if let Some(v) = &entry.value {
+            values.push(v.as_str());
         }
     }
     values
@@ -68,7 +79,9 @@ fn normalized_embedding_body(body: &str) -> String {
 mod tests {
     use std::collections::BTreeMap;
 
-    use crate::domain::graph::{GraphKnowledgeObjectNode, GraphRelations, GraphSourceSpan};
+    use crate::domain::graph::{
+        GraphEvidence, GraphKnowledgeObjectNode, GraphRelations, GraphSourceSpan,
+    };
 
     use super::*;
 
@@ -78,6 +91,7 @@ mod tests {
         status: Option<&str>,
         body: &str,
         fields: BTreeMap<String, String>,
+        evidence: Vec<GraphEvidence>,
     ) -> GraphKnowledgeObjectNode {
         GraphKnowledgeObjectNode {
             id: id.to_string(),
@@ -98,6 +112,7 @@ mod tests {
             allowed_actions: Vec::new(),
             forbidden_actions: Vec::new(),
             contradiction_claims: Vec::new(),
+            evidence,
         }
     }
 
@@ -109,6 +124,7 @@ mod tests {
             None,
             "Credits balance.",
             BTreeMap::new(),
+            Vec::new(),
         );
 
         assert_eq!(
@@ -125,6 +141,7 @@ mod tests {
             Some("draft"),
             "See [[billing.ledger]]",
             BTreeMap::from([("owner".to_string(), "team-billing".to_string())]),
+            Vec::new(),
         );
 
         assert_eq!(
@@ -141,11 +158,66 @@ mod tests {
             Some("plain"),
             " First line\r\nSecond line\r ",
             BTreeMap::new(),
+            Vec::new(),
         );
 
         assert_eq!(
             embedding_input(&object),
             "claim: First line\nSecond line\n[id: billing.newline] [status: plain] [owner: unknown]"
         );
+    }
+
+    #[test]
+    fn evidence_fields_extracts_inline_values_from_evidence_array() {
+        let ev = vec![
+            GraphEvidence::inline("source_code", "ledger"),
+            GraphEvidence::inline("test", "cargo test billing"),
+            GraphEvidence::inline("human_review", "qa-team"),
+        ];
+        let object = object("claim", "billing.credits", None, "", BTreeMap::new(), ev);
+
+        let evidence = evidence_fields(&object);
+        assert_eq!(
+            evidence.get("source_code").map(String::as_str),
+            Some("ledger")
+        );
+        assert_eq!(
+            evidence.get("test").map(String::as_str),
+            Some("cargo test billing")
+        );
+        assert_eq!(
+            evidence.get("human_review").map(String::as_str),
+            Some("qa-team")
+        );
+    }
+
+    #[test]
+    fn generic_fields_excludes_owner_and_verified_at_only() {
+        let fields = BTreeMap::from([
+            ("owner".to_string(), "team-billing".to_string()),
+            ("verified_at".to_string(), "2026-05-05".to_string()),
+            ("audience".to_string(), "support".to_string()),
+        ]);
+        let object = object("claim", "billing.x", None, "", fields, Vec::new());
+        let generic = generic_fields(&object.fields);
+
+        assert!(!generic.contains_key("owner"));
+        assert!(!generic.contains_key("verified_at"));
+        assert_eq!(generic.get("audience").map(String::as_str), Some("support"));
+    }
+
+    #[test]
+    fn indexed_field_values_includes_owner_and_evidence_values() {
+        let fields = BTreeMap::from([("owner".to_string(), "team-billing".to_string())]);
+        let ev = vec![
+            GraphEvidence::inline("source_code", "ledger"),
+            GraphEvidence::inline("test", "integration"),
+        ];
+        let object = object("claim", "billing.x", None, "", fields, ev);
+        let values = indexed_field_values(&object);
+
+        assert!(values.contains(&"team-billing"));
+        assert!(values.contains(&"ledger"));
+        assert!(values.contains(&"integration"));
     }
 }

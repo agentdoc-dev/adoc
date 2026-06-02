@@ -263,6 +263,7 @@ mod tests {
             allowed_actions: Vec::new(),
             forbidden_actions: Vec::new(),
             contradiction_claims: Vec::new(),
+            evidence: Vec::new(),
         }
     }
 

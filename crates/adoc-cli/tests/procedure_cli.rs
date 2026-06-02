@@ -116,13 +116,18 @@ fn build_renders_ordered_steps_and_emits_procedure_into_graph_v3() {
         "1. Open the secrets console.\n2. Rotate the signing key.\n3. Redeploy the auth service.\n4. Verify the health endpoint."
     );
     assert_eq!(procedure["impacts"][0], "crates/auth/src/key.rs");
-    // Verified metadata is recorded on the node fields.
+    // Verified metadata: owner and verified_at remain in fields.
     assert_eq!(procedure["fields"]["owner"], "platform-security");
     assert_eq!(procedure["fields"]["verified_at"], "2026-05-06");
-    assert_eq!(
-        procedure["fields"]["human_review"],
-        "ran end-to-end in staging"
-    );
+    // V5.8: evidence is now in the typed evidence array (human_review maps to EvidenceKind::HumanReview).
+    let evidence = procedure["evidence"]
+        .as_array()
+        .expect("procedure has evidence array");
+    let human_review = evidence
+        .iter()
+        .find(|e| e["kind"] == "human_review")
+        .expect("human_review evidence entry present");
+    assert_eq!(human_review["value"], "ran end-to-end in staging");
 }
 
 #[test]

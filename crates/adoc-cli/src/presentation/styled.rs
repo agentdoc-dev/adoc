@@ -115,9 +115,10 @@ fn render_styled_record(output: &mut String, presentation_record: &PresentationR
     if has_evidence(record) {
         output.push('\n');
         writeln!(output, "{}", faint_label("Evidence:")).expect("writing to String cannot fail");
-        // Known keys rendered first in a fixed order, then any remaining keys
-        // in BTreeMap (alphabetical) order — mirrors plain::evidence_items.
-        let known = ["source", "test", "reviewed_by"];
+        // V5.8: canonical V0-derived kinds emitted first in a fixed order,
+        // then any remaining kinds in BTreeMap (alphabetical) order —
+        // mirrors plain::evidence_items.
+        let known = ["source_code", "test", "human_review"];
         for field in known {
             if let Some(value) = record.evidence.get(field) {
                 writeln!(output, "- {}: {value}", cyan_key(field))
@@ -457,7 +458,7 @@ mod tests {
                 line: 1,
                 column: 1,
             },
-            evidence: BTreeMap::from([("source".to_string(), "ledger".to_string())]),
+            evidence: BTreeMap::from([("source_code".to_string(), "ledger".to_string())]),
             fields: BTreeMap::from([("scope".to_string(), "credits".to_string())]),
             relations: RetrievalRelations {
                 depends_on: vec!["billing.ledger".to_string()],
@@ -488,7 +489,8 @@ mod tests {
 
         // Stripped text must still read as plain layout.
         let stripped = strip_ansi(&raw);
-        assert!(stripped.contains("Evidence:\n- source: ledger\n"));
+        // V5.8: evidence key is now "source_code".
+        assert!(stripped.contains("Evidence:\n- source_code: ledger\n"));
         assert!(stripped.contains("Fields:\n- scope: credits\n"));
         assert!(stripped.contains("Relations:\n- depends_on: billing.ledger\n"));
     }
@@ -720,10 +722,11 @@ mod tests {
                 line: 1,
                 column: 1,
             },
+            // V5.8: evidence keys are EvidenceKind strings.
             evidence: BTreeMap::from([
-                ("source".to_string(), "ledger".to_string()),
+                ("source_code".to_string(), "ledger".to_string()),
                 ("test".to_string(), "cargo test credits".to_string()),
-                ("reviewed_by".to_string(), "risk".to_string()),
+                ("human_review".to_string(), "risk".to_string()),
             ]),
             fields: BTreeMap::new(),
             relations: RetrievalRelations::default(),
@@ -734,23 +737,23 @@ mod tests {
 
         // Each known key must appear cyan-wrapped followed by colon.
         assert!(
-            raw.contains("\u{1b}[38;2;100;220;255msource\u{1b}[39m:"),
-            "evidence 'source' key must be cyan; raw={raw:?}"
+            raw.contains("\u{1b}[38;2;100;220;255msource_code\u{1b}[39m:"),
+            "evidence 'source_code' key must be cyan; raw={raw:?}"
         );
         assert!(
             raw.contains("\u{1b}[38;2;100;220;255mtest\u{1b}[39m:"),
             "evidence 'test' key must be cyan; raw={raw:?}"
         );
         assert!(
-            raw.contains("\u{1b}[38;2;100;220;255mreviewed_by\u{1b}[39m:"),
-            "evidence 'reviewed_by' key must be cyan; raw={raw:?}"
+            raw.contains("\u{1b}[38;2;100;220;255mhuman_review\u{1b}[39m:"),
+            "evidence 'human_review' key must be cyan; raw={raw:?}"
         );
 
         // Visible text (stripped) must preserve the plain layout (no extra indent).
         let stripped = strip_ansi(&raw);
-        assert!(stripped.contains("- source: ledger\n"));
+        assert!(stripped.contains("- source_code: ledger\n"));
         assert!(stripped.contains("- test: cargo test credits\n"));
-        assert!(stripped.contains("- reviewed_by: risk\n"));
+        assert!(stripped.contains("- human_review: risk\n"));
     }
 
     /// Custom evidence keys (not in the known set) must also be cyan-wrapped.

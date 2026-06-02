@@ -161,7 +161,7 @@ impl RetrievalRecord {
                 line: object.source_span.line,
                 column: object.source_span.column,
             },
-            evidence: metadata::evidence_fields(&object.fields),
+            evidence: metadata::evidence_fields(object),
             fields: metadata::generic_fields(&object.fields),
             relations: RetrievalRelations::from_graph(&object.relations),
             search_match,
@@ -172,7 +172,7 @@ impl RetrievalRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::graph::{GraphRelations, GraphSourceSpan};
+    use crate::domain::graph::{GraphEvidence, GraphRelations, GraphSourceSpan};
 
     #[test]
     fn retrieval_record_projects_graph_object_metadata() {
@@ -190,10 +190,7 @@ mod tests {
             },
             fields: BTreeMap::from([
                 ("owner".to_string(), "team-billing".to_string()),
-                ("reviewed_by".to_string(), "qa-team".to_string()),
-                ("source".to_string(), "ledger".to_string()),
                 ("status".to_string(), "domain-extra".to_string()),
-                ("test".to_string(), "cargo test billing".to_string()),
                 ("verified_at".to_string(), "2026-05-05".to_string()),
             ]),
             relations: GraphRelations {
@@ -206,18 +203,24 @@ mod tests {
             allowed_actions: Vec::new(),
             forbidden_actions: Vec::new(),
             contradiction_claims: Vec::new(),
+            evidence: vec![
+                GraphEvidence::inline("source_code", "ledger"),
+                GraphEvidence::inline("test", "cargo test billing"),
+                GraphEvidence::inline("human_review", "qa-team"),
+            ],
         };
 
         let record = RetrievalRecord::from(&object);
 
         assert_eq!(record.owner.as_deref(), Some("team-billing"));
         assert_eq!(record.verified_at.as_deref(), Some("2026-05-05"));
+        // V5.8: evidence is now keyed by EvidenceKind string.
         assert_eq!(
-            record.evidence.get("source").map(String::as_str),
+            record.evidence.get("source_code").map(String::as_str),
             Some("ledger")
         );
         assert_eq!(
-            record.evidence.get("reviewed_by").map(String::as_str),
+            record.evidence.get("human_review").map(String::as_str),
             Some("qa-team")
         );
         assert_eq!(
