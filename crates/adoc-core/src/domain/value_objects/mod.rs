@@ -8,6 +8,8 @@
 pub(crate) mod action;
 pub(crate) mod action_set;
 pub(crate) mod approved_by;
+pub(crate) mod contradiction_claims;
+pub(crate) mod contradiction_status;
 pub(crate) mod effective_date;
 pub(crate) mod lang;
 pub(crate) mod rel_path;

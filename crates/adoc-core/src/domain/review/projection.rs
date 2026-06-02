@@ -154,6 +154,12 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
         |value| FieldChange::ForbiddenActionsRemoved { value },
     );
 
+    project_contradiction_claims(
+        &mut out,
+        &base.contradiction_claims,
+        &head.contradiction_claims,
+    );
+
     out
 }
 
@@ -168,6 +174,21 @@ fn project_impacts(out: &mut Vec<FieldChange>, base: &[String], head: &[String])
     for path in base_set.difference(&head_set) {
         out.push(FieldChange::ImpactsRemoved {
             path: (*path).to_string(),
+        });
+    }
+}
+
+fn project_contradiction_claims(out: &mut Vec<FieldChange>, base: &[String], head: &[String]) {
+    let base_set: BTreeSet<&str> = base.iter().map(String::as_str).collect();
+    let head_set: BTreeSet<&str> = head.iter().map(String::as_str).collect();
+    for value in head_set.difference(&base_set) {
+        out.push(FieldChange::ContradictionClaimsAdded {
+            value: (*value).to_string(),
+        });
+    }
+    for value in base_set.difference(&head_set) {
+        out.push(FieldChange::ContradictionClaimsRemoved {
+            value: (*value).to_string(),
         });
     }
 }
@@ -262,6 +283,7 @@ mod tests {
             approved_by: Vec::new(),
             allowed_actions: Vec::new(),
             forbidden_actions: Vec::new(),
+            contradiction_claims: Vec::new(),
         }
     }
 
@@ -355,6 +377,7 @@ mod tests {
             approved_by: Vec::new(),
             allowed_actions: Vec::new(),
             forbidden_actions: Vec::new(),
+            contradiction_claims: Vec::new(),
         };
 
         let base = constraint_node("sha256:a", "high");
@@ -396,6 +419,7 @@ mod tests {
             approved_by: Vec::new(),
             allowed_actions: vec!["summarize".to_string()],
             forbidden_actions: vec!["execute_shell".to_string()],
+            contradiction_claims: Vec::new(),
         };
 
         let base = agent_node("sha256:a", "team");

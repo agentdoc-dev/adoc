@@ -79,6 +79,10 @@ impl GraphArtifactDocument {
     }
 }
 
+// `GraphKnowledgeObjectNode` is large by design (carries all graph-node fields
+// inline for zero-copy serde). Boxing here would add indirection on every graph
+// traversal; the size asymmetry is acceptable per the `adoc.graph.v3` contract.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum GraphNode {
@@ -158,6 +162,10 @@ pub(crate) struct GraphKnowledgeObjectNode {
     /// other kinds remain byte-stable.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) forbidden_actions: Vec<String>,
+    /// V5.6 contradiction claim ID list. Populated for `contradiction` nodes
+    /// only; skipped when empty so fixtures for other kinds remain byte-stable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) contradiction_claims: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -656,6 +664,7 @@ mod tests {
                     approved_by: Vec::new(),
                     allowed_actions: Vec::new(),
                     forbidden_actions: Vec::new(),
+                    contradiction_claims: Vec::new(),
                 }),
             ],
             edges: Vec::new(),

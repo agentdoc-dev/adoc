@@ -16,6 +16,7 @@ pub(crate) const APPROVED_BY_FIELD: &str = "approved_by";
 pub(crate) mod agent_instruction;
 pub(crate) mod claim;
 pub(crate) mod constraint;
+pub(crate) mod contradiction;
 pub(crate) mod decision;
 pub(crate) mod draft;
 pub(crate) mod example;
@@ -29,6 +30,7 @@ pub(crate) mod warning;
 use agent_instruction::AgentInstruction;
 use claim::Claim;
 use constraint::Constraint;
+use contradiction::Contradiction;
 use decision::Decision;
 use example::Example;
 use glossary::Glossary;
@@ -665,6 +667,7 @@ pub(crate) enum BlockKind {
     Procedure,
     Example,
     AgentInstruction,
+    Contradiction,
 }
 
 impl BlockKind {
@@ -678,6 +681,7 @@ impl BlockKind {
         Self::Procedure,
         Self::Example,
         Self::AgentInstruction,
+        Self::Contradiction,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -691,6 +695,7 @@ impl BlockKind {
             Self::Procedure => "procedure",
             Self::Example => "example",
             Self::AgentInstruction => "agent_instruction",
+            Self::Contradiction => "contradiction",
         }
     }
 
@@ -710,6 +715,7 @@ pub(crate) enum KnowledgeObject {
     Procedure(Procedure),
     Example(Example),
     AgentInstruction(AgentInstruction),
+    Contradiction(Contradiction),
 }
 
 impl KnowledgeObject {
@@ -724,6 +730,7 @@ impl KnowledgeObject {
             Self::Procedure(_) => BlockKind::Procedure,
             Self::Example(_) => BlockKind::Example,
             Self::AgentInstruction(_) => BlockKind::AgentInstruction,
+            Self::Contradiction(_) => BlockKind::Contradiction,
         }
     }
 
@@ -738,6 +745,7 @@ impl KnowledgeObject {
             Self::Procedure(procedure) => procedure.id(),
             Self::Example(example) => example.id(),
             Self::AgentInstruction(ai) => ai.id(),
+            Self::Contradiction(contradiction) => contradiction.id(),
         }
     }
 
@@ -752,6 +760,7 @@ impl KnowledgeObject {
             Self::Procedure(procedure) => procedure.span(),
             Self::Example(example) => example.span(),
             Self::AgentInstruction(ai) => ai.span(),
+            Self::Contradiction(contradiction) => contradiction.span(),
         }
     }
 
@@ -766,6 +775,7 @@ impl KnowledgeObject {
             Self::Procedure(procedure) => procedure.body(),
             Self::Example(example) => example.body(),
             Self::AgentInstruction(ai) => ai.body(),
+            Self::Contradiction(contradiction) => contradiction.body(),
         }
     }
 
@@ -780,6 +790,7 @@ impl KnowledgeObject {
             Self::Procedure(procedure) => procedure.body_mut(),
             Self::Example(example) => example.body_mut(),
             Self::AgentInstruction(ai) => ai.body_mut(),
+            Self::Contradiction(contradiction) => contradiction.body_mut(),
         }
     }
 
@@ -794,12 +805,13 @@ impl KnowledgeObject {
             Self::Procedure(procedure) => procedure.relations(),
             Self::Example(example) => example.relations(),
             Self::AgentInstruction(ai) => ai.relations(),
+            Self::Contradiction(contradiction) => contradiction.relations(),
         }
     }
 
     /// V3.3 opt-in `impacts:` list. Empty slice for kinds that do not carry
-    /// this field (`glossary`, `warning`, `agent_instruction`) or for objects
-    /// without it.
+    /// this field (`glossary`, `warning`, `agent_instruction`, `contradiction`)
+    /// or for objects without it.
     pub(crate) fn impacts(&self) -> &[RelPath] {
         match self {
             Self::Claim(claim) => claim.impacts().unwrap_or(&[]),
@@ -808,7 +820,10 @@ impl KnowledgeObject {
             Self::Policy(policy) => policy.impacts().unwrap_or(&[]),
             Self::Procedure(procedure) => procedure.impacts().unwrap_or(&[]),
             Self::Example(example) => example.impacts().unwrap_or(&[]),
-            Self::Glossary(_) | Self::Warning(_) | Self::AgentInstruction(_) => &[],
+            Self::Glossary(_)
+            | Self::Warning(_)
+            | Self::AgentInstruction(_)
+            | Self::Contradiction(_) => &[],
         }
     }
 
@@ -823,6 +838,7 @@ impl KnowledgeObject {
             Self::Procedure(procedure) => procedure.fields(),
             Self::Example(example) => example.fields(),
             Self::AgentInstruction(ai) => ai.fields(),
+            Self::Contradiction(contradiction) => contradiction.fields(),
         }
     }
 }
@@ -838,6 +854,7 @@ mod tests {
     use crate::domain::knowledge_object::agent_instruction::AgentInstruction;
     use crate::domain::knowledge_object::claim::Claim;
     use crate::domain::knowledge_object::constraint::Constraint;
+    use crate::domain::knowledge_object::contradiction::Contradiction;
     use crate::domain::knowledge_object::decision::{AcceptedVerdict, DecidedBy, Decision};
     use crate::domain::knowledge_object::example::Example;
     use crate::domain::knowledge_object::glossary::Glossary;
@@ -993,6 +1010,21 @@ mod tests {
         )
     }
 
+    fn contradiction_object() -> KnowledgeObject {
+        KnowledgeObject::Contradiction(
+            Contradiction::try_new(
+                "auth.conflict",
+                "high",
+                "unresolved",
+                vec!["auth.a", "auth.b"],
+                "Claim auth.a conflicts with auth.b.",
+                BTreeMap::from([("owner".to_string(), "auth-team".to_string())]),
+                span("contradiction.adoc", 23, 1),
+            )
+            .expect("valid contradiction"),
+        )
+    }
+
     #[test]
     fn block_kind_labels_match_source_fence_words() {
         assert_eq!(BlockKind::Claim.as_str(), "claim");
@@ -1004,6 +1036,7 @@ mod tests {
         assert_eq!(BlockKind::Procedure.as_str(), "procedure");
         assert_eq!(BlockKind::Example.as_str(), "example");
         assert_eq!(BlockKind::AgentInstruction.as_str(), "agent_instruction");
+        assert_eq!(BlockKind::Contradiction.as_str(), "contradiction");
     }
 
     #[test]
@@ -1041,6 +1074,10 @@ mod tests {
             BlockKind::from_fence_word("agent_instruction"),
             Some(BlockKind::AgentInstruction)
         );
+        assert_eq!(
+            BlockKind::from_fence_word("contradiction"),
+            Some(BlockKind::Contradiction)
+        );
         assert_eq!(BlockKind::from_fence_word("fact"), None);
         assert_eq!(BlockKind::from_fence_word("Claim"), None);
     }
@@ -1059,6 +1096,7 @@ mod tests {
                 BlockKind::Procedure,
                 BlockKind::Example,
                 BlockKind::AgentInstruction,
+                BlockKind::Contradiction,
             ]
         );
     }
@@ -1162,6 +1200,15 @@ mod tests {
                 "Prefer verified claims over draft notes.",
                 "agent_instruction.adoc",
                 21,
+                "owner",
+            ),
+            (
+                contradiction_object(),
+                BlockKind::Contradiction,
+                "auth.conflict",
+                "Claim auth.a conflicts with auth.b.",
+                "contradiction.adoc",
+                23,
                 "owner",
             ),
         ];

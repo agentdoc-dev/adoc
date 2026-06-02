@@ -100,6 +100,13 @@ pub enum DiagnosticCode {
     CompatUnknownExtension,
     ParseMalformedMarkdown,
     RetrievalNoKnowledgeObjectsConsiderMigration,
+    SchemaContradictionMissingSeverity,
+    SchemaContradictionInvalidSeverity,
+    SchemaContradictionMissingStatus,
+    SchemaContradictionInvalidStatus,
+    SchemaContradictionMissingClaims,
+    SchemaContradictionClaimsTooFew,
+    SchemaContradictionClaimNotFound,
 }
 
 impl DiagnosticCode {
@@ -182,6 +189,13 @@ impl DiagnosticCode {
             DiagnosticCode::CompatUnknownExtension,
             DiagnosticCode::ParseMalformedMarkdown,
             DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration,
+            DiagnosticCode::SchemaContradictionMissingSeverity,
+            DiagnosticCode::SchemaContradictionInvalidSeverity,
+            DiagnosticCode::SchemaContradictionMissingStatus,
+            DiagnosticCode::SchemaContradictionInvalidStatus,
+            DiagnosticCode::SchemaContradictionMissingClaims,
+            DiagnosticCode::SchemaContradictionClaimsTooFew,
+            DiagnosticCode::SchemaContradictionClaimNotFound,
         ]
     }
 
@@ -287,6 +301,27 @@ impl DiagnosticCode {
             DiagnosticCode::ParseMalformedMarkdown => "parse.malformed_markdown",
             DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration => {
                 "retrieval.no_knowledge_objects_consider_migration"
+            }
+            DiagnosticCode::SchemaContradictionMissingSeverity => {
+                "schema.contradiction_missing_severity"
+            }
+            DiagnosticCode::SchemaContradictionInvalidSeverity => {
+                "schema.contradiction_invalid_severity"
+            }
+            DiagnosticCode::SchemaContradictionMissingStatus => {
+                "schema.contradiction_missing_status"
+            }
+            DiagnosticCode::SchemaContradictionInvalidStatus => {
+                "schema.contradiction_invalid_status"
+            }
+            DiagnosticCode::SchemaContradictionMissingClaims => {
+                "schema.contradiction_missing_claims"
+            }
+            DiagnosticCode::SchemaContradictionClaimsTooFew => {
+                "schema.contradiction_claims_too_few"
+            }
+            DiagnosticCode::SchemaContradictionClaimNotFound => {
+                "schema.contradiction_claim_not_found"
             }
         }
     }
@@ -520,6 +555,27 @@ impl DiagnosticCode {
             DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration => {
                 "Migrate .md files to .adoc with typed Knowledge Objects, or wait for `adoc migrate` (V4.5+); Markdown source contributes prose blocks but no citable Knowledge Objects."
             }
+            DiagnosticCode::SchemaContradictionMissingSeverity => {
+                "Add a `severity` field to the contradiction: one of low, medium, high, critical."
+            }
+            DiagnosticCode::SchemaContradictionInvalidSeverity => {
+                "Use a valid contradiction severity: one of low, medium, high, critical."
+            }
+            DiagnosticCode::SchemaContradictionMissingStatus => {
+                "Add a `status` field to the contradiction: one of unresolved, resolved, dismissed."
+            }
+            DiagnosticCode::SchemaContradictionInvalidStatus => {
+                "Use a valid contradiction status: one of unresolved, resolved, dismissed."
+            }
+            DiagnosticCode::SchemaContradictionMissingClaims => {
+                "Add a `claims` field listing at least two claim IDs (scalar or `[a.b, c.d]` list)."
+            }
+            DiagnosticCode::SchemaContradictionClaimsTooFew => {
+                "List at least two distinct claim IDs in `claims` using `[a.b, c.d]` list form."
+            }
+            DiagnosticCode::SchemaContradictionClaimNotFound => {
+                "Ensure every claim ID in `claims` refers to an existing `claim` object in the workspace."
+            }
         }
     }
 
@@ -629,6 +685,13 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "compat.unknown_extension",
     "parse.malformed_markdown",
     "retrieval.no_knowledge_objects_consider_migration",
+    "schema.contradiction_missing_severity",
+    "schema.contradiction_invalid_severity",
+    "schema.contradiction_missing_status",
+    "schema.contradiction_invalid_status",
+    "schema.contradiction_missing_claims",
+    "schema.contradiction_claims_too_few",
+    "schema.contradiction_claim_not_found",
 ];
 
 impl Diagnostic {

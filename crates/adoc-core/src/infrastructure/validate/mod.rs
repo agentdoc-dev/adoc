@@ -14,6 +14,7 @@
 //! needed.
 
 mod compat;
+mod contradiction_claims_resolve;
 mod knowledge_object_body_unsafe_links_forbidden;
 mod knowledge_object_lifecycle;
 mod knowledge_object_unique_ids;
@@ -24,6 +25,7 @@ mod unsafe_link_forbidden;
 pub(crate) mod url_walker;
 
 use chrono::NaiveDate;
+use contradiction_claims_resolve::ContradictionClaimsResolve;
 use knowledge_object_body_unsafe_links_forbidden::KnowledgeObjectBodyUnsafeLinksForbidden;
 use knowledge_object_lifecycle::KnowledgeObjectLifecycle;
 use knowledge_object_unique_ids::KnowledgeObjectUniqueIds;
@@ -42,7 +44,8 @@ const SOURCE_PAGE_RULES: &[&dyn ValidationRule] = &[&RawHtmlForbidden, &UnsafeLi
 
 /// Workspace-level rules, applied in registration order after knowledge object
 /// resolution and workspace assembly.
-const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[&KnowledgeObjectUniqueIds];
+const WORKSPACE_RULES: &[&dyn WorkspaceRule] =
+    &[&KnowledgeObjectUniqueIds, &ContradictionClaimsResolve];
 
 /// Run every source-page rule against `page`. The orchestrator performs the
 /// final source-position diagnostic sort before returning `CompileResult`.

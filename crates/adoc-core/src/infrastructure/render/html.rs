@@ -5,6 +5,7 @@ use crate::domain::knowledge_object::{
     KnowledgeObject, Relations,
     agent_instruction::AgentInstruction,
     claim::Evidence,
+    contradiction::Contradiction,
     policy::Policy,
     procedure::ordered_step_marker_len,
     projection::{KnowledgeObjectMetadata, MetadataDiscriminant, MetadataField},
@@ -245,6 +246,9 @@ fn render_knowledge_object(knowledge_object: &KnowledgeObject, html: &mut String
         KnowledgeObject::AgentInstruction(_) => {
             render_agent_instruction(knowledge_object, &metadata, html);
         }
+        KnowledgeObject::Contradiction(_) => {
+            render_contradiction(knowledge_object, &metadata, html);
+        }
     }
 }
 
@@ -288,6 +292,65 @@ fn render_constraint(
     render_object_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
+}
+
+fn render_contradiction(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    // For contradiction the discriminant is the status; severity is a field.
+    // Use `metadata.discriminant()` directly for status, and read severity
+    // from the MetadataField list (the existing `severity_discriminant` helper
+    // assumes the discriminant IS severity, which is wrong for contradiction).
+    let status_str = metadata
+        .discriminant()
+        .map(|d| d.value_as_str())
+        .unwrap_or("unresolved");
+    let severity_str = metadata
+        .fields()
+        .iter()
+        .find(|f| f.key() == "severity")
+        .map(|f| f.value_as_str())
+        .unwrap_or("low");
+    let class =
+        format!("contradiction contradiction--{status_str} contradiction--severity-{severity_str}");
+
+    render_object_section_open(knowledge_object, &class, html);
+
+    // Severity badge.
+    html.push_str("<span class=\"contradiction__severity-badge\">");
+    html.push_str(&escape_html(severity_str));
+    html.push_str("</span>\n");
+
+    render_object_header(knowledge_object, metadata.discriminant(), html);
+
+    // Status line.
+    html.push_str("<p class=\"contradiction__status\">status: ");
+    html.push_str(&escape_html(status_str));
+    html.push_str("</p>\n");
+
+    // Linked list of conflicting claim IDs.
+    let KnowledgeObject::Contradiction(contradiction) = knowledge_object else {
+        unreachable!("render_contradiction called with non-contradiction object");
+    };
+    render_contradiction_claims(contradiction, html);
+
+    render_object_body(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
+    html.push_str("</section>\n");
+}
+
+fn render_contradiction_claims(contradiction: &Contradiction, html: &mut String) {
+    html.push_str("<ul class=\"contradiction__claims\">\n");
+    for claim_id in contradiction.claims().as_slice() {
+        html.push_str("<li><a href=\"#");
+        html.push_str(&escape_html(claim_id.as_str()));
+        html.push_str("\">");
+        html.push_str(&escape_html(claim_id.as_str()));
+        html.push_str("</a></li>\n");
+    }
+    html.push_str("</ul>\n");
 }
 
 fn render_procedure(
@@ -721,7 +784,8 @@ fn discriminant_field_name(discriminant: MetadataDiscriminant<'_>) -> &'static s
         | MetadataDiscriminant::DecisionStatus(_)
         | MetadataDiscriminant::PolicyStatus(_)
         | MetadataDiscriminant::ProcedureStatus(_)
-        | MetadataDiscriminant::ExampleStatus(_) => "status",
+        | MetadataDiscriminant::ExampleStatus(_)
+        | MetadataDiscriminant::ContradictionStatus(_) => "status",
         MetadataDiscriminant::Severity(_) => "severity",
         MetadataDiscriminant::Trust(_) => "trust",
     }

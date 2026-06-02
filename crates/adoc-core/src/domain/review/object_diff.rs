@@ -151,6 +151,7 @@ pub(crate) mod test_support {
             approved_by: Vec::new(),
             allowed_actions: Vec::new(),
             forbidden_actions: Vec::new(),
+            contradiction_claims: Vec::new(),
         }
     }
 }
