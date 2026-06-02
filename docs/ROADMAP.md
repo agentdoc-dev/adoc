@@ -43,7 +43,7 @@ Implemented:
 
 Next:
 
-- V5 Expanded Knowledge Model — the design is captured in [V5-DESIGN.md](V5-DESIGN.md). V5.1 (Constraint + Severity foundation + `adoc.graph.v2` → `adoc.graph.v3` bump), V5.2 (Procedure), V5.3 (Example, declaration-only), V5.4 (Policy), V5.5 (Agent Instruction), V5.6 (Contradiction, manually authored, ADR-0026), and V5.7 (Source Object, coexists with inline evidence, ADR-0027) are implemented; the next slice is V5.8 (V5 Evidence Model). Closes PRD MVP must-have #4 for the seven object types not yet implemented (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model).
+- V5 Expanded Knowledge Model — the design is captured in [V5-DESIGN.md](V5-DESIGN.md). V5.1 (Constraint + Severity foundation + `adoc.graph.v2` → `adoc.graph.v3` bump), V5.2 (Procedure), V5.3 (Example, declaration-only), V5.4 (Policy), V5.5 (Agent Instruction), V5.6 (Contradiction, manually authored, ADR-0026), V5.7 (Source Object, coexists with inline evidence, ADR-0027), and V5.8 (V5 Evidence Model — typed `EvidenceKind` evidence, `evidence_ref` to `source` objects with edge + projection, symmetric `claim`/`decision` evidence, ADR-0032) are implemented; the next slice is V5.9 (V5 Expanded Pilot). Closes PRD MVP must-have #4 for the seven object types not yet implemented (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model).
 
 Later:
 
@@ -717,7 +717,7 @@ Deferred: source-object reference resolution in inline evidence (V5.8), source-o
 
 ### V5.8: V5 Evidence Model Slice
 
-Goal: expand inline evidence on `claim` and `decision` to the typed `EvidenceKind` vocabulary; both inline string evidence and `source` object references accepted.
+Goal: expand inline evidence on `claim` and `decision` to the typed `EvidenceKind` vocabulary; both inline string evidence and `source` object references accepted. Per ADR-0032, `Evidence` is refactored to `Inline { kind, value } | ObjectRef` (collapsing `reviewed_by`/`human_review` to `human_review`), `evidence_ref` emits both a typed-array projection and a `GraphEdgeKind::Evidence` edge, and `decision` gains full symmetric evidence. Implemented.
 
 Scope:
 
