@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::ObjectId;
+use crate::domain::knowledge_object::EVIDENCE_REF_FIELD;
 use crate::domain::knowledge_object::claim::{
     ClaimStatus, Evidence, OWNER_FIELD, Owner, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
     VERIFIED_AT_FIELD, VERIFIED_STATUS, VerifiedAt,
@@ -139,7 +140,9 @@ impl DraftValidator<'_> {
             .fields
             .get(VERIFIED_AT_FIELD)
             .and_then(|value| VerifiedAt::try_new(value));
-        let has_evidence = self
+
+        // Inline evidence: any non-empty source/test/reviewed_by field.
+        let has_inline_evidence = self
             .draft
             .fields
             .get(SOURCE_FIELD)
@@ -157,6 +160,19 @@ impl DraftValidator<'_> {
                     .and_then(|value| Evidence::from_field(REVIEWED_BY_FIELD, value))
             })
             .is_some();
+
+        // V5.8 TB4: an evidence_ref field with a non-empty value also satisfies
+        // the evidence requirement (the field value is a comma-separated list
+        // of object IDs; we only check presence here — ID validity is checked
+        // at build time by parse_evidence_refs).
+        let has_ref_evidence = self
+            .draft
+            .fields
+            .get(EVIDENCE_REF_FIELD)
+            .map(|v| !v.trim().is_empty())
+            .unwrap_or(false);
+
+        let has_evidence = has_inline_evidence || has_ref_evidence;
 
         let reason = if owner.is_some() && verified_at.is_some() && has_evidence {
             "Verified claim creation requires review evidence before approval."
@@ -299,6 +315,63 @@ mod tests {
             with_status.diagnostics[0]
                 .message
                 .contains("changes.status")
+        );
+    }
+
+    // ── V5.8 TB4: evidence_ref counts as evidence in draft path ──────────────
+
+    #[test]
+    fn verified_claim_with_only_evidence_ref_emits_review_obligation_not_missing_evidence() {
+        // A verified claim draft that has owner + verified_at + evidence_ref
+        // must produce the "requires review evidence before approval" obligation
+        // (not the "missing complete verification evidence" one).
+        let validation = validate(
+            "claim",
+            Some("verified"),
+            "Credits are verified.",
+            BTreeMap::from([
+                (OWNER_FIELD.to_string(), "team-billing".to_string()),
+                (VERIFIED_AT_FIELD.to_string(), "2026-05-05".to_string()),
+                (
+                    EVIDENCE_REF_FIELD.to_string(),
+                    "billing.consume-use-case".to_string(),
+                ),
+            ]),
+        );
+
+        assert!(validation.diagnostics.is_empty());
+        assert_eq!(validation.proof_obligations.len(), 1);
+        assert!(
+            validation.proof_obligations[0]
+                .reason
+                .contains("requires review evidence before approval"),
+            "unexpected obligation reason: {}",
+            validation.proof_obligations[0].reason
+        );
+    }
+
+    #[test]
+    fn verified_claim_missing_evidence_and_refs_emits_missing_evidence_obligation() {
+        // Without either inline evidence or evidence_ref, the obligation reason
+        // should still say "missing complete verification evidence".
+        let validation = validate(
+            "claim",
+            Some("verified"),
+            "Credits are verified.",
+            BTreeMap::from([
+                (OWNER_FIELD.to_string(), "team-billing".to_string()),
+                (VERIFIED_AT_FIELD.to_string(), "2026-05-05".to_string()),
+            ]),
+        );
+
+        assert!(validation.diagnostics.is_empty());
+        assert_eq!(validation.proof_obligations.len(), 1);
+        assert!(
+            validation.proof_obligations[0]
+                .reason
+                .contains("missing complete verification evidence"),
+            "unexpected obligation reason: {}",
+            validation.proof_obligations[0].reason
         );
     }
 }

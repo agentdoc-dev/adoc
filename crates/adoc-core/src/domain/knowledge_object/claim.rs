@@ -24,7 +24,7 @@ pub(crate) const REVIEWED_BY_FIELD: &str = "reviewed_by";
 pub(crate) const HUMAN_REVIEW_FIELD: &str = "human_review";
 pub(crate) const VERIFIED_STATUS: &str = "verified";
 
-const VERIFIED_CLAIM_HELP: &str = "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`.";
+const VERIFIED_CLAIM_HELP: &str = "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, `reviewed_by`, or `evidence_ref`.";
 const CLAIM_MISSING_STATUS_HELP: &str = "Claims require non-empty `status`.";
 const CLAIM_MISSING_BODY_HELP: &str = "Claims require non-empty body text.";
 
@@ -275,8 +275,13 @@ impl Claim {
         body: Body,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
-        let verification = build_verification(&parsed, &parsed.raw_fields, diagnostics)?;
+        // Parse evidence_refs BEFORE building verification so that a verified
+        // claim whose only evidence is an `evidence_ref:` is accepted.  The
+        // ref count is threaded into `build_verification` to suppress the
+        // `ClaimVerifiedMissingEvidence` diagnostic when at least one ref exists.
         let evidence_refs = super::parse_evidence_refs(&mut parsed, diagnostics);
+        let has_refs = !evidence_refs.is_empty();
+        let verification = build_verification(&parsed, &parsed.raw_fields, has_refs, diagnostics)?;
         let relations = super::extract_relations(&mut parsed, diagnostics);
         let impacts = super::extract_impacts(&mut parsed, diagnostics);
         let optional_fields = std::mem::take(&mut parsed.raw_fields);
@@ -304,9 +309,20 @@ impl Claim {
 // parse_evidence_refs is now the shared implementation in `super` (mod.rs).
 // It is called via `super::parse_evidence_refs` below.
 
+/// Build a `Verification` from parsed fields.
+///
+/// `has_refs` signals that the caller already parsed at least one valid
+/// `evidence_ref:` entry.  When `true` the missing-evidence diagnostic is
+/// suppressed even if there is no inline evidence, because refs count as
+/// evidence under the V5.8 rule.
+///
+/// NOTE — kind-gating of refs is deferred: we do not reject a verified claim
+/// whose only evidence is a ref to a non-accepted-kind source; that requires
+/// cross-object resolution which is out of scope for TB4.
 fn build_verification(
     parsed: &ParsedTypedBlock,
     fields: &BTreeMap<String, String>,
+    has_refs: bool,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<Verification> {
     let owner = fields
@@ -342,15 +358,17 @@ fn build_verification(
     {
         evidence.push(value);
     }
-    if evidence.is_empty() {
+
+    // Emit missing-evidence diagnostic only when NEITHER inline evidence NOR
+    // an evidence_ref is present.
+    let has_inline_evidence = !evidence.is_empty();
+    if !has_inline_evidence && !has_refs {
         diagnostics.push(missing_evidence_diagnostic(parsed));
     }
 
-    if owner.is_none() || verified_at.is_none() || evidence.is_empty() {
+    if owner.is_none() || verified_at.is_none() || (!has_inline_evidence && !has_refs) {
         return None;
     }
-
-    let evidence = NonEmpty::from_vec(evidence).expect("evidence checked above");
 
     Some(Verification::new(
         owner.expect("owner checked above"),
@@ -426,7 +444,7 @@ fn missing_evidence_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
     Diagnostic::error(
         DiagnosticCode::ClaimVerifiedMissingEvidence,
         format!(
-            "verified claim `{}` requires at least one evidence field: `source`, `test`, or `reviewed_by`",
+            "verified claim `{}` requires at least one evidence field: `source`, `test`, `reviewed_by`, or `evidence_ref`",
             parsed.id_text
         ),
     )
@@ -492,15 +510,25 @@ fn verified_claim_dedicated_field_in(fields: &BTreeMap<String, String>) -> Optio
     .find(|field| fields.contains_key(*field))
 }
 
+/// Verified-claim verification data.
+///
+/// `evidence` holds the **inline** evidence entries (`source`, `test`,
+/// `reviewed_by`).  It may be empty when the claim supplies evidence
+/// exclusively via `evidence_ref:` entries (V5.8 TB4).  The ref entries live
+/// in `Claim::evidence_refs` and are emitted separately by the graph
+/// assembler, so they are not duplicated here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Verification {
     owner: Owner,
     verified_at: VerifiedAt,
-    evidence: NonEmpty<Evidence>,
+    /// Inline evidence entries.  May be empty when all evidence comes from
+    /// `evidence_ref:` entries — in that case `Claim::evidence_refs()` is
+    /// non-empty and the missing-evidence diagnostic was not emitted.
+    evidence: Vec<Evidence>,
 }
 
 impl Verification {
-    pub(crate) fn new(owner: Owner, verified_at: VerifiedAt, evidence: NonEmpty<Evidence>) -> Self {
+    pub(crate) fn new(owner: Owner, verified_at: VerifiedAt, evidence: Vec<Evidence>) -> Self {
         Self {
             owner,
             verified_at,
@@ -517,7 +545,7 @@ impl Verification {
     }
 
     pub(crate) fn evidence(&self) -> &[Evidence] {
-        self.evidence.as_slice()
+        &self.evidence
     }
 }
 
@@ -1073,10 +1101,7 @@ mod tests {
         Verification::new(
             Owner::try_new("team-billing").expect("owner"),
             VerifiedAt::try_new("2026-05-05").expect("verified_at"),
-            NonEmpty::from_vec(vec![
-                Evidence::inline(EvidenceKind::SourceCode, "runbook").expect("evidence"),
-            ])
-            .expect("non-empty evidence"),
+            vec![Evidence::inline(EvidenceKind::SourceCode, "runbook").expect("evidence")],
         )
     }
 
@@ -1246,6 +1271,117 @@ mod tests {
         let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
 
         assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        assert_eq!(claim.evidence_refs().len(), 1);
+    }
+
+    // ── V5.8 TB4: evidence_ref counts toward verified-claim evidence ──────────
+
+    #[test]
+    fn verified_claim_with_only_evidence_ref_builds_successfully() {
+        // A verified claim whose ONLY evidence is an `evidence_ref:` must build
+        // without a ClaimVerifiedMissingEvidence diagnostic.
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), VERIFIED_STATUS.to_string()),
+                (OWNER_FIELD.to_string(), "team-billing".to_string()),
+                (VERIFIED_AT_FIELD.to_string(), "2026-05-05".to_string()),
+                (
+                    EVIDENCE_REF_FIELD.to_string(),
+                    "billing.consume-use-case".to_string(),
+                ),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics);
+
+        assert!(
+            claim.is_some(),
+            "verified claim with only evidence_ref should build; diagnostics: {diagnostics:?}"
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "no diagnostics expected; got: {diagnostics:?}"
+        );
+        let claim = claim.unwrap();
+        // Inline evidence is empty — evidence comes from refs.
+        assert!(
+            claim
+                .verification()
+                .expect("has verification")
+                .evidence()
+                .is_empty(),
+            "inline evidence should be empty when only refs are provided"
+        );
+        // The ref is present.
+        assert_eq!(claim.evidence_refs().len(), 1);
+    }
+
+    #[test]
+    fn verified_claim_with_no_evidence_and_no_refs_still_emits_missing_evidence() {
+        // The missing-evidence diagnostic must still fire when neither inline
+        // evidence nor evidence_ref is supplied.
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), VERIFIED_STATUS.to_string()),
+                (OWNER_FIELD.to_string(), "team-billing".to_string()),
+                (VERIFIED_AT_FIELD.to_string(), "2026-05-05".to_string()),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics);
+
+        assert!(claim.is_none(), "claim should fail without any evidence");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::ClaimVerifiedMissingEvidence
+        );
+    }
+
+    #[test]
+    fn verified_claim_with_inline_test_and_evidence_ref_builds_successfully() {
+        // Regression: a verified claim that has BOTH inline evidence AND an
+        // evidence_ref must still build successfully.
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), VERIFIED_STATUS.to_string()),
+                (OWNER_FIELD.to_string(), "team-billing".to_string()),
+                (VERIFIED_AT_FIELD.to_string(), "2026-05-05".to_string()),
+                (TEST_FIELD.to_string(), "cargo test billing".to_string()),
+                (
+                    EVIDENCE_REF_FIELD.to_string(),
+                    "billing.consume-use-case".to_string(),
+                ),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics);
+
+        assert!(
+            claim.is_some(),
+            "verified claim with inline + ref evidence should build; diagnostics: {diagnostics:?}"
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "no diagnostics expected; got: {diagnostics:?}"
+        );
+        let claim = claim.unwrap();
+        // One inline evidence entry (test) and one ref.
+        assert_eq!(
+            claim
+                .verification()
+                .expect("has verification")
+                .evidence()
+                .len(),
+            1,
+            "inline evidence should contain the test entry"
+        );
         assert_eq!(claim.evidence_refs().len(), 1);
     }
 }
