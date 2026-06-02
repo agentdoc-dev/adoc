@@ -23,10 +23,6 @@ pub(crate) const REVIEWED_BY_FIELD: &str = "reviewed_by";
 /// evidence set is unchanged.
 pub(crate) const HUMAN_REVIEW_FIELD: &str = "human_review";
 pub(crate) const VERIFIED_STATUS: &str = "verified";
-/// V5.8 TB2: field naming a `source` Knowledge Object as evidence.
-/// Accepts a comma-separated list of Object IDs; each is validated and, at
-/// workspace validation time, checked to resolve to an existing `source` KO.
-pub(crate) const EVIDENCE_REF_FIELD: &str = "evidence_ref";
 
 const VERIFIED_CLAIM_HELP: &str = "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`.";
 const CLAIM_MISSING_STATUS_HELP: &str = "Claims require non-empty `status`.";
@@ -83,7 +79,7 @@ impl Claim {
             return Self::build_verified_from_parsed(parsed, id, status, body, diagnostics);
         }
 
-        let evidence_refs = parse_evidence_refs(&mut parsed, diagnostics);
+        let evidence_refs = super::parse_evidence_refs(&mut parsed, diagnostics);
         let relations = super::extract_relations(&mut parsed, diagnostics);
         let impacts = super::extract_impacts(&mut parsed, diagnostics);
         let optional_fields = std::mem::take(&mut parsed.raw_fields);
@@ -280,7 +276,7 @@ impl Claim {
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
         let verification = build_verification(&parsed, &parsed.raw_fields, diagnostics)?;
-        let evidence_refs = parse_evidence_refs(&mut parsed, diagnostics);
+        let evidence_refs = super::parse_evidence_refs(&mut parsed, diagnostics);
         let relations = super::extract_relations(&mut parsed, diagnostics);
         let impacts = super::extract_impacts(&mut parsed, diagnostics);
         let optional_fields = std::mem::take(&mut parsed.raw_fields);
@@ -305,135 +301,8 @@ impl Claim {
     }
 }
 
-/// Parse the `evidence_ref:` field into a deduplicated list of
-/// [`Evidence::ObjectRef`] entries. Accepts both scalar (`evidence_ref: id.one`)
-/// and bracket-list (`evidence_ref: [id.one, id.two]`) syntax. Invalid IDs emit
-/// [`DiagnosticCode::IdInvalid`] and are silently dropped from the result.
-/// Returns an empty `Vec` when the field is absent or yields no valid entries.
-fn parse_evidence_refs(
-    parsed: &mut ParsedTypedBlock,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Vec<Evidence> {
-    let Some(value) = parsed.raw_fields.remove(EVIDENCE_REF_FIELD) else {
-        return Vec::new();
-    };
-
-    // Reuse the same bracket/comma-split logic as `extract_relations` via the
-    // module-level helpers. We call the helpers from the parent module
-    // (`super::`) to avoid duplicating that logic.
-    let value_span = parsed
-        .raw_field_spans
-        .get(EVIDENCE_REF_FIELD)
-        .cloned()
-        .unwrap_or_else(|| parsed.span.clone());
-
-    let Some((content_start, content_end)) = super::content_range_for_list_field(
-        parsed,
-        EVIDENCE_REF_FIELD,
-        &value,
-        &value_span,
-        diagnostics,
-    ) else {
-        return Vec::new();
-    };
-
-    if value[content_start..content_end]
-        .trim_matches(|c: char| c.is_ascii_whitespace())
-        .is_empty()
-    {
-        return Vec::new();
-    }
-
-    let mut refs: Vec<Evidence> = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    let mut segment_start = content_start;
-    for (rel, _) in value[content_start..content_end].match_indices(',') {
-        let comma = content_start + rel;
-        push_evidence_ref_segment(
-            parsed,
-            &value,
-            segment_start,
-            comma,
-            &value_span,
-            &mut seen,
-            &mut refs,
-            diagnostics,
-            false,
-        );
-        segment_start = comma + 1;
-    }
-    push_evidence_ref_segment(
-        parsed,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut seen,
-        &mut refs,
-        diagnostics,
-        true,
-    );
-    refs
-}
-
-#[allow(clippy::too_many_arguments)]
-fn push_evidence_ref_segment(
-    parsed: &ParsedTypedBlock,
-    value: &str,
-    start: usize,
-    end: usize,
-    value_span: &SourceSpan,
-    seen: &mut std::collections::BTreeSet<ObjectId>,
-    refs: &mut Vec<Evidence>,
-    diagnostics: &mut Vec<Diagnostic>,
-    is_last: bool,
-) {
-    let raw = &value[start..end];
-    let Some((trimmed, trimmed_start, trimmed_end)) = super::trim_segment_pub(raw) else {
-        if is_last {
-            return;
-        }
-        diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::IdInvalid,
-                format!(
-                    "empty `evidence_ref` segment in `{}`; remove the extra comma or fill in the id",
-                    parsed.id_text
-                ),
-            )
-            .with_span(super::relation_segment_span_pub(value_span, value, start, end))
-            .with_object_id(&parsed.id_text)
-            .with_help(OBJECT_ID_GRAMMAR_HELP),
-        );
-        return;
-    };
-
-    let span = super::relation_segment_span_pub(
-        value_span,
-        value,
-        start + trimmed_start,
-        start + trimmed_end,
-    );
-    match ObjectId::new(trimmed) {
-        Ok(id) => {
-            if seen.insert(id.clone()) {
-                refs.push(Evidence::object_ref(id));
-            }
-        }
-        Err(error) => diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::IdInvalid,
-                format!(
-                    "invalid `evidence_ref` id `{trimmed}` for `{}`: {error}",
-                    parsed.id_text
-                ),
-            )
-            .with_span(span)
-            .with_object_id(trimmed)
-            .with_help(OBJECT_ID_GRAMMAR_HELP),
-        ),
-    }
-}
+// parse_evidence_refs is now the shared implementation in `super` (mod.rs).
+// It is called via `super::parse_evidence_refs` below.
 
 fn build_verification(
     parsed: &ParsedTypedBlock,
@@ -689,6 +558,7 @@ mod tests {
 
     use super::*;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
+    use crate::domain::knowledge_object::EVIDENCE_REF_FIELD;
     use crate::domain::value_objects::evidence::EvidenceValue;
 
     fn span() -> SourceSpan {

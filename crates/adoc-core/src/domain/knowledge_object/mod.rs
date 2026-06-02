@@ -7,6 +7,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourcePosition, Sour
 use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::value_objects::approved_by::ApprovedBy;
+use crate::domain::value_objects::evidence::Evidence;
 use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::values::{Body, NonEmpty};
 
@@ -147,23 +148,6 @@ pub(super) fn extract_relations(
     relations
 }
 
-/// Public-within-crate-module access to `trim_segment` for sibling modules
-/// that need to parse comma-separated ID lists (e.g. `claim::parse_evidence_refs`).
-pub(super) fn trim_segment_pub(value: &str) -> Option<(&str, usize, usize)> {
-    trim_segment(value)
-}
-
-/// Public-within-crate-module access to `relation_segment_span` for sibling
-/// modules that need to produce per-segment diagnostic spans.
-pub(super) fn relation_segment_span_pub(
-    value_span: &SourceSpan,
-    value: &str,
-    start: usize,
-    end: usize,
-) -> SourceSpan {
-    relation_segment_span(value_span, value, start, end)
-}
-
 /// Public-within-crate-module access to `relation_content_range` for
 /// sibling modules that need to unwrap bracket/scalar list syntax.
 pub(super) fn content_range_for_list_field(
@@ -174,6 +158,137 @@ pub(super) fn content_range_for_list_field(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<(usize, usize)> {
     relation_content_range(parsed, key, value, value_span, diagnostics)
+}
+
+/// V5.8 TB2/TB3: the `evidence_ref:` field name, shared by `claim` and
+/// `decision`. Each entry names a `source` Knowledge Object by ID; the
+/// workspace validator checks the reference resolves.
+pub(crate) const EVIDENCE_REF_FIELD: &str = "evidence_ref";
+
+/// Parse the `evidence_ref:` field into a deduplicated list of
+/// [`Evidence::ObjectRef`] entries. Accepts both scalar (`evidence_ref: id.one`)
+/// and bracket-list (`evidence_ref: [id.one, id.two]`) syntax. Invalid IDs emit
+/// [`DiagnosticCode::IdInvalid`] and are silently dropped from the result.
+/// Returns an empty `Vec` when the field is absent or yields no valid entries.
+///
+/// This shared implementation is called by both `claim::build_from_parsed` and
+/// `decision::build_from_parsed` — do NOT duplicate the logic.
+pub(crate) fn parse_evidence_refs(
+    parsed: &mut ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<Evidence> {
+    let Some(value) = parsed.raw_fields.remove(EVIDENCE_REF_FIELD) else {
+        return Vec::new();
+    };
+
+    let value_span = parsed
+        .raw_field_spans
+        .get(EVIDENCE_REF_FIELD)
+        .cloned()
+        .unwrap_or_else(|| parsed.span.clone());
+
+    let Some((content_start, content_end)) =
+        content_range_for_list_field(parsed, EVIDENCE_REF_FIELD, &value, &value_span, diagnostics)
+    else {
+        return Vec::new();
+    };
+
+    if value[content_start..content_end]
+        .trim_matches(|c: char| c.is_ascii_whitespace())
+        .is_empty()
+    {
+        return Vec::new();
+    }
+
+    let mut refs: Vec<Evidence> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut segment_start = content_start;
+    for (rel, _) in value[content_start..content_end].match_indices(',') {
+        let comma = content_start + rel;
+        push_evidence_ref_segment(
+            parsed,
+            &value,
+            segment_start,
+            comma,
+            &value_span,
+            &mut seen,
+            &mut refs,
+            diagnostics,
+            false,
+        );
+        segment_start = comma + 1;
+    }
+    push_evidence_ref_segment(
+        parsed,
+        &value,
+        segment_start,
+        content_end,
+        &value_span,
+        &mut seen,
+        &mut refs,
+        diagnostics,
+        true,
+    );
+    refs
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_evidence_ref_segment(
+    parsed: &ParsedTypedBlock,
+    value: &str,
+    start: usize,
+    end: usize,
+    value_span: &SourceSpan,
+    seen: &mut std::collections::BTreeSet<ObjectId>,
+    refs: &mut Vec<Evidence>,
+    diagnostics: &mut Vec<Diagnostic>,
+    is_last: bool,
+) {
+    let raw = &value[start..end];
+    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(raw) else {
+        if is_last {
+            return;
+        }
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                format!(
+                    "empty `evidence_ref` segment in `{}`; remove the extra comma or fill in the id",
+                    parsed.id_text
+                ),
+            )
+            .with_span(relation_segment_span(value_span, value, start, end))
+            .with_object_id(&parsed.id_text)
+            .with_help(OBJECT_ID_GRAMMAR_HELP),
+        );
+        return;
+    };
+
+    let span = relation_segment_span(
+        value_span,
+        value,
+        start + trimmed_start,
+        start + trimmed_end,
+    );
+    match ObjectId::new(trimmed) {
+        Ok(id) => {
+            if seen.insert(id.clone()) {
+                refs.push(Evidence::object_ref(id));
+            }
+        }
+        Err(error) => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                format!(
+                    "invalid `evidence_ref` id `{trimmed}` for `{}`: {error}",
+                    parsed.id_text
+                ),
+            )
+            .with_span(span)
+            .with_object_id(trimmed)
+            .with_help(OBJECT_ID_GRAMMAR_HELP),
+        ),
+    }
 }
 
 fn parse_relation_targets(
@@ -945,6 +1060,7 @@ mod tests {
                 BTreeMap::from([("audience".to_string(), "ops".to_string())]),
                 Some(AcceptedVerdict::new(
                     DecidedBy::try_new("architecture").expect("decided_by"),
+                    Vec::new(),
                 )),
                 span("decision.adoc", 5, 1),
             )

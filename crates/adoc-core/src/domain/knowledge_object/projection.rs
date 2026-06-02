@@ -178,6 +178,9 @@ impl KnowledgeObject {
             Self::Decision(decision) => {
                 if let Some(verdict) = decision.verdict() {
                     fields.push(MetadataField::DecidedBy(verdict.decided_by()));
+                    // V5.8 TB3: inline evidence from the accepted verdict goes to
+                    // the typed `evidence` vec, NOT into the flat fields map.
+                    evidence.extend(verdict.evidence().iter());
                 }
                 Some(MetadataDiscriminant::DecisionStatus(decision.status()))
             }
@@ -426,6 +429,7 @@ mod tests {
                 BTreeMap::from([("audience".to_string(), "ops".to_string())]),
                 Some(AcceptedVerdict::new(
                     DecidedBy::try_new("architecture").expect("decided_by"),
+                    Vec::new(),
                 )),
                 span(),
             )

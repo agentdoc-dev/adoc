@@ -117,8 +117,8 @@ impl ArtifactWriter<WorkspaceAst> for GraphJsonArtifact {
             .collect();
 
         // Append evidence-ref array entries and derived evidence edges for
-        // every claim that carries evidence_refs.
-        let claim_evidence_refs: Vec<(String, Vec<String>)> = workspace
+        // every claim or decision that carries evidence_refs.
+        let object_evidence_refs: Vec<(String, Vec<String>)> = workspace
             .pages
             .iter()
             .flat_map(|page| page.blocks.iter())
@@ -126,40 +126,41 @@ impl ArtifactWriter<WorkspaceAst> for GraphJsonArtifact {
                 let BlockAst::KnowledgeObject(ko) = block else {
                     return None;
                 };
-                let KnowledgeObject::Claim(claim) = ko.as_ref() else {
-                    return None;
+                let refs_slice = match ko.as_ref() {
+                    KnowledgeObject::Claim(claim) => claim.evidence_refs(),
+                    KnowledgeObject::Decision(decision) => decision.evidence_refs(),
+                    _ => return None,
                 };
-                if claim.evidence_refs().is_empty() {
+                if refs_slice.is_empty() {
                     return None;
                 }
                 // Each entry is Evidence::ObjectRef; target_id() is always Some.
-                let refs: Vec<String> = claim
-                    .evidence_refs()
+                let refs: Vec<String> = refs_slice
                     .iter()
                     .filter_map(|ev| ev.target_id())
                     .map(|id| id.as_str().to_string())
                     .collect();
-                Some((claim.id().as_str().to_string(), refs))
+                Some((ko.id().as_str().to_string(), refs))
             })
             .collect();
 
-        for (claim_id, ref_ids) in &claim_evidence_refs {
-            // Append evidence edges for this claim.
+        for (object_id, ref_ids) in &object_evidence_refs {
+            // Append evidence edges for this object.
             for ref_id in ref_ids {
                 edges.push(GraphEdge {
                     kind: GraphEdgeKind::Evidence,
-                    source: claim_id.clone(),
+                    source: object_id.clone(),
                     target: ref_id.clone(),
                     relation: None,
                     order: None,
                 });
             }
-            // Append GraphEvidence entries to the claim's graph node.
+            // Append GraphEvidence entries to the object's graph node.
             for node in nodes.iter_mut() {
                 let GraphNode::KnowledgeObject(ko) = node else {
                     continue;
                 };
-                if ko.id != *claim_id {
+                if ko.id != *object_id {
                     continue;
                 }
                 for ref_id in ref_ids {
@@ -1175,5 +1176,183 @@ mod tests {
             "reference must be the unresolved id"
         );
         assert_eq!(ev.kind, "", "unresolved ref gets empty kind string");
+    }
+
+    // ── V5.8 TB3: decision graph evidence emission ────────────────────────────
+
+    fn decision_ref_span() -> SourceSpan {
+        SourceSpan {
+            file: PathBuf::from("docs/decisions.adoc"),
+            start: SourcePosition {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
+            end: SourcePosition {
+                line: 1,
+                column: 40,
+                offset: 39,
+            },
+        }
+    }
+
+    /// An accepted decision with an `evidence_ref` emits a `GraphEvidence` entry
+    /// with `reference` set and the resolved source kind, plus a derived
+    /// `evidence` graph edge.
+    #[test]
+    fn accepted_decision_with_evidence_ref_produces_graph_evidence_entry_and_edge() {
+        use crate::domain::identity::ObjectId;
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::decision::{AcceptedVerdict, DecidedBy, Decision};
+        use crate::domain::knowledge_object::source::Source;
+
+        let span = decision_ref_span();
+        let source = Source::try_new(
+            "billing.consume-use-case",
+            "source_code",
+            Some("src/features/credits/consume.ts"),
+            None,
+            "Source implementation for credit consumption.",
+            std::collections::BTreeMap::new(),
+            span.clone(),
+        )
+        .expect("valid source");
+
+        let verdict = AcceptedVerdict::new(
+            DecidedBy::try_new("architecture").expect("decided_by"),
+            Vec::new(),
+        );
+        let decision = Decision::try_new_with_refs(
+            "billing.policy",
+            Some("accepted"),
+            "Use the ledger-first approach.",
+            std::collections::BTreeMap::new(),
+            vec![ObjectId::new("billing.consume-use-case").expect("valid id")],
+            Some(verdict),
+            span,
+        )
+        .expect("valid accepted decision with evidence_ref");
+
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("docs.decisions").expect("page id"),
+            title: None,
+            source_path: PathBuf::from("docs/decisions.adoc"),
+            blocks: vec![
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Source(source))),
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision))),
+            ],
+        };
+        let workspace = crate::domain::ast::WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build(&workspace, &[]);
+
+        // Find the decision node.
+        let decision_node = artifact
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                GraphNode::KnowledgeObject(ko) if ko.id == "billing.policy" => Some(ko),
+                _ => None,
+            })
+            .expect("decision graph node must exist");
+
+        // Must have exactly one evidence entry with reference set.
+        assert_eq!(
+            decision_node.evidence.len(),
+            1,
+            "decision must have exactly one evidence entry"
+        );
+        let ev = &decision_node.evidence[0];
+        assert_eq!(
+            ev.reference.as_deref(),
+            Some("billing.consume-use-case"),
+            "evidence entry must have reference set to the source id"
+        );
+        assert_eq!(
+            ev.kind, "source_code",
+            "evidence entry kind must match the source object's kind field"
+        );
+        assert!(
+            ev.value.is_none(),
+            "object-ref evidence entry must have no value"
+        );
+
+        // Find the evidence edge decision → source.
+        let evidence_edge = artifact.edges.iter().find(|edge| {
+            edge.kind == GraphEdgeKind::Evidence
+                && edge.source == "billing.policy"
+                && edge.target == "billing.consume-use-case"
+        });
+        assert!(
+            evidence_edge.is_some(),
+            "a derived evidence edge decision→source must exist; edges: {:?}",
+            artifact.edges
+        );
+    }
+
+    /// An accepted decision with inline evidence emits the evidence in the
+    /// typed `evidence` array on the graph node.
+    #[test]
+    fn accepted_decision_with_inline_evidence_produces_graph_evidence_entries() {
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::decision::{AcceptedVerdict, DecidedBy, Decision};
+        use crate::domain::value_objects::evidence::Evidence;
+        use crate::domain::value_objects::evidence_kind::EvidenceKind;
+
+        let span = decision_ref_span();
+        let verdict = AcceptedVerdict::new(
+            DecidedBy::try_new("architecture").expect("decided_by"),
+            vec![
+                Evidence::inline(EvidenceKind::SourceCode, "design note v2").expect("source ev"),
+                Evidence::inline(EvidenceKind::Test, "cargo test billing").expect("test ev"),
+            ],
+        );
+        let decision = Decision::try_new(
+            "billing.policy",
+            Some("accepted"),
+            "Use the ledger-first approach.",
+            std::collections::BTreeMap::new(),
+            Some(verdict),
+            span,
+        )
+        .expect("valid accepted decision with inline evidence");
+
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("docs.decisions").expect("page id"),
+            title: None,
+            source_path: PathBuf::from("docs/decisions.adoc"),
+            blocks: vec![BlockAst::KnowledgeObject(Box::new(
+                KnowledgeObject::Decision(decision),
+            ))],
+        };
+        let workspace = crate::domain::ast::WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build(&workspace, &[]);
+
+        let decision_node = artifact
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                GraphNode::KnowledgeObject(ko) if ko.id == "billing.policy" => Some(ko),
+                _ => None,
+            })
+            .expect("decision graph node must exist");
+
+        // Two inline evidence entries; no ObjectRef entries.
+        assert_eq!(
+            decision_node.evidence.len(),
+            2,
+            "decision must have two inline evidence entries; got: {:?}",
+            decision_node.evidence
+        );
+        let ev0 = &decision_node.evidence[0];
+        assert_eq!(ev0.kind, "source_code");
+        assert_eq!(ev0.value.as_deref(), Some("design note v2"));
+        assert!(
+            ev0.reference.is_none(),
+            "inline entry must have no reference"
+        );
+
+        let ev1 = &decision_node.evidence[1];
+        assert_eq!(ev1.kind, "test");
+        assert_eq!(ev1.value.as_deref(), Some("cargo test billing"));
     }
 }
