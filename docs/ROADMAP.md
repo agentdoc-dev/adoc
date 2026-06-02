@@ -43,7 +43,7 @@ Implemented:
 
 Next:
 
-- V5 Expanded Knowledge Model — the design is captured in [V5-DESIGN.md](V5-DESIGN.md). V5.1 (Constraint + Severity foundation + `adoc.graph.v2` → `adoc.graph.v3` bump), V5.2 (Procedure), V5.3 (Example, declaration-only), V5.4 (Policy), V5.5 (Agent Instruction), and V5.6 (Contradiction, manually authored, ADR-0026) are implemented; the next slice is V5.7 (Source Object). Closes PRD MVP must-have #4 for the seven object types not yet implemented (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model).
+- V5 Expanded Knowledge Model — the design is captured in [V5-DESIGN.md](V5-DESIGN.md). V5.1 (Constraint + Severity foundation + `adoc.graph.v2` → `adoc.graph.v3` bump), V5.2 (Procedure), V5.3 (Example, declaration-only), V5.4 (Policy), V5.5 (Agent Instruction), V5.6 (Contradiction, manually authored, ADR-0026), and V5.7 (Source Object, coexists with inline evidence, ADR-0027) are implemented; the next slice is V5.8 (V5 Evidence Model). Closes PRD MVP must-have #4 for the seven object types not yet implemented (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model).
 
 Later:
 
