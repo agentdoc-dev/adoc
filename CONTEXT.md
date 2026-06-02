@@ -312,6 +312,10 @@ _Avoid_: ad-hoc string `kind` field, custom-schema-driven kinds before V6, kinds
 A shared value object with variants `Critical | High | Medium | Low`, used by `constraint`, `warning`, and `contradiction`. Lives at `domain/value_objects/severity.rs`; `#[non_exhaustive]`, `TryFrom<&str>`, total once constructed. Extracted from `warning`'s existing `WarningSeverity` enum into a shared value object (V5.1); the parse grammar is unchanged and the extraction is behavior-preserving.
 _Avoid_: free-form severity string, per-kind severity duplication, severity comparison as numeric ordering before measured demand
 
+**Trust**:
+A value object on the **Agent Instruction Object** giving its authority level: an ordered enum `informal < team < authoritative < regulated < system` (PRD §17.2). Lives at `domain/value_objects/trust.rs`; `#[non_exhaustive]`, case-sensitive lowercase parse, `Missing`/`Invalid` errors mapping to `schema.agent_instruction_missing_trust` / `schema.agent_instruction_invalid_trust`. The ordering exists so a **Proof Obligation** can detect a trust *upgrade* (`after > before`); `trust` rides the graph node `status` slot via the metadata discriminant, exactly as `constraint` rides it with **Severity**.
+_Avoid_: free-form trust string, treating `internal` as a trust level (corrected per ADR-0025), numeric trust comparison outside upgrade detection
+
 **Constraint Object**:
 A **Knowledge Object** representing a rule that must remain true (PRD §13.3). Required fields: `id`, `severity` (**Severity**), `body`. Constraints may declare `impacts:` per V3.3. Verified constraints require an `enforced_by` evidence reference. Lives at `domain/knowledge_object/constraint.rs`.
 _Avoid_: claim that happens to read like a rule, constraint without severity, blanket constraints without a clear violated-when condition
@@ -329,7 +333,7 @@ A **Knowledge Object** representing an authoritative organizational rule (PRD §
 _Avoid_: policy without approver, future `effective_at` on an active policy, `verified` status on policy, prose treated as policy
 
 **Agent Instruction Object**:
-A **Knowledge Object** declaring an explicit instruction targeted at AI agents (PRD §13.13). Required fields: `id`, `scope`, `trust`, `allowed_actions`, `forbidden_actions`, `body`. `allowed_actions` and `forbidden_actions` are **Disjoint Action Sets**. **Per ADR-0025, agent_instruction objects are NOT runtime ACLs.** They are authored, rendered, and retrievable knowledge. The MCP gateway does not consult them when deciding whether to run a tool. Lives at `domain/knowledge_object/agent_instruction.rs`.
+A **Knowledge Object** declaring an explicit instruction targeted at AI agents (PRD §13.13). Required fields: `id`, `scope` (glob string), `trust` (**Trust**), `allowed_actions`, `forbidden_actions`, `body`. `allowed_actions` and `forbidden_actions` are **Disjoint Action Sets**. The fence word and graph kind are `agent_instruction` (the `::agent` / `trust: internal` shorthand in the V5-DESIGN acceptance example is corrected per ADR-0025). Required-field and disjointness validation are aggregate-owned (`schema.agent_instruction_*`); there is no clock-dependent rule, so no `ValidationRule` is added. A **Proof Obligation** fires a security review on a `trust` upgrade or a `forbidden_actions` removal. **Per ADR-0025, agent_instruction objects are NOT runtime ACLs.** They are authored, rendered, and retrievable knowledge; the MCP gateway does not consult them when deciding whether to run a tool, and the renderer emits a mandatory "NOT runtime ACL" banner linking `adoc://agent/v0/agent-instruction-guide`. Lives at `domain/knowledge_object/agent_instruction.rs`.
 _Avoid_: treating agent_instruction as runtime permission grant, agent_instruction inferred from prose, omitting the "NOT enforced at runtime" renderer banner
 
 **Contradiction Object**:
