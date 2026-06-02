@@ -107,6 +107,13 @@ pub enum DiagnosticCode {
     SchemaContradictionMissingClaims,
     SchemaContradictionClaimsTooFew,
     SchemaContradictionClaimNotFound,
+    SchemaSourceMissingKind,
+    SchemaSourceInvalidKind,
+    SchemaSourceMissingPathOrUrl,
+    SchemaSourceConflictingPathAndUrl,
+    SchemaSourceInvalidPath,
+    SchemaSourceInvalidUrl,
+    SchemaSourceKindTargetMismatch,
 }
 
 impl DiagnosticCode {
@@ -196,6 +203,13 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaContradictionMissingClaims,
             DiagnosticCode::SchemaContradictionClaimsTooFew,
             DiagnosticCode::SchemaContradictionClaimNotFound,
+            DiagnosticCode::SchemaSourceMissingKind,
+            DiagnosticCode::SchemaSourceInvalidKind,
+            DiagnosticCode::SchemaSourceMissingPathOrUrl,
+            DiagnosticCode::SchemaSourceConflictingPathAndUrl,
+            DiagnosticCode::SchemaSourceInvalidPath,
+            DiagnosticCode::SchemaSourceInvalidUrl,
+            DiagnosticCode::SchemaSourceKindTargetMismatch,
         ]
     }
 
@@ -323,6 +337,15 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaContradictionClaimNotFound => {
                 "schema.contradiction_claim_not_found"
             }
+            DiagnosticCode::SchemaSourceMissingKind => "schema.source_missing_kind",
+            DiagnosticCode::SchemaSourceInvalidKind => "schema.source_invalid_kind",
+            DiagnosticCode::SchemaSourceMissingPathOrUrl => "schema.source_missing_path_or_url",
+            DiagnosticCode::SchemaSourceConflictingPathAndUrl => {
+                "schema.source_conflicting_path_and_url"
+            }
+            DiagnosticCode::SchemaSourceInvalidPath => "schema.source_invalid_path",
+            DiagnosticCode::SchemaSourceInvalidUrl => "schema.source_invalid_url",
+            DiagnosticCode::SchemaSourceKindTargetMismatch => "schema.source_kind_target_mismatch",
         }
     }
 
@@ -576,6 +599,27 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaContradictionClaimNotFound => {
                 "Ensure every claim ID in `claims` refers to an existing `claim` object in the workspace."
             }
+            DiagnosticCode::SchemaSourceMissingKind => {
+                "Add a `kind` field to the source: one of source_code, test, commit, pull_request, issue, design_doc, human_review, external_url, api_schema, runtime_metric, incident, support_ticket, audit_record, policy_reference, dataset, experiment."
+            }
+            DiagnosticCode::SchemaSourceInvalidKind => {
+                "Use a valid evidence kind: one of source_code, test, commit, pull_request, issue, design_doc, human_review, external_url, api_schema, runtime_metric, incident, support_ticket, audit_record, policy_reference, dataset, experiment."
+            }
+            DiagnosticCode::SchemaSourceMissingPathOrUrl => {
+                "Add either a `path` (repo-relative) or `url` (absolute URL) field to the source object."
+            }
+            DiagnosticCode::SchemaSourceConflictingPathAndUrl => {
+                "Provide only one of `path` or `url` on a source object, not both."
+            }
+            DiagnosticCode::SchemaSourceInvalidPath => {
+                "Use a repo-relative path (e.g. `src/main.rs`); avoid leading `/`, `..` segments, backslashes, and Windows drive letters."
+            }
+            DiagnosticCode::SchemaSourceInvalidUrl => {
+                "Use a well-formed absolute URL with an allowed scheme (http, https, or mailto)."
+            }
+            DiagnosticCode::SchemaSourceKindTargetMismatch => {
+                "The evidence kind restricts target to path-only or url-only. Adjust the `kind`, `path`, or `url` field accordingly."
+            }
         }
     }
 
@@ -692,6 +736,13 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.contradiction_missing_claims",
     "schema.contradiction_claims_too_few",
     "schema.contradiction_claim_not_found",
+    "schema.source_missing_kind",
+    "schema.source_invalid_kind",
+    "schema.source_missing_path_or_url",
+    "schema.source_conflicting_path_and_url",
+    "schema.source_invalid_path",
+    "schema.source_invalid_url",
+    "schema.source_kind_target_mismatch",
 ];
 
 impl Diagnostic {

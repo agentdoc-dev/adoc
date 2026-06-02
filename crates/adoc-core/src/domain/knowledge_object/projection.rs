@@ -15,6 +15,10 @@ use crate::domain::value_objects::scope::Scope;
 use crate::domain::value_objects::severity::Severity;
 use crate::domain::value_objects::trust::Trust;
 
+const KIND_FIELD: &str = "kind";
+const PATH_FIELD: &str = "path";
+const URL_FIELD: &str = "url";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct KnowledgeObjectMetadata<'a> {
     discriminant: Option<MetadataDiscriminant<'a>>,
@@ -174,6 +178,27 @@ impl KnowledgeObject {
                 Some(MetadataDiscriminant::ContradictionStatus(
                     contradiction.status(),
                 ))
+            }
+            Self::Source(source) => {
+                // Evidence kind projected as a stored scalar under key "kind".
+                fields.push(MetadataField::Stored {
+                    key: KIND_FIELD,
+                    value: source.kind().as_str(),
+                });
+                // Path or URL projected under key "path" / "url".
+                if let Some(path) = source.path() {
+                    fields.push(MetadataField::Stored {
+                        key: PATH_FIELD,
+                        value: path.as_str(),
+                    });
+                } else if let Some(url) = source.url() {
+                    fields.push(MetadataField::Stored {
+                        key: URL_FIELD,
+                        value: url.as_str(),
+                    });
+                }
+                // Source has no status discriminant.
+                None
             }
         };
 
