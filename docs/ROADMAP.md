@@ -43,7 +43,7 @@ Implemented:
 
 Next:
 
-- V5 Expanded Knowledge Model — the design is captured in [V5-DESIGN.md](V5-DESIGN.md). V5.1 (Constraint + Severity foundation + `adoc.graph.v2` → `adoc.graph.v3` bump), V5.2 (Procedure), V5.3 (Example, declaration-only), and V5.4 (Policy) are implemented; the next slice is V5.5 (Agent Instruction). Closes PRD MVP must-have #4 for the seven object types not yet implemented (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model).
+- V5 Expanded Knowledge Model — the design is captured in [V5-DESIGN.md](V5-DESIGN.md). V5.1 (Constraint + Severity foundation + `adoc.graph.v2` → `adoc.graph.v3` bump), V5.2 (Procedure), V5.3 (Example, declaration-only), V5.4 (Policy), and V5.5 (Agent Instruction) are implemented; the next slice is V5.6 (Contradiction). Closes PRD MVP must-have #4 for the seven object types not yet implemented (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model).
 
 Later:
 
@@ -664,18 +664,18 @@ Deferred: review-interval drift diagnostics (V5.10+), approval-chain validation,
 
 ### V5.5: Agent Instruction Slice
 
-Goal: introduce the `agent_instruction` Knowledge Object with disjoint action sets and an explicit "not enforced at runtime" caveat. Per ADR-0025, V5 `agent_instruction` objects are read-only declarative knowledge, never runtime ACLs.
+Goal: introduce the `agent_instruction` Knowledge Object with disjoint action sets and an explicit "not enforced at runtime" caveat. Per ADR-0025, V5 `agent_instruction` objects are read-only declarative knowledge, never runtime ACLs. Implemented.
 
 Scope:
 
-- New `domain/value_objects/trust.rs` (`Trust`: `Informal | Team | Authoritative | Regulated | System`).
-- New `domain/value_objects/scope.rs` (initial V5 surface is a glob string; richer V6+ scope deferred).
+- New `domain/value_objects/trust.rs` (`Trust`: `informal < team < authoritative < regulated < system`, an ordered enum so a trust upgrade is `after > before`).
+- New `domain/value_objects/scope.rs` (initial V5 surface is a glob string, presence-only; richer V6+ scope deferred).
 - New `domain/value_objects/action.rs` exposing `AllowedAction` and `ForbiddenAction` newtypes (opaque to the validator; no enumerated action vocabulary).
-- New `domain/value_objects/action_set.rs` with `DisjointActionSets::try_new(allowed, forbidden) -> Result<Self, OverlapError>`.
-- New `domain/knowledge_object/agent_instruction.rs` aggregate. `BlockKind::AgentInstruction` variant.
-- New `infrastructure/validate/objects/agent_instruction_required_fields.rs` and `infrastructure/validate/objects/agent_disjoint_actions.rs`.
+- New `domain/value_objects/action_set.rs` with `DisjointActionSets::try_new(allowed, forbidden) -> Result<Self, OverlapError>` — the only path to a valid disjoint pair.
+- New `domain/knowledge_object/agent_instruction.rs` aggregate. `BlockKind::AgentInstruction` variant. Fence word and graph kind are `agent_instruction` (the `::agent` shorthand and `trust: internal` in the V5-DESIGN acceptance example are corrected; see ADR-0025).
+- Required-field and disjointness validation are aggregate-owned in `agent_instruction.rs` (`schema.agent_instruction_*`), mirroring V5.1–V5.4 (ADR-0031); `infrastructure/validate/objects/` stays deferred. Unlike `policy`, there is no clock-dependent rule, so no `ValidationRule` is added.
 - **Renderer emits a prominent banner: "Agent Instruction. Authored knowledge, NOT runtime ACL."** below which the body renders as normal prose.
-- `FieldChange::Trust`, `FieldChange::Scope`, `FieldChange::AllowedActionsAdded`, `FieldChange::AllowedActionsRemoved`, `FieldChange::ForbiddenActionsAdded`, `FieldChange::ForbiddenActionsRemoved` added.
+- `FieldChange::Trust`, `FieldChange::Scope`, `FieldChange::AllowedActionsAdded`, `FieldChange::AllowedActionsRemoved`, `FieldChange::ForbiddenActionsAdded`, `FieldChange::ForbiddenActionsRemoved` added. `trust` rides the graph node `status` slot and is projected as `Trust` (not a mislabelled `Status`); a `Trust` upgrade or a `ForbiddenActionsRemoved` on an `agent_instruction` triggers a security-review obligation (ADR-0025).
 - New Agent Guidance Resource `adoc://agent/v0/agent-instruction-guide` and update to `adoc://agent/v0/answer-contract` describing how agents should cite `agent_instruction` objects (read-only, never as an authorization signal).
 
 Acceptance: an instruction with `allowed_actions: [summarize, cite, suggest_edits]` and `forbidden_actions: [execute_shell, access_secrets, modify_auth_code]` exits 0; the same instruction with overlapping `[cite]` in both exits non-zero with `schema.agent_instruction_actions_not_disjoint` naming `cite` as the overlap.
