@@ -158,6 +158,19 @@ impl GraphEvidence {
             reference: None,
         }
     }
+
+    /// Construct an object-reference `GraphEvidence` entry.
+    ///
+    /// `kind` is the evidence kind of the target `source` object (its
+    /// `fields["kind"]` string). `id` is the target object's ID string.
+    /// `value` is always `None` for object-ref entries.
+    pub(crate) fn object_ref(kind: impl Into<String>, id: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            value: None,
+            reference: Some(id.into()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -233,6 +246,10 @@ pub(crate) enum GraphEdgeKind {
     Contains,
     Relation,
     Reference,
+    /// V5.8 TB2: a derived edge from a claim to the `source` object named in
+    /// `evidence_ref:`. Not a user relation field; not traversable via the
+    /// `--relation` filter.
+    Evidence,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

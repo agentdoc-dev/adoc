@@ -47,10 +47,24 @@ impl<'a> KnowledgeObjectMetadata<'a> {
     }
 
     /// Convert the typed evidence slice to the `GraphEvidence` wire format.
+    ///
+    /// `Inline` entries are converted to `GraphEvidence::inline(kind, value)`.
+    /// `ObjectRef` entries are converted to `GraphEvidence::object_ref` with a
+    /// placeholder kind string (`""`) because the target's kind is not
+    /// accessible from this per-object context; the graph assembler resolves
+    /// the kind in a post-assembly pass.
     pub(crate) fn graph_evidence(&self) -> Vec<GraphEvidence> {
         self.evidence
             .iter()
-            .map(|ev| GraphEvidence::inline(ev.kind().as_str(), ev.value().as_str()))
+            .filter_map(|ev| match ev {
+                crate::domain::value_objects::evidence::Evidence::Inline { kind, value } => {
+                    Some(GraphEvidence::inline(kind.as_str(), value.as_str()))
+                }
+                // ObjectRef entries are not sourced from the verification
+                // evidence slice — they come from the claim's `evidence_refs`
+                // field and are appended by the graph assembler.
+                crate::domain::value_objects::evidence::Evidence::ObjectRef(_) => None,
+            })
             .collect()
     }
 }
@@ -396,10 +410,10 @@ mod tests {
         // Evidence is in the typed evidence slice.
         let ev = projection.evidence();
         assert_eq!(ev.len(), 3);
-        assert_eq!(ev[0].kind(), EvidenceKind::SourceCode);
-        assert_eq!(ev[0].value().as_str(), "ledger");
-        assert_eq!(ev[1].kind(), EvidenceKind::Test);
-        assert_eq!(ev[2].kind(), EvidenceKind::HumanReview);
+        assert_eq!(ev[0].kind(), Some(EvidenceKind::SourceCode));
+        assert_eq!(ev[0].value().expect("inline value").as_str(), "ledger");
+        assert_eq!(ev[1].kind(), Some(EvidenceKind::Test));
+        assert_eq!(ev[2].kind(), Some(EvidenceKind::HumanReview));
     }
 
     #[test]

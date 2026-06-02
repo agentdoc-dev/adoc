@@ -23,6 +23,10 @@ pub(crate) const REVIEWED_BY_FIELD: &str = "reviewed_by";
 /// evidence set is unchanged.
 pub(crate) const HUMAN_REVIEW_FIELD: &str = "human_review";
 pub(crate) const VERIFIED_STATUS: &str = "verified";
+/// V5.8 TB2: field naming a `source` Knowledge Object as evidence.
+/// Accepts a comma-separated list of Object IDs; each is validated and, at
+/// workspace validation time, checked to resolve to an existing `source` KO.
+pub(crate) const EVIDENCE_REF_FIELD: &str = "evidence_ref";
 
 const VERIFIED_CLAIM_HELP: &str = "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, or `reviewed_by`.";
 const CLAIM_MISSING_STATUS_HELP: &str = "Claims require non-empty `status`.";
@@ -35,6 +39,11 @@ pub(crate) struct Claim {
     body: Body,
     fields: OptionalFields,
     verification: Option<Verification>,
+    /// V5.8 TB2: object-reference evidence entries. Each entry is an
+    /// [`Evidence::ObjectRef`] naming a `source` Knowledge Object. Parsed from
+    /// the `evidence_ref:` field; consumed before storing optional fields so
+    /// it does not appear in generic output.
+    evidence_refs: Vec<Evidence>,
     relations: Relations,
     impacts: Option<NonEmpty<RelPath>>,
     span: SourceSpan,
@@ -74,6 +83,7 @@ impl Claim {
             return Self::build_verified_from_parsed(parsed, id, status, body, diagnostics);
         }
 
+        let evidence_refs = parse_evidence_refs(&mut parsed, diagnostics);
         let relations = super::extract_relations(&mut parsed, diagnostics);
         let impacts = super::extract_impacts(&mut parsed, diagnostics);
         let optional_fields = std::mem::take(&mut parsed.raw_fields);
@@ -83,6 +93,7 @@ impl Claim {
             status,
             body,
             optional_fields,
+            evidence_refs,
             None,
             relations,
             parsed.span.clone(),
@@ -115,17 +126,47 @@ impl Claim {
             status,
             body,
             optional_fields,
+            Vec::new(),
             verification,
             Relations::empty(),
             span,
         )
     }
 
+    /// Test-only constructor that also accepts evidence refs.
+    ///
+    /// Each `ObjectId` in `ref_ids` is wrapped in `Evidence::ObjectRef`.
+    #[cfg(test)]
+    pub(crate) fn try_new_with_refs(
+        id_text: &str,
+        status_text: Option<&str>,
+        body_text: &str,
+        optional_fields: BTreeMap<String, String>,
+        ref_ids: Vec<ObjectId>,
+        verification: Option<Verification>,
+        span: SourceSpan,
+    ) -> Result<Self, ClaimError> {
+        let (id, status, body) = Self::parse_basics(id_text, status_text, body_text)?;
+        let evidence_refs = ref_ids.into_iter().map(Evidence::object_ref).collect();
+        Self::from_parts(
+            id,
+            status,
+            body,
+            optional_fields,
+            evidence_refs,
+            verification,
+            Relations::empty(),
+            span,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn from_parts(
         id: ObjectId,
         status: ClaimStatus,
         body: Body,
         optional_fields: BTreeMap<String, String>,
+        evidence_refs: Vec<Evidence>,
         verification: Option<Verification>,
         relations: Relations,
         span: SourceSpan,
@@ -152,6 +193,7 @@ impl Claim {
             body,
             fields,
             verification,
+            evidence_refs,
             relations,
             impacts: None,
             span,
@@ -215,6 +257,13 @@ impl Claim {
         &self.relations
     }
 
+    /// V5.8 TB2: the object-reference evidence entries from the
+    /// `evidence_ref:` field. Each entry is `Evidence::ObjectRef`. Empty when
+    /// none were authored.
+    pub(crate) fn evidence_refs(&self) -> &[Evidence] {
+        &self.evidence_refs
+    }
+
     pub(crate) fn impacts(&self) -> Option<&[RelPath]> {
         self.impacts.as_ref().map(NonEmpty::as_slice)
     }
@@ -231,6 +280,7 @@ impl Claim {
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
         let verification = build_verification(&parsed, &parsed.raw_fields, diagnostics)?;
+        let evidence_refs = parse_evidence_refs(&mut parsed, diagnostics);
         let relations = super::extract_relations(&mut parsed, diagnostics);
         let impacts = super::extract_impacts(&mut parsed, diagnostics);
         let optional_fields = std::mem::take(&mut parsed.raw_fields);
@@ -241,6 +291,7 @@ impl Claim {
             status,
             body,
             storage_fields,
+            evidence_refs,
             Some(verification),
             relations,
             parsed.span.clone(),
@@ -251,6 +302,136 @@ impl Claim {
                 None
             }
         }
+    }
+}
+
+/// Parse the `evidence_ref:` field into a deduplicated list of
+/// [`Evidence::ObjectRef`] entries. Accepts both scalar (`evidence_ref: id.one`)
+/// and bracket-list (`evidence_ref: [id.one, id.two]`) syntax. Invalid IDs emit
+/// [`DiagnosticCode::IdInvalid`] and are silently dropped from the result.
+/// Returns an empty `Vec` when the field is absent or yields no valid entries.
+fn parse_evidence_refs(
+    parsed: &mut ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<Evidence> {
+    let Some(value) = parsed.raw_fields.remove(EVIDENCE_REF_FIELD) else {
+        return Vec::new();
+    };
+
+    // Reuse the same bracket/comma-split logic as `extract_relations` via the
+    // module-level helpers. We call the helpers from the parent module
+    // (`super::`) to avoid duplicating that logic.
+    let value_span = parsed
+        .raw_field_spans
+        .get(EVIDENCE_REF_FIELD)
+        .cloned()
+        .unwrap_or_else(|| parsed.span.clone());
+
+    let Some((content_start, content_end)) = super::content_range_for_list_field(
+        parsed,
+        EVIDENCE_REF_FIELD,
+        &value,
+        &value_span,
+        diagnostics,
+    ) else {
+        return Vec::new();
+    };
+
+    if value[content_start..content_end]
+        .trim_matches(|c: char| c.is_ascii_whitespace())
+        .is_empty()
+    {
+        return Vec::new();
+    }
+
+    let mut refs: Vec<Evidence> = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut segment_start = content_start;
+    for (rel, _) in value[content_start..content_end].match_indices(',') {
+        let comma = content_start + rel;
+        push_evidence_ref_segment(
+            parsed,
+            &value,
+            segment_start,
+            comma,
+            &value_span,
+            &mut seen,
+            &mut refs,
+            diagnostics,
+            false,
+        );
+        segment_start = comma + 1;
+    }
+    push_evidence_ref_segment(
+        parsed,
+        &value,
+        segment_start,
+        content_end,
+        &value_span,
+        &mut seen,
+        &mut refs,
+        diagnostics,
+        true,
+    );
+    refs
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_evidence_ref_segment(
+    parsed: &ParsedTypedBlock,
+    value: &str,
+    start: usize,
+    end: usize,
+    value_span: &SourceSpan,
+    seen: &mut std::collections::BTreeSet<ObjectId>,
+    refs: &mut Vec<Evidence>,
+    diagnostics: &mut Vec<Diagnostic>,
+    is_last: bool,
+) {
+    let raw = &value[start..end];
+    let Some((trimmed, trimmed_start, trimmed_end)) = super::trim_segment_pub(raw) else {
+        if is_last {
+            return;
+        }
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                format!(
+                    "empty `evidence_ref` segment in `{}`; remove the extra comma or fill in the id",
+                    parsed.id_text
+                ),
+            )
+            .with_span(super::relation_segment_span_pub(value_span, value, start, end))
+            .with_object_id(&parsed.id_text)
+            .with_help(OBJECT_ID_GRAMMAR_HELP),
+        );
+        return;
+    };
+
+    let span = super::relation_segment_span_pub(
+        value_span,
+        value,
+        start + trimmed_start,
+        start + trimmed_end,
+    );
+    match ObjectId::new(trimmed) {
+        Ok(id) => {
+            if seen.insert(id.clone()) {
+                refs.push(Evidence::object_ref(id));
+            }
+        }
+        Err(error) => diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::IdInvalid,
+                format!(
+                    "invalid `evidence_ref` id `{trimmed}` for `{}`: {error}",
+                    parsed.id_text
+                ),
+            )
+            .with_span(span)
+            .with_object_id(trimmed)
+            .with_help(OBJECT_ID_GRAMMAR_HELP),
+        ),
     }
 }
 
@@ -1011,7 +1192,10 @@ mod tests {
         .expect("non-empty evidence");
 
         assert_eq!(evidence.as_slice().len(), 1);
-        assert_eq!(evidence.as_slice()[0].kind(), EvidenceKind::SourceCode);
+        assert_eq!(
+            evidence.as_slice()[0].kind(),
+            Some(EvidenceKind::SourceCode)
+        );
     }
 
     fn verification() -> Verification {
@@ -1024,5 +1208,174 @@ mod tests {
             ])
             .expect("non-empty evidence"),
         )
+    }
+
+    // ── evidence_ref parsing (V5.8 TB2) ──────────────────────────────────────
+
+    #[test]
+    fn claim_build_from_parsed_accepts_scalar_evidence_ref() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                (
+                    EVIDENCE_REF_FIELD.to_string(),
+                    "billing.consume-use-case".to_string(),
+                ),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let refs = claim.evidence_refs();
+        assert_eq!(refs.len(), 1);
+        assert_eq!(
+            refs[0].target_id().expect("ObjectRef has target").as_str(),
+            "billing.consume-use-case"
+        );
+    }
+
+    #[test]
+    fn claim_build_from_parsed_accepts_comma_separated_evidence_refs() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                (
+                    EVIDENCE_REF_FIELD.to_string(),
+                    "billing.consume-use-case, billing.other-source".to_string(),
+                ),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let refs = claim.evidence_refs();
+        assert_eq!(refs.len(), 2);
+        let strs: Vec<&str> = refs
+            .iter()
+            .filter_map(|ev| ev.target_id())
+            .map(|id| id.as_str())
+            .collect();
+        assert!(
+            strs.contains(&"billing.consume-use-case"),
+            "must contain first ref"
+        );
+        assert!(
+            strs.contains(&"billing.other-source"),
+            "must contain second ref"
+        );
+    }
+
+    #[test]
+    fn claim_build_from_parsed_accepts_bracketed_evidence_ref_list() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                (
+                    EVIDENCE_REF_FIELD.to_string(),
+                    "[billing.consume-use-case, billing.other-source]".to_string(),
+                ),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        assert_eq!(claim.evidence_refs().len(), 2);
+    }
+
+    #[test]
+    fn claim_build_from_parsed_deduplicates_evidence_refs() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                (
+                    EVIDENCE_REF_FIELD.to_string(),
+                    "billing.consume-use-case, billing.consume-use-case".to_string(),
+                ),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        assert_eq!(claim.evidence_refs().len(), 1);
+    }
+
+    #[test]
+    fn claim_build_from_parsed_rejects_invalid_evidence_ref_id() {
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                (EVIDENCE_REF_FIELD.to_string(), "INVALID_ID".to_string()),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("claim builds");
+
+        // The claim still builds (invalid IDs are dropped), but a diagnostic is emitted.
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].code, DiagnosticCode::IdInvalid);
+        assert!(
+            claim.evidence_refs().is_empty(),
+            "invalid id must be dropped"
+        );
+    }
+
+    #[test]
+    fn claim_build_from_parsed_evidence_ref_not_in_optional_fields() {
+        // evidence_ref: must be consumed and must NOT appear in generic fields.
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "plain".to_string()),
+                (
+                    EVIDENCE_REF_FIELD.to_string(),
+                    "billing.consume-use-case".to_string(),
+                ),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let field_keys: Vec<&str> = claim.fields().iter().map(|(k, _)| k.as_str()).collect();
+        assert!(
+            !field_keys.contains(&EVIDENCE_REF_FIELD),
+            "evidence_ref must not appear in generic fields; got: {field_keys:?}"
+        );
+    }
+
+    #[test]
+    fn draft_claim_can_carry_evidence_refs() {
+        // evidence_ref is valid on draft (non-verified) claims.
+        let mut diagnostics = Vec::new();
+        let parsed = parsed_claim(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "draft".to_string()),
+                (
+                    EVIDENCE_REF_FIELD.to_string(),
+                    "billing.consume-use-case".to_string(),
+                ),
+            ]),
+            "body",
+        );
+
+        let claim = Claim::build_from_parsed(parsed, &mut diagnostics).expect("valid claim");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        assert_eq!(claim.evidence_refs().len(), 1);
     }
 }

@@ -147,6 +147,35 @@ pub(super) fn extract_relations(
     relations
 }
 
+/// Public-within-crate-module access to `trim_segment` for sibling modules
+/// that need to parse comma-separated ID lists (e.g. `claim::parse_evidence_refs`).
+pub(super) fn trim_segment_pub(value: &str) -> Option<(&str, usize, usize)> {
+    trim_segment(value)
+}
+
+/// Public-within-crate-module access to `relation_segment_span` for sibling
+/// modules that need to produce per-segment diagnostic spans.
+pub(super) fn relation_segment_span_pub(
+    value_span: &SourceSpan,
+    value: &str,
+    start: usize,
+    end: usize,
+) -> SourceSpan {
+    relation_segment_span(value_span, value, start, end)
+}
+
+/// Public-within-crate-module access to `relation_content_range` for
+/// sibling modules that need to unwrap bracket/scalar list syntax.
+pub(super) fn content_range_for_list_field(
+    parsed: &ParsedTypedBlock,
+    key: &str,
+    value: &str,
+    value_span: &SourceSpan,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<(usize, usize)> {
+    relation_content_range(parsed, key, value, value_span, diagnostics)
+}
+
 fn parse_relation_targets(
     parsed: &ParsedTypedBlock,
     key: &str,

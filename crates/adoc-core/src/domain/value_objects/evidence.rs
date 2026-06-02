@@ -1,26 +1,34 @@
 //! Inline evidence value object — the typed replacement for the V0 flat
 //! `source`/`test`/`reviewed_by` fields.
 //!
-//! A V5.8 `Evidence` is always an `Inline` entry: a typed
-//! [`EvidenceKind`] paired with a non-empty [`EvidenceValue`] string.
-//! TB2 will add an `ObjectRef(ObjectId)` variant; this module is
-//! intentionally kept crate-internal so the addition is non-breaking.
+//! A V5.8 `Evidence` may be an `Inline` entry (a typed [`EvidenceKind`]
+//! paired with a non-empty [`EvidenceValue`] string) or an `ObjectRef`
+//! entry pointing to a `source` Knowledge Object by [`ObjectId`].
 
+use crate::domain::identity::ObjectId;
 use crate::domain::value_objects::evidence_kind::EvidenceKind;
 use crate::domain::values::NonEmptyText;
 
-/// A single piece of evidence attached to a `Verification`.
+/// A single piece of evidence attached to a `Claim` or `Verification`.
 ///
-/// Currently the only variant is `Inline` — an evidence kind + inline text
-/// value pair. TB2 will add `ObjectRef(ObjectId)` inside the same crate;
-/// because this type is `pub(crate)`, external callers cannot construct it
-/// and therefore won't be broken by the addition.
+/// Two variants exist:
+/// - `Inline` — an evidence kind + inline text value pair (V5.8 TB1).
+/// - `ObjectRef` — a reference to a `source` Knowledge Object by ID (V5.8 TB2).
+///
+/// Because this type is `pub(crate)`, external callers cannot construct it
+/// and are not broken by the addition of new variants.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Evidence {
     Inline {
         kind: EvidenceKind,
         value: EvidenceValue,
     },
+    /// A reference to a `source` Knowledge Object by ID.
+    ///
+    /// Added in V5.8 TB2 to support `evidence_ref:` on claims. The target
+    /// must resolve to an existing `source` object at workspace-validation
+    /// time.
+    ObjectRef(ObjectId),
 }
 
 impl Evidence {
@@ -28,6 +36,11 @@ impl Evidence {
     /// string. Returns `None` when `value` is empty or whitespace-only.
     pub(crate) fn inline(kind: EvidenceKind, value: &str) -> Option<Self> {
         EvidenceValue::try_new(value).map(|v| Self::Inline { kind, value: v })
+    }
+
+    /// Construct an `ObjectRef` evidence entry pointing to the given object.
+    pub(crate) fn object_ref(id: ObjectId) -> Self {
+        Self::ObjectRef(id)
     }
 
     /// Map a V0 field name to a typed kind and construct an `Inline` entry.
@@ -49,17 +62,30 @@ impl Evidence {
         Self::inline(kind, value)
     }
 
-    /// The typed evidence kind for this entry.
-    pub(crate) fn kind(&self) -> EvidenceKind {
+    /// The typed evidence kind for `Inline` entries; `None` for `ObjectRef`.
+    ///
+    /// Call sites that only handle `Inline` evidence (e.g. the verification
+    /// graph projection) match on this returning `Some(kind)` and skip `None`.
+    pub(crate) fn kind(&self) -> Option<EvidenceKind> {
         match self {
-            Self::Inline { kind, .. } => *kind,
+            Self::Inline { kind, .. } => Some(*kind),
+            Self::ObjectRef(_) => None,
         }
     }
 
-    /// The inline value string for this entry.
-    pub(crate) fn value(&self) -> &EvidenceValue {
+    /// The object ID that this entry points to, or `None` for `Inline`.
+    pub(crate) fn target_id(&self) -> Option<&ObjectId> {
         match self {
-            Self::Inline { value, .. } => value,
+            Self::ObjectRef(id) => Some(id),
+            Self::Inline { .. } => None,
+        }
+    }
+
+    /// The inline value string for `Inline` entries; `None` for `ObjectRef`.
+    pub(crate) fn value(&self) -> Option<&EvidenceValue> {
+        match self {
+            Self::Inline { value, .. } => Some(value),
+            Self::ObjectRef(_) => None,
         }
     }
 }
@@ -115,13 +141,39 @@ mod tests {
     #[test]
     fn evidence_inline_constructs_and_exposes_kind_and_value() {
         let ev = Evidence::inline(EvidenceKind::SourceCode, "ledger").expect("valid");
-        assert_eq!(ev.kind(), EvidenceKind::SourceCode);
-        assert_eq!(ev.value().as_str(), "ledger");
+        assert_eq!(ev.kind(), Some(EvidenceKind::SourceCode));
+        assert_eq!(ev.value().expect("has value").as_str(), "ledger");
+        assert!(ev.target_id().is_none());
     }
 
     #[test]
     fn evidence_inline_returns_none_for_empty_value() {
         assert!(Evidence::inline(EvidenceKind::Test, "").is_none());
+    }
+
+    // ------------------------------------------------------------------
+    // Evidence::ObjectRef
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn evidence_object_ref_constructs_and_exposes_target_id() {
+        use crate::domain::identity::ObjectId;
+        let id = ObjectId::new("billing.consume-use-case").expect("valid id");
+        let ev = Evidence::object_ref(id.clone());
+        assert_eq!(ev.target_id(), Some(&id));
+        assert!(ev.kind().is_none());
+        assert!(ev.value().is_none());
+    }
+
+    #[test]
+    fn evidence_object_ref_matches_correctly() {
+        use crate::domain::identity::ObjectId;
+        let id = ObjectId::new("auth.source-ref").expect("valid id");
+        let ev = Evidence::object_ref(id.clone());
+        match &ev {
+            Evidence::ObjectRef(inner) => assert_eq!(inner, &id),
+            Evidence::Inline { .. } => panic!("expected ObjectRef"),
+        }
     }
 
     // ------------------------------------------------------------------
@@ -131,25 +183,25 @@ mod tests {
     #[test]
     fn from_field_source_maps_to_source_code() {
         let ev = Evidence::from_field("source", "payments ledger").expect("valid");
-        assert_eq!(ev.kind(), EvidenceKind::SourceCode);
+        assert_eq!(ev.kind(), Some(EvidenceKind::SourceCode));
     }
 
     #[test]
     fn from_field_test_maps_to_test() {
         let ev = Evidence::from_field("test", "cargo test billing").expect("valid");
-        assert_eq!(ev.kind(), EvidenceKind::Test);
+        assert_eq!(ev.kind(), Some(EvidenceKind::Test));
     }
 
     #[test]
     fn from_field_reviewed_by_maps_to_human_review() {
         let ev = Evidence::from_field("reviewed_by", "qa-team").expect("valid");
-        assert_eq!(ev.kind(), EvidenceKind::HumanReview);
+        assert_eq!(ev.kind(), Some(EvidenceKind::HumanReview));
     }
 
     #[test]
     fn from_field_human_review_also_maps_to_human_review() {
         let ev = Evidence::from_field("human_review", "ops-run").expect("valid");
-        assert_eq!(ev.kind(), EvidenceKind::HumanReview);
+        assert_eq!(ev.kind(), Some(EvidenceKind::HumanReview));
     }
 
     #[test]
@@ -184,11 +236,11 @@ mod tests {
             let ev = Evidence::from_field(field, "value").expect("valid");
             assert_eq!(
                 ev.kind(),
-                expected_kind,
+                Some(expected_kind),
                 "field {field:?} should map to {expected_kind:?}"
             );
             // EvidenceKind round-trips through as_str → try_new
-            let wire = ev.kind().as_str();
+            let wire = ev.kind().expect("inline has kind").as_str();
             assert_eq!(
                 EvidenceKind::try_new(wire),
                 Ok(expected_kind),

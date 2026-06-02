@@ -760,17 +760,26 @@ fn accepted_decision_field<'a>(
 }
 
 fn render_evidence(evidence: &Evidence, html: &mut String) {
-    // V5.8: EvidenceKind as_str() is the display key (e.g. "source_code").
-    // The CSS modifier converts underscores to dashes for the BEM class.
-    let kind_str = evidence.kind().as_str();
-    let modifier = kind_str.replace('_', "-");
-    html.push_str("<div class=\"claim__evidence-item claim__evidence-item--");
-    html.push_str(&modifier);
-    html.push_str("\"><dt>");
-    html.push_str(kind_str);
-    html.push_str("</dt><dd>");
-    html.push_str(&escape_html(evidence.value().as_str()));
-    html.push_str("</dd></div>\n");
+    // V5.8: ObjectRef entries are cross-object links; render as a reference.
+    // Inline entries carry an EvidenceKind + value text.
+    if let Some(ref_id) = evidence.target_id() {
+        html.push_str("<div class=\"claim__evidence-item claim__evidence-item--object-ref\">");
+        html.push_str("<dt>evidence_ref</dt><dd>");
+        html.push_str(ref_id.as_str());
+        html.push_str("</dd></div>\n");
+    } else if let (Some(kind), Some(value)) = (evidence.kind(), evidence.value()) {
+        // EvidenceKind as_str() is the display key (e.g. "source_code").
+        // The CSS modifier converts underscores to dashes for the BEM class.
+        let kind_str = kind.as_str();
+        let modifier = kind_str.replace('_', "-");
+        html.push_str("<div class=\"claim__evidence-item claim__evidence-item--");
+        html.push_str(&modifier);
+        html.push_str("\"><dt>");
+        html.push_str(kind_str);
+        html.push_str("</dt><dd>");
+        html.push_str(&escape_html(value.as_str()));
+        html.push_str("</dd></div>\n");
+    }
 }
 
 fn render_object_section_open(
