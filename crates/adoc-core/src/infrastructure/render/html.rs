@@ -1250,7 +1250,10 @@ mod tests {
             KnowledgeObject,
             decision::{AcceptedVerdict, DecidedBy, Decision},
         };
-        let verdict = AcceptedVerdict::new(DecidedBy::try_new("architecture").expect("decided_by"));
+        let verdict = AcceptedVerdict::new(
+            DecidedBy::try_new("architecture").expect("decided_by"),
+            Vec::new(),
+        );
         let decision = Decision::try_new(id, Some("accepted"), body, fields, Some(verdict), span)
             .expect("test decision must be valid");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision)))

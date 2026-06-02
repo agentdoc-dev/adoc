@@ -4,6 +4,7 @@ use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
 use crate::domain::knowledge_object::Relations;
+use crate::domain::value_objects::evidence::Evidence;
 use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::values::{Body, NonEmpty, NonEmptyText, OptionalFields, trim_ascii_edges};
 
@@ -11,6 +12,11 @@ pub(crate) const STATUS_FIELD: &str = "status";
 pub(crate) const DECIDED_BY_FIELD: &str = "decided_by";
 pub(crate) const ACCEPTED_STATUS: &str = "accepted";
 pub(crate) const VALID_STATUS_HELP: &str = "Valid decision statuses are: proposed, accepted.";
+/// V5.8 TB3: inline evidence fields accepted on `accepted` decisions, parsed
+/// into the `AcceptedVerdict::evidence` vec. Same field names as verified claims.
+pub(crate) const SOURCE_FIELD: &str = "source";
+pub(crate) const TEST_FIELD: &str = "test";
+pub(crate) const REVIEWED_BY_FIELD: &str = "reviewed_by";
 const DECISION_MISSING_STATUS_HELP: &str =
     "Decisions require non-empty `status`. Valid decision statuses are: proposed, accepted.";
 const DECISION_MISSING_BODY_HELP: &str = "Decisions require non-empty body text.";
@@ -22,6 +28,9 @@ pub(crate) struct Decision {
     body: Body,
     fields: OptionalFields,
     verdict: Option<AcceptedVerdict>,
+    /// V5.8 TB3: object-reference evidence entries from `evidence_ref:`.
+    /// Status-agnostic: valid on both `proposed` and `accepted` decisions.
+    evidence_refs: Vec<Evidence>,
     relations: Relations,
     impacts: Option<NonEmpty<RelPath>>,
     span: SourceSpan,
@@ -67,16 +76,25 @@ impl Decision {
                 diagnostics.push(missing_decided_by_diagnostic(&parsed));
                 return None;
             };
-            Some(AcceptedVerdict::new(decided_by))
+            // V5.8 TB3: collect optional inline evidence from accepted decisions.
+            let evidence = build_accepted_evidence(&parsed.raw_fields);
+            Some(AcceptedVerdict::new(decided_by, evidence))
         } else {
             None
         };
+
+        // V5.8 TB3: parse evidence_ref on all decisions (status-agnostic).
+        let evidence_refs = super::parse_evidence_refs(&mut parsed, diagnostics);
 
         let relations = super::extract_relations(&mut parsed, diagnostics);
         let impacts = super::extract_impacts(&mut parsed, diagnostics);
         let mut optional_fields = std::mem::take(&mut parsed.raw_fields);
         if verdict.is_some() {
+            // Strip decided_by and inline evidence fields from generic fields.
             optional_fields.remove(DECIDED_BY_FIELD);
+            optional_fields.remove(SOURCE_FIELD);
+            optional_fields.remove(TEST_FIELD);
+            optional_fields.remove(REVIEWED_BY_FIELD);
         };
 
         match Self::from_parts(
@@ -85,6 +103,7 @@ impl Decision {
             body,
             optional_fields,
             verdict,
+            evidence_refs,
             relations,
             parsed.span.clone(),
         ) {
@@ -115,17 +134,45 @@ impl Decision {
             body,
             optional_fields,
             verdict,
+            Vec::new(),
             Relations::empty(),
             span,
         )
     }
 
+    /// Test-only constructor that also accepts evidence refs.
+    #[cfg(test)]
+    pub(crate) fn try_new_with_refs(
+        id_text: &str,
+        status_text: Option<&str>,
+        body_text: &str,
+        optional_fields: BTreeMap<String, String>,
+        ref_ids: Vec<ObjectId>,
+        verdict: Option<AcceptedVerdict>,
+        span: SourceSpan,
+    ) -> Result<Self, DecisionError> {
+        let (id, status, body) = Self::parse_basics(id_text, status_text, body_text)?;
+        let evidence_refs = ref_ids.into_iter().map(Evidence::object_ref).collect();
+        Self::from_parts(
+            id,
+            status,
+            body,
+            optional_fields,
+            verdict,
+            evidence_refs,
+            Relations::empty(),
+            span,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn from_parts(
         id: ObjectId,
         status: DecisionStatus,
         body: Body,
         optional_fields: BTreeMap<String, String>,
         verdict: Option<AcceptedVerdict>,
+        evidence_refs: Vec<Evidence>,
         relations: Relations,
         span: SourceSpan,
     ) -> Result<Self, DecisionError> {
@@ -149,6 +196,7 @@ impl Decision {
             body,
             fields: OptionalFields::from_map(optional_fields),
             verdict,
+            evidence_refs,
             relations,
             impacts: None,
             span,
@@ -208,6 +256,13 @@ impl Decision {
         self.verdict.as_ref()
     }
 
+    /// V5.8 TB3: object-reference evidence entries from `evidence_ref:`.
+    /// Each entry is `Evidence::ObjectRef`. Status-agnostic: valid on both
+    /// `proposed` and `accepted` decisions. Empty when none were authored.
+    pub(crate) fn evidence_refs(&self) -> &[Evidence] {
+        &self.evidence_refs
+    }
+
     pub(crate) fn relations(&self) -> &Relations {
         &self.relations
     }
@@ -219,6 +274,33 @@ impl Decision {
     pub(crate) fn span(&self) -> &SourceSpan {
         &self.span
     }
+}
+
+/// Collect optional inline evidence from the raw fields of an accepted decision.
+/// Mirrors `claim::build_verification`'s evidence collection, but here evidence
+/// is optional (decided_by remains the required approver field). Returns an
+/// empty `Vec` when none of `source`, `test`, or `reviewed_by` are present.
+fn build_accepted_evidence(fields: &BTreeMap<String, String>) -> Vec<Evidence> {
+    let mut evidence = Vec::new();
+    if let Some(ev) = fields
+        .get(SOURCE_FIELD)
+        .and_then(|v| Evidence::from_field(SOURCE_FIELD, v))
+    {
+        evidence.push(ev);
+    }
+    if let Some(ev) = fields
+        .get(TEST_FIELD)
+        .and_then(|v| Evidence::from_field(TEST_FIELD, v))
+    {
+        evidence.push(ev);
+    }
+    if let Some(ev) = fields
+        .get(REVIEWED_BY_FIELD)
+        .and_then(|v| Evidence::from_field(REVIEWED_BY_FIELD, v))
+    {
+        evidence.push(ev);
+    }
+    evidence
 }
 
 fn emit_decision_error(
@@ -325,15 +407,28 @@ impl DecisionStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AcceptedVerdict {
     decided_by: DecidedBy,
+    /// V5.8 TB3: optional inline evidence from `source`, `test`, `reviewed_by`
+    /// fields on accepted decisions. Empty when none were authored.
+    evidence: Vec<Evidence>,
 }
 
 impl AcceptedVerdict {
-    pub(crate) fn new(decided_by: DecidedBy) -> Self {
-        Self { decided_by }
+    pub(crate) fn new(decided_by: DecidedBy, evidence: Vec<Evidence>) -> Self {
+        Self {
+            decided_by,
+            evidence,
+        }
     }
 
     pub(crate) fn decided_by(&self) -> &DecidedBy {
         &self.decided_by
+    }
+
+    /// V5.8 TB3: inline evidence entries for this accepted decision. Each entry
+    /// is `Evidence::Inline`. Empty when none of `source`, `test`, or
+    /// `reviewed_by` were authored.
+    pub(crate) fn evidence(&self) -> &[Evidence] {
+        &self.evidence
     }
 }
 
@@ -477,6 +572,7 @@ mod tests {
             BTreeMap::new(),
             Some(AcceptedVerdict::new(
                 DecidedBy::try_new("architecture").expect("decided_by"),
+                Vec::new(),
             )),
             span(),
         );
@@ -493,6 +589,7 @@ mod tests {
             BTreeMap::from([(DECIDED_BY_FIELD.to_string(), "architecture".to_string())]),
             Some(AcceptedVerdict::new(
                 DecidedBy::try_new("architecture").expect("decided_by"),
+                Vec::new(),
             )),
             span(),
         );
@@ -529,5 +626,214 @@ mod tests {
             "architecture"
         );
         assert!(DecidedBy::try_new(" \t ").is_none());
+    }
+
+    // ── V5.8 TB3: evidence_ref parsing (status-agnostic) ──────────────────────
+
+    #[test]
+    fn proposed_decision_can_carry_evidence_ref() {
+        let parsed = parsed_decision(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "proposed".to_string()),
+                (
+                    crate::domain::knowledge_object::EVIDENCE_REF_FIELD.to_string(),
+                    "billing.consume-use-case".to_string(),
+                ),
+            ]),
+            "Consider the policy.",
+        );
+        let mut diagnostics = Vec::new();
+
+        let decision =
+            Decision::build_from_parsed(parsed, &mut diagnostics).expect("valid proposed decision");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let refs = decision.evidence_refs();
+        assert_eq!(refs.len(), 1);
+        assert_eq!(
+            refs[0].target_id().expect("ObjectRef has target").as_str(),
+            "billing.consume-use-case"
+        );
+    }
+
+    #[test]
+    fn accepted_decision_can_carry_evidence_ref() {
+        let parsed = parsed_decision(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), ACCEPTED_STATUS.to_string()),
+                (DECIDED_BY_FIELD.to_string(), "architecture".to_string()),
+                (
+                    crate::domain::knowledge_object::EVIDENCE_REF_FIELD.to_string(),
+                    "billing.consume-use-case".to_string(),
+                ),
+            ]),
+            "Use the existing billing policy.",
+        );
+        let mut diagnostics = Vec::new();
+
+        let decision =
+            Decision::build_from_parsed(parsed, &mut diagnostics).expect("valid accepted decision");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let refs = decision.evidence_refs();
+        assert_eq!(refs.len(), 1);
+        assert_eq!(
+            refs[0].target_id().expect("ObjectRef has target").as_str(),
+            "billing.consume-use-case"
+        );
+    }
+
+    #[test]
+    fn evidence_ref_not_in_optional_fields() {
+        // evidence_ref: must be consumed and must NOT appear in generic fields.
+        let parsed = parsed_decision(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "proposed".to_string()),
+                (
+                    crate::domain::knowledge_object::EVIDENCE_REF_FIELD.to_string(),
+                    "billing.consume-use-case".to_string(),
+                ),
+            ]),
+            "Consider the policy.",
+        );
+        let mut diagnostics = Vec::new();
+
+        let decision =
+            Decision::build_from_parsed(parsed, &mut diagnostics).expect("valid decision");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let field_keys: Vec<&str> = decision.fields().iter().map(|(k, _)| k.as_str()).collect();
+        assert!(
+            !field_keys.contains(&crate::domain::knowledge_object::EVIDENCE_REF_FIELD),
+            "evidence_ref must not appear in generic fields; got: {field_keys:?}"
+        );
+    }
+
+    // ── V5.8 TB3: inline evidence on accepted decisions ────────────────────────
+
+    #[test]
+    fn accepted_decision_captures_inline_source_evidence() {
+        let parsed = parsed_decision(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), ACCEPTED_STATUS.to_string()),
+                (DECIDED_BY_FIELD.to_string(), "architecture".to_string()),
+                (SOURCE_FIELD.to_string(), "design note v2".to_string()),
+            ]),
+            "Use the existing billing policy.",
+        );
+        let mut diagnostics = Vec::new();
+
+        let decision =
+            Decision::build_from_parsed(parsed, &mut diagnostics).expect("valid accepted decision");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let ev = decision.verdict().expect("has verdict").evidence();
+        assert_eq!(ev.len(), 1);
+        use crate::domain::value_objects::evidence_kind::EvidenceKind;
+        assert_eq!(ev[0].kind(), Some(EvidenceKind::SourceCode));
+        assert_eq!(
+            ev[0].value().expect("inline value").as_str(),
+            "design note v2"
+        );
+    }
+
+    #[test]
+    fn accepted_decision_captures_all_inline_evidence_fields() {
+        let parsed = parsed_decision(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), ACCEPTED_STATUS.to_string()),
+                (DECIDED_BY_FIELD.to_string(), "architecture".to_string()),
+                (SOURCE_FIELD.to_string(), "design note v2".to_string()),
+                (
+                    TEST_FIELD.to_string(),
+                    "cargo test billing_policy".to_string(),
+                ),
+                (REVIEWED_BY_FIELD.to_string(), "qa-team".to_string()),
+            ]),
+            "Use the existing billing policy.",
+        );
+        let mut diagnostics = Vec::new();
+
+        let decision =
+            Decision::build_from_parsed(parsed, &mut diagnostics).expect("valid accepted decision");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let ev = decision.verdict().expect("has verdict").evidence();
+        assert_eq!(ev.len(), 3, "must capture source + test + reviewed_by");
+        use crate::domain::value_objects::evidence_kind::EvidenceKind;
+        assert_eq!(ev[0].kind(), Some(EvidenceKind::SourceCode));
+        assert_eq!(ev[1].kind(), Some(EvidenceKind::Test));
+        assert_eq!(ev[2].kind(), Some(EvidenceKind::HumanReview));
+    }
+
+    #[test]
+    fn accepted_decision_inline_evidence_not_in_optional_fields() {
+        // source/test/reviewed_by must be consumed and must NOT appear in generic fields
+        // for accepted decisions.
+        let parsed = parsed_decision(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), ACCEPTED_STATUS.to_string()),
+                (DECIDED_BY_FIELD.to_string(), "architecture".to_string()),
+                (SOURCE_FIELD.to_string(), "design note v2".to_string()),
+            ]),
+            "Use the existing billing policy.",
+        );
+        let mut diagnostics = Vec::new();
+
+        let decision =
+            Decision::build_from_parsed(parsed, &mut diagnostics).expect("valid accepted decision");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let field_keys: Vec<&str> = decision.fields().iter().map(|(k, _)| k.as_str()).collect();
+        assert!(
+            !field_keys.contains(&SOURCE_FIELD),
+            "source must not appear in generic fields for accepted decision; got: {field_keys:?}"
+        );
+    }
+
+    #[test]
+    fn proposed_decision_source_field_stays_as_generic_field() {
+        // For non-accepted (proposed) decisions, source/test/reviewed_by are NOT
+        // captured as typed evidence — they remain as generic fields.
+        let parsed = parsed_decision(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), "proposed".to_string()),
+                (SOURCE_FIELD.to_string(), "background research".to_string()),
+            ]),
+            "Consider the policy.",
+        );
+        let mut diagnostics = Vec::new();
+
+        let decision =
+            Decision::build_from_parsed(parsed, &mut diagnostics).expect("valid proposed decision");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        // Proposed decisions have no verdict.
+        assert!(decision.verdict().is_none());
+        // source: must appear as a generic field.
+        let field_keys: Vec<&str> = decision.fields().iter().map(|(k, _)| k.as_str()).collect();
+        assert!(
+            field_keys.contains(&SOURCE_FIELD),
+            "source must remain as a generic field for proposed decision; got: {field_keys:?}"
+        );
+    }
+
+    #[test]
+    fn accepted_decision_without_inline_evidence_has_empty_verdict_evidence() {
+        let parsed = parsed_decision(
+            BTreeMap::from([
+                (STATUS_FIELD.to_string(), ACCEPTED_STATUS.to_string()),
+                (DECIDED_BY_FIELD.to_string(), "architecture".to_string()),
+            ]),
+            "Use the existing billing policy.",
+        );
+        let mut diagnostics = Vec::new();
+
+        let decision = Decision::build_from_parsed(parsed, &mut diagnostics)
+            .expect("valid accepted decision without evidence");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        let ev = decision.verdict().expect("has verdict").evidence();
+        assert!(ev.is_empty(), "no inline evidence authored → empty slice");
     }
 }

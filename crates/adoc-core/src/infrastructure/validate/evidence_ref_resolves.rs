@@ -5,12 +5,13 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
 use crate::domain::knowledge_object::{BlockKind, KnowledgeObject};
 use crate::domain::rules::WorkspaceRule;
+use crate::domain::value_objects::evidence::Evidence;
 
-/// Verify that every `evidence_ref` entry on a `claim` resolves to an existing
-/// `source` object in the workspace.
+/// Verify that every `evidence_ref` entry on a `claim` or `decision` resolves
+/// to an existing `source` object in the workspace.
 ///
 /// This is a workspace-level rule (not a page rule) because the referenced
-/// source may live on a different page from the claim.
+/// source may live on a different page from the referencing object.
 pub(crate) struct EvidenceRefResolves;
 
 impl WorkspaceRule for EvidenceRefResolves {
@@ -27,16 +28,22 @@ impl WorkspaceRule for EvidenceRefResolves {
             }
         }
 
-        // For every claim, check each evidence_ref id.
+        // For every claim and decision, check each evidence_ref id.
         for page in &workspace.pages {
             for block in &page.blocks {
                 let BlockAst::KnowledgeObject(ko) = block else {
                     continue;
                 };
-                let KnowledgeObject::Claim(claim) = ko.as_ref() else {
-                    continue;
+                let (object_id, span, refs): (&ObjectId, _, &[Evidence]) = match ko.as_ref() {
+                    KnowledgeObject::Claim(claim) => {
+                        (claim.id(), claim.span(), claim.evidence_refs())
+                    }
+                    KnowledgeObject::Decision(decision) => {
+                        (decision.id(), decision.span(), decision.evidence_refs())
+                    }
+                    _ => continue,
                 };
-                for ev in claim.evidence_refs() {
+                for ev in refs {
                     // Each entry is Evidence::ObjectRef; target_id() is always Some.
                     let Some(ref_id) = ev.target_id() else {
                         continue;
@@ -47,12 +54,11 @@ impl WorkspaceRule for EvidenceRefResolves {
                                 Diagnostic::error(
                                     DiagnosticCode::SchemaEvidenceTargetNotFound,
                                     format!(
-                                        "claim `{}` references unknown object `{ref_id}` in `evidence_ref`; no object with that id exists in the workspace",
-                                        claim.id()
+                                        "object `{object_id}` references unknown object `{ref_id}` in `evidence_ref`; no object with that id exists in the workspace",
                                     ),
                                 )
-                                .with_span(claim.span().clone())
-                                .with_object_id(claim.id().as_str()),
+                                .with_span(span.clone())
+                                .with_object_id(object_id.as_str()),
                             );
                         }
                         Some(kind) if *kind != BlockKind::Source => {
@@ -60,13 +66,12 @@ impl WorkspaceRule for EvidenceRefResolves {
                                 Diagnostic::error(
                                     DiagnosticCode::SchemaEvidenceTargetNotASource,
                                     format!(
-                                        "claim `{}` references `{ref_id}` in `evidence_ref`, but that object is a `{}`, not a `source`",
-                                        claim.id(),
+                                        "object `{object_id}` references `{ref_id}` in `evidence_ref`, but that object is a `{}`, not a `source`",
                                         kind.as_str()
                                     ),
                                 )
-                                .with_span(claim.span().clone())
-                                .with_object_id(claim.id().as_str()),
+                                .with_span(span.clone())
+                                .with_object_id(object_id.as_str()),
                             );
                         }
                         Some(_) => {} // exists and is a source — OK
@@ -87,7 +92,11 @@ mod tests {
     use crate::domain::diagnostic::{DiagnosticCode, SourcePosition, SourceSpan};
     use crate::domain::identity::{ObjectId, PageId};
     use crate::domain::knowledge_object::{
-        KnowledgeObject, claim::Claim, constraint::Constraint, source::Source,
+        KnowledgeObject,
+        claim::Claim,
+        constraint::Constraint,
+        decision::{AcceptedVerdict, DecidedBy, Decision},
+        source::Source,
     };
 
     fn span(file: &str, line: u32, col: u32) -> SourceSpan {
@@ -159,6 +168,40 @@ mod tests {
         )
         .expect("valid constraint");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Constraint(c)))
+    }
+
+    fn decision_block_with_refs(decision_id: &str, refs: Vec<&str>) -> BlockAst {
+        let ref_ids: Vec<ObjectId> = refs.into_iter().map(id).collect();
+        let decision = Decision::try_new_with_refs(
+            decision_id,
+            Some("proposed"),
+            "Decision body.",
+            BTreeMap::new(),
+            ref_ids,
+            None,
+            span("decisions.adoc", 1, 1),
+        )
+        .expect("valid decision");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision)))
+    }
+
+    fn accepted_decision_block_with_refs(decision_id: &str, refs: Vec<&str>) -> BlockAst {
+        let ref_ids: Vec<ObjectId> = refs.into_iter().map(id).collect();
+        let verdict = AcceptedVerdict::new(
+            DecidedBy::try_new("architecture").expect("valid decided_by"),
+            Vec::new(),
+        );
+        let decision = Decision::try_new_with_refs(
+            decision_id,
+            Some("accepted"),
+            "Decision body.",
+            BTreeMap::new(),
+            ref_ids,
+            Some(verdict),
+            span("decisions.adoc", 1, 1),
+        )
+        .expect("valid accepted decision");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision)))
     }
 
     fn check(workspace: WorkspaceAst) -> Vec<Diagnostic> {
@@ -328,5 +371,120 @@ mod tests {
             DiagnosticCode::SchemaEvidenceTargetNotFound
         );
         assert!(diagnostics[0].message.contains("billing.missing-source"));
+    }
+
+    // ── V5.8 TB3: decision evidence_ref validation ────────────────────────────
+
+    #[test]
+    fn decision_evidence_ref_resolves_to_source_emits_no_diagnostics() {
+        let workspace = WorkspaceAst {
+            pages: vec![page(
+                "one.adoc",
+                vec![
+                    source_block("billing.consume-use-case"),
+                    decision_block_with_refs("billing.policy", vec!["billing.consume-use-case"]),
+                ],
+            )],
+        };
+
+        let diagnostics = check(workspace);
+
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    #[test]
+    fn decision_evidence_ref_missing_target_emits_not_found() {
+        let workspace = WorkspaceAst {
+            pages: vec![page(
+                "one.adoc",
+                vec![decision_block_with_refs(
+                    "billing.policy",
+                    vec!["billing.missing-source"],
+                )],
+            )],
+        };
+
+        let diagnostics = check(workspace);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::SchemaEvidenceTargetNotFound
+        );
+        assert!(
+            diagnostics[0].message.contains("billing.missing-source"),
+            "message must name the missing id: {:?}",
+            diagnostics[0]
+        );
+        assert!(
+            diagnostics[0].message.contains("no object with that id"),
+            "message must say no such object: {:?}",
+            diagnostics[0]
+        );
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.policy"));
+    }
+
+    #[test]
+    fn decision_evidence_ref_wrong_kind_emits_not_a_source() {
+        let workspace = WorkspaceAst {
+            pages: vec![page(
+                "one.adoc",
+                vec![
+                    constraint_block("billing.constraint"),
+                    decision_block_with_refs("billing.policy", vec!["billing.constraint"]),
+                ],
+            )],
+        };
+
+        let diagnostics = check(workspace);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::SchemaEvidenceTargetNotASource
+        );
+        assert!(
+            diagnostics[0].message.contains("constraint"),
+            "message must mention the actual kind: {:?}",
+            diagnostics[0]
+        );
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.policy"));
+    }
+
+    #[test]
+    fn accepted_decision_evidence_ref_resolves_correctly() {
+        let workspace = WorkspaceAst {
+            pages: vec![page(
+                "one.adoc",
+                vec![
+                    source_block("billing.consume-use-case"),
+                    accepted_decision_block_with_refs(
+                        "billing.accepted-policy",
+                        vec!["billing.consume-use-case"],
+                    ),
+                ],
+            )],
+        };
+
+        let diagnostics = check(workspace);
+
+        assert!(
+            diagnostics.is_empty(),
+            "accepted decision with valid evidence_ref must not produce diagnostics: {diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn decision_without_evidence_refs_emits_no_diagnostics() {
+        let workspace = WorkspaceAst {
+            pages: vec![page(
+                "one.adoc",
+                vec![decision_block_with_refs("billing.policy", vec![])],
+            )],
+        };
+
+        let diagnostics = check(workspace);
+
+        assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
     }
 }
