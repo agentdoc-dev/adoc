@@ -5,10 +5,14 @@
 //! handles, version strings) belong here too once they outgrow their original
 //! aggregate.
 
+pub(crate) mod action;
+pub(crate) mod action_set;
 pub(crate) mod approved_by;
 pub(crate) mod effective_date;
 pub(crate) mod lang;
 pub(crate) mod rel_path;
 pub(crate) mod review_interval;
 pub(crate) mod sandbox;
+pub(crate) mod scope;
 pub(crate) mod severity;
+pub(crate) mod trust;

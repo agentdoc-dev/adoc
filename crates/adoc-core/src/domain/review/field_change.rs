@@ -83,6 +83,34 @@ pub enum FieldChange {
     ApprovedByRemoved {
         value: String,
     },
+    /// V5.5: the `trust` level on an `agent_instruction` object changed.
+    Trust {
+        before: Option<String>,
+        after: Option<String>,
+    },
+    /// V5.5: the `scope` on an `agent_instruction` object changed.
+    Scope {
+        before: Option<String>,
+        after: Option<String>,
+    },
+    /// V5.5: a new action appeared in the `allowed_actions` list on an
+    /// `agent_instruction`.
+    AllowedActionsAdded {
+        value: String,
+    },
+    /// V5.5: an action that was present in `allowed_actions` was removed.
+    AllowedActionsRemoved {
+        value: String,
+    },
+    /// V5.5: a new action appeared in the `forbidden_actions` list on an
+    /// `agent_instruction`.
+    ForbiddenActionsAdded {
+        value: String,
+    },
+    /// V5.5: an action that was present in `forbidden_actions` was removed.
+    ForbiddenActionsRemoved {
+        value: String,
+    },
 }
 
 impl FieldChange {
@@ -112,6 +140,12 @@ impl FieldChange {
             FieldChange::EffectiveAt { .. } => "effective_at changed",
             FieldChange::ApprovedByAdded { .. } => "approved_by added",
             FieldChange::ApprovedByRemoved { .. } => "approved_by removed",
+            FieldChange::Trust { .. } => "trust changed",
+            FieldChange::Scope { .. } => "scope changed",
+            FieldChange::AllowedActionsAdded { .. } => "allowed_actions added",
+            FieldChange::AllowedActionsRemoved { .. } => "allowed_actions removed",
+            FieldChange::ForbiddenActionsAdded { .. } => "forbidden_actions added",
+            FieldChange::ForbiddenActionsRemoved { .. } => "forbidden_actions removed",
         }
     }
 }
@@ -170,6 +204,28 @@ impl fmt::Display for FieldChange {
             ),
             FieldChange::ApprovedByAdded { value } => write!(f, "approved_by: +{value}"),
             FieldChange::ApprovedByRemoved { value } => write!(f, "approved_by: -{value}"),
+            FieldChange::Trust { before, after } => write!(
+                f,
+                "trust: {} → {}",
+                optional(before.as_deref()),
+                optional(after.as_deref())
+            ),
+            FieldChange::Scope { before, after } => write!(
+                f,
+                "scope: {} → {}",
+                optional(before.as_deref()),
+                optional(after.as_deref())
+            ),
+            FieldChange::AllowedActionsAdded { value } => write!(f, "allowed_actions: +{value}"),
+            FieldChange::AllowedActionsRemoved { value } => {
+                write!(f, "allowed_actions: -{value}")
+            }
+            FieldChange::ForbiddenActionsAdded { value } => {
+                write!(f, "forbidden_actions: +{value}")
+            }
+            FieldChange::ForbiddenActionsRemoved { value } => {
+                write!(f, "forbidden_actions: -{value}")
+            }
         }
     }
 }
@@ -659,6 +715,195 @@ mod tests {
             }
             .to_string(),
             "approved_by: -old-approver"
+        );
+    }
+
+    // ── V5.5 agent_instruction variants ───────────────────────────────────
+
+    #[test]
+    fn trust_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::Trust {
+            before: Some("team".to_string()),
+            after: Some("authoritative".to_string()),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(value["type"], "trust");
+        assert_eq!(value["before"], "team");
+        assert_eq!(value["after"], "authoritative");
+    }
+
+    #[test]
+    fn scope_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::Scope {
+            before: Some("docs/auth/*".to_string()),
+            after: Some("docs/**".to_string()),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(value["type"], "scope");
+        assert_eq!(value["before"], "docs/auth/*");
+        assert_eq!(value["after"], "docs/**");
+    }
+
+    #[test]
+    fn allowed_actions_added_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::AllowedActionsAdded {
+            value: "summarize".to_string(),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(
+            value,
+            json!({ "type": "allowed_actions_added", "value": "summarize" })
+        );
+    }
+
+    #[test]
+    fn allowed_actions_removed_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::AllowedActionsRemoved {
+            value: "cite".to_string(),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(
+            value,
+            json!({ "type": "allowed_actions_removed", "value": "cite" })
+        );
+    }
+
+    #[test]
+    fn forbidden_actions_added_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::ForbiddenActionsAdded {
+            value: "execute_shell".to_string(),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(
+            value,
+            json!({ "type": "forbidden_actions_added", "value": "execute_shell" })
+        );
+    }
+
+    #[test]
+    fn forbidden_actions_removed_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::ForbiddenActionsRemoved {
+            value: "access_secrets".to_string(),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(
+            value,
+            json!({ "type": "forbidden_actions_removed", "value": "access_secrets" })
+        );
+    }
+
+    #[test]
+    fn summary_label_covers_v5_5_agent_instruction_variants() {
+        let cases = [
+            (
+                FieldChange::Trust {
+                    before: None,
+                    after: None,
+                },
+                "trust changed",
+            ),
+            (
+                FieldChange::Scope {
+                    before: None,
+                    after: None,
+                },
+                "scope changed",
+            ),
+            (
+                FieldChange::AllowedActionsAdded {
+                    value: String::new(),
+                },
+                "allowed_actions added",
+            ),
+            (
+                FieldChange::AllowedActionsRemoved {
+                    value: String::new(),
+                },
+                "allowed_actions removed",
+            ),
+            (
+                FieldChange::ForbiddenActionsAdded {
+                    value: String::new(),
+                },
+                "forbidden_actions added",
+            ),
+            (
+                FieldChange::ForbiddenActionsRemoved {
+                    value: String::new(),
+                },
+                "forbidden_actions removed",
+            ),
+        ];
+        for (change, expected) in cases {
+            assert_eq!(change.summary_label(), expected);
+        }
+    }
+
+    #[test]
+    fn display_renders_v5_5_agent_instruction_variants_in_canonical_form() {
+        assert_eq!(
+            FieldChange::Trust {
+                before: Some("team".to_string()),
+                after: Some("authoritative".to_string()),
+            }
+            .to_string(),
+            "trust: team → authoritative"
+        );
+        assert_eq!(
+            FieldChange::Trust {
+                before: None,
+                after: Some("team".to_string()),
+            }
+            .to_string(),
+            "trust: (none) → team"
+        );
+        assert_eq!(
+            FieldChange::Scope {
+                before: Some("docs/auth/*".to_string()),
+                after: Some("docs/**".to_string()),
+            }
+            .to_string(),
+            "scope: docs/auth/* → docs/**"
+        );
+        assert_eq!(
+            FieldChange::AllowedActionsAdded {
+                value: "summarize".to_string(),
+            }
+            .to_string(),
+            "allowed_actions: +summarize"
+        );
+        assert_eq!(
+            FieldChange::AllowedActionsRemoved {
+                value: "cite".to_string(),
+            }
+            .to_string(),
+            "allowed_actions: -cite"
+        );
+        assert_eq!(
+            FieldChange::ForbiddenActionsAdded {
+                value: "execute_shell".to_string(),
+            }
+            .to_string(),
+            "forbidden_actions: +execute_shell"
+        );
+        assert_eq!(
+            FieldChange::ForbiddenActionsRemoved {
+                value: "access_secrets".to_string(),
+            }
+            .to_string(),
+            "forbidden_actions: -access_secrets"
         );
     }
 }

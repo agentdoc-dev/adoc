@@ -13,6 +13,7 @@ use crate::domain::values::{Body, NonEmpty};
 pub(super) const IMPACTS_FIELD: &str = "impacts";
 pub(crate) const APPROVED_BY_FIELD: &str = "approved_by";
 
+pub(crate) mod agent_instruction;
 pub(crate) mod claim;
 pub(crate) mod constraint;
 pub(crate) mod decision;
@@ -25,6 +26,7 @@ pub(crate) mod procedure;
 pub(crate) mod projection;
 pub(crate) mod warning;
 
+use agent_instruction::AgentInstruction;
 use claim::Claim;
 use constraint::Constraint;
 use decision::Decision;
@@ -416,6 +418,113 @@ fn push_impact_segment(
     }
 }
 
+/// Parse a comma-separated or scalar list field into a sorted, deduplicated
+/// `Vec<T>` using the provided constructor closure. Accepts both scalar
+/// (`field: value`) and bracket-list (`field: [a, b]`) syntax. Returns `None`
+/// when the field is absent or yields no valid entries (the calling aggregate
+/// is responsible for emitting the missing-field diagnostic).
+///
+/// This generalises the `extract_approved_by` logic so it can be reused for
+/// `allowed_actions` and `forbidden_actions` on `agent_instruction`.
+pub(super) fn extract_action_list<T, F>(
+    parsed: &mut ParsedTypedBlock,
+    field_name: &str,
+    ctor: F,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<Vec<T>>
+where
+    T: Ord,
+    F: Fn(&str) -> Option<T>,
+{
+    let value = parsed.raw_fields.remove(field_name)?;
+    let value_span = parsed
+        .raw_field_spans
+        .get(field_name)
+        .cloned()
+        .unwrap_or_else(|| parsed.span.clone());
+
+    let (content_start, content_end) =
+        relation_content_range(parsed, field_name, &value, &value_span, diagnostics)?;
+
+    let content = &value[content_start..content_end];
+    if content
+        .trim_matches(|c: char| c.is_ascii_whitespace())
+        .is_empty()
+    {
+        return None;
+    }
+
+    let mut items: BTreeSet<String> = BTreeSet::new();
+    let mut segment_start = content_start;
+    for (relative_comma_index, _) in content.match_indices(',') {
+        let comma_index = content_start + relative_comma_index;
+        push_action_list_segment(
+            parsed,
+            field_name,
+            &value,
+            segment_start,
+            comma_index,
+            &value_span,
+            &mut items,
+            diagnostics,
+            false,
+        );
+        segment_start = comma_index + 1;
+    }
+    push_action_list_segment(
+        parsed,
+        field_name,
+        &value,
+        segment_start,
+        content_end,
+        &value_span,
+        &mut items,
+        diagnostics,
+        true,
+    );
+
+    let result: Vec<T> = items.into_iter().filter_map(|s| ctor(&s)).collect();
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_action_list_segment(
+    parsed: &ParsedTypedBlock,
+    field_name: &str,
+    value: &str,
+    start: usize,
+    end: usize,
+    value_span: &SourceSpan,
+    items: &mut BTreeSet<String>,
+    diagnostics: &mut Vec<Diagnostic>,
+    is_last: bool,
+) {
+    let raw = &value[start..end];
+    let Some((trimmed, _trimmed_start, _trimmed_end)) = trim_segment(raw) else {
+        if is_last {
+            return;
+        }
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::SchemaMissingField,
+                format!(
+                    "empty `{field_name}` segment in `{}`; remove the extra comma or fill in the action",
+                    parsed.id_text
+                ),
+            )
+            .with_span(relation_segment_span(value_span, value, start, end))
+            .with_object_id(&parsed.id_text),
+        );
+        return;
+    };
+
+    items.insert(trimmed.to_string());
+}
+
 /// Parse the `approved_by:` field into a sorted, deduplicated, non-empty list
 /// of [`ApprovedBy`] values. Accepts both scalar (`approved_by: name`) and
 /// bracket-list (`approved_by: [a, b]`) syntax. Returns `None` when the field
@@ -555,6 +664,7 @@ pub(crate) enum BlockKind {
     Policy,
     Procedure,
     Example,
+    AgentInstruction,
 }
 
 impl BlockKind {
@@ -567,6 +677,7 @@ impl BlockKind {
         Self::Policy,
         Self::Procedure,
         Self::Example,
+        Self::AgentInstruction,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -579,6 +690,7 @@ impl BlockKind {
             Self::Policy => "policy",
             Self::Procedure => "procedure",
             Self::Example => "example",
+            Self::AgentInstruction => "agent_instruction",
         }
     }
 
@@ -597,6 +709,7 @@ pub(crate) enum KnowledgeObject {
     Policy(Policy),
     Procedure(Procedure),
     Example(Example),
+    AgentInstruction(AgentInstruction),
 }
 
 impl KnowledgeObject {
@@ -610,6 +723,7 @@ impl KnowledgeObject {
             Self::Policy(_) => BlockKind::Policy,
             Self::Procedure(_) => BlockKind::Procedure,
             Self::Example(_) => BlockKind::Example,
+            Self::AgentInstruction(_) => BlockKind::AgentInstruction,
         }
     }
 
@@ -623,6 +737,7 @@ impl KnowledgeObject {
             Self::Policy(policy) => policy.id(),
             Self::Procedure(procedure) => procedure.id(),
             Self::Example(example) => example.id(),
+            Self::AgentInstruction(ai) => ai.id(),
         }
     }
 
@@ -636,6 +751,7 @@ impl KnowledgeObject {
             Self::Policy(policy) => policy.span(),
             Self::Procedure(procedure) => procedure.span(),
             Self::Example(example) => example.span(),
+            Self::AgentInstruction(ai) => ai.span(),
         }
     }
 
@@ -649,6 +765,7 @@ impl KnowledgeObject {
             Self::Policy(policy) => policy.body(),
             Self::Procedure(procedure) => procedure.body(),
             Self::Example(example) => example.body(),
+            Self::AgentInstruction(ai) => ai.body(),
         }
     }
 
@@ -662,6 +779,7 @@ impl KnowledgeObject {
             Self::Policy(policy) => policy.body_mut(),
             Self::Procedure(procedure) => procedure.body_mut(),
             Self::Example(example) => example.body_mut(),
+            Self::AgentInstruction(ai) => ai.body_mut(),
         }
     }
 
@@ -675,11 +793,13 @@ impl KnowledgeObject {
             Self::Policy(policy) => policy.relations(),
             Self::Procedure(procedure) => procedure.relations(),
             Self::Example(example) => example.relations(),
+            Self::AgentInstruction(ai) => ai.relations(),
         }
     }
 
     /// V3.3 opt-in `impacts:` list. Empty slice for kinds that do not carry
-    /// this field (`glossary`, `warning`) or for objects without it.
+    /// this field (`glossary`, `warning`, `agent_instruction`) or for objects
+    /// without it.
     pub(crate) fn impacts(&self) -> &[RelPath] {
         match self {
             Self::Claim(claim) => claim.impacts().unwrap_or(&[]),
@@ -688,7 +808,7 @@ impl KnowledgeObject {
             Self::Policy(policy) => policy.impacts().unwrap_or(&[]),
             Self::Procedure(procedure) => procedure.impacts().unwrap_or(&[]),
             Self::Example(example) => example.impacts().unwrap_or(&[]),
-            Self::Glossary(_) | Self::Warning(_) => &[],
+            Self::Glossary(_) | Self::Warning(_) | Self::AgentInstruction(_) => &[],
         }
     }
 
@@ -702,6 +822,7 @@ impl KnowledgeObject {
             Self::Policy(policy) => policy.fields(),
             Self::Procedure(procedure) => procedure.fields(),
             Self::Example(example) => example.fields(),
+            Self::AgentInstruction(ai) => ai.fields(),
         }
     }
 }
@@ -714,6 +835,7 @@ mod tests {
     use super::*;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
     use crate::domain::inline::InlineSegment;
+    use crate::domain::knowledge_object::agent_instruction::AgentInstruction;
     use crate::domain::knowledge_object::claim::Claim;
     use crate::domain::knowledge_object::constraint::Constraint;
     use crate::domain::knowledge_object::decision::{AcceptedVerdict, DecidedBy, Decision};
@@ -855,6 +977,22 @@ mod tests {
         )
     }
 
+    fn agent_instruction_object() -> KnowledgeObject {
+        KnowledgeObject::AgentInstruction(
+            AgentInstruction::try_new(
+                "auth.docs-answering-policy",
+                "docs/auth/*",
+                "team",
+                vec!["summarize", "cite"],
+                vec!["execute_shell", "access_secrets"],
+                "Prefer verified claims over draft notes.",
+                BTreeMap::from([("owner".to_string(), "ai-platform".to_string())]),
+                span("agent_instruction.adoc", 21, 1),
+            )
+            .expect("valid agent_instruction"),
+        )
+    }
+
     #[test]
     fn block_kind_labels_match_source_fence_words() {
         assert_eq!(BlockKind::Claim.as_str(), "claim");
@@ -865,6 +1003,7 @@ mod tests {
         assert_eq!(BlockKind::Policy.as_str(), "policy");
         assert_eq!(BlockKind::Procedure.as_str(), "procedure");
         assert_eq!(BlockKind::Example.as_str(), "example");
+        assert_eq!(BlockKind::AgentInstruction.as_str(), "agent_instruction");
     }
 
     #[test]
@@ -898,6 +1037,10 @@ mod tests {
             BlockKind::from_fence_word("example"),
             Some(BlockKind::Example)
         );
+        assert_eq!(
+            BlockKind::from_fence_word("agent_instruction"),
+            Some(BlockKind::AgentInstruction)
+        );
         assert_eq!(BlockKind::from_fence_word("fact"), None);
         assert_eq!(BlockKind::from_fence_word("Claim"), None);
     }
@@ -915,6 +1058,7 @@ mod tests {
                 BlockKind::Policy,
                 BlockKind::Procedure,
                 BlockKind::Example,
+                BlockKind::AgentInstruction,
             ]
         );
     }
@@ -1009,6 +1153,15 @@ mod tests {
                 "const x = 1 + 1;",
                 "example.adoc",
                 17,
+                "owner",
+            ),
+            (
+                agent_instruction_object(),
+                BlockKind::AgentInstruction,
+                "auth.docs-answering-policy",
+                "Prefer verified claims over draft notes.",
+                "agent_instruction.adoc",
+                21,
                 "owner",
             ),
         ];

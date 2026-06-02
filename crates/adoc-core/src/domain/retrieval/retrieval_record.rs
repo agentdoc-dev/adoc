@@ -203,6 +203,8 @@ mod tests {
             },
             impacts: Vec::new(),
             approved_by: Vec::new(),
+            allowed_actions: Vec::new(),
+            forbidden_actions: Vec::new(),
         };
 
         let record = RetrievalRecord::from(&object);

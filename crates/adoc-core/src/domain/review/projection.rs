@@ -19,6 +19,7 @@ use crate::domain::knowledge_object::BlockKind;
 use crate::domain::knowledge_object::metadata::KnowledgeObjectMetadata;
 
 const EFFECTIVE_AT_FIELD: &str = "effective_at";
+const SCOPE_FIELD: &str = "scope";
 
 use super::field_change::{FieldChange, RelationKind};
 use super::object_change::ChangedObject;
@@ -46,11 +47,15 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
     if base.status != head.status {
         let before = base.status.clone();
         let after = head.status.clone();
-        // Severity-bearing kinds store the shared `Severity` value object in the
-        // graph node's `status` slot, so project the delta as a Severity change
-        // rather than a lifecycle Status change.
+        // Some kinds repurpose the graph node's `status` slot for a typed
+        // discriminant rather than a lifecycle status: `constraint` stores its
+        // shared `Severity`, and `agent_instruction` stores its `Trust`. Project
+        // the delta under the matching variant so the change is not mislabelled
+        // as a lifecycle Status change (and not double-counted below).
         out.push(if head.kind.as_str() == BlockKind::Constraint.as_str() {
             FieldChange::Severity { before, after }
+        } else if head.kind.as_str() == BlockKind::AgentInstruction.as_str() {
+            FieldChange::Trust { before, after }
         } else {
             FieldChange::Status { before, after }
         });
@@ -122,6 +127,33 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
 
     project_approved_by(&mut out, &base.approved_by, &head.approved_by);
 
+    // V5.5: agent_instruction scope scalar diff and action-set diffs. `scope`
+    // lives in the graph fields map (unlike `trust`, which rides the `status`
+    // slot and is projected as `FieldChange::Trust` above).
+    let base_scope = base.fields.get(SCOPE_FIELD).map(String::as_str);
+    let head_scope = head.fields.get(SCOPE_FIELD).map(String::as_str);
+    if base_scope != head_scope {
+        out.push(FieldChange::Scope {
+            before: base_scope.map(str::to_string),
+            after: head_scope.map(str::to_string),
+        });
+    }
+
+    project_action_list(
+        &mut out,
+        &base.allowed_actions,
+        &head.allowed_actions,
+        |value| FieldChange::AllowedActionsAdded { value },
+        |value| FieldChange::AllowedActionsRemoved { value },
+    );
+    project_action_list(
+        &mut out,
+        &base.forbidden_actions,
+        &head.forbidden_actions,
+        |value| FieldChange::ForbiddenActionsAdded { value },
+        |value| FieldChange::ForbiddenActionsRemoved { value },
+    );
+
     out
 }
 
@@ -152,6 +184,23 @@ fn project_approved_by(out: &mut Vec<FieldChange>, base: &[String], head: &[Stri
         out.push(FieldChange::ApprovedByRemoved {
             value: (*value).to_string(),
         });
+    }
+}
+
+fn project_action_list(
+    out: &mut Vec<FieldChange>,
+    base: &[String],
+    head: &[String],
+    added_ctor: impl Fn(String) -> FieldChange,
+    removed_ctor: impl Fn(String) -> FieldChange,
+) {
+    let base_set: BTreeSet<&str> = base.iter().map(String::as_str).collect();
+    let head_set: BTreeSet<&str> = head.iter().map(String::as_str).collect();
+    for value in head_set.difference(&base_set) {
+        out.push(added_ctor((*value).to_string()));
+    }
+    for value in base_set.difference(&head_set) {
+        out.push(removed_ctor((*value).to_string()));
     }
 }
 
@@ -211,6 +260,8 @@ mod tests {
             relations,
             impacts: Vec::new(),
             approved_by: Vec::new(),
+            allowed_actions: Vec::new(),
+            forbidden_actions: Vec::new(),
         }
     }
 
@@ -302,6 +353,8 @@ mod tests {
             relations: GraphRelations::default(),
             impacts: Vec::new(),
             approved_by: Vec::new(),
+            allowed_actions: Vec::new(),
+            forbidden_actions: Vec::new(),
         };
 
         let base = constraint_node("sha256:a", "high");
@@ -316,6 +369,47 @@ mod tests {
             vec![FieldChange::Severity {
                 before: Some("high".to_string()),
                 after: Some("critical".to_string()),
+            }]
+        );
+    }
+
+    #[test]
+    fn agent_instruction_trust_change_emits_only_trust_field_change_not_status() {
+        // `trust` rides the `status` slot via the discriminant projection; a
+        // trust change must surface as exactly one `Trust` variant — never a
+        // mislabelled `Status` change, and never both.
+        let agent_node = |content_hash: &str, trust: &str| GraphKnowledgeObjectNode {
+            id: "auth.docs-answering-policy".to_string(),
+            kind: "agent_instruction".to_string(),
+            content_hash: content_hash.to_string(),
+            status: Some(trust.to_string()),
+            body: "Prefer verified claims over draft notes.".to_string(),
+            page_id: "team.auth".to_string(),
+            source_span: GraphSourceSpan {
+                path: "docs/auth.adoc".to_string(),
+                line: 1,
+                column: 1,
+            },
+            fields: BTreeMap::new(),
+            relations: GraphRelations::default(),
+            impacts: Vec::new(),
+            approved_by: Vec::new(),
+            allowed_actions: vec!["summarize".to_string()],
+            forbidden_actions: vec!["execute_shell".to_string()],
+        };
+
+        let base = agent_node("sha256:a", "team");
+        let head = agent_node("sha256:b", "authoritative");
+
+        assert_eq!(
+            project_changed(&ChangedObject::new(
+                "auth.docs-answering-policy".to_string(),
+                base,
+                head,
+            )),
+            vec![FieldChange::Trust {
+                before: Some("team".to_string()),
+                after: Some("authoritative".to_string()),
             }]
         );
     }

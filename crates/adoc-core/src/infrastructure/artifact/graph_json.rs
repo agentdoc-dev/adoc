@@ -286,6 +286,7 @@ fn knowledge_object_to_graph_node_without_hash(
         .map(|discriminant| discriminant.value_as_str().to_string());
 
     let approved_by = policy_approved_by(knowledge_object);
+    let (allowed_actions, forbidden_actions) = agent_instruction_actions(knowledge_object);
 
     GraphKnowledgeObjectNode {
         id: knowledge_object.id().as_str().to_string(),
@@ -299,6 +300,8 @@ fn knowledge_object_to_graph_node_without_hash(
         relations: relations_to_graph(knowledge_object.relations()),
         impacts: impacts_to_graph(knowledge_object.impacts()),
         approved_by,
+        allowed_actions,
+        forbidden_actions,
     }
 }
 
@@ -316,6 +319,28 @@ fn policy_to_approved_by_vec(policy: &Policy) -> Vec<String> {
         .iter()
         .map(|a| a.as_str().to_string())
         .collect()
+}
+
+/// Extract `(allowed_actions, forbidden_actions)` from an `agent_instruction`
+/// node, returning two empty vecs for all other kinds. Mirrors the pattern of
+/// `policy_approved_by`.
+fn agent_instruction_actions(knowledge_object: &KnowledgeObject) -> (Vec<String>, Vec<String>) {
+    let KnowledgeObject::AgentInstruction(ai) = knowledge_object else {
+        return (Vec::new(), Vec::new());
+    };
+    let allowed = ai
+        .action_set()
+        .allowed()
+        .iter()
+        .map(|a| a.as_str().to_string())
+        .collect();
+    let forbidden = ai
+        .action_set()
+        .forbidden()
+        .iter()
+        .map(|a| a.as_str().to_string())
+        .collect();
+    (allowed, forbidden)
 }
 
 fn impacts_to_graph(impacts: &[crate::domain::value_objects::rel_path::RelPath]) -> Vec<String> {
@@ -343,6 +368,14 @@ struct KnowledgeObjectHashPayload<'a> {
     /// their existing `content_hash`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     approved_by: &'a Vec<String>,
+    /// V5.5: omitted from canonical JSON when empty so non-agent_instruction
+    /// nodes keep their existing `content_hash`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    allowed_actions: &'a Vec<String>,
+    /// V5.5: omitted from canonical JSON when empty so non-agent_instruction
+    /// nodes keep their existing `content_hash`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    forbidden_actions: &'a Vec<String>,
 }
 
 pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNode) -> String {
@@ -357,6 +390,8 @@ pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNod
         relations: &node.relations,
         impacts: &node.impacts,
         approved_by: &node.approved_by,
+        allowed_actions: &node.allowed_actions,
+        forbidden_actions: &node.forbidden_actions,
     };
     let canonical_json =
         serde_json::to_vec(&payload).expect("knowledge object hash payload serializes");

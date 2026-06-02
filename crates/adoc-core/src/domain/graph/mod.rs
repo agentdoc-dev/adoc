@@ -148,6 +148,16 @@ pub(crate) struct GraphKnowledgeObjectNode {
     /// when empty so fixtures for other kinds remain byte-stable.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) approved_by: Vec<String>,
+    /// V5.5 agent_instruction allowed action list. Populated for
+    /// `agent_instruction` nodes only; skipped when empty so fixtures for
+    /// other kinds remain byte-stable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) allowed_actions: Vec<String>,
+    /// V5.5 agent_instruction forbidden action list. Populated for
+    /// `agent_instruction` nodes only; skipped when empty so fixtures for
+    /// other kinds remain byte-stable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) forbidden_actions: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -644,6 +654,8 @@ mod tests {
                     relations: GraphRelations::default(),
                     impacts: Vec::new(),
                     approved_by: Vec::new(),
+                    allowed_actions: Vec::new(),
+                    forbidden_actions: Vec::new(),
                 }),
             ],
             edges: Vec::new(),

@@ -3,6 +3,7 @@ use crate::domain::graph::GraphRelationKind;
 use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::{
     KnowledgeObject, Relations,
+    agent_instruction::AgentInstruction,
     claim::Evidence,
     policy::Policy,
     procedure::ordered_step_marker_len,
@@ -241,6 +242,9 @@ fn render_knowledge_object(knowledge_object: &KnowledgeObject, html: &mut String
         KnowledgeObject::Example(_) => {
             render_example(knowledge_object, &metadata, html);
         }
+        KnowledgeObject::AgentInstruction(_) => {
+            render_agent_instruction(knowledge_object, &metadata, html);
+        }
     }
 }
 
@@ -330,6 +334,51 @@ fn render_policy_approval(policy: &Policy, html: &mut String) {
     if let Some(ri) = policy.review_interval() {
         html.push_str("<div class=\"policy__approval-item\"><dt>review_interval</dt><dd>");
         html.push_str(&escape_html(ri.as_str()));
+        html.push_str("</dd></div>\n");
+    }
+    html.push_str("</dl>\n</div>\n");
+}
+
+fn render_agent_instruction(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    render_object_section_open(knowledge_object, "agent_instruction", html);
+
+    // ADR-0025: mandatory "NOT runtime ACL" banner — exact text is non-negotiable.
+    html.push_str("<div class=\"agent_instruction__banner\"><p>Agent Instruction. Authored knowledge, NOT runtime ACL. See <a href=\"adoc://agent/v0/agent-instruction-guide\">agent-instruction-guide</a>.</p></div>\n");
+
+    render_object_header(knowledge_object, metadata.discriminant(), html);
+
+    let KnowledgeObject::AgentInstruction(ai) = knowledge_object else {
+        unreachable!("render_agent_instruction called with non-agent_instruction object");
+    };
+    render_agent_instruction_fields(ai, html);
+
+    render_object_body(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
+    html.push_str("</section>\n");
+}
+
+fn render_agent_instruction_fields(ai: &AgentInstruction, html: &mut String) {
+    html.push_str("<div class=\"agent_instruction__fields\">\n<dl>\n");
+    html.push_str("<div class=\"agent_instruction__field-item\"><dt>scope</dt><dd>");
+    html.push_str(&escape_html(ai.scope().as_str()));
+    html.push_str("</dd></div>\n");
+    html.push_str("<div class=\"agent_instruction__field-item\"><dt>trust</dt><dd><span class=\"agent_instruction__trust\">");
+    html.push_str(&escape_html(ai.trust().as_str()));
+    html.push_str("</span></dd></div>\n");
+    for action in ai.action_set().allowed() {
+        html.push_str("<div class=\"agent_instruction__field-item\"><dt>allowed_actions</dt><dd>");
+        html.push_str(&escape_html(action.as_str()));
+        html.push_str("</dd></div>\n");
+    }
+    for action in ai.action_set().forbidden() {
+        html.push_str(
+            "<div class=\"agent_instruction__field-item\"><dt>forbidden_actions</dt><dd>",
+        );
+        html.push_str(&escape_html(action.as_str()));
         html.push_str("</dd></div>\n");
     }
     html.push_str("</dl>\n</div>\n");
@@ -674,6 +723,7 @@ fn discriminant_field_name(discriminant: MetadataDiscriminant<'_>) -> &'static s
         | MetadataDiscriminant::ProcedureStatus(_)
         | MetadataDiscriminant::ExampleStatus(_) => "status",
         MetadataDiscriminant::Severity(_) => "severity",
+        MetadataDiscriminant::Trust(_) => "trust",
     }
 }
 

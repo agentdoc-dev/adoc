@@ -23,6 +23,7 @@ use super::object_change::ChangedObject;
 
 const CLAIM_KIND: &str = "claim";
 const POLICY_KIND: &str = "policy";
+const AGENT_INSTRUCTION_KIND: &str = "agent_instruction";
 const VERIFIED_STATUS: &str = "verified";
 const ACTIVE_STATUS: &str = "active";
 const NEEDS_REVIEW_STATUS: &str = "needs_review";
@@ -40,6 +41,9 @@ pub(crate) const REASON_REVIEW_IMPACT: &str = "review impacted claim";
 pub(crate) const REASON_REEVIDENCE_PREFIX: &str = "re-evidence";
 pub(crate) const REASON_REAPPROVE_EFFECTIVE_AT: &str = "re-approve (effective_at changed)";
 pub(crate) const REASON_REAPPROVE_APPROVER_REMOVED: &str = "re-approve (approver removed)";
+pub(crate) const REASON_SECURITY_REVIEW_TRUST_UPGRADE: &str = "security review (trust upgraded)";
+pub(crate) const REASON_SECURITY_REVIEW_FORBIDDEN_REMOVED: &str =
+    "security review (forbidden action removed)";
 
 /// Dispatch the V3.4 trigger table against one `Changed` entry.
 ///
@@ -138,9 +142,29 @@ fn push_for_field_change(
                 ],
             });
         }
+        // V5.5: a trust upgrade on an agent_instruction requires a security review.
+        FieldChange::Trust { before, after }
+            if is_agent_instruction(head) && trust_is_upgrade(before, after) =>
+        {
+            out.push(ProofObligation {
+                object_id: id.to_string(),
+                reason: REASON_SECURITY_REVIEW_TRUST_UPGRADE.to_string(),
+                required_evidence: Vec::new(),
+            });
+        }
+        // V5.5: removing a forbidden action from an agent_instruction requires a
+        // security review.
+        FieldChange::ForbiddenActionsRemoved { .. } if is_agent_instruction(head) => {
+            out.push(ProofObligation {
+                object_id: id.to_string(),
+                reason: REASON_SECURITY_REVIEW_FORBIDDEN_REMOVED.to_string(),
+                required_evidence: Vec::new(),
+            });
+        }
         // EvidenceAdded, ApprovedByAdded, RelationAdded/Removed,
-        // ImpactsAdded/Removed, plus future non-exhaustive variants —
-        // explicitly emit nothing.
+        // ImpactsAdded/Removed, AllowedActionsAdded/Removed,
+        // ForbiddenActionsAdded, Trust (downgrade/same), plus future
+        // non-exhaustive variants — explicitly emit nothing.
         _ => {}
     }
 }
@@ -164,6 +188,26 @@ fn is_verified_claim(node: &GraphKnowledgeObjectNode) -> bool {
 
 fn is_active_policy(node: &GraphKnowledgeObjectNode) -> bool {
     node.kind == POLICY_KIND && node.status.as_deref() == Some(ACTIVE_STATUS)
+}
+
+fn is_agent_instruction(node: &GraphKnowledgeObjectNode) -> bool {
+    node.kind == AGENT_INSTRUCTION_KIND
+}
+
+/// Return `true` when a trust change is an upgrade (after > before).
+///
+/// Both sides are optional strings taken from the graph node's `status` slot,
+/// where trust is stored for `agent_instruction` nodes. Returns `false` if
+/// either side is absent or cannot be parsed as a valid `Trust`.
+fn trust_is_upgrade(before: &Option<String>, after: &Option<String>) -> bool {
+    use crate::domain::value_objects::trust::Trust;
+    let (Some(b), Some(a)) = (before, after) else {
+        return false;
+    };
+    match (Trust::try_new(b), Trust::try_new(a)) {
+        (Ok(before_trust), Ok(after_trust)) => after_trust > before_trust,
+        _ => false,
+    }
 }
 
 fn present_evidence_fields(node: &GraphKnowledgeObjectNode) -> Vec<String> {
@@ -693,5 +737,125 @@ mod tests {
         let reasons: Vec<&str> = obligations.iter().map(|o| o.reason.as_str()).collect();
         assert!(reasons.contains(&REASON_REVERIFY_BODY));
         assert!(reasons.contains(&REASON_NEW_OWNER_ACK));
+    }
+
+    fn agent_instruction(id: &str, trust: &str) -> GraphKnowledgeObjectNode {
+        let mut node = test_node(id, "sha256:dummy");
+        node.kind = AGENT_INSTRUCTION_KIND.to_string();
+        node.status = Some(trust.to_string());
+        node
+    }
+
+    #[test]
+    fn trust_upgrade_on_agent_instruction_emits_security_review_obligation() {
+        let base = agent_instruction("auth.docs-answering-policy", "team");
+        let head = agent_instruction("auth.docs-answering-policy", "authoritative");
+        let change = changed_with(
+            "auth.docs-answering-policy",
+            base,
+            head,
+            vec![FieldChange::Trust {
+                before: Some("team".to_string()),
+                after: Some("authoritative".to_string()),
+            }],
+        );
+
+        let obligations = obligations_for_change(&change);
+
+        assert_eq!(obligations.len(), 1);
+        assert_eq!(obligations[0].object_id, "auth.docs-answering-policy");
+        assert_eq!(obligations[0].reason, REASON_SECURITY_REVIEW_TRUST_UPGRADE);
+        assert!(obligations[0].required_evidence.is_empty());
+    }
+
+    #[test]
+    fn trust_downgrade_on_agent_instruction_emits_no_obligation() {
+        let base = agent_instruction("auth.docs-answering-policy", "system");
+        let head = agent_instruction("auth.docs-answering-policy", "team");
+        let change = changed_with(
+            "auth.docs-answering-policy",
+            base,
+            head,
+            vec![FieldChange::Trust {
+                before: Some("system".to_string()),
+                after: Some("team".to_string()),
+            }],
+        );
+
+        assert!(obligations_for_change(&change).is_empty());
+    }
+
+    #[test]
+    fn trust_same_level_on_agent_instruction_emits_no_obligation() {
+        let base = agent_instruction("auth.docs-answering-policy", "team");
+        let head = agent_instruction("auth.docs-answering-policy", "team");
+        let change = changed_with(
+            "auth.docs-answering-policy",
+            base,
+            head,
+            vec![FieldChange::Trust {
+                before: Some("team".to_string()),
+                after: Some("team".to_string()),
+            }],
+        );
+
+        assert!(obligations_for_change(&change).is_empty());
+    }
+
+    #[test]
+    fn forbidden_action_removed_from_agent_instruction_emits_security_review_obligation() {
+        let base = agent_instruction("auth.docs-answering-policy", "team");
+        let head = agent_instruction("auth.docs-answering-policy", "team");
+        let change = changed_with(
+            "auth.docs-answering-policy",
+            base,
+            head,
+            vec![FieldChange::ForbiddenActionsRemoved {
+                value: "execute_shell".to_string(),
+            }],
+        );
+
+        let obligations = obligations_for_change(&change);
+
+        assert_eq!(obligations.len(), 1);
+        assert_eq!(
+            obligations[0].reason,
+            REASON_SECURITY_REVIEW_FORBIDDEN_REMOVED
+        );
+        assert!(obligations[0].required_evidence.is_empty());
+    }
+
+    #[test]
+    fn forbidden_action_added_to_agent_instruction_emits_no_obligation() {
+        let base = agent_instruction("auth.docs-answering-policy", "team");
+        let head = agent_instruction("auth.docs-answering-policy", "team");
+        let change = changed_with(
+            "auth.docs-answering-policy",
+            base,
+            head,
+            vec![FieldChange::ForbiddenActionsAdded {
+                value: "new_forbidden".to_string(),
+            }],
+        );
+
+        assert!(obligations_for_change(&change).is_empty());
+    }
+
+    #[test]
+    fn trust_upgrade_on_non_agent_instruction_emits_no_obligation() {
+        // A Trust variant on a claim node should not trigger the obligation.
+        let base = test_node("billing.credits", "sha256:a");
+        let head = test_node("billing.credits", "sha256:b");
+        let change = changed_with(
+            "billing.credits",
+            base,
+            head,
+            vec![FieldChange::Trust {
+                before: Some("team".to_string()),
+                after: Some("system".to_string()),
+            }],
+        );
+
+        assert!(obligations_for_change(&change).is_empty());
     }
 }
