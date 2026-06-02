@@ -620,16 +620,14 @@ mod tests {
         use std::collections::BTreeMap;
 
         use crate::application::review::proof_obligations;
-        use crate::domain::graph::{GraphKnowledgeObjectNode, GraphRelations, GraphSourceSpan};
+        use crate::domain::graph::{
+            GraphEvidence, GraphKnowledgeObjectNode, GraphRelations, GraphSourceSpan,
+        };
         use crate::domain::review::impact::ImpactedObject;
         use crate::domain::review::object_change::ChangedObject;
         use crate::domain::review::object_diff::ObjectDiff;
 
         fn verified_claim(id: &str, content_hash: &str) -> GraphKnowledgeObjectNode {
-            let mut fields = BTreeMap::new();
-            fields.insert("source".to_string(), "ledger".to_string());
-            fields.insert("test".to_string(), "integration".to_string());
-            fields.insert("reviewed_by".to_string(), "team-billing".to_string());
             GraphKnowledgeObjectNode {
                 id: id.to_string(),
                 kind: "claim".to_string(),
@@ -642,13 +640,19 @@ mod tests {
                     line: 1,
                     column: 1,
                 },
-                fields,
+                fields: BTreeMap::new(),
                 relations: GraphRelations::default(),
                 impacts: Vec::new(),
                 approved_by: Vec::new(),
                 allowed_actions: Vec::new(),
                 forbidden_actions: Vec::new(),
                 contradiction_claims: Vec::new(),
+                // V5.8: evidence in typed array, not fields.
+                evidence: vec![
+                    GraphEvidence::inline("source_code", "ledger"),
+                    GraphEvidence::inline("test", "integration"),
+                    GraphEvidence::inline("human_review", "team-billing"),
+                ],
             }
         }
 
@@ -677,9 +681,10 @@ mod tests {
             assert_eq!(obligations.len(), 1);
             assert_eq!(obligations[0].object_id, "billing.credits");
             assert_eq!(obligations[0].reason, "re-verify body");
+            // V5.8: required_evidence uses EvidenceKind strings.
             assert_eq!(
                 obligations[0].required_evidence,
-                vec!["source", "test", "reviewed_by"]
+                vec!["source_code", "test", "human_review"]
             );
         }
 
@@ -696,7 +701,8 @@ mod tests {
             assert_eq!(obligations.len(), 1);
             assert_eq!(obligations[0].object_id, "billing.refunds");
             assert_eq!(obligations[0].reason, "review impacted claim");
-            assert_eq!(obligations[0].required_evidence, vec!["source"]);
+            // V5.8: source evidence is "source_code".
+            assert_eq!(obligations[0].required_evidence, vec!["source_code"]);
         }
 
         #[test]

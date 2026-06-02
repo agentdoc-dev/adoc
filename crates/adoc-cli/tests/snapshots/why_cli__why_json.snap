@@ -20,8 +20,8 @@ expression: stdout
         "column": 3
       },
       "evidence": {
-        "reviewed_by": "risk-team",
-        "source": "ledger-export",
+        "human_review": "risk-team",
+        "source_code": "ledger-export",
         "test": "cargo test refunds"
       },
       "relations": {

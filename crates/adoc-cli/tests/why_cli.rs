@@ -121,7 +121,9 @@ fn why_uses_explicit_artifact_and_omits_unavailable_fields() {
             "Statement:\nRefund attempts above the risk threshold require manual review."
         )
     );
-    assert!(stdout.contains("Evidence:"));
+    // V5.8: evidence is in the typed evidence array for verified objects only.
+    // Warnings can carry a "source" as a regular field; it appears under Fields.
+    assert!(stdout.contains("Fields:"));
     assert!(stdout.contains("- source: risk-runbook"));
     assert!(!stdout.contains("  source: risk-runbook"));
     assert!(stdout.contains("Source: docs/refunds.adoc:28:1"));

@@ -13,8 +13,7 @@
 //! in [`crate::application::review::proof_obligations`].
 
 use crate::domain::graph::GraphKnowledgeObjectNode;
-use crate::domain::knowledge_object::claim::{OWNER_FIELD, SOURCE_FIELD, VERIFIED_AT_FIELD};
-use crate::domain::knowledge_object::metadata::EvidenceField;
+use crate::domain::knowledge_object::claim::{OWNER_FIELD, VERIFIED_AT_FIELD};
 use crate::domain::obligation::ProofObligation;
 
 use super::field_change::FieldChange;
@@ -173,12 +172,13 @@ fn push_for_field_change(
 ///
 /// `compute_impact` already filters for verified subjects, so this trigger
 /// is unconditional — one obligation per impact entry, with
-/// `required_evidence: ["source"]`.
+/// `required_evidence: ["source_code"]` (the V5.8 EvidenceKind string).
 pub(crate) fn obligations_for_impact(impact: &ImpactedObject) -> Vec<ProofObligation> {
+    use crate::domain::value_objects::evidence_kind::EvidenceKind;
     vec![ProofObligation {
         object_id: impact.id.clone(),
         reason: REASON_REVIEW_IMPACT.to_string(),
-        required_evidence: vec![SOURCE_FIELD.to_string()],
+        required_evidence: vec![EvidenceKind::SourceCode.as_str().to_string()],
     }]
 }
 
@@ -211,19 +211,21 @@ fn trust_is_upgrade(before: &Option<String>, after: &Option<String>) -> bool {
 }
 
 fn present_evidence_fields(node: &GraphKnowledgeObjectNode) -> Vec<String> {
-    EvidenceField::ALL
+    // V5.8: evidence is in node.evidence, keyed by EvidenceKind string.
+    node.evidence
         .iter()
-        .filter(|field| node.fields.contains_key(field.as_str()))
-        .map(|field| field.as_str().to_string())
+        .filter(|entry| entry.value.is_some())
+        .map(|entry| entry.kind.clone())
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::knowledge_object::claim::{REVIEWED_BY_FIELD, TEST_FIELD};
+    use crate::domain::graph::GraphEvidence;
     use crate::domain::review::field_change::RelationKind;
     use crate::domain::review::object_diff::test_support::test_node;
+    use crate::domain::value_objects::evidence_kind::EvidenceKind;
 
     fn verified_claim(id: &str) -> GraphKnowledgeObjectNode {
         let mut node = test_node(id, "sha256:dummy");
@@ -233,12 +235,18 @@ mod tests {
 
     fn verified_claim_with_evidence(id: &str) -> GraphKnowledgeObjectNode {
         let mut node = verified_claim(id);
-        node.fields
-            .insert(SOURCE_FIELD.to_string(), "ledger".to_string());
-        node.fields
-            .insert(TEST_FIELD.to_string(), "integration".to_string());
-        node.fields
-            .insert(REVIEWED_BY_FIELD.to_string(), "team-billing".to_string());
+        node.evidence.push(GraphEvidence::inline(
+            EvidenceKind::SourceCode.as_str(),
+            "ledger",
+        ));
+        node.evidence.push(GraphEvidence::inline(
+            EvidenceKind::Test.as_str(),
+            "integration",
+        ));
+        node.evidence.push(GraphEvidence::inline(
+            EvidenceKind::HumanReview.as_str(),
+            "team-billing",
+        ));
         node
     }
 
@@ -274,9 +282,10 @@ mod tests {
         assert_eq!(obligations.len(), 1);
         assert_eq!(obligations[0].object_id, "billing.credits");
         assert_eq!(obligations[0].reason, REASON_REVERIFY_BODY);
+        // V5.8: required_evidence now uses EvidenceKind strings.
         assert_eq!(
             obligations[0].required_evidence,
-            vec!["source", "test", "reviewed_by"]
+            vec!["source_code", "test", "human_review"]
         );
     }
 
@@ -311,7 +320,8 @@ mod tests {
         assert_eq!(obligations.len(), 1);
         assert_eq!(obligations[0].object_id, "billing.refunds");
         assert_eq!(obligations[0].reason, REASON_REVIEW_IMPACT);
-        assert_eq!(obligations[0].required_evidence, vec!["source"]);
+        // V5.8: source evidence is now "source_code".
+        assert_eq!(obligations[0].required_evidence, vec!["source_code"]);
     }
 
     // -- Per-trigger dispatch table coverage --
@@ -319,10 +329,14 @@ mod tests {
     #[test]
     fn body_change_with_only_two_evidence_fields_present_emits_two_in_required_evidence() {
         let mut head = verified_claim("billing.credits");
-        head.fields
-            .insert(SOURCE_FIELD.to_string(), "ledger".to_string());
-        head.fields
-            .insert(REVIEWED_BY_FIELD.to_string(), "team-billing".to_string());
+        head.evidence.push(GraphEvidence::inline(
+            EvidenceKind::SourceCode.as_str(),
+            "ledger",
+        ));
+        head.evidence.push(GraphEvidence::inline(
+            EvidenceKind::HumanReview.as_str(),
+            "team-billing",
+        ));
         let change = changed_with(
             "billing.credits",
             verified_claim("billing.credits"),
@@ -336,9 +350,10 @@ mod tests {
         let obligations = obligations_for_change(&change);
 
         assert_eq!(obligations.len(), 1);
+        // V5.8: EvidenceKind strings.
         assert_eq!(
             obligations[0].required_evidence,
-            vec!["source", "reviewed_by"]
+            vec!["source_code", "human_review"]
         );
     }
 
@@ -516,16 +531,14 @@ mod tests {
 
     #[test]
     fn evidence_removed_on_verified_claim_emits_re_evidence_against_field() {
-        let mut base = verified_claim("billing.credits");
-        base.fields
-            .insert(TEST_FIELD.to_string(), "integration".to_string());
+        let base = verified_claim("billing.credits");
         let head = verified_claim("billing.credits");
         let change = changed_with(
             "billing.credits",
             base,
             head,
             vec![FieldChange::EvidenceRemoved {
-                field: TEST_FIELD.to_string(),
+                field: EvidenceKind::Test.as_str().to_string(),
                 value: "integration".to_string(),
             }],
         );
@@ -541,14 +554,16 @@ mod tests {
     fn evidence_added_emits_no_obligation() {
         let base = verified_claim("billing.credits");
         let mut head = verified_claim("billing.credits");
-        head.fields
-            .insert(SOURCE_FIELD.to_string(), "ledger".to_string());
+        head.evidence.push(GraphEvidence::inline(
+            EvidenceKind::SourceCode.as_str(),
+            "ledger",
+        ));
         let change = changed_with(
             "billing.credits",
             base,
             head,
             vec![FieldChange::EvidenceAdded {
-                field: SOURCE_FIELD.to_string(),
+                field: EvidenceKind::SourceCode.as_str().to_string(),
                 value: "ledger".to_string(),
             }],
         );

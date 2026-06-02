@@ -11,6 +11,7 @@ pub(crate) mod approved_by;
 pub(crate) mod contradiction_claims;
 pub(crate) mod contradiction_status;
 pub(crate) mod effective_date;
+pub(crate) mod evidence;
 pub(crate) mod evidence_kind;
 pub(crate) mod lang;
 pub(crate) mod rel_path;

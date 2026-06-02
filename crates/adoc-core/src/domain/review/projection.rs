@@ -75,23 +75,40 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
         });
     }
 
-    // Strict presence/absence on the V0 evidence keys. A value-only change to
-    // an evidence field emits nothing — consumers see the diff in the full
+    // Strict presence/absence on evidence kinds. A value-only change to
+    // an evidence entry emits nothing — consumers see the diff in the full
     // before/after records, and V3.4's "Evidence removal → re-evidence"
     // obligation rule must not fire on edits that only update the value.
-    for ((field, base_value), (_, head_value)) in
-        base_meta.evidence.iter().zip(head_meta.evidence.iter())
+    // We build per-kind presence maps and diff them by kind string.
     {
-        match (base_value, head_value) {
-            (None, Some(after)) => out.push(FieldChange::EvidenceAdded {
-                field: field.as_str().to_string(),
-                value: (*after).to_string(),
-            }),
-            (Some(before), None) => out.push(FieldChange::EvidenceRemoved {
-                field: field.as_str().to_string(),
-                value: (*before).to_string(),
-            }),
-            _ => {}
+        use std::collections::BTreeMap;
+        let base_ev: BTreeMap<&str, &str> = base_meta
+            .evidence
+            .iter()
+            .filter_map(|(k, v)| v.map(|val| (*k, val)))
+            .collect();
+        let head_ev: BTreeMap<&str, &str> = head_meta
+            .evidence
+            .iter()
+            .filter_map(|(k, v)| v.map(|val| (*k, val)))
+            .collect();
+        // Kinds in head but not in base → added.
+        for (kind, value) in &head_ev {
+            if !base_ev.contains_key(kind) {
+                out.push(FieldChange::EvidenceAdded {
+                    field: (*kind).to_string(),
+                    value: (*value).to_string(),
+                });
+            }
+        }
+        // Kinds in base but not in head → removed.
+        for (kind, value) in &base_ev {
+            if !head_ev.contains_key(kind) {
+                out.push(FieldChange::EvidenceRemoved {
+                    field: (*kind).to_string(),
+                    value: (*value).to_string(),
+                });
+            }
         }
     }
 
@@ -252,8 +269,9 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::project_changed;
-    use crate::domain::graph::{GraphKnowledgeObjectNode, GraphRelations, GraphSourceSpan};
-    use crate::domain::knowledge_object::metadata::EvidenceField;
+    use crate::domain::graph::{
+        GraphEvidence, GraphKnowledgeObjectNode, GraphRelations, GraphSourceSpan,
+    };
     use crate::domain::review::field_change::{FieldChange, RelationKind};
     use crate::domain::review::object_change::ChangedObject;
 
@@ -284,6 +302,7 @@ mod tests {
             allowed_actions: Vec::new(),
             forbidden_actions: Vec::new(),
             contradiction_claims: Vec::new(),
+            evidence: Vec::new(),
         }
     }
 
@@ -378,6 +397,7 @@ mod tests {
             allowed_actions: Vec::new(),
             forbidden_actions: Vec::new(),
             contradiction_claims: Vec::new(),
+            evidence: Vec::new(),
         };
 
         let base = constraint_node("sha256:a", "high");
@@ -420,6 +440,7 @@ mod tests {
             allowed_actions: vec!["summarize".to_string()],
             forbidden_actions: vec!["execute_shell".to_string()],
             contradiction_claims: Vec::new(),
+            evidence: Vec::new(),
         };
 
         let base = agent_node("sha256:a", "team");
@@ -499,16 +520,16 @@ mod tests {
     }
 
     #[test]
-    fn evidence_added_when_source_appears_in_head() {
+    fn evidence_added_when_source_code_appears_in_head() {
         let base = baseline("x");
         let mut head = baseline("x");
-        head.fields
-            .insert("source".to_string(), "ledger".to_string());
+        head.evidence
+            .push(GraphEvidence::inline("source_code", "ledger"));
 
         assert_eq!(
             project_changed(&changed_from(base, head)),
             vec![FieldChange::EvidenceAdded {
-                field: "source".to_string(),
+                field: "source_code".to_string(),
                 value: "ledger".to_string(),
             }]
         );
@@ -517,8 +538,8 @@ mod tests {
     #[test]
     fn evidence_removed_when_test_disappears_in_head() {
         let mut base = baseline("x");
-        base.fields
-            .insert("test".to_string(), "integration".to_string());
+        base.evidence
+            .push(GraphEvidence::inline("test", "integration"));
         let head = baseline("x");
 
         assert_eq!(
@@ -532,16 +553,16 @@ mod tests {
 
     #[test]
     fn evidence_value_only_change_emits_no_field_change() {
-        // Strict presence/absence semantics: source: A -> source: B is
+        // Strict presence/absence semantics: source_code: A -> source_code: B is
         // not an EvidenceAdded/Removed and not an "EvidenceChanged"
         // (no such variant in V3.2). Consumers must read the full
         // before/after records if they care about value-only edits.
         let mut base = baseline("x");
-        base.fields
-            .insert("source".to_string(), "ledger-v1".to_string());
+        base.evidence
+            .push(GraphEvidence::inline("source_code", "ledger-v1"));
         let mut head = baseline("x");
-        head.fields
-            .insert("source".to_string(), "ledger-v2".to_string());
+        head.evidence
+            .push(GraphEvidence::inline("source_code", "ledger-v2"));
 
         assert!(project_changed(&changed_from(base, head)).is_empty());
     }
@@ -671,10 +692,8 @@ mod tests {
 
     #[test]
     fn multiple_changes_appear_in_deterministic_visit_order() {
-        // Order: body, status, owner, verified_at, evidence (source,
-        // test, reviewed_by), relations (depends_on, supersedes,
-        // related_to). Matches the documented visit order in
-        // project_changed.
+        // Order: body, status, owner, verified_at, evidence (by kind),
+        // relations (depends_on, supersedes, related_to).
         let base = node(
             "billing.credits",
             "sha256:a",
@@ -685,8 +704,7 @@ mod tests {
         );
         let mut head_fields = BTreeMap::new();
         head_fields.insert("owner".to_string(), "team-billing".to_string());
-        head_fields.insert("source".to_string(), "ledger".to_string());
-        let head = node(
+        let mut head = node(
             "billing.credits",
             "sha256:b",
             "new",
@@ -697,6 +715,8 @@ mod tests {
                 ..GraphRelations::default()
             },
         );
+        head.evidence
+            .push(GraphEvidence::inline("source_code", "ledger"));
 
         let changes = project_changed(&changed_from(base, head));
 
@@ -716,7 +736,7 @@ mod tests {
                     after: Some("team-billing".to_string()),
                 },
                 FieldChange::EvidenceAdded {
-                    field: "source".to_string(),
+                    field: "source_code".to_string(),
                     value: "ledger".to_string(),
                 },
                 FieldChange::RelationAdded {
@@ -725,12 +745,6 @@ mod tests {
                 },
             ]
         );
-    }
-
-    #[test]
-    fn evidence_field_canonical_order_matches_v0_wire_contract() {
-        let wire: Vec<&'static str> = EvidenceField::ALL.iter().map(|f| f.as_str()).collect();
-        assert_eq!(wire, vec!["source", "test", "reviewed_by"]);
     }
 
     #[test]

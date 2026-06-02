@@ -746,10 +746,8 @@ fn claim_verified_at_field<'a>(
 fn claim_evidence_fields<'a>(
     metadata: &'a KnowledgeObjectMetadata<'a>,
 ) -> impl Iterator<Item = &'a Evidence> {
-    metadata.fields().iter().filter_map(|field| match field {
-        MetadataField::Evidence(evidence) => Some(*evidence),
-        _ => None,
-    })
+    // V5.8: evidence is in the typed `evidence()` slice, not in `fields()`.
+    metadata.evidence().iter().copied()
 }
 
 fn accepted_decision_field<'a>(
@@ -762,16 +760,14 @@ fn accepted_decision_field<'a>(
 }
 
 fn render_evidence(evidence: &Evidence, html: &mut String) {
-    let modifier = match evidence {
-        Evidence::Source(_) => "source",
-        Evidence::Test(_) => "test",
-        Evidence::ReviewedBy(_) => "reviewed-by",
-        Evidence::HumanReview(_) => "human-review",
-    };
+    // V5.8: EvidenceKind as_str() is the display key (e.g. "source_code").
+    // The CSS modifier converts underscores to dashes for the BEM class.
+    let kind_str = evidence.kind().as_str();
+    let modifier = kind_str.replace('_', "-");
     html.push_str("<div class=\"claim__evidence-item claim__evidence-item--");
-    html.push_str(modifier);
+    html.push_str(&modifier);
     html.push_str("\"><dt>");
-    html.push_str(evidence.field_key());
+    html.push_str(kind_str);
     html.push_str("</dt><dd>");
     html.push_str(&escape_html(evidence.value().as_str()));
     html.push_str("</dd></div>\n");
@@ -1212,7 +1208,8 @@ mod tests {
             VerifiedAt::try_new(fields.get(VERIFIED_AT_FIELD).expect("verified_at"))
                 .expect("verified_at"),
             NonEmpty::from_vec(vec![
-                Evidence::source(fields.get(SOURCE_FIELD).expect("source")).expect("source"),
+                Evidence::from_field(SOURCE_FIELD, fields.get(SOURCE_FIELD).expect("source"))
+                    .expect("source"),
             ])
             .expect("non-empty evidence"),
         );
@@ -1611,9 +1608,10 @@ mod tests {
             html.contains("<div class=\"claim__evidence\">"),
             "missing evidence section: {html}"
         );
+        // V5.8: evidence kind is now "source_code" (EvidenceKind::SourceCode).
         assert!(
             html.contains(
-                "<div class=\"claim__evidence-item claim__evidence-item--source\"><dt>source</dt><dd>payments ledger</dd></div>"
+                "<div class=\"claim__evidence-item claim__evidence-item--source-code\"><dt>source_code</dt><dd>payments ledger</dd></div>"
             ),
             "missing source evidence: {html}"
         );

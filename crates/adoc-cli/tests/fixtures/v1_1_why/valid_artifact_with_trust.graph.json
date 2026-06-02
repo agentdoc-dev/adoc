@@ -22,9 +22,6 @@
       },
       "fields": {
         "owner": "team-billing",
-        "reviewed_by": "risk-team",
-        "source": "ledger-export",
-        "test": "cargo test refunds",
         "trust": "team",
         "verified_at": "2026-05-06"
       },
@@ -39,7 +36,12 @@
           "billing.refunds.audit-required"
         ]
       },
-      "status": "verified"
+      "status": "verified",
+      "evidence": [
+        { "kind": "source_code", "value": "ledger-export" },
+        { "kind": "test", "value": "cargo test refunds" },
+        { "kind": "human_review", "value": "risk-team" }
+      ]
     },
     {
       "type": "knowledge_object",

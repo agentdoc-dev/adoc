@@ -41,6 +41,16 @@ struct TestGraphObject {
     source_span: TestGraphSourceSpan,
     fields: std::collections::BTreeMap<String, String>,
     relations: TestGraphRelations,
+    /// V5.8: typed evidence array (replaces flat source/test/reviewed_by fields).
+    #[serde(default)]
+    evidence: Vec<TestGraphEvidence>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct TestGraphEvidence {
+    kind: String,
+    #[serde(default)]
+    value: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2069,18 +2079,17 @@ fn compile_workspace_builds_verified_claim_with_all_v0_evidence() {
         record.fields.get("verified_at").map(String::as_str),
         Some("2026-05-05")
     );
-    assert_eq!(
-        record.fields.get("source").map(String::as_str),
-        Some("billing-ledger")
-    );
-    assert_eq!(
-        record.fields.get("test").map(String::as_str),
-        Some("cargo test billing_credits")
-    );
-    assert_eq!(
-        record.fields.get("reviewed_by").map(String::as_str),
-        Some("qa-team")
-    );
+    // V5.8: evidence is now in the typed evidence array, not fields.
+    let ev_kind = |kind: &str| {
+        record
+            .evidence
+            .iter()
+            .find(|e| e.kind == kind)
+            .and_then(|e| e.value.as_deref())
+    };
+    assert_eq!(ev_kind("source_code"), Some("billing-ledger"));
+    assert_eq!(ev_kind("test"), Some("cargo test billing_credits"));
+    assert_eq!(ev_kind("human_review"), Some("qa-team"));
     assert!(
         artifacts.html.contains("claim claim--verified"),
         "verified claim class missing: {}",
@@ -2091,11 +2100,12 @@ fn compile_workspace_builds_verified_claim_with_all_v0_evidence() {
         "verification section missing: {}",
         artifacts.html
     );
+    // V5.8: reviewed_by maps to human_review; CSS modifier uses dashes.
     assert!(
         artifacts
             .html
-            .contains("claim__evidence-item claim__evidence-item--reviewed-by"),
-        "reviewed_by evidence marker missing: {}",
+            .contains("claim__evidence-item claim__evidence-item--human-review"),
+        "human_review evidence marker missing: {}",
         artifacts.html
     );
 }
