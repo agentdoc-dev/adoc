@@ -8,6 +8,7 @@ use crate::domain::knowledge_object::{
     policy::PolicyStatus,
     procedure::ProcedureStatus,
 };
+use crate::domain::value_objects::contradiction_status::ContradictionStatus;
 use crate::domain::value_objects::effective_date::EffectiveDate;
 use crate::domain::value_objects::review_interval::ReviewInterval;
 use crate::domain::value_objects::scope::Scope;
@@ -41,6 +42,9 @@ pub(crate) enum MetadataDiscriminant<'a> {
     /// V5.5: trust level for `agent_instruction`. Stored in the graph node's
     /// `status` slot so it participates in the diff projection correctly.
     Trust(&'a Trust),
+    /// V5.6: lifecycle status for `contradiction`. Stored in the graph node's
+    /// `status` slot so it participates in the diff projection correctly.
+    ContradictionStatus(&'a ContradictionStatus),
 }
 
 impl<'a> MetadataDiscriminant<'a> {
@@ -53,6 +57,7 @@ impl<'a> MetadataDiscriminant<'a> {
             Self::ExampleStatus(status) => status.as_str(),
             Self::Severity(severity) => severity.as_str(),
             Self::Trust(trust) => trust.as_str(),
+            Self::ContradictionStatus(status) => status.as_str(),
         }
     }
 }
@@ -60,6 +65,7 @@ impl<'a> MetadataDiscriminant<'a> {
 const EFFECTIVE_AT_FIELD: &str = "effective_at";
 const REVIEW_INTERVAL_FIELD: &str = "review_interval";
 const SCOPE_FIELD: &str = "scope";
+const SEVERITY_FIELD: &str = "severity";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MetadataField<'a> {
@@ -80,6 +86,10 @@ pub(crate) enum MetadataField<'a> {
     ReviewInterval(&'a ReviewInterval),
     /// V5.5: agent_instruction `scope` glob string.
     Scope(&'a Scope),
+    /// V5.6: contradiction `severity` typed value. Emitted as a metadata field
+    /// (key `severity`) so it appears in the graph `fields` map; it is NOT the
+    /// discriminant (the discriminant is the `ContradictionStatus`).
+    Severity(&'a Severity),
 }
 
 impl MetadataField<'_> {
@@ -93,6 +103,7 @@ impl MetadataField<'_> {
             Self::EffectiveAt(_) => EFFECTIVE_AT_FIELD,
             Self::ReviewInterval(_) => REVIEW_INTERVAL_FIELD,
             Self::Scope(_) => SCOPE_FIELD,
+            Self::Severity(_) => SEVERITY_FIELD,
         }
     }
 
@@ -106,6 +117,7 @@ impl MetadataField<'_> {
             Self::EffectiveAt(effective_at) => effective_at.as_str(),
             Self::ReviewInterval(review_interval) => review_interval.as_str(),
             Self::Scope(scope) => scope.as_str(),
+            Self::Severity(severity) => severity.as_str(),
         }
     }
 }
@@ -156,6 +168,12 @@ impl KnowledgeObject {
             Self::AgentInstruction(ai) => {
                 fields.push(MetadataField::Scope(ai.scope()));
                 Some(MetadataDiscriminant::Trust(ai.trust()))
+            }
+            Self::Contradiction(contradiction) => {
+                fields.push(MetadataField::Severity(contradiction.severity()));
+                Some(MetadataDiscriminant::ContradictionStatus(
+                    contradiction.status(),
+                ))
             }
         };
 

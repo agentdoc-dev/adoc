@@ -263,6 +263,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/tool-guide",
         "adoc://agent/v0/answer-contract",
         "adoc://agent/v0/agent-instruction-guide",
+        "adoc://agent/v0/contradiction-guide",
         "adoc://agent/v0/patch-contract",
         "adoc://agent/v0/project-status-guide",
         "adoc://agent/v0/dogfood-billing-pilot",

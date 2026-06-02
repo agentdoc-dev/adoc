@@ -47,6 +47,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/agent-instruction-guide.md"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/contradiction-guide",
+        name: "agent-contradiction-guide",
+        title: "Contradiction Guide",
+        description: "V5.6 contradiction objects are manually authored cross-references linking conflicting claims.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/contradiction-guide.md"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/patch-contract",
         name: "agent-patch-contract",
         title: "Agent Patch Contract",

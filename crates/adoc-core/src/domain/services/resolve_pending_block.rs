@@ -9,8 +9,8 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
 use crate::domain::knowledge_object::{
     BlockKind, KnowledgeObject, agent_instruction::AgentInstruction, claim::Claim,
-    constraint::Constraint, decision::Decision, example::Example, glossary::Glossary,
-    policy::Policy, procedure::Procedure, warning::Warning,
+    constraint::Constraint, contradiction::Contradiction, decision::Decision, example::Example,
+    glossary::Glossary, policy::Policy, procedure::Procedure, warning::Warning,
 };
 
 type KnowledgeObjectBuilder = fn(ParsedTypedBlock, &mut Vec<Diagnostic>) -> Option<KnowledgeObject>;
@@ -20,8 +20,7 @@ struct KnowledgeObjectResolver {
     build: KnowledgeObjectBuilder,
 }
 
-const UNKNOWN_KIND_DEFERRED_HELP: &str =
-    "Kinds contradiction, source, and custom schemas are deferred.";
+const UNKNOWN_KIND_DEFERRED_HELP: &str = "Kinds source and custom schemas are deferred.";
 
 const RESOLVERS: &[KnowledgeObjectResolver] = &[
     KnowledgeObjectResolver {
@@ -59,6 +58,10 @@ const RESOLVERS: &[KnowledgeObjectResolver] = &[
     KnowledgeObjectResolver {
         kind: BlockKind::AgentInstruction,
         build: build_agent_instruction,
+    },
+    KnowledgeObjectResolver {
+        kind: BlockKind::Contradiction,
+        build: build_contradiction,
     },
 ];
 
@@ -156,6 +159,13 @@ fn build_agent_instruction(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<KnowledgeObject> {
     AgentInstruction::build_from_parsed(parsed, diagnostics).map(KnowledgeObject::AgentInstruction)
+}
+
+fn build_contradiction(
+    parsed: ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<KnowledgeObject> {
+    Contradiction::build_from_parsed(parsed, diagnostics).map(KnowledgeObject::Contradiction)
 }
 
 fn unknown_kind_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
@@ -280,8 +290,8 @@ mod tests {
 
         assert_eq!(
             help,
-            "supported kinds: claim, decision, glossary, warning, constraint, policy, procedure, example, agent_instruction. \
-            Kinds contradiction, source, and custom schemas are deferred."
+            "supported kinds: claim, decision, glossary, warning, constraint, policy, procedure, example, agent_instruction, contradiction. \
+            Kinds source and custom schemas are deferred."
         );
         for kind in BlockKind::ALL {
             assert!(

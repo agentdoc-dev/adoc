@@ -14,7 +14,8 @@ use crate::domain::graph::{
 };
 use crate::domain::inline::{InlineSegment, to_source};
 use crate::domain::knowledge_object::{
-    KnowledgeObject, RelationTarget, Relations, policy::Policy, projection::MetadataField,
+    KnowledgeObject, RelationTarget, Relations, contradiction::Contradiction, policy::Policy,
+    projection::MetadataField,
 };
 use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::ArtifactWriter};
 
@@ -287,6 +288,7 @@ fn knowledge_object_to_graph_node_without_hash(
 
     let approved_by = policy_approved_by(knowledge_object);
     let (allowed_actions, forbidden_actions) = agent_instruction_actions(knowledge_object);
+    let contradiction_claims = contradiction_claims(knowledge_object);
 
     GraphKnowledgeObjectNode {
         id: knowledge_object.id().as_str().to_string(),
@@ -302,6 +304,7 @@ fn knowledge_object_to_graph_node_without_hash(
         approved_by,
         allowed_actions,
         forbidden_actions,
+        contradiction_claims,
     }
 }
 
@@ -310,6 +313,24 @@ fn policy_approved_by(knowledge_object: &KnowledgeObject) -> Vec<String> {
         return Vec::new();
     };
     policy_to_approved_by_vec(policy)
+}
+
+/// Extract the `contradiction_claims` list from a `contradiction` node,
+/// returning an empty vec for all other kinds. Mirrors `policy_approved_by`.
+fn contradiction_claims(knowledge_object: &KnowledgeObject) -> Vec<String> {
+    let KnowledgeObject::Contradiction(contradiction) = knowledge_object else {
+        return Vec::new();
+    };
+    contradiction_to_claims_vec(contradiction)
+}
+
+fn contradiction_to_claims_vec(contradiction: &Contradiction) -> Vec<String> {
+    contradiction
+        .claims()
+        .as_slice()
+        .iter()
+        .map(|id| id.as_str().to_string())
+        .collect()
 }
 
 fn policy_to_approved_by_vec(policy: &Policy) -> Vec<String> {
@@ -376,6 +397,10 @@ struct KnowledgeObjectHashPayload<'a> {
     /// nodes keep their existing `content_hash`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     forbidden_actions: &'a Vec<String>,
+    /// V5.6: omitted from canonical JSON when empty so non-contradiction nodes
+    /// keep their existing `content_hash`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    contradiction_claims: &'a Vec<String>,
 }
 
 pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNode) -> String {
@@ -392,6 +417,7 @@ pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNod
         approved_by: &node.approved_by,
         allowed_actions: &node.allowed_actions,
         forbidden_actions: &node.forbidden_actions,
+        contradiction_claims: &node.contradiction_claims,
     };
     let canonical_json =
         serde_json::to_vec(&payload).expect("knowledge object hash payload serializes");

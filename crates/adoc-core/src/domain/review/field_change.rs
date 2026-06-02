@@ -111,6 +111,15 @@ pub enum FieldChange {
     ForbiddenActionsRemoved {
         value: String,
     },
+    /// V5.6: a new claim ID appeared in the `claims` list on a `contradiction`.
+    ContradictionClaimsAdded {
+        value: String,
+    },
+    /// V5.6: a claim ID that was present in `claims` was removed from a
+    /// `contradiction`.
+    ContradictionClaimsRemoved {
+        value: String,
+    },
 }
 
 impl FieldChange {
@@ -146,6 +155,8 @@ impl FieldChange {
             FieldChange::AllowedActionsRemoved { .. } => "allowed_actions removed",
             FieldChange::ForbiddenActionsAdded { .. } => "forbidden_actions added",
             FieldChange::ForbiddenActionsRemoved { .. } => "forbidden_actions removed",
+            FieldChange::ContradictionClaimsAdded { .. } => "contradiction_claims added",
+            FieldChange::ContradictionClaimsRemoved { .. } => "contradiction_claims removed",
         }
     }
 }
@@ -225,6 +236,12 @@ impl fmt::Display for FieldChange {
             }
             FieldChange::ForbiddenActionsRemoved { value } => {
                 write!(f, "forbidden_actions: -{value}")
+            }
+            FieldChange::ContradictionClaimsAdded { value } => {
+                write!(f, "contradiction_claims: +{value}")
+            }
+            FieldChange::ContradictionClaimsRemoved { value } => {
+                write!(f, "contradiction_claims: -{value}")
             }
         }
     }
@@ -849,6 +866,75 @@ mod tests {
         for (change, expected) in cases {
             assert_eq!(change.summary_label(), expected);
         }
+    }
+
+    // ── V5.6 contradiction variants ────────────────────────────────────────
+
+    #[test]
+    fn contradiction_claims_added_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::ContradictionClaimsAdded {
+            value: "auth.a".to_string(),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(
+            value,
+            json!({ "type": "contradiction_claims_added", "value": "auth.a" })
+        );
+    }
+
+    #[test]
+    fn contradiction_claims_removed_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::ContradictionClaimsRemoved {
+            value: "auth.b".to_string(),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(
+            value,
+            json!({ "type": "contradiction_claims_removed", "value": "auth.b" })
+        );
+    }
+
+    #[test]
+    fn summary_label_covers_v5_6_contradiction_variants() {
+        let cases = [
+            (
+                FieldChange::ContradictionClaimsAdded {
+                    value: String::new(),
+                },
+                "contradiction_claims added",
+            ),
+            (
+                FieldChange::ContradictionClaimsRemoved {
+                    value: String::new(),
+                },
+                "contradiction_claims removed",
+            ),
+        ];
+        for (change, expected) in cases {
+            assert_eq!(change.summary_label(), expected);
+        }
+    }
+
+    #[test]
+    fn display_renders_v5_6_contradiction_variants_in_canonical_form() {
+        assert_eq!(
+            FieldChange::ContradictionClaimsAdded {
+                value: "auth.a".to_string(),
+            }
+            .to_string(),
+            "contradiction_claims: +auth.a"
+        );
+        assert_eq!(
+            FieldChange::ContradictionClaimsRemoved {
+                value: "auth.b".to_string(),
+            }
+            .to_string(),
+            "contradiction_claims: -auth.b"
+        );
     }
 
     #[test]
