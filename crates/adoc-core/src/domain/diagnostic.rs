@@ -88,6 +88,12 @@ pub enum DiagnosticCode {
     SchemaPolicyInvalidReviewInterval,
     SchemaPolicyMissingBody,
     SchemaPolicyFutureEffectiveAt,
+    SchemaAgentInstructionMissingScope,
+    SchemaAgentInstructionMissingTrust,
+    SchemaAgentInstructionInvalidTrust,
+    SchemaAgentInstructionMissingAllowedActions,
+    SchemaAgentInstructionMissingForbiddenActions,
+    SchemaAgentInstructionActionsNotDisjoint,
     CompatRawHtmlQuarantined,
     CompatUnsafeLinkDropped,
     CompatUnsafeImageSrcDropped,
@@ -164,6 +170,12 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaPolicyInvalidReviewInterval,
             DiagnosticCode::SchemaPolicyMissingBody,
             DiagnosticCode::SchemaPolicyFutureEffectiveAt,
+            DiagnosticCode::SchemaAgentInstructionMissingScope,
+            DiagnosticCode::SchemaAgentInstructionMissingTrust,
+            DiagnosticCode::SchemaAgentInstructionInvalidTrust,
+            DiagnosticCode::SchemaAgentInstructionMissingAllowedActions,
+            DiagnosticCode::SchemaAgentInstructionMissingForbiddenActions,
+            DiagnosticCode::SchemaAgentInstructionActionsNotDisjoint,
             DiagnosticCode::CompatRawHtmlQuarantined,
             DiagnosticCode::CompatUnsafeLinkDropped,
             DiagnosticCode::CompatUnsafeImageSrcDropped,
@@ -250,6 +262,24 @@ impl DiagnosticCode {
             }
             DiagnosticCode::SchemaPolicyMissingBody => "schema.policy_missing_body",
             DiagnosticCode::SchemaPolicyFutureEffectiveAt => "schema.policy_future_effective_at",
+            DiagnosticCode::SchemaAgentInstructionMissingScope => {
+                "schema.agent_instruction_missing_scope"
+            }
+            DiagnosticCode::SchemaAgentInstructionMissingTrust => {
+                "schema.agent_instruction_missing_trust"
+            }
+            DiagnosticCode::SchemaAgentInstructionInvalidTrust => {
+                "schema.agent_instruction_invalid_trust"
+            }
+            DiagnosticCode::SchemaAgentInstructionMissingAllowedActions => {
+                "schema.agent_instruction_missing_allowed_actions"
+            }
+            DiagnosticCode::SchemaAgentInstructionMissingForbiddenActions => {
+                "schema.agent_instruction_missing_forbidden_actions"
+            }
+            DiagnosticCode::SchemaAgentInstructionActionsNotDisjoint => {
+                "schema.agent_instruction_actions_not_disjoint"
+            }
             DiagnosticCode::CompatRawHtmlQuarantined => "compat.raw_html_quarantined",
             DiagnosticCode::CompatUnsafeLinkDropped => "compat.unsafe_link_dropped",
             DiagnosticCode::CompatUnsafeImageSrcDropped => "compat.unsafe_image_src_dropped",
@@ -454,6 +484,24 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaPolicyFutureEffectiveAt => {
                 "An `active` policy must have an `effective_at` date on or before today."
             }
+            DiagnosticCode::SchemaAgentInstructionMissingScope => {
+                "Add a `scope` field to the agent_instruction with a non-empty glob pattern (e.g. `docs/auth/*`)."
+            }
+            DiagnosticCode::SchemaAgentInstructionMissingTrust => {
+                "Add a `trust` field to the agent_instruction: one of informal, team, authoritative, regulated, system."
+            }
+            DiagnosticCode::SchemaAgentInstructionInvalidTrust => {
+                "Use a valid trust level: one of informal, team, authoritative, regulated, system."
+            }
+            DiagnosticCode::SchemaAgentInstructionMissingAllowedActions => {
+                "Add an `allowed_actions` field listing at least one action (scalar or `[a, b]` list)."
+            }
+            DiagnosticCode::SchemaAgentInstructionMissingForbiddenActions => {
+                "Add a `forbidden_actions` field listing at least one action (scalar or `[a, b]` list)."
+            }
+            DiagnosticCode::SchemaAgentInstructionActionsNotDisjoint => {
+                "Remove the overlapping actions so `allowed_actions` and `forbidden_actions` are disjoint."
+            }
             DiagnosticCode::CompatRawHtmlQuarantined => {
                 "Replace raw HTML with Markdown syntax, or migrate the page to .adoc for strict validation."
             }
@@ -569,6 +617,12 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.policy_invalid_review_interval",
     "schema.policy_missing_body",
     "schema.policy_future_effective_at",
+    "schema.agent_instruction_missing_scope",
+    "schema.agent_instruction_missing_trust",
+    "schema.agent_instruction_invalid_trust",
+    "schema.agent_instruction_missing_allowed_actions",
+    "schema.agent_instruction_missing_forbidden_actions",
+    "schema.agent_instruction_actions_not_disjoint",
     "compat.raw_html_quarantined",
     "compat.unsafe_link_dropped",
     "compat.unsafe_image_src_dropped",

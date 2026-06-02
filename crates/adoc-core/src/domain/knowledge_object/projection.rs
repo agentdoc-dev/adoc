@@ -10,7 +10,9 @@ use crate::domain::knowledge_object::{
 };
 use crate::domain::value_objects::effective_date::EffectiveDate;
 use crate::domain::value_objects::review_interval::ReviewInterval;
+use crate::domain::value_objects::scope::Scope;
 use crate::domain::value_objects::severity::Severity;
+use crate::domain::value_objects::trust::Trust;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct KnowledgeObjectMetadata<'a> {
@@ -36,6 +38,9 @@ pub(crate) enum MetadataDiscriminant<'a> {
     ProcedureStatus(&'a ProcedureStatus),
     ExampleStatus(&'a ExampleStatus),
     Severity(&'a Severity),
+    /// V5.5: trust level for `agent_instruction`. Stored in the graph node's
+    /// `status` slot so it participates in the diff projection correctly.
+    Trust(&'a Trust),
 }
 
 impl<'a> MetadataDiscriminant<'a> {
@@ -47,12 +52,14 @@ impl<'a> MetadataDiscriminant<'a> {
             Self::ProcedureStatus(status) => status.as_str(),
             Self::ExampleStatus(status) => status.as_str(),
             Self::Severity(severity) => severity.as_str(),
+            Self::Trust(trust) => trust.as_str(),
         }
     }
 }
 
 const EFFECTIVE_AT_FIELD: &str = "effective_at";
 const REVIEW_INTERVAL_FIELD: &str = "review_interval";
+const SCOPE_FIELD: &str = "scope";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MetadataField<'a> {
@@ -71,6 +78,8 @@ pub(crate) enum MetadataField<'a> {
     /// V5.4: policy `review_interval` — borrows the typed value; `value_as_str`
     /// returns the `[0-9]+d` string stored inside `ReviewInterval`.
     ReviewInterval(&'a ReviewInterval),
+    /// V5.5: agent_instruction `scope` glob string.
+    Scope(&'a Scope),
 }
 
 impl MetadataField<'_> {
@@ -83,6 +92,7 @@ impl MetadataField<'_> {
             Self::DecidedBy(_) => DECIDED_BY_FIELD,
             Self::EffectiveAt(_) => EFFECTIVE_AT_FIELD,
             Self::ReviewInterval(_) => REVIEW_INTERVAL_FIELD,
+            Self::Scope(_) => SCOPE_FIELD,
         }
     }
 
@@ -95,6 +105,7 @@ impl MetadataField<'_> {
             Self::DecidedBy(decided_by) => decided_by.as_str(),
             Self::EffectiveAt(effective_at) => effective_at.as_str(),
             Self::ReviewInterval(review_interval) => review_interval.as_str(),
+            Self::Scope(scope) => scope.as_str(),
         }
     }
 }
@@ -141,6 +152,10 @@ impl KnowledgeObject {
             Self::Example(example) => {
                 append_example_fields(&mut fields, example);
                 example.status().map(MetadataDiscriminant::ExampleStatus)
+            }
+            Self::AgentInstruction(ai) => {
+                fields.push(MetadataField::Scope(ai.scope()));
+                Some(MetadataDiscriminant::Trust(ai.trust()))
             }
         };
 

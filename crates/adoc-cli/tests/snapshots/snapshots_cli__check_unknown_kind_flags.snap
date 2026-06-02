@@ -6,6 +6,6 @@ exit-success: false
 ---stdout---
 unknown_kind.adoc:5:3: error[schema.unknown_kind] unknown typed-block kind `fact`
   object_id: billing.policy
-  help: supported kinds: claim, decision, glossary, warning, constraint, policy, procedure, example. Kinds agent, contradiction, source, and custom schemas are deferred.
+  help: supported kinds: claim, decision, glossary, warning, constraint, policy, procedure, example, agent_instruction. Kinds contradiction, source, and custom schemas are deferred.
 1 errors, 0 warnings
 ---stderr---
