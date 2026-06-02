@@ -1211,16 +1211,14 @@ mod tests {
                 VERIFIED_AT_FIELD, Verification, VerifiedAt,
             },
         };
-        use crate::domain::values::NonEmpty;
         let verification = Verification::new(
             Owner::try_new(fields.get(OWNER_FIELD).expect("owner")).expect("owner"),
             VerifiedAt::try_new(fields.get(VERIFIED_AT_FIELD).expect("verified_at"))
                 .expect("verified_at"),
-            NonEmpty::from_vec(vec![
+            vec![
                 Evidence::from_field(SOURCE_FIELD, fields.get(SOURCE_FIELD).expect("source"))
                     .expect("source"),
-            ])
-            .expect("non-empty evidence"),
+            ],
         );
         let mut storage_fields = fields;
         storage_fields.remove(OWNER_FIELD);

@@ -305,7 +305,6 @@ mod tests {
         glossary::Glossary,
         warning::Warning,
     };
-    use crate::domain::values::NonEmpty;
 
     fn span() -> SourceSpan {
         SourceSpan {
@@ -379,13 +378,12 @@ mod tests {
                 Some(Verification::new(
                     Owner::try_new("team-billing").expect("owner"),
                     VerifiedAt::try_new("2026-05-06").expect("verified_at"),
-                    NonEmpty::from_vec(vec![
+                    vec![
                         Evidence::inline(EvidenceKind::SourceCode, "ledger").expect("source"),
                         Evidence::inline(EvidenceKind::Test, "integration test").expect("test"),
                         Evidence::inline(EvidenceKind::HumanReview, "architecture")
                             .expect("reviewed_by"),
-                    ])
-                    .expect("non-empty evidence"),
+                    ],
                 )),
                 span(),
             )

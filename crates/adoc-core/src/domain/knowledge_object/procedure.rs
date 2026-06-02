@@ -287,8 +287,6 @@ fn build_verification(
         return None;
     }
 
-    let evidence = NonEmpty::from_vec(evidence).expect("evidence checked above");
-
     Some(Verification::new(
         owner.expect("owner checked above"),
         verified_at.expect("verified_at checked above"),
@@ -486,7 +484,6 @@ mod tests {
 
     use super::*;
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
-    use crate::domain::values::NonEmpty;
 
     const STEPS: &str = "1. Open the console.\n2. Rotate the key.\n3. Redeploy.\n4. Verify health.";
 
@@ -527,11 +524,10 @@ mod tests {
         Verification::new(
             Owner::try_new("platform-security").expect("owner"),
             VerifiedAt::try_new("2026-05-06").expect("verified_at"),
-            NonEmpty::from_vec(vec![
+            vec![
                 Evidence::inline(EvidenceKind::HumanReview, "ran in staging")
                     .expect("human_review"),
-            ])
-            .expect("non-empty evidence"),
+            ],
         )
     }
 
