@@ -99,6 +99,83 @@ impl ArtifactWriter<WorkspaceAst> for GraphJsonArtifact {
             }
         }
 
+        // Post-assembly pass: resolve evidence_ref entries on claims.
+        // The target source node's kind lives in `fields["kind"]` of the
+        // assembled KnowledgeObject graph node.
+        let source_kind_map: std::collections::HashMap<String, String> = nodes
+            .iter()
+            .filter_map(|node| {
+                let GraphNode::KnowledgeObject(ko) = node else {
+                    return None;
+                };
+                if ko.kind != "source" {
+                    return None;
+                }
+                let kind = ko.fields.get("kind")?.clone();
+                Some((ko.id.clone(), kind))
+            })
+            .collect();
+
+        // Append evidence-ref array entries and derived evidence edges for
+        // every claim that carries evidence_refs.
+        let claim_evidence_refs: Vec<(String, Vec<String>)> = workspace
+            .pages
+            .iter()
+            .flat_map(|page| page.blocks.iter())
+            .filter_map(|block| {
+                let BlockAst::KnowledgeObject(ko) = block else {
+                    return None;
+                };
+                let KnowledgeObject::Claim(claim) = ko.as_ref() else {
+                    return None;
+                };
+                if claim.evidence_refs().is_empty() {
+                    return None;
+                }
+                // Each entry is Evidence::ObjectRef; target_id() is always Some.
+                let refs: Vec<String> = claim
+                    .evidence_refs()
+                    .iter()
+                    .filter_map(|ev| ev.target_id())
+                    .map(|id| id.as_str().to_string())
+                    .collect();
+                Some((claim.id().as_str().to_string(), refs))
+            })
+            .collect();
+
+        for (claim_id, ref_ids) in &claim_evidence_refs {
+            // Append evidence edges for this claim.
+            for ref_id in ref_ids {
+                edges.push(GraphEdge {
+                    kind: GraphEdgeKind::Evidence,
+                    source: claim_id.clone(),
+                    target: ref_id.clone(),
+                    relation: None,
+                    order: None,
+                });
+            }
+            // Append GraphEvidence entries to the claim's graph node.
+            for node in nodes.iter_mut() {
+                let GraphNode::KnowledgeObject(ko) = node else {
+                    continue;
+                };
+                if ko.id != *claim_id {
+                    continue;
+                }
+                for ref_id in ref_ids {
+                    let kind = source_kind_map
+                        .get(ref_id.as_str())
+                        .map(String::as_str)
+                        .unwrap_or("");
+                    ko.evidence
+                        .push(GraphEvidence::object_ref(kind, ref_id.clone()));
+                }
+                // Recompute the content hash now that evidence changed.
+                ko.content_hash = graph_knowledge_object_content_hash(ko);
+                break;
+            }
+        }
+
         nodes.sort();
         edges.sort();
 
@@ -938,5 +1015,165 @@ mod tests {
             "projected text must not end with a space; got {:?}",
             projected
         );
+    }
+
+    // ── V5.8 TB2: evidence_ref graph emission ────────────────────────────────
+
+    /// Build helpers for evidence_ref graph tests.
+    fn evidence_ref_span() -> SourceSpan {
+        SourceSpan {
+            file: PathBuf::from("docs/claims.adoc"),
+            start: SourcePosition {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
+            end: SourcePosition {
+                line: 1,
+                column: 40,
+                offset: 39,
+            },
+        }
+    }
+
+    /// A claim with an evidence_ref to a source object emits a `GraphEvidence`
+    /// entry with `reference` set and the resolved source kind in `kind`, plus
+    /// a derived `evidence` graph edge from the claim to the source.
+    #[test]
+    fn claim_with_evidence_ref_produces_graph_evidence_entry_and_edge() {
+        use crate::domain::identity::ObjectId;
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::claim::Claim;
+        use crate::domain::knowledge_object::source::Source;
+
+        let span = evidence_ref_span();
+        let source = Source::try_new(
+            "billing.consume-use-case",
+            "source_code",
+            Some("src/features/credits/consume.ts"),
+            None,
+            "Source implementation for credit consumption.",
+            std::collections::BTreeMap::new(),
+            span.clone(),
+        )
+        .expect("valid source");
+
+        let claim = Claim::try_new_with_refs(
+            "billing.credits",
+            Some("plain"),
+            "Credits apply after payment.",
+            std::collections::BTreeMap::new(),
+            vec![ObjectId::new("billing.consume-use-case").expect("valid id")],
+            None,
+            span,
+        )
+        .expect("valid claim with evidence_ref");
+
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("docs.claims").expect("page id"),
+            title: None,
+            source_path: PathBuf::from("docs/claims.adoc"),
+            blocks: vec![
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Source(source))),
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim))),
+            ],
+        };
+        let workspace = crate::domain::ast::WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build(&workspace, &[]);
+
+        // Find the claim node.
+        let claim_node = artifact
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                GraphNode::KnowledgeObject(ko) if ko.id == "billing.credits" => Some(ko),
+                _ => None,
+            })
+            .expect("claim graph node must exist");
+
+        // It must have exactly one evidence entry with reference set.
+        assert_eq!(
+            claim_node.evidence.len(),
+            1,
+            "claim must have exactly one evidence entry"
+        );
+        let ev = &claim_node.evidence[0];
+        assert_eq!(
+            ev.reference.as_deref(),
+            Some("billing.consume-use-case"),
+            "evidence entry must have reference set to the source id"
+        );
+        assert_eq!(
+            ev.kind, "source_code",
+            "evidence entry kind must match the source object's kind field"
+        );
+        assert!(
+            ev.value.is_none(),
+            "object-ref evidence entry must have no value"
+        );
+
+        // Find the evidence edge.
+        let evidence_edge = artifact.edges.iter().find(|edge| {
+            edge.kind == GraphEdgeKind::Evidence
+                && edge.source == "billing.credits"
+                && edge.target == "billing.consume-use-case"
+        });
+        assert!(
+            evidence_edge.is_some(),
+            "a derived evidence edge claim→source must exist; edges: {:?}",
+            artifact.edges
+        );
+    }
+
+    /// When the target source is missing from the graph (already caught by
+    /// workspace validation), the evidence entry is emitted with an empty kind
+    /// rather than panicking.
+    #[test]
+    fn claim_with_unresolvable_evidence_ref_emits_entry_with_empty_kind() {
+        use crate::domain::identity::ObjectId;
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::claim::Claim;
+
+        let span = evidence_ref_span();
+        let claim = Claim::try_new_with_refs(
+            "billing.credits",
+            Some("plain"),
+            "Credits apply after payment.",
+            std::collections::BTreeMap::new(),
+            vec![ObjectId::new("billing.missing-source").expect("valid id")],
+            None,
+            span,
+        )
+        .expect("valid claim with evidence_ref");
+
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("docs.claims").expect("page id"),
+            title: None,
+            source_path: PathBuf::from("docs/claims.adoc"),
+            blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
+                claim,
+            )))],
+        };
+        let workspace = crate::domain::ast::WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build(&workspace, &[]);
+
+        let claim_node = artifact
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                GraphNode::KnowledgeObject(ko) if ko.id == "billing.credits" => Some(ko),
+                _ => None,
+            })
+            .expect("claim graph node must exist");
+
+        // Evidence entry emitted with empty kind — not a panic.
+        assert_eq!(claim_node.evidence.len(), 1);
+        let ev = &claim_node.evidence[0];
+        assert_eq!(
+            ev.reference.as_deref(),
+            Some("billing.missing-source"),
+            "reference must be the unresolved id"
+        );
+        assert_eq!(ev.kind, "", "unresolved ref gets empty kind string");
     }
 }
