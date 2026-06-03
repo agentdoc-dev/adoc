@@ -34,6 +34,11 @@ pub struct RetrievalRecord {
     /// Always `None` when `effective_status` is `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effective_reason: Option<String>,
+    /// V5.10 TB3: derived best evidence quality tier. One of `"high"`,
+    /// `"medium"`, or `"low"` when the object has at least one tier-able
+    /// evidence entry. `None` otherwise. Clone-through from the graph node.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence_quality: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -176,6 +181,7 @@ impl RetrievalRecord {
             search_match,
             effective_status: object.effective_status.clone(),
             effective_reason: object.effective_reason.clone(),
+            evidence_quality: object.evidence_quality.clone(),
         }
     }
 }
@@ -221,6 +227,7 @@ mod tests {
             ],
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         };
 
         let record = RetrievalRecord::from(&object);

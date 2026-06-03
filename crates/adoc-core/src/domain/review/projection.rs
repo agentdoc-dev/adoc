@@ -305,6 +305,7 @@ mod tests {
             evidence: Vec::new(),
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         }
     }
 
@@ -402,6 +403,7 @@ mod tests {
             evidence: Vec::new(),
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         };
 
         let base = constraint_node("sha256:a", "high");
@@ -447,6 +449,7 @@ mod tests {
             evidence: Vec::new(),
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         };
 
         let base = agent_node("sha256:a", "team");

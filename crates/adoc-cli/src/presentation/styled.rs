@@ -262,6 +262,7 @@ mod tests {
             search_match: None,
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         }
     }
 
@@ -373,6 +374,7 @@ mod tests {
             search_match: None,
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         };
         let view = view_for(record);
         let text = strip_ansi(&render(&view));
@@ -472,6 +474,7 @@ mod tests {
             search_match: None,
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -739,6 +742,7 @@ mod tests {
             search_match: None,
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -786,6 +790,7 @@ mod tests {
             search_match: None,
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -826,6 +831,7 @@ mod tests {
             search_match: None,
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         };
         let view = view_for(record);
         let raw = render(&view);

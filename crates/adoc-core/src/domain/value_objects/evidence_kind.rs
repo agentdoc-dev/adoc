@@ -4,10 +4,43 @@
 //! exact snake_case wire strings listed in PRD §15.1. ASCII-trimmed on input;
 //! unknown strings produce [`EvidenceKindError::Invalid`] carrying the offending
 //! value.
+//!
+//! V5.10 adds [`EvidenceTier`] and [`EvidenceKind::quality_tier`] per PRD §15.3
+//! and ADR-0034.
 
 use std::fmt;
 
 use crate::domain::values::trim_ascii_edges;
+
+/// Quality tier for an evidence kind, per PRD §15.3.
+///
+/// Ordering is defined so `High > Medium > Low` — the derived `Ord` impl
+/// uses the variant declaration order in reverse; variants are declared
+/// Low → Medium → High so that the integer discriminants increase with quality.
+/// This means `EvidenceTier::High > EvidenceTier::Low` as expected.
+///
+/// See ADR-0034 for the full tier mapping table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum EvidenceTier {
+    /// Lowest quality: observable signals, external references, or
+    /// crowd-sourced data that may not represent ground truth.
+    Low,
+    /// Medium quality: structured human judgment or design artifacts.
+    Medium,
+    /// Highest quality: machine-checkable or compliance-grade evidence.
+    High,
+}
+
+impl EvidenceTier {
+    /// The canonical lowercase wire string for this tier.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+        }
+    }
+}
 
 /// The kind of evidence a `source` Knowledge Object represents.
 ///
@@ -144,6 +177,40 @@ impl EvidenceKind {
             self.target(),
             TargetRequirement::UrlOnly | TargetRequirement::Either
         )
+    }
+
+    /// The evidence quality tier for this kind, per PRD §15.3 and ADR-0034.
+    ///
+    /// **Tier mapping** (exhaustive — no wildcard, so new variants require a
+    /// decision here):
+    ///
+    /// | Tier   | Kinds |
+    /// |--------|-------|
+    /// | High   | `Test`, `SourceCode`, `ApiSchema`, `PolicyReference`, `AuditRecord` |
+    /// | Medium | `HumanReview`, `DesignDoc`, `PullRequest`, `Incident`, `Commit` |
+    /// | Low    | `ExternalUrl`, `Issue`, `SupportTicket`, `RuntimeMetric`, `Dataset`, `Experiment` |
+    pub(crate) fn quality_tier(self) -> EvidenceTier {
+        match self {
+            // High tier: machine-checkable or compliance-grade sources.
+            Self::Test
+            | Self::SourceCode
+            | Self::ApiSchema
+            | Self::PolicyReference
+            | Self::AuditRecord => EvidenceTier::High,
+            // Medium tier: structured human judgment or design artifacts.
+            Self::HumanReview
+            | Self::DesignDoc
+            | Self::PullRequest
+            | Self::Incident
+            | Self::Commit => EvidenceTier::Medium,
+            // Low tier: observable signals or external references.
+            Self::ExternalUrl
+            | Self::Issue
+            | Self::SupportTicket
+            | Self::RuntimeMetric
+            | Self::Dataset
+            | Self::Experiment => EvidenceTier::Low,
+        }
     }
 }
 
@@ -296,6 +363,109 @@ mod tests {
         for kind in [EvidenceKind::Dataset, EvidenceKind::Experiment] {
             let rendered = kind.to_string();
             assert_eq!(EvidenceKind::try_new(&rendered), Ok(kind));
+        }
+    }
+
+    // ── V5.10 TB3: EvidenceTier ordering and quality_tier mapping ─────────────
+
+    #[test]
+    fn evidence_tier_ordering_high_greater_than_medium_greater_than_low() {
+        assert!(EvidenceTier::High > EvidenceTier::Medium);
+        assert!(EvidenceTier::Medium > EvidenceTier::Low);
+        assert!(EvidenceTier::High > EvidenceTier::Low);
+    }
+
+    #[test]
+    fn quality_tier_high_variants() {
+        for kind in [
+            EvidenceKind::Test,
+            EvidenceKind::SourceCode,
+            EvidenceKind::ApiSchema,
+            EvidenceKind::PolicyReference,
+            EvidenceKind::AuditRecord,
+        ] {
+            assert_eq!(
+                kind.quality_tier(),
+                EvidenceTier::High,
+                "{kind:?} should be High tier"
+            );
+        }
+    }
+
+    #[test]
+    fn quality_tier_medium_variants() {
+        for kind in [
+            EvidenceKind::HumanReview,
+            EvidenceKind::DesignDoc,
+            EvidenceKind::PullRequest,
+            EvidenceKind::Incident,
+            EvidenceKind::Commit,
+        ] {
+            assert_eq!(
+                kind.quality_tier(),
+                EvidenceTier::Medium,
+                "{kind:?} should be Medium tier"
+            );
+        }
+    }
+
+    #[test]
+    fn quality_tier_low_variants() {
+        for kind in [
+            EvidenceKind::ExternalUrl,
+            EvidenceKind::Issue,
+            EvidenceKind::SupportTicket,
+            EvidenceKind::RuntimeMetric,
+            EvidenceKind::Dataset,
+            EvidenceKind::Experiment,
+        ] {
+            assert_eq!(
+                kind.quality_tier(),
+                EvidenceTier::Low,
+                "{kind:?} should be Low tier"
+            );
+        }
+    }
+
+    #[test]
+    fn evidence_tier_as_str_round_trip() {
+        assert_eq!(EvidenceTier::High.as_str(), "high");
+        assert_eq!(EvidenceTier::Medium.as_str(), "medium");
+        assert_eq!(EvidenceTier::Low.as_str(), "low");
+    }
+
+    #[test]
+    fn all_sixteen_variants_have_a_tier_assignment() {
+        // Proves quality_tier() is exhaustive across all current variants.
+        let all_variants = [
+            EvidenceKind::SourceCode,
+            EvidenceKind::Test,
+            EvidenceKind::Commit,
+            EvidenceKind::PullRequest,
+            EvidenceKind::Issue,
+            EvidenceKind::DesignDoc,
+            EvidenceKind::HumanReview,
+            EvidenceKind::ExternalUrl,
+            EvidenceKind::ApiSchema,
+            EvidenceKind::RuntimeMetric,
+            EvidenceKind::Incident,
+            EvidenceKind::SupportTicket,
+            EvidenceKind::AuditRecord,
+            EvidenceKind::PolicyReference,
+            EvidenceKind::Dataset,
+            EvidenceKind::Experiment,
+        ];
+        // Verify all 16 variants are covered — calling quality_tier() should
+        // not panic and must return one of the three tiers.
+        for variant in all_variants {
+            let tier = variant.quality_tier();
+            assert!(
+                matches!(
+                    tier,
+                    EvidenceTier::High | EvidenceTier::Medium | EvidenceTier::Low
+                ),
+                "{variant:?} must map to a valid EvidenceTier"
+            );
         }
     }
 }

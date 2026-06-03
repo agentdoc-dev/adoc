@@ -284,6 +284,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         search_match: None,
         effective_status: None,
         effective_reason: None,
+        evidence_quality: None,
     };
     let _: RetrievalRecord = record;
 
