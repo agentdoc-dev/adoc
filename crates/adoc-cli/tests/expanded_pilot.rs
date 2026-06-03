@@ -209,3 +209,301 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
         "procedure body must render as an ordered list"
     );
 }
+
+/// V5.9 acceptance: the V5 kinds are retrievable. `adoc why` cites the
+/// verified procedure, `adoc graph` traverses the active policy to a related
+/// object and back, and `adoc search "policy"` returns the policy first
+/// (docs/V5-DESIGN.md §V5.9).
+#[test]
+fn expanded_pilot_retrieval_why_graph_search() {
+    let repo_root = repo_root();
+    let workspace = TestWorkspace::new("expanded-pilot-retrieval");
+    let dist = workspace.root.join("dist");
+    let build = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&repo_root)
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+        .args([
+            "build",
+            PILOT_PATH,
+            "--out",
+            dist.to_str().expect("dist path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+    assert!(
+        build.status.success(),
+        "retrieval prerequisite build must succeed\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let graph = dist.join("docs.graph.json");
+    let graph_arg = graph.to_str().expect("graph path is utf-8");
+
+    // --- why: cite the verified procedure ---
+    let why = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "why",
+            "auth.key.rotate",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc why runs");
+    assert!(why.status.success(), "adoc why must succeed");
+    let why_env: Value = serde_json::from_slice(&why.stdout).expect("why stdout is JSON");
+    assert_eq!(why_env["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(why_env["records"][0]["id"], "auth.key.rotate");
+    assert_eq!(why_env["records"][0]["kind"], "procedure");
+    assert_eq!(why_env["records"][0]["status"], "verified");
+
+    // --- graph: active policy traverses to its related object and back ---
+    let graph_out = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "graph",
+            "security.production-db-access",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc graph runs");
+    assert!(graph_out.status.success(), "adoc graph must succeed");
+    let graph_env: Value = serde_json::from_slice(&graph_out.stdout).expect("graph stdout is JSON");
+    assert_eq!(graph_env["schema_version"], "adoc.graph.traversal.v0");
+    assert_eq!(graph_env["root"], "security.production-db-access");
+    let reached = graph_env["nodes"]
+        .as_array()
+        .expect("nodes array")
+        .iter()
+        .any(|node| node["id"] == "security.audit.retention");
+    assert!(
+        reached,
+        "graph traversal from the policy must reach its related claim\n{graph_env:#}"
+    );
+
+    // --- search: "policy" returns the policy first ---
+    let search = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "search",
+            "policy",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc search runs");
+    assert!(search.status.success(), "adoc search must succeed");
+    let search_env: Value = serde_json::from_slice(&search.stdout).expect("search stdout is JSON");
+    assert_eq!(search_env["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(
+        search_env["records"][0]["id"], "security.production-db-access",
+        "the active policy must be the top search result for \"policy\""
+    );
+}
+
+/// V5.9 acceptance: `adoc diff`, `adoc review`, and `adoc review --patch`
+/// behave over a git fixture carrying V5 kinds. A body edit on a verified
+/// claim produces one Changed entry, a re-verify obligation, and a clean
+/// embedded `adoc.patch.check.v0` result when a matching patch is supplied.
+#[test]
+fn expanded_pilot_diff_review_patch() {
+    let workspace = TestWorkspace::new("expanded-pilot-diff-review-patch");
+    git_init_fixture(&workspace);
+
+    let base_adoc = concat!(
+        "# Pilot Billing @doc(pilot.billing)\n",
+        "\n",
+        "::source pilot.consume-use-case\n",
+        "kind: source_code\n",
+        "path: apps/backend/src/features/credits/consume.use-case.ts\n",
+        "owner: backend-platform\n",
+        "--\n",
+        "Implementation of credit consumption.\n",
+        "::\n",
+        "\n",
+        "::claim pilot.credits.consume\n",
+        "status: verified\n",
+        "owner: backend-platform\n",
+        "verified_at: 2026-05-01\n",
+        "test: cargo test credits\n",
+        "evidence_ref: pilot.consume-use-case\n",
+        "--\n",
+        "Credit consumption is handled by the use-case implementation.\n",
+        "::\n",
+    );
+    workspace.write("knowledge/billing.adoc", base_adoc);
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "base pilot"]);
+
+    run_git(&workspace, &["checkout", "-b", "feature"]);
+    let head_adoc = base_adoc.replace(
+        "Credit consumption is handled by the use-case implementation.",
+        "Credit consumption is handled by the ledger-first use-case implementation.",
+    );
+    workspace.write("knowledge/billing.adoc", &head_adoc);
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "head: tighten claim body"]);
+
+    // --- diff: one Changed entry, body field change ---
+    let diff = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+        .args(["diff", "main", "--format", "json"])
+        .output()
+        .expect("adoc diff runs");
+    assert!(
+        diff.status.success(),
+        "adoc diff must succeed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&diff.stdout),
+        String::from_utf8_lossy(&diff.stderr)
+    );
+    let diff_env: Value = serde_json::from_slice(&diff.stdout).expect("diff stdout is JSON");
+    assert_eq!(diff_env["schema_version"], "adoc.diff.v0");
+    let changed = diff_env["changed"].as_array().expect("changed array");
+    assert_eq!(changed.len(), 1, "expected one Changed entry: {changed:#?}");
+    assert_eq!(changed[0]["id"], "pilot.credits.consume");
+    let field_changes = changed[0]["field_changes"]
+        .as_array()
+        .expect("field_changes array");
+    assert_eq!(field_changes[0]["type"], "body");
+    let base_hash = changed[0]["head"]["content_hash"]
+        .as_str()
+        .expect("head content_hash")
+        .to_string();
+
+    // --- review: re-verify obligation on the verified claim ---
+    let review = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+    assert!(review.status.success(), "adoc review must succeed");
+    let review_env: Value = serde_json::from_slice(&review.stdout).expect("review stdout is JSON");
+    assert_eq!(review_env["schema_version"], "adoc.review.v0");
+    let obligations = review_env["proof_obligations"]
+        .as_array()
+        .expect("proof_obligations array");
+    assert!(
+        obligations
+            .iter()
+            .any(|o| o["object_id"] == "pilot.credits.consume"),
+        "expected a proof obligation on the modified verified claim: {obligations:#?}"
+    );
+
+    // --- review --patch: embeds a valid adoc.patch.check.v0 ---
+    let patch_json = format!(
+        concat!(
+            "{{\n",
+            "  \"schema_version\": \"adoc.patch.v0\",\n",
+            "  \"op\": \"replace_body\",\n",
+            "  \"target\": \"pilot.credits.consume\",\n",
+            "  \"base_hash\": \"{}\",\n",
+            "  \"changes\": {{ \"body\": \"Patched body.\" }},\n",
+            "  \"reason\": \"V5.9 pilot patch composition\"\n",
+            "}}\n",
+        ),
+        base_hash,
+    );
+    workspace.write("patch.json", &patch_json);
+    let review_patch = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+        .args([
+            "review",
+            "main",
+            "--patch",
+            "patch.json",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc review --patch runs");
+    assert!(
+        review_patch.status.success(),
+        "adoc review --patch must succeed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&review_patch.stdout),
+        String::from_utf8_lossy(&review_patch.stderr)
+    );
+    let rp_env: Value = serde_json::from_slice(&review_patch.stdout).expect("review --patch JSON");
+    assert_eq!(
+        rp_env["patch_check"]["schema_version"],
+        "adoc.patch.check.v0"
+    );
+    assert_eq!(rp_env["patch_check"]["valid"], serde_json::json!(true));
+    assert_eq!(rp_env["patch_check"]["target"], "pilot.credits.consume");
+}
+
+/// V5.9 acceptance (docs/V5-DESIGN.md:539): a reader pinned to the old
+/// `adoc.graph.v2` model fails gracefully. Feeding a stale v2 artifact to a
+/// read command exits 2 with the `schema.unsupported_version` diagnostic
+/// rather than silently dropping the new V5 kinds.
+#[test]
+fn expanded_pilot_reader_rejects_stale_v2_graph() {
+    let workspace = TestWorkspace::new("expanded-pilot-stale-v2");
+    let stale = workspace.write(
+        "stale.graph.json",
+        "{\n  \"schema_version\": \"adoc.graph.v2\",\n  \"nodes\": [],\n  \"edges\": [],\n  \"diagnostics\": []\n}\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args([
+            "why",
+            "auth.key.rotate",
+            "--artifact",
+            stale.to_str().expect("artifact path is utf-8"),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc why runs");
+
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "stale v2 artifact must produce an artifact error exit"
+    );
+    let env: Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
+    assert_eq!(env["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(env["diagnostics"][0]["code"], "schema.unsupported_version");
+}
+
+/// Init a temp git repository for the diff/review/patch fixture. Mirrors the
+/// env-var scrubbing pattern from `markdown_pilot.rs` so hooks running inside
+/// an outer git context do not lock the per-fixture tempdir.
+fn git_init_fixture(workspace: &TestWorkspace) {
+    run_git(workspace, &["init", "--initial-branch=main"]);
+    run_git(workspace, &["config", "user.email", "test@adoc.dev"]);
+    run_git(workspace, &["config", "user.name", "adoc tests"]);
+    run_git(workspace, &["config", "commit.gpgsign", "false"]);
+}
+
+fn run_git(workspace: &TestWorkspace, args: &[&str]) {
+    let mut command = Command::new("git");
+    command.args(args).current_dir(&workspace.root);
+    for var in [
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_WORK_TREE",
+        "GIT_NAMESPACE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_COMMON_DIR",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_PREFIX",
+    ] {
+        command.env_remove(var);
+    }
+    let output = command
+        .output()
+        .unwrap_or_else(|error| panic!("git {args:?} should spawn: {error}"));
+    assert!(
+        output.status.success(),
+        "git {args:?} should succeed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
