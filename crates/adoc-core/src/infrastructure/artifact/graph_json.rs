@@ -195,6 +195,12 @@ impl GraphJsonArtifact {
             }
         }
 
+        // Post-assembly cross-object pass: propagate contradiction status to
+        // referenced claim nodes.  This must run AFTER the evidence-ref pass
+        // because that pass may set `effective_status` to `"stale"` for verified
+        // claims with past `expires_at`, and stale WINS over contradicted.
+        apply_contradiction_effective_status(&mut nodes);
+
         nodes.sort();
         edges.sort();
 
@@ -469,6 +475,76 @@ pub(crate) fn derive_effective_status(
         Some(("stale".to_string(), format!("expired:{expires_at_date}")))
     } else {
         None
+    }
+}
+
+/// Cross-object post-pass: propagate `effective_status: "contradicted"` to claim
+/// nodes referenced by an **unresolved** contradiction node.
+///
+/// # Precedence
+///
+/// If a claim node already has `effective_status` set (e.g. `"stale"` from the
+/// TB2 expiry pass), it is **not** overwritten. Stale is the stronger lifecycle
+/// signal and always wins.
+///
+/// # Determinism with multiple contradictions
+///
+/// When more than one unresolved contradiction references the same claim, the
+/// `effective_reason` is set to `"contradiction:<id>"` where `<id>` is the
+/// **lexicographically smallest** contradiction id among those referencing the
+/// claim. This ensures the output is byte-stable regardless of iteration order.
+pub(crate) fn apply_contradiction_effective_status(nodes: &mut [crate::domain::graph::GraphNode]) {
+    use crate::domain::graph::GraphNode;
+    use std::collections::HashMap;
+
+    // Build a map: claim_id -> lexicographically smallest contradiction_id
+    // among all unresolved contradictions that reference this claim.
+    let mut contradicted: HashMap<String, String> = HashMap::new();
+
+    for node in nodes.iter() {
+        let GraphNode::KnowledgeObject(ko) = node else {
+            continue;
+        };
+        if ko.kind != "contradiction" {
+            continue;
+        }
+        if ko.status.as_deref() != Some("unresolved") {
+            continue;
+        }
+        let cid = ko.id.clone();
+        for claim_id in &ko.contradiction_claims {
+            contradicted
+                .entry(claim_id.clone())
+                .and_modify(|existing| {
+                    // Keep the lexicographically smallest contradiction id.
+                    if cid < *existing {
+                        *existing = cid.clone();
+                    }
+                })
+                .or_insert_with(|| cid.clone());
+        }
+    }
+
+    if contradicted.is_empty() {
+        return;
+    }
+
+    // Apply to each claim node that has no existing effective_status.
+    for node in nodes.iter_mut() {
+        let GraphNode::KnowledgeObject(ko) = node else {
+            continue;
+        };
+        if ko.kind != "claim" {
+            continue;
+        }
+        if ko.effective_status.is_some() {
+            // Stale (or any pre-set status) wins — do not overwrite.
+            continue;
+        }
+        if let Some(cid) = contradicted.get(&ko.id) {
+            ko.effective_status = Some("contradicted".to_string());
+            ko.effective_reason = Some(format!("contradiction:{cid}"));
+        }
     }
 }
 
@@ -1777,6 +1853,366 @@ mod tests {
         assert!(
             result.is_none(),
             "future expires_at must not produce effective_status"
+        );
+    }
+
+    // ── V5.10 TB4: contradiction effective_status cross-object pass ───────────
+
+    /// Builds a workspace with two plain claims + one contradiction referencing
+    /// both, compiles it, and returns the claim graph nodes.
+    fn build_workspace_with_contradiction(
+        contradiction_status: &str,
+    ) -> (
+        crate::domain::graph::GraphArtifactDocument,
+        String, // contradiction id
+    ) {
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::claim::Claim;
+        use crate::domain::knowledge_object::contradiction::Contradiction;
+
+        let span = dummy_span();
+
+        let claim_a = Claim::try_new(
+            "auth.a",
+            Some("plain"),
+            "Claim A body.",
+            std::collections::BTreeMap::new(),
+            None,
+            span.clone(),
+        )
+        .expect("valid claim a");
+
+        let claim_b = Claim::try_new(
+            "auth.b",
+            Some("plain"),
+            "Claim B body.",
+            std::collections::BTreeMap::new(),
+            None,
+            span.clone(),
+        )
+        .expect("valid claim b");
+
+        let contradiction_id = "auth.conflict";
+        let contradiction = Contradiction::try_new(
+            contradiction_id,
+            "high",
+            contradiction_status,
+            vec!["auth.a", "auth.b"],
+            "A and B conflict.",
+            std::collections::BTreeMap::new(),
+            span.clone(),
+        )
+        .expect("valid contradiction");
+
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("docs.auth").expect("page id"),
+            title: None,
+            source_path: PathBuf::from("docs/auth.adoc"),
+            blocks: vec![
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_a))),
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_b))),
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Contradiction(contradiction))),
+            ],
+        };
+        let workspace = WorkspaceAst { pages: vec![page] };
+        // Use a pinned today — irrelevant for this test since no expires_at.
+        let today = Some(NaiveDate::from_ymd_opt(2026, 6, 1).expect("valid date"));
+        let artifact = GraphJsonArtifact.build_for_date(&workspace, &[], today);
+        (artifact, contradiction_id.to_string())
+    }
+
+    /// An unresolved contradiction must cause both referenced claims to have
+    /// `effective_status: "contradicted"` with `effective_reason:
+    /// "contradiction:auth.conflict"`, and the authored `status` must remain
+    /// `"plain"` (never mutated).
+    #[test]
+    fn unresolved_contradiction_propagates_effective_status_to_referenced_claims() {
+        let (artifact, cid) = build_workspace_with_contradiction("unresolved");
+
+        for claim_id in &["auth.a", "auth.b"] {
+            let node = artifact
+                .nodes
+                .iter()
+                .find_map(|n| match n {
+                    GraphNode::KnowledgeObject(ko) if ko.id == *claim_id => Some(ko),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("claim node {claim_id} must exist"));
+
+            assert_eq!(
+                node.effective_status.as_deref(),
+                Some("contradicted"),
+                "unresolved contradiction must set effective_status=contradicted on {claim_id}; got: {:?}",
+                node.effective_status
+            );
+            assert_eq!(
+                node.effective_reason.as_deref(),
+                Some(format!("contradiction:{cid}").as_str()),
+                "effective_reason must be contradiction:<id> for {claim_id}; got: {:?}",
+                node.effective_reason
+            );
+            // Authored status must NOT be mutated.
+            assert_eq!(
+                node.status.as_deref(),
+                Some("plain"),
+                "authored status must remain plain (never mutated) for {claim_id}"
+            );
+        }
+    }
+
+    /// A resolved contradiction must NOT propagate `effective_status` to claims.
+    #[test]
+    fn resolved_contradiction_does_not_propagate_effective_status() {
+        let (artifact, _cid) = build_workspace_with_contradiction("resolved");
+
+        for claim_id in &["auth.a", "auth.b"] {
+            let node = artifact
+                .nodes
+                .iter()
+                .find_map(|n| match n {
+                    GraphNode::KnowledgeObject(ko) if ko.id == *claim_id => Some(ko),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("claim node {claim_id} must exist"));
+
+            assert!(
+                node.effective_status.is_none(),
+                "resolved contradiction must not set effective_status on {claim_id}; got: {:?}",
+                node.effective_status
+            );
+        }
+    }
+
+    /// A dismissed contradiction must NOT propagate `effective_status`.
+    #[test]
+    fn dismissed_contradiction_does_not_propagate_effective_status() {
+        let (artifact, _cid) = build_workspace_with_contradiction("dismissed");
+
+        for claim_id in &["auth.a", "auth.b"] {
+            let node = artifact
+                .nodes
+                .iter()
+                .find_map(|n| match n {
+                    GraphNode::KnowledgeObject(ko) if ko.id == *claim_id => Some(ko),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("claim node {claim_id} must exist"));
+
+            assert!(
+                node.effective_status.is_none(),
+                "dismissed contradiction must not set effective_status on {claim_id}; got: {:?}",
+                node.effective_status
+            );
+        }
+    }
+
+    /// When a claim is both verified+expired (stale via TB2) AND referenced by
+    /// an unresolved contradiction, the `effective_status` must remain `"stale"`
+    /// (stale wins; contradicted must not overwrite).
+    #[test]
+    fn stale_claim_wins_over_contradicted_effective_status() {
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::claim::{
+            Claim, Evidence, Owner, Verification, VerifiedAt,
+        };
+        use crate::domain::knowledge_object::contradiction::Contradiction;
+
+        let span = dummy_span();
+
+        // Verified claim with expires_at in the past.
+        let owner = Owner::try_new("team-billing").expect("owner");
+        let verified_at = VerifiedAt::try_new("2025-01-01").expect("verified_at");
+        let source_ev = Evidence::from_field("source", "ledger").expect("evidence");
+        let verification = Verification::new(owner, verified_at, vec![source_ev]);
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert("expires_at".to_string(), "2025-06-01".to_string());
+        let stale_claim = Claim::try_new(
+            "auth.stale-and-contradicted",
+            Some("verified"),
+            "Claim body.",
+            fields,
+            Some(verification),
+            span.clone(),
+        )
+        .expect("valid verified claim with past expiry");
+
+        let plain_claim = Claim::try_new(
+            "auth.b",
+            Some("plain"),
+            "Plain body.",
+            std::collections::BTreeMap::new(),
+            None,
+            span.clone(),
+        )
+        .expect("valid plain claim");
+
+        let contradiction = Contradiction::try_new(
+            "auth.conflict",
+            "high",
+            "unresolved",
+            vec!["auth.stale-and-contradicted", "auth.b"],
+            "These two conflict.",
+            std::collections::BTreeMap::new(),
+            span.clone(),
+        )
+        .expect("valid contradiction");
+
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("docs.auth").expect("page id"),
+            title: None,
+            source_path: PathBuf::from("docs/auth.adoc"),
+            blocks: vec![
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(stale_claim))),
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(plain_claim))),
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Contradiction(contradiction))),
+            ],
+        };
+        let workspace = WorkspaceAst { pages: vec![page] };
+        // today is after expires_at — so the stale claim is expired.
+        let today = Some(NaiveDate::from_ymd_opt(2026, 6, 1).expect("valid date"));
+        let artifact = GraphJsonArtifact.build_for_date(&workspace, &[], today);
+
+        let stale_node = artifact
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                GraphNode::KnowledgeObject(ko) if ko.id == "auth.stale-and-contradicted" => {
+                    Some(ko)
+                }
+                _ => None,
+            })
+            .expect("stale node must exist");
+
+        assert_eq!(
+            stale_node.effective_status.as_deref(),
+            Some("stale"),
+            "stale must win over contradicted; got: {:?}",
+            stale_node.effective_status
+        );
+        assert!(
+            stale_node
+                .effective_reason
+                .as_deref()
+                .map(|r| r.starts_with("expired:"))
+                .unwrap_or(false),
+            "effective_reason must start with expired: for stale claim; got: {:?}",
+            stale_node.effective_reason
+        );
+    }
+
+    /// `content_hash` must not change when `effective_status` is set to
+    /// `"contradicted"` — derived fields are excluded from the hash payload.
+    #[test]
+    fn content_hash_stable_for_contradicted_effective_status() {
+        let node_without = make_ko_node(None, None);
+        let node_with = make_ko_node(
+            Some("contradicted".to_string()),
+            Some("contradiction:auth.conflict".to_string()),
+        );
+        let hash_without = graph_knowledge_object_content_hash(&node_without);
+        let hash_with = graph_knowledge_object_content_hash(&node_with);
+        assert_eq!(
+            hash_without, hash_with,
+            "content_hash must be identical with/without contradicted effective_status"
+        );
+    }
+
+    /// When multiple unresolved contradictions reference the same claim, the
+    /// effective_reason must use the lexicographically smallest contradiction id.
+    #[test]
+    fn multiple_contradictions_tie_breaks_to_lex_smallest_id() {
+        use crate::domain::graph::GraphNode;
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::claim::Claim;
+        use crate::domain::knowledge_object::contradiction::Contradiction;
+
+        let span = dummy_span();
+
+        let claim_a = Claim::try_new(
+            "auth.a",
+            Some("plain"),
+            "Body.",
+            std::collections::BTreeMap::new(),
+            None,
+            span.clone(),
+        )
+        .expect("claim a");
+        let claim_b = Claim::try_new(
+            "auth.b",
+            Some("plain"),
+            "Body.",
+            std::collections::BTreeMap::new(),
+            None,
+            span.clone(),
+        )
+        .expect("claim b");
+        let claim_c = Claim::try_new(
+            "auth.c",
+            Some("plain"),
+            "Body.",
+            std::collections::BTreeMap::new(),
+            None,
+            span.clone(),
+        )
+        .expect("claim c");
+
+        // Two unresolved contradictions both referencing auth.a.
+        // "auth.conflict.aaa" < "auth.conflict.zzz" lexicographically.
+        let contradiction_zzz = Contradiction::try_new(
+            "auth.conflict.zzz",
+            "high",
+            "unresolved",
+            vec!["auth.a", "auth.b"],
+            "zzz conflict.",
+            std::collections::BTreeMap::new(),
+            span.clone(),
+        )
+        .expect("contradiction zzz");
+        let contradiction_aaa = Contradiction::try_new(
+            "auth.conflict.aaa",
+            "high",
+            "unresolved",
+            vec!["auth.a", "auth.c"],
+            "aaa conflict.",
+            std::collections::BTreeMap::new(),
+            span.clone(),
+        )
+        .expect("contradiction aaa");
+
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("docs.auth").expect("page id"),
+            title: None,
+            source_path: PathBuf::from("docs/auth.adoc"),
+            blocks: vec![
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_a))),
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_b))),
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_c))),
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Contradiction(
+                    contradiction_zzz,
+                ))),
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Contradiction(
+                    contradiction_aaa,
+                ))),
+            ],
+        };
+        let workspace = WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build_for_date(&workspace, &[], None);
+
+        let node_a = artifact
+            .nodes
+            .iter()
+            .find_map(|n| match n {
+                GraphNode::KnowledgeObject(ko) if ko.id == "auth.a" => Some(ko),
+                _ => None,
+            })
+            .expect("auth.a node");
+
+        // auth.a is referenced by both; lex-smallest is "auth.conflict.aaa".
+        assert_eq!(
+            node_a.effective_reason.as_deref(),
+            Some("contradiction:auth.conflict.aaa"),
+            "tie-break must use lex-smallest contradiction id; got: {:?}",
+            node_a.effective_reason
         );
     }
 }

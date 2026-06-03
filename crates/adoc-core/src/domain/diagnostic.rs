@@ -129,6 +129,13 @@ pub enum DiagnosticCode {
     /// every inline entry maps to [`EvidenceTier::Low`], and the claim has no
     /// `ObjectRef` evidence (which counts as ≥ Medium per ADR-0034).
     ClaimEvidenceQualityLow,
+    /// V5.10 TB4: a `claim` is referenced by an `unresolved` contradiction
+    /// but its authored `status` is not `"contradicted"`.
+    ///
+    /// This is a WARNING nudge only — the authored `status` is never mutated
+    /// (ADR-0026). The effective `contradicted` state is projected at graph/HTML
+    /// output time without touching the authored field.
+    SchemaClaimContradictedByUnresolved,
 }
 
 impl DiagnosticCode {
@@ -229,6 +236,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaEvidenceTargetNotFound,
             DiagnosticCode::SchemaEvidenceTargetNotASource,
             DiagnosticCode::ClaimEvidenceQualityLow,
+            DiagnosticCode::SchemaClaimContradictedByUnresolved,
         ]
     }
 
@@ -369,6 +377,9 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaEvidenceTargetNotFound => "schema.evidence_target_not_found",
             DiagnosticCode::SchemaEvidenceTargetNotASource => "schema.evidence_target_not_a_source",
             DiagnosticCode::ClaimEvidenceQualityLow => "claim.evidence_quality_low",
+            DiagnosticCode::SchemaClaimContradictedByUnresolved => {
+                "schema.claim_contradicted_by_unresolved"
+            }
         }
     }
 
@@ -655,6 +666,9 @@ impl DiagnosticCode {
             DiagnosticCode::ClaimEvidenceQualityLow => {
                 "This verified claim relies only on low-quality evidence (external URL, issue, ticket, metric, dataset, or experiment). Add a test, source-code reference, API schema, audit record, or policy reference to strengthen verification."
             }
+            DiagnosticCode::SchemaClaimContradictedByUnresolved => {
+                "This claim is referenced by an unresolved contradiction. Consider setting `status: contradicted` on the claim to make its effective state explicit. The effective_status is already projected as `contradicted` in graph and HTML output regardless of the authored status."
+            }
         }
     }
 
@@ -782,6 +796,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.evidence_target_not_found",
     "schema.evidence_target_not_a_source",
     "claim.evidence_quality_low",
+    "schema.claim_contradicted_by_unresolved",
 ];
 
 impl Diagnostic {
