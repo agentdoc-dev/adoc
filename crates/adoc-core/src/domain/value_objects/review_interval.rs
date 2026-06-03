@@ -49,6 +49,23 @@ impl ReviewInterval {
         &self.0
     }
 
+    /// The number of days encoded by this interval.
+    ///
+    /// The constructor guarantees the inner string matches `[0-9]+d`, so the
+    /// digit prefix always parses as a valid `u32`. The `.expect` is therefore
+    /// unreachable in well-formed code; it documents the invariant rather than
+    /// silently propagating a logic error.
+    pub(crate) fn days(&self) -> u32 {
+        // Safety of expect: `try_new` rejects any string that does not match
+        // `[0-9]+d`. The prefix before the trailing `d` is therefore a
+        // non-empty run of ASCII digits, which `u32::from_str` can never fail
+        // to parse (overflow aside — `u32::MAX` is ~4 billion days, far beyond
+        // any plausible review interval).
+        self.0[..self.0.len() - 1]
+            .parse::<u32>()
+            .expect("ReviewInterval inner string always ends with 'd' after non-empty digits")
+    }
+
     /// Validates the grammar `[0-9]+d`: one or more ASCII digits then exactly
     /// one lowercase `d`, with nothing else.
     fn is_valid_grammar(s: &str) -> bool {
@@ -151,5 +168,12 @@ mod tests {
             let rendered = interval.to_string();
             assert_eq!(ReviewInterval::try_new(&rendered), Ok(interval));
         }
+    }
+
+    #[test]
+    fn days_returns_numeric_value_of_interval() {
+        assert_eq!(ReviewInterval::try_new("90d").expect("valid").days(), 90);
+        assert_eq!(ReviewInterval::try_new("1d").expect("valid").days(), 1);
+        assert_eq!(ReviewInterval::try_new("365d").expect("valid").days(), 365);
     }
 }

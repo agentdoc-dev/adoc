@@ -21,6 +21,7 @@ mod knowledge_object_lifecycle;
 mod knowledge_object_unique_ids;
 pub(crate) mod mode_pipeline;
 mod policy_active_approval;
+mod policy_review_drift;
 mod raw_html_forbidden;
 mod unsafe_link_forbidden;
 pub(crate) mod url_walker;
@@ -32,6 +33,7 @@ use knowledge_object_body_unsafe_links_forbidden::KnowledgeObjectBodyUnsafeLinks
 use knowledge_object_lifecycle::KnowledgeObjectLifecycle;
 use knowledge_object_unique_ids::KnowledgeObjectUniqueIds;
 use policy_active_approval::PolicyActiveApproval;
+use policy_review_drift::PolicyReviewDrift;
 use raw_html_forbidden::RawHtmlForbidden;
 use unsafe_link_forbidden::UnsafeLinkForbidden;
 
@@ -67,10 +69,12 @@ pub(crate) fn validate_resolved_page(
 ) -> Vec<Diagnostic> {
     let lifecycle = KnowledgeObjectLifecycle::new(today);
     let policy_active_approval = PolicyActiveApproval::new(today);
-    let rules: [&dyn ValidationRule; 3] = [
+    let drift = PolicyReviewDrift::new(today);
+    let rules: [&dyn ValidationRule; 4] = [
         &KnowledgeObjectBodyUnsafeLinksForbidden,
         &lifecycle,
         &policy_active_approval,
+        &drift,
     ];
     validate_page_with_rules(page, source, &rules)
 }
