@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use chrono::NaiveDate;
 
 use crate::domain::ast::{BlockAst, ColumnAlignment, ListKind, UnknownExtensionKind, WorkspaceAst};
@@ -62,6 +64,12 @@ impl HtmlRenderer {
         pages: &[crate::domain::ast::PageAst],
         today: Option<NaiveDate>,
     ) -> String {
+        // V5.10 TB4: build the set of claim ids that are effectively contradicted
+        // by at least one unresolved contradiction.  This is computed once at the
+        // page-list level so we don't have to thread contradictions down into every
+        // per-object render function.
+        let contradicted_claim_ids: HashSet<String> = build_contradicted_claim_ids(pages);
+
         let mut html = String::from(
             "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>AgentDoc</title>\n</head>\n<body>\n",
         );
@@ -72,7 +80,7 @@ impl HtmlRenderer {
             html.push_str("\">\n");
 
             for block in &page.blocks {
-                render_block(block, today, &mut html);
+                render_block(block, today, &contradicted_claim_ids, &mut html);
             }
 
             html.push_str("</article>\n");
@@ -83,7 +91,38 @@ impl HtmlRenderer {
     }
 }
 
-fn render_block(block: &BlockAst, today: Option<NaiveDate>, html: &mut String) {
+/// Build the set of claim IDs that are effectively `contradicted` — i.e. they
+/// are referenced by at least one unresolved contradiction in the workspace.
+///
+/// This is computed once per render call at the top level so the badge logic
+/// does not need cross-page look-ups inside each per-object render function.
+fn build_contradicted_claim_ids(pages: &[crate::domain::ast::PageAst]) -> HashSet<String> {
+    let mut set = HashSet::new();
+    for page in pages {
+        for block in &page.blocks {
+            let BlockAst::KnowledgeObject(ko) = block else {
+                continue;
+            };
+            let KnowledgeObject::Contradiction(contradiction) = ko.as_ref() else {
+                continue;
+            };
+            if !contradiction.status().is_active() {
+                continue;
+            }
+            for claim_id in contradiction.claims().as_slice() {
+                set.insert(claim_id.as_str().to_string());
+            }
+        }
+    }
+    set
+}
+
+fn render_block(
+    block: &BlockAst,
+    today: Option<NaiveDate>,
+    contradicted_claim_ids: &HashSet<String>,
+    html: &mut String,
+) {
     match block {
         BlockAst::Heading(heading) => {
             let level = heading.level.clamp(1, 6);
@@ -121,7 +160,7 @@ fn render_block(block: &BlockAst, today: Option<NaiveDate>, html: &mut String) {
                 }
                 render_inlines(&item.inlines, html);
                 for child in &item.content {
-                    render_block(child, today, html);
+                    render_block(child, today, contradicted_claim_ids, html);
                 }
                 html.push_str("</li>\n");
             }
@@ -140,7 +179,9 @@ fn render_block(block: &BlockAst, today: Option<NaiveDate>, html: &mut String) {
             html.push_str(&escape_html(&code_block.code));
             html.push_str("</code></pre>\n");
         }
-        BlockAst::KnowledgeObject(ko) => render_knowledge_object(ko, today, html),
+        BlockAst::KnowledgeObject(ko) => {
+            render_knowledge_object(ko, today, contradicted_claim_ids, html);
+        }
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before rendering")
         }
@@ -165,7 +206,7 @@ fn render_block(block: &BlockAst, today: Option<NaiveDate>, html: &mut String) {
             html.push_str(&escape_html(&footnote.label));
             html.push_str("\">\n");
             for child in &footnote.content {
-                render_block(child, today, html);
+                render_block(child, today, contradicted_claim_ids, html);
             }
             html.push_str("<a class=\"adoc-footnote-backref\" href=\"#fnref-");
             html.push_str(&escape_html(&footnote.label));
@@ -241,17 +282,39 @@ fn unknown_extension_kind_token(kind: UnknownExtensionKind) -> &'static str {
 fn render_knowledge_object(
     knowledge_object: &KnowledgeObject,
     today: Option<NaiveDate>,
+    contradicted_claim_ids: &HashSet<String>,
     html: &mut String,
 ) {
     let metadata = knowledge_object.metadata_projection();
 
     // V5.10: derive effective_status for badge rendering.
+    // Precedence: stale > contradicted (stale is the stronger lifecycle signal).
     let status = metadata
         .discriminant()
         .map(|d| d.value_as_str().to_string());
-    let effective_status_label = today
+    let stale_label = today
         .and_then(|date| derive_effective_status(&status, knowledge_object, date))
         .map(|(s, _)| s);
+
+    // V5.10 TB4: a claim is effectively contradicted if it is referenced by
+    // any unresolved contradiction in the workspace.
+    let contradicted_label = if stale_label.is_none() {
+        // Only apply contradicted badge when stale is not set (stale wins).
+        if knowledge_object.kind().as_str() == "claim" {
+            let claim_id = knowledge_object.id().as_str();
+            if contradicted_claim_ids.contains(claim_id) {
+                Some("contradicted".to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let effective_status_label = stale_label.or(contradicted_label);
 
     match knowledge_object {
         KnowledgeObject::Claim(_) => {
@@ -290,10 +353,9 @@ fn render_knowledge_object(
     }
 
     // V5.10: append effective_status badge after the section close tag if set.
-    // The badge is injected into the preceding section — we need to insert it
-    // inside. Append it to the section by stripping the trailing `</section>\n`
-    // and re-adding it after the badge. This avoids threading `today` into
-    // every per-kind render function.
+    // The badge is injected before the closing `</section>\n` of the preceding
+    // section. This avoids threading date/contradiction context into every
+    // per-kind render function.
     if let Some(label) = effective_status_label {
         // Replace the last `</section>\n` with badge + `</section>\n`.
         if let Some(pos) = html.rfind("</section>\n") {
@@ -1372,7 +1434,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             html.contains("<section class=\"procedure\" id=\"auth.key.rotate\">"),
@@ -1418,7 +1480,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             html.contains("<section class=\"example\" id=\"auth.credits.example\">"),
@@ -1459,7 +1521,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             !html.contains("example__status"),
@@ -1481,7 +1543,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             html.contains("<section class=\"claim\" id=\"billing.credits\">"),
@@ -1515,7 +1577,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             !html.contains("<footer class=\"claim__metadata\">"),
@@ -1536,7 +1598,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             html.contains("<footer class=\"claim__metadata\">\n<dl>\n"),
@@ -1566,7 +1628,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         let alpha = html.find("<dt>alpha</dt>").expect("missing alpha field");
         let middle = html.find("<dt>middle</dt>").expect("missing middle field");
@@ -1593,7 +1655,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             html.contains(
@@ -1614,7 +1676,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         // Status tag content must be escaped
         assert!(
@@ -1642,7 +1704,7 @@ mod tests {
         ]);
         let block = make_verified_claim("billing.credits", "body content", fields, dummy_span());
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             html.contains("<section class=\"claim claim--verified\" id=\"billing.credits\">"),
@@ -1688,7 +1750,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             html.contains("<section class=\"decision decision--accepted\" id=\"billing.policy\">"),
@@ -1724,7 +1786,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             html.contains(
@@ -1760,7 +1822,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
         assert!(
             !html.contains("<footer class=\"warning__metadata\">"),
             "unexpected metadata footer: {html}"
@@ -1774,7 +1836,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
         assert!(
             html.contains("<footer class=\"warning__metadata\">\n<dl>\n"),
             "missing metadata footer: {html}"
@@ -1795,7 +1857,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             html.contains("clock &lt; token &amp;&amp; token &gt; drift"),
@@ -1844,7 +1906,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
 
         assert!(
             html.contains("<section class=\"glossary\" id=\"billing.credits\">"),
@@ -1876,7 +1938,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, None, &mut html);
+        render_block(&block, None, &HashSet::new(), &mut html);
         assert!(
             html.contains("<footer class=\"glossary__metadata\">\n<dl>\n"),
             "missing metadata footer: {html}"
@@ -2039,5 +2101,248 @@ mod tests {
         // Both child items must appear.
         assert!(html.contains("<li>child one</li>"), "child one: {html}");
         assert!(html.contains("<li>child two</li>"), "child two: {html}");
+    }
+
+    // ── V5.10 TB4: effective_status HTML badge tests ──────────────────────────
+
+    fn make_contradiction(id: &str, status: &str, claim_ids: Vec<&str>) -> BlockAst {
+        use crate::domain::knowledge_object::{KnowledgeObject, contradiction::Contradiction};
+        let c = Contradiction::try_new(
+            id,
+            "high",
+            status,
+            claim_ids,
+            "They conflict.",
+            std::collections::BTreeMap::new(),
+            dummy_span(),
+        )
+        .expect("valid contradiction");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Contradiction(c)))
+    }
+
+    /// A verified+expired claim must render the `--stale` badge.
+    /// (This test was missing in TB2; added in TB4 per the task spec.)
+    #[test]
+    fn verified_expired_claim_renders_stale_badge() {
+        use crate::domain::ast::PageAst;
+        use crate::domain::identity::PageId;
+        use crate::domain::knowledge_object::{
+            KnowledgeObject,
+            claim::{Claim, Evidence, Owner, Verification, VerifiedAt},
+        };
+
+        let span = dummy_span();
+        let owner = Owner::try_new("team-billing").expect("owner");
+        let verified_at = VerifiedAt::try_new("2025-01-01").expect("verified_at");
+        let source_ev = Evidence::from_field("source", "ledger").expect("evidence");
+        let verification = Verification::new(owner, verified_at, vec![source_ev]);
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert("expires_at".to_string(), "2025-06-01".to_string());
+        let stale_claim = Claim::try_new(
+            "billing.stale",
+            Some("verified"),
+            "Claim body.",
+            fields,
+            Some(verification),
+            span,
+        )
+        .expect("valid verified claim");
+
+        let page = PageAst {
+            id: PageId::from_string("docs.billing").expect("page id"),
+            title: None,
+            source_path: std::path::PathBuf::from("docs/billing.adoc"),
+            blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
+                stale_claim,
+            )))],
+        };
+        // today is after expires_at
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 6, 1).expect("valid date");
+        let html = HtmlRenderer.render_workspace_for_date(
+            &crate::domain::ast::WorkspaceAst { pages: vec![page] },
+            Some(today),
+        );
+
+        assert!(
+            html.contains(
+                "<span class=\"ko__effective-status ko__effective-status--stale\">stale</span>"
+            ),
+            "verified expired claim must render stale badge; html: {html}"
+        );
+    }
+
+    /// A claim referenced by an unresolved contradiction must render the
+    /// `--contradicted` badge.
+    #[test]
+    fn claim_referenced_by_unresolved_contradiction_renders_contradicted_badge() {
+        use crate::domain::ast::PageAst;
+        use crate::domain::identity::PageId;
+
+        let page = PageAst {
+            id: PageId::from_string("docs.auth").expect("page id"),
+            title: None,
+            source_path: std::path::PathBuf::from("docs/auth.adoc"),
+            blocks: vec![
+                make_claim(
+                    "auth.a",
+                    "plain",
+                    "Claim A.",
+                    std::collections::BTreeMap::new(),
+                    dummy_span(),
+                ),
+                make_claim(
+                    "auth.b",
+                    "plain",
+                    "Claim B.",
+                    std::collections::BTreeMap::new(),
+                    dummy_span(),
+                ),
+                make_contradiction("auth.conflict", "unresolved", vec!["auth.a", "auth.b"]),
+            ],
+        };
+
+        let html = HtmlRenderer.render_workspace_for_date(
+            &crate::domain::ast::WorkspaceAst { pages: vec![page] },
+            None,
+        );
+
+        assert!(
+            html.contains(
+                "<span class=\"ko__effective-status ko__effective-status--contradicted\">contradicted</span>"
+            ),
+            "claim referenced by unresolved contradiction must render contradicted badge; html: {html}"
+        );
+
+        // Both claims should have the badge.
+        let count = html.matches("ko__effective-status--contradicted").count();
+        assert_eq!(
+            count, 2,
+            "both claims must have contradicted badge; html: {html}"
+        );
+    }
+
+    /// A claim that is both stale (verified+expired) AND referenced by an
+    /// unresolved contradiction must render only the `--stale` badge (stale wins).
+    #[test]
+    fn stale_plus_contradicted_claim_renders_only_stale_badge() {
+        use crate::domain::ast::PageAst;
+        use crate::domain::identity::PageId;
+        use crate::domain::knowledge_object::{
+            KnowledgeObject,
+            claim::{Claim, Evidence, Owner, Verification, VerifiedAt},
+        };
+
+        let span = dummy_span();
+        let owner = Owner::try_new("team-billing").expect("owner");
+        let verified_at = VerifiedAt::try_new("2025-01-01").expect("verified_at");
+        let source_ev = Evidence::from_field("source", "ledger").expect("evidence");
+        let verification = Verification::new(owner, verified_at, vec![source_ev]);
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert("expires_at".to_string(), "2025-06-01".to_string());
+        let stale_claim = Claim::try_new(
+            "auth.stale",
+            Some("verified"),
+            "Stale body.",
+            fields,
+            Some(verification),
+            span.clone(),
+        )
+        .expect("stale claim");
+
+        let plain_claim = Claim::try_new(
+            "auth.plain",
+            Some("plain"),
+            "Plain body.",
+            std::collections::BTreeMap::new(),
+            None,
+            span,
+        )
+        .expect("plain claim");
+
+        let page = PageAst {
+            id: PageId::from_string("docs.auth").expect("page id"),
+            title: None,
+            source_path: std::path::PathBuf::from("docs/auth.adoc"),
+            blocks: vec![
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(stale_claim))),
+                BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(plain_claim))),
+                make_contradiction(
+                    "auth.conflict",
+                    "unresolved",
+                    vec!["auth.stale", "auth.plain"],
+                ),
+            ],
+        };
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 6, 1).expect("valid date");
+        let html = HtmlRenderer.render_workspace_for_date(
+            &crate::domain::ast::WorkspaceAst { pages: vec![page] },
+            Some(today),
+        );
+
+        // auth.stale must render stale, not contradicted.
+        assert!(
+            html.contains(
+                "<span class=\"ko__effective-status ko__effective-status--stale\">stale</span>"
+            ),
+            "stale+contradicted claim must render stale badge; html: {html}"
+        );
+        // auth.plain must render contradicted (it's not stale, just contradicted).
+        assert!(
+            html.contains(
+                "<span class=\"ko__effective-status ko__effective-status--contradicted\">contradicted</span>"
+            ),
+            "plain+contradicted claim must render contradicted badge; html: {html}"
+        );
+        // auth.stale must NOT render the contradicted badge.
+        let stale_section_start = html.find("id=\"auth.stale\"").expect("auth.stale section");
+        let stale_section_end = html[stale_section_start..]
+            .find("</section>")
+            .expect("close section")
+            + stale_section_start;
+        let stale_section = &html[stale_section_start..stale_section_end];
+        assert!(
+            !stale_section.contains("ko__effective-status--contradicted"),
+            "stale claim section must not contain contradicted badge; section: {stale_section}"
+        );
+    }
+
+    /// A resolved contradiction must NOT cause a `contradicted` badge.
+    #[test]
+    fn resolved_contradiction_does_not_render_contradicted_badge() {
+        use crate::domain::ast::PageAst;
+        use crate::domain::identity::PageId;
+
+        let page = PageAst {
+            id: PageId::from_string("docs.auth").expect("page id"),
+            title: None,
+            source_path: std::path::PathBuf::from("docs/auth.adoc"),
+            blocks: vec![
+                make_claim(
+                    "auth.a",
+                    "plain",
+                    "Claim A.",
+                    std::collections::BTreeMap::new(),
+                    dummy_span(),
+                ),
+                make_claim(
+                    "auth.b",
+                    "plain",
+                    "Claim B.",
+                    std::collections::BTreeMap::new(),
+                    dummy_span(),
+                ),
+                make_contradiction("auth.conflict", "resolved", vec!["auth.a", "auth.b"]),
+            ],
+        };
+
+        let html = HtmlRenderer.render_workspace_for_date(
+            &crate::domain::ast::WorkspaceAst { pages: vec![page] },
+            None,
+        );
+
+        assert!(
+            !html.contains("ko__effective-status--contradicted"),
+            "resolved contradiction must not produce contradicted badge; html: {html}"
+        );
     }
 }

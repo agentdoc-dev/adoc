@@ -13,6 +13,7 @@
 //! `application/` and call domain services where aggregate-family behavior is
 //! needed.
 
+mod claim_contradicted_nudge;
 mod compat;
 mod contradiction_claims_resolve;
 mod evidence_quality;
@@ -28,6 +29,7 @@ mod unsafe_link_forbidden;
 pub(crate) mod url_walker;
 
 use chrono::NaiveDate;
+use claim_contradicted_nudge::ClaimContradictedNudge;
 use contradiction_claims_resolve::ContradictionClaimsResolve;
 use evidence_quality::ClaimEvidenceQualityLowRule;
 use evidence_ref_resolves::EvidenceRefResolves;
@@ -54,6 +56,7 @@ const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[
     &KnowledgeObjectUniqueIds,
     &ContradictionClaimsResolve,
     &EvidenceRefResolves,
+    &ClaimContradictedNudge,
 ];
 
 /// Run every source-page rule against `page`. The orchestrator performs the

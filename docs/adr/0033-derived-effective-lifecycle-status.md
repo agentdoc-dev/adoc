@@ -58,3 +58,42 @@ Non-verified objects that carry a past `expires_at` continue to receive only the
 - **Mutating authored `status` in the graph artifact.** Rejected: changes `content_hash` on every expiry crossing, destabilising patch preconditions with no source change.
 - **Separate derived-artifact file.** Rejected: an additional file per project creates deployment and synchronisation burden; the additive field approach is zero-friction.
 - **Embedding `today` in the hash payload (making the hash date-sensitive).** Explicitly rejected: the entire point is a date-stable hash for stable `patch --check`.
+
+## TB4 — Contradiction case
+
+V5.10 TB4 adds the `contradicted` derivation rule.
+
+### Rule
+
+> A claim X is "contradicted (effective)" iff there exists a contradiction C with `status == Unresolved` whose `claims` include X.
+
+This applies to the **graph projection**, the **HTML badge**, and triggers a **nudge WARNING** in the validation pipeline.
+
+### Graph projection (cross-object post-pass)
+
+A second post-assembly pass — `apply_contradiction_effective_status(nodes)` in `graph_json.rs` — runs after the existing evidence-ref/evidence-quality pass. It:
+
+1. Iterates all `contradiction` graph nodes with `status == "unresolved"` and builds a `HashMap<claim_id, contradiction_id>` mapping each referenced claim to the contradiction that covers it.
+2. For every `claim` node whose `effective_status` is currently `None`, sets `effective_status = "contradicted"` and `effective_reason = "contradiction:<contradiction-id>"`.
+
+Both `effective_status` and `effective_reason` remain excluded from `KnowledgeObjectHashPayload` — the `content_hash` is unchanged regardless of whether a contradiction references the claim.
+
+### Stale wins (precedence)
+
+If a claim is both verified+expired (stale via TB2) **and** referenced by an unresolved contradiction, the `effective_status` remains `"stale"`. Stale is the stronger lifecycle signal. The contradiction post-pass only sets `effective_status` when it is currently `None`.
+
+### Deterministic tie-break for multiple contradictions
+
+When more than one unresolved contradiction references the same claim, the `effective_reason` is pinned to `"contradiction:<id>"` where `<id>` is the **lexicographically smallest** contradiction id among those referencing the claim. This makes the output byte-stable regardless of node iteration order.
+
+### Authored status is never mutated (ADR-0026 preserved)
+
+The `status` field of a `claim` Knowledge Object is authored by a human and hashed into `content_hash`. It is never overwritten by the compiler. The `effective_status` field is strictly additive projection. A claim whose authored `status` is already `"contradicted"` is projected identically; there is no special case.
+
+### Nudge diagnostic
+
+A new workspace-level `WARNING` rule (`ClaimContradictedNudge`, `schema.claim_contradicted_by_unresolved`) fires when an unresolved contradiction references a claim whose authored `status` is not already `"contradicted"`. This encourages authors to reflect the effective state in the authored source. The rule does NOT fire for resolved or dismissed contradictions, does NOT fire if the authored status is already `"contradicted"`, and does NOT duplicate the existing `ContradictionClaimsResolve` error for missing or wrong-kind refs.
+
+### HTML badge
+
+The HTML renderer computes the contradicted-claim id set once at the top of `render_pages_for_date` by scanning all unresolved contradiction blocks. The badge `<span class="ko__effective-status ko__effective-status--contradicted">contradicted</span>` is injected before `</section>` for any claim in the set — but only when the stale badge has not already been emitted (stale wins).
