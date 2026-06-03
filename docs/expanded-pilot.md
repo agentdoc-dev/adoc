@@ -1,15 +1,17 @@
 # Expanded Pilot
 
 The Expanded Pilot at `examples/expanded-pilot/` is the end-to-end
-evaluation fixture for the **V5 Expanded Knowledge Model**. It mirrors the
-role the Billing Pilot plays for V0–V3 and the Markdown Pilot plays for V4:
-a realistic, hand-curated tree exercised by
+evaluation fixture for the **V5 Expanded Knowledge Model** and the
+**V5.10 Lifecycle Automation** signals. It mirrors the role the Billing
+Pilot plays for V0–V3 and the Markdown Pilot plays for V4: a realistic,
+hand-curated tree exercised by
 `cargo test -p adoc-cli --test expanded_pilot` on every workspace build.
 
 The pilot is pure native AgentDoc Source (`.adoc`, Strict Mode) and
 exercises every new V5 kind — `constraint`, `procedure`, `example`,
 `policy`, `agent_instruction`, `contradiction`, `source` — plus the V5.8
-typed evidence model, across the auth, billing, and security domains.
+typed evidence model and all four V5.10 lifecycle signals, across the auth,
+billing, and security domains.
 
 ## Build
 
@@ -18,10 +20,9 @@ adoc check examples/expanded-pilot/
 adoc build examples/expanded-pilot/ --out dist
 ```
 
-The pilot exits `0` from `check` and `build`. The only diagnostics are two
-`lifecycle.expired` warnings (see the budget below); warnings never fail
-the build. Every `.adoc` file must remain strict-valid — any error breaks
-the pilot.
+The pilot exits `0` from `check` and `build`. All diagnostics are warnings
+(warnings never fail the build). Every `.adoc` file must remain
+strict-valid — any error breaks the pilot.
 
 ## Directory Shape
 
@@ -29,7 +30,7 @@ the pilot.
 examples/expanded-pilot/
   agentdoc.config.yaml         # local embeddings (tests override to deterministic)
   auth/
-    claims.adoc                # 3 claims (2 contradicted + 1 verified)
+    claims.adoc                # 4 claims (2 contradicted + 1 verified + 1 accepted/nudge)
     procedures.adoc            # verified procedure (role_required + rollback)
     agent-instructions.adoc    # agent_instruction w/ disjoint action sets
   billing/
@@ -39,20 +40,20 @@ examples/expanded-pilot/
     sources.adoc               # source_code source
   security/
     constraints.adoc           # constraint w/ impacts:
-    policies.adoc              # active multi-approver policy + expired claim
-    contradictions.adoc        # contradiction over the two auth claims
+    policies.adoc              # active policy (overdue review) + stale verified claim + low-evidence claim
+    contradictions.adoc        # contradiction over auth claims including nudge claim
     sources.adoc               # external_url source
   meta/
     REVIEW-CHECKLIST.md        # hand-review checklist (markdown)
 ```
 
 Totals: 11 `.adoc` files. The graph artifact carries **12 `page` nodes**
-(11 `.adoc` + the markdown `meta/REVIEW-CHECKLIST.md`) and **18
+(11 `.adoc` + the markdown `meta/REVIEW-CHECKLIST.md`) and **20
 `knowledge_object` nodes**:
 
 | Kind                | Count |
 | :------------------ | :---: |
-| `claim`             |   6   |
+| `claim`             |   8   |
 | `decision`          |   1   |
 | `glossary`          |   2   |
 | `constraint`        |   1   |
@@ -68,18 +69,33 @@ Two `evidence` edges (V5.8) link `billing.credits.consume` and
 
 ## Diagnostic Budget
 
-`adoc check examples/expanded-pilot/` produces **0 errors, 2 warnings**.
-The integration test asserts each count exact-match; changing either
+`adoc check examples/expanded-pilot/` produces **0 errors, 5 warnings**.
+The integration test asserts each count exact-match; changing any count
 requires updating both the fixture and the test in the same commit.
 
-| Code                | Count | Source                                                              |
-| :------------------ | :---: | :----------------------------------------------------------------- |
-| `lifecycle.expired` |   2   | `billing/claims.adoc` (`billing.credits.legacy-export`), `security/policies.adoc` (`security.audit.retention`) |
+| Code                                  | Count | Object / File |
+| :------------------------------------ | :---: | :------------ |
+| `lifecycle.expired`                   |   2   | `billing.credits.legacy-export` (`billing/claims.adoc`), `security.audit.retention` (`security/policies.adoc`) |
+| `schema.policy_review_overdue`        |   1   | `security.production-db-access` (`security/policies.adoc`) |
+| `claim.evidence_quality_low`          |   1   | `security.csrf-advisory` (`security/policies.adoc`) |
+| `schema.claim_contradicted_by_unresolved` | 1 | `auth.session.csrf-protection` (`auth/claims.adoc`) |
 
-Both warnings are driven by **fixed past `expires_at` values**
-(`2026-01-15`, `2026-02-01`). A past date stays in the past, so the budget
-is stable across runs regardless of the system clock. Do not use
-expirations relative to "now" — they would make the count non-deterministic.
+All warnings are driven by **fixed past dates** (2020–2024). A past date
+stays in the past, so the budget is stable across runs regardless of the
+system clock. Do not use dates relative to "now" — they would make the
+count non-deterministic.
+
+## V5.10 Lifecycle Signals Exercised
+
+The pilot demonstrates all four V5.10 derived lifecycle signals (ADR-0033,
+ADR-0034):
+
+| Signal | Fixture object | Graph field | Warning |
+| :----- | :------------- | :---------- | :------ |
+| Stale | `security.audit.retention` (verified, `expires_at: 2024-01-01`) | `effective_status: "stale"`, `effective_reason: "expired:2024-01-01"` | `lifecycle.expired` |
+| Policy review overdue | `security.production-db-access` (`effective_at: 2020-01-01`, `review_interval: 90d`) | — | `schema.policy_review_overdue` |
+| Evidence quality low | `security.csrf-advisory` (verified, `external_url:` only) | `evidence_quality: "low"` | `claim.evidence_quality_low` |
+| Contradicted nudge | `auth.session.csrf-protection` (`status: accepted`, in unresolved contradiction) | `effective_status: "contradicted"` | `schema.claim_contradicted_by_unresolved` |
 
 ## What This Pilot Exercises
 
@@ -89,31 +105,31 @@ expirations relative to "now" — they would make the count non-deterministic.
   with `evidence_ref:` to a `source` object, on both a `claim` and a
   `decision`, producing typed `evidence[]` projections and
   `evidence` graph edges.
-- **Manual contradictions** (ADR-0026): `auth.session.conflict` links two
-  pre-existing claims that are manually `status: contradicted`. V5 does not
-  auto-detect or auto-propagate.
+- **Manual contradictions** (ADR-0026): `auth.session.conflict` links three
+  claims — two manually `status: contradicted` and one `status: accepted`
+  (the V5.10 nudge case). V5 does not auto-detect or auto-propagate.
 - **The `agent_instruction` runtime-not-enforced contract** (ADR-0025):
   the rendered banner and the `adoc://agent/v0/agent-instruction-guide`
   resource.
+- **V5.10 lifecycle automation** (ADR-0033, ADR-0034): all four signals
+  fire with clock-stable wide-margin fixture dates; see table above.
 - **Retrieval, diff, review, and patch** over the new kinds:
   `adoc search "policy"` returns the active policy first;
-  `adoc graph security.production-db-access` traverses to its related claim;
-  a verified-claim body edit yields a re-verify obligation and a clean
-  embedded `adoc.patch.check.v0`.
+  `adoc graph security.production-db-access` traverses to its related claim
+  (now stale); a verified-claim body edit yields a re-verify obligation and
+  a clean embedded `adoc.patch.check.v0`.
 - **Graceful rejection of the old graph model**: a stale `adoc.graph.v2`
   artifact is rejected with `schema.unsupported_version` rather than
   silently dropping the new kinds.
 
 ## What This Pilot Does Not Exercise
 
-- **Lifecycle automation.** Scheduled `verified` → `stale` transitions,
-  automatic claim-status propagation on contradiction resolution,
-  evidence-quality scoring, and policy review-interval drift are scheduled
-  as **V5.10**.
 - **Example execution.** Executable examples are a declaration-only
   contract in V5; `adoc` never runs the declared `checks`.
 - **Prose retrieval.** Prose blocks remain non-retrievable; only Knowledge
   Objects are citable (V1.7 extends retrieval to prose independently).
+- **Automated contradiction detection.** Contradictions remain manually
+  authored in V5 and V5.10 per ADR-0026; automated detection is V6+.
 
 ## Updating the Pilot
 

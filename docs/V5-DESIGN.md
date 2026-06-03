@@ -606,7 +606,64 @@ V5 closes PRD MVP must-have #4 (Core schema validation) for the seven object typ
 
 Two related milestones are factored out of V5:
 
-- **V5.10: Lifecycle Automation** — scheduled freshness-driven status transitions (`verified` → `stale` on `expires_at`), automatic claim-status propagation on contradiction resolution, evidence-quality scoring per PRD §15.3, and policy review-interval drift diagnostics. Sequenced after V5.9 once the Expanded Knowledge Model is in real use and lifecycle pain is measured.
+- **V5.10: Lifecycle Automation** — now realized; see §V5.10 below.
 - **V6: Composition and Advanced Graphs** — `@include`, nested typed blocks, custom schema registry, automated contradiction detection. Sequenced after V5 because all of V6 assumes the V5 Expanded Object Set is stable as the schema target.
 
-Both V5.10 and V6 are framed in this document's Sequencing Context as deferred milestones. `docs/ROADMAP.md` is updated alongside V5-DESIGN to reference them; the V5.10 and V6 design contracts themselves are drafted only when their slice work begins.
+## V5.10 Lifecycle Automation
+
+**Status: Implemented (TB1–TB5).**
+
+V5.10 adds four additive derived lifecycle signals to the V5 Expanded Object Set. No wire-envelope versions are bumped, no source-authoring syntax is broken, and no new Knowledge Object kinds are introduced. All derived fields are excluded from `content_hash` and use `serde(skip_serializing_if = "Option::is_none")` so existing fixtures without the new fields remain byte-stable.
+
+### Derived effective_status model (ADR-0033)
+
+The `effective_status` and `effective_reason` fields on `GraphKnowledgeObjectNode` and `RetrievalRecord` carry a derived lifecycle state that may differ from the authored `status`. Two effective states are defined:
+
+| Effective status   | Trigger | Reason format | Precedence |
+| :----------------- | :------ | :------------ | :--------- |
+| `"stale"`          | `verified` object + past `expires_at` | `"expired:<YYYY-MM-DD>"` | Wins over contradicted |
+| `"contradicted"`   | Claim referenced by an unresolved contradiction | `"contradiction:<id>"` (lexicographically smallest) | Loses to stale |
+
+The stale-over-contradicted precedence is implemented as a two-pass assembly in `graph_json.rs`: the stale pass runs first and sets `effective_status`; the contradicted pass (`apply_contradiction_effective_status`) then skips any node that already has `effective_status` set.
+
+### Evidence quality tiers (ADR-0034)
+
+The `evidence_quality` field on `GraphKnowledgeObjectNode` and `RetrievalRecord` carries the best evidence quality tier across all evidence entries (inline and resolved ObjectRef). Tier mapping:
+
+| Tier     | Evidence kinds |
+| :------- | :------------- |
+| `"high"` | `Test`, `SourceCode`, `ApiSchema`, `PolicyReference`, `AuditRecord` |
+| `"medium"` | `HumanReview`, `DesignDoc`, `PullRequest`, `Incident`, `Commit` |
+| `"low"` | `ExternalUrl`, `Issue`, `SupportTicket`, `RuntimeMetric`, `Dataset`, `Experiment` |
+
+The mapping is an exhaustive match in `EvidenceKind::quality_tier(self) -> EvidenceTier`. `ObjectRef` entries (from `evidence_ref:`) carry the kind string of the referenced source object; they are treated identically to inline entries for the graph-node projection but are conservatively treated as ≥ Medium for the `claim.evidence_quality_low` diagnostic (the rule is suppressed if any ObjectRef is present).
+
+V5.10 TB5 adds `external_url:` as an inline evidence field on claims so that a Low-tier evidence scenario is expressible in native `.adoc` source without requiring an `evidence_ref:` roundtrip.
+
+### Four diagnostics
+
+| Code | Severity | Trigger |
+| :--- | :------- | :------ |
+| `schema.policy_review_overdue` | WARNING | Active policy's `effective_at + review_interval < today` |
+| `lifecycle.expired` | WARNING | Any object with a past `expires_at` (pre-V5.10, now also fires on verified objects) |
+| `claim.evidence_quality_low` | WARNING | Verified claim with ≥1 inline evidence entry where ALL entries are Low-tier and no `ObjectRef` is present |
+| `schema.claim_contradicted_by_unresolved` | WARNING | Claim referenced by an unresolved contradiction whose authored status is not already `contradicted` |
+
+### Additive-unhashed invariant
+
+All four derived fields (`effective_status`, `effective_reason`, `evidence_quality`) and the HTML badges are:
+
+- **Additive**: existing source files and graph artifacts that do not use `expires_at`, `review_interval`, or contradictions are byte-stable.
+- **Unhashed**: excluded from `KnowledgeObjectHashPayload`, so `content_hash` is identical regardless of the derived fields. Patch validation, diff, and review all remain stable.
+- **Not authored**: derived at compile/build time from existing authored fields; no new required fields are added to any object kind.
+
+### Expanded Pilot proof (TB5)
+
+`examples/expanded-pilot/` exercises all four signals with clock-stable fixture dates (2020–2024):
+
+- `security.production-db-access` (active policy, `effective_at: 2020-01-01`, `review_interval: 90d`) → `schema.policy_review_overdue`.
+- `security.audit.retention` (verified claim, `expires_at: 2024-01-01`) → `lifecycle.expired` + `effective_status: stale`.
+- `security.csrf-advisory` (verified claim, `external_url:` only) → `claim.evidence_quality_low` + `evidence_quality: low`.
+- `auth.session.csrf-protection` (claim, `status: accepted`, in unresolved contradiction) → `schema.claim_contradicted_by_unresolved` + `effective_status: contradicted`.
+
+Exact-match budget: **0 errors, 5 warnings**. KO node counts: 20 total (8 claims, 1 decision, 2 glossary, 1 constraint, 1 procedure, 2 examples, 1 policy, 1 agent_instruction, 1 contradiction, 2 sources).

@@ -41,16 +41,16 @@ Implemented:
 - Billing pilot retrieval harness: 30+ Knowledge Objects, retrieval-set fixtures, property-style search invariants, and docs for retrieval maintenance.
 - Markdown Pilot end-to-end harness: 15 `.md` + 2 `.adoc` files modeled on real product docs (API reference, runbooks, tutorials, reference notes), exact-match diagnostic and graph-node budgets, mixed-mode diff/review coverage, and maintenance contract at [markdown-pilot.md](markdown-pilot.md).
 - V5 Expanded Knowledge Model: seven new typed kinds (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), the shared `Severity` value object, the typed `EvidenceKind` evidence model (`evidence_ref` to `source` objects with edge + projection, symmetric `claim`/`decision` evidence), the additive `adoc.graph.v2` → `adoc.graph.v3` bump, the `agent_instruction` runtime-not-enforced banner and `adoc://agent/v0/agent-instruction-guide` / `contradiction-guide` resources, and the Expanded Pilot end-to-end harness ([expanded-pilot.md](expanded-pilot.md)). Closes PRD MVP must-have #4 for the seven object types, plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model). The implementation contract is [V5-DESIGN.md](V5-DESIGN.md); the decisions are ADR-0024 through ADR-0032.
+- V5.10 Lifecycle Automation: four additive derived signals layered on the V5 Expanded Object Set without new wire-envelope versions or source-authoring changes. (1) `schema.policy_review_overdue` (WARNING) when an active policy's `effective_at + review_interval` is before today — ADR-0033. (2) Derived `effective_status: "stale"` / `effective_reason: "expired:<date>"` on any `verified` object whose `expires_at` is in the past — displayed as an HTML badge and emitted in graph nodes and retrieval records. (3) Derived `evidence_quality: "high"|"medium"|"low"` on objects with evidence, computed from the `EvidenceTier` mapping in ADR-0034; plus `claim.evidence_quality_low` (WARNING) when a verified claim's only inline evidence is Low-tier. (4) Derived `effective_status: "contradicted"` on a claim referenced by an unresolved contradiction, plus `schema.claim_contradicted_by_unresolved` (WARNING) when that claim's authored status is not already `contradicted` — stale takes precedence when both apply. All derived fields are additive and excluded from `content_hash`. The Expanded Pilot now exercises all four signals with clock-stable wide-margin fixture dates; the exact-match budget is 0 errors, 5 warnings. The implementation contract is [V5-DESIGN.md](V5-DESIGN.md) §V5.10.
 
 Next:
 
-- V5.10 Lifecycle automation: scheduled freshness-driven status transitions (`verified` → `stale` on `expires_at`), automatic claim-status propagation on contradiction resolution, evidence-quality scoring per PRD §15.3, and policy review-interval drift diagnostics. Sequenced after V5.9 now that the Expanded Knowledge Model is in real use and lifecycle pain can be measured.
+- V6 composition and advanced graphs: `@include`, nested typed blocks, custom schema registry, automated contradiction detection. Sequenced after V5 and V5.10 because V6 assumes the V5 Expanded Object Set plus the V5.10 lifecycle contract are stable.
 
 Later:
 
 - V4.5 Markdown migration (`adoc migrate`, suggested-claim extraction, import report, `adoc.migrate.report.v0` envelope, MCP integration). Sequenced after V4 once compatibility-mode usage surfaces measured friction. PRD MVP must-have #18.
 - V1.7 prose retrieval. Extends BM25 and embedding pipelines to index prose blocks symmetrically across `.adoc` and `.md` sources. Independent of V4 / V5 sequencing; can ship before or after.
-- V6 composition and advanced graphs: `@include`, nested typed blocks, custom schema registry, automated contradiction detection. Sequenced after V5 because all of V6 assumes the V5 Expanded Object Set is stable.
 - V7 web surfaces and governance: read-only object explorer, review dashboard, ownership and approval workflows, agent activity log, SSO/RBAC/audit/compliance, hosted storage.
 
 ## V0: Native CLI Compiler
@@ -745,7 +745,7 @@ Scope:
 
 Acceptance: `cargo test -p adoc-cli --test expanded_pilot` exits 0 with the documented diagnostic counts. `dist/docs.html` is hand-reviewed: every kind renders distinctly, the `agent_instruction` shows the runtime-not-enforced banner, the contradiction shows side-by-side conflicting claim links.
 
-Deferred: V5.10 lifecycle automation, V6 composition, V7 web and governance, automated contradiction detection.
+Deferred: V5.10 lifecycle automation (now implemented — see below), V6 composition, V7 web and governance, automated contradiction detection.
 
 Design guidance:
 
@@ -759,14 +759,27 @@ Design guidance:
 - `source` objects coexist with inline evidence at first; inline string evidence is NOT deprecated in V5.7.
 - Each slice bumps no envelope version. Only V5.1 bumps `adoc.graph.v2` → `adoc.graph.v3`, and that bump is additive only.
 
-Questions to resolve later:
+Questions resolved in V5.10:
 
-- Should `agent_instruction` objects gain a runtime permission model in V5.10+ or wait for a dedicated permission-engine milestone?
-- Should `source` objects replace inline evidence in V5.10+, or continue to coexist indefinitely?
-- Should verified lifecycle rules expand object-by-object or all at once when evidence-quality scoring lands in V5.10+?
-- Should `agent_instruction` scope upgrade from a glob string to a structured PRD §16.2 scope object in V6+?
-- Should `contradiction` resolution propagate automatically to referenced claims' `status` field, or stay author-driven?
-- Should `adoc.project.status.v0` gain `knowledge_objects_by_kind` counts in V5.10+ if MCP agents need them?
+- Verified lifecycle rules expand all-at-once (not object-by-object) in V5.10, sharing the single `derive_effective_status` helper and the `expires_at` field grammar across all Knowledge Object kinds.
+- Source objects continue to coexist with inline evidence; the new `external_url:` inline field in V5.10 TB5 enables Low-tier inline evidence on claims without removing any existing field.
+- `contradiction` resolution remains author-driven in V5.10; automatic propagation stays deferred.
+
+### V5.10: Lifecycle Automation Slice
+
+Goal: add four additive derived lifecycle signals to the V5 Expanded Object Set without new wire-envelope versions, breaking authoring changes, or new Knowledge Object kinds. Implemented.
+
+Scope:
+
+- **TB1 — policy review overdue** (`schema.policy_review_overdue`, WARNING): an `active` policy whose `effective_at + review_interval` is strictly before `today` emits a WARNING. Policies without a `review_interval` or with a non-active status are exempt. Architecture decision: ADR-0033.
+- **TB2 — stale effective status**: a `verified` object with a past `expires_at` gains derived fields `effective_status: "stale"` and `effective_reason: "expired:<date>"` in graph nodes and retrieval records. The authored status is unchanged. An HTML badge renders next to the object heading when stale. The fields are additive and excluded from `content_hash`. Architecture decision: ADR-0033.
+- **TB3 — evidence quality**: a derived `evidence_quality: "high"|"medium"|"low"` field on any object with evidence, computed from the three-tier mapping in ADR-0034. `claim.evidence_quality_low` (WARNING) fires when a verified claim's only inline evidence is Low-tier (external URL, issue, ticket, metric, dataset, or experiment) and the claim has no `ObjectRef` evidence. The inline `external_url:` field is added to claims in V5.10 TB5 to provide a Low-tier evidence surface exercisable in the pilot. Architecture decision: ADR-0034.
+- **TB4 — contradicted effective status**: a claim referenced by an unresolved contradiction gains `effective_status: "contradicted"` and `effective_reason: "contradiction:<id>"` (lexicographically smallest contradiction id). `schema.claim_contradicted_by_unresolved` (WARNING) fires when the claim's authored status is not already `contradicted`, nudging authors to make the effective state explicit. Stale takes precedence: a stale claim is never overwritten with contradicted. An HTML badge renders for contradicted claims.
+- **TB5 — Expanded Pilot proof**: `examples/expanded-pilot/` extended so all four signals fire with clock-stable wide-margin fixture dates (2020–2024). Exact-match budget: 0 errors, 5 warnings (2 `lifecycle.expired`, 1 `schema.policy_review_overdue`, 1 `claim.evidence_quality_low`, 1 `schema.claim_contradicted_by_unresolved`). Graph assertions added for `effective_status: "stale"`, `effective_status: "contradicted"`, `evidence_quality: "low"`, and authored-status invariance.
+
+Acceptance: `cargo test -p adoc-cli --test expanded_pilot` exits 0 with the documented 5-warning budget. All four derived fields appear in the correct graph nodes. `security.audit.retention` has `effective_status: stale` and authored `status: verified` unchanged. `auth.session.csrf-protection` has `effective_status: contradicted` and authored `status: accepted` unchanged. `security.csrf-advisory` has `evidence_quality: low`.
+
+Deferred: scope-matching at retrieval time for `agent_instruction`, automatic contradiction propagation to authored status, evidence-quality enforcement (currently Warning only), per-kind project-status counts.
 
 ## V6: Composition and Advanced Graphs
 

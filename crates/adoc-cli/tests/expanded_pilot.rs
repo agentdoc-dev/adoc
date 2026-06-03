@@ -1,14 +1,23 @@
-//! V5.9 end-to-end test for the V5 Expanded Pilot.
+//! V5.10 end-to-end test for the V5 Expanded Pilot.
 //!
-//! Validates `examples/expanded-pilot/` against the full V5 acceptance
-//! contract from `docs/V5-DESIGN.md` §V5.9. The pilot exercises every new
-//! V5 kind (constraint, procedure, example, policy, agent_instruction,
-//! contradiction, source) plus the V5.8 typed evidence model, across
-//! auth / billing / security domains.
+//! Validates `examples/expanded-pilot/` against the full V5 + V5.10 acceptance
+//! contract from `docs/V5-DESIGN.md`. The pilot exercises every new V5 kind
+//! (constraint, procedure, example, policy, agent_instruction, contradiction,
+//! source) plus the V5.8 typed evidence model and all four V5.10 lifecycle
+//! signals, across auth / billing / security domains.
 //!
 //! Diagnostic budget (documented in `docs/expanded-pilot.md`): 0 errors,
-//! 2 `lifecycle.expired` warnings driven by fixed past `expires_at` values
-//! on `billing.credits.legacy-export` and `security.audit.retention`.
+//! 5 warnings:
+//!
+//! | Code                                  | Count | Object                                     |
+//! | :------------------------------------ | :---: | :----------------------------------------- |
+//! | `lifecycle.expired`                   |   2   | `billing.credits.legacy-export`, `security.audit.retention` |
+//! | `schema.policy_review_overdue`        |   1   | `security.production-db-access`            |
+//! | `claim.evidence_quality_low`          |   1   | `security.csrf-advisory`                   |
+//! | `schema.claim_contradicted_by_unresolved` | 1 | `auth.session.csrf-protection`             |
+//!
+//! All warnings are driven by fixed past dates / wide-margin fixtures so the
+//! budget is clock-stable on any realistic future run date.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -30,9 +39,10 @@ fn repo_root() -> PathBuf {
 
 const PILOT_PATH: &str = "examples/expanded-pilot/";
 
-/// V5.9 acceptance: `adoc check` over the full pilot exits 0 with the exact
+/// V5.10 acceptance: `adoc check` over the full pilot exits 0 with the exact
 /// diagnostic budget published in `docs/expanded-pilot.md` — 0 errors and
-/// exactly 2 `lifecycle.expired` warnings.
+/// exactly 5 warnings (2 `lifecycle.expired`, 1 `schema.policy_review_overdue`,
+/// 1 `claim.evidence_quality_low`, 1 `schema.claim_contradicted_by_unresolved`).
 #[test]
 fn expanded_pilot_check_emits_documented_diagnostic_budget() {
     let repo_root = repo_root();
@@ -51,6 +61,15 @@ fn expanded_pilot_check_emits_documented_diagnostic_budget() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let expired_count = stdout.matches("warning[lifecycle.expired]").count();
+    let policy_review_overdue_count = stdout
+        .matches("warning[schema.policy_review_overdue]")
+        .count();
+    let evidence_quality_low_count = stdout
+        .matches("warning[claim.evidence_quality_low]")
+        .count();
+    let claim_contradicted_count = stdout
+        .matches("warning[schema.claim_contradicted_by_unresolved]")
+        .count();
     let error_count = stdout.matches("error[").count();
 
     assert_eq!(
@@ -58,17 +77,30 @@ fn expanded_pilot_check_emits_documented_diagnostic_budget() {
         "expected two lifecycle.expired warnings (billing.credits.legacy-export, security.audit.retention)\nstdout:\n{stdout}"
     );
     assert_eq!(
+        policy_review_overdue_count, 1,
+        "expected one schema.policy_review_overdue warning (security.production-db-access)\nstdout:\n{stdout}"
+    );
+    assert_eq!(
+        evidence_quality_low_count, 1,
+        "expected one claim.evidence_quality_low warning (security.csrf-advisory)\nstdout:\n{stdout}"
+    );
+    assert_eq!(
+        claim_contradicted_count, 1,
+        "expected one schema.claim_contradicted_by_unresolved warning (auth.session.csrf-protection)\nstdout:\n{stdout}"
+    );
+    assert_eq!(
         error_count, 0,
         "pilot must produce zero errors (every kind is strict-valid)\nstdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("0 errors, 2 warnings"),
-        "expected aggregate summary `0 errors, 2 warnings`\nstdout:\n{stdout}"
+        stdout.contains("0 errors, 5 warnings"),
+        "expected aggregate summary `0 errors, 5 warnings`\nstdout:\n{stdout}"
     );
 }
 
-/// V5.9 acceptance: `adoc build` emits an `adoc.graph.v3` artifact carrying
+/// V5.10 acceptance: `adoc build` emits an `adoc.graph.v3` artifact carrying
 /// every V5 kind with exact per-kind node counts, the V5.8 evidence edges,
+/// V5.10 derived lifecycle fields (`effective_status`, `evidence_quality`),
 /// and pilot-scoped source spans; `docs.html` renders each kind distinctly.
 #[test]
 fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
@@ -118,8 +150,8 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
         .collect();
     assert_eq!(
         knowledge_objects.len(),
-        18,
-        "expected eighteen Knowledge Object nodes across all V5 kinds"
+        20,
+        "expected twenty Knowledge Object nodes across all V5 + V5.10 kinds"
     );
 
     let count_kind = |kind: &str| {
@@ -128,7 +160,7 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
             .filter(|object| object["kind"] == kind)
             .count()
     };
-    assert_eq!(count_kind("claim"), 6, "expected six claim KOs");
+    assert_eq!(count_kind("claim"), 8, "expected eight claim KOs");
     assert_eq!(count_kind("decision"), 1, "expected one decision KO");
     assert_eq!(count_kind("glossary"), 2, "expected two glossary KOs");
     assert_eq!(count_kind("constraint"), 1, "expected one constraint KO");
@@ -146,6 +178,55 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
         "expected one contradiction KO"
     );
     assert_eq!(count_kind("source"), 2, "expected two source KOs");
+
+    // --- V5.10: derived lifecycle fields on graph nodes ---
+    // stale: security.audit.retention is verified + past expires_at.
+    let stale_node = knowledge_objects
+        .iter()
+        .find(|node| node["id"] == "security.audit.retention")
+        .expect("security.audit.retention node must exist");
+    assert_eq!(
+        stale_node["effective_status"], "stale",
+        "security.audit.retention must have effective_status stale"
+    );
+    assert!(
+        stale_node["effective_reason"]
+            .as_str()
+            .unwrap_or("")
+            .starts_with("expired:"),
+        "security.audit.retention effective_reason must start with expired: (got {:?})",
+        stale_node["effective_reason"]
+    );
+    // The authored status is unchanged — effective_status is derived/additive.
+    assert_eq!(
+        stale_node["status"], "verified",
+        "security.audit.retention authored status must remain verified"
+    );
+
+    // contradicted nudge: auth.session.csrf-protection is accepted but referenced by
+    // an unresolved contradiction → effective_status: contradicted.
+    let nudge_node = knowledge_objects
+        .iter()
+        .find(|node| node["id"] == "auth.session.csrf-protection")
+        .expect("auth.session.csrf-protection node must exist");
+    assert_eq!(
+        nudge_node["effective_status"], "contradicted",
+        "auth.session.csrf-protection must have effective_status contradicted"
+    );
+    assert_eq!(
+        nudge_node["status"], "accepted",
+        "auth.session.csrf-protection authored status must remain accepted"
+    );
+
+    // evidence quality low: security.csrf-advisory uses only external_url evidence.
+    let low_ev_node = knowledge_objects
+        .iter()
+        .find(|node| node["id"] == "security.csrf-advisory")
+        .expect("security.csrf-advisory node must exist");
+    assert_eq!(
+        low_ev_node["evidence_quality"], "low",
+        "security.csrf-advisory must have evidence_quality low"
+    );
 
     // Every Knowledge Object must carry a pilot-scoped source span for citation.
     for object in &knowledge_objects {
@@ -210,10 +291,10 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
     );
 }
 
-/// V5.9 acceptance: the V5 kinds are retrievable. `adoc why` cites the
+/// V5.10 acceptance: the V5 kinds are retrievable. `adoc why` cites the
 /// verified procedure, `adoc graph` traverses the active policy to a related
-/// object and back, and `adoc search "policy"` returns the policy first
-/// (docs/V5-DESIGN.md §V5.9).
+/// object (now stale) and back, and `adoc search "policy"` returns the policy
+/// first (docs/V5-DESIGN.md §V5.9/§V5.10).
 #[test]
 fn expanded_pilot_retrieval_why_graph_search() {
     let repo_root = repo_root();
@@ -304,7 +385,7 @@ fn expanded_pilot_retrieval_why_graph_search() {
     );
 }
 
-/// V5.9 acceptance: `adoc diff`, `adoc review`, and `adoc review --patch`
+/// V5.10 acceptance: `adoc diff`, `adoc review`, and `adoc review --patch`
 /// behave over a git fixture carrying V5 kinds. A body edit on a verified
 /// claim produces one Changed entry, a re-verify obligation, and a clean
 /// embedded `adoc.patch.check.v0` result when a matching patch is supplied.

@@ -22,9 +22,13 @@ pub(crate) const REVIEWED_BY_FIELD: &str = "reviewed_by";
 /// carries it so procedures reuse claim's `Verification`; claim's own accepted
 /// evidence set is unchanged.
 pub(crate) const HUMAN_REVIEW_FIELD: &str = "human_review";
+/// V5.10 TB5: Low-tier inline evidence field for claims. A verified claim that
+/// relies solely on this kind (and no `evidence_ref:`) triggers
+/// `claim.evidence_quality_low` (WARNING) per ADR-0034.
+pub(crate) const EXTERNAL_URL_FIELD: &str = "external_url";
 pub(crate) const VERIFIED_STATUS: &str = "verified";
 
-const VERIFIED_CLAIM_HELP: &str = "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, `reviewed_by`, or `evidence_ref`.";
+const VERIFIED_CLAIM_HELP: &str = "Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, `reviewed_by`, `external_url`, or `evidence_ref`.";
 const CLAIM_MISSING_STATUS_HELP: &str = "Claims require non-empty `status`.";
 const CLAIM_MISSING_BODY_HELP: &str = "Claims require non-empty body text.";
 
@@ -358,6 +362,15 @@ fn build_verification(
     {
         evidence.push(value);
     }
+    // V5.10 TB5: Low-tier inline URL evidence. Accepted so authors can
+    // record advisory/external references; triggers `claim.evidence_quality_low`
+    // when it is the claim's sole evidence kind (per ADR-0034).
+    if let Some(value) = fields
+        .get(EXTERNAL_URL_FIELD)
+        .and_then(|value| Evidence::from_field(EXTERNAL_URL_FIELD, value))
+    {
+        evidence.push(value);
+    }
 
     // Emit missing-evidence diagnostic only when NEITHER inline evidence NOR
     // an evidence_ref is present.
@@ -444,7 +457,7 @@ fn missing_evidence_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
     Diagnostic::error(
         DiagnosticCode::ClaimVerifiedMissingEvidence,
         format!(
-            "verified claim `{}` requires at least one evidence field: `source`, `test`, `reviewed_by`, or `evidence_ref`",
+            "verified claim `{}` requires at least one evidence field: `source`, `test`, `reviewed_by`, `external_url`, or `evidence_ref`",
             parsed.id_text
         ),
     )
@@ -494,7 +507,12 @@ impl ClaimStatus {
 fn is_verified_claim_dedicated_field(key: &str) -> bool {
     matches!(
         key,
-        OWNER_FIELD | VERIFIED_AT_FIELD | SOURCE_FIELD | TEST_FIELD | REVIEWED_BY_FIELD
+        OWNER_FIELD
+            | VERIFIED_AT_FIELD
+            | SOURCE_FIELD
+            | TEST_FIELD
+            | REVIEWED_BY_FIELD
+            | EXTERNAL_URL_FIELD
     )
 }
 
@@ -505,6 +523,7 @@ fn verified_claim_dedicated_field_in(fields: &BTreeMap<String, String>) -> Optio
         SOURCE_FIELD,
         TEST_FIELD,
         REVIEWED_BY_FIELD,
+        EXTERNAL_URL_FIELD,
     ]
     .into_iter()
     .find(|field| fields.contains_key(*field))

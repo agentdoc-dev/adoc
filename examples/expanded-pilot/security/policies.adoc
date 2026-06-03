@@ -7,7 +7,7 @@ dates, not from verification.
 status: active
 owner: security-lead
 approved_by: [security-lead, platform-lead]
-effective_at: 2026-04-01
+effective_at: 2020-01-01
 review_interval: 90d
 related_to: security.audit.retention
 --
@@ -15,9 +15,20 @@ Production database access requires an approved break-glass request and is logge
 ::
 
 ::claim security.audit.retention
-status: draft
+status: verified
 owner: security-lead
-expires_at: 2026-02-01
+verified_at: 2020-01-01
+source: internal audit records 2020-01-01
+expires_at: 2024-01-01
 --
 Audit logs for production access are retained for at least 365 days.
+::
+
+::claim security.csrf-advisory
+status: verified
+owner: platform-security
+verified_at: 2020-06-01
+external_url: https://owasp.org/www-community/attacks/csrf
+--
+The OWASP CSRF advisory is the reference for cross-site request forgery mitigations applied across all API endpoints.
 ::

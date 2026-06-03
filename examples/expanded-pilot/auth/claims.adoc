@@ -28,3 +28,10 @@ depends_on: auth.session.memory-storage
 --
 Multi-factor authentication is enforced for every interactive sign-in to the admin console.
 ::
+
+::claim auth.session.csrf-protection
+status: accepted
+owner: platform-security
+--
+All state-changing endpoints use synchronizer-token CSRF protection enforced by the auth middleware.
+::
