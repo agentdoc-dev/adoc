@@ -361,7 +361,7 @@ The V5 graph artifact, `dist/docs.graph.json`, with schema version `adoc.graph.v
 _Avoid_: silently dropping unknown kinds at the v2 boundary, claiming the v3 bump is non-additive, bumping `adoc.search.v0` along with the graph (it stays at v0)
 
 **V5 Expanded Pilot**:
-The V5.9 evaluation fixture: `examples/expanded-pilot/` carries 10–15 hand-curated `.adoc` files across auth, billing, and security domains, exercising every new V5 kind, the **Severity** value object, the **V5 Evidence Model**, **Disjoint Action Sets**, and at least one **Contradiction Object** referencing two pre-existing `claim` objects. Paired end-to-end test in `crates/adoc-cli/tests/expanded_pilot.rs`. Mirrors the Billing Pilot (V1.6) and **Markdown Pilot** (V4.4) pattern.
+The V5.9 evaluation fixture (implemented): `examples/expanded-pilot/` carries 11 hand-curated `.adoc` files across auth, billing, and security domains, exercising every new V5 kind, the **Severity** value object, the **V5 Evidence Model**, **Disjoint Action Sets**, and a **Contradiction Object** referencing two pre-existing `claim` objects. 18 Knowledge Objects; a stable `0 errors, 2 warnings` budget (two `lifecycle.expired`). Paired end-to-end test in `crates/adoc-cli/tests/expanded_pilot.rs`; maintenance contract in `docs/expanded-pilot.md`. Mirrors the Billing Pilot (V1.6) and **Markdown Pilot** (V4.4) pattern.
 _Avoid_: ad-hoc V5 fixtures scattered across crates, V5 fixtures without the contradiction case, drift between the pilot and the `docs/expanded-pilot.md` maintenance contract
 
 ## Relationships
