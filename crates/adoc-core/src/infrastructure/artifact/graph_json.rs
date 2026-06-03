@@ -20,6 +20,7 @@ use crate::domain::knowledge_object::{
     projection::MetadataField,
 };
 use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::ArtifactWriter};
+use crate::domain::value_objects::evidence_kind::EvidenceKind;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GraphJsonArtifact;
@@ -188,6 +189,8 @@ impl GraphJsonArtifact {
                 }
                 // Recompute the content hash now that evidence changed.
                 ko.content_hash = graph_knowledge_object_content_hash(ko);
+                // Recompute the derived evidence_quality projection.
+                ko.evidence_quality = best_evidence_quality(&ko.evidence);
                 break;
             }
         }
@@ -400,6 +403,15 @@ fn knowledge_object_to_graph_node_without_hash(
         .and_then(|date| derive_effective_status(&status, knowledge_object, date))
         .map_or((None, None), |(s, r)| (Some(s), Some(r)));
 
+    let evidence = metadata.graph_evidence();
+
+    // V5.10 TB3: derive the best evidence quality tier across all evidence
+    // entries whose `kind` string parses to a known EvidenceKind. ObjectRef
+    // entries carry the kind of the referenced source object — we use whatever
+    // kind string is present (same as inline entries). If no entry has a
+    // parseable kind, the field is omitted.
+    let evidence_quality = best_evidence_quality(&evidence);
+
     GraphKnowledgeObjectNode {
         id: knowledge_object.id().as_str().to_string(),
         kind: knowledge_object.kind().as_str().to_string(),
@@ -416,10 +428,12 @@ fn knowledge_object_to_graph_node_without_hash(
         forbidden_actions,
         contradiction_claims,
         // V5.8: typed evidence array replaces flat source/test/reviewed_by fields.
-        evidence: metadata.graph_evidence(),
+        evidence,
         // V5.10: derived — NOT part of content_hash.
         effective_status,
         effective_reason,
+        // V5.10 TB3: derived — NOT part of content_hash.
+        evidence_quality,
     }
 }
 
@@ -456,6 +470,24 @@ pub(crate) fn derive_effective_status(
     } else {
         None
     }
+}
+
+/// Compute the best evidence quality tier across a list of `GraphEvidence`
+/// entries.
+///
+/// Each entry's `kind` string is parsed with [`EvidenceKind::try_new`]. Entries
+/// whose `kind` is empty or unknown are skipped. The highest-tier parseable
+/// entry determines the result.
+///
+/// Returns `Some(tier_str)` when at least one tier-able entry exists; `None`
+/// when the evidence list is empty or all kinds are unrecognised.
+fn best_evidence_quality(evidence: &[GraphEvidence]) -> Option<String> {
+    let best = evidence
+        .iter()
+        .filter_map(|ev| EvidenceKind::try_new(&ev.kind).ok())
+        .map(EvidenceKind::quality_tier)
+        .max()?;
+    Some(best.as_str().to_string())
 }
 
 fn policy_approved_by(knowledge_object: &KnowledgeObject) -> Vec<String> {
@@ -1453,6 +1485,7 @@ mod tests {
             evidence: Vec::new(),
             effective_status,
             effective_reason,
+            evidence_quality: None,
         }
     }
 
@@ -1473,6 +1506,185 @@ mod tests {
             hash_without, hash_with,
             "content_hash must be identical whether or not effective_status is set; \
              effective_status is not part of the hash payload"
+        );
+    }
+
+    // ── V5.10 TB3: evidence_quality projection ────────────────────────────────
+
+    /// Utility: build a workspace containing a single verified claim with the
+    /// given inline evidence kinds, and return its graph node.
+    fn graph_node_for_claim_with_evidence_kinds(
+        evidence_entries: &[(&str, &str)],
+    ) -> GraphKnowledgeObjectNode {
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::claim::{Claim, Owner, Verification, VerifiedAt};
+        use crate::domain::value_objects::evidence::Evidence;
+        use crate::domain::value_objects::evidence_kind::EvidenceKind;
+
+        let span = dummy_span();
+        let owner = Owner::try_new("team-billing").expect("owner");
+        let verified_at = VerifiedAt::try_new("2026-05-05").expect("verified_at");
+        let evidence_vec: Vec<Evidence> = evidence_entries
+            .iter()
+            .map(|(kind_str, val)| {
+                let kind = EvidenceKind::try_new(kind_str).expect("valid kind");
+                Evidence::inline(kind, val).expect("valid evidence")
+            })
+            .collect();
+        let verification = Verification::new(owner, verified_at, evidence_vec);
+        let claim = Claim::try_new(
+            "billing.credits",
+            Some("verified"),
+            "Credits apply.",
+            std::collections::BTreeMap::new(),
+            Some(verification),
+            span,
+        )
+        .expect("valid verified claim");
+
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("docs.billing").expect("page id"),
+            title: None,
+            source_path: PathBuf::from("docs/billing.adoc"),
+            blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
+                claim,
+            )))],
+        };
+        let workspace = crate::domain::ast::WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build(&workspace, &[]);
+
+        artifact
+            .nodes
+            .into_iter()
+            .find_map(|n| match n {
+                GraphNode::KnowledgeObject(ko) if ko.id == "billing.credits" => Some(ko),
+                _ => None,
+            })
+            .expect("claim graph node must exist")
+    }
+
+    /// A verified claim with a `test:` evidence entry must produce
+    /// `evidence_quality: "high"`.
+    #[test]
+    fn claim_with_test_evidence_has_high_evidence_quality() {
+        let node = graph_node_for_claim_with_evidence_kinds(&[("test", "cargo test billing")]);
+        assert_eq!(
+            node.evidence_quality.as_deref(),
+            Some("high"),
+            "test evidence kind must produce high evidence_quality"
+        );
+    }
+
+    /// A verified claim with only `external_url:` evidence must produce
+    /// `evidence_quality: "low"`.
+    #[test]
+    fn claim_with_external_url_evidence_has_low_evidence_quality() {
+        let node =
+            graph_node_for_claim_with_evidence_kinds(&[("external_url", "https://example.com")]);
+        assert_eq!(
+            node.evidence_quality.as_deref(),
+            Some("low"),
+            "external_url evidence kind must produce low evidence_quality"
+        );
+    }
+
+    /// A node with no evidence must have `evidence_quality: None` (field absent
+    /// from JSON output).
+    #[test]
+    fn no_evidence_object_has_absent_evidence_quality() {
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::claim::Claim;
+
+        let span = dummy_span();
+        let claim = Claim::try_new(
+            "billing.plain",
+            Some("plain"),
+            "No evidence here.",
+            std::collections::BTreeMap::new(),
+            None,
+            span,
+        )
+        .expect("valid plain claim");
+
+        let page = PageAst {
+            id: crate::domain::identity::PageId::from_string("docs.billing").expect("page id"),
+            title: None,
+            source_path: PathBuf::from("docs/billing.adoc"),
+            blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
+                claim,
+            )))],
+        };
+        let workspace = crate::domain::ast::WorkspaceAst { pages: vec![page] };
+        let artifact = GraphJsonArtifact.build(&workspace, &[]);
+
+        let node = artifact
+            .nodes
+            .into_iter()
+            .find_map(|n| match n {
+                GraphNode::KnowledgeObject(ko) if ko.id == "billing.plain" => Some(ko),
+                _ => None,
+            })
+            .expect("claim graph node must exist");
+
+        assert!(
+            node.evidence_quality.is_none(),
+            "no evidence must produce absent evidence_quality (None); got {:?}",
+            node.evidence_quality
+        );
+    }
+
+    /// Mixed evidence (Low + High) must resolve to `"high"` — best tier wins.
+    #[test]
+    fn mixed_evidence_resolves_to_best_tier() {
+        let node = graph_node_for_claim_with_evidence_kinds(&[
+            ("external_url", "https://example.com"),
+            ("test", "cargo test billing"),
+        ]);
+        assert_eq!(
+            node.evidence_quality.as_deref(),
+            Some("high"),
+            "when mixed tiers are present, the highest tier must win"
+        );
+    }
+
+    /// `evidence_quality` must NOT affect `content_hash` (derived field is
+    /// excluded from the hash payload, mirroring ADR-0033 / ADR-0034).
+    #[test]
+    fn content_hash_is_stable_regardless_of_evidence_quality() {
+        let node_without = GraphKnowledgeObjectNode {
+            id: "billing.credits".to_string(),
+            kind: "claim".to_string(),
+            content_hash: String::new(),
+            status: Some("verified".to_string()),
+            body: "Credits are verified.".to_string(),
+            page_id: "team.billing".to_string(),
+            source_span: GraphSourceSpan {
+                path: "billing.adoc".to_string(),
+                line: 1,
+                column: 1,
+            },
+            fields: std::collections::BTreeMap::new(),
+            relations: GraphRelations::default(),
+            impacts: Vec::new(),
+            approved_by: Vec::new(),
+            allowed_actions: Vec::new(),
+            forbidden_actions: Vec::new(),
+            contradiction_claims: Vec::new(),
+            evidence: Vec::new(),
+            effective_status: None,
+            effective_reason: None,
+            evidence_quality: None,
+        };
+        let mut node_with = node_without.clone();
+        node_with.evidence_quality = Some("high".to_string());
+
+        let hash_without = graph_knowledge_object_content_hash(&node_without);
+        let hash_with = graph_knowledge_object_content_hash(&node_with);
+
+        assert_eq!(
+            hash_without, hash_with,
+            "content_hash must be identical regardless of evidence_quality; \
+             evidence_quality is not part of the hash payload"
         );
     }
 

@@ -223,6 +223,15 @@ pub(crate) struct GraphKnowledgeObjectNode {
     /// `"expired:<YYYY-MM-DD>"`. Always `None` when `effective_status` is `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) effective_reason: Option<String>,
+    /// V5.10 TB3: derived best evidence quality tier for this object. One of
+    /// `"high"`, `"medium"`, or `"low"` when the object has at least one
+    /// tier-able inline evidence entry. `None` when there is no evidence or
+    /// all evidence entries are `ObjectRef` with an unrecognised kind.
+    ///
+    /// Not authored, not hashed — purely additive projection. Skipped when
+    /// `None` so existing fixtures without evidence remain byte-stable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) evidence_quality: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -729,6 +738,7 @@ mod tests {
                     evidence: Vec::new(),
                     effective_status: None,
                     effective_reason: None,
+                    evidence_quality: None,
                 }),
             ],
             edges: Vec::new(),

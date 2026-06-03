@@ -15,6 +15,7 @@
 
 mod compat;
 mod contradiction_claims_resolve;
+mod evidence_quality;
 mod evidence_ref_resolves;
 mod knowledge_object_body_unsafe_links_forbidden;
 mod knowledge_object_lifecycle;
@@ -28,6 +29,7 @@ pub(crate) mod url_walker;
 
 use chrono::NaiveDate;
 use contradiction_claims_resolve::ContradictionClaimsResolve;
+use evidence_quality::ClaimEvidenceQualityLowRule;
 use evidence_ref_resolves::EvidenceRefResolves;
 use knowledge_object_body_unsafe_links_forbidden::KnowledgeObjectBodyUnsafeLinksForbidden;
 use knowledge_object_lifecycle::KnowledgeObjectLifecycle;
@@ -70,11 +72,12 @@ pub(crate) fn validate_resolved_page(
     let lifecycle = KnowledgeObjectLifecycle::new(today);
     let policy_active_approval = PolicyActiveApproval::new(today);
     let drift = PolicyReviewDrift::new(today);
-    let rules: [&dyn ValidationRule; 4] = [
+    let rules: [&dyn ValidationRule; 5] = [
         &KnowledgeObjectBodyUnsafeLinksForbidden,
         &lifecycle,
         &policy_active_approval,
         &drift,
+        &ClaimEvidenceQualityLowRule,
     ];
     validate_page_with_rules(page, source, &rules)
 }

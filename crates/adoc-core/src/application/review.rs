@@ -655,6 +655,7 @@ mod tests {
                 ],
                 effective_status: None,
                 effective_reason: None,
+                evidence_quality: None,
             }
         }
 

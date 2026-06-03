@@ -125,6 +125,7 @@ mod tests {
             search_match: None,
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         }
     }
 
@@ -163,6 +164,7 @@ mod tests {
             search_match: None,
             effective_status: None,
             effective_reason: None,
+            evidence_quality: None,
         };
         let view = make_view(record.clone());
 

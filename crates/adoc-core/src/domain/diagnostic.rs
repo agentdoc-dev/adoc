@@ -123,6 +123,12 @@ pub enum DiagnosticCode {
     /// V5.8 TB2: the `evidence_ref:` on a claim names an Object ID that exists
     /// but is not a `source` Knowledge Object.
     SchemaEvidenceTargetNotASource,
+    /// V5.10 TB3: a `verified` claim's best inline evidence tier is Low-only.
+    ///
+    /// Emitted when a verified claim has at least one inline evidence entry but
+    /// every inline entry maps to [`EvidenceTier::Low`], and the claim has no
+    /// `ObjectRef` evidence (which counts as ≥ Medium per ADR-0034).
+    ClaimEvidenceQualityLow,
 }
 
 impl DiagnosticCode {
@@ -222,6 +228,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaSourceKindTargetMismatch,
             DiagnosticCode::SchemaEvidenceTargetNotFound,
             DiagnosticCode::SchemaEvidenceTargetNotASource,
+            DiagnosticCode::ClaimEvidenceQualityLow,
         ]
     }
 
@@ -361,6 +368,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaSourceKindTargetMismatch => "schema.source_kind_target_mismatch",
             DiagnosticCode::SchemaEvidenceTargetNotFound => "schema.evidence_target_not_found",
             DiagnosticCode::SchemaEvidenceTargetNotASource => "schema.evidence_target_not_a_source",
+            DiagnosticCode::ClaimEvidenceQualityLow => "claim.evidence_quality_low",
         }
     }
 
@@ -644,6 +652,9 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaEvidenceTargetNotASource => {
                 "An `evidence_ref` must point to a `source` Knowledge Object; update the ID or change the referenced object's kind."
             }
+            DiagnosticCode::ClaimEvidenceQualityLow => {
+                "This verified claim relies only on low-quality evidence (external URL, issue, ticket, metric, dataset, or experiment). Add a test, source-code reference, API schema, audit record, or policy reference to strengthen verification."
+            }
         }
     }
 
@@ -770,6 +781,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.source_kind_target_mismatch",
     "schema.evidence_target_not_found",
     "schema.evidence_target_not_a_source",
+    "claim.evidence_quality_low",
 ];
 
 impl Diagnostic {
