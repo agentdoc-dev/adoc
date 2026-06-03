@@ -213,6 +213,16 @@ pub(crate) struct GraphKnowledgeObjectNode {
     /// fields. Skipped when empty so non-verified objects remain byte-stable.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) evidence: Vec<GraphEvidence>,
+    /// V5.10 derived effective lifecycle status. `Some("stale")` when the
+    /// authored status is `"verified"` and `expires_at < today`. Not authored,
+    /// not hashed — purely additive projection. Skipped when `None` so existing
+    /// fixtures without expiry remain byte-stable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) effective_status: Option<String>,
+    /// V5.10 reason string for `effective_status`. Format:
+    /// `"expired:<YYYY-MM-DD>"`. Always `None` when `effective_status` is `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) effective_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -717,6 +727,8 @@ mod tests {
                     forbidden_actions: Vec::new(),
                     contradiction_claims: Vec::new(),
                     evidence: Vec::new(),
+                    effective_status: None,
+                    effective_reason: None,
                 }),
             ],
             edges: Vec::new(),

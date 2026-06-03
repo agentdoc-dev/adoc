@@ -405,6 +405,8 @@ fn hybrid_match_serializes_rrf_score_and_omits_missing_rank_fields() {
         fields: std::collections::BTreeMap::new(),
         relations: RetrievalRelations::default(),
         search_match: Some(RetrievalMatch::hybrid(1, 0.0312, Some(2), None)),
+        effective_status: None,
+        effective_reason: None,
     };
 
     let value = serde_json::to_value(RetrievalEnvelope::new(vec![record], Vec::new()))
@@ -1639,6 +1641,8 @@ fn retrieval_record_serializes_lexical_search_match_contract() {
         fields: std::collections::BTreeMap::new(),
         relations: RetrievalRelations::default(),
         search_match: Some(RetrievalMatch::lexical(1, Some(1))),
+        effective_status: None,
+        effective_reason: None,
     };
     let value = serde_json::to_value(&record).expect("record serializes");
 
@@ -1672,6 +1676,8 @@ fn retrieval_envelope_can_be_created_from_search_result() {
         fields: std::collections::BTreeMap::new(),
         relations: RetrievalRelations::default(),
         search_match: Some(RetrievalMatch::lexical(1, Some(1))),
+        effective_status: None,
+        effective_reason: None,
     };
     let result = SearchResult {
         records: vec![record],

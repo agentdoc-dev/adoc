@@ -212,6 +212,8 @@ mod tests {
             fields: BTreeMap::new(),
             relations: RetrievalRelations::default(),
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         }
     }
 
@@ -290,6 +292,8 @@ mod tests {
             ]),
             relations: RetrievalRelations::default(),
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         };
         let view = view_for(record);
         let text = render(&view);
@@ -349,6 +353,8 @@ mod tests {
                 ],
             },
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         };
         let view = view_for(record);
         let text = render(&view);
@@ -391,6 +397,8 @@ mod tests {
             fields: BTreeMap::from([("canonical".to_string(), "billing credit".to_string())]),
             relations: RetrievalRelations::default(),
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         };
         let view = view_for(record);
         let text = render(&view);
@@ -426,6 +434,8 @@ mod tests {
             fields: BTreeMap::new(),
             relations: RetrievalRelations::default(),
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         };
         let view = view_for(record);
         let text = render(&view);

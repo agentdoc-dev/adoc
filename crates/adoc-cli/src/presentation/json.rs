@@ -123,6 +123,8 @@ mod tests {
             fields: BTreeMap::new(),
             relations: RetrievalRelations::default(),
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         }
     }
 
@@ -159,6 +161,8 @@ mod tests {
             fields: BTreeMap::new(),
             relations: RetrievalRelations::default(),
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         };
         let view = make_view(record.clone());
 

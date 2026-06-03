@@ -1,3 +1,5 @@
+use chrono::NaiveDate;
+
 use crate::domain::ast::{BlockAst, ColumnAlignment, ListKind, UnknownExtensionKind, WorkspaceAst};
 use crate::domain::graph::GraphRelationKind;
 use crate::domain::inline::InlineSegment;
@@ -11,6 +13,7 @@ use crate::domain::knowledge_object::{
     projection::{KnowledgeObjectMetadata, MetadataDiscriminant, MetadataField},
 };
 use crate::domain::url_safety::verdict;
+use crate::infrastructure::artifact::graph_json::derive_effective_status;
 
 /// CSS class used to wrap **Quarantined HTML** content (block and inline) in
 /// the rendered output. ADR-0023's renderer-as-security-boundary rule means
@@ -29,16 +32,36 @@ const QUARANTINED_IMAGE_CLASS: &str = "quarantined-image";
 pub(crate) struct HtmlRenderer;
 
 impl HtmlRenderer {
+    /// Render the workspace HTML with the wall-clock date for lifecycle
+    /// derivation. Equivalent to [`Self::render_workspace_for_date`] with
+    /// `today = None`.
+    #[allow(dead_code)]
     pub(crate) fn render_workspace(&self, workspace: &WorkspaceAst) -> String {
-        self.render_pages(&workspace.pages)
+        self.render_workspace_for_date(workspace, None)
+    }
+
+    /// Render workspace HTML with a pinned `today` date so that the derived
+    /// `effective_status` badge can appear in tests without relying on the wall
+    /// clock. When `today` is `None` the badge is never emitted (consistent
+    /// with the pre-V5.10 behaviour).
+    pub(crate) fn render_workspace_for_date(
+        &self,
+        workspace: &WorkspaceAst,
+        today: Option<NaiveDate>,
+    ) -> String {
+        self.render_pages_for_date(&workspace.pages, today)
     }
 
     #[cfg(test)]
     fn render(&self, pages: &[crate::domain::ast::PageAst]) -> String {
-        self.render_pages(pages)
+        self.render_pages_for_date(pages, None)
     }
 
-    fn render_pages(&self, pages: &[crate::domain::ast::PageAst]) -> String {
+    fn render_pages_for_date(
+        &self,
+        pages: &[crate::domain::ast::PageAst],
+        today: Option<NaiveDate>,
+    ) -> String {
         let mut html = String::from(
             "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>AgentDoc</title>\n</head>\n<body>\n",
         );
@@ -49,7 +72,7 @@ impl HtmlRenderer {
             html.push_str("\">\n");
 
             for block in &page.blocks {
-                render_block(block, &mut html);
+                render_block(block, today, &mut html);
             }
 
             html.push_str("</article>\n");
@@ -60,7 +83,7 @@ impl HtmlRenderer {
     }
 }
 
-fn render_block(block: &BlockAst, html: &mut String) {
+fn render_block(block: &BlockAst, today: Option<NaiveDate>, html: &mut String) {
     match block {
         BlockAst::Heading(heading) => {
             let level = heading.level.clamp(1, 6);
@@ -98,7 +121,7 @@ fn render_block(block: &BlockAst, html: &mut String) {
                 }
                 render_inlines(&item.inlines, html);
                 for child in &item.content {
-                    render_block(child, html);
+                    render_block(child, today, html);
                 }
                 html.push_str("</li>\n");
             }
@@ -117,7 +140,7 @@ fn render_block(block: &BlockAst, html: &mut String) {
             html.push_str(&escape_html(&code_block.code));
             html.push_str("</code></pre>\n");
         }
-        BlockAst::KnowledgeObject(ko) => render_knowledge_object(ko, html),
+        BlockAst::KnowledgeObject(ko) => render_knowledge_object(ko, today, html),
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before rendering")
         }
@@ -142,7 +165,7 @@ fn render_block(block: &BlockAst, html: &mut String) {
             html.push_str(&escape_html(&footnote.label));
             html.push_str("\">\n");
             for child in &footnote.content {
-                render_block(child, html);
+                render_block(child, today, html);
             }
             html.push_str("<a class=\"adoc-footnote-backref\" href=\"#fnref-");
             html.push_str(&escape_html(&footnote.label));
@@ -215,8 +238,20 @@ fn unknown_extension_kind_token(kind: UnknownExtensionKind) -> &'static str {
     }
 }
 
-fn render_knowledge_object(knowledge_object: &KnowledgeObject, html: &mut String) {
+fn render_knowledge_object(
+    knowledge_object: &KnowledgeObject,
+    today: Option<NaiveDate>,
+    html: &mut String,
+) {
     let metadata = knowledge_object.metadata_projection();
+
+    // V5.10: derive effective_status for badge rendering.
+    let status = metadata
+        .discriminant()
+        .map(|d| d.value_as_str().to_string());
+    let effective_status_label = today
+        .and_then(|date| derive_effective_status(&status, knowledge_object, date))
+        .map(|(s, _)| s);
 
     match knowledge_object {
         KnowledgeObject::Claim(_) => {
@@ -251,6 +286,21 @@ fn render_knowledge_object(knowledge_object: &KnowledgeObject, html: &mut String
         }
         KnowledgeObject::Source(_) => {
             render_source(knowledge_object, &metadata, html);
+        }
+    }
+
+    // V5.10: append effective_status badge after the section close tag if set.
+    // The badge is injected into the preceding section — we need to insert it
+    // inside. Append it to the section by stripping the trailing `</section>\n`
+    // and re-adding it after the badge. This avoids threading `today` into
+    // every per-kind render function.
+    if let Some(label) = effective_status_label {
+        // Replace the last `</section>\n` with badge + `</section>\n`.
+        if let Some(pos) = html.rfind("</section>\n") {
+            let badge = format!(
+                "<span class=\"ko__effective-status ko__effective-status--{label}\">{label}</span>\n",
+            );
+            html.insert_str(pos, &badge);
         }
     }
 }
@@ -1322,7 +1372,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             html.contains("<section class=\"procedure\" id=\"auth.key.rotate\">"),
@@ -1368,7 +1418,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             html.contains("<section class=\"example\" id=\"auth.credits.example\">"),
@@ -1409,7 +1459,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             !html.contains("example__status"),
@@ -1431,7 +1481,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             html.contains("<section class=\"claim\" id=\"billing.credits\">"),
@@ -1465,7 +1515,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             !html.contains("<footer class=\"claim__metadata\">"),
@@ -1486,7 +1536,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             html.contains("<footer class=\"claim__metadata\">\n<dl>\n"),
@@ -1516,7 +1566,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         let alpha = html.find("<dt>alpha</dt>").expect("missing alpha field");
         let middle = html.find("<dt>middle</dt>").expect("missing middle field");
@@ -1543,7 +1593,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             html.contains(
@@ -1564,7 +1614,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         // Status tag content must be escaped
         assert!(
@@ -1592,7 +1642,7 @@ mod tests {
         ]);
         let block = make_verified_claim("billing.credits", "body content", fields, dummy_span());
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             html.contains("<section class=\"claim claim--verified\" id=\"billing.credits\">"),
@@ -1638,7 +1688,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             html.contains("<section class=\"decision decision--accepted\" id=\"billing.policy\">"),
@@ -1674,7 +1724,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             html.contains(
@@ -1710,7 +1760,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
         assert!(
             !html.contains("<footer class=\"warning__metadata\">"),
             "unexpected metadata footer: {html}"
@@ -1724,7 +1774,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
         assert!(
             html.contains("<footer class=\"warning__metadata\">\n<dl>\n"),
             "missing metadata footer: {html}"
@@ -1745,7 +1795,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             html.contains("clock &lt; token &amp;&amp; token &gt; drift"),
@@ -1794,7 +1844,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
 
         assert!(
             html.contains("<section class=\"glossary\" id=\"billing.credits\">"),
@@ -1826,7 +1876,7 @@ mod tests {
             dummy_span(),
         );
         let mut html = String::new();
-        render_block(&block, &mut html);
+        render_block(&block, None, &mut html);
         assert!(
             html.contains("<footer class=\"glossary__metadata\">\n<dl>\n"),
             "missing metadata footer: {html}"

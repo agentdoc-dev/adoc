@@ -653,6 +653,8 @@ mod tests {
                     GraphEvidence::inline("test", "integration"),
                     GraphEvidence::inline("human_review", "team-billing"),
                 ],
+                effective_status: None,
+                effective_reason: None,
             }
         }
 

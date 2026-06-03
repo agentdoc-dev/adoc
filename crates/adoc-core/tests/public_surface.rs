@@ -282,6 +282,8 @@ fn public_surface_compiles_with_only_documented_imports() {
         fields: std::collections::BTreeMap::new(),
         relations: RetrievalRelations::default(),
         search_match: None,
+        effective_status: None,
+        effective_reason: None,
     };
     let _: RetrievalRecord = record;
 
