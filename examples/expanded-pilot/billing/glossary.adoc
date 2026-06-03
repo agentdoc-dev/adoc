@@ -1,0 +1,17 @@
+# Billing Glossary @doc(billing.glossary)
+
+Shared billing vocabulary.
+
+::glossary billing.credits
+status: draft
+owner: team-billing
+--
+Credits are balance adjustments that reduce an account's future invoice amount.
+::
+
+::glossary billing.ledger
+status: draft
+owner: team-billing
+--
+The ledger is the append-only record of every posted credit and debit movement.
+::

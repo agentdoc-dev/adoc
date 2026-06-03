@@ -1,0 +1,21 @@
+# Billing Examples @doc(billing.examples)
+
+Usage examples for the credits API. Executable examples declare `checks` and a
+`sandbox`; adoc never runs them.
+
+::example billing.credits.limit-rejection
+lang: ts
+status: verified
+checks: npm run test -- credits
+sandbox: node-test
+owner: team-billing
+--
+expect(result.error).toBe("credits.limitExceeded");
+::
+
+::example billing.credits.snippet
+lang: ts
+owner: team-billing
+--
+const remaining = credits.balance - amount;
+::

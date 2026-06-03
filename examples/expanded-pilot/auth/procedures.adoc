@@ -1,0 +1,18 @@
+# Auth Runbooks @doc(auth.runbooks)
+
+Operational procedures for the authentication service.
+
+::procedure auth.key.rotate
+status: verified
+owner: platform-security
+verified_at: 2026-05-06
+role_required: platform-security-oncall
+rollback: Restore the previous signing key from the secrets vault and redeploy the auth service.
+human_review: ran end-to-end in staging on 2026-05-05
+impacts: [crates/auth/src/key.rs]
+--
+1. Open the secrets console and confirm break-glass access.
+2. Generate and stage the new signing key.
+3. Redeploy the auth service with the staged key.
+4. Verify the health endpoint and a live sign-in.
+::

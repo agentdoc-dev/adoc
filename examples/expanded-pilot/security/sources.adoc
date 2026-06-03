@@ -1,0 +1,11 @@
+# Security Sources @doc(security.sources)
+
+External evidence pointers for security guidance.
+
+::source security.cwe-localstorage
+kind: external_url
+url: https://cwe.mitre.org/data/definitions/922.html
+owner: platform-security
+--
+CWE-922: Insecure Storage of Sensitive Information, backing the no-local-storage constraint.
+::

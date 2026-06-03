@@ -1,0 +1,23 @@
+# Security Policies @doc(security.policies)
+
+Org-wide security policies. Policy authority comes from approvers and effective
+dates, not from verification.
+
+::policy security.production-db-access
+status: active
+owner: security-lead
+approved_by: [security-lead, platform-lead]
+effective_at: 2026-04-01
+review_interval: 90d
+related_to: security.audit.retention
+--
+Production database access requires an approved break-glass request and is logged for audit.
+::
+
+::claim security.audit.retention
+status: draft
+owner: security-lead
+expires_at: 2026-02-01
+--
+Audit logs for production access are retained for at least 365 days.
+::
