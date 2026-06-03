@@ -40,16 +40,16 @@ Implemented:
 - V4 Markdown compatibility mode: `.md` ingestion via `pulldown-cmark` parser, parallel `compat/` validator pipeline, raw-HTML quarantine, unsafe link/image scheme drop, GFM extensions (tables, task lists, strikethrough, autolinks, footnotes), `compat.unknown_extension` classifier for MDX/Pandoc/math/attribute blocks, retrieval migration hint, `adoc://agent/v0/compat-guide` MCP resource, and the Markdown Pilot end-to-end harness ([markdown-pilot.md](markdown-pilot.md)). Closes PRD MVP must-have #14. The implementation contract is [V4-DESIGN.md](V4-DESIGN.md); the architecture decisions are [adr/0021-use-pulldown-cmark-for-markdown-ingestion.md](adr/0021-use-pulldown-cmark-for-markdown-ingestion.md), [adr/0022-file-extension-as-the-only-mode-signal.md](adr/0022-file-extension-as-the-only-mode-signal.md), and [adr/0023-markdown-source-is-prose-only-ingestion.md](adr/0023-markdown-source-is-prose-only-ingestion.md).
 - Billing pilot retrieval harness: 30+ Knowledge Objects, retrieval-set fixtures, property-style search invariants, and docs for retrieval maintenance.
 - Markdown Pilot end-to-end harness: 15 `.md` + 2 `.adoc` files modeled on real product docs (API reference, runbooks, tutorials, reference notes), exact-match diagnostic and graph-node budgets, mixed-mode diff/review coverage, and maintenance contract at [markdown-pilot.md](markdown-pilot.md).
+- V5 Expanded Knowledge Model: seven new typed kinds (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), the shared `Severity` value object, the typed `EvidenceKind` evidence model (`evidence_ref` to `source` objects with edge + projection, symmetric `claim`/`decision` evidence), the additive `adoc.graph.v2` → `adoc.graph.v3` bump, the `agent_instruction` runtime-not-enforced banner and `adoc://agent/v0/agent-instruction-guide` / `contradiction-guide` resources, and the Expanded Pilot end-to-end harness ([expanded-pilot.md](expanded-pilot.md)). Closes PRD MVP must-have #4 for the seven object types, plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model). The implementation contract is [V5-DESIGN.md](V5-DESIGN.md); the decisions are ADR-0024 through ADR-0032.
 
 Next:
 
-- V5 Expanded Knowledge Model — the design is captured in [V5-DESIGN.md](V5-DESIGN.md). V5.1 (Constraint + Severity foundation + `adoc.graph.v2` → `adoc.graph.v3` bump), V5.2 (Procedure), V5.3 (Example, declaration-only), V5.4 (Policy), V5.5 (Agent Instruction), V5.6 (Contradiction, manually authored, ADR-0026), V5.7 (Source Object, coexists with inline evidence, ADR-0027), and V5.8 (V5 Evidence Model — typed `EvidenceKind` evidence, `evidence_ref` to `source` objects with edge + projection, symmetric `claim`/`decision` evidence, ADR-0032) are implemented; the next slice is V5.9 (V5 Expanded Pilot). Closes PRD MVP must-have #4 for the seven object types not yet implemented (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model).
+- V5.10 Lifecycle automation: scheduled freshness-driven status transitions (`verified` → `stale` on `expires_at`), automatic claim-status propagation on contradiction resolution, evidence-quality scoring per PRD §15.3, and policy review-interval drift diagnostics. Sequenced after V5.9 now that the Expanded Knowledge Model is in real use and lifecycle pain can be measured.
 
 Later:
 
 - V4.5 Markdown migration (`adoc migrate`, suggested-claim extraction, import report, `adoc.migrate.report.v0` envelope, MCP integration). Sequenced after V4 once compatibility-mode usage surfaces measured friction. PRD MVP must-have #18.
 - V1.7 prose retrieval. Extends BM25 and embedding pipelines to index prose blocks symmetrically across `.adoc` and `.md` sources. Independent of V4 / V5 sequencing; can ship before or after.
-- V5.10 Lifecycle automation: scheduled freshness-driven status transitions (`verified` → `stale` on `expires_at`), automatic claim-status propagation on contradiction resolution, evidence-quality scoring per PRD §15.3, and policy review-interval drift diagnostics. Sequenced after V5.9 once the Expanded Knowledge Model is in real use and lifecycle pain is measured.
 - V6 composition and advanced graphs: `@include`, nested typed blocks, custom schema registry, automated contradiction detection. Sequenced after V5 because all of V6 assumes the V5 Expanded Object Set is stable.
 - V7 web surfaces and governance: read-only object explorer, review dashboard, ownership and approval workflows, agent activity log, SSO/RBAC/audit/compliance, hosted storage.
 
@@ -733,7 +733,7 @@ Deferred: evidence-quality scoring (V5.10+), automated evidence freshness checks
 
 ### V5.9: V5 Expanded Pilot Slice
 
-Goal: prove V5 end-to-end against a realistic mixed-domain docs tree. Mirrors the Billing Pilot (V1.6) and Markdown Pilot (V4.4) pattern.
+Goal: prove V5 end-to-end against a realistic mixed-domain docs tree. Mirrors the Billing Pilot (V1.6) and Markdown Pilot (V4.4) pattern. Implemented.
 
 Scope:
 
