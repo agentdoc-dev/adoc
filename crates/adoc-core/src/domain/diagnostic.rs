@@ -126,7 +126,7 @@ pub enum DiagnosticCode {
     /// V5.10 TB3: a `verified` claim's best inline evidence tier is Low-only.
     ///
     /// Emitted when a verified claim has at least one inline evidence entry but
-    /// every inline entry maps to [`EvidenceTier::Low`], and the claim has no
+    /// every inline entry maps to the `Low` evidence tier, and the claim has no
     /// `ObjectRef` evidence (which counts as ≥ Medium per ADR-0034).
     ClaimEvidenceQualityLow,
     /// V5.10 TB4: a `claim` is referenced by an `unresolved` contradiction
