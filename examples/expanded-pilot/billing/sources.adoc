@@ -1,0 +1,11 @@
+# Billing Sources @doc(billing.sources)
+
+Reusable evidence pointers for the billing feature.
+
+::source billing.consume-use-case
+kind: source_code
+path: apps/backend/src/features/credits/consume.use-case.ts
+owner: backend-platform
+--
+Implementation of credit consumption referenced by verified billing claims.
+::

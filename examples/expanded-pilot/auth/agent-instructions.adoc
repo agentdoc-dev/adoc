@@ -1,0 +1,15 @@
+# Agent Instructions @doc(auth.agent-instructions)
+
+Declarative guidance for agents answering auth questions. This is authored
+knowledge, not a runtime authorization control.
+
+::agent_instruction auth.docs-answering-policy
+scope: docs/auth/*
+trust: team
+owner: ai-platform
+allowed_actions: [summarize, cite, suggest_edits]
+forbidden_actions: [execute_shell, access_secrets, modify_auth_code]
+--
+Prefer verified claims over draft notes when answering auth questions, and surface any active
+contradiction touching a cited claim before answering definitively.
+::

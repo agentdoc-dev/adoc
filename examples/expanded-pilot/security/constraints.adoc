@@ -1,0 +1,11 @@
+# Security Constraints @doc(security.constraints)
+
+Hard security rules enforced across the platform.
+
+::constraint auth.session.no-local-storage
+severity: critical
+owner: platform-security
+impacts: [crates/auth/src/session.rs]
+--
+Session tokens must not be stored in localStorage; use in-memory storage only.
+::

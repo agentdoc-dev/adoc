@@ -1,0 +1,14 @@
+# Security Contradictions @doc(security.contradictions)
+
+Manually-authored cross-references linking conflicting claims. V5 does not
+auto-detect or auto-propagate contradictions.
+
+::contradiction auth.session.conflict
+severity: high
+status: unresolved
+claims: [auth.session.local-storage-allowed, auth.session.memory-storage]
+--
+Claim auth.session.memory-storage requires memory-only storage while
+auth.session.local-storage-allowed permits localStorage. This is an unresolved
+conflict in session-storage guidance.
+::

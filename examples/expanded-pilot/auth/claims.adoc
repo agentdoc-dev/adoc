@@ -1,0 +1,30 @@
+# Auth Claims @doc(auth.claims)
+
+Authentication knowledge for the platform. Two of these claims conflict and are
+linked by an explicit [[auth.session.conflict]] contradiction.
+
+::claim auth.session.memory-storage
+status: contradicted
+owner: platform-security
+--
+Session tokens must be stored in memory only and never persisted to disk or browser storage.
+::
+
+::claim auth.session.local-storage-allowed
+status: contradicted
+owner: web-platform
+--
+Session tokens may be stored in localStorage so that sessions survive a page reload.
+::
+
+::claim auth.mfa.enforced
+status: verified
+owner: platform-security
+verified_at: 2026-05-06
+source: auth service production config 2026-05-05
+test: cargo test auth_mfa_enforced
+reviewed_by: security-review
+depends_on: auth.session.memory-storage
+--
+Multi-factor authentication is enforced for every interactive sign-in to the admin console.
+::
