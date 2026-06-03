@@ -57,9 +57,8 @@ impl ContradictionStatus {
     }
 
     /// `true` only for `Unresolved` — the only state where the contradiction
-    /// still requires attention from agents. Documented for agent guide usage;
-    /// not yet called from lib code in V5.6.
-    #[allow(dead_code)]
+    /// still requires attention from agents and triggers the
+    /// `schema.claim_contradicted_by_unresolved` diagnostic and the HTML badge.
     pub(crate) fn is_active(self) -> bool {
         matches!(self, Self::Unresolved)
     }

@@ -50,6 +50,9 @@ impl Evidence {
     /// - `"test"` → [`EvidenceKind::Test`]
     /// - `"reviewed_by"` → [`EvidenceKind::HumanReview`]
     /// - `"human_review"` → [`EvidenceKind::HumanReview`]
+    /// - `"external_url"` → [`EvidenceKind::ExternalUrl`] (V5.10 TB5: Low-tier
+    ///   inline evidence; warns `claim.evidence_quality_low` on verified claims
+    ///   that rely solely on this kind)
     ///
     /// Returns `None` for unknown field names or when `value` is empty.
     pub(crate) fn from_field(field_name: &str, value: &str) -> Option<Self> {
@@ -57,6 +60,7 @@ impl Evidence {
             "source" => EvidenceKind::SourceCode,
             "test" => EvidenceKind::Test,
             "reviewed_by" | "human_review" => EvidenceKind::HumanReview,
+            "external_url" => EvidenceKind::ExternalUrl,
             _ => return None,
         };
         Self::inline(kind, value)

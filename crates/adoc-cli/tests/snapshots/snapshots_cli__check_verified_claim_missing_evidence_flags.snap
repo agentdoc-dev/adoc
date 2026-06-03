@@ -5,8 +5,8 @@ expression: combined
 ---
 exit-success: false
 ---stdout---
-verified_claim_missing_evidence.adoc:3:1: error[claim.verified_missing_evidence] verified claim `billing.no-evidence` requires at least one evidence field: `source`, `test`, `reviewed_by`, or `evidence_ref`
+verified_claim_missing_evidence.adoc:3:1: error[claim.verified_missing_evidence] verified claim `billing.no-evidence` requires at least one evidence field: `source`, `test`, `reviewed_by`, `external_url`, or `evidence_ref`
   object_id: billing.no-evidence
-  help: Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, `reviewed_by`, or `evidence_ref`.
+  help: Verified claims require `owner`, `verified_at`, and at least one of `source`, `test`, `reviewed_by`, `external_url`, or `evidence_ref`.
 1 errors, 0 warnings
 ---stderr---
