@@ -274,6 +274,45 @@ fn stdio_server_runs_documented_mcp_agent_gateway_quickstart() {
     assert!(compat_text.starts_with("# "));
     assert!(compat_text.contains("Compatibility Mode"));
     assert!(compat_text.contains("retrieval.no_knowledge_objects_consider_migration"));
+
+    // V5.9: the V5 agent-instruction and contradiction guides must be served
+    // via stdio so agents learn the read-only-knowledge contract for the new
+    // kinds (ADR-0025, ADR-0026).
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "resources/read",
+        "params": { "uri": "adoc://agent/v0/agent-instruction-guide" }
+    }));
+    let agent_instruction_guide = server.receive();
+    assert_eq!(agent_instruction_guide["id"], 10);
+    assert!(
+        agent_instruction_guide.get("error").is_none(),
+        "agent-instruction-guide response: {agent_instruction_guide:#?}"
+    );
+    let agent_instruction_text = agent_instruction_guide["result"]["contents"][0]["text"]
+        .as_str()
+        .expect("agent-instruction-guide text");
+    assert!(agent_instruction_text.starts_with("# "));
+    assert!(agent_instruction_text.contains("not runtime ACLs"));
+
+    server.send(serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "resources/read",
+        "params": { "uri": "adoc://agent/v0/contradiction-guide" }
+    }));
+    let contradiction_guide = server.receive();
+    assert_eq!(contradiction_guide["id"], 11);
+    assert!(
+        contradiction_guide.get("error").is_none(),
+        "contradiction-guide response: {contradiction_guide:#?}"
+    );
+    let contradiction_text = contradiction_guide["result"]["contents"][0]["text"]
+        .as_str()
+        .expect("contradiction-guide text");
+    assert!(contradiction_text.starts_with("# "));
+    assert!(contradiction_text.contains("manually authored"));
 }
 
 /// V3.6 acceptance: the stdio server, given a 2-commit git fixture project,
