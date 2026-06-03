@@ -113,6 +113,8 @@ mod tests {
             forbidden_actions: Vec::new(),
             contradiction_claims: Vec::new(),
             evidence,
+            effective_status: None,
+            effective_reason: None,
         }
     }
 

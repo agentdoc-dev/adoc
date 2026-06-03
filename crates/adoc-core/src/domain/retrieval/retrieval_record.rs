@@ -25,6 +25,15 @@ pub struct RetrievalRecord {
     pub relations: RetrievalRelations,
     #[serde(rename = "match", skip_serializing_if = "Option::is_none")]
     pub search_match: Option<RetrievalMatch>,
+    /// V5.10: derived effective lifecycle status. `Some("stale")` when the
+    /// authored status is `"verified"` and `expires_at < today`. Not authored,
+    /// not hashed. Clone-through from the graph node.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_status: Option<String>,
+    /// V5.10: reason string for `effective_status`, e.g. `"expired:2026-01-01"`.
+    /// Always `None` when `effective_status` is `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -165,6 +174,8 @@ impl RetrievalRecord {
             fields: metadata::generic_fields(&object.fields),
             relations: RetrievalRelations::from_graph(&object.relations),
             search_match,
+            effective_status: object.effective_status.clone(),
+            effective_reason: object.effective_reason.clone(),
         }
     }
 }
@@ -208,6 +219,8 @@ mod tests {
                 GraphEvidence::inline("test", "cargo test billing"),
                 GraphEvidence::inline("human_review", "qa-team"),
             ],
+            effective_status: None,
+            effective_reason: None,
         };
 
         let record = RetrievalRecord::from(&object);

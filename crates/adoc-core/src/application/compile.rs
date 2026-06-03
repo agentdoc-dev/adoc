@@ -9,7 +9,6 @@ use crate::application::resolve_knowledge_objects::{
 use crate::application::resolve_object_references::resolve_object_references;
 use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
-use crate::domain::ports::artifact_writer::ArtifactWriter;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
 use crate::domain::source::SourceFile;
@@ -83,7 +82,15 @@ pub(crate) fn build_with_provider<P: SourceProvider>(
     provider: &P,
     options: BuildOptions<'_>,
 ) -> CompileResult {
-    run_compile_pipeline(provider, Some(options), local_today())
+    build_with_provider_for_date(provider, options, local_today())
+}
+
+pub(crate) fn build_with_provider_for_date<P: SourceProvider>(
+    provider: &P,
+    options: BuildOptions<'_>,
+    today: NaiveDate,
+) -> CompileResult {
+    run_compile_pipeline(provider, Some(options), today)
 }
 
 pub(crate) struct BuildOptions<'a> {
@@ -134,8 +141,12 @@ fn run_compile_pipeline<P: SourceProvider>(
     if let Some(options) = &build_options {
         diagnostics.extend(build_embedding_diagnostics(options));
     }
-    let artifact_result =
-        build_artifacts_for_build(&workspace, &diagnostics, build_options.as_mut());
+    let artifact_result = build_artifacts_for_build(
+        &workspace,
+        &diagnostics,
+        build_options.as_mut(),
+        Some(today),
+    );
     let artifacts = artifact_result.artifacts;
     diagnostics.extend(artifact_result.diagnostics);
     sort_diagnostics_by_source(&mut diagnostics);
@@ -252,7 +263,7 @@ fn assemble_workspace(parsed: Vec<(SourceFile, PageAst)>) -> WorkspaceAst {
 /// statically dispatched per ADR-0006.
 #[cfg(test)]
 fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Option<BuildArtifacts> {
-    build_artifacts_for_build(workspace, diagnostics, None).artifacts
+    build_artifacts_for_build(workspace, diagnostics, None, None).artifacts
 }
 
 struct ArtifactBuildResult {
@@ -264,6 +275,7 @@ fn build_artifacts_for_build(
     workspace: &WorkspaceAst,
     diagnostics: &[Diagnostic],
     mut build_options: Option<&mut BuildOptions<'_>>,
+    today: Option<NaiveDate>,
 ) -> ArtifactBuildResult {
     if diagnostics
         .iter()
@@ -280,11 +292,11 @@ fn build_artifacts_for_build(
         .filter(|diagnostic| diagnostic.code != DiagnosticCode::BuildEmbeddingsSkipped)
         .cloned()
         .collect::<Vec<_>>();
-    let graph_document = GraphJsonArtifact.build(workspace, &graph_diagnostics);
+    let graph_document = GraphJsonArtifact.build_for_date(workspace, &graph_diagnostics, today);
     let graph_json = graph_document
         .to_pretty_json()
         .expect("graph artifact serialization should not fail");
-    let html = HtmlRenderer.render_workspace(workspace);
+    let html = HtmlRenderer.render_workspace_for_date(workspace, today);
     let prior_search_artifact_path = build_options
         .as_ref()
         .and_then(|options| options.prior_search_artifact_path.clone());
@@ -1550,5 +1562,202 @@ mod tests {
                 .map(|index| (query.len() + index) as f32)
                 .collect())
         }
+    }
+
+    // ── V5.10 TB2: derived effective_status ──────────────────────────────────
+
+    /// A `verified` claim with a past `expires_at` must get
+    /// `effective_status:"stale"` and `effective_reason:"expired:<date>"` in
+    /// the graph JSON, while the authored `status` stays `"verified"`.
+    #[test]
+    fn verified_claim_with_past_expires_at_gets_effective_status_stale() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            concat!(
+                "# Guide @doc(team.guide)\n\n",
+                "::claim billing.credits\n",
+                "status: verified\n",
+                "owner: team-billing\n",
+                "verified_at: 2025-01-01\n",
+                "source: ledger\n",
+                "expires_at: 2026-01-01\n",
+                "--\n",
+                "Credits expire.\n",
+                "::\n",
+            ),
+        ));
+
+        // today = 2026-05-08, expires_at = 2026-01-01 → past → stale
+        let result = compile_with_provider_for_date(&provider, fixed_today());
+
+        assert!(
+            !result.has_errors(),
+            "unexpected errors: {:?}",
+            result.diagnostics
+        );
+        let artifacts = result.artifacts.expect("artifacts must be produced");
+        let graph: serde_json::Value =
+            serde_json::from_str(&artifacts.graph_json).expect("graph JSON valid");
+        let node = graph["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find(|n| n["id"] == "billing.credits")
+            .expect("billing.credits node");
+
+        assert_eq!(
+            node["status"].as_str(),
+            Some("verified"),
+            "authored status must remain 'verified'"
+        );
+        assert_eq!(
+            node["effective_status"].as_str(),
+            Some("stale"),
+            "effective_status must be 'stale'"
+        );
+        assert_eq!(
+            node["effective_reason"].as_str(),
+            Some("expired:2026-01-01"),
+            "effective_reason must record the expiry date"
+        );
+    }
+
+    /// A `verified` claim with a future `expires_at` must NOT get
+    /// `effective_status`.
+    #[test]
+    fn verified_claim_with_future_expires_at_has_no_effective_status() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            concat!(
+                "# Guide @doc(team.guide)\n\n",
+                "::claim billing.future\n",
+                "status: verified\n",
+                "owner: team-billing\n",
+                "verified_at: 2025-01-01\n",
+                "source: ledger\n",
+                "expires_at: 2027-01-01\n",
+                "--\n",
+                "Credits valid.\n",
+                "::\n",
+            ),
+        ));
+
+        let result = compile_with_provider_for_date(&provider, fixed_today());
+
+        assert!(
+            !result.has_errors(),
+            "unexpected errors: {:?}",
+            result.diagnostics
+        );
+        let artifacts = result.artifacts.expect("artifacts must be produced");
+        let graph: serde_json::Value =
+            serde_json::from_str(&artifacts.graph_json).expect("graph JSON valid");
+        let node = graph["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find(|n| n["id"] == "billing.future")
+            .expect("billing.future node");
+
+        assert!(
+            node["effective_status"].is_null(),
+            "future expiry must not set effective_status"
+        );
+        assert!(
+            node["effective_reason"].is_null(),
+            "future expiry must not set effective_reason"
+        );
+    }
+
+    /// A non-`verified` (draft) claim with a past `expires_at` must NOT get
+    /// `effective_status`. The existing `lifecycle.expired` warning still fires.
+    #[test]
+    fn draft_claim_with_past_expires_at_has_no_effective_status() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            concat!(
+                "# Guide @doc(team.guide)\n\n",
+                "::claim billing.draft\n",
+                "status: draft\n",
+                "expires_at: 2026-01-01\n",
+                "--\n",
+                "Draft expires.\n",
+                "::\n",
+            ),
+        ));
+
+        let result = compile_with_provider_for_date(&provider, fixed_today());
+
+        assert!(
+            !result.has_errors(),
+            "unexpected errors: {:?}",
+            result.diagnostics
+        );
+        let artifacts = result.artifacts.expect("artifacts must be produced");
+
+        // The existing lifecycle.expired warning must still fire.
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.code == DiagnosticCode::LifecycleExpired),
+            "lifecycle.expired warning must still fire for non-verified expired claims"
+        );
+
+        let graph: serde_json::Value =
+            serde_json::from_str(&artifacts.graph_json).expect("graph JSON valid");
+        let node = graph["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find(|n| n["id"] == "billing.draft")
+            .expect("billing.draft node");
+
+        assert!(
+            node["effective_status"].is_null(),
+            "draft status must not set effective_status"
+        );
+    }
+
+    /// A `verified` claim with no `expires_at` field must NOT get
+    /// `effective_status`.
+    #[test]
+    fn verified_claim_without_expires_at_has_no_effective_status() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            concat!(
+                "# Guide @doc(team.guide)\n\n",
+                "::claim billing.no-expiry\n",
+                "status: verified\n",
+                "owner: team-billing\n",
+                "verified_at: 2025-01-01\n",
+                "source: ledger\n",
+                "--\n",
+                "No expiry set.\n",
+                "::\n",
+            ),
+        ));
+
+        let result = compile_with_provider_for_date(&provider, fixed_today());
+
+        assert!(
+            !result.has_errors(),
+            "unexpected errors: {:?}",
+            result.diagnostics
+        );
+        let artifacts = result.artifacts.expect("artifacts must be produced");
+        let graph: serde_json::Value =
+            serde_json::from_str(&artifacts.graph_json).expect("graph JSON valid");
+        let node = graph["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find(|n| n["id"] == "billing.no-expiry")
+            .expect("billing.no-expiry node");
+
+        assert!(
+            node["effective_status"].is_null(),
+            "absent expires_at must not set effective_status"
+        );
     }
 }

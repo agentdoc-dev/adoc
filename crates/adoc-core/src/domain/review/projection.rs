@@ -303,6 +303,8 @@ mod tests {
             forbidden_actions: Vec::new(),
             contradiction_claims: Vec::new(),
             evidence: Vec::new(),
+            effective_status: None,
+            effective_reason: None,
         }
     }
 
@@ -398,6 +400,8 @@ mod tests {
             forbidden_actions: Vec::new(),
             contradiction_claims: Vec::new(),
             evidence: Vec::new(),
+            effective_status: None,
+            effective_reason: None,
         };
 
         let base = constraint_node("sha256:a", "high");
@@ -441,6 +445,8 @@ mod tests {
             forbidden_actions: vec!["execute_shell".to_string()],
             contradiction_claims: Vec::new(),
             evidence: Vec::new(),
+            effective_status: None,
+            effective_reason: None,
         };
 
         let base = agent_node("sha256:a", "team");

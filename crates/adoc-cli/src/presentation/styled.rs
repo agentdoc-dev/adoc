@@ -260,6 +260,8 @@ mod tests {
             fields: BTreeMap::new(),
             relations: RetrievalRelations::default(),
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         }
     }
 
@@ -369,6 +371,8 @@ mod tests {
             ]),
             relations: RetrievalRelations::default(),
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         };
         let view = view_for(record);
         let text = strip_ansi(&render(&view));
@@ -466,6 +470,8 @@ mod tests {
                 related_to: vec![],
             },
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -731,6 +737,8 @@ mod tests {
             fields: BTreeMap::new(),
             relations: RetrievalRelations::default(),
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -776,6 +784,8 @@ mod tests {
             fields: BTreeMap::from([("canonical".to_string(), "billing credit".to_string())]),
             relations: RetrievalRelations::default(),
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -814,6 +824,8 @@ mod tests {
                 related_to: vec!["billing.credits.decrement-after-success".to_string()],
             },
             search_match: None,
+            effective_status: None,
+            effective_reason: None,
         };
         let view = view_for(record);
         let raw = render(&view);

@@ -153,6 +153,8 @@ pub(crate) mod test_support {
             forbidden_actions: Vec::new(),
             contradiction_claims: Vec::new(),
             evidence: Vec::new(),
+            effective_status: None,
+            effective_reason: None,
         }
     }
 }

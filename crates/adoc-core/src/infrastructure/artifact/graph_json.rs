@@ -3,6 +3,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+use chrono::NaiveDate;
 use serde::Serialize;
 
 use crate::application::hashing::sha256_prefixed;
@@ -69,6 +70,20 @@ impl ArtifactWriter<WorkspaceAst> for GraphJsonArtifact {
     type Output = GraphArtifactDocument;
 
     fn build(&self, workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> GraphArtifactDocument {
+        // Default: no date-pinning; effective_status derivation is skipped.
+        self.build_for_date(workspace, diagnostics, None)
+    }
+}
+
+impl GraphJsonArtifact {
+    /// Build a graph artifact with an explicit `today` date so that
+    /// `effective_status` derivation can be pinned in tests.
+    pub(crate) fn build_for_date(
+        &self,
+        workspace: &WorkspaceAst,
+        diagnostics: &[Diagnostic],
+        today: Option<NaiveDate>,
+    ) -> GraphArtifactDocument {
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
 
@@ -84,7 +99,7 @@ impl ArtifactWriter<WorkspaceAst> for GraphJsonArtifact {
             for (block_index, block) in page.blocks.iter().enumerate() {
                 let order = block_index as u32;
                 let node_id = block_node_id(page, block, order);
-                nodes.push(block_to_graph_node(block, &node_id, &page_id, order));
+                nodes.push(block_to_graph_node(block, &node_id, &page_id, order, today));
                 edges.push(GraphEdge {
                     kind: GraphEdgeKind::Contains,
                     source: page_id.clone(),
@@ -204,7 +219,13 @@ fn block_node_id(page: &PageAst, block: &BlockAst, order: u32) -> String {
     }
 }
 
-fn block_to_graph_node(block: &BlockAst, id: &str, page_id: &str, order: u32) -> GraphNode {
+fn block_to_graph_node(
+    block: &BlockAst,
+    id: &str,
+    page_id: &str,
+    order: u32,
+    today: Option<NaiveDate>,
+) -> GraphNode {
     match block {
         BlockAst::Heading(heading) => GraphNode::Heading(GraphBlockNode {
             id: id.to_string(),
@@ -272,9 +293,9 @@ fn block_to_graph_node(block: &BlockAst, id: &str, page_id: &str, order: u32) ->
             items: Vec::new(),
             source_span: source_span(&code_block.span),
         }),
-        BlockAst::KnowledgeObject(knowledge_object) => {
-            GraphNode::KnowledgeObject(knowledge_object_to_graph_node(knowledge_object, page_id))
-        }
+        BlockAst::KnowledgeObject(knowledge_object) => GraphNode::KnowledgeObject(
+            knowledge_object_to_graph_node(knowledge_object, page_id, today),
+        ),
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before graph emission")
         }
@@ -349,8 +370,9 @@ fn block_to_graph_node(block: &BlockAst, id: &str, page_id: &str, order: u32) ->
 fn knowledge_object_to_graph_node(
     knowledge_object: &KnowledgeObject,
     page_id: &str,
+    today: Option<NaiveDate>,
 ) -> GraphKnowledgeObjectNode {
-    let mut node = knowledge_object_to_graph_node_without_hash(knowledge_object, page_id);
+    let mut node = knowledge_object_to_graph_node_without_hash(knowledge_object, page_id, today);
     node.content_hash = graph_knowledge_object_content_hash(&node);
     node
 }
@@ -358,6 +380,7 @@ fn knowledge_object_to_graph_node(
 fn knowledge_object_to_graph_node_without_hash(
     knowledge_object: &KnowledgeObject,
     page_id: &str,
+    today: Option<NaiveDate>,
 ) -> GraphKnowledgeObjectNode {
     let span = knowledge_object.span();
     let metadata = knowledge_object.metadata_projection();
@@ -368,6 +391,14 @@ fn knowledge_object_to_graph_node_without_hash(
     let approved_by = policy_approved_by(knowledge_object);
     let (allowed_actions, forbidden_actions) = agent_instruction_actions(knowledge_object);
     let contradiction_claims = contradiction_claims(knowledge_object);
+
+    // V5.10: derived effective_status — computed only when a pinned `today` is
+    // provided. The `None` sentinel preserves the pre-V5.10 behaviour for the
+    // `ArtifactWriter::build` default path (no date pinning needed at that
+    // layer; the lifecycle rule already fires in the validation stage).
+    let (effective_status, effective_reason) = today
+        .and_then(|date| derive_effective_status(&status, knowledge_object, date))
+        .map_or((None, None), |(s, r)| (Some(s), Some(r)));
 
     GraphKnowledgeObjectNode {
         id: knowledge_object.id().as_str().to_string(),
@@ -386,6 +417,44 @@ fn knowledge_object_to_graph_node_without_hash(
         contradiction_claims,
         // V5.8: typed evidence array replaces flat source/test/reviewed_by fields.
         evidence: metadata.graph_evidence(),
+        // V5.10: derived — NOT part of content_hash.
+        effective_status,
+        effective_reason,
+    }
+}
+
+/// Derive effective lifecycle status for a graph node.
+///
+/// Returns `Some(("stale", "expired:<YYYY-MM-DD>"))` when:
+/// - the authored status is exactly `"verified"`, AND
+/// - the `expires_at` field parses as `%Y-%m-%d` and is strictly `< today`.
+///
+/// Returns `None` in all other cases:
+/// - non-verified status (draft, plain, …),
+/// - future or today expiry,
+/// - missing or unparseable `expires_at`.
+///
+/// TB4 will add the `contradicted` case layered on top of this helper.
+pub(crate) fn derive_effective_status(
+    status: &Option<String>,
+    knowledge_object: &KnowledgeObject,
+    today: NaiveDate,
+) -> Option<(String, String)> {
+    if status.as_deref() != Some("verified") {
+        return None;
+    }
+
+    let expires_at_value = knowledge_object
+        .fields()
+        .iter()
+        .find_map(|(key, value)| (key == "expires_at").then_some(value.as_str()))?;
+
+    let expires_at_date = NaiveDate::parse_from_str(expires_at_value, "%Y-%m-%d").ok()?;
+
+    if expires_at_date < today {
+        Some(("stale".to_string(), format!("expired:{expires_at_date}")))
+    } else {
+        None
     }
 }
 
@@ -1354,5 +1423,148 @@ mod tests {
         let ev1 = &decision_node.evidence[1];
         assert_eq!(ev1.kind, "test");
         assert_eq!(ev1.value.as_deref(), Some("cargo test billing"));
+    }
+
+    // ── V5.10 TB2: effective_status hash-stability ────────────────────────────
+
+    fn make_ko_node(
+        effective_status: Option<String>,
+        effective_reason: Option<String>,
+    ) -> GraphKnowledgeObjectNode {
+        GraphKnowledgeObjectNode {
+            id: "billing.credits".to_string(),
+            kind: "claim".to_string(),
+            content_hash: String::new(),
+            status: Some("verified".to_string()),
+            body: "Credits are verified.".to_string(),
+            page_id: "team.billing".to_string(),
+            source_span: GraphSourceSpan {
+                path: "billing.adoc".to_string(),
+                line: 1,
+                column: 1,
+            },
+            fields: std::collections::BTreeMap::new(),
+            relations: GraphRelations::default(),
+            impacts: Vec::new(),
+            approved_by: Vec::new(),
+            allowed_actions: Vec::new(),
+            forbidden_actions: Vec::new(),
+            contradiction_claims: Vec::new(),
+            evidence: Vec::new(),
+            effective_status,
+            effective_reason,
+        }
+    }
+
+    /// `content_hash` must be identical whether or not `effective_status` is set,
+    /// proving that the two V5.10 derived fields are excluded from the hash payload.
+    #[test]
+    fn content_hash_is_stable_regardless_of_effective_status() {
+        let node_without = make_ko_node(None, None);
+        let node_with = make_ko_node(
+            Some("stale".to_string()),
+            Some("expired:2026-01-01".to_string()),
+        );
+
+        let hash_without = graph_knowledge_object_content_hash(&node_without);
+        let hash_with = graph_knowledge_object_content_hash(&node_with);
+
+        assert_eq!(
+            hash_without, hash_with,
+            "content_hash must be identical whether or not effective_status is set; \
+             effective_status is not part of the hash payload"
+        );
+    }
+
+    fn make_verified_claim_with_expires_at(
+        id: &str,
+        expires_at: &str,
+    ) -> crate::domain::knowledge_object::KnowledgeObject {
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::claim::{
+            Claim, Evidence, Owner, Verification, VerifiedAt,
+        };
+
+        let span = dummy_span();
+        let owner = Owner::try_new("team-billing").expect("owner");
+        let verified_at = VerifiedAt::try_new("2025-01-01").expect("verified_at");
+        let source_ev = Evidence::from_field("source", "ledger").expect("evidence");
+        let verification = Verification::new(owner, verified_at, vec![source_ev]);
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert("expires_at".to_string(), expires_at.to_string());
+        let claim = Claim::try_new(
+            id,
+            Some("verified"),
+            "Body.",
+            fields,
+            Some(verification),
+            span,
+        )
+        .expect("valid verified claim");
+        KnowledgeObject::Claim(claim)
+    }
+
+    fn make_plain_claim_with_expires_at(
+        id: &str,
+        expires_at: &str,
+    ) -> crate::domain::knowledge_object::KnowledgeObject {
+        use crate::domain::knowledge_object::KnowledgeObject;
+        use crate::domain::knowledge_object::claim::Claim;
+
+        let span = dummy_span();
+        let mut fields = std::collections::BTreeMap::new();
+        fields.insert("expires_at".to_string(), expires_at.to_string());
+        let claim = Claim::try_new(id, Some("plain"), "Body.", fields, None, span)
+            .expect("valid plain claim");
+        KnowledgeObject::Claim(claim)
+    }
+
+    /// `derive_effective_status` returns `Some(("stale", "expired:<date>"))` for a
+    /// verified claim with a past `expires_at`.
+    #[test]
+    fn derive_effective_status_returns_stale_for_verified_past_expiry() {
+        let ko = make_verified_claim_with_expires_at("billing.credits", "2026-01-01");
+        let status = Some("verified".to_string());
+        let today = NaiveDate::from_ymd_opt(2026, 5, 8).expect("valid date");
+
+        let result = derive_effective_status(&status, &ko, today);
+
+        assert_eq!(
+            result,
+            Some(("stale".to_string(), "expired:2026-01-01".to_string())),
+            "verified claim with past expires_at must return stale"
+        );
+    }
+
+    /// `derive_effective_status` returns `None` for a draft (non-verified) claim
+    /// even when `expires_at` is in the past.
+    #[test]
+    fn derive_effective_status_returns_none_for_non_verified_past_expiry() {
+        let ko = make_plain_claim_with_expires_at("billing.draft", "2026-01-01");
+        let status = Some("plain".to_string());
+        let today = NaiveDate::from_ymd_opt(2026, 5, 8).expect("valid date");
+
+        let result = derive_effective_status(&status, &ko, today);
+
+        assert!(
+            result.is_none(),
+            "non-verified status must not produce effective_status"
+        );
+    }
+
+    /// `derive_effective_status` returns `None` for a verified claim with a
+    /// future `expires_at`.
+    #[test]
+    fn derive_effective_status_returns_none_for_verified_future_expiry() {
+        let ko = make_verified_claim_with_expires_at("billing.future", "2027-01-01");
+        let status = Some("verified".to_string());
+        let today = NaiveDate::from_ymd_opt(2026, 5, 8).expect("valid date");
+
+        let result = derive_effective_status(&status, &ko, today);
+
+        assert!(
+            result.is_none(),
+            "future expires_at must not produce effective_status"
+        );
     }
 }
