@@ -88,6 +88,9 @@ pub enum DiagnosticCode {
     SchemaPolicyInvalidReviewInterval,
     SchemaPolicyMissingBody,
     SchemaPolicyFutureEffectiveAt,
+    /// V5.10 TB1: an `active` policy's `effective_at + review_interval` is
+    /// strictly before today — the review is overdue.
+    SchemaPolicyReviewOverdue,
     SchemaAgentInstructionMissingScope,
     SchemaAgentInstructionMissingTrust,
     SchemaAgentInstructionInvalidTrust,
@@ -190,6 +193,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaPolicyInvalidReviewInterval,
             DiagnosticCode::SchemaPolicyMissingBody,
             DiagnosticCode::SchemaPolicyFutureEffectiveAt,
+            DiagnosticCode::SchemaPolicyReviewOverdue,
             DiagnosticCode::SchemaAgentInstructionMissingScope,
             DiagnosticCode::SchemaAgentInstructionMissingTrust,
             DiagnosticCode::SchemaAgentInstructionInvalidTrust,
@@ -298,6 +302,7 @@ impl DiagnosticCode {
             }
             DiagnosticCode::SchemaPolicyMissingBody => "schema.policy_missing_body",
             DiagnosticCode::SchemaPolicyFutureEffectiveAt => "schema.policy_future_effective_at",
+            DiagnosticCode::SchemaPolicyReviewOverdue => "schema.policy_review_overdue",
             DiagnosticCode::SchemaAgentInstructionMissingScope => {
                 "schema.agent_instruction_missing_scope"
             }
@@ -552,6 +557,9 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaPolicyFutureEffectiveAt => {
                 "An `active` policy must have an `effective_at` date on or before today."
             }
+            DiagnosticCode::SchemaPolicyReviewOverdue => {
+                "Re-review the policy and update `effective_at`, or adjust `review_interval`."
+            }
             DiagnosticCode::SchemaAgentInstructionMissingScope => {
                 "Add a `scope` field to the agent_instruction with a non-empty glob pattern (e.g. `docs/auth/*`)."
             }
@@ -733,6 +741,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.policy_invalid_review_interval",
     "schema.policy_missing_body",
     "schema.policy_future_effective_at",
+    "schema.policy_review_overdue",
     "schema.agent_instruction_missing_scope",
     "schema.agent_instruction_missing_trust",
     "schema.agent_instruction_invalid_trust",
