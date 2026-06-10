@@ -45,8 +45,7 @@ pub(crate) const REASON_REAPPROVE_APPROVER_REMOVED: &str = "re-approve (approver
 pub(crate) const REASON_SECURITY_REVIEW_TRUST_UPGRADE: &str = "security review (trust upgraded)";
 pub(crate) const REASON_SECURITY_REVIEW_FORBIDDEN_REMOVED: &str =
     "security review (forbidden action removed)";
-pub(crate) const REASON_OWNER_REASSERT: &str =
-    "owner re-assert (unresolved contradiction changed)";
+pub(crate) const REASON_OWNER_REASSERT: &str = "owner re-assert (unresolved contradiction changed)";
 
 /// Dispatch the V3.4 trigger table against one `Changed` entry.
 ///

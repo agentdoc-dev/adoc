@@ -288,6 +288,8 @@ mod tests {
             kind: "claim".to_string(),
             content_hash: content_hash.to_string(),
             status: status.map(str::to_string),
+            severity: None,
+            trust: None,
             body: body.to_string(),
             page_id: "team.billing".to_string(),
             source_span: GraphSourceSpan {
@@ -386,6 +388,8 @@ mod tests {
             kind: "constraint".to_string(),
             content_hash: content_hash.to_string(),
             status: Some(severity.to_string()),
+            severity: None,
+            trust: None,
             body: "Session tokens must not be stored in localStorage.".to_string(),
             page_id: "team.auth".to_string(),
             source_span: GraphSourceSpan {
@@ -432,6 +436,8 @@ mod tests {
             kind: "agent_instruction".to_string(),
             content_hash: content_hash.to_string(),
             status: Some(trust.to_string()),
+            severity: None,
+            trust: None,
             body: "Prefer verified claims over draft notes.".to_string(),
             page_id: "team.auth".to_string(),
             source_span: GraphSourceSpan {

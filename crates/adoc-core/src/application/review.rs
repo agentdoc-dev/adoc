@@ -633,6 +633,8 @@ mod tests {
                 kind: "claim".to_string(),
                 content_hash: content_hash.to_string(),
                 status: Some("verified".to_string()),
+                severity: None,
+                trust: None,
                 body: format!("{id} body"),
                 page_id: "team.billing".to_string(),
                 source_span: GraphSourceSpan {

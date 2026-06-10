@@ -81,7 +81,10 @@ fn build_emits_constraint_into_graph_v3() {
         .expect("graph contains a constraint node");
 
     assert_eq!(constraint["id"], "auth.session.no-local-storage");
+    // `status` keeps carrying the severity discriminant within adoc.graph.v3;
+    // the dedicated `severity` field is the ADR-0035 dual-emit.
     assert_eq!(constraint["status"], "critical");
+    assert_eq!(constraint["severity"], "critical");
     assert_eq!(
         constraint["body"],
         "Session tokens must not be stored in localStorage."

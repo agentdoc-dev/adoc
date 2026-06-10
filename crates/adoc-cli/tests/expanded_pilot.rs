@@ -338,6 +338,51 @@ fn expanded_pilot_retrieval_why_graph_search() {
     assert_eq!(why_env["records"][0]["kind"], "procedure");
     assert_eq!(why_env["records"][0]["status"], "verified");
 
+    // --- why: ADR-0035 dual-emit clones severity/trust into retrieval records ---
+    let why_constraint = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "why",
+            "auth.session.no-local-storage",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc why runs");
+    assert!(
+        why_constraint.status.success(),
+        "adoc why must succeed for the constraint"
+    );
+    let why_constraint_env: Value =
+        serde_json::from_slice(&why_constraint.stdout).expect("why stdout is JSON");
+    assert_eq!(
+        why_constraint_env["records"][0]["severity"], "critical",
+        "constraint retrieval record must carry the dual-emitted severity"
+    );
+
+    let why_agent = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "why",
+            "auth.docs-answering-policy",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc why runs");
+    assert!(
+        why_agent.status.success(),
+        "adoc why must succeed for the agent_instruction"
+    );
+    let why_agent_env: Value =
+        serde_json::from_slice(&why_agent.stdout).expect("why stdout is JSON");
+    assert_eq!(
+        why_agent_env["records"][0]["trust"], "team",
+        "agent_instruction retrieval record must carry the dual-emitted trust"
+    );
+
     // --- graph: active policy traverses to its related object and back ---
     let graph_out = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .args([

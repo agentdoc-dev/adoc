@@ -423,6 +423,9 @@ fn knowledge_object_to_graph_node_without_hash(
         kind: knowledge_object.kind().as_str().to_string(),
         content_hash: String::new(),
         status,
+        // ADR-0035 dual-emit: derived — NOT part of content_hash.
+        severity: metadata.severity().map(|s| s.as_str().to_string()),
+        trust: metadata.trust().map(|t| t.as_str().to_string()),
         body: knowledge_object.body().to_source(),
         page_id: page_id.to_string(),
         source_span: source_span(span),
@@ -1544,6 +1547,8 @@ mod tests {
             kind: "claim".to_string(),
             content_hash: String::new(),
             status: Some("verified".to_string()),
+            severity: None,
+            trust: None,
             body: "Credits are verified.".to_string(),
             page_id: "team.billing".to_string(),
             source_span: GraphSourceSpan {
@@ -1582,6 +1587,26 @@ mod tests {
             hash_without, hash_with,
             "content_hash must be identical whether or not effective_status is set; \
              effective_status is not part of the hash payload"
+        );
+    }
+
+    /// `content_hash` must be identical whether or not the ADR-0035 dual-emit
+    /// `severity`/`trust` fields are set, proving they are excluded from the
+    /// hash payload like the other derived fields.
+    #[test]
+    fn content_hash_is_stable_regardless_of_severity_and_trust() {
+        let node_without = make_ko_node(None, None);
+        let mut node_with = make_ko_node(None, None);
+        node_with.severity = Some("critical".to_string());
+        node_with.trust = Some("team".to_string());
+
+        let hash_without = graph_knowledge_object_content_hash(&node_without);
+        let hash_with = graph_knowledge_object_content_hash(&node_with);
+
+        assert_eq!(
+            hash_without, hash_with,
+            "content_hash must be identical whether or not severity/trust are set; \
+             the ADR-0035 dual-emit fields are not part of the hash payload"
         );
     }
 
@@ -1732,6 +1757,8 @@ mod tests {
             kind: "claim".to_string(),
             content_hash: String::new(),
             status: Some("verified".to_string()),
+            severity: None,
+            trust: None,
             body: "Credits are verified.".to_string(),
             page_id: "team.billing".to_string(),
             source_span: GraphSourceSpan {

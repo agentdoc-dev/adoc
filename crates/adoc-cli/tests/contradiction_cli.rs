@@ -232,6 +232,8 @@ fn build_emits_contradiction_graph_node_with_expected_fields() {
     assert_eq!(node["status"], "unresolved");
     // severity is a typed metadata field.
     assert_eq!(node["fields"]["severity"], "high");
+    // ADR-0035 dual-emit: severity also appears as a top-level derived field.
+    assert_eq!(node["severity"], "high");
     // contradiction_claims list contains both claim ids (sorted).
     let claims = node["contradiction_claims"]
         .as_array()

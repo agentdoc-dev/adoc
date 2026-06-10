@@ -269,6 +269,8 @@ fn public_surface_compiles_with_only_documented_imports() {
         id: String::new(),
         kind: String::new(),
         status: None,
+        severity: None,
+        trust: None,
         content_hash: String::new(),
         owner: None,
         verified_at: None,

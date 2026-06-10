@@ -60,6 +60,8 @@ mod tests {
             kind: "claim".to_string(),
             content_hash: "sha256:test".to_string(),
             status: Some("verified".to_string()),
+            severity: None,
+            trust: None,
             body: String::new(),
             page_id: "team.billing".to_string(),
             source_span: GraphSourceSpan {

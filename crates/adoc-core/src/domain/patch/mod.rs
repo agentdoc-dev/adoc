@@ -668,6 +668,8 @@ mod tests {
             kind: "claim".to_string(),
             content_hash: format!("sha256:{id}"),
             status: Some(status.to_string()),
+            severity: None,
+            trust: None,
             body: format!("{id} body."),
             page_id: "team.page".to_string(),
             source_span: GraphSourceSpan {
@@ -695,6 +697,8 @@ mod tests {
             kind: "source".to_string(),
             content_hash: format!("sha256:{id}"),
             status: None,
+            severity: None,
+            trust: None,
             body: format!("{id} body."),
             page_id: "team.page".to_string(),
             source_span: GraphSourceSpan {

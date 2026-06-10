@@ -98,6 +98,8 @@ mod tests {
             kind: kind.to_string(),
             content_hash: format!("sha256:{id}"),
             status: status.map(str::to_string),
+            severity: None,
+            trust: None,
             body: body.to_string(),
             page_id: "team.guide".to_string(),
             source_span: GraphSourceSpan {
