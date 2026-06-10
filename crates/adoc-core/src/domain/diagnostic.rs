@@ -110,6 +110,7 @@ pub enum DiagnosticCode {
     SchemaContradictionMissingClaims,
     SchemaContradictionClaimsTooFew,
     SchemaContradictionClaimNotFound,
+    SchemaContradictionClaimNotAClaim,
     SchemaSourceMissingKind,
     SchemaSourceInvalidKind,
     SchemaSourceMissingPathOrUrl,
@@ -226,6 +227,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaContradictionMissingClaims,
             DiagnosticCode::SchemaContradictionClaimsTooFew,
             DiagnosticCode::SchemaContradictionClaimNotFound,
+            DiagnosticCode::SchemaContradictionClaimNotAClaim,
             DiagnosticCode::SchemaSourceMissingKind,
             DiagnosticCode::SchemaSourceInvalidKind,
             DiagnosticCode::SchemaSourceMissingPathOrUrl,
@@ -364,6 +366,9 @@ impl DiagnosticCode {
             }
             DiagnosticCode::SchemaContradictionClaimNotFound => {
                 "schema.contradiction_claim_not_found"
+            }
+            DiagnosticCode::SchemaContradictionClaimNotAClaim => {
+                "schema.contradiction_claim_not_a_claim"
             }
             DiagnosticCode::SchemaSourceMissingKind => "schema.source_missing_kind",
             DiagnosticCode::SchemaSourceInvalidKind => "schema.source_invalid_kind",
@@ -636,6 +641,9 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaContradictionClaimNotFound => {
                 "Ensure every claim ID in `claims` refers to an existing `claim` object in the workspace."
             }
+            DiagnosticCode::SchemaContradictionClaimNotAClaim => {
+                "Every `claims` entry must reference a `claim` object; this ID resolves to a different kind."
+            }
             DiagnosticCode::SchemaSourceMissingKind => {
                 "Add a `kind` field to the source: one of source_code, test, commit, pull_request, issue, design_doc, human_review, external_url, api_schema, runtime_metric, incident, support_ticket, audit_record, policy_reference, dataset, experiment."
             }
@@ -786,6 +794,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.contradiction_missing_claims",
     "schema.contradiction_claims_too_few",
     "schema.contradiction_claim_not_found",
+    "schema.contradiction_claim_not_a_claim",
     "schema.source_missing_kind",
     "schema.source_invalid_kind",
     "schema.source_missing_path_or_url",
