@@ -1856,6 +1856,23 @@ mod tests {
         );
     }
 
+    /// `derive_effective_status` returns `None` when `expires_at` equals
+    /// `today`: expiry on the boundary day must not derive stale (staleness
+    /// uses strict `<`).
+    #[test]
+    fn derive_effective_status_returns_none_for_verified_expiry_on_boundary_day() {
+        let ko = make_verified_claim_with_expires_at("billing.today", "2026-05-08");
+        let status = Some("verified".to_string());
+        let today = NaiveDate::from_ymd_opt(2026, 5, 8).expect("valid date");
+
+        let result = derive_effective_status(&status, &ko, today);
+
+        assert!(
+            result.is_none(),
+            "expires_at equal to today must not produce effective_status"
+        );
+    }
+
     // ── V5.10 TB4: contradiction effective_status cross-object pass ───────────
 
     /// Builds a workspace with two plain claims + one contradiction referencing
