@@ -46,6 +46,28 @@ impl<'a> KnowledgeObjectMetadata<'a> {
         &self.evidence
     }
 
+    /// ADR-0035: the typed severity for kinds that carry one — `warning` and
+    /// `constraint` store it as the status-slot discriminant; `contradiction`
+    /// stores it as a metadata field. `None` for every other kind.
+    pub(crate) fn severity(&self) -> Option<&'a Severity> {
+        if let Some(MetadataDiscriminant::Severity(severity)) = self.discriminant {
+            return Some(severity);
+        }
+        self.fields.iter().find_map(|field| match field {
+            MetadataField::Severity(severity) => Some(*severity),
+            _ => None,
+        })
+    }
+
+    /// ADR-0035: the typed trust level for `agent_instruction` (stored as the
+    /// status-slot discriminant). `None` for every other kind.
+    pub(crate) fn trust(&self) -> Option<&'a Trust> {
+        match self.discriminant {
+            Some(MetadataDiscriminant::Trust(trust)) => Some(trust),
+            _ => None,
+        }
+    }
+
     /// Convert the typed evidence slice to the `GraphEvidence` wire format.
     ///
     /// `Inline` entries are converted to `GraphEvidence::inline(kind, value)`.

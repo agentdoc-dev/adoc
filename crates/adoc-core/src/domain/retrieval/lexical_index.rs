@@ -256,6 +256,8 @@ mod tests {
             kind: kind.to_string(),
             content_hash: format!("sha256:{id}"),
             status: None,
+            severity: None,
+            trust: None,
             body: body.to_string(),
             page_id: "team.page".to_string(),
             source_span: GraphSourceSpan {

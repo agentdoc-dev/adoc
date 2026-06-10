@@ -11,6 +11,16 @@ pub struct RetrievalRecord {
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+    /// ADR-0035 dual-emit: derived duplicate of the kind-specific severity
+    /// (`warning`, `constraint`, `contradiction`). Not authored, not hashed.
+    /// Clone-through from the graph node.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub severity: Option<String>,
+    /// ADR-0035 dual-emit: derived duplicate of the trust discriminant
+    /// (`agent_instruction` only). Not authored, not hashed. Clone-through
+    /// from the graph node.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trust: Option<String>,
     pub content_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
@@ -166,6 +176,8 @@ impl RetrievalRecord {
             id: object.id.clone(),
             kind: object.kind.clone(),
             status: object.status.clone(),
+            severity: object.severity.clone(),
+            trust: object.trust.clone(),
             content_hash: object.content_hash.clone(),
             owner: metadata::owner(object).map(str::to_string),
             verified_at: metadata::verified_at(object).map(str::to_string),
@@ -197,6 +209,8 @@ mod tests {
             id: "billing.credits".to_string(),
             kind: "claim".to_string(),
             status: Some("verified".to_string()),
+            severity: None,
+            trust: None,
             content_hash: "sha256:content".to_string(),
             body: "Credits are verified.".to_string(),
             page_id: "team.billing".to_string(),

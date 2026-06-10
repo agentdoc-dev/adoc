@@ -181,6 +181,17 @@ pub(crate) struct GraphKnowledgeObjectNode {
     pub(crate) content_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) status: Option<String>,
+    /// ADR-0035 dual-emit: derived duplicate of the kind-specific severity
+    /// discriminant/field. Populated for `warning`, `constraint`, and
+    /// `contradiction` nodes. NOT hashed; additive within `adoc.graph.v3`.
+    /// Skipped when `None` so other kinds remain byte-stable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) severity: Option<String>,
+    /// ADR-0035 dual-emit: derived duplicate of the trust discriminant.
+    /// Populated for `agent_instruction` nodes only. NOT hashed; additive
+    /// within `adoc.graph.v3`. Skipped when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) trust: Option<String>,
     pub(crate) body: String,
     pub(crate) page_id: String,
     pub(crate) source_span: GraphSourceSpan,
@@ -721,6 +732,8 @@ mod tests {
                     kind: "claim".to_string(),
                     content_hash: content_hash.unwrap_or_default().to_string(),
                     status: Some("draft".to_string()),
+                    severity: None,
+                    trust: None,
                     body: "Credits apply after payment.".to_string(),
                     page_id: "team.page".to_string(),
                     source_span: GraphSourceSpan {

@@ -725,6 +725,8 @@ mod tests {
             kind: "claim".to_string(),
             content_hash: format!("sha256:{id}"),
             status: Some("draft".to_string()),
+            severity: None,
+            trust: None,
             body: body.to_string(),
             page_id: "team.page".to_string(),
             source_span: GraphSourceSpan {

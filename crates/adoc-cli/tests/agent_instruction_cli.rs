@@ -197,8 +197,10 @@ fn build_emits_agent_instruction_into_graph_and_renders_banner() {
         .expect("graph contains an agent_instruction node");
 
     assert_eq!(node["id"], "auth.docs-answering-policy");
-    // `trust` rides the node `status` slot via the discriminant projection.
+    // `trust` rides the node `status` slot via the discriminant projection;
+    // the dedicated `trust` field is the ADR-0035 dual-emit.
     assert_eq!(node["status"], "team");
+    assert_eq!(node["trust"], "team");
     assert_eq!(node["fields"]["scope"], "docs/auth/*");
     assert!(
         node["allowed_actions"]
