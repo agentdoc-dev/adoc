@@ -54,7 +54,7 @@ impl WorkspaceRule for ContradictionClaimsResolve {
                         Some(kind) if *kind != BlockKind::Claim => {
                             sink.push(
                                 Diagnostic::error(
-                                    DiagnosticCode::SchemaContradictionClaimNotFound,
+                                    DiagnosticCode::SchemaContradictionClaimNotAClaim,
                                     format!(
                                         "contradiction `{}` references `{claim_id}` in `claims`, but that object is a `{}`, not a `claim`",
                                         contradiction.id(),
@@ -208,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn emits_claim_not_found_for_id_that_resolves_to_wrong_kind() {
+    fn emits_claim_not_a_claim_for_id_that_resolves_to_wrong_kind() {
         let workspace = WorkspaceAst {
             pages: vec![page(
                 "one.adoc",
@@ -225,7 +225,7 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(
             diagnostics[0].code,
-            DiagnosticCode::SchemaContradictionClaimNotFound
+            DiagnosticCode::SchemaContradictionClaimNotAClaim
         );
         assert!(
             diagnostics[0].message.contains("constraint"),

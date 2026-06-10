@@ -115,6 +115,59 @@ fn check_rejects_contradiction_with_one_claim() {
     );
 }
 
+/// A contradiction referencing an object that exists but is not a claim.
+const NON_CLAIM_REFERENCE_CONTRADICTION: &str = "\
+# Auth Contradictions @doc(auth.contradictions)
+
+::claim auth.a
+status: plain
+--
+Session tokens must be stored in memory only.
+::
+
+::constraint auth.no-local-storage
+severity: critical
+--
+Session tokens must not be stored in localStorage.
+::
+
+::contradiction auth.session.conflict
+severity: high
+status: unresolved
+claims: [auth.a, auth.no-local-storage]
+--
+References an object that is a constraint, not a claim.
+::
+";
+
+#[test]
+fn check_rejects_contradiction_referencing_non_claim_object() {
+    let workspace = TestWorkspace::new("contradiction-non-claim-ref");
+    workspace.write("contradiction.adoc", NON_CLAIM_REFERENCE_CONTRADICTION);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", "contradiction.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected check to fail for non-claim reference"
+    );
+    let combined = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(
+        combined.contains("error[schema.contradiction_claim_not_a_claim]"),
+        "expected claim_not_a_claim diagnostic, got:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        combined.contains("auth.no-local-storage") && combined.contains("constraint"),
+        "diagnostic must name the offending id and its actual kind, got:\n{combined}"
+    );
+}
+
 #[test]
 fn check_rejects_contradiction_with_nonexistent_claim() {
     let workspace = TestWorkspace::new("contradiction-nonexistent-claim");
