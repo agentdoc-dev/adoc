@@ -296,6 +296,115 @@ fn review_main_json_envelope_includes_proof_obligations() {
     assert_eq!(impact_evidence, vec!["source_code"]);
 }
 
+/// Base page: two claims and an unresolved contradiction referencing both.
+const BASE_CONTRADICTION_ADOC: &str = concat!(
+    "# Auth Contradictions @doc(auth.contradictions)\n",
+    "\n",
+    "::claim auth.memory-only\n",
+    "status: plain\n",
+    "--\n",
+    "Session tokens must be stored in memory only.\n",
+    "::\n",
+    "\n",
+    "::claim auth.local-storage-ok\n",
+    "status: plain\n",
+    "--\n",
+    "Session tokens may be stored in localStorage for convenience.\n",
+    "::\n",
+    "\n",
+    "::contradiction auth.session.conflict\n",
+    "severity: high\n",
+    "status: unresolved\n",
+    "owner: platform-auth\n",
+    "claims: [auth.local-storage-ok, auth.memory-only]\n",
+    "--\n",
+    "The two claims disagree about session token storage.\n",
+    "::\n",
+);
+
+/// Head page: same objects; only the contradiction's body is edited.
+const HEAD_CONTRADICTION_ADOC: &str = concat!(
+    "# Auth Contradictions @doc(auth.contradictions)\n",
+    "\n",
+    "::claim auth.memory-only\n",
+    "status: plain\n",
+    "--\n",
+    "Session tokens must be stored in memory only.\n",
+    "::\n",
+    "\n",
+    "::claim auth.local-storage-ok\n",
+    "status: plain\n",
+    "--\n",
+    "Session tokens may be stored in localStorage for convenience.\n",
+    "::\n",
+    "\n",
+    "::contradiction auth.session.conflict\n",
+    "severity: high\n",
+    "status: unresolved\n",
+    "owner: platform-auth\n",
+    "claims: [auth.local-storage-ok, auth.memory-only]\n",
+    "--\n",
+    "The two claims still disagree about session token storage; scope widened.\n",
+    "::\n",
+);
+
+/// V5 audit remediation: any field change on an unresolved contradiction
+/// emits one owner re-assert obligation (once per changed object).
+#[test]
+fn review_main_json_emits_owner_reassert_for_changed_unresolved_contradiction() {
+    let workspace = TestWorkspace::new("review-contradiction-reassert");
+    run_git(&workspace, &["init", "--initial-branch=main"]);
+    run_git(&workspace, &["config", "user.email", "test@adoc.dev"]);
+    run_git(&workspace, &["config", "user.name", "adoc tests"]);
+    run_git(&workspace, &["config", "commit.gpgsign", "false"]);
+
+    workspace.write("docs/contradictions.adoc", BASE_CONTRADICTION_ADOC);
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "base"]);
+
+    run_git(&workspace, &["checkout", "-b", "feature"]);
+    workspace.write("docs/contradictions.adoc", HEAD_CONTRADICTION_ADOC);
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "head"]);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+
+    assert!(
+        output.status.success(),
+        "expected adoc review to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("adoc review --format json must emit a JSON envelope on stdout");
+
+    let obligations = value["proof_obligations"]
+        .as_array()
+        .expect("proof_obligations array");
+    let reassert: Vec<&serde_json::Value> = obligations
+        .iter()
+        .filter(|o| o["reason"] == "owner re-assert (unresolved contradiction changed)")
+        .collect();
+    assert_eq!(
+        reassert.len(),
+        1,
+        "expected exactly one owner re-assert obligation, got: {obligations:#?}"
+    );
+    assert_eq!(reassert[0]["object_id"], "auth.session.conflict");
+    let required: Vec<&str> = reassert[0]["required_evidence"]
+        .as_array()
+        .expect("required_evidence array")
+        .iter()
+        .map(|v| v.as_str().expect("evidence is string"))
+        .collect();
+    assert_eq!(required, vec!["owner"]);
+}
+
 #[test]
 fn review_main_plain_lists_proof_obligations_section() {
     let workspace = build_billing_pilot_with_impacts("review-obligations-plain");

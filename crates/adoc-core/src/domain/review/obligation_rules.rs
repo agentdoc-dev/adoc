@@ -23,10 +23,12 @@ use super::object_change::ChangedObject;
 const CLAIM_KIND: &str = "claim";
 const POLICY_KIND: &str = "policy";
 const AGENT_INSTRUCTION_KIND: &str = "agent_instruction";
+const CONTRADICTION_KIND: &str = "contradiction";
 const VERIFIED_STATUS: &str = "verified";
 const ACTIVE_STATUS: &str = "active";
 const NEEDS_REVIEW_STATUS: &str = "needs_review";
 const DRAFT_STATUS: &str = "draft";
+const UNRESOLVED_STATUS: &str = "unresolved";
 
 // Stable reason strings — module-scoped so tests and the application-layer
 // dedup compare against constants instead of duplicating literals.
@@ -43,6 +45,8 @@ pub(crate) const REASON_REAPPROVE_APPROVER_REMOVED: &str = "re-approve (approver
 pub(crate) const REASON_SECURITY_REVIEW_TRUST_UPGRADE: &str = "security review (trust upgraded)";
 pub(crate) const REASON_SECURITY_REVIEW_FORBIDDEN_REMOVED: &str =
     "security review (forbidden action removed)";
+pub(crate) const REASON_OWNER_REASSERT: &str =
+    "owner re-assert (unresolved contradiction changed)";
 
 /// Dispatch the V3.4 trigger table against one `Changed` entry.
 ///
@@ -54,6 +58,18 @@ pub(crate) fn obligations_for_change(changed: &ChangedObject) -> Vec<ProofObliga
     let mut out = Vec::new();
     for field_change in changed.field_changes() {
         push_for_field_change(&mut out, changed, field_change);
+    }
+    // V5.6: any field change on an unresolved contradiction requires the
+    // owner to re-assert the conflict. "Any field change" is an existence
+    // condition, so this fires once per changed object, not once per field.
+    // Reading `head` means edits that resolve the contradiction (head status
+    // `resolved` or `dismissed`) do not fire.
+    if !changed.field_changes().is_empty() && is_unresolved_contradiction(&changed.head) {
+        out.push(ProofObligation {
+            object_id: changed.id.to_string(),
+            reason: REASON_OWNER_REASSERT.to_string(),
+            required_evidence: vec![OWNER_FIELD.to_string()],
+        });
     }
     out
 }
@@ -192,6 +208,13 @@ fn is_active_policy(node: &GraphKnowledgeObjectNode) -> bool {
 
 fn is_agent_instruction(node: &GraphKnowledgeObjectNode) -> bool {
     node.kind == AGENT_INSTRUCTION_KIND
+}
+
+/// A contradiction's lifecycle `ContradictionStatus` is the metadata
+/// discriminant landing in the node's `status` slot, so the comparison
+/// against `"unresolved"` is well-defined for `contradiction` nodes.
+fn is_unresolved_contradiction(node: &GraphKnowledgeObjectNode) -> bool {
+    node.kind == CONTRADICTION_KIND && node.status.as_deref() == Some(UNRESOLVED_STATUS)
 }
 
 /// Return `true` when a trust change is an upgrade (after > before).
@@ -852,6 +875,95 @@ mod tests {
                 value: "new_forbidden".to_string(),
             }],
         );
+
+        assert!(obligations_for_change(&change).is_empty());
+    }
+
+    fn contradiction(id: &str, status: &str) -> GraphKnowledgeObjectNode {
+        let mut node = test_node(id, "sha256:dummy");
+        node.kind = CONTRADICTION_KIND.to_string();
+        node.status = Some(status.to_string());
+        node
+    }
+
+    fn body_change() -> FieldChange {
+        FieldChange::Body {
+            before: "old".to_string(),
+            after: "new".to_string(),
+        }
+    }
+
+    #[test]
+    fn field_change_on_unresolved_contradiction_emits_one_owner_reassert_obligation() {
+        let base = contradiction("auth.session.conflict", UNRESOLVED_STATUS);
+        let head = contradiction("auth.session.conflict", UNRESOLVED_STATUS);
+        let change = changed_with("auth.session.conflict", base, head, vec![body_change()]);
+
+        let obligations = obligations_for_change(&change);
+
+        assert_eq!(obligations.len(), 1);
+        assert_eq!(obligations[0].object_id, "auth.session.conflict");
+        assert_eq!(obligations[0].reason, REASON_OWNER_REASSERT);
+        assert_eq!(obligations[0].required_evidence, vec!["owner"]);
+    }
+
+    #[test]
+    fn multiple_field_changes_on_unresolved_contradiction_emit_one_obligation() {
+        let base = contradiction("auth.session.conflict", UNRESOLVED_STATUS);
+        let head = contradiction("auth.session.conflict", UNRESOLVED_STATUS);
+        let change = changed_with(
+            "auth.session.conflict",
+            base,
+            head,
+            vec![
+                body_change(),
+                FieldChange::ContradictionClaimsAdded {
+                    value: "auth.new-claim".to_string(),
+                },
+            ],
+        );
+
+        let obligations = obligations_for_change(&change);
+
+        assert_eq!(
+            obligations.len(),
+            1,
+            "owner re-assert fires once per changed object, not per field"
+        );
+        assert_eq!(obligations[0].reason, REASON_OWNER_REASSERT);
+    }
+
+    #[test]
+    fn field_change_on_resolved_contradiction_emits_no_obligation() {
+        let base = contradiction("auth.session.conflict", UNRESOLVED_STATUS);
+        let head = contradiction("auth.session.conflict", "resolved");
+        let change = changed_with(
+            "auth.session.conflict",
+            base,
+            head,
+            vec![FieldChange::Status {
+                before: Some(UNRESOLVED_STATUS.to_string()),
+                after: Some("resolved".to_string()),
+            }],
+        );
+
+        assert!(obligations_for_change(&change).is_empty());
+    }
+
+    #[test]
+    fn field_change_on_dismissed_contradiction_emits_no_obligation() {
+        let base = contradiction("auth.session.conflict", "dismissed");
+        let head = contradiction("auth.session.conflict", "dismissed");
+        let change = changed_with("auth.session.conflict", base, head, vec![body_change()]);
+
+        assert!(obligations_for_change(&change).is_empty());
+    }
+
+    #[test]
+    fn unresolved_contradiction_with_no_field_changes_emits_no_obligation() {
+        let base = contradiction("auth.session.conflict", UNRESOLVED_STATUS);
+        let head = contradiction("auth.session.conflict", UNRESOLVED_STATUS);
+        let change = changed_with("auth.session.conflict", base, head, Vec::new());
 
         assert!(obligations_for_change(&change).is_empty());
     }
