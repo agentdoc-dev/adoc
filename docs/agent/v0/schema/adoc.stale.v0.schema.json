@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.stale.v0.schema.json",
+  "title": "AgentDoc Stale Query",
+  "description": "Lifecycle-signal listing of stale, review-overdue, and (with a within horizon) expiring-soon Knowledge Objects, re-derived from authored fields at read time against `evaluated_at`. Emitted by `adoc stale` and the `adoc_stale` MCP tool. Records are sorted most-overdue first, then by Object ID. See ROADMAP-V6.md §V6.1 and ADR-0038.",
+  "type": "object",
+  "required": ["schema_version", "evaluated_at", "records", "diagnostics"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.stale.v0" },
+    "evaluated_at": {
+      "description": "The date staleness was derived against (the query date, never the artifact's build date).",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "records": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/staleRecord" }
+    },
+    "diagnostics": {
+      "description": "Artifact-load diagnostics. Stale records themselves are data, not diagnostics.",
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  },
+  "$defs": {
+    "staleRecord": {
+      "type": "object",
+      "required": ["id", "kind", "category", "reason", "source_path"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string" },
+        "category": {
+          "description": "stale: `expires_at` is past (any authored status). review_overdue: active policy past `effective_at + review_interval`. expiring_soon: verified object expiring within the requested horizon.",
+          "enum": ["stale", "review_overdue", "expiring_soon"]
+        },
+        "authored_status": {
+          "description": "The status slot as authored. For warning/constraint/agent_instruction this slot carries Severity/Trust until the adoc.graph.v4 cleanup (ADR-0035).",
+          "type": "string"
+        },
+        "effective_status": {
+          "description": "Re-derived at read time; echoes the authored status when no derivation applies.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Machine-readable cause: `expired:<date>`, `review_due:<date>`, or `expires:<date>`.",
+          "type": "string",
+          "pattern": "^(expired|review_due|expires):\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "expires_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "days_overdue": {
+          "description": "Days past expiry / past the review due date. Present on stale and review_overdue records.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "days_remaining": {
+          "description": "Days until expiry. Present on expiring_soon records.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "owner": { "type": "string" },
+        "source_path": { "type": "string" }
+      }
+    }
+  }
+}
