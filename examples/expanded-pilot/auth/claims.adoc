@@ -21,6 +21,7 @@ Session tokens may be stored in localStorage so that sessions survive a page rel
 status: verified
 owner: platform-security
 verified_at: 2026-05-06
+expires_at: 2125-01-01
 source: auth service production config 2026-05-05
 test: cargo test auth_mfa_enforced
 reviewed_by: security-review

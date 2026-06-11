@@ -97,6 +97,13 @@ ADR-0034):
 | Evidence quality low | `security.csrf-advisory` (verified, `external_url:` only) | `evidence_quality: "low"` | `claim.evidence_quality_low` |
 | Contradicted nudge | `auth.session.csrf-protection` (`status: accepted`, in unresolved contradiction) | `effective_status: "contradicted"` | `schema.claim_contradicted_by_unresolved` |
 
+Two verified claims additionally carry **far-future** `expires_at` dates —
+`billing.credits.consume` (`expires_at: 2120-01-01`) and
+`auth.mfa.enforced` (`expires_at: 2125-01-01`). They fire no diagnostics
+and no derived `effective_status` (the budget above is unchanged); they
+exist so `adoc stale --within <N>d` (V6.1) has deterministic
+`expiring_soon` records to report.
+
 ## What This Pilot Exercises
 
 - **Every V5 kind** with a complete authoring → validation → rendering →

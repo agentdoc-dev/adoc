@@ -7,6 +7,7 @@ reusable [[billing.consume-use-case]] source objects.
 status: verified
 owner: backend-platform
 verified_at: 2026-05-01
+expires_at: 2120-01-01
 test: cargo test credits
 evidence_ref: billing.consume-use-case
 related_to: billing.credits
