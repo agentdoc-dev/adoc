@@ -10,7 +10,7 @@ use clap::{Parser, error::ErrorKind};
 use crate::cli::{Cli, Commands};
 use crate::commands::{
     DiffCommandInput, GraphCommandInput, PatchCommandInput, ReviewCommandInput, SearchCommandInput,
-    build, check, diff, graph, init, patch, review, search_command, why,
+    StaleCommandInput, build, check, diff, graph, init, patch, review, search_command, stale, why,
 };
 use crate::presentation::{ResolvedFormat, terminal};
 
@@ -57,6 +57,13 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                         artifact,
                         relation: relation.map(Into::into),
                         direction: direction.map(Into::into),
+                    },
+                    resolved,
+                ),
+                Commands::Stale { artifact, within } => stale(
+                    StaleCommandInput {
+                        artifact,
+                        within_days: within,
                     },
                     resolved,
                 ),

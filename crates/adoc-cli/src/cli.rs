@@ -15,6 +15,7 @@ Examples:
   adoc patch --check patch.json
   adoc diff main
   adoc search \"refund policy\"
+  adoc stale --within 30d
 ";
 const INIT_LONG_HELP: &str = "\
 Examples:
@@ -71,6 +72,28 @@ Examples:
   adoc search \"refund policy\" --related-to billing.refunds.issue-credit --relation depends_on
   adoc search billing.refunds --lexical
 ";
+const STALE_LONG_HELP: &str = "\
+Staleness and review-overdue-ness are re-derived from authored fields at the
+time of the query, not read from the artifact's build-time projection. The
+command is a query, not a gate: it exits 0 whether or not records exist.
+
+Examples:
+  adoc stale
+  adoc stale --within 30d
+  adoc stale --within 30d --format json
+  adoc stale --artifact dist/docs.graph.json
+";
+
+/// Parse the `--within <N>d` horizon grammar (same `[0-9]+d` shape as the
+/// `review_interval:` field) into a day count.
+fn parse_within_days(value: &str) -> Result<u32, String> {
+    let error = || format!("expected a day count like `30d`, got `{value}`");
+    let days = value.strip_suffix('d').ok_or_else(error)?;
+    if days.is_empty() || !days.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(error());
+    }
+    days.parse::<u32>().map_err(|_| error())
+}
 
 /// The output format requested on the command line (`--format`).
 #[derive(Clone, Copy, Default, ValueEnum)]
@@ -243,6 +266,21 @@ pub(crate) enum Commands {
         relation: Option<CliGraphRelation>,
         #[arg(long, value_enum)]
         direction: Option<CliGraphDirection>,
+    },
+    #[command(
+        about = "List stale, review-overdue, and expiring Knowledge Objects from graph artifacts.",
+        after_long_help = STALE_LONG_HELP
+    )]
+    Stale {
+        #[arg(
+            long,
+            help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"
+        )]
+        artifact: Option<PathBuf>,
+        /// Additionally list verified objects expiring within the next N days,
+        /// e.g. `--within 30d`.
+        #[arg(long, value_name = "Nd", value_parser = parse_within_days)]
+        within: Option<u32>,
     },
     #[command(
         about = "Validate one AgentDoc patch document against graph artifacts.",

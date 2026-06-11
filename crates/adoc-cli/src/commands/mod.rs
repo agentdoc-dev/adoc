@@ -6,6 +6,7 @@ mod init;
 mod patch;
 mod review;
 mod search;
+mod stale;
 mod why;
 
 use std::path::PathBuf;
@@ -26,6 +27,7 @@ pub(crate) use init::init;
 pub(crate) use patch::{PatchCommandInput, patch};
 pub(crate) use review::{ReviewCommandInput, review};
 pub(crate) use search::{SearchCommandInput, search_command};
+pub(crate) use stale::{StaleCommandInput, stale};
 pub(crate) use why::why;
 
 fn emit_retrieval_error(
