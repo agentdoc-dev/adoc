@@ -633,3 +633,185 @@ fn run_git(workspace: &TestWorkspace, args: &[&str]) {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+/// V6.1 acceptance: `adoc stale` re-derives lifecycle signals at read time
+/// from the built graph artifact (docs/ROADMAP-V6.md §V6.1).
+///
+/// The default listing must contain exactly 3 records sorted most-overdue
+/// first (fixed due dates 2020-03-31 / 2024-01-01 / 2026-01-15 keep the order
+/// clock-stable); `--within 36500d` additionally lists the two far-future
+/// verified objects as `expiring_soon`. The command is a query: exit 0 with
+/// records, exit 2 only on artifact-load failure, and `--format markdown`
+/// stays diff/review-only.
+#[test]
+fn expanded_pilot_stale_query() {
+    let repo_root = repo_root();
+    let workspace = TestWorkspace::new("expanded-pilot-stale");
+    let dist = workspace.root.join("dist");
+    let build = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&repo_root)
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+        .args([
+            "build",
+            PILOT_PATH,
+            "--out",
+            dist.to_str().expect("dist path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+    assert!(
+        build.status.success(),
+        "stale prerequisite build must succeed\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let graph = dist.join("docs.graph.json");
+    let graph_arg = graph.to_str().expect("graph path is utf-8");
+
+    // --- default listing: exactly 3 records, most-overdue first ---
+    let stale = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["stale", "--artifact", graph_arg, "--format", "json"])
+        .output()
+        .expect("adoc stale runs");
+    assert!(
+        stale.status.success(),
+        "adoc stale is a query and must exit 0 even with records\nstderr:\n{}",
+        String::from_utf8_lossy(&stale.stderr)
+    );
+    let envelope: Value = serde_json::from_slice(&stale.stdout).expect("stale stdout is JSON");
+    assert_eq!(envelope["schema_version"], "adoc.stale.v0");
+    assert_eq!(
+        envelope["evaluated_at"].as_str().map(str::len),
+        Some(10),
+        "evaluated_at must be a YYYY-MM-DD date: {:?}",
+        envelope["evaluated_at"]
+    );
+    let records = envelope["records"].as_array().expect("records array");
+    assert_eq!(records.len(), 3, "expected exactly 3 records: {records:#?}");
+
+    assert_eq!(records[0]["id"], "security.production-db-access");
+    assert_eq!(records[0]["category"], "review_overdue");
+    assert_eq!(records[0]["reason"], "review_due:2020-03-31");
+    assert_eq!(records[0]["kind"], "policy");
+    assert_eq!(records[0]["authored_status"], "active");
+    assert_eq!(records[0]["effective_status"], "active");
+    assert!(
+        records[0]["days_overdue"].as_u64().expect("days_overdue") > 0,
+        "review_overdue must carry positive days_overdue"
+    );
+    assert!(
+        records[0]["source_path"]
+            .as_str()
+            .expect("source_path")
+            .contains("security/policies.adoc")
+    );
+
+    assert_eq!(records[1]["id"], "security.audit.retention");
+    assert_eq!(records[1]["category"], "stale");
+    assert_eq!(records[1]["authored_status"], "verified");
+    assert_eq!(
+        records[1]["effective_status"], "stale",
+        "verified + expired must re-derive stale at read time"
+    );
+    assert_eq!(records[1]["reason"], "expired:2024-01-01");
+    assert_eq!(records[1]["expires_at"], "2024-01-01");
+
+    assert_eq!(records[2]["id"], "billing.credits.legacy-export");
+    assert_eq!(records[2]["category"], "stale");
+    assert_eq!(records[2]["authored_status"], "draft");
+    assert_eq!(
+        records[2]["effective_status"], "draft",
+        "draft + expired is listed by category but derives no effective status"
+    );
+    assert_eq!(records[2]["reason"], "expired:2026-01-15");
+
+    // --- --within horizon adds the two far-future verified objects ---
+    let within = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "stale",
+            "--artifact",
+            graph_arg,
+            "--within",
+            "36500d",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc stale --within runs");
+    assert!(within.status.success(), "adoc stale --within must exit 0");
+    let within_env: Value =
+        serde_json::from_slice(&within.stdout).expect("stale --within stdout is JSON");
+    let within_records = within_env["records"].as_array().expect("records array");
+    assert_eq!(
+        within_records.len(),
+        5,
+        "expected the 3 default records plus 2 expiring_soon: {within_records:#?}"
+    );
+    assert_eq!(within_records[3]["id"], "billing.credits.consume");
+    assert_eq!(within_records[3]["category"], "expiring_soon");
+    assert_eq!(within_records[3]["reason"], "expires:2120-01-01");
+    assert!(
+        within_records[3]["days_remaining"]
+            .as_u64()
+            .expect("days_remaining")
+            > 0
+    );
+    assert_eq!(within_records[4]["id"], "auth.mfa.enforced");
+    assert_eq!(within_records[4]["category"], "expiring_soon");
+    assert!(within_records[4].get("days_overdue").is_none());
+
+    // --- plain output smoke ---
+    let plain = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["stale", "--artifact", graph_arg, "--format", "plain"])
+        .output()
+        .expect("adoc stale --format plain runs");
+    assert!(plain.status.success(), "plain stale must exit 0");
+    let plain_stdout = String::from_utf8_lossy(&plain.stdout);
+    assert!(
+        plain_stdout.contains("Stale: 3 record(s) as of"),
+        "plain output must lead with the record count header:\n{plain_stdout}"
+    );
+    assert!(plain_stdout.contains("security.audit.retention"));
+    assert!(
+        plain_stdout.contains("verified -> stale"),
+        "plain output must show the authored -> effective transition:\n{plain_stdout}"
+    );
+
+    // --- markdown stays diff/review-only ---
+    let markdown = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["stale", "--artifact", graph_arg, "--format", "markdown"])
+        .output()
+        .expect("adoc stale --format markdown runs");
+    assert_eq!(
+        markdown.status.code(),
+        Some(2),
+        "markdown format must be rejected for adoc stale"
+    );
+    assert!(
+        String::from_utf8_lossy(&markdown.stderr).contains("cli.format"),
+        "markdown rejection must name the cli.format diagnostic"
+    );
+
+    // --- artifact-load failure exits 2 with an empty-records envelope ---
+    let missing = dist.join("does-not-exist.graph.json");
+    let missing_arg = missing.to_str().expect("missing path is utf-8");
+    let failed = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args(["stale", "--artifact", missing_arg, "--format", "json"])
+        .output()
+        .expect("adoc stale with missing artifact runs");
+    assert_eq!(
+        failed.status.code(),
+        Some(2),
+        "artifact-load failure must exit 2"
+    );
+    let failed_env: Value =
+        serde_json::from_slice(&failed.stdout).expect("failure envelope is JSON");
+    assert_eq!(failed_env["schema_version"], "adoc.stale.v0");
+    assert_eq!(failed_env["records"], serde_json::json!([]));
+    assert!(
+        !failed_env["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .is_empty(),
+        "failure envelope must carry fix-oriented diagnostics"
+    );
+}
