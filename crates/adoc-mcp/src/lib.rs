@@ -12,7 +12,7 @@ use adoc_local::{
     GraphUseCase, InitInput, InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase,
     PathPolicy, ProjectConfig, ProjectRootPathPolicy, ProjectStatusInput, ProjectStatusRefresh,
     ProjectStatusUseCase, ReviewInput, ReviewPatchSource, ReviewUseCase, SearchInput,
-    SearchUseCase, WhyInput, WhyUseCase,
+    SearchUseCase, StaleInput, StaleUseCase, WhyInput, WhyUseCase,
 };
 use rmcp::{
     ServerHandler,
@@ -113,6 +113,15 @@ impl AgentDocMcpServer {
             artifact: params.artifact,
             relation: parse_relation(params.relation.as_deref())?,
             direction: parse_direction(params.direction.as_deref())?,
+        })?;
+        serde_json::to_value(outcome.envelope).map_err(Into::into)
+    }
+
+    pub fn run_stale(&self, params: StaleParams) -> McpAdapterResult<serde_json::Value> {
+        let context = self.context(params.project_root)?;
+        let outcome = StaleUseCase::new(context).run(StaleInput {
+            artifact: params.artifact,
+            within_days: params.within_days,
         })?;
         serde_json::to_value(outcome.envelope).map_err(Into::into)
     }
@@ -305,6 +314,19 @@ impl AgentDocMcpServer {
     }
 
     #[tool(
+        name = "adoc_stale",
+        description = "List stale, review-overdue, and (with within_days) expiring-soon Knowledge Objects, re-derived at read time from the graph artifact. Read-only query: records are data, not failures."
+    )]
+    pub fn adoc_stale(
+        &self,
+        Parameters(params): Parameters<StaleParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_stale(params)
+            .map(CallToolResult::structured)
+            .map_err(adapter_error)
+    }
+
+    #[tool(
         name = "adoc_search",
         description = "Search compiled AgentDoc graph and search artifacts."
     )]
@@ -463,6 +485,16 @@ pub struct GraphParams {
     pub artifact: Option<PathBuf>,
     pub relation: Option<String>,
     pub direction: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StaleParams {
+    pub project_root: Option<PathBuf>,
+    pub artifact: Option<PathBuf>,
+    /// Additionally list verified objects whose `expires_at` falls within the
+    /// next N days as `expiring_soon` records.
+    pub within_days: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
