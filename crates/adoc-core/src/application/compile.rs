@@ -17,6 +17,7 @@ use crate::infrastructure::render::HtmlRenderer;
 use crate::infrastructure::validate::mode_pipeline::pipeline_for;
 use crate::infrastructure::validate::validate_workspace;
 
+use super::local_today;
 use super::search_artifact::{
     build_search_artifact, cache_count_diagnostic, embedding_error_diagnostic,
 };
@@ -154,10 +155,6 @@ fn run_compile_pipeline<P: SourceProvider>(
         diagnostics,
         artifacts,
     }
-}
-
-fn local_today() -> NaiveDate {
-    chrono::Local::now().date_naive()
 }
 
 fn build_embedding_diagnostics(options: &BuildOptions<'_>) -> Vec<Diagnostic> {

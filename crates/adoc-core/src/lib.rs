@@ -25,6 +25,7 @@ pub use application::review::{
     ReviewSession, diff_objects, proof_obligations, review_with_patch,
 };
 pub use application::review_envelope::{ObjectDiffEnvelope, ReviewEnvelope};
+pub use application::signals::{STALE_SCHEMA_VERSION, StaleCategory, StaleEnvelope, StaleRecord};
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::graph::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
@@ -128,6 +129,22 @@ pub fn load_graph_session(input: GraphInput) -> GraphLoadResult {
         input,
         &infrastructure::artifact::GraphJsonArtifact,
     )
+}
+
+/// Evaluate the V6.1 `adoc stale` query against today's date, re-deriving
+/// staleness and review-overdue-ness from authored fields at read time.
+pub fn evaluate_stale(
+    session: &GraphSession,
+    within_days: Option<u32>,
+    diagnostics: Vec<Diagnostic>,
+) -> StaleEnvelope {
+    application::signals::evaluate_stale_today(session, within_days, diagnostics)
+}
+
+/// Empty `adoc.stale.v0` envelope for artifact-load-failure paths;
+/// `evaluated_at` is still populated.
+pub fn empty_stale_envelope(diagnostics: Vec<Diagnostic>) -> StaleEnvelope {
+    application::signals::empty_stale_envelope_today(diagnostics)
 }
 
 pub fn check_patch(input: PatchInput) -> PatchCheckResult {
