@@ -9,7 +9,7 @@ use adoc_core::{
 };
 use adoc_mcp::{
     AdocPatchCheckParams, AdocReviewParams, AgentDocMcpServer, BuildParams, GraphParams,
-    InitParams, PatchInput, ProjectStatusParams, SearchParams,
+    InitParams, PatchInput, ProjectStatusParams, SearchParams, StaleParams,
 };
 use serde_json::json;
 
@@ -190,6 +190,120 @@ fn validates_representative_serialized_agent_envelopes_against_contract_schemas(
         })
         .expect("project status succeeds");
     assert_valid("project-status.json", &project_status);
+
+    // An empty-records stale envelope is also a contract case: the fixture
+    // project has no expiry or review fields at all.
+    let stale = server
+        .run_stale(StaleParams {
+            project_root: None,
+            artifact: None,
+            within_days: None,
+        })
+        .expect("stale succeeds");
+    assert_valid("adoc.stale.v0.schema.json", &stale);
+    assert_eq!(stale["records"], serde_json::json!([]));
+}
+
+/// V6.1: `adoc_stale` envelopes with all three record categories validate
+/// against `adoc.stale.v0.schema.json`.
+#[test]
+fn validates_adoc_stale_v0_envelope_against_schema() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(
+        &root.join("docs/index.adoc"),
+        concat!(
+            "# Lifecycle @doc(team.lifecycle)\n",
+            "\n",
+            "::claim team.expired-verified\n",
+            "status: verified\n",
+            "owner: team-docs\n",
+            "verified_at: 2020-01-01\n",
+            "source: audit records 2020\n",
+            "expires_at: 2024-01-01\n",
+            "--\n",
+            "Verified but expired claim.\n",
+            "::\n",
+            "\n",
+            "::claim team.expired-draft\n",
+            "status: draft\n",
+            "owner: team-docs\n",
+            "expires_at: 2026-01-15\n",
+            "--\n",
+            "Draft with a past expiry.\n",
+            "::\n",
+            "\n",
+            "::policy team.review-policy\n",
+            "status: active\n",
+            "owner: team-docs\n",
+            "approved_by: [team-docs]\n",
+            "effective_at: 2020-01-01\n",
+            "review_interval: 30d\n",
+            "--\n",
+            "Policy overdue for review.\n",
+            "::\n",
+            "\n",
+            "::claim team.expiring\n",
+            "status: verified\n",
+            "owner: team-docs\n",
+            "verified_at: 2026-01-01\n",
+            "source: audit records 2026\n",
+            "expires_at: 2120-01-01\n",
+            "--\n",
+            "Verified claim expiring far in the future.\n",
+            "::\n",
+        ),
+    );
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n",
+    );
+    let server = AgentDocMcpServer::new(root.to_path_buf());
+    server
+        .run_build(BuildParams {
+            project_root: None,
+            path: None,
+            out: None,
+            no_embeddings: false,
+        })
+        .expect("build succeeds");
+
+    let stale = server
+        .run_stale(StaleParams {
+            project_root: None,
+            artifact: None,
+            within_days: None,
+        })
+        .expect("stale succeeds");
+    assert_valid("adoc.stale.v0.schema.json", &stale);
+    let records = stale["records"].as_array().expect("records array");
+    assert_eq!(
+        records.len(),
+        3,
+        "two stale + one review_overdue: {records:#?}"
+    );
+
+    let stale_within = server
+        .run_stale(StaleParams {
+            project_root: None,
+            artifact: None,
+            within_days: Some(36500),
+        })
+        .expect("stale with horizon succeeds");
+    assert_valid("adoc.stale.v0.schema.json", &stale_within);
+    let within_records = stale_within["records"].as_array().expect("records array");
+    assert_eq!(
+        within_records.len(),
+        4,
+        "plus one expiring_soon: {within_records:#?}"
+    );
+    let categories: Vec<&str> = within_records
+        .iter()
+        .filter_map(|record| record["category"].as_str())
+        .collect();
+    assert!(categories.contains(&"stale"));
+    assert!(categories.contains(&"review_overdue"));
+    assert!(categories.contains(&"expiring_soon"));
 }
 
 #[test]
