@@ -18,5 +18,6 @@ pub use use_cases::{
     ProjectStatusInput, ProjectStatusOutcome, ProjectStatusPaths, ProjectStatusReadiness,
     ProjectStatusRefresh, ProjectStatusRefreshReport, ProjectStatusUseCase,
     ResolvedRetrievalRecord, ReviewInput, ReviewOutcome, ReviewPatchSource, ReviewUseCase,
-    SearchInput, SearchOutcome, SearchUseCase, WhyInput, WhyOutcome, WhyUseCase,
+    SearchInput, SearchOutcome, SearchUseCase, StaleInput, StaleOutcome, StaleUseCase, WhyInput,
+    WhyOutcome, WhyUseCase,
 };
