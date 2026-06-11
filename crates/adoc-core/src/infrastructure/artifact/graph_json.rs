@@ -463,16 +463,27 @@ pub(crate) fn derive_effective_status(
     knowledge_object: &KnowledgeObject,
     today: NaiveDate,
 ) -> Option<(String, String)> {
-    if status.as_deref() != Some("verified") {
+    let expires_at = knowledge_object
+        .fields()
+        .iter()
+        .find_map(|(key, value)| (key == "expires_at").then_some(value.as_str()));
+
+    derive_effective_status_from_fields(status.as_deref(), expires_at, today)
+}
+
+/// Field-string core of [`derive_effective_status`], shared with the V6.1
+/// read-time re-derivation in `application/signals.rs`, which works over graph
+/// artifact nodes (field maps) rather than domain Knowledge Objects.
+pub(crate) fn derive_effective_status_from_fields(
+    status: Option<&str>,
+    expires_at: Option<&str>,
+    today: NaiveDate,
+) -> Option<(String, String)> {
+    if status != Some("verified") {
         return None;
     }
 
-    let expires_at_value = knowledge_object
-        .fields()
-        .iter()
-        .find_map(|(key, value)| (key == "expires_at").then_some(value.as_str()))?;
-
-    let expires_at_date = NaiveDate::parse_from_str(expires_at_value, "%Y-%m-%d").ok()?;
+    let expires_at_date = NaiveDate::parse_from_str(expires_at?, "%Y-%m-%d").ok()?;
 
     if expires_at_date < today {
         Some(("stale".to_string(), format!("expired:{expires_at_date}")))
@@ -1897,6 +1908,78 @@ mod tests {
         assert!(
             result.is_none(),
             "expires_at equal to today must not produce effective_status"
+        );
+    }
+
+    // ── V6.1: field-based derivation core (read-time reuse) ───────────────────
+
+    /// `derive_effective_status_from_fields` mirrors the verified-past-expiry
+    /// stale derivation without needing a domain `KnowledgeObject`.
+    #[test]
+    fn derive_effective_status_from_fields_returns_stale_for_verified_past_expiry() {
+        let today = NaiveDate::from_ymd_opt(2026, 5, 8).expect("valid date");
+
+        let result =
+            derive_effective_status_from_fields(Some("verified"), Some("2026-01-01"), today);
+
+        assert_eq!(
+            result,
+            Some(("stale".to_string(), "expired:2026-01-01".to_string())),
+            "verified status with past expires_at must return stale"
+        );
+    }
+
+    /// Non-verified statuses never derive stale, even with a past expiry.
+    #[test]
+    fn derive_effective_status_from_fields_returns_none_for_non_verified() {
+        let today = NaiveDate::from_ymd_opt(2026, 5, 8).expect("valid date");
+
+        let result = derive_effective_status_from_fields(Some("draft"), Some("2026-01-01"), today);
+
+        assert!(
+            result.is_none(),
+            "non-verified status must not produce effective_status"
+        );
+    }
+
+    /// `expires_at` equal to `today` is not stale (strict `<`).
+    #[test]
+    fn derive_effective_status_from_fields_returns_none_on_boundary_day() {
+        let today = NaiveDate::from_ymd_opt(2026, 5, 8).expect("valid date");
+
+        let result =
+            derive_effective_status_from_fields(Some("verified"), Some("2026-05-08"), today);
+
+        assert!(
+            result.is_none(),
+            "expires_at equal to today must not produce effective_status"
+        );
+    }
+
+    /// Unparseable `expires_at` values are silently ignored.
+    #[test]
+    fn derive_effective_status_from_fields_returns_none_for_unparseable_date() {
+        let today = NaiveDate::from_ymd_opt(2026, 5, 8).expect("valid date");
+
+        let result =
+            derive_effective_status_from_fields(Some("verified"), Some("not-a-date"), today);
+
+        assert!(
+            result.is_none(),
+            "unparseable expires_at must not produce effective_status"
+        );
+    }
+
+    /// Missing `expires_at` produces nothing.
+    #[test]
+    fn derive_effective_status_from_fields_returns_none_for_missing_expires_at() {
+        let today = NaiveDate::from_ymd_opt(2026, 5, 8).expect("valid date");
+
+        let result = derive_effective_status_from_fields(Some("verified"), None, today);
+
+        assert!(
+            result.is_none(),
+            "missing expires_at must not produce effective_status"
         );
     }
 
