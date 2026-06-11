@@ -104,6 +104,23 @@ and no derived `effective_status` (the budget above is unchanged); they
 exist so `adoc stale --within <N>d` (V6.1) has deterministic
 `expiring_soon` records to report.
 
+## V6.1 `adoc stale` Acceptance
+
+The pilot is also the acceptance fixture for the V6.1 stale query
+(`crates/adoc-cli/tests/expanded_pilot.rs::expanded_pilot_stale_query`).
+Against a built pilot artifact, `adoc stale --format json` exits 0 with
+exactly 3 records, most-overdue first:
+
+| # | Object | Category | Reason |
+| :- | :----- | :------- | :----- |
+| 1 | `security.production-db-access` | `review_overdue` | `review_due:2020-03-31` |
+| 2 | `security.audit.retention` | `stale` (verified → effective `stale`) | `expired:2024-01-01` |
+| 3 | `billing.credits.legacy-export` | `stale` (draft, status echoed) | `expired:2026-01-15` |
+
+`adoc stale --within 36500d` additionally lists `billing.credits.consume`
+then `auth.mfa.enforced` as `expiring_soon`. All dates are wide-margin fixed
+dates, so the records and their order are clock-stable.
+
 ## What This Pilot Exercises
 
 - **Every V5 kind** with a complete authoring → validation → rendering →

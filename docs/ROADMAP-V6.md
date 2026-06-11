@@ -40,7 +40,7 @@ V6 closes the loop opened by V2. Three new read commands expose the V5.10 derive
 
 ### V6.1: `adoc stale` Slice
 
-Goal: give the V5.10 stale and review-overdue signals a first-class query surface.
+Goal: give the V5.10 stale and review-overdue signals a first-class query surface. Implemented (ADR-0038, [V6-DESIGN.md](V6-DESIGN.md) §V6.1).
 
 Scope:
 
