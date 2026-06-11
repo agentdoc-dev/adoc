@@ -13,12 +13,13 @@ use adoc_core::{
     GraphTraversalResult, ObjectDiffEnvelope, PatchCheckResult, PatchInput, RetrievalEnvelope,
     RetrievalInput, RetrievalLoadResult, RetrievalRecord, ReviewEnvelope, ReviewError,
     ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters, SearchMode,
-    SearchQuery, Severity, SnapshotSelector, build_workspace_with_embedding_provider,
-    check_patch as core_check_patch, compile_workspace, diff_objects,
-    embed_query_with_embedding_provider, git_review_available, inspect_graph_artifact,
-    inspect_search_artifact, load_graph_session, load_retrieval_session_with_embedding_provider,
-    load_review_from_git, load_review_with_changed_files_from_git, parse_patch_from_path,
-    parse_patch_from_value, review_with_patch, search as core_search, traverse_graph, why_object,
+    SearchQuery, Severity, SnapshotSelector, StaleEnvelope,
+    build_workspace_with_embedding_provider, check_patch as core_check_patch, compile_workspace,
+    diff_objects, embed_query_with_embedding_provider, empty_stale_envelope, evaluate_stale,
+    git_review_available, inspect_graph_artifact, inspect_search_artifact, load_graph_session,
+    load_retrieval_session_with_embedding_provider, load_review_from_git,
+    load_review_with_changed_files_from_git, parse_patch_from_path, parse_patch_from_value,
+    review_with_patch, search as core_search, traverse_graph, why_object,
 };
 use serde::Serialize;
 
@@ -114,6 +115,19 @@ pub struct GraphInput {
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphOutcome {
     pub envelope: GraphTraversalEnvelope,
+    pub exit_code: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct StaleInput {
+    pub artifact: Option<PathBuf>,
+    /// `--within <N>d` horizon in days; `None` disables `expiring_soon`.
+    pub within_days: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StaleOutcome {
+    pub envelope: StaleEnvelope,
     pub exit_code: i32,
 }
 
@@ -364,6 +378,27 @@ where
 
     pub fn run(&self, input: GraphInput) -> Result<GraphOutcome, LocalError> {
         graph_with_context(&self.context, input)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StaleUseCase<P>
+where
+    P: PathPolicy,
+{
+    context: LocalContext<P>,
+}
+
+impl<P> StaleUseCase<P>
+where
+    P: PathPolicy,
+{
+    pub fn new(context: LocalContext<P>) -> Self {
+        Self { context }
+    }
+
+    pub fn run(&self, input: StaleInput) -> Result<StaleOutcome, LocalError> {
+        stale_with_context(&self.context, input)
     }
 }
 
@@ -665,6 +700,44 @@ where
 
     Ok(GraphOutcome {
         envelope: GraphTraversalEnvelope::from(result),
+        exit_code,
+    })
+}
+
+fn stale_with_context<P>(
+    context: &LocalContext<P>,
+    input: StaleInput,
+) -> Result<StaleOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    let artifact = input
+        .artifact
+        .as_deref()
+        .map(|path| context.path_policy().resolve_read_path(path))
+        .transpose()?;
+    let config = discover_project_config_if(artifact.is_none(), context.config_start())?;
+    let graph_artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
+    let graph_artifact = context.path_policy().resolve_read_path(&graph_artifact)?;
+    let load_result = load_graph_session(CoreGraphInput {
+        graph_artifact_path: graph_artifact,
+    });
+    let diagnostics = load_result.diagnostics;
+    let session = load_result
+        .session
+        .filter(|_| !diagnostics_have_errors(&diagnostics));
+    let Some(session) = session else {
+        let exit_code = stale_exit_code_for_diagnostics(&diagnostics);
+        return Ok(StaleOutcome {
+            envelope: empty_stale_envelope(diagnostics),
+            exit_code,
+        });
+    };
+
+    let envelope = evaluate_stale(&session, input.within_days, diagnostics);
+    let exit_code = stale_exit_code_for_diagnostics(&envelope.diagnostics);
+    Ok(StaleOutcome {
+        envelope,
         exit_code,
     })
 }
@@ -1516,6 +1589,19 @@ fn graph_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
         (DiagnosticCode::IdInvalid, _) => Some(1),
         (DiagnosticCode::GraphObjectNotFound, _) => Some(3),
         (_, Severity::Error) => Some(2),
+        _ => None,
+    }
+}
+
+/// `adoc stale` is a query, not a gate: records never affect the exit code;
+/// only artifact-load errors do.
+fn stale_exit_code_for_diagnostics(diagnostics: &[Diagnostic]) -> i32 {
+    exit_code_for_diagnostics(diagnostics, stale_diagnostic_exit_code)
+}
+
+fn stale_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
+    match diagnostic.severity {
+        Severity::Error => Some(2),
         _ => None,
     }
 }
