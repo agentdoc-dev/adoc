@@ -492,6 +492,41 @@ pub(crate) fn derive_effective_status_from_fields(
     }
 }
 
+/// Reverse index over `contradiction_claims`: claim id → the sorted ids of
+/// every **unresolved** contradiction node that references it.
+///
+/// Shared core of the build-time `effective_status: "contradicted"` post-pass
+/// and the V6.2 `adoc contradictions` read-time evaluation in
+/// `application/signals.rs`. Values are sorted ascending so element `[0]` is
+/// the lexicographically smallest implicating contradiction id.
+pub(crate) fn unresolved_contradiction_claim_index<'a>(
+    objects: impl Iterator<Item = &'a crate::domain::graph::GraphKnowledgeObjectNode>,
+) -> BTreeMap<String, Vec<String>> {
+    let mut index: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+    for ko in objects {
+        if ko.kind != "contradiction" {
+            continue;
+        }
+        if ko.status.as_deref() != Some("unresolved") {
+            continue;
+        }
+        for claim_id in &ko.contradiction_claims {
+            index
+                .entry(claim_id.clone())
+                .or_default()
+                .push(ko.id.clone());
+        }
+    }
+
+    for ids in index.values_mut() {
+        ids.sort();
+        ids.dedup();
+    }
+
+    index
+}
+
 /// Cross-object post-pass: propagate `effective_status: "contradicted"` to claim
 /// nodes referenced by an **unresolved** contradiction node.
 ///
@@ -509,35 +544,13 @@ pub(crate) fn derive_effective_status_from_fields(
 /// claim. This ensures the output is byte-stable regardless of iteration order.
 pub(crate) fn apply_contradiction_effective_status(nodes: &mut [crate::domain::graph::GraphNode]) {
     use crate::domain::graph::GraphNode;
-    use std::collections::HashMap;
 
-    // Build a map: claim_id -> lexicographically smallest contradiction_id
-    // among all unresolved contradictions that reference this claim.
-    let mut contradicted: HashMap<String, String> = HashMap::new();
-
-    for node in nodes.iter() {
+    let contradicted = unresolved_contradiction_claim_index(nodes.iter().filter_map(|node| {
         let GraphNode::KnowledgeObject(ko) = node else {
-            continue;
+            return None;
         };
-        if ko.kind != "contradiction" {
-            continue;
-        }
-        if ko.status.as_deref() != Some("unresolved") {
-            continue;
-        }
-        let cid = ko.id.clone();
-        for claim_id in &ko.contradiction_claims {
-            contradicted
-                .entry(claim_id.clone())
-                .and_modify(|existing| {
-                    // Keep the lexicographically smallest contradiction id.
-                    if cid < *existing {
-                        *existing = cid.clone();
-                    }
-                })
-                .or_insert_with(|| cid.clone());
-        }
-    }
+        Some(ko)
+    }));
 
     if contradicted.is_empty() {
         return;
@@ -555,9 +568,9 @@ pub(crate) fn apply_contradiction_effective_status(nodes: &mut [crate::domain::g
             // Stale (or any pre-set status) wins — do not overwrite.
             continue;
         }
-        if let Some(cid) = contradicted.get(&ko.id) {
+        if let Some(ids) = contradicted.get(&ko.id) {
             ko.effective_status = Some("contradicted".to_string());
-            ko.effective_reason = Some(format!("contradiction:{cid}"));
+            ko.effective_reason = Some(format!("contradiction:{}", ids[0]));
         }
     }
 }
