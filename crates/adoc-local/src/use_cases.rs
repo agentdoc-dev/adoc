@@ -872,6 +872,12 @@ where
 {
     // Resolve the changed set before touching the artifact so input errors
     // short-circuit deterministically (the envelope still ships, ADR-0038).
+    //
+    // The git derivation deliberately skips `PathPolicy::resolve_read_path`
+    // (unlike every artifact read below): git discovers the repository by
+    // walking up from `config_start` to `.git` itself, and git history is
+    // not a filesystem read in the policy sense. If a future policy needs
+    // to gate "read git state outside the policy root", this is the seam.
     let changed = match &input.changed {
         ImpactedChangedSet::Paths(paths) => validate_changed_paths(paths),
         ImpactedChangedSet::GitRef(base_ref) => {
