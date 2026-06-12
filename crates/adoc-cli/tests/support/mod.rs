@@ -26,6 +26,23 @@ pub(crate) fn workspace_fixture_path(relative: &str) -> PathBuf {
         .join(relative)
 }
 
+/// Recursively copy a fixture tree into a test workspace. V6.4 TB5: apply
+/// tests mutate source files, so they always run against a tempdir copy —
+/// the in-repo fixture stays pristine.
+#[allow(dead_code)]
+pub(crate) fn copy_tree(source: &std::path::Path, destination: &std::path::Path) {
+    fs::create_dir_all(destination).expect("destination directory can be created");
+    for entry in fs::read_dir(source).expect("source directory is readable") {
+        let entry = entry.expect("directory entry is readable");
+        let target = destination.join(entry.file_name());
+        if entry.file_type().expect("file type is readable").is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), &target).expect("fixture file copies");
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub(crate) fn adoc_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
