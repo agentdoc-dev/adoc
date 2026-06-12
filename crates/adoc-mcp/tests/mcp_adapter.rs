@@ -266,6 +266,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/contradiction-guide",
         "adoc://agent/v0/source-guide",
         "adoc://agent/v0/patch-contract",
+        "adoc://agent/v0/patch-apply-guide",
         "adoc://agent/v0/project-status-guide",
         "adoc://agent/v0/dogfood-billing-pilot",
         "adoc://agent/v0/review-workflow",
@@ -291,6 +292,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/adoc.stale.v0.schema.json",
         "adoc://agent/v0/schema/adoc.contradictions.v0.schema.json",
         "adoc://agent/v0/schema/adoc.impacted.v0.schema.json",
+        "adoc://agent/v0/schema/adoc.patch.apply.v0.schema.json",
     ];
 
     let resources = server.list_agent_resources();
@@ -351,6 +353,7 @@ fn lists_versioned_prompts_and_pinned_aliases() {
             "adoc_answer_with_citations",
             "adoc_propose_patch_v0",
             "adoc_propose_patch",
+            "adoc_propose_patch_v1",
             "adoc_inspect_project_status_v0",
             "adoc_inspect_project_status",
             "adoc_dogfood_billing_pilot_v0",
@@ -711,4 +714,189 @@ fn read_json_line(stdout: &mut impl BufRead) -> serde_json::Value {
         .expect("json response can be read");
     assert!(!line.is_empty(), "expected json response line");
     serde_json::from_str(&line).expect("response is valid JSON")
+}
+
+// ---------------------------------------------------------------------------
+// V6.4 TB4 — gated adoc_patch_apply
+// ---------------------------------------------------------------------------
+
+fn patch_apply_project(name: &str, mcp_block: &str) -> (tempfile::TempDir, AgentDocMcpServer, String) {
+    let _ = name;
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/billing.adoc"), source());
+    write(
+        &root.join("agentdoc.config.yaml"),
+        &format!(
+            "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n{mcp_block}"
+        ),
+    );
+    let server = AgentDocMcpServer::new(root.to_path_buf());
+    server
+        .run_build(BuildParams {
+            project_root: None,
+            path: None,
+            out: None,
+            no_embeddings: true,
+        })
+        .expect("build succeeds");
+    let graph: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(root.join("dist/docs.graph.json")).unwrap())
+            .expect("graph json parses");
+    let base_hash = graph["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["id"] == "billing.credits")
+        .expect("target node")["content_hash"]
+        .as_str()
+        .expect("content hash")
+        .to_string();
+    (workspace, server, base_hash)
+}
+
+fn inline_replace_body(base_hash: &str) -> PatchInput {
+    PatchInput::Inline {
+        patch: serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "replace_body",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": { "body": "Credits apply after ledger commit." },
+            "reason": "TB4 gate test."
+        }),
+    }
+}
+
+#[test]
+fn patch_apply_tool_is_registered_even_when_the_gate_is_disabled() {
+    let (_workspace, server, _base_hash) = patch_apply_project("registered", "");
+    // The tool router is static: the tool exists regardless of project
+    // config; only the call-time gate differs (ADR-0037).
+    assert!(server.get_info().capabilities.tools.is_some());
+    let refusal = server
+        .run_patch_apply(adoc_mcp::AdocPatchApplyParams {
+            project_root: None,
+            artifact: None,
+            input: inline_replace_body("sha256:any"),
+        })
+        .expect("gate refusal is a normal envelope, not a protocol error");
+    assert_eq!(refusal["schema_version"], "adoc.patch.apply.v0");
+}
+
+#[test]
+fn patch_apply_refuses_with_one_fix_oriented_diagnostic_when_disabled() {
+    let (workspace, server, base_hash) = patch_apply_project("disabled", "");
+    let original = fs::read_to_string(workspace.path().join("docs/billing.adoc")).expect("source");
+
+    let refusal = server
+        .run_patch_apply(adoc_mcp::AdocPatchApplyParams {
+            project_root: None,
+            artifact: None,
+            input: inline_replace_body(&base_hash),
+        })
+        .expect("normal envelope");
+
+    assert_eq!(refusal["applied"], false);
+    assert_eq!(refusal["written_files"].as_array().map(Vec::len), Some(0));
+    assert_eq!(refusal["trace"]["interface"], "mcp");
+    let diagnostics = refusal["diagnostics"].as_array().expect("diagnostics");
+    assert_eq!(diagnostics.len(), 1, "exactly one diagnostic");
+    assert_eq!(diagnostics[0]["code"], "mcp.patch_apply_disabled");
+    let message = diagnostics[0]["message"].as_str().expect("message");
+    assert!(message.contains("mcp: { patch_apply: enabled }"), "names the config key: {message}");
+    assert!(message.contains("adoc_patch_check"), "names the fallback: {message}");
+
+    assert_eq!(
+        fs::read_to_string(workspace.path().join("docs/billing.adoc")).expect("source"),
+        original,
+        "disabled gate writes nothing"
+    );
+}
+
+#[test]
+fn patch_apply_applies_through_the_sandboxed_use_case_when_enabled() {
+    let (workspace, server, base_hash) =
+        patch_apply_project("enabled", "mcp:\n  patch_apply: enabled\n");
+
+    let envelope = server
+        .run_patch_apply(adoc_mcp::AdocPatchApplyParams {
+            project_root: None,
+            artifact: None,
+            input: inline_replace_body(&base_hash),
+        })
+        .expect("apply runs");
+
+    // Same use case as the CLI by construction; the envelope differs only in
+    // trace.interface (slice acceptance).
+    assert_eq!(envelope["schema_version"], "adoc.patch.apply.v0");
+    assert_eq!(envelope["applied"], true);
+    assert_eq!(envelope["check"]["valid"], true);
+    assert_eq!(envelope["post_check"]["error_count"], 0);
+    assert_eq!(envelope["artifacts_stale"], true);
+    assert_eq!(envelope["trace"]["interface"], "mcp");
+
+    let rewritten =
+        fs::read_to_string(workspace.path().join("docs/billing.adoc")).expect("source");
+    assert!(rewritten.contains("Credits apply after ledger commit."));
+    assert_eq!(
+        rewritten,
+        source().replace(
+            "Credits apply after payment.",
+            "Credits apply after ledger commit."
+        ),
+        "formatting preserved outside the body span"
+    );
+}
+
+#[test]
+fn patch_apply_rejects_patch_paths_escaping_the_project_root() {
+    let (_workspace, server, _base_hash) =
+        patch_apply_project("sandbox", "mcp:\n  patch_apply: enabled\n");
+
+    let error = server
+        .run_patch_apply(adoc_mcp::AdocPatchApplyParams {
+            project_root: None,
+            artifact: None,
+            input: PatchInput::Path {
+                patch_path: PathBuf::from("../outside-patch.json"),
+            },
+        })
+        .expect_err("escape rejected");
+
+    assert!(error.to_string().contains("path_outside_project"));
+}
+
+#[test]
+fn propose_patch_v0_prompt_stays_byte_stable_and_v1_is_apply_aware() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let server = AgentDocMcpServer::new(workspace.path().to_path_buf());
+
+    // ADR-0014: the v0 prompt and its unversioned alias are pinned. This
+    // literal is a byte-for-byte copy of the published prompt text — any
+    // edit to the const must fail here.
+    const PINNED_V0_BODY: &str = "Use AgentDoc V2.2 patch validation before proposing source changes.\n\nWorkflow:\n1. Inspect readiness with adoc_project_status.\n2. Retrieve the target Object ID with adoc_why or adoc_search.\n3. Build a single-operation adoc.patch.v0 JSON proposal using replace_body, update_fields, create_object, supersede, or revoke; include reason and current base_hash when updating existing knowledge.\n4. Validate the inline patch with adoc_patch_check.\n5. Report validity, diagnostics, affected relations, diffs, and proof obligations.\n\nDo not apply patches, rewrite AgentDoc Source, approve knowledge, or create hosted review state.";
+
+    let v0 = server
+        .get_agent_prompt("adoc_propose_patch_v0", None)
+        .expect("v0 prompt");
+    let v0_text = serde_json::to_value(&v0).expect("serializes")["messages"][0]["content"]["text"]
+        .as_str()
+        .expect("text")
+        .to_string();
+    assert_eq!(v0_text, PINNED_V0_BODY, "adoc_propose_patch_v0 must stay byte-stable (ADR-0014)");
+
+    let alias = server
+        .get_agent_prompt("adoc_propose_patch", None)
+        .expect("alias prompt");
+    assert_eq!(alias.messages, v0.messages, "unversioned alias stays on v0");
+
+    let v1 = server
+        .get_agent_prompt("adoc_propose_patch_v1", None)
+        .expect("v1 prompt");
+    let v1_text = serde_json::to_value(&v1).expect("serializes").to_string();
+    assert!(v1_text.contains("adoc_patch_apply"));
+    assert!(v1_text.contains("patch_apply_enabled"));
+    assert!(v1_text.contains("post_check"));
+    assert!(v1_text.contains("artifacts_stale"));
 }

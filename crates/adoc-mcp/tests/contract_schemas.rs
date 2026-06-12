@@ -758,6 +758,10 @@ fn mcp_serves_v3_schema_resources_byte_equal_to_on_disk_files() {
             "adoc://agent/v0/schema/adoc.review.v0.schema.json",
             "adoc.review.v0.schema.json",
         ),
+        (
+            "adoc://agent/v0/schema/adoc.patch.apply.v0.schema.json",
+            "adoc.patch.apply.v0.schema.json",
+        ),
     ] {
         let result = server
             .read_agent_resource(uri)
@@ -935,4 +939,91 @@ fn validates_adoc_impacted_v0_envelope_against_schema() {
             "error must name the argument rule: {error}"
         );
     }
+}
+
+/// V6.4 TB4: `adoc_patch_apply` envelopes — an applied success, the
+/// disabled-gate refusal, and a stale-base-hash refusal — validate against
+/// `adoc.patch.apply.v0.schema.json`.
+#[test]
+fn validates_patch_apply_envelopes_against_contract_schema() {
+    use adoc_mcp::AdocPatchApplyParams;
+
+    fn inline_patch(base_hash: &str) -> PatchInput {
+        PatchInput::Inline {
+            patch: json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "replace_body",
+                "target": "billing.ready",
+                "base_hash": base_hash,
+                "changes": { "body": "Billing docs are ready and applied." },
+                "reason": "Contract-test the apply envelope.",
+                "proposer": { "type": "agent", "id": "contract-test" }
+            }),
+        }
+    }
+
+    // Disabled gate (the default project has no `mcp:` block).
+    let (_workspace, server, base_hash) = project_with_built_graph();
+    let refusal = server
+        .run_patch_apply(AdocPatchApplyParams {
+            project_root: None,
+            artifact: None,
+            input: inline_patch(&base_hash),
+        })
+        .expect("gate refusal is a normal envelope");
+    assert_valid("adoc.patch.apply.v0.schema.json", &refusal);
+    assert_eq!(refusal["applied"], false);
+    assert_eq!(refusal["diagnostics"][0]["code"], "mcp.patch_apply_disabled");
+
+    // Enabled project: applied success, then a stale-base-hash refusal.
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), source());
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\nmcp:\n  patch_apply: enabled\n",
+    );
+    let server = AgentDocMcpServer::new(root.to_path_buf());
+    server
+        .run_build(BuildParams {
+            project_root: None,
+            path: None,
+            out: None,
+            no_embeddings: true,
+        })
+        .expect("build succeeds");
+    let graph: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(root.join("dist/docs.graph.json")).unwrap())
+            .expect("graph json parses");
+    let base_hash = graph["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["id"] == "billing.ready")
+        .expect("target node")["content_hash"]
+        .as_str()
+        .expect("content hash")
+        .to_string();
+
+    let applied = server
+        .run_patch_apply(AdocPatchApplyParams {
+            project_root: None,
+            artifact: None,
+            input: inline_patch(&base_hash),
+        })
+        .expect("apply runs");
+    assert_valid("adoc.patch.apply.v0.schema.json", &applied);
+    assert_eq!(applied["applied"], true);
+    assert_eq!(applied["trace"]["interface"], "mcp");
+    assert_eq!(applied["trace"]["proposer"]["kind"], "agent");
+
+    let stale = server
+        .run_patch_apply(AdocPatchApplyParams {
+            project_root: None,
+            artifact: None,
+            input: inline_patch("sha256:stale"),
+        })
+        .expect("refusal is a normal envelope");
+    assert_valid("adoc.patch.apply.v0.schema.json", &stale);
+    assert_eq!(stale["applied"], false);
 }

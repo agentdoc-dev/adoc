@@ -50,13 +50,17 @@
     },
     "readiness": {
       "type": "object",
-      "required": ["retrieval", "semantic_search", "patch_validation", "review"],
+      "required": ["retrieval", "semantic_search", "patch_validation", "review", "patch_apply_enabled"],
       "properties": {
         "retrieval": { "type": "boolean" },
         "semantic_search": { "type": "boolean" },
         "patch_validation": { "type": "boolean" },
         "review": {
           "description": "V3.6: true when the system `git` binary is available and the project root resolves a `HEAD` ref — i.e. when `adoc_diff` / `adoc_review` have at least a default base ref to compare against. False if git is missing or the directory has no commits.",
+          "type": "boolean"
+        },
+        "patch_apply_enabled": {
+          "description": "V6.4: true only when the project opted into MCP patch apply via `mcp: { patch_apply: enabled }` in agentdoc.config.yaml. Agents check this before constructing a patch intended for adoc_patch_apply; when false, adoc_patch_apply refuses with mcp.patch_apply_disabled and adoc_patch_check remains available.",
           "type": "boolean"
         }
       },

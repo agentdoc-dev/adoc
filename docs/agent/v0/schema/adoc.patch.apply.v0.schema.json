@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.patch.apply.v0.schema.json",
+  "title": "AgentDoc Patch Apply Result",
+  "description": "Result of applying a validated adoc.patch.v0 to AgentDoc source via formatting-preserving span splices (working tree only, never Git). Emitted by `adoc patch --apply` and the config-gated `adoc_patch_apply` MCP tool. Refusals (validation failure, source drift, missing placement, disabled MCP gate) are the same envelope with applied:false, empty written_files, and fix-oriented diagnostics — never a protocol error. Exit codes: 0 applied and post-check clean; 1 refused, nothing written; 2 applied but the post-check reports new errors (stop and surface to a human). After a successful apply the graph artifact is stale by design (artifacts_stale:true) — rebuild before further reads. Never auto-reverts. See ROADMAP-V6.md §V6.4, ADR-0036, ADR-0037.",
+  "type": "object",
+  "required": ["schema_version", "applied", "operation", "written_files", "object", "post_check", "artifacts_stale", "proof_obligations", "trace", "diagnostics"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.patch.apply.v0" },
+    "applied": { "type": "boolean" },
+    "target": {
+      "description": "The patch's target Object ID. Absent for refusals that never reached validation (e.g. the disabled MCP gate or an unparseable patch document).",
+      "type": "string"
+    },
+    "operation": {
+      "description": "The patch operation as validated. Empty string when validation never ran.",
+      "type": "string"
+    },
+    "check": {
+      "description": "The embedded adoc.patch.check.v0 envelope (validated against adoc://agent/v0/schema/patch-check.json). Absent for refusals that never reached validation.",
+      "type": "object"
+    },
+    "written_files": {
+      "description": "Exactly one entry when applied (one patch, one target, one file write); empty for every refusal.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/writtenFile" }
+    },
+    "object": {
+      "description": "The target's content_hash before the apply (from the graph artifact; absent for create_object) and after (from the post-check recompile; absent when the post-check could not produce artifacts).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "before_content_hash": { "type": "string" },
+        "after_content_hash": { "type": "string" }
+      }
+    },
+    "post_check": { "$ref": "#/$defs/postCheck" },
+    "artifacts_stale": {
+      "description": "Always true when applied: apply never rewrites dist artifacts. Run `adoc build` (or adoc_project_status with refresh:\"build\") before further reads.",
+      "type": "boolean"
+    },
+    "proof_obligations": {
+      "description": "Copied from the embedded check: obligations the apply does not discharge (e.g. evidence review for verified-claim changes).",
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "trace": { "$ref": "#/$defs/trace" },
+    "diagnostics": {
+      "description": "Apply-stage refusal reasons (patch.source_drift, patch.create_missing_placement, patch.placement_not_adoc, mcp.patch_apply_disabled) or, when the embedded check failed, a mirror of its diagnostics. Empty on a successful apply — post-check findings live in post_check.diagnostics.",
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  },
+  "$defs": {
+    "writtenFile": {
+      "type": "object",
+      "required": ["path", "before_file_hash", "after_file_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "before_file_hash": {
+          "description": "sha256-prefixed hash of the file bytes the splice was planned against; re-verified on disk immediately before the atomic rename (TOCTOU guard).",
+          "type": "string"
+        },
+        "after_file_hash": { "type": "string" }
+      }
+    },
+    "postCheck": {
+      "description": "The automatic post-apply re-check (full compile from disk). Reported, never acted on: AgentDoc does not auto-revert — the human and Git undo.",
+      "type": "object",
+      "required": ["ran", "error_count", "warning_count", "diagnostics"],
+      "additionalProperties": false,
+      "properties": {
+        "ran": { "type": "boolean" },
+        "error_count": { "type": "integer", "minimum": 0 },
+        "warning_count": { "type": "integer", "minimum": 0 },
+        "diagnostics": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      }
+    },
+    "trace": {
+      "type": "object",
+      "required": ["interface"],
+      "additionalProperties": false,
+      "properties": {
+        "interface": {
+          "description": "Which surface performed the apply.",
+          "enum": ["cli", "mcp"]
+        },
+        "proposer": {
+          "description": "The patch's proposer metadata — recorded, not enforced (the permission engine is deferred).",
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "type": "string" },
+            "id": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -6,14 +6,16 @@ use std::path::PathBuf;
 
 use adoc_core::{
     GraphDirection, GraphRelationKind, PatchJsonInput, RetrievalEnvelope, check_patch_json,
+    mcp_patch_apply_disabled_refusal,
 };
 use adoc_local::{
     BuildInput, BuildUseCase, CheckInput, CheckUseCase, ContradictionsInput, ContradictionsUseCase,
     DiffInput, DiffUseCase, GraphInput, GraphUseCase, ImpactedChangedSet, ImpactedInput,
-    ImpactedUseCase, InitInput, InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase,
-    PathPolicy, ProjectConfig, ProjectRootPathPolicy, ProjectStatusInput, ProjectStatusRefresh,
-    ProjectStatusUseCase, ReviewInput, ReviewPatchSource, ReviewUseCase, SearchInput,
-    SearchUseCase, StaleInput, StaleUseCase, WhyInput, WhyUseCase,
+    ImpactedUseCase, InitInput, InitUseCase, LocalContext, PatchApplyInput, PatchApplySource,
+    PatchApplyUseCase, PatchCheckInput, PatchCheckUseCase, PathPolicy, ProjectConfig,
+    ProjectRootPathPolicy, ProjectStatusInput, ProjectStatusRefresh, ProjectStatusUseCase,
+    ReviewInput, ReviewPatchSource, ReviewUseCase, SearchInput, SearchUseCase, StaleInput,
+    StaleUseCase, WhyInput, WhyUseCase,
 };
 use rmcp::{
     ServerHandler,
@@ -206,6 +208,36 @@ impl AgentDocMcpServer {
                 serde_json::to_value(result).map_err(Into::into)
             }
         }
+    }
+
+    pub fn run_patch_apply(
+        &self,
+        params: AdocPatchApplyParams,
+    ) -> McpAdapterResult<serde_json::Value> {
+        let context = self.context(params.project_root)?;
+        // ADR-0037 gate: agent-initiated writes are opt-in via project
+        // config. Disabled (or no config at all) returns a normal
+        // applied:false envelope with one fix-oriented diagnostic — never a
+        // protocol error.
+        let config = ProjectConfig::discover_from(context.config_start())?;
+        let enabled = config
+            .as_ref()
+            .map(|config| config.mcp_patch_apply_enabled)
+            .unwrap_or(false);
+        if !enabled {
+            return serde_json::to_value(mcp_patch_apply_disabled_refusal()).map_err(Into::into);
+        }
+
+        let patch = match params.input {
+            PatchInput::Path { patch_path } => PatchApplySource::Path(patch_path),
+            PatchInput::Inline { patch } => PatchApplySource::Inline(patch),
+        };
+        let outcome = PatchApplyUseCase::new(context).run(PatchApplyInput {
+            patch,
+            artifact: params.artifact,
+            interface: "mcp".to_string(),
+        })?;
+        serde_json::to_value(outcome.result).map_err(Into::into)
     }
 
     pub fn run_diff(&self, params: AdocDiffParams) -> McpAdapterResult<serde_json::Value> {
@@ -413,6 +445,19 @@ impl AgentDocMcpServer {
     }
 
     #[tool(
+        name = "adoc_patch_apply",
+        description = "Apply a validated adoc.patch.v0 file or inline patch JSON to AgentDoc source (working tree only, project-root sandbox, base_hash + source-drift preconditions, automatic post-check; artifacts go stale — rebuild after). Requires project opt-in via `mcp: { patch_apply: enabled }` in agentdoc.config.yaml; otherwise returns applied:false with a fix-oriented diagnostic. adoc_patch_check remains the read-only validator. Never auto-reverts."
+    )]
+    pub fn adoc_patch_apply(
+        &self,
+        Parameters(params): Parameters<AdocPatchApplyParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_patch_apply(params)
+            .map(CallToolResult::structured)
+            .map_err(adapter_error)
+    }
+
+    #[tool(
         name = "adoc_diff",
         description = "Return the mechanical adoc.diff.v0 envelope for Knowledge Objects between a base git ref and the workdir (or an optional head ref). Read-only; requires readiness.review."
     )]
@@ -462,7 +507,7 @@ impl ServerHandler for AgentDocMcpServer {
                 .enable_prompts()
                 .build(),
         )
-            .with_instructions("AgentDoc local MCP gateway over compiled artifacts, source checks, builds, graph traversal, search, and patch validation.")
+            .with_instructions("AgentDoc local MCP gateway over compiled artifacts, source checks, builds, graph traversal, search, patch validation, and config-gated patch application.")
     }
 
     fn list_resources(
@@ -606,6 +651,16 @@ pub struct SearchParams {
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct AdocPatchCheckParams {
+    pub project_root: Option<PathBuf>,
+    pub artifact: Option<PathBuf>,
+    #[serde(flatten)]
+    pub input: PatchInput,
+}
+
+/// V6.4 TB4 — mirrors [`AdocPatchCheckParams`] so agents can apply the same
+/// path or inline JSON they checked.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct AdocPatchApplyParams {
     pub project_root: Option<PathBuf>,
     pub artifact: Option<PathBuf>,
     #[serde(flatten)]

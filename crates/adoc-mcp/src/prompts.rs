@@ -34,6 +34,23 @@ Workflow:
 
 Do not apply patches, rewrite AgentDoc Source, approve knowledge, or create hosted review state."#;
 
+// V6.4 TB4 (ADR-0037): the apply-aware successor to PATCH_BODY. PATCH_BODY
+// itself stays byte-stable per ADR-0014; the unversioned `adoc_propose_patch`
+// alias keeps pointing at v0, and v1 is addressable only by name.
+const PATCH_APPLY_BODY: &str = r#"Use AgentDoc patch validation and, when the project opts in, gated patch application.
+
+Workflow:
+1. Inspect readiness with adoc_project_status; note readiness.patch_apply_enabled.
+2. Retrieve the target Object ID with adoc_why or adoc_search.
+3. Build a single-operation adoc.patch.v0 JSON proposal using replace_body, update_fields, create_object, supersede, or revoke; include reason and current base_hash when updating existing knowledge. A create_object proposal needs changes.placement to be applicable.
+4. Validate the inline patch with adoc_patch_check. Do not apply an invalid proposal.
+5. If readiness.patch_apply_enabled is false, stop at the validated proposal and report that apply is gated by `mcp: { patch_apply: enabled }` in agentdoc.config.yaml.
+6. Otherwise call adoc_patch_apply with the same patch and read the adoc.patch.apply.v0 result; refusals (patch.base_hash_mismatch, patch.source_drift, patch.create_missing_placement) are normal envelopes — fix and re-propose, never force.
+7. Surface the embedded post_check: cite error/warning counts, the written file hashes, and object.after_content_hash. If post_check reports new errors, stop and hand off to a human; never retry by re-applying and never attempt to revert.
+8. artifacts_stale is always true after an apply: run adoc_build or adoc_project_status with refresh "build" before further reads.
+
+Do not rewrite AgentDoc Source by hand, approve knowledge, or create hosted review state. Apply only through adoc_patch_apply after a clean check."#;
+
 const STATUS_BODY: &str = r#"Inspect an AgentDoc V2.2 project before retrieval or patch validation.
 
 Call adoc_project_status with the requested refresh value. Use refresh "none" for read-only inspection, "check" for validation diagnostics without writes, and "build" when artifacts must be created or refreshed. Explain config discovery, resolved paths, artifact load status, graph/search schema versions, object count, and readiness for retrieval, semantic search, and patch validation."#;
@@ -90,6 +107,13 @@ const PROMPTS: &[PromptSpec] = &[
         canonical_name: "adoc_propose_patch_v0",
         description: "Pinned alias for adoc_propose_patch_v0.",
         body: PATCH_BODY,
+        arguments: patch_arguments,
+    },
+    PromptSpec {
+        name: "adoc_propose_patch_v1",
+        canonical_name: "adoc_propose_patch_v1",
+        description: "Propose, validate, and (when the project opts in) apply an AgentDoc patch.",
+        body: PATCH_APPLY_BODY,
         arguments: patch_arguments,
     },
     PromptSpec {
