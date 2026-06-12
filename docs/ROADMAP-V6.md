@@ -58,7 +58,7 @@ Deferred: `--fail-on-stale` CI gating, health scores (PRD §14.5), staleness fro
 
 ### V6.2: `adoc contradictions` Slice
 
-Goal: give unresolved contradictions and contradicted claims a query surface.
+Goal: give unresolved contradictions and contradicted claims a query surface. Implemented (ADR-0038, [V6-DESIGN.md](V6-DESIGN.md) §V6.2).
 
 Scope:
 

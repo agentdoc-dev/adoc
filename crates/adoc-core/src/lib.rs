@@ -146,7 +146,8 @@ pub fn evaluate_stale(
 
 /// Evaluate the V6.2 `adoc contradictions` query: unresolved contradictions
 /// (all statuses with `include_all`) plus contradicted claims with their
-/// implicating contradiction ids, re-derived at read time. Clock-free.
+/// implicating contradiction ids, re-derived at read time with no clock
+/// dependence — a pure function of the artifact.
 pub fn evaluate_contradictions(
     session: &GraphSession,
     include_all: bool,

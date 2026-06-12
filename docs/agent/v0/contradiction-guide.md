@@ -19,9 +19,13 @@ A `contradiction` is authored by a human who has identified a conflict between t
 | `claims` | `[object.id, ...]` | at least two distinct `claim` IDs |
 | `body` | prose | explanation of the conflict |
 
+## Query surface
+
+`adoc contradictions` / the `adoc_contradictions` MCP tool (V6.2) list every `unresolved` contradiction plus every contradicted claim with the contradiction ids that implicate it, joined in one `adoc.contradictions.v0` envelope — run it **before answering definitively in a domain** instead of scanning the graph yourself. The output is a pure function of the graph artifact (no clock); `all: true` adds `resolved` and `dismissed` records. See `adoc://agent/v0/schema/contradictions`.
+
 ## How to use a contradiction in answers
 
-- **Surface active contradictions.** Before answering definitively about a claim, check whether any `unresolved` contradiction references that claim. If one exists, surface it to the user.
+- **Surface active contradictions.** Before answering definitively about a claim, check whether any `unresolved` contradiction references that claim — `adoc_contradictions` answers this in one call. If one exists, surface it to the user.
 - **Cite by Object ID.** Reference the contradiction and both conflicting claims by their Object IDs.
 - **Do not invent resolutions.** If the contradiction is `unresolved`, report the conflict as unresolved. Do not guess which claim is correct.
 - **Resolved/dismissed contradictions.** A `resolved` contradiction means the conflict has been addressed (e.g. one claim was updated). A `dismissed` contradiction means the conflict was judged non-applicable. Both are terminal states; you may note them as context but they do not require active surfacing.
