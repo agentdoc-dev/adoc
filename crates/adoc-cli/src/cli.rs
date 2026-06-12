@@ -111,6 +111,11 @@ Exactly one input shape: explicit changed paths, or --ref <git-ref> to derive
 the changed set from git (the base ref against the working tree, the same
 shape as `adoc review <ref>`).
 
+On input or environment errors (exit 1/2), --format json still emits a valid
+envelope with the diagnostics; --format markdown writes a blockquote error
+to stdout; plain/styled write fix-oriented messages to stderr only. Use
+--format json for unattended runs.
+
 Examples:
   adoc impacted-by crates/billing/src/refund.rs
   adoc impacted-by src/a.rs src/b.rs --format json
