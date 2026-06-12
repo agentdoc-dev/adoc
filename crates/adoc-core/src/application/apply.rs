@@ -254,7 +254,29 @@ where
         PatchIntent::UpdateFields { fields, .. } => {
             plan_update_fields(&original_text, &layout, fields)
         }
-        PatchIntent::CreateObject { .. } | PatchIntent::Supersede { .. } | PatchIntent::Revoke { .. } => {
+        // TB2: relation ops are field-line edits with the same splice
+        // discipline. Supersede merges the (drift-gated) node's existing
+        // targets with the validated new ones — existing first, patch order
+        // after — into one bare comma-list value.
+        PatchIntent::Supersede { supersedes, .. } => {
+            let mut merged = artifact_node.relations.supersedes.clone();
+            for target in supersedes {
+                if !merged.iter().any(|existing| existing == target) {
+                    merged.push(target.clone());
+                }
+            }
+            plan_update_fields(
+                &original_text,
+                &layout,
+                &std::collections::BTreeMap::from([("supersedes".to_string(), merged.join(", "))]),
+            )
+        }
+        PatchIntent::Revoke { .. } => plan_update_fields(
+            &original_text,
+            &layout,
+            &std::collections::BTreeMap::from([("status".to_string(), "revoked".to_string())]),
+        ),
+        PatchIntent::CreateObject { .. } => {
             return refuse_unsupported_operation(check, trace);
         }
     };
@@ -737,6 +759,37 @@ Original body line.
 
     #[test]
     fn unsupported_operation_refuses_after_valid_check() {
+        use crate::domain::patch::PlacementHint;
+
+        let fs = SharedFs::with_file(PAGE_PATH, PAGE_TEXT);
+        let document = built_artifact(&fs);
+        let patch = PatchDocument {
+            target: "billing.new-claim".to_string(),
+            intent: PatchIntent::CreateObject {
+                kind: "claim".to_string(),
+                status: Some("draft".to_string()),
+                body: "New claim body.".to_string(),
+                fields: BTreeMap::new(),
+                placement: PlacementHint {
+                    page_id: "docs.billing".to_string(),
+                    after: None,
+                },
+            },
+            reason: "test".to_string(),
+            proposer: None,
+        };
+
+        let result = apply(&fs, document, patch);
+
+        assert!(!result.applied);
+        let check = result.check.as_ref().expect("check embedded");
+        assert!(check.valid, "diagnostics: {:?}", check.diagnostics);
+        assert!(result.diagnostics[0].message.contains("not yet supported"));
+        assert_eq!(fs.read(PAGE_PATH), PAGE_TEXT);
+    }
+
+    #[test]
+    fn revoke_rewrites_only_the_status_field_line() {
         let fs = SharedFs::with_file(PAGE_PATH, PAGE_TEXT);
         let document = built_artifact(&fs);
         let base_hash = content_hash(&document, "billing.credits");
@@ -749,10 +802,94 @@ Original body line.
 
         let result = apply(&fs, document, patch);
 
-        assert!(!result.applied);
-        assert!(result.check.as_ref().expect("check embedded").valid);
-        assert!(result.diagnostics[0].message.contains("not yet supported"));
-        assert_eq!(fs.read(PAGE_PATH), PAGE_TEXT);
+        assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert_eq!(result.operation, "revoke");
+        assert_eq!(
+            fs.read(PAGE_PATH),
+            PAGE_TEXT.replace("status: draft", "status: revoked"),
+            "only the status value changes byte-wise"
+        );
+    }
+
+    const SUPERSEDE_PAGE_TEXT: &str = "\
+# Billing
+
+::claim billing.one
+status: draft
+--
+One.
+::
+
+::claim billing.two
+status: draft
+--
+Two.
+::
+
+::claim billing.credits
+status: draft
+supersedes: billing.one
+--
+Original body line.
+::
+";
+
+    #[test]
+    fn supersede_merges_existing_targets_with_patch_targets_in_one_field_line() {
+        let fs = SharedFs::with_file(PAGE_PATH, SUPERSEDE_PAGE_TEXT);
+        let document = built_artifact(&fs);
+        let base_hash = content_hash(&document, "billing.credits");
+        let patch = PatchDocument {
+            target: "billing.credits".to_string(),
+            intent: PatchIntent::Supersede {
+                base_hash,
+                supersedes: vec!["billing.two".to_string()],
+            },
+            reason: "test".to_string(),
+            proposer: None,
+        };
+
+        let result = apply(&fs, document, patch);
+
+        assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert_eq!(result.operation, "supersede");
+        assert_eq!(
+            fs.read(PAGE_PATH),
+            SUPERSEDE_PAGE_TEXT.replace(
+                "supersedes: billing.one",
+                "supersedes: billing.one, billing.two"
+            ),
+            "existing targets first, patch targets appended, one field line"
+        );
+        assert_eq!(result.post_check.error_count, 0);
+    }
+
+    #[test]
+    fn supersede_inserts_the_field_line_when_the_block_has_none() {
+        let fs = SharedFs::with_file(PAGE_PATH, SUPERSEDE_PAGE_TEXT);
+        let document = built_artifact(&fs);
+        let base_hash = content_hash(&document, "billing.two");
+        let patch = PatchDocument {
+            target: "billing.two".to_string(),
+            intent: PatchIntent::Supersede {
+                base_hash,
+                supersedes: vec!["billing.one".to_string()],
+            },
+            reason: "test".to_string(),
+            proposer: None,
+        };
+
+        let result = apply(&fs, document, patch);
+
+        assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert_eq!(
+            fs.read(PAGE_PATH),
+            SUPERSEDE_PAGE_TEXT.replace(
+                "::claim billing.two\nstatus: draft\n",
+                "::claim billing.two\nstatus: draft\nsupersedes: billing.one\n"
+            ),
+            "new supersedes line inserted after the last field line"
+        );
     }
 
     #[test]
