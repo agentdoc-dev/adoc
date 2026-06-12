@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted.
+Accepted. Superseded in part by [ADR-0037](0037-mcp-patch-apply-opt-in.md):
+the contract's "MCP does not apply patches" promise is re-scoped to the
+read/validate surfaces; gated application exists since V6.4. The pinned
+`adoc_propose_patch_v0` prompt and its unversioned alias remain byte-stable —
+the apply-aware prompt is the separate `adoc_propose_patch_v1`.
 
 ## Context
 

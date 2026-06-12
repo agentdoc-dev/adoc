@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted.
+Accepted. Superseded in part by [ADR-0037](0037-mcp-patch-apply-opt-in.md):
+since V6.4 a validated patch can be applied to AgentDoc Source via
+`adoc patch --apply` and the config-gated MCP `adoc_patch_apply`
+(ADR-0036); patch validation itself remains read-only.
 
 ## Context
 
