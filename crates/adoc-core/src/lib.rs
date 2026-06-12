@@ -25,7 +25,10 @@ pub use application::review::{
     ReviewSession, diff_objects, proof_obligations, review_with_patch,
 };
 pub use application::review_envelope::{ObjectDiffEnvelope, ReviewEnvelope};
-pub use application::signals::{STALE_SCHEMA_VERSION, StaleCategory, StaleEnvelope, StaleRecord};
+pub use application::signals::{
+    CONTRADICTIONS_SCHEMA_VERSION, ContradictedClaimRecord, ContradictionRecord,
+    ContradictionsEnvelope, STALE_SCHEMA_VERSION, StaleCategory, StaleEnvelope, StaleRecord,
+};
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::graph::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
@@ -139,6 +142,22 @@ pub fn evaluate_stale(
     diagnostics: Vec<Diagnostic>,
 ) -> StaleEnvelope {
     application::signals::evaluate_stale_today(session, within_days, diagnostics)
+}
+
+/// Evaluate the V6.2 `adoc contradictions` query: unresolved contradictions
+/// (all statuses with `include_all`) plus contradicted claims with their
+/// implicating contradiction ids, re-derived at read time. Clock-free.
+pub fn evaluate_contradictions(
+    session: &GraphSession,
+    include_all: bool,
+    diagnostics: Vec<Diagnostic>,
+) -> ContradictionsEnvelope {
+    application::signals::evaluate_contradictions(session, include_all, diagnostics)
+}
+
+/// Empty `adoc.contradictions.v0` envelope for artifact-load-failure paths.
+pub fn empty_contradictions_envelope(diagnostics: Vec<Diagnostic>) -> ContradictionsEnvelope {
+    application::signals::empty_contradictions_envelope(diagnostics)
 }
 
 /// Empty `adoc.stale.v0` envelope for artifact-load-failure paths;

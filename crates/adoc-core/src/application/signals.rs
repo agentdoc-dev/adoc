@@ -1,10 +1,13 @@
-//! V6.1 lifecycle-signal read queries over a loaded graph artifact.
+//! Lifecycle-signal read queries over a loaded graph artifact (V6.1/V6.2).
 //!
-//! `adoc stale` (and, later, `adoc contradictions`) are read-only queries over
-//! `dist/docs.graph.json`. Staleness and overdue-ness are **re-derived at read
-//! time** from authored fields — an artifact built last week must not report
+//! `adoc stale` and `adoc contradictions` are read-only queries over
+//! `dist/docs.graph.json`. Signals are **re-derived at read time** from
+//! authored fields — an artifact built last week must not report
 //! stale-as-of-build-time — so this module never trusts the persisted
-//! `effective_status` projection. See ADR-0038 and docs/V6-DESIGN.md.
+//! `effective_status` projection. The stale query is clock-dependent and
+//! carries `evaluated_at`; the contradictions query is a pure function of the
+//! artifact bytes and deliberately carries no evaluation date. See ADR-0038
+//! and docs/V6-DESIGN.md.
 
 use chrono::NaiveDate;
 use serde::Serialize;
@@ -12,7 +15,10 @@ use serde::Serialize;
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::graph::GraphKnowledgeObjectNode;
 use crate::domain::value_objects::review_interval::ReviewInterval;
-use crate::infrastructure::artifact::graph_json::derive_effective_status_from_fields;
+use crate::domain::value_objects::severity::Severity;
+use crate::infrastructure::artifact::graph_json::{
+    derive_effective_status_from_fields, unresolved_contradiction_claim_index,
+};
 
 use super::graph::GraphSession;
 use super::local_today;
@@ -255,6 +261,168 @@ fn rederived_effective_status(node: &GraphKnowledgeObjectNode, today: NaiveDate)
 /// every call site, so the result is ≥ 1 for overdue and ≥ 0 for remaining).
 fn days_between(earlier: NaiveDate, later: NaiveDate) -> u32 {
     u32::try_from((later - earlier).num_days()).unwrap_or(u32::MAX)
+}
+
+pub const CONTRADICTIONS_SCHEMA_VERSION: &str = "adoc.contradictions.v0";
+
+/// Maximum `summary` length in characters (not bytes — multibyte-safe).
+const SUMMARY_MAX_CHARS: usize = 120;
+
+/// One contradiction object in the `adoc.contradictions.v0` listing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ContradictionRecord {
+    pub id: String,
+    pub severity: String,
+    /// Echo of the authored status: `unresolved` by default; `resolved` /
+    /// `dismissed` appear only under `--all`.
+    pub status: String,
+    pub claims: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    pub source_path: String,
+    /// First non-empty body line, char-truncated to 120 with `…`.
+    pub summary: String,
+}
+
+/// One contradicted claim in the `adoc.contradictions.v0` listing: a claim
+/// implicated by at least one unresolved contradiction, or one whose authored
+/// status is `contradicted`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ContradictedClaimRecord {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authored_status: Option<String>,
+    /// Contradiction-axis derivation only: `"contradicted"` when implicated by
+    /// an unresolved contradiction, otherwise an echo of the authored status.
+    /// The expiry axis is `adoc stale`'s job — the two commands answer
+    /// different questions and this one is deliberately clock-free.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_status: Option<String>,
+    /// `"contradiction:<id>"` where `<id>` is the lexicographically smallest
+    /// implicating contradiction — identical to the build-time projection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_reason: Option<String>,
+    /// All implicating unresolved contradiction ids, sorted ascending. Empty
+    /// only for a claim whose authored status is `contradicted` while no
+    /// unresolved contradiction references it.
+    pub contradiction_ids: Vec<String>,
+}
+
+/// The `adoc.contradictions.v0` wire envelope. A pure function of the artifact
+/// bytes: no `evaluated_at`, byte-identical on any day.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ContradictionsEnvelope {
+    pub schema_version: &'static str,
+    pub contradictions: Vec<ContradictionRecord>,
+    pub contradicted_claims: Vec<ContradictedClaimRecord>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl ContradictionsEnvelope {
+    pub fn new(
+        contradictions: Vec<ContradictionRecord>,
+        contradicted_claims: Vec<ContradictedClaimRecord>,
+        diagnostics: Vec<Diagnostic>,
+    ) -> Self {
+        Self {
+            schema_version: CONTRADICTIONS_SCHEMA_VERSION,
+            contradictions,
+            contradicted_claims,
+            diagnostics,
+        }
+    }
+}
+
+/// Evaluate the contradictions query: unresolved contradictions (all statuses
+/// with `include_all`) plus every contradicted claim, joined for the consumer.
+pub(crate) fn evaluate_contradictions(
+    session: &GraphSession,
+    include_all: bool,
+    diagnostics: Vec<Diagnostic>,
+) -> ContradictionsEnvelope {
+    let implicated = unresolved_contradiction_claim_index(session.objects());
+
+    let mut contradictions: Vec<ContradictionRecord> = session
+        .objects()
+        .filter(|node| node.kind == "contradiction")
+        .filter(|node| include_all || node.status.as_deref() == Some("unresolved"))
+        .map(|node| ContradictionRecord {
+            id: node.id.clone(),
+            severity: node
+                .severity
+                .clone()
+                .or_else(|| node.fields.get("severity").cloned())
+                .unwrap_or_default(),
+            status: node.status.clone().unwrap_or_default(),
+            claims: node.contradiction_claims.clone(),
+            owner: node.fields.get("owner").cloned(),
+            source_path: node.source_span.path.clone(),
+            summary: body_summary(&node.body),
+        })
+        .collect();
+
+    // Severity descending (critical first; unparseable last), then id.
+    contradictions.sort_by(|a, b| {
+        let a_severity = Severity::try_new(&a.severity).ok();
+        let b_severity = Severity::try_new(&b.severity).ok();
+        b_severity.cmp(&a_severity).then_with(|| a.id.cmp(&b.id))
+    });
+
+    let mut contradicted_claims: Vec<ContradictedClaimRecord> = session
+        .objects()
+        .filter(|node| node.kind == "claim")
+        .filter_map(|node| {
+            let contradiction_ids = implicated.get(&node.id).cloned().unwrap_or_default();
+            let authored_contradicted = node.status.as_deref() == Some("contradicted");
+            if contradiction_ids.is_empty() && !authored_contradicted {
+                return None;
+            }
+            let (effective_status, effective_reason) = if contradiction_ids.is_empty() {
+                // Orphaned authored status: echo, no derivation.
+                (node.status.clone(), None)
+            } else {
+                (
+                    Some("contradicted".to_string()),
+                    Some(format!("contradiction:{}", contradiction_ids[0])),
+                )
+            };
+            Some(ContradictedClaimRecord {
+                id: node.id.clone(),
+                authored_status: node.status.clone(),
+                effective_status,
+                effective_reason,
+                contradiction_ids,
+            })
+        })
+        .collect();
+
+    contradicted_claims.sort_by(|a, b| a.id.cmp(&b.id));
+
+    ContradictionsEnvelope::new(contradictions, contradicted_claims, diagnostics)
+}
+
+/// Empty envelope for the artifact-load-failure path.
+pub(crate) fn empty_contradictions_envelope(
+    diagnostics: Vec<Diagnostic>,
+) -> ContradictionsEnvelope {
+    ContradictionsEnvelope::new(Vec::new(), Vec::new(), diagnostics)
+}
+
+/// First non-empty (ASCII-trimmed) body line, truncated to
+/// [`SUMMARY_MAX_CHARS`] characters with a trailing `…` when cut.
+fn body_summary(body: &str) -> String {
+    let first_line = body
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    if first_line.chars().count() <= SUMMARY_MAX_CHARS {
+        first_line.to_string()
+    } else {
+        let mut truncated: String = first_line.chars().take(SUMMARY_MAX_CHARS - 1).collect();
+        truncated.push('…');
+        truncated
+    }
 }
 
 #[cfg(test)]
@@ -625,5 +793,378 @@ mod tests {
         assert!(!object.contains_key("owner"));
         assert_eq!(value["category"], "stale");
         assert_eq!(value["days_overdue"], 137);
+    }
+
+    fn contradiction_node(id: &str, severity: &str, status: &str, claims: &[&str]) -> GraphNode {
+        contradiction_node_with_body(
+            id,
+            severity,
+            status,
+            claims,
+            "Claims disagree about session storage.",
+        )
+    }
+
+    fn contradiction_node_with_body(
+        id: &str,
+        severity: &str,
+        status: &str,
+        claims: &[&str],
+        body: &str,
+    ) -> GraphNode {
+        let mut node = ko_node(
+            id,
+            "contradiction",
+            Some(status),
+            &[("severity", severity), ("owner", "platform-security")],
+        );
+        let GraphNode::KnowledgeObject(ko) = &mut node else {
+            unreachable!("ko_node builds a knowledge object");
+        };
+        ko.contradiction_claims = claims.iter().map(|claim| (*claim).to_string()).collect();
+        ko.body = body.to_string();
+        node
+    }
+
+    /// Default listing is unresolved-only; `--all` adds resolved/dismissed with
+    /// echoed statuses. Claims referenced only by a non-unresolved
+    /// contradiction never enter `contradicted_claims`, under either mode.
+    #[test]
+    fn contradictions_default_lists_unresolved_only_and_all_includes_terminal_statuses() {
+        let session = session_with(vec![
+            contradiction_node(
+                "conflict.open",
+                "high",
+                "unresolved",
+                &["claim.a", "claim.b"],
+            ),
+            contradiction_node(
+                "conflict.closed",
+                "critical",
+                "resolved",
+                &["claim.c", "claim.d"],
+            ),
+            contradiction_node(
+                "conflict.noise",
+                "low",
+                "dismissed",
+                &["claim.c", "claim.d"],
+            ),
+            ko_node("claim.a", "claim", Some("verified"), &[]),
+            ko_node("claim.b", "claim", Some("contradicted"), &[]),
+            ko_node("claim.c", "claim", Some("verified"), &[]),
+            ko_node("claim.d", "claim", Some("verified"), &[]),
+        ]);
+
+        let default_envelope = evaluate_contradictions(&session, false, Vec::new());
+        let ids: Vec<&str> = default_envelope
+            .contradictions
+            .iter()
+            .map(|record| record.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["conflict.open"]);
+        assert_eq!(default_envelope.contradictions[0].status, "unresolved");
+        assert_eq!(default_envelope.contradictions[0].severity, "high");
+        assert_eq!(
+            default_envelope.contradictions[0].claims,
+            vec!["claim.a", "claim.b"]
+        );
+        assert_eq!(
+            default_envelope.contradictions[0].owner.as_deref(),
+            Some("platform-security")
+        );
+        assert_eq!(
+            default_envelope.contradictions[0].source_path,
+            "docs/team.adoc"
+        );
+
+        let all_envelope = evaluate_contradictions(&session, true, Vec::new());
+        let all_ids: Vec<(&str, &str)> = all_envelope
+            .contradictions
+            .iter()
+            .map(|record| (record.id.as_str(), record.status.as_str()))
+            .collect();
+        assert_eq!(
+            all_ids,
+            vec![
+                ("conflict.closed", "resolved"), // critical sorts first
+                ("conflict.open", "unresolved"),
+                ("conflict.noise", "dismissed"),
+            ]
+        );
+
+        // claim.c / claim.d are referenced only by resolved/dismissed
+        // contradictions — never contradicted, under either mode.
+        for envelope in [&default_envelope, &all_envelope] {
+            let claim_ids: Vec<&str> = envelope
+                .contradicted_claims
+                .iter()
+                .map(|record| record.id.as_str())
+                .collect();
+            assert_eq!(claim_ids, vec!["claim.a", "claim.b"]);
+        }
+    }
+
+    /// Contradictions sort severity-descending (critical first), id ascending
+    /// as tiebreak; unparseable severity sorts last and is echoed raw.
+    #[test]
+    fn contradictions_sort_by_severity_descending_then_id() {
+        let session = session_with(vec![
+            contradiction_node("conflict.medium", "medium", "unresolved", &["c.a", "c.b"]),
+            contradiction_node("conflict.low", "low", "unresolved", &["c.a", "c.b"]),
+            contradiction_node("conflict.garbage", "panic", "unresolved", &["c.a", "c.b"]),
+            contradiction_node(
+                "conflict.critical-z",
+                "critical",
+                "unresolved",
+                &["c.a", "c.b"],
+            ),
+            contradiction_node(
+                "conflict.critical-a",
+                "critical",
+                "unresolved",
+                &["c.a", "c.b"],
+            ),
+            contradiction_node("conflict.high", "high", "unresolved", &["c.a", "c.b"]),
+        ]);
+
+        let envelope = evaluate_contradictions(&session, false, Vec::new());
+
+        let ids: Vec<&str> = envelope
+            .contradictions
+            .iter()
+            .map(|record| record.id.as_str())
+            .collect();
+        assert_eq!(
+            ids,
+            vec![
+                "conflict.critical-a",
+                "conflict.critical-z",
+                "conflict.high",
+                "conflict.medium",
+                "conflict.low",
+                "conflict.garbage",
+            ]
+        );
+        assert_eq!(envelope.contradictions[5].severity, "panic");
+    }
+
+    /// The ADR-0035 top-level severity dual-emit wins over the fields map when
+    /// both are present.
+    #[test]
+    fn contradiction_severity_prefers_top_level_dual_emit() {
+        let mut node = contradiction_node("conflict.dual", "low", "unresolved", &["c.a", "c.b"]);
+        let GraphNode::KnowledgeObject(ko) = &mut node else {
+            unreachable!();
+        };
+        ko.severity = Some("critical".to_string());
+
+        let session = session_with(vec![node]);
+        let envelope = evaluate_contradictions(&session, false, Vec::new());
+
+        assert_eq!(envelope.contradictions[0].severity, "critical");
+    }
+
+    /// A claim implicated by an unresolved contradiction derives
+    /// `effective_status: "contradicted"` with the build-format reason, even
+    /// when its authored status is untouched.
+    #[test]
+    fn implicated_claim_derives_contradicted_with_reason() {
+        let session = session_with(vec![
+            contradiction_node(
+                "conflict.one",
+                "high",
+                "unresolved",
+                &["claim.csrf", "claim.mem"],
+            ),
+            ko_node("claim.csrf", "claim", Some("accepted"), &[]),
+            ko_node("claim.mem", "claim", Some("contradicted"), &[]),
+        ]);
+
+        let envelope = evaluate_contradictions(&session, false, Vec::new());
+
+        assert_eq!(envelope.contradicted_claims.len(), 2);
+        let csrf = &envelope.contradicted_claims[0];
+        assert_eq!(csrf.id, "claim.csrf");
+        assert_eq!(csrf.authored_status.as_deref(), Some("accepted"));
+        assert_eq!(csrf.effective_status.as_deref(), Some("contradicted"));
+        assert_eq!(
+            csrf.effective_reason.as_deref(),
+            Some("contradiction:conflict.one")
+        );
+        assert_eq!(csrf.contradiction_ids, vec!["conflict.one"]);
+    }
+
+    /// Two unresolved contradictions on one claim: `contradiction_ids` sorted
+    /// ascending, reason from the lexicographically smallest.
+    #[test]
+    fn multiple_contradictions_on_one_claim_sort_ids_and_use_smallest_for_reason() {
+        let session = session_with(vec![
+            contradiction_node(
+                "conflict.zeta",
+                "high",
+                "unresolved",
+                &["claim.x", "claim.y"],
+            ),
+            contradiction_node(
+                "conflict.alpha",
+                "low",
+                "unresolved",
+                &["claim.x", "claim.z"],
+            ),
+            ko_node("claim.x", "claim", Some("verified"), &[]),
+            ko_node("claim.y", "claim", Some("verified"), &[]),
+            ko_node("claim.z", "claim", Some("verified"), &[]),
+        ]);
+
+        let envelope = evaluate_contradictions(&session, false, Vec::new());
+
+        let x = envelope
+            .contradicted_claims
+            .iter()
+            .find(|record| record.id == "claim.x")
+            .expect("claim.x is implicated twice");
+        assert_eq!(x.contradiction_ids, vec!["conflict.alpha", "conflict.zeta"]);
+        assert_eq!(
+            x.effective_reason.as_deref(),
+            Some("contradiction:conflict.alpha")
+        );
+    }
+
+    /// A claim with authored status `contradicted` but no implicating
+    /// unresolved contradiction is still listed — empty ids, echoed status,
+    /// no derivation reason.
+    #[test]
+    fn orphaned_authored_contradicted_claim_is_listed_with_empty_ids() {
+        let session = session_with(vec![ko_node(
+            "claim.orphan",
+            "claim",
+            Some("contradicted"),
+            &[],
+        )]);
+
+        let envelope = evaluate_contradictions(&session, false, Vec::new());
+
+        assert_eq!(envelope.contradicted_claims.len(), 1);
+        let orphan = &envelope.contradicted_claims[0];
+        assert_eq!(orphan.authored_status.as_deref(), Some("contradicted"));
+        assert_eq!(orphan.effective_status.as_deref(), Some("contradicted"));
+        assert_eq!(orphan.effective_reason, None);
+        assert!(orphan.contradiction_ids.is_empty());
+    }
+
+    /// The contradictions query is clock-free: an expired verified claim
+    /// implicated by an unresolved contradiction reports `contradicted` on
+    /// this axis (the expiry axis is `adoc stale`'s job; the build artifact's
+    /// single effective_status slot keeps stale precedence).
+    #[test]
+    fn expired_verified_implicated_claim_still_reports_contradicted() {
+        let session = session_with(vec![
+            contradiction_node(
+                "conflict.one",
+                "high",
+                "unresolved",
+                &["claim.expired", "claim.b"],
+            ),
+            ko_node(
+                "claim.expired",
+                "claim",
+                Some("verified"),
+                &[("expires_at", "2000-01-01")],
+            ),
+            ko_node("claim.b", "claim", Some("verified"), &[]),
+        ]);
+
+        let envelope = evaluate_contradictions(&session, false, Vec::new());
+
+        let expired = envelope
+            .contradicted_claims
+            .iter()
+            .find(|record| record.id == "claim.expired")
+            .expect("expired claim is listed");
+        assert_eq!(expired.effective_status.as_deref(), Some("contradicted"));
+    }
+
+    /// Ids in `claims:` that name a non-claim object or nothing at all produce
+    /// no `contradicted_claims` record (compile already diagnosed them).
+    #[test]
+    fn non_claim_and_dangling_claim_references_produce_no_records() {
+        let session = session_with(vec![
+            contradiction_node(
+                "conflict.one",
+                "high",
+                "unresolved",
+                &["decision.not-a-claim", "claim.gone"],
+            ),
+            ko_node("decision.not-a-claim", "decision", Some("accepted"), &[]),
+        ]);
+
+        let envelope = evaluate_contradictions(&session, false, Vec::new());
+
+        assert_eq!(envelope.contradictions.len(), 1);
+        assert!(
+            envelope.contradicted_claims.is_empty(),
+            "non-claim and dangling references must not yield records: {:#?}",
+            envelope.contradicted_claims
+        );
+    }
+
+    /// The envelope is artifact-pure: schema version constant, NO evaluated_at
+    /// key, optional record fields omitted rather than null.
+    #[test]
+    fn contradictions_envelope_serializes_without_evaluated_at() {
+        let session = session_with(vec![
+            contradiction_node(
+                "conflict.one",
+                "high",
+                "unresolved",
+                &["claim.a", "claim.b"],
+            ),
+            ko_node("claim.a", "claim", None, &[]),
+        ]);
+
+        let envelope = evaluate_contradictions(&session, false, Vec::new());
+        let value = serde_json::to_value(&envelope).expect("envelope serializes");
+        let object = value.as_object().expect("envelope is an object");
+
+        assert_eq!(value["schema_version"], "adoc.contradictions.v0");
+        assert!(
+            !object.contains_key("evaluated_at"),
+            "contradictions is clock-free — no evaluated_at"
+        );
+        assert_eq!(value["diagnostics"], serde_json::json!([]));
+
+        let claim = value["contradicted_claims"][0]
+            .as_object()
+            .expect("claim record is an object");
+        assert!(!claim.contains_key("authored_status"));
+        assert_eq!(claim["effective_status"], "contradicted");
+
+        let empty = empty_contradictions_envelope(Vec::new());
+        let empty_value = serde_json::to_value(&empty).expect("empty envelope serializes");
+        assert_eq!(empty_value["contradictions"], serde_json::json!([]));
+        assert_eq!(empty_value["contradicted_claims"], serde_json::json!([]));
+    }
+
+    /// Summary is the first non-empty line, char-truncated to 120 with `…`.
+    #[test]
+    fn body_summary_takes_first_non_empty_line_and_truncates_chars() {
+        assert_eq!(body_summary("First line.\nSecond line."), "First line.");
+        assert_eq!(body_summary("\n  \nActual start.\nMore."), "Actual start.");
+        assert_eq!(body_summary(""), "");
+
+        let long = "x".repeat(121);
+        let summary = body_summary(&long);
+        assert_eq!(summary.chars().count(), 120);
+        assert!(summary.ends_with('…'));
+
+        let exactly = "y".repeat(120);
+        assert_eq!(body_summary(&exactly), exactly);
+
+        // Multibyte: truncation must count chars, not bytes.
+        let multibyte = "é".repeat(130);
+        let multibyte_summary = body_summary(&multibyte);
+        assert_eq!(multibyte_summary.chars().count(), 120);
+        assert_eq!(multibyte_summary, format!("{}…", "é".repeat(119)));
     }
 }
