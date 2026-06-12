@@ -27,7 +27,7 @@ Both tools accept:
 - `patch.source: "path"`, `patch.patch_path`: filesystem path (project-root sandboxed) to an `adoc.patch.v0` JSON file.
 - `patch.source: "inline"`, `patch.patch`: an inline `adoc.patch.v0` JSON object.
 
-When supplied, the returned envelope includes a `patch_check` field carrying the `adoc.patch.check.v0` validation result (validated against the head graph; the patch is never applied). The envelope's top-level `proof_obligations` is the union of diff-driven (V3.4) and patch-driven (V2) obligations, deduplicated by `(object_id, reason)`. When `patch` is omitted, the `patch_check` field is absent from the JSON output.
+When supplied, the returned envelope includes a `patch_check` field carrying the `adoc.patch.check.v0` validation result (validated against the head graph; review never applies the patch — application is the separate gated `adoc_patch_apply` surface). The envelope's top-level `proof_obligations` is the union of diff-driven (V3.4) and patch-driven (V2) obligations, deduplicated by `(object_id, reason)`. When `patch` is omitted, the `patch_check` field is absent from the JSON output.
 
 ## Recommended call sequence
 
@@ -35,7 +35,7 @@ When supplied, the returned envelope includes a `patch_check` field carrying the
 2. `adoc_review` with `base_ref` and optional `head_ref`.
 3. Cite each entry in `changed[]` by Object ID. For `impact[]`, name the impacted Knowledge Object alongside the changed paths that matched. For `required_reviewers[]`, surface owner identities as actionable handoffs.
 4. For every entry in `proof_obligations[]`, treat the obligation as required follow-up — do not present the patch as "approved" if obligations remain.
-5. If a remediation patch is appropriate, validate it inline by re-calling `adoc_review` with `patch: { source: "inline", patch: ... }`. The returned envelope merges patch-driven obligations into the same top-level list so reviewers see one consolidated set. (For pure patch validation without the review context, `adoc_patch_check` remains available.) V3 never applies patches; the patch validation report is informational.
+5. If a remediation patch is appropriate, validate it inline by re-calling `adoc_review` with `patch: { source: "inline", patch: ... }`. The returned envelope merges patch-driven obligations into the same top-level list so reviewers see one consolidated set. (For pure patch validation without the review context, `adoc_patch_check` remains available.) Review never applies patches; the validation report is informational. To apply a validated patch, use the gated `adoc_patch_apply` tool (see `adoc://agent/v0/patch-apply-guide`).
 
 ## Boundary
 

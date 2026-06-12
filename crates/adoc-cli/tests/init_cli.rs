@@ -71,6 +71,9 @@ fn init_creates_config_and_example_docs_in_current_directory() {
     assert!(!config_text.contains("  search:"));
     assert!(config_text.contains("embeddings:"));
     assert!(config_text.contains("  provider: local"));
+    // V6.4 (ADR-0037): init never writes the MCP patch-apply gate — opting
+    // in is always a deliberate human edit.
+    assert!(!config_text.contains("mcp"));
 
     let config: InitConfig =
         serde_saphyr::from_str(&config_text).expect("generated config is valid YAML");

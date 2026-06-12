@@ -8,4 +8,4 @@ The envelope's `diff` field embeds a full `adoc.diff.v0` envelope and validates 
 
 The schema stays `v0` across V3.1 through V3.7. New fields land as additive optional JSON keys (e.g. V3.7 will add `patch_check` when the optional `--patch` parameter is supplied).
 
-The report is read-only and never applies source edits or patches.
+The review report is read-only: producing it never applies source edits or patches. Patch application is a separate, explicitly invoked surface (`adoc.patch.apply.v0`, V6.4) and is never reachable through `adoc_review`.

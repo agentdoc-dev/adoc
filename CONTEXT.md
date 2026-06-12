@@ -109,8 +109,8 @@ The narrow `adoc-core` API exported for CLI callers and future local integration
 _Avoid_: public graph DTO construction, public search DTO construction, renderer-shaped read models
 
 **MCP Agent Gateway**:
-The local `rmcp` server in `crates/adoc-mcp` that exposes AgentDoc CLI-equivalent tools to agents. It is a driving adapter over `adoc-local` and `adoc-core`, uses a project-root path sandbox, and returns the same stable retrieval, graph traversal, and patch-check envelopes where those contracts already exist.
-_Avoid_: hosted review state, patch application, source rewriting from patches, graph/search DTO exposure
+The local `rmcp` server in `crates/adoc-mcp` that exposes AgentDoc CLI-equivalent tools to agents. It is a driving adapter over `adoc-local` and `adoc-core`, uses a project-root path sandbox, and returns the same stable retrieval, graph traversal, and patch-check envelopes where those contracts already exist. Since V6.4 (ADR-0037) it also applies validated patches through the same sandbox — but only under the explicit `mcp: { patch_apply: enabled }` project opt-in; the always-registered `adoc_patch_apply` tool refuses by default.
+_Avoid_: hosted review state, ungated patch application, default-on source writes, graph/search DTO exposure
 
 **Agent Usage Contract**:
 The V2.2 stable local contract that tells agents how to inspect project readiness, retrieve and cite knowledge, and validate patch proposals through MCP without guessing tool order or private artifact shapes.
@@ -173,7 +173,7 @@ The `content_hash` value a patch declares for its target object. It is a `sha256
 _Avoid_: source-file checksum, search embedding hash, approval token
 
 **Agent Patch**:
-A single-operation JSON proposal with schema version `adoc.patch.v0`, validated by `adoc patch --check`. It expresses patch intent against compiled artifacts only; it does not rewrite AgentDoc Source, approve knowledge, or create hosted review state.
+A single-operation JSON proposal with schema version `adoc.patch.v0`, validated by `adoc patch --check`. It expresses patch intent validated against compiled artifacts; since V6.4 (ADR-0036) a validated patch can be **applied** to AgentDoc Source via `adoc patch --apply` or the gated MCP `adoc_patch_apply`, emitting `adoc.patch.apply.v0` — a formatting-preserving span splice on the working tree, never an artifact edit. It does not approve knowledge or create hosted review state.
 _Avoid_: source rewrite format, migration script, approval record
 
 **Agent Contract Schema**:

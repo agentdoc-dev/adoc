@@ -6,8 +6,11 @@ Knowledge Objects, traverse graph context, and validate patch proposals without
 guessing CLI order or private artifact shapes.
 
 The gateway is a local adapter over the same AgentDoc workflow as the CLI. It
-does not apply patches, approve knowledge, rewrite AgentDoc Source, or create
-hosted review state.
+does not approve knowledge or create hosted review state. Patch application
+exists only behind the always-registered `adoc_patch_apply` tool, which
+refuses unless the project opts in with `mcp: { patch_apply: enabled }` in
+`agentdoc.config.yaml` (V6.4, ADR-0037); every other tool never writes
+AgentDoc Source.
 
 ## Build The Server
 
@@ -67,10 +70,14 @@ inventing tool order:
 4. If artifacts are missing or stale, call `adoc_project_status` with `refresh: "check"` for diagnostics or `refresh: "build"` to write configured artifacts.
 5. Use `adoc_search`, `adoc_why`, and `adoc_graph` for evidence.
 6. Use `adoc_patch_check` for inline `adoc.patch.v0` proposals.
+7. When the project has opted in (`readiness.patch_apply_enabled: true`), use
+   `adoc_patch_apply` to apply a validated patch; follow
+   `adoc://agent/v0/patch-apply-guide`.
 
 The Project Status Report has schema version `adoc.project.status.v0`. Retrieval
 tools return `adoc.retrieval.v0` and graph traversal returns
-`adoc.graph.traversal.v0`. Patch validation returns `adoc.patch.check.v0`.
+`adoc.graph.traversal.v0`. Patch validation returns `adoc.patch.check.v0`;
+patch application returns `adoc.patch.apply.v0`.
 
 ## JSON-RPC Smoke Flow
 
@@ -146,13 +153,46 @@ search requires a readable `docs.search.json`; if the project uses
 `search.deterministic_quality` warning because those vectors are repeatable and
 offline rather than semantic-model quality.
 
+## Patch Apply Opt-In (V6.4)
+
+`adoc_patch_apply` applies a validated `adoc.patch.v0` to AgentDoc source via
+formatting-preserving span splices — working tree only, never Git, never an
+auto-revert. The tool is **registered always** so agents can discover the
+capability, but it refuses by default. Opting in is a deliberate human edit to
+the project config:
+
+```yaml
+mcp:
+  patch_apply: enabled
+```
+
+When the key is absent (or `disabled`), the tool returns a normal
+`adoc.patch.apply.v0` envelope with `applied: false` and one fix-oriented
+`mcp.patch_apply_disabled` diagnostic naming the key; `adoc_patch_check`
+remains available. `adoc init` never writes the key. The
+`adoc.project.status.v0` readiness block carries `patch_apply_enabled` so
+agents can check the gate before constructing a patch.
+
+Apply over MCP runs the identical preconditions as the CLI: the project-root
+write sandbox, the `base_hash` check, and the `patch.source_drift` gate (the
+working tree is recompiled in memory and must reproduce the artifact's
+`content_hash`). After a successful apply the graph artifact is stale by
+design (`artifacts_stale: true`) — rebuild before further reads.
+
+**Back-compat warning:** config parsing uses `deny_unknown_fields`, so a
+project that adds the `mcp:` block becomes unreadable by pre-V6.4 `adoc`
+binaries. The failure is a loud config-parse error, it only affects projects
+that opted in, and the config `version` is deliberately not bumped for it.
+
 ## Safety Boundary
 
 Static Agent Guidance Resources and Agent Workflow Prompts are read-only.
 `adoc_project_status` is read-only by default, and `refresh: "check"` only runs
-validation. The explicit write boundary is `adoc_project_status` with
-`refresh: "build"` or the separate `adoc_build` tool.
+validation. The explicit write boundaries are `adoc_project_status` with
+`refresh: "build"`, the separate `adoc_build` tool, and — only under the
+project opt-in described above — `adoc_patch_apply`.
 
 Patch validation is advisory. Agents may propose `adoc.patch.v0` JSON and report
-`adoc.patch.check.v0`, but they must not rewrite AgentDoc Source or treat a
-valid patch as approved knowledge.
+`adoc.patch.check.v0`, but they must not rewrite AgentDoc Source by hand or
+treat a valid patch as approved knowledge. Application goes through
+`adoc_patch_apply` exclusively, after a clean check.
