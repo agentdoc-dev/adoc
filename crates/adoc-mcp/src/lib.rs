@@ -8,11 +8,11 @@ use adoc_core::{
     GraphDirection, GraphRelationKind, PatchJsonInput, RetrievalEnvelope, check_patch_json,
 };
 use adoc_local::{
-    BuildInput, BuildUseCase, CheckInput, CheckUseCase, DiffInput, DiffUseCase, GraphInput,
-    GraphUseCase, InitInput, InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase,
-    PathPolicy, ProjectConfig, ProjectRootPathPolicy, ProjectStatusInput, ProjectStatusRefresh,
-    ProjectStatusUseCase, ReviewInput, ReviewPatchSource, ReviewUseCase, SearchInput,
-    SearchUseCase, StaleInput, StaleUseCase, WhyInput, WhyUseCase,
+    BuildInput, BuildUseCase, CheckInput, CheckUseCase, ContradictionsInput, ContradictionsUseCase,
+    DiffInput, DiffUseCase, GraphInput, GraphUseCase, InitInput, InitUseCase, LocalContext,
+    PatchCheckInput, PatchCheckUseCase, PathPolicy, ProjectConfig, ProjectRootPathPolicy,
+    ProjectStatusInput, ProjectStatusRefresh, ProjectStatusUseCase, ReviewInput, ReviewPatchSource,
+    ReviewUseCase, SearchInput, SearchUseCase, StaleInput, StaleUseCase, WhyInput, WhyUseCase,
 };
 use rmcp::{
     ServerHandler,
@@ -122,6 +122,18 @@ impl AgentDocMcpServer {
         let outcome = StaleUseCase::new(context).run(StaleInput {
             artifact: params.artifact,
             within_days: params.within_days,
+        })?;
+        serde_json::to_value(outcome.envelope).map_err(Into::into)
+    }
+
+    pub fn run_contradictions(
+        &self,
+        params: ContradictionsParams,
+    ) -> McpAdapterResult<serde_json::Value> {
+        let context = self.context(params.project_root)?;
+        let outcome = ContradictionsUseCase::new(context).run(ContradictionsInput {
+            artifact: params.artifact,
+            all: params.all,
         })?;
         serde_json::to_value(outcome.envelope).map_err(Into::into)
     }
@@ -327,6 +339,19 @@ impl AgentDocMcpServer {
     }
 
     #[tool(
+        name = "adoc_contradictions",
+        description = "List unresolved contradictions and the claims they implicate (with all=true: resolved and dismissed too), joined from the graph artifact. Read-only query: findings are data, not failures."
+    )]
+    pub fn adoc_contradictions(
+        &self,
+        Parameters(params): Parameters<ContradictionsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_contradictions(params)
+            .map(CallToolResult::structured)
+            .map_err(adapter_error)
+    }
+
+    #[tool(
         name = "adoc_search",
         description = "Search compiled AgentDoc graph and search artifacts."
     )]
@@ -495,6 +520,17 @@ pub struct StaleParams {
     /// Additionally list verified objects whose `expires_at` falls within the
     /// next N days as `expiring_soon` records.
     pub within_days: Option<u32>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ContradictionsParams {
+    pub project_root: Option<PathBuf>,
+    pub artifact: Option<PathBuf>,
+    /// Include `resolved` and `dismissed` contradictions in the listing
+    /// (never affects `contradicted_claims`).
+    #[serde(default)]
+    pub all: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
