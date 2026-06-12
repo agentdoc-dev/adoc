@@ -26,6 +26,7 @@ fn long_top_level_help_lists_command_descriptions_and_examples() {
     assert!(stdout.contains("Validate one AgentDoc patch document against graph artifacts"));
     assert!(stdout.contains("Search compiled Knowledge Objects"));
     assert!(stdout.contains("List stale, review-overdue, and expiring Knowledge Objects"));
+    assert!(stdout.contains("List unresolved contradictions and contradicted claims"));
     assert!(stdout.contains("Examples:"));
     assert!(stdout.contains("adoc init"));
     assert!(stdout.contains("adoc check docs"));
@@ -35,6 +36,7 @@ fn long_top_level_help_lists_command_descriptions_and_examples() {
     assert!(stdout.contains("adoc patch --check patch.json"));
     assert!(stdout.contains("adoc search \"refund policy\""));
     assert!(stdout.contains("adoc stale --within 30d"));
+    assert!(stdout.contains("adoc contradictions --all"));
 }
 
 #[test]

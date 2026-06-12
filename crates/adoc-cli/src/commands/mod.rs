@@ -1,5 +1,6 @@
 mod build;
 mod check;
+mod contradictions;
 mod diff;
 mod graph;
 mod init;
@@ -21,6 +22,7 @@ use crate::presentation::{
 
 pub(crate) use build::build;
 pub(crate) use check::check;
+pub(crate) use contradictions::{ContradictionsCommandInput, contradictions};
 pub(crate) use diff::{DiffCommandInput, diff};
 pub(crate) use graph::{GraphCommandInput, graph};
 pub(crate) use init::init;

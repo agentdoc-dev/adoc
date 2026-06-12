@@ -16,6 +16,7 @@ Examples:
   adoc diff main
   adoc search \"refund policy\"
   adoc stale --within 30d
+  adoc contradictions --all
 ";
 const INIT_LONG_HELP: &str = "\
 Examples:
@@ -82,6 +83,19 @@ Examples:
   adoc stale --within 30d
   adoc stale --within 30d --format json
   adoc stale --artifact dist/docs.graph.json
+";
+const CONTRADICTIONS_LONG_HELP: &str = "\
+Lists every unresolved contradiction plus every contradicted claim — implicated
+by an unresolved contradiction or authored as contradicted — with the
+contradiction ids that implicate it, so consumers never join the two lists.
+The output is a pure function of the graph artifact (no clock). The command is
+a query, not a gate: it exits 0 whether or not findings exist.
+
+Examples:
+  adoc contradictions
+  adoc contradictions --all
+  adoc contradictions --format json
+  adoc contradictions --artifact dist/docs.graph.json
 ";
 
 /// Parse the `--within <N>d` horizon grammar (same `[0-9]+d` shape as the
@@ -281,6 +295,20 @@ pub(crate) enum Commands {
         /// e.g. `--within 30d`.
         #[arg(long, value_name = "Nd", value_parser = parse_within_days)]
         within: Option<u32>,
+    },
+    #[command(
+        about = "List unresolved contradictions and contradicted claims from graph artifacts.",
+        after_long_help = CONTRADICTIONS_LONG_HELP
+    )]
+    Contradictions {
+        #[arg(
+            long,
+            help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"
+        )]
+        artifact: Option<PathBuf>,
+        /// Include resolved and dismissed contradictions in the listing.
+        #[arg(long)]
+        all: bool,
     },
     #[command(
         about = "Validate one AgentDoc patch document against graph artifacts.",

@@ -815,3 +815,225 @@ fn expanded_pilot_stale_query() {
         "failure envelope must carry fix-oriented diagnostics"
     );
 }
+
+/// V6.2 acceptance: exactly 1 unresolved contradiction and exactly 3
+/// contradicted claims, each carrying the implicating contradiction ids so
+/// consumers never join the two lists themselves. The envelope is a pure
+/// function of the artifact: no `evaluated_at`. Exit 0 with findings, exit 2
+/// only on artifact-load failure; `--format markdown` stays diff/review-only.
+#[test]
+fn expanded_pilot_contradictions_query() {
+    let repo_root = repo_root();
+    let workspace = TestWorkspace::new("expanded-pilot-contradictions");
+    let dist = workspace.root.join("dist");
+    let build = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&repo_root)
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+        .args([
+            "build",
+            PILOT_PATH,
+            "--out",
+            dist.to_str().expect("dist path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+    assert!(
+        build.status.success(),
+        "contradictions prerequisite build must succeed\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let graph = dist.join("docs.graph.json");
+    let graph_arg = graph.to_str().expect("graph path is utf-8");
+
+    // --- default listing: exactly 1 contradiction, exactly 3 claims ---
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "contradictions",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc contradictions runs");
+    assert!(
+        output.status.success(),
+        "adoc contradictions is a query and must exit 0 even with findings\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let envelope: Value =
+        serde_json::from_slice(&output.stdout).expect("contradictions stdout is JSON");
+    assert_eq!(envelope["schema_version"], "adoc.contradictions.v0");
+    assert!(
+        envelope.get("evaluated_at").is_none(),
+        "the contradictions envelope is clock-free — no evaluated_at"
+    );
+
+    let contradictions = envelope["contradictions"]
+        .as_array()
+        .expect("contradictions array");
+    assert_eq!(
+        contradictions.len(),
+        1,
+        "expected exactly 1 contradiction: {contradictions:#?}"
+    );
+    let conflict = &contradictions[0];
+    assert_eq!(conflict["id"], "auth.session.conflict");
+    assert_eq!(conflict["severity"], "high");
+    assert_eq!(conflict["status"], "unresolved");
+    assert_eq!(
+        conflict["claims"],
+        serde_json::json!([
+            "auth.session.csrf-protection",
+            "auth.session.local-storage-allowed",
+            "auth.session.memory-storage",
+        ]),
+        "claims echo the parse-time sorted list"
+    );
+    assert!(
+        conflict["source_path"]
+            .as_str()
+            .expect("source_path")
+            .contains("security/contradictions.adoc")
+    );
+    assert_eq!(
+        conflict["summary"], "Claim auth.session.memory-storage requires memory-only storage while",
+        "summary is the first body line"
+    );
+
+    let claims = envelope["contradicted_claims"]
+        .as_array()
+        .expect("contradicted_claims array");
+    assert_eq!(
+        claims.len(),
+        3,
+        "expected exactly 3 contradicted claims: {claims:#?}"
+    );
+
+    assert_eq!(claims[0]["id"], "auth.session.csrf-protection");
+    assert_eq!(
+        claims[0]["authored_status"], "accepted",
+        "csrf-protection's authored status is untouched"
+    );
+    assert_eq!(
+        claims[0]["effective_status"], "contradicted",
+        "implication by an unresolved contradiction derives contradicted"
+    );
+    assert_eq!(
+        claims[0]["effective_reason"],
+        "contradiction:auth.session.conflict"
+    );
+
+    assert_eq!(claims[1]["id"], "auth.session.local-storage-allowed");
+    assert_eq!(claims[1]["authored_status"], "contradicted");
+    assert_eq!(claims[2]["id"], "auth.session.memory-storage");
+    assert_eq!(claims[2]["authored_status"], "contradicted");
+
+    for claim in claims {
+        assert_eq!(
+            claim["contradiction_ids"],
+            serde_json::json!(["auth.session.conflict"]),
+            "every contradicted claim carries its implicating contradiction ids"
+        );
+    }
+
+    // --- --all is identical on this pilot (no resolved/dismissed records) ---
+    let all = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "contradictions",
+            "--artifact",
+            graph_arg,
+            "--all",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc contradictions --all runs");
+    assert!(
+        all.status.success(),
+        "adoc contradictions --all must exit 0"
+    );
+    let all_env: Value = serde_json::from_slice(&all.stdout).expect("--all stdout is JSON");
+    assert_eq!(
+        all_env, envelope,
+        "--all must be identical when every contradiction is unresolved"
+    );
+
+    // --- plain output smoke ---
+    let plain = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "contradictions",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "plain",
+        ])
+        .output()
+        .expect("adoc contradictions --format plain runs");
+    assert!(plain.status.success(), "plain contradictions must exit 0");
+    let plain_stdout = String::from_utf8_lossy(&plain.stdout);
+    assert!(
+        plain_stdout.contains("Contradictions: 1 contradiction(s)"),
+        "plain output must lead with the contradiction count header:\n{plain_stdout}"
+    );
+    assert!(
+        plain_stdout.contains("Contradicted claims: 3 contradicted claim(s)"),
+        "plain output must include the contradicted-claims section:\n{plain_stdout}"
+    );
+    assert!(
+        plain_stdout.contains("accepted -> contradicted"),
+        "plain output must show the authored -> effective transition:\n{plain_stdout}"
+    );
+
+    // --- markdown stays diff/review-only ---
+    let markdown = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "contradictions",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "markdown",
+        ])
+        .output()
+        .expect("adoc contradictions --format markdown runs");
+    assert_eq!(
+        markdown.status.code(),
+        Some(2),
+        "markdown format must be rejected for adoc contradictions"
+    );
+    assert!(
+        String::from_utf8_lossy(&markdown.stderr).contains("cli.format"),
+        "markdown rejection must name the cli.format diagnostic"
+    );
+
+    // --- artifact-load failure exits 2 with an empty-lists envelope ---
+    let missing = dist.join("does-not-exist.graph.json");
+    let missing_arg = missing.to_str().expect("missing path is utf-8");
+    let failed = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "contradictions",
+            "--artifact",
+            missing_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc contradictions with missing artifact runs");
+    assert_eq!(
+        failed.status.code(),
+        Some(2),
+        "artifact-load failure must exit 2"
+    );
+    let failed_env: Value =
+        serde_json::from_slice(&failed.stdout).expect("failure envelope is JSON");
+    assert_eq!(failed_env["schema_version"], "adoc.contradictions.v0");
+    assert_eq!(failed_env["contradictions"], serde_json::json!([]));
+    assert_eq!(failed_env["contradicted_claims"], serde_json::json!([]));
+    assert!(
+        !failed_env["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .is_empty(),
+        "failure envelope must carry fix-oriented diagnostics"
+    );
+}
