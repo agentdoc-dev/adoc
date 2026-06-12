@@ -13,9 +13,10 @@ use crate::domain::values::trim_ascii_edges;
 /// A severity level with constructor-asserted validity.
 ///
 /// Once constructed the value is total — every variant maps to exactly one
-/// canonical lowercase string and back.
+/// canonical lowercase string and back. Ordering follows escalation:
+/// `Low < Medium < High < Critical` (declaration order).
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Severity {
     Low,
     Medium,
@@ -101,6 +102,13 @@ mod tests {
             Severity::try_new("HIGH"),
             Err(SeverityError::Invalid("HIGH".to_string()))
         );
+    }
+
+    #[test]
+    fn severity_orders_by_escalation() {
+        assert!(Severity::Low < Severity::Medium);
+        assert!(Severity::Medium < Severity::High);
+        assert!(Severity::High < Severity::Critical);
     }
 
     #[test]
