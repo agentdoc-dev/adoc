@@ -9,10 +9,11 @@ use adoc_core::{
 };
 use adoc_local::{
     BuildInput, BuildUseCase, CheckInput, CheckUseCase, ContradictionsInput, ContradictionsUseCase,
-    DiffInput, DiffUseCase, GraphInput, GraphUseCase, InitInput, InitUseCase, LocalContext,
-    PatchCheckInput, PatchCheckUseCase, PathPolicy, ProjectConfig, ProjectRootPathPolicy,
-    ProjectStatusInput, ProjectStatusRefresh, ProjectStatusUseCase, ReviewInput, ReviewPatchSource,
-    ReviewUseCase, SearchInput, SearchUseCase, StaleInput, StaleUseCase, WhyInput, WhyUseCase,
+    DiffInput, DiffUseCase, GraphInput, GraphUseCase, ImpactedChangedSet, ImpactedInput,
+    ImpactedUseCase, InitInput, InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase,
+    PathPolicy, ProjectConfig, ProjectRootPathPolicy, ProjectStatusInput, ProjectStatusRefresh,
+    ProjectStatusUseCase, ReviewInput, ReviewPatchSource, ReviewUseCase, SearchInput,
+    SearchUseCase, StaleInput, StaleUseCase, WhyInput, WhyUseCase,
 };
 use rmcp::{
     ServerHandler,
@@ -134,6 +135,24 @@ impl AgentDocMcpServer {
         let outcome = ContradictionsUseCase::new(context).run(ContradictionsInput {
             artifact: params.artifact,
             all: params.all,
+        })?;
+        serde_json::to_value(outcome.envelope).map_err(Into::into)
+    }
+
+    pub fn run_impacted_by(&self, params: ImpactedByParams) -> McpAdapterResult<serde_json::Value> {
+        let changed = match (params.paths, params.git_ref) {
+            (Some(paths), None) => ImpactedChangedSet::Paths(paths),
+            (None, Some(git_ref)) => ImpactedChangedSet::GitRef(git_ref),
+            _ => {
+                return Err(McpAdapterError::InvalidArguments(
+                    "exactly one of `paths` or `ref` must be provided".to_string(),
+                ));
+            }
+        };
+        let context = self.context(params.project_root)?;
+        let outcome = ImpactedUseCase::new(context).run(ImpactedInput {
+            artifact: params.artifact,
+            changed,
         })?;
         serde_json::to_value(outcome.envelope).map_err(Into::into)
     }
@@ -352,6 +371,19 @@ impl AgentDocMcpServer {
     }
 
     #[tool(
+        name = "adoc_impacted_by",
+        description = "List verified claims and accepted decisions implicated by changed source paths (explicit `paths` or a git `ref` against the working tree), with impact-review proof obligations, from the graph artifact. Read-only query: findings are data, not failures."
+    )]
+    pub fn adoc_impacted_by(
+        &self,
+        Parameters(params): Parameters<ImpactedByParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_impacted_by(params)
+            .map(CallToolResult::structured)
+            .map_err(adapter_error)
+    }
+
+    #[tool(
         name = "adoc_search",
         description = "Search compiled AgentDoc graph and search artifacts."
     )]
@@ -531,6 +563,21 @@ pub struct ContradictionsParams {
     /// (never affects `contradicted_claims`).
     #[serde(default)]
     pub all: bool,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ImpactedByParams {
+    pub project_root: Option<PathBuf>,
+    pub artifact: Option<PathBuf>,
+    /// Explicit changed repo-relative paths (as emitted by
+    /// `git diff --name-only`). Exactly one of `paths` / `ref`.
+    pub paths: Option<Vec<String>>,
+    /// Derive the changed set from git: the base ref against the working
+    /// tree (the `adoc review <ref>` shape). Exactly one of `paths` / `ref`.
+    #[serde(rename = "ref")]
+    #[schemars(rename = "ref")]
+    pub git_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
