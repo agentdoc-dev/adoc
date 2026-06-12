@@ -518,6 +518,92 @@ fn patch_apply_reads_inline_patch_from_stdin_with_at_dash() {
 }
 
 #[test]
+fn patch_apply_supersede_rewrites_only_the_supersedes_field_line() {
+    let workspace = build_apply_workspace("patch-apply-supersede");
+    let base_hash = content_hash(&workspace, "billing.credits");
+    let original =
+        std::fs::read_to_string(workspace.root.join("docs/billing.adoc")).expect("source readable");
+    workspace.write(
+        "patch.json",
+        &serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "supersede",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": { "supersedes": ["billing.old-credits"] },
+            "reason": "Old credits behavior replaced."
+        })
+        .to_string(),
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["patch", "--apply", "patch.json", "--format", "json"])
+        .output()
+        .expect("adoc patch runs");
+
+    assert_eq!(output.status.code(), Some(0), "stderr:\n{}", stderr(&output));
+    let envelope: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("stdout is JSON");
+    assert_eq!(envelope["applied"], true);
+    assert_eq!(envelope["operation"], "supersede");
+
+    let rewritten =
+        std::fs::read_to_string(workspace.root.join("docs/billing.adoc")).expect("source readable");
+    assert_eq!(
+        rewritten,
+        original.replace(
+            "::claim billing.credits\nstatus: draft\n",
+            "::claim billing.credits\nstatus: draft\nsupersedes: billing.old-credits\n"
+        ),
+        "only the supersedes field line is added"
+    );
+}
+
+#[test]
+fn patch_apply_revoke_rewrites_only_the_status_value() {
+    let workspace = build_apply_workspace("patch-apply-revoke");
+    let base_hash = content_hash(&workspace, "billing.old-credits");
+    let original =
+        std::fs::read_to_string(workspace.root.join("docs/billing.adoc")).expect("source readable");
+    workspace.write(
+        "patch.json",
+        &serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "revoke",
+            "target": "billing.old-credits",
+            "base_hash": base_hash,
+            "changes": {},
+            "reason": "Behavior no longer exists."
+        })
+        .to_string(),
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["patch", "--apply", "patch.json", "--format", "json"])
+        .output()
+        .expect("adoc patch runs");
+
+    assert_eq!(output.status.code(), Some(0), "stderr:\n{}", stderr(&output));
+    let envelope: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("stdout is JSON");
+    assert_eq!(envelope["applied"], true);
+    assert_eq!(envelope["operation"], "revoke");
+
+    let rewritten =
+        std::fs::read_to_string(workspace.root.join("docs/billing.adoc")).expect("source readable");
+    assert_eq!(
+        rewritten,
+        original.replace(
+            "::claim billing.old-credits\nstatus: draft\n",
+            "::claim billing.old-credits\nstatus: revoked\n"
+        ),
+        "only the status value of the target block changes"
+    );
+}
+
+#[test]
 fn patch_check_and_apply_flags_conflict() {
     let output = adoc_command()
         .args(["patch", "--check", "a.json", "--apply", "b.json"])
