@@ -92,7 +92,7 @@ Deferred: relation-cascade impact (`depends_on` propagation), glob `impacts:` pa
 
 ### V6.4: Patch Apply Slice
 
-Goal: apply validated patches to `.adoc` source via formatting-preserving span splices — atomic, re-checked, never auto-reverted. Closes PRD §7.7 and §21.7 and resolves V2's create-placement open question.
+Goal: apply validated patches to `.adoc` source via formatting-preserving span splices — atomic, re-checked, never auto-reverted. Closes PRD §7.7 and §21.7 and resolves V2's create-placement open question. Implemented (ADR-0036, ADR-0037, [V6-DESIGN.md](V6-DESIGN.md) §V6.4).
 
 A ground truth that shapes this slice: typed-block close-fence spans are not retained today (`ParsedTypedBlock.span` is the open-fence line only; graph spans are start-only with no byte length). The graph artifact therefore **cannot drive splicing and must not be asked to**. Apply always re-parses current source and splices against fresh parser spans, using byte offsets (`SourcePosition.offset`) exclusively — parser columns are char-based and must never be used to reconstruct positions.
 
