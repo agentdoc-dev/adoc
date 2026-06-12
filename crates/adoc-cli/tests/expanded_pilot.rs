@@ -1037,3 +1037,112 @@ fn expanded_pilot_contradictions_query() {
         "failure envelope must carry fix-oriented diagnostics"
     );
 }
+
+/// V6.3 `adoc impacted-by` over the Expanded Pilot: evidence-path matching.
+///
+/// `billing.credits.consume` (verified claim) and `billing.credits.use-ledger`
+/// (accepted decision) both carry `evidence_ref: billing.consume-use-case`, a
+/// `source` object whose `path` is the changed file — both must surface with
+/// one `evidence_path` reason resolved `via_source_object`. The pilot's only
+/// `impacts:` declarations sit on a constraint and a procedure, which are
+/// outside the verified-subject scope: querying their paths is empty, exit 0.
+#[test]
+fn expanded_pilot_impacted_by_query() {
+    let repo_root = repo_root();
+    let workspace = TestWorkspace::new("expanded-pilot-impacted-by");
+    let dist = workspace.root.join("dist");
+    let build = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&repo_root)
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+        .args([
+            "build",
+            PILOT_PATH,
+            "--out",
+            dist.to_str().expect("dist path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+    assert!(
+        build.status.success(),
+        "impacted-by prerequisite build must succeed\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let graph = dist.join("docs.graph.json");
+    let graph_arg = graph.to_str().expect("graph path is utf-8");
+
+    // --- evidence-path query: both verified subjects via the source object ---
+    let impacted = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "impacted-by",
+            "apps/backend/src/features/credits/consume.use-case.ts",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc impacted-by runs");
+    assert!(
+        impacted.status.success(),
+        "impacted-by is a query and must exit 0\nstderr:\n{}",
+        String::from_utf8_lossy(&impacted.stderr)
+    );
+    let envelope: Value =
+        serde_json::from_slice(&impacted.stdout).expect("impacted-by stdout is JSON");
+    assert_eq!(envelope["schema_version"], "adoc.impacted.v0");
+
+    let records = envelope["impacted"].as_array().expect("impacted array");
+    assert_eq!(
+        records.len(),
+        2,
+        "expected exactly 2 impacted objects: {records:#?}"
+    );
+
+    assert_eq!(records[0]["id"], "billing.credits.consume");
+    assert_eq!(records[0]["kind"], "claim");
+    assert_eq!(records[0]["status"], "verified");
+    assert_eq!(records[1]["id"], "billing.credits.use-ledger");
+    assert_eq!(records[1]["kind"], "decision");
+    assert_eq!(records[1]["status"], "accepted");
+
+    for record in records {
+        let reasons = record["reasons"].as_array().expect("reasons array");
+        assert_eq!(reasons.len(), 1, "one reason each: {reasons:#?}");
+        assert_eq!(reasons[0]["kind"], "evidence_path");
+        assert_eq!(
+            reasons[0]["matched_path"],
+            "apps/backend/src/features/credits/consume.use-case.ts"
+        );
+        assert_eq!(reasons[0]["via_source_object"], "billing.consume-use-case");
+    }
+
+    let obligations = envelope["proof_obligations"]
+        .as_array()
+        .expect("proof_obligations array");
+    assert_eq!(obligations.len(), 2, "one obligation per impacted record");
+    assert_eq!(obligations[0]["object_id"], "billing.credits.consume");
+    assert_eq!(obligations[1]["object_id"], "billing.credits.use-ledger");
+
+    // --- scope negative: the constraint declaring this path is not a
+    // verified subject, so the impacted set is empty and the exit stays 0 ---
+    let negative = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "impacted-by",
+            "crates/auth/src/session.rs",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc impacted-by runs");
+    assert!(
+        negative.status.success(),
+        "empty findings are still exit 0\nstderr:\n{}",
+        String::from_utf8_lossy(&negative.stderr)
+    );
+    let negative_env: Value =
+        serde_json::from_slice(&negative.stdout).expect("impacted-by stdout is JSON");
+    assert_eq!(negative_env["impacted"], serde_json::json!([]));
+    assert_eq!(negative_env["proof_obligations"], serde_json::json!([]));
+}

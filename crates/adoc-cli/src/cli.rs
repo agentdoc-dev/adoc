@@ -17,6 +17,7 @@ Examples:
   adoc search \"refund policy\"
   adoc stale --within 30d
   adoc contradictions --all
+  adoc impacted-by --ref main
 ";
 const INIT_LONG_HELP: &str = "\
 Examples:
@@ -98,6 +99,25 @@ Examples:
   adoc contradictions --artifact dist/docs.graph.json
 ";
 
+const IMPACTED_BY_LONG_HELP: &str = "\
+Answers \"this code changed — which knowledge is now suspect?\" over the graph
+artifact: verified claims and accepted decisions whose declared impacts: paths
+or evidence paths (inline source_code/test values, or the path of a referenced
+source object) exactly match a changed file. No recompile, no globs. The
+command is a query, not a gate: it exits 0 whether or not anything is
+impacted.
+
+Exactly one input shape: explicit changed paths, or --ref <git-ref> to derive
+the changed set from git (the base ref against the working tree, the same
+shape as `adoc review <ref>`).
+
+Examples:
+  adoc impacted-by crates/billing/src/refund.rs
+  adoc impacted-by src/a.rs src/b.rs --format json
+  adoc impacted-by --ref main
+  adoc impacted-by --ref main --format markdown
+";
+
 /// Parse the `--within <N>d` horizon grammar (same `[0-9]+d` shape as the
 /// `review_interval:` field) into a day count.
 fn parse_within_days(value: &str) -> Result<u32, String> {
@@ -122,7 +142,7 @@ pub(crate) enum CliFormat {
     /// Machine-readable JSON.
     Json,
     /// PR-comment-ready GitHub-flavored Markdown (only supported by
-    /// `adoc diff` and `adoc review`).
+    /// `adoc diff`, `adoc review`, and `adoc impacted-by`).
     Markdown,
 }
 
@@ -309,6 +329,30 @@ pub(crate) enum Commands {
         /// Include resolved and dismissed contradictions in the listing.
         #[arg(long)]
         all: bool,
+    },
+    #[command(
+        name = "impacted-by",
+        about = "List Knowledge Objects implicated by changed source paths.",
+        after_long_help = IMPACTED_BY_LONG_HELP
+    )]
+    ImpactedBy {
+        /// Changed repo-relative file paths (as emitted by
+        /// `git diff --name-only`). Mutually exclusive with `--ref`.
+        #[arg(
+            value_name = "PATH",
+            required_unless_present = "git_ref",
+            conflicts_with = "git_ref"
+        )]
+        paths: Vec<String>,
+        /// Derive the changed set from git: the base ref against the working
+        /// tree (the `adoc review <ref>` shape).
+        #[arg(long = "ref", value_name = "GIT_REF")]
+        git_ref: Option<String>,
+        #[arg(
+            long,
+            help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"
+        )]
+        artifact: Option<PathBuf>,
     },
     #[command(
         about = "Validate one AgentDoc patch document against graph artifacts.",

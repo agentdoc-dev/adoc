@@ -9,9 +9,9 @@ use clap::{Parser, error::ErrorKind};
 
 use crate::cli::{Cli, Commands};
 use crate::commands::{
-    ContradictionsCommandInput, DiffCommandInput, GraphCommandInput, PatchCommandInput,
-    ReviewCommandInput, SearchCommandInput, StaleCommandInput, build, check, contradictions, diff,
-    graph, init, patch, review, search_command, stale, why,
+    ContradictionsCommandInput, DiffCommandInput, GraphCommandInput, ImpactedByCommandInput,
+    PatchCommandInput, ReviewCommandInput, SearchCommandInput, StaleCommandInput, build, check,
+    contradictions, diff, graph, impacted_by, init, patch, review, search_command, stale, why,
 };
 use crate::presentation::{ResolvedFormat, terminal};
 
@@ -23,15 +23,18 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
     match Cli::try_parse_from(arguments) {
         Ok(cli) => {
             let resolved = terminal::detect(cli.format.into(), cli.color.into());
-            // Markdown is review-only output; reject it before any command
-            // that does not implement a markdown presenter. Diff and review
-            // pass through; every other command exits non-zero with a
-            // fix-oriented stderr line.
+            // Markdown is PR-comment output; reject it before any command
+            // that does not implement a markdown presenter. Diff, review,
+            // and impacted-by pass through; every other command exits
+            // non-zero with a fix-oriented stderr line.
             if resolved == ResolvedFormat::Markdown
-                && !matches!(cli.command, Commands::Diff { .. } | Commands::Review { .. })
+                && !matches!(
+                    cli.command,
+                    Commands::Diff { .. } | Commands::Review { .. } | Commands::ImpactedBy { .. }
+                )
             {
                 eprintln!(
-                    "error[cli.format] --format markdown is only supported by `adoc diff` and `adoc review`"
+                    "error[cli.format] --format markdown is only supported by `adoc diff`, `adoc review`, and `adoc impacted-by`"
                 );
                 return 2;
             }
@@ -71,6 +74,18 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                 Commands::Contradictions { artifact, all } => {
                     contradictions(ContradictionsCommandInput { artifact, all }, resolved)
                 }
+                Commands::ImpactedBy {
+                    paths,
+                    git_ref,
+                    artifact,
+                } => impacted_by(
+                    ImpactedByCommandInput {
+                        paths,
+                        git_ref,
+                        artifact,
+                    },
+                    resolved,
+                ),
                 Commands::Patch { check, artifact } => patch(
                     PatchCommandInput {
                         patch_path: check,
