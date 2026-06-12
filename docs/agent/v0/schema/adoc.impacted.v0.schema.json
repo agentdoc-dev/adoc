@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.impacted.v0.schema.json",
+  "title": "AgentDoc Impacted-By Query",
+  "description": "Answer to \"this code changed — which knowledge is now suspect?\": every verified claim and accepted decision whose declared impacts: paths or evidence paths exactly match a changed file, each with one impact-review proof obligation. Emitted by `adoc impacted-by` and the `adoc_impacted_by` MCP tool. A pure function of the graph artifact and the changed-path set: no evaluation date, no recompile, no globs. Records are sorted by Object ID; reasons by (matched_path, kind, via_source_object). See ROADMAP-V6.md §V6.3 and ADR-0038.",
+  "type": "object",
+  "required": ["schema_version", "changed_paths", "impacted", "proof_obligations", "diagnostics"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.impacted.v0" },
+    "changed_paths": {
+      "description": "The normalized changed-path set the query ran against: repo-relative, sorted ascending, deduplicated — for both input shapes (explicit paths and --ref).",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "impacted": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/impactedRecord" }
+    },
+    "proof_obligations": {
+      "description": "One impact-review obligation per impacted record (required_evidence: [\"source_code\"]), merged and sorted by (object_id, reason).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/proofObligation" }
+    },
+    "diagnostics": {
+      "description": "Input and artifact-load diagnostics (impacted.invalid_path, impacted.ref_unresolvable, impacted.git_unavailable, io.artifact_*). Impact findings themselves are data, not diagnostics.",
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  },
+  "$defs": {
+    "impactedRecord": {
+      "type": "object",
+      "required": ["id", "kind", "status", "reasons"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "kind": {
+          "description": "Only verified subjects appear: `claim` (status verified) or `decision` (status accepted).",
+          "enum": ["claim", "decision"]
+        },
+        "status": { "enum": ["verified", "accepted"] },
+        "owner": { "type": "string" },
+        "reasons": {
+          "description": "Why the changed set implicates this object — deduplicated; one record per object regardless of reason count.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/impactReason" }
+        }
+      }
+    },
+    "impactReason": {
+      "type": "object",
+      "required": ["kind", "matched_path"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "description": "`impacts_path`: the object's declared impacts: list contains the changed path. `evidence_path`: an inline source_code/test evidence value equals the changed path, or the path of a referenced source object does.",
+          "enum": ["impacts_path", "evidence_path"]
+        },
+        "matched_path": { "type": "string" },
+        "via_source_object": {
+          "description": "The referenced `source` object's id when the evidence path was resolved through an evidence_ref. Absent for declared impacts: paths and inline evidence values.",
+          "type": "string"
+        }
+      }
+    },
+    "proofObligation": {
+      "type": "object",
+      "required": ["object_id", "reason", "required_evidence"],
+      "additionalProperties": false,
+      "properties": {
+        "object_id": { "type": "string" },
+        "reason": { "type": "string" },
+        "required_evidence": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

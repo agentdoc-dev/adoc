@@ -9,7 +9,8 @@ use adoc_core::{
 };
 use adoc_mcp::{
     AdocPatchCheckParams, AdocReviewParams, AgentDocMcpServer, BuildParams, ContradictionsParams,
-    GraphParams, InitParams, PatchInput, ProjectStatusParams, SearchParams, StaleParams,
+    GraphParams, ImpactedByParams, InitParams, PatchInput, ProjectStatusParams, SearchParams,
+    StaleParams,
 };
 use serde_json::json;
 
@@ -774,6 +775,155 @@ fn mcp_serves_v3_schema_resources_byte_equal_to_on_disk_files() {
         assert_eq!(
             served, disk,
             "MCP-served schema {uri} drifted from docs/agent/v0/schema/{file}"
+        );
+    }
+}
+
+/// V6.3: `adoc_impacted_by` envelopes — a populated paths-shape query hitting
+/// declared impacts, inline evidence, and evidence-ref resolution; the empty
+/// no-match case; and the paths-XOR-ref argument rule — validate against
+/// `adoc.impacted.v0.schema.json`.
+#[test]
+fn validates_adoc_impacted_v0_envelope_against_schema() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(
+        &root.join("docs/index.adoc"),
+        concat!(
+            "# Impact @doc(team.impact)\n",
+            "\n",
+            "::claim team.refunds\n",
+            "status: verified\n",
+            "owner: team-billing\n",
+            "verified_at: 2026-05-05\n",
+            "source: crates/billing/src/refund.rs\n",
+            "impacts: crates/billing/src/refund.rs\n",
+            "--\n",
+            "Refunds process within 24 hours.\n",
+            "::\n",
+            "\n",
+            "::decision team.ledger-first\n",
+            "status: accepted\n",
+            "decided_by: architecture\n",
+            "owner: team-billing\n",
+            "evidence_ref: team.consume-source\n",
+            "--\n",
+            "Ledger-first credit consumption.\n",
+            "::\n",
+            "\n",
+            "::source team.consume-source\n",
+            "kind: source_code\n",
+            "path: apps/backend/src/consume.ts\n",
+            "owner: team-billing\n",
+            "--\n",
+            "Credit consumption implementation.\n",
+            "::\n",
+            "\n",
+            "::claim team.draft-bystander\n",
+            "status: draft\n",
+            "impacts: crates/billing/src/refund.rs\n",
+            "--\n",
+            "Draft claim outside the verified-subject scope.\n",
+            "::\n",
+        ),
+    );
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n",
+    );
+    let server = AgentDocMcpServer::new(root.to_path_buf());
+    server
+        .run_build(BuildParams {
+            project_root: None,
+            path: None,
+            out: None,
+            no_embeddings: false,
+        })
+        .expect("build succeeds");
+
+    let impacted = server
+        .run_impacted_by(ImpactedByParams {
+            project_root: None,
+            artifact: None,
+            paths: Some(vec![
+                "crates/billing/src/refund.rs".to_string(),
+                "apps/backend/src/consume.ts".to_string(),
+            ]),
+            git_ref: None,
+        })
+        .expect("impacted-by succeeds");
+    assert_valid("adoc.impacted.v0.schema.json", &impacted);
+    assert_eq!(impacted["schema_version"], "adoc.impacted.v0");
+    assert_eq!(
+        impacted["changed_paths"],
+        json!([
+            "apps/backend/src/consume.ts",
+            "crates/billing/src/refund.rs"
+        ]),
+        "changed_paths sorted ascending"
+    );
+    let records = impacted["impacted"].as_array().expect("impacted array");
+    assert_eq!(
+        records.len(),
+        2,
+        "verified claim + accepted decision, draft excluded: {records:#?}"
+    );
+    assert_eq!(records[0]["id"], "team.ledger-first");
+    assert_eq!(records[0]["reasons"][0]["kind"], "evidence_path");
+    assert_eq!(
+        records[0]["reasons"][0]["via_source_object"],
+        "team.consume-source"
+    );
+    assert_eq!(records[1]["id"], "team.refunds");
+    let refund_reasons = records[1]["reasons"].as_array().expect("reasons");
+    assert_eq!(
+        refund_reasons.len(),
+        2,
+        "same path via impacts: and inline source evidence: {refund_reasons:#?}"
+    );
+    assert_eq!(refund_reasons[0]["kind"], "impacts_path");
+    assert_eq!(refund_reasons[1]["kind"], "evidence_path");
+    assert_eq!(
+        impacted["proof_obligations"]
+            .as_array()
+            .expect("obligations")
+            .len(),
+        2
+    );
+
+    let empty = server
+        .run_impacted_by(ImpactedByParams {
+            project_root: None,
+            artifact: None,
+            paths: Some(vec!["unrelated/path.rs".to_string()]),
+            git_ref: None,
+        })
+        .expect("impacted-by succeeds with no matches");
+    assert_valid("adoc.impacted.v0.schema.json", &empty);
+    assert_eq!(empty["impacted"], json!([]));
+    assert_eq!(empty["proof_obligations"], json!([]));
+
+    // Exactly one of `paths` / `ref` — both and neither are argument errors.
+    for params in [
+        ImpactedByParams {
+            project_root: None,
+            artifact: None,
+            paths: Some(vec!["a.rs".to_string()]),
+            git_ref: Some("main".to_string()),
+        },
+        ImpactedByParams {
+            project_root: None,
+            artifact: None,
+            paths: None,
+            git_ref: None,
+        },
+    ] {
+        let error = server
+            .run_impacted_by(params)
+            .expect_err("paths XOR ref must be enforced");
+        assert!(
+            error.to_string().contains("paths"),
+            "error must name the argument rule: {error}"
         );
     }
 }
