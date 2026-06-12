@@ -140,12 +140,15 @@ impl AgentDocMcpServer {
     }
 
     pub fn run_impacted_by(&self, params: ImpactedByParams) -> McpAdapterResult<serde_json::Value> {
+        // Empty `paths` is rejected like "neither", mirroring the CLI where
+        // clap treats an empty Vec as "not present" — an empty changed set is
+        // a question that was never asked, not an empty answer.
         let changed = match (params.paths, params.git_ref) {
-            (Some(paths), None) => ImpactedChangedSet::Paths(paths),
+            (Some(paths), None) if !paths.is_empty() => ImpactedChangedSet::Paths(paths),
             (None, Some(git_ref)) => ImpactedChangedSet::GitRef(git_ref),
             _ => {
                 return Err(McpAdapterError::InvalidArguments(
-                    "exactly one of `paths` or `ref` must be provided".to_string(),
+                    "exactly one of `paths` (non-empty) or `ref` must be provided".to_string(),
                 ));
             }
         };
