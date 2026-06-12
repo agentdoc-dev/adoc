@@ -150,6 +150,24 @@ impl PatchApplyResult {
     }
 }
 
+/// V6.4 TB4 (ADR-0037): the disabled-gate refusal returned by the MCP
+/// `adoc_patch_apply` tool when the project has not opted in. A normal
+/// envelope — schema-identical to every other refusal — with exactly one
+/// fix-oriented diagnostic naming the config key, never a protocol error.
+pub fn mcp_patch_apply_disabled_refusal() -> PatchApplyResult {
+    PatchApplyResult::refused(
+        vec![Diagnostic::error(
+            DiagnosticCode::McpPatchApplyDisabled,
+            "MCP patch apply is disabled for this project; set `mcp: { patch_apply: enabled }` \
+             in agentdoc.config.yaml to opt in. adoc_patch_check remains available.",
+        )],
+        ApplyTrace {
+            interface: "mcp".to_string(),
+            proposer: None,
+        },
+    )
+}
+
 pub(crate) fn apply_trace(interface: &str, patch: &PatchDocument) -> ApplyTrace {
     ApplyTrace {
         interface: interface.to_string(),
