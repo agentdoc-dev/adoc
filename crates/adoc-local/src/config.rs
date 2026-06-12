@@ -13,6 +13,13 @@ pub struct ProjectConfig {
     pub docs_path: PathBuf,
     pub outputs: ConfigOutputs,
     pub embeddings_provider: EmbeddingsProvider,
+    /// V6.4 TB4 (ADR-0037): the MCP `adoc_patch_apply` gate. Absent `mcp:`
+    /// block ⇒ disabled; `adoc init` never writes the key — opting in is a
+    /// deliberate human edit. Note the back-compat consequence of
+    /// `deny_unknown_fields`: a project that adds the `mcp:` block becomes
+    /// unreadable by pre-V6.4 binaries (a loud config-parse failure that
+    /// only bites opted-in projects; deliberately no version bump).
+    pub mcp_patch_apply_enabled: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -37,6 +44,7 @@ struct RawProjectConfig {
     docs_path: PathBuf,
     outputs: Option<RawOutputs>,
     embeddings: Option<RawEmbeddings>,
+    mcp: Option<RawMcp>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -52,6 +60,12 @@ struct RawOutputs {
 #[serde(deny_unknown_fields)]
 struct RawEmbeddings {
     provider: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawMcp {
+    patch_apply: String,
 }
 
 impl ProjectConfig {
@@ -139,11 +153,28 @@ impl RawProjectConfig {
             None => EmbeddingsProvider::Local,
         };
 
+        let mcp_patch_apply_enabled = match self.mcp {
+            Some(mcp) => match mcp.patch_apply.as_str() {
+                "enabled" => true,
+                "disabled" => false,
+                value => {
+                    return Err(LocalError::ConfigInvalid {
+                        path: path.to_path_buf(),
+                        message: format!(
+                            "unsupported mcp.patch_apply {value:?}; expected \"enabled\" or \"disabled\""
+                        ),
+                    });
+                }
+            },
+            None => false,
+        };
+
         Ok(ProjectConfig {
             path: path.to_path_buf(),
             docs_path: resolve_config_path(config_dir, self.docs_path),
             outputs,
             embeddings_provider,
+            mcp_patch_apply_enabled,
         })
     }
 }
@@ -189,4 +220,65 @@ fn home_boundary() -> Option<PathBuf> {
             Some(std::fs::canonicalize(&home).unwrap_or(home))
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config_in_tempdir(contents: &str) -> (tempfile::TempDir, Result<Option<ProjectConfig>, LocalError>) {
+        let dir = tempfile::tempdir().expect("create tempdir");
+        fs::write(dir.path().join(CONFIG_FILE_NAME), contents).expect("write config");
+        let result = ProjectConfig::discover_from(dir.path());
+        (dir, result)
+    }
+
+    const BASE_CONFIG: &str = "version: 1\nmode: strict\ndocs_path: docs\n";
+
+    #[test]
+    fn mcp_patch_apply_defaults_to_disabled_when_block_absent() {
+        let (_dir, result) = config_in_tempdir(BASE_CONFIG);
+        let config = result.expect("config parses").expect("config found");
+        assert!(!config.mcp_patch_apply_enabled);
+    }
+
+    #[test]
+    fn mcp_patch_apply_enabled_parses_to_true() {
+        let contents = format!("{BASE_CONFIG}mcp:\n  patch_apply: enabled\n");
+        let (_dir, result) = config_in_tempdir(&contents);
+        let config = result.expect("config parses").expect("config found");
+        assert!(config.mcp_patch_apply_enabled);
+    }
+
+    #[test]
+    fn mcp_patch_apply_disabled_parses_to_false() {
+        let contents = format!("{BASE_CONFIG}mcp:\n  patch_apply: disabled\n");
+        let (_dir, result) = config_in_tempdir(&contents);
+        let config = result.expect("config parses").expect("config found");
+        assert!(!config.mcp_patch_apply_enabled);
+    }
+
+    #[test]
+    fn unknown_mcp_key_fails_loudly() {
+        let contents = format!("{BASE_CONFIG}mcp:\n  unknown_key: x\n");
+        let (_dir, result) = config_in_tempdir(&contents);
+        assert!(
+            matches!(result, Err(LocalError::ConfigParse { .. })),
+            "deny_unknown_fields must reject unknown mcp keys"
+        );
+    }
+
+    #[test]
+    fn unsupported_mcp_patch_apply_value_names_the_key_and_allowed_values() {
+        let contents = format!("{BASE_CONFIG}mcp:\n  patch_apply: yes\n");
+        let (_dir, result) = config_in_tempdir(&contents);
+        match result {
+            Err(LocalError::ConfigInvalid { message, .. }) => {
+                assert!(message.contains("mcp.patch_apply"), "message: {message}");
+                assert!(message.contains("enabled"), "message: {message}");
+                assert!(message.contains("disabled"), "message: {message}");
+            }
+            other => panic!("expected ConfigInvalid, got {other:?}"),
+        }
+    }
 }

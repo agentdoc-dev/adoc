@@ -329,6 +329,10 @@ pub struct ProjectStatusReadiness {
     pub semantic_search: bool,
     pub patch_validation: bool,
     pub review: bool,
+    /// V6.4 TB4 (ADR-0037): `true` only when the project opted into MCP
+    /// patch apply via `mcp: { patch_apply: enabled }`. Agents check this
+    /// before constructing a patch for apply.
+    pub patch_apply_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1318,6 +1322,10 @@ where
         semantic_search: graph_ready && search_ready && semantic_enabled,
         patch_validation: graph_ready,
         review: git_review_available(context.config_start()),
+        patch_apply_enabled: config
+            .as_ref()
+            .map(|config| config.mcp_patch_apply_enabled)
+            .unwrap_or(false),
     };
 
     Ok(ProjectStatusOutcome {
