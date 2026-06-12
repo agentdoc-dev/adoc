@@ -48,10 +48,21 @@ Examples:
   adoc graph billing.refunds.issue-credit --relation depends_on --format json
 ";
 const PATCH_LONG_HELP: &str = "\
+--check validates without writing; --apply validates, then rewrites exactly
+the targeted source spans (formatting-preserving), re-checks, and reports.
+Apply writes to the working tree only and never auto-reverts: review the
+result with git diff, undo with git checkout. After a successful apply the
+graph artifact is stale — run `adoc build`.
+
+Apply exit codes: 0 applied and post-check clean; 1 refused, nothing written;
+2 applied but the post-check found new errors (stop and review).
+
 Examples:
   adoc patch --check patch.json
   adoc patch --check patch.json --artifact dist/docs.graph.json
   adoc patch --check patch.json --format json
+  adoc patch --apply patch.json
+  cat patch.json | adoc patch --apply @- --format json
 ";
 const DIFF_LONG_HELP: &str = "\
 Examples:
@@ -360,13 +371,22 @@ pub(crate) enum Commands {
         artifact: Option<PathBuf>,
     },
     #[command(
-        about = "Validate one AgentDoc patch document against graph artifacts.",
+        about = "Validate one AgentDoc patch document against graph artifacts, or apply it to source.",
         after_long_help = PATCH_LONG_HELP
     )]
     Patch {
-        /// Patch JSON document to validate.
-        #[arg(long, value_name = "PATCH_JSON")]
-        check: PathBuf,
+        /// Patch JSON document to validate (read-only).
+        #[arg(
+            long,
+            value_name = "PATCH_JSON",
+            conflicts_with = "apply",
+            required_unless_present = "apply"
+        )]
+        check: Option<PathBuf>,
+        /// Patch JSON document to validate and apply to AgentDoc source.
+        /// Pass a path, or `@-` to read the document from stdin.
+        #[arg(long, value_name = "PATCH_JSON_OR_@-")]
+        apply: Option<String>,
         #[arg(
             long,
             help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"

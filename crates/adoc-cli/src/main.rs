@@ -86,9 +86,14 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     },
                     resolved,
                 ),
-                Commands::Patch { check, artifact } => patch(
+                Commands::Patch {
+                    check,
+                    apply,
+                    artifact,
+                } => patch(
                     PatchCommandInput {
-                        patch_path: check,
+                        check,
+                        apply,
                         artifact,
                     },
                     resolved,

@@ -1,9 +1,13 @@
 use std::fmt::Write as FmtWrite;
 use std::io;
+use std::io::Read;
 use std::path::PathBuf;
 
-use adoc_core::PatchCheckResult;
-use adoc_local::{LocalContext, PatchCheckInput, PatchCheckUseCase, UnrestrictedPathPolicy};
+use adoc_core::{PatchApplyResult, PatchCheckResult};
+use adoc_local::{
+    LocalContext, PatchApplyInput, PatchApplySource, PatchApplyUseCase, PatchCheckInput,
+    PatchCheckUseCase, UnrestrictedPathPolicy,
+};
 
 use crate::error::CliError;
 use crate::presentation::style::key::cyan_key;
@@ -13,19 +17,28 @@ use crate::presentation::{ResolvedFormat, json as json_presentation};
 use super::{current_dir, eprint_diagnostics, report};
 
 pub(crate) struct PatchCommandInput {
-    pub(crate) patch_path: PathBuf,
+    pub(crate) check: Option<PathBuf>,
+    pub(crate) apply: Option<String>,
     pub(crate) artifact: Option<PathBuf>,
 }
 
 pub(crate) fn patch(input: PatchCommandInput, resolved: ResolvedFormat) -> i32 {
+    match (input.check, input.apply) {
+        (Some(patch_path), None) => patch_check(patch_path, input.artifact, resolved),
+        (None, Some(apply)) => patch_apply(apply, input.artifact, resolved),
+        _ => unreachable!("clap enforces exactly one of --check/--apply"),
+    }
+}
+
+fn patch_check(patch_path: PathBuf, artifact: Option<PathBuf>, resolved: ResolvedFormat) -> i32 {
     let config_start = match current_dir() {
         Ok(path) => path,
         Err(error) => return report(error),
     };
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
     let outcome = match PatchCheckUseCase::new(context).run(PatchCheckInput {
-        patch_path: input.patch_path,
-        artifact: input.artifact,
+        patch_path,
+        artifact,
     }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),
@@ -43,11 +56,138 @@ pub(crate) fn patch(input: PatchCommandInput, resolved: ResolvedFormat) -> i32 {
     }
 }
 
+fn patch_apply(apply: String, artifact: Option<PathBuf>, resolved: ResolvedFormat) -> i32 {
+    let source = if apply == "@-" {
+        let mut buffer = String::new();
+        if let Err(source) = io::stdin().read_to_string(&mut buffer) {
+            return report(CliError::RetrievalIo { source });
+        }
+        match serde_json::from_str(&buffer) {
+            Ok(value) => PatchApplySource::Inline(value),
+            Err(error) => {
+                eprintln!("error: stdin is not valid JSON: {error}");
+                return 1;
+            }
+        }
+    } else {
+        PatchApplySource::Path(PathBuf::from(apply))
+    };
+
+    let config_start = match current_dir() {
+        Ok(path) => path,
+        Err(error) => return report(error),
+    };
+    let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
+    let outcome = match PatchApplyUseCase::new(context).run(PatchApplyInput {
+        patch: source,
+        artifact,
+        interface: "cli".to_string(),
+    }) {
+        Ok(outcome) => outcome,
+        Err(error) => return report(error.into()),
+    };
+    let result = outcome.result;
+    let exit_code = outcome.exit_code;
+
+    match resolved {
+        ResolvedFormat::Json => write_apply_json(&result, exit_code),
+        ResolvedFormat::Plain => write_apply_text(&result, false, exit_code),
+        ResolvedFormat::Styled => write_apply_text(&result, true, exit_code),
+        ResolvedFormat::Markdown => {
+            unreachable!("main.rs rejects markdown format for `adoc patch` before dispatch")
+        }
+    }
+}
+
 fn write_patch_json(result: &PatchCheckResult, exit_code: i32) -> i32 {
     json_presentation::write_json(result, &mut io::stdout()).map_or_else(
         |source| report(CliError::RetrievalIo { source }),
         |()| exit_code,
     )
+}
+
+fn write_apply_json(result: &PatchApplyResult, exit_code: i32) -> i32 {
+    json_presentation::write_json(result, &mut io::stdout()).map_or_else(
+        |source| report(CliError::RetrievalIo { source }),
+        |()| exit_code,
+    )
+}
+
+fn write_apply_text(result: &PatchApplyResult, styled: bool, exit_code: i32) -> i32 {
+    if !result.diagnostics.is_empty() {
+        eprint_diagnostics(&result.diagnostics);
+    }
+    let mut output = String::new();
+    render_apply_text(&mut output, result, styled);
+    print!("{output}");
+    exit_code
+}
+
+fn render_apply_text(output: &mut String, result: &PatchApplyResult, styled: bool) {
+    let status = if result.applied { "applied" } else { "refused" };
+    let label = |text: &str| {
+        if styled {
+            faint_label(text).to_string()
+        } else {
+            text.to_string()
+        }
+    };
+
+    writeln!(output, "{} {status}", label("Status:")).expect("writing to String cannot fail");
+    if let Some(target) = &result.target {
+        writeln!(output, "{} {target}", label("Target:")).expect("writing to String cannot fail");
+    }
+    if !result.operation.is_empty() {
+        if styled {
+            writeln!(
+                output,
+                "{} {}",
+                label("Operation:"),
+                cyan_key(&result.operation)
+            )
+            .expect("writing to String cannot fail");
+        } else {
+            writeln!(output, "Operation: {}", result.operation)
+                .expect("writing to String cannot fail");
+        }
+    }
+
+    writeln!(output, "{}", label("Written Files:")).expect("writing to String cannot fail");
+    if result.written_files.is_empty() {
+        writeln!(output, "(none)").expect("writing to String cannot fail");
+    } else {
+        for file in &result.written_files {
+            writeln!(
+                output,
+                "- {} ({} -> {})",
+                file.path, file.before_file_hash, file.after_file_hash
+            )
+            .expect("writing to String cannot fail");
+        }
+    }
+
+    if result.post_check.ran {
+        writeln!(
+            output,
+            "{} {} errors, {} warnings",
+            label("Post-check:"),
+            result.post_check.error_count,
+            result.post_check.warning_count
+        )
+        .expect("writing to String cannot fail");
+    } else {
+        writeln!(output, "{} not run", label("Post-check:"))
+            .expect("writing to String cannot fail");
+    }
+
+    if result.artifacts_stale {
+        writeln!(
+            output,
+            "{} stale — run `adoc build` to refresh dist artifacts",
+            label("Artifacts:")
+        )
+        .expect("writing to String cannot fail");
+    }
 }
 
 fn write_patch_text(result: &PatchCheckResult, styled: bool, exit_code: i32) -> i32 {
