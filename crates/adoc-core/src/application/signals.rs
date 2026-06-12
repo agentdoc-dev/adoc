@@ -19,8 +19,8 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::graph::GraphKnowledgeObjectNode;
 use crate::domain::obligation::ProofObligation;
 use crate::domain::ports::changed_files::ChangedFilesError;
-use crate::domain::review::impact::{ImpactReasonKind, ImpactedObject, impacted_objects};
-use crate::domain::review::obligation_rules::obligations_for_impact;
+use crate::domain::review::impact::{ImpactReasonKind, impacted_objects};
+use crate::domain::review::obligation_rules::obligation_for_impacted_id;
 use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::value_objects::review_interval::ReviewInterval;
 use crate::domain::value_objects::severity::Severity;
@@ -455,7 +455,7 @@ pub struct ImpactedEnvelope {
     /// Sorted by Object ID; one record per object regardless of reason count.
     pub impacted: Vec<ImpactedRecord>,
     /// One impact-review obligation per impacted record
-    /// (`obligations_for_impact`), merged and sorted.
+    /// (`obligation_for_impacted_id`), sorted by object id.
     pub proof_obligations: Vec<ProofObligation>,
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -491,17 +491,7 @@ pub(crate) fn evaluate_impacted(
     let mut impacted = Vec::with_capacity(hits.len());
     let mut obligations = Vec::with_capacity(hits.len());
     for hit in hits {
-        let paths: Vec<String> = hit
-            .reasons
-            .iter()
-            .map(|reason| reason.matched_path.clone())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        obligations.extend(obligations_for_impact(&ImpactedObject {
-            id: hit.node.id.clone(),
-            paths,
-        }));
+        obligations.push(obligation_for_impacted_id(&hit.node.id));
         impacted.push(ImpactedRecord {
             id: hit.node.id.clone(),
             kind: hit.node.kind.clone(),
@@ -519,10 +509,14 @@ pub(crate) fn evaluate_impacted(
         });
     }
 
+    // One obligation per hit, ids unique, hits sorted by id (see
+    // `impacted_objects`) — the sort is a ~free explicit invariant guard,
+    // not a dedup/merge.
+    obligations.sort_by(|a, b| a.object_id.cmp(&b.object_id));
     ImpactedEnvelope::new(
         changed_paths_strings(changed_files),
         impacted,
-        ProofObligation::merge_dedup_sorted(obligations),
+        obligations,
         diagnostics,
     )
 }
