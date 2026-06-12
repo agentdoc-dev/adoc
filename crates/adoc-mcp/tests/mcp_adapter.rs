@@ -278,6 +278,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/diff",
         "adoc://agent/v0/schema/review",
         "adoc://agent/v0/schema/stale",
+        "adoc://agent/v0/schema/contradictions",
         "adoc://agent/v0/schema/retrieval-envelope.json",
         "adoc://agent/v0/schema/graph-traversal-envelope.json",
         "adoc://agent/v0/schema/patch-input.json",
@@ -287,6 +288,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/adoc.diff.v0.schema.json",
         "adoc://agent/v0/schema/adoc.review.v0.schema.json",
         "adoc://agent/v0/schema/adoc.stale.v0.schema.json",
+        "adoc://agent/v0/schema/adoc.contradictions.v0.schema.json",
     ];
 
     let resources = server.list_agent_resources();

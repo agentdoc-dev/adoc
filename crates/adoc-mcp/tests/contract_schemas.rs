@@ -8,8 +8,8 @@ use adoc_core::{
     review_with_patch,
 };
 use adoc_mcp::{
-    AdocPatchCheckParams, AdocReviewParams, AgentDocMcpServer, BuildParams, GraphParams,
-    InitParams, PatchInput, ProjectStatusParams, SearchParams, StaleParams,
+    AdocPatchCheckParams, AdocReviewParams, AgentDocMcpServer, BuildParams, ContradictionsParams,
+    GraphParams, InitParams, PatchInput, ProjectStatusParams, SearchParams, StaleParams,
 };
 use serde_json::json;
 
@@ -202,6 +202,19 @@ fn validates_representative_serialized_agent_envelopes_against_contract_schemas(
         .expect("stale succeeds");
     assert_valid("adoc.stale.v0.schema.json", &stale);
     assert_eq!(stale["records"], serde_json::json!([]));
+
+    // Likewise the empty-lists contradictions envelope: the fixture project
+    // has no contradiction objects at all.
+    let contradictions = server
+        .run_contradictions(ContradictionsParams {
+            project_root: None,
+            artifact: None,
+            all: false,
+        })
+        .expect("contradictions succeeds");
+    assert_valid("adoc.contradictions.v0.schema.json", &contradictions);
+    assert_eq!(contradictions["contradictions"], serde_json::json!([]));
+    assert_eq!(contradictions["contradicted_claims"], serde_json::json!([]));
 }
 
 /// V6.1: `adoc_stale` envelopes with all three record categories validate
@@ -304,6 +317,150 @@ fn validates_adoc_stale_v0_envelope_against_schema() {
     assert!(categories.contains(&"stale"));
     assert!(categories.contains(&"review_overdue"));
     assert!(categories.contains(&"expiring_soon"));
+}
+
+/// V6.2: `adoc_contradictions` envelopes — populated default listing, the
+/// `all: true` superset, and an orphaned authored-`contradicted` claim with an
+/// empty `contradiction_ids` — validate against
+/// `adoc.contradictions.v0.schema.json`.
+#[test]
+fn validates_adoc_contradictions_v0_envelope_against_schema() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(
+        &root.join("docs/index.adoc"),
+        concat!(
+            "# Conflicts @doc(team.conflicts)\n",
+            "\n",
+            "::claim team.storage-memory\n",
+            "status: contradicted\n",
+            "owner: team-docs\n",
+            "--\n",
+            "Tokens must be stored in memory only.\n",
+            "::\n",
+            "\n",
+            "::claim team.storage-local\n",
+            "status: accepted\n",
+            "owner: team-docs\n",
+            "--\n",
+            "Tokens may be stored in localStorage.\n",
+            "::\n",
+            "\n",
+            "::claim team.orphaned\n",
+            "status: contradicted\n",
+            "owner: team-docs\n",
+            "--\n",
+            "Authored contradicted with no unresolved contradiction left.\n",
+            "::\n",
+            "\n",
+            "::claim team.settled-a\n",
+            "status: accepted\n",
+            "--\n",
+            "First settled claim.\n",
+            "::\n",
+            "\n",
+            "::claim team.settled-b\n",
+            "status: accepted\n",
+            "--\n",
+            "Second settled claim.\n",
+            "::\n",
+            "\n",
+            "::contradiction team.conflict-open\n",
+            "severity: high\n",
+            "status: unresolved\n",
+            "claims: [team.storage-memory, team.storage-local]\n",
+            "--\n",
+            "Memory-only storage conflicts with the localStorage allowance.\n",
+            "::\n",
+            "\n",
+            "::contradiction team.conflict-closed\n",
+            "severity: critical\n",
+            "status: resolved\n",
+            "claims: [team.settled-a, team.settled-b]\n",
+            "--\n",
+            "Resolved conflict kept for history.\n",
+            "::\n",
+        ),
+    );
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n",
+    );
+    let server = AgentDocMcpServer::new(root.to_path_buf());
+    server
+        .run_build(BuildParams {
+            project_root: None,
+            path: None,
+            out: None,
+            no_embeddings: false,
+        })
+        .expect("build succeeds");
+
+    let envelope = server
+        .run_contradictions(ContradictionsParams {
+            project_root: None,
+            artifact: None,
+            all: false,
+        })
+        .expect("contradictions succeeds");
+    assert_valid("adoc.contradictions.v0.schema.json", &envelope);
+    assert!(
+        envelope.get("evaluated_at").is_none(),
+        "the contradictions envelope is clock-free"
+    );
+    let contradictions = envelope["contradictions"]
+        .as_array()
+        .expect("contradictions array");
+    assert_eq!(
+        contradictions.len(),
+        1,
+        "default listing is unresolved-only: {contradictions:#?}"
+    );
+    assert_eq!(contradictions[0]["id"], "team.conflict-open");
+    let claims = envelope["contradicted_claims"]
+        .as_array()
+        .expect("contradicted_claims array");
+    assert_eq!(
+        claims.len(),
+        3,
+        "two implicated + one orphaned authored contradicted: {claims:#?}"
+    );
+    let orphan = claims
+        .iter()
+        .find(|claim| claim["id"] == "team.orphaned")
+        .expect("orphaned claim listed");
+    assert_eq!(
+        orphan["contradiction_ids"],
+        serde_json::json!([]),
+        "orphaned authored status carries an empty contradiction_ids"
+    );
+    assert!(orphan.get("effective_reason").is_none());
+
+    let all_envelope = server
+        .run_contradictions(ContradictionsParams {
+            project_root: None,
+            artifact: None,
+            all: true,
+        })
+        .expect("contradictions --all succeeds");
+    assert_valid("adoc.contradictions.v0.schema.json", &all_envelope);
+    let all_contradictions = all_envelope["contradictions"]
+        .as_array()
+        .expect("contradictions array");
+    assert_eq!(
+        all_contradictions.len(),
+        2,
+        "all: true adds the resolved record: {all_contradictions:#?}"
+    );
+    assert_eq!(
+        all_contradictions[0]["id"], "team.conflict-closed",
+        "critical sorts before high"
+    );
+    assert_eq!(all_contradictions[0]["status"], "resolved");
+    assert_eq!(
+        all_envelope["contradicted_claims"], envelope["contradicted_claims"],
+        "--all never changes contradicted_claims"
+    );
 }
 
 #[test]
