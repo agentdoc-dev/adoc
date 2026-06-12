@@ -1,13 +1,14 @@
 # AgentDoc Review Workflow
 
-V3.6 brings the AgentDoc review surface to MCP-capable agents via two new read-only tools: `adoc_diff` and `adoc_review`. V3.7 extends `adoc_review` with an optional `patch` parameter that embeds an `adoc.patch.check.v0` validation result inside the review envelope and unions patch-driven proof obligations into the top-level list.
+V3.6 brings the AgentDoc review surface to MCP-capable agents via two new read-only tools: `adoc_diff` and `adoc_review`. V3.7 extends `adoc_review` with an optional `patch` parameter that embeds an `adoc.patch.check.v0` validation result inside the review envelope and unions patch-driven proof obligations into the top-level list. V6.3 adds `adoc_impacted_by` for the inverse question: code changed, which knowledge is implicated?
 
 ## When to use which tool
 
 - Use `adoc_diff` when the agent needs a mechanical "what Knowledge Objects changed between this ref and the workdir." It returns the `adoc.diff.v0` envelope: `created`, `deleted`, and `changed` arrays with full before/after Knowledge Object records and optional field-level projections.
 - Use `adoc_review` when the agent needs the enriched report suitable for pull-request feedback. It returns the `adoc.review.v0` envelope: the diff plus source-path impact, required reviewers, and V3.4 proof obligations.
+- Use `adoc_impacted_by` when **code** changed and no `.adoc` review is in flight — e.g. reviewing a pull request that touches source files only. Pass the PR's changed paths (`paths`, as emitted by `git diff --name-only`) or a base ref (`ref`, compared against the working tree). It returns the `adoc.impacted.v0` envelope: every verified claim and accepted decision whose declared `impacts:` or evidence paths exactly match a changed file, with `reasons[]` naming the matched path and route (`impacts_path`, or `evidence_path` optionally `via_source_object`), plus one impact-review proof obligation per impacted object. Cite the reasons, and treat `proof_obligations[]` as the re-verification checklist. It reads the existing graph artifact — no recompile, no git worktree — so it also works without review readiness when explicit paths are passed.
 
-`adoc_diff` is a strict subset of `adoc_review`'s output; pick whichever envelope matches the question being asked rather than calling both.
+`adoc_diff` is a strict subset of `adoc_review`'s output; pick whichever envelope matches the question being asked rather than calling both. `adoc_impacted_by` answers the inverse direction of `adoc_review`'s `impact[]` — over all current knowledge instead of just the objects that changed — and matches `adoc review <ref>`'s impact set for the same ref by construction.
 
 ## Required preconditions
 

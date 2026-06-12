@@ -140,6 +140,26 @@ status `unresolved`, summary = the first body line) — and exactly 3
 contradictions). The envelope carries no `evaluated_at`: it is a pure
 function of the artifact, stable on any run date.
 
+## V6.3 `adoc impacted-by` Acceptance
+
+The pilot is also the evidence-path acceptance fixture for the V6.3 impacted
+query (`crates/adoc-cli/tests/expanded_pilot.rs::expanded_pilot_impacted_by_query`).
+Against a built pilot artifact,
+`adoc impacted-by apps/backend/src/features/credits/consume.use-case.ts --format json`
+exits 0 with exactly 2 impacted objects in id order, each with one
+`evidence_path` reason resolved through the shared `source` object and one
+impact-review proof obligation:
+
+| # | Object | Kind / Status | Reason |
+| :- | :----- | :------------ | :----- |
+| 1 | `billing.credits.consume` | claim, `verified` | `evidence_path` via `billing.consume-use-case` |
+| 2 | `billing.credits.use-ledger` | decision, `accepted` | `evidence_path` via `billing.consume-use-case` |
+
+The scope negative: `adoc impacted-by crates/auth/src/session.rs` returns an
+empty impacted set, exit 0 — the only object declaring that path is the
+`auth.session.no-local-storage` constraint, which is outside the
+verified-subject (claim/decision) scope.
+
 ## What This Pilot Exercises
 
 - **Every V5 kind** with a complete authoring → validation → rendering →
