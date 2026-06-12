@@ -213,3 +213,17 @@ When removing a fixture file, keep at least: one verified claim (for the
 diff/review/patch sub-test), one `agent_instruction` and one
 `contradiction` (for the rendering and guide contracts), and one
 `evidence_ref` (for the evidence-edge assertion).
+
+## Apply-Loop Proof (V6.4)
+
+`crates/adoc-cli/tests/apply_loop.rs` drives the full agent editing loop —
+`adoc impacted-by` → patch → `adoc patch --apply` → post-check →
+`adoc stale`/`adoc contradictions` re-check → stale-`base_hash` refusal —
+against a **tempdir copy** of this pilot. The in-repo tree stays pristine:
+the test copies the fixture with `support::copy_tree` and asserts every
+non-target file remains byte-identical to its original. The rewritten
+`billing/claims.adoc` is pinned byte-for-byte by the golden fixture
+`crates/adoc-cli/tests/fixtures/v6_4_apply_loop/billing-claims.after.adoc`;
+editing the pilot's `billing.credits.consume` block requires regenerating
+that golden in the same commit. The diagnostic budget above is
+body-edit-invariant and re-asserted by the loop test's post-check.

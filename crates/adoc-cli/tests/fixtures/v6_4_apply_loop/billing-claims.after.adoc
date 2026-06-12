@@ -1,0 +1,33 @@
+# Billing Claims @doc(billing.claims)
+
+Billing knowledge backed by the V5 evidence model. Evidence references point at
+reusable [[billing.consume-use-case]] source objects.
+
+::claim billing.credits.consume
+status: verified
+owner: backend-platform
+verified_at: 2026-05-01
+expires_at: 2120-01-01
+test: cargo test credits
+evidence_ref: billing.consume-use-case
+related_to: billing.credits
+--
+Credit consumption is settled ledger-first by the use-case implementation; every movement is recorded against the audit ledger.
+::
+
+::decision billing.credits.use-ledger
+status: accepted
+decided_by: architecture
+owner: backend-platform
+evidence_ref: billing.consume-use-case
+--
+Use the ledger-first approach for credit consumption so every movement is auditable.
+::
+
+::claim billing.credits.legacy-export
+status: draft
+owner: team-billing
+expires_at: 2026-01-15
+--
+The legacy nightly credit export remains available for finance reconciliation.
+::
