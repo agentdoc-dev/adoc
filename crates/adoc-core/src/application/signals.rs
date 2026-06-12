@@ -1,19 +1,27 @@
-//! Lifecycle-signal read queries over a loaded graph artifact (V6.1/V6.2).
+//! Lifecycle-signal read queries over a loaded graph artifact (V6.1–V6.3).
 //!
-//! `adoc stale` and `adoc contradictions` are read-only queries over
-//! `dist/docs.graph.json`. Signals are **re-derived at read time** from
-//! authored fields — an artifact built last week must not report
+//! `adoc stale`, `adoc contradictions`, and `adoc impacted-by` are read-only
+//! queries over `dist/docs.graph.json`. Signals are **re-derived at read
+//! time** from authored fields — an artifact built last week must not report
 //! stale-as-of-build-time — so this module never trusts the persisted
 //! `effective_status` projection. The stale query is clock-dependent and
-//! carries `evaluated_at`; the contradictions query is a pure function of the
-//! artifact bytes and deliberately carries no evaluation date. See ADR-0038
-//! and docs/V6-DESIGN.md.
+//! carries `evaluated_at`; the contradictions and impacted queries are pure
+//! functions of the artifact bytes (plus, for impacted, the changed-path set)
+//! and deliberately carry no evaluation date. See ADR-0038 and
+//! docs/V6-DESIGN.md.
+
+use std::collections::BTreeSet;
 
 use chrono::NaiveDate;
 use serde::Serialize;
 
-use crate::domain::diagnostic::Diagnostic;
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::graph::GraphKnowledgeObjectNode;
+use crate::domain::obligation::ProofObligation;
+use crate::domain::ports::changed_files::ChangedFilesError;
+use crate::domain::review::impact::{ImpactReasonKind, ImpactedObject, impacted_objects};
+use crate::domain::review::obligation_rules::obligations_for_impact;
+use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::value_objects::review_interval::ReviewInterval;
 use crate::domain::value_objects::severity::Severity;
 use crate::infrastructure::artifact::graph_json::{
@@ -406,6 +414,181 @@ pub(crate) fn empty_contradictions_envelope(
     diagnostics: Vec<Diagnostic>,
 ) -> ContradictionsEnvelope {
     ContradictionsEnvelope::new(Vec::new(), Vec::new(), diagnostics)
+}
+
+pub const IMPACTED_SCHEMA_VERSION: &str = "adoc.impacted.v0";
+
+/// One reason a changed path implicates an object, in the
+/// `adoc.impacted.v0` `reasons[]` list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ImpactReason {
+    /// `"impacts_path"` or `"evidence_path"`.
+    pub kind: ImpactReasonKind,
+    pub matched_path: String,
+    /// The referenced `source` object's id when the evidence path was
+    /// resolved through an `evidence_ref`; absent for declared `impacts:`
+    /// paths and inline evidence values.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub via_source_object: Option<String>,
+}
+
+/// One impacted verified subject in the `adoc.impacted.v0` listing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ImpactedRecord {
+    pub id: String,
+    pub kind: String,
+    /// Always present: only verified claims / accepted decisions appear.
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    /// Sorted `(matched_path, kind, via_source_object)`, deduplicated.
+    pub reasons: Vec<ImpactReason>,
+}
+
+/// The `adoc.impacted.v0` wire envelope. Clock-free: a pure function of the
+/// artifact bytes and the changed-path set.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ImpactedEnvelope {
+    pub schema_version: &'static str,
+    /// Sorted ascending, deduplicated — both input shapes normalize here.
+    pub changed_paths: Vec<String>,
+    /// Sorted by Object ID; one record per object regardless of reason count.
+    pub impacted: Vec<ImpactedRecord>,
+    /// One impact-review obligation per impacted record
+    /// (`obligations_for_impact`), merged and sorted.
+    pub proof_obligations: Vec<ProofObligation>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl ImpactedEnvelope {
+    pub fn new(
+        changed_paths: Vec<String>,
+        impacted: Vec<ImpactedRecord>,
+        proof_obligations: Vec<ProofObligation>,
+        diagnostics: Vec<Diagnostic>,
+    ) -> Self {
+        Self {
+            schema_version: IMPACTED_SCHEMA_VERSION,
+            changed_paths,
+            impacted,
+            proof_obligations,
+            diagnostics,
+        }
+    }
+}
+
+/// Evaluate the V6.3 impacted query: which verified claims / accepted
+/// decisions are implicated by `changed_files`, with one impact-review proof
+/// obligation per impacted record.
+pub(crate) fn evaluate_impacted(
+    session: &GraphSession,
+    changed_files: &[RelPath],
+    diagnostics: Vec<Diagnostic>,
+) -> ImpactedEnvelope {
+    let objects: Vec<&GraphKnowledgeObjectNode> = session.objects().collect();
+    let hits = impacted_objects(&objects, changed_files);
+
+    let mut impacted = Vec::with_capacity(hits.len());
+    let mut obligations = Vec::with_capacity(hits.len());
+    for hit in hits {
+        let paths: Vec<String> = hit
+            .reasons
+            .iter()
+            .map(|reason| reason.matched_path.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        obligations.extend(obligations_for_impact(&ImpactedObject {
+            id: hit.node.id.clone(),
+            paths,
+        }));
+        impacted.push(ImpactedRecord {
+            id: hit.node.id.clone(),
+            kind: hit.node.kind.clone(),
+            status: hit.node.status.clone().unwrap_or_default(),
+            owner: hit.node.fields.get("owner").cloned(),
+            reasons: hit
+                .reasons
+                .into_iter()
+                .map(|reason| ImpactReason {
+                    kind: reason.kind,
+                    matched_path: reason.matched_path,
+                    via_source_object: reason.via_source_object,
+                })
+                .collect(),
+        });
+    }
+
+    ImpactedEnvelope::new(
+        changed_paths_strings(changed_files),
+        impacted,
+        ProofObligation::merge_dedup_sorted(obligations),
+        diagnostics,
+    )
+}
+
+/// Empty envelope for failure paths (invalid input, artifact load failure).
+/// `changed_paths` echoes whatever was resolved before the failure.
+pub(crate) fn empty_impacted_envelope(
+    changed_paths: Vec<String>,
+    diagnostics: Vec<Diagnostic>,
+) -> ImpactedEnvelope {
+    ImpactedEnvelope::new(changed_paths, Vec::new(), Vec::new(), diagnostics)
+}
+
+/// Sorted, deduplicated wire strings for the envelope's `changed_paths`.
+pub(crate) fn changed_paths_strings(changed_files: &[RelPath]) -> Vec<String> {
+    changed_files
+        .iter()
+        .map(RelPath::as_str)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+/// Map a [`ChangedFilesError`] from the `--ref` git derivation to a
+/// fix-oriented envelope diagnostic (ADR-0038 posture: a query emits its
+/// envelope even when the question could not be derived).
+pub(crate) fn changed_files_failure_diagnostic(
+    error: &ChangedFilesError,
+    base_ref: &str,
+) -> Diagnostic {
+    match error {
+        ChangedFilesError::UnresolvableBase { spec, reason } => Diagnostic::error(
+            DiagnosticCode::ImpactedRefUnresolvable,
+            format!("could not resolve --ref `{spec}`: {reason}"),
+        ),
+        ChangedFilesError::ProviderUnavailable { reason } => Diagnostic::error(
+            DiagnosticCode::ImpactedGitUnavailable,
+            format!("git is unavailable for --ref `{base_ref}`: {reason}"),
+        ),
+        ChangedFilesError::Io(err) => Diagnostic::error(
+            DiagnosticCode::ImpactedGitUnavailable,
+            format!("git failed while deriving changed files for --ref `{base_ref}`: {err}"),
+        ),
+    }
+}
+
+/// Validate explicit positional changed paths. Every invalid value yields one
+/// `impacted.invalid_path` diagnostic — all collected, not first-error.
+pub(crate) fn validate_changed_paths(paths: &[String]) -> Result<Vec<RelPath>, Vec<Diagnostic>> {
+    let mut valid = Vec::with_capacity(paths.len());
+    let mut diagnostics = Vec::new();
+    for path in paths {
+        match RelPath::try_new(path) {
+            Ok(rel_path) => valid.push(rel_path),
+            Err(error) => diagnostics.push(Diagnostic::error(
+                DiagnosticCode::ImpactedInvalidPath,
+                format!("invalid changed path `{path}`: {error}"),
+            )),
+        }
+    }
+    if diagnostics.is_empty() {
+        Ok(valid)
+    } else {
+        Err(diagnostics)
+    }
 }
 
 /// First non-empty (ASCII-trimmed) body line, truncated to
@@ -1144,6 +1327,205 @@ mod tests {
         let empty_value = serde_json::to_value(&empty).expect("empty envelope serializes");
         assert_eq!(empty_value["contradictions"], serde_json::json!([]));
         assert_eq!(empty_value["contradicted_claims"], serde_json::json!([]));
+    }
+
+    // --- V6.3 `adoc impacted-by` ---
+
+    fn rel(s: &str) -> RelPath {
+        RelPath::try_new(s).expect("valid test path")
+    }
+
+    /// Full evaluation: impacts hit + evidence-ref hit, sorted records, one
+    /// merged obligation per record, normalized changed_paths.
+    #[test]
+    fn evaluate_impacted_emits_records_and_obligations() {
+        let mut claim = ko_node(
+            "billing.refunds",
+            "claim",
+            Some("verified"),
+            &[("owner", "team-billing")],
+        );
+        if let GraphNode::KnowledgeObject(node) = &mut claim {
+            node.impacts = vec!["crates/billing/src/refund.rs".to_string()];
+        }
+        let mut decision = ko_node("billing.use-ledger", "decision", Some("accepted"), &[]);
+        if let GraphNode::KnowledgeObject(node) = &mut decision {
+            node.evidence = vec![crate::domain::graph::GraphEvidence::object_ref(
+                "source_code",
+                "billing.consume-use-case",
+            )];
+        }
+        let source = ko_node(
+            "billing.consume-use-case",
+            "source",
+            None,
+            &[("path", "src/consume.use-case.ts")],
+        );
+        let draft = ko_node("billing.draft", "claim", Some("draft"), &[]);
+        let session = session_with(vec![claim, decision, source, draft]);
+
+        let changed = [
+            rel("src/consume.use-case.ts"),
+            rel("crates/billing/src/refund.rs"),
+            rel("crates/billing/src/refund.rs"), // duplicate input normalizes away
+            rel("unrelated.rs"),
+        ];
+        let envelope = evaluate_impacted(&session, &changed, Vec::new());
+
+        assert_eq!(envelope.schema_version, "adoc.impacted.v0");
+        assert_eq!(
+            envelope.changed_paths,
+            vec![
+                "crates/billing/src/refund.rs",
+                "src/consume.use-case.ts",
+                "unrelated.rs",
+            ],
+            "changed_paths sorted ascending, deduplicated"
+        );
+
+        let ids: Vec<&str> = envelope
+            .impacted
+            .iter()
+            .map(|record| record.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["billing.refunds", "billing.use-ledger"]);
+
+        let refunds = &envelope.impacted[0];
+        assert_eq!(refunds.kind, "claim");
+        assert_eq!(refunds.status, "verified");
+        assert_eq!(refunds.owner.as_deref(), Some("team-billing"));
+        assert_eq!(
+            refunds.reasons,
+            vec![ImpactReason {
+                kind: ImpactReasonKind::ImpactsPath,
+                matched_path: "crates/billing/src/refund.rs".to_string(),
+                via_source_object: None,
+            }]
+        );
+
+        let ledger = &envelope.impacted[1];
+        assert_eq!(ledger.kind, "decision");
+        assert_eq!(ledger.status, "accepted");
+        assert_eq!(ledger.owner, None);
+        assert_eq!(
+            ledger.reasons,
+            vec![ImpactReason {
+                kind: ImpactReasonKind::EvidencePath,
+                matched_path: "src/consume.use-case.ts".to_string(),
+                via_source_object: Some("billing.consume-use-case".to_string()),
+            }]
+        );
+
+        assert_eq!(envelope.proof_obligations.len(), 2);
+        let obligation = &envelope.proof_obligations[0];
+        assert_eq!(obligation.object_id, "billing.refunds");
+        assert_eq!(obligation.reason, "review impacted claim");
+        assert_eq!(obligation.required_evidence, vec!["source_code"]);
+        assert_eq!(
+            envelope.proof_obligations[1].object_id,
+            "billing.use-ledger"
+        );
+    }
+
+    #[test]
+    fn evaluate_impacted_empty_changed_set_yields_empty_listing() {
+        let session = session_with(vec![ko_node(
+            "billing.refunds",
+            "claim",
+            Some("verified"),
+            &[],
+        )]);
+
+        let envelope = evaluate_impacted(&session, &[], Vec::new());
+
+        assert!(envelope.changed_paths.is_empty());
+        assert!(envelope.impacted.is_empty());
+        assert!(envelope.proof_obligations.is_empty());
+    }
+
+    /// Wire shape: clock-free, optional fields omitted (not null).
+    #[test]
+    fn impacted_envelope_serialization_is_clock_free_and_omits_optionals() {
+        let mut claim = ko_node("billing.refunds", "claim", Some("verified"), &[]);
+        if let GraphNode::KnowledgeObject(node) = &mut claim {
+            node.impacts = vec!["a.rs".to_string()];
+        }
+        let session = session_with(vec![claim]);
+
+        let envelope = evaluate_impacted(&session, &[rel("a.rs")], Vec::new());
+        let value = serde_json::to_value(&envelope).expect("envelope serializes");
+
+        let object = value.as_object().expect("envelope is an object");
+        assert!(
+            !object.contains_key("evaluated_at"),
+            "impacted is clock-free — no evaluated_at"
+        );
+        assert_eq!(value["schema_version"], "adoc.impacted.v0");
+
+        let record = value["impacted"][0]
+            .as_object()
+            .expect("impacted record is an object");
+        assert!(!record.contains_key("owner"), "owner omitted when absent");
+
+        let reason = value["impacted"][0]["reasons"][0]
+            .as_object()
+            .expect("reason is an object");
+        assert_eq!(reason["kind"], "impacts_path");
+        assert!(
+            !reason.contains_key("via_source_object"),
+            "via_source_object omitted when absent"
+        );
+
+        let empty = empty_impacted_envelope(vec!["a.rs".to_string()], Vec::new());
+        let empty_value = serde_json::to_value(&empty).expect("empty envelope serializes");
+        assert_eq!(empty_value["changed_paths"], serde_json::json!(["a.rs"]));
+        assert_eq!(empty_value["impacted"], serde_json::json!([]));
+        assert_eq!(empty_value["proof_obligations"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn validate_changed_paths_collects_all_invalid_paths() {
+        let valid = validate_changed_paths(&["src/a.rs".to_string(), "src/b.rs".to_string()])
+            .expect("valid paths accepted");
+        assert_eq!(valid.len(), 2);
+
+        let diagnostics = validate_changed_paths(&[
+            "/abs/path.rs".to_string(),
+            "src/ok.rs".to_string(),
+            "../escape.rs".to_string(),
+        ])
+        .expect_err("invalid paths rejected");
+        assert_eq!(diagnostics.len(), 2, "all invalid paths collected");
+        for diagnostic in &diagnostics {
+            assert_eq!(diagnostic.code.as_str(), "impacted.invalid_path");
+        }
+    }
+
+    #[test]
+    fn changed_files_failure_diagnostics_split_user_vs_environment() {
+        let unresolvable = changed_files_failure_diagnostic(
+            &ChangedFilesError::UnresolvableBase {
+                spec: "nope".to_string(),
+                reason: "unknown revision".to_string(),
+            },
+            "nope",
+        );
+        assert_eq!(unresolvable.code.as_str(), "impacted.ref_unresolvable");
+        assert!(unresolvable.message.contains("nope"));
+
+        let unavailable = changed_files_failure_diagnostic(
+            &ChangedFilesError::ProviderUnavailable {
+                reason: "git not found".to_string(),
+            },
+            "main",
+        );
+        assert_eq!(unavailable.code.as_str(), "impacted.git_unavailable");
+
+        let io = changed_files_failure_diagnostic(
+            &ChangedFilesError::Io(std::io::Error::other("boom")),
+            "main",
+        );
+        assert_eq!(io.code.as_str(), "impacted.git_unavailable");
     }
 
     /// Summary is the first non-empty line, char-truncated to 120 with `…`.

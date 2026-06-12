@@ -137,6 +137,14 @@ pub enum DiagnosticCode {
     /// (ADR-0026). The effective `contradicted` state is projected at graph/HTML
     /// output time without touching the authored field.
     SchemaClaimContradictedByUnresolved,
+    /// V6.3: a positional `adoc impacted-by` path argument is not a valid
+    /// repo-relative path (absolute, escaping, or empty).
+    ImpactedInvalidPath,
+    /// V6.3: the `--ref` base could not be resolved in this repository.
+    ImpactedRefUnresolvable,
+    /// V6.3: git itself was unavailable or failed while deriving the
+    /// changed-file set for `--ref`.
+    ImpactedGitUnavailable,
 }
 
 impl DiagnosticCode {
@@ -239,6 +247,9 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaEvidenceTargetNotASource,
             DiagnosticCode::ClaimEvidenceQualityLow,
             DiagnosticCode::SchemaClaimContradictedByUnresolved,
+            DiagnosticCode::ImpactedInvalidPath,
+            DiagnosticCode::ImpactedRefUnresolvable,
+            DiagnosticCode::ImpactedGitUnavailable,
         ]
     }
 
@@ -385,6 +396,9 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaClaimContradictedByUnresolved => {
                 "schema.claim_contradicted_by_unresolved"
             }
+            DiagnosticCode::ImpactedInvalidPath => "impacted.invalid_path",
+            DiagnosticCode::ImpactedRefUnresolvable => "impacted.ref_unresolvable",
+            DiagnosticCode::ImpactedGitUnavailable => "impacted.git_unavailable",
         }
     }
 
@@ -677,6 +691,15 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaClaimContradictedByUnresolved => {
                 "This claim is referenced by an unresolved contradiction. Consider setting `status: contradicted` on the claim to make its effective state explicit. The effective_status is already projected as `contradicted` in graph and HTML output regardless of the authored status."
             }
+            DiagnosticCode::ImpactedInvalidPath => {
+                "Pass repo-relative paths as emitted by `git diff --name-only`, e.g. `crates/billing/src/refund.rs` — not absolute paths and not paths escaping the repository."
+            }
+            DiagnosticCode::ImpactedRefUnresolvable => {
+                "Use a ref resolvable in this repository, e.g. `main` or `HEAD~1`."
+            }
+            DiagnosticCode::ImpactedGitUnavailable => {
+                "Install git and run inside a git repository, or pass explicit changed paths instead of `--ref`."
+            }
         }
     }
 
@@ -806,6 +829,9 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.evidence_target_not_a_source",
     "claim.evidence_quality_low",
     "schema.claim_contradicted_by_unresolved",
+    "impacted.invalid_path",
+    "impacted.ref_unresolvable",
+    "impacted.git_unavailable",
 ];
 
 impl Diagnostic {
