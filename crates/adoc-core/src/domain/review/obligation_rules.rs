@@ -186,15 +186,24 @@ fn push_for_field_change(
 /// Emit the impact-review obligation against an [`ImpactedObject`].
 ///
 /// `compute_impact` already filters for verified subjects, so this trigger
-/// is unconditional — one obligation per impact entry, with
-/// `required_evidence: ["source_code"]` (the V5.8 EvidenceKind string).
+/// is unconditional — one obligation per impact entry. Thin delegate to
+/// [`obligation_for_impacted_id`]: the obligation depends only on the id,
+/// never on the matched paths.
 pub(crate) fn obligations_for_impact(impact: &ImpactedObject) -> Vec<ProofObligation> {
+    vec![obligation_for_impacted_id(&impact.id)]
+}
+
+/// The impact-review obligation for one impacted object id, with
+/// `required_evidence: ["source_code"]` (the V5.8 EvidenceKind string).
+/// Used directly by the V6.3 impacted-by query, which has reason hits but
+/// no [`ImpactedObject`] to hand.
+pub(crate) fn obligation_for_impacted_id(object_id: &str) -> ProofObligation {
     use crate::domain::value_objects::evidence_kind::EvidenceKind;
-    vec![ProofObligation {
-        object_id: impact.id.clone(),
+    ProofObligation {
+        object_id: object_id.to_string(),
         reason: REASON_REVIEW_IMPACT.to_string(),
         required_evidence: vec![EvidenceKind::SourceCode.as_str().to_string()],
-    }]
+    }
 }
 
 fn is_verified_claim(node: &GraphKnowledgeObjectNode) -> bool {
@@ -344,6 +353,22 @@ mod tests {
         assert_eq!(obligations[0].reason, REASON_REVIEW_IMPACT);
         // V5.8: source evidence is now "source_code".
         assert_eq!(obligations[0].required_evidence, vec!["source_code"]);
+    }
+
+    #[test]
+    fn impacted_id_emits_the_same_obligation_as_the_impacted_object_route() {
+        let by_id = obligation_for_impacted_id("billing.refunds");
+
+        assert_eq!(by_id.object_id, "billing.refunds");
+        assert_eq!(by_id.reason, REASON_REVIEW_IMPACT);
+        assert_eq!(by_id.required_evidence, vec!["source_code"]);
+        // The V3.3 ImpactedObject route is a thin delegate — same rule, one
+        // place (the paths play no part in the obligation).
+        let impact = ImpactedObject {
+            id: "billing.refunds".to_string(),
+            paths: vec!["crates/billing/src/refund.rs".to_string()],
+        };
+        assert_eq!(obligations_for_impact(&impact), vec![by_id]);
     }
 
     // -- Per-trigger dispatch table coverage --
