@@ -791,3 +791,300 @@ fn check_rejects_impacts_parent_segment_path() {
         "expected schema.impacts_invalid_path in output; got:\n{combined}"
     );
 }
+
+// --- V6.3 `adoc impacted-by` acceptance over the billing-pilot impact fixture ---
+
+/// Build the workspace's graph artifact at `dist/docs.graph.json` so
+/// `impacted-by` (a pure artifact read) has something to query.
+fn build_graph_artifact(workspace: &TestWorkspace) {
+    let build = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["build", "docs", "--out", "dist", "--no-embeddings"])
+        .output()
+        .expect("adoc build runs");
+    assert!(
+        build.status.success(),
+        "impacted-by prerequisite build must succeed\nstdout:\n{}\nstderr:\n{}",
+        stdout(&build),
+        stderr(&build)
+    );
+}
+
+/// Roadmap V6.3 acceptance #1: the explicit-path shape reports the verified
+/// claim declaring that path under `reasons[].kind: "impacts_path"` with one
+/// impact-review obligation.
+#[test]
+fn impacted_by_explicit_path_reports_verified_claim_with_impact_obligation() {
+    let workspace = build_billing_pilot_with_impacts("impacted-by-path");
+    build_graph_artifact(&workspace);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "impacted-by",
+            "crates/billing/src/refund.rs",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc impacted-by runs");
+
+    assert!(
+        output.status.success(),
+        "impacted-by is a query and must exit 0 with findings\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("impacted-by stdout is JSON");
+
+    assert_eq!(value["schema_version"], "adoc.impacted.v0");
+    assert_eq!(
+        value["changed_paths"],
+        serde_json::json!(["crates/billing/src/refund.rs"])
+    );
+
+    let impacted = value["impacted"].as_array().expect("impacted array");
+    assert_eq!(
+        impacted.len(),
+        1,
+        "expected exactly one impacted object: {impacted:#?}"
+    );
+    assert_eq!(impacted[0]["id"], "billing.refunds");
+    assert_eq!(impacted[0]["kind"], "claim");
+    assert_eq!(impacted[0]["status"], "verified");
+    assert_eq!(impacted[0]["owner"], "team-billing");
+
+    let reasons = impacted[0]["reasons"].as_array().expect("reasons array");
+    assert_eq!(reasons.len(), 1, "one reason expected: {reasons:#?}");
+    assert_eq!(reasons[0]["kind"], "impacts_path");
+    assert_eq!(reasons[0]["matched_path"], "crates/billing/src/refund.rs");
+    assert!(
+        reasons[0].get("via_source_object").is_none(),
+        "impacts_path reasons never carry via_source_object"
+    );
+
+    let obligations = value["proof_obligations"]
+        .as_array()
+        .expect("proof_obligations array");
+    assert_eq!(obligations.len(), 1, "one obligation: {obligations:#?}");
+    assert_eq!(obligations[0]["object_id"], "billing.refunds");
+    assert_eq!(
+        obligations[0]["required_evidence"],
+        serde_json::json!(["source_code"])
+    );
+}
+
+/// Roadmap V6.3 acceptance #2: `adoc impacted-by --ref main` over the V3
+/// two-commit fixture produces the same impacted set as `adoc review main`'s
+/// `impact[]`.
+#[test]
+fn impacted_by_ref_main_matches_review_impact_set() {
+    let workspace = build_billing_pilot_with_impacts("impacted-by-ref");
+    build_graph_artifact(&workspace);
+
+    let impacted_output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["impacted-by", "--ref", "main", "--format", "json"])
+        .output()
+        .expect("adoc impacted-by runs");
+    assert!(
+        impacted_output.status.success(),
+        "impacted-by --ref main must exit 0\nstdout:\n{}\nstderr:\n{}",
+        stdout(&impacted_output),
+        stderr(&impacted_output)
+    );
+    let impacted_value: serde_json::Value =
+        serde_json::from_slice(&impacted_output.stdout).expect("impacted-by stdout is JSON");
+
+    let review_output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+    assert!(review_output.status.success());
+    let review_value: serde_json::Value =
+        serde_json::from_slice(&review_output.stdout).expect("review stdout is JSON");
+
+    // The changed set must include both committed files (base...workdir).
+    let changed: Vec<&str> = impacted_value["changed_paths"]
+        .as_array()
+        .expect("changed_paths array")
+        .iter()
+        .map(|p| p.as_str().expect("path string"))
+        .collect();
+    assert!(changed.contains(&"crates/billing/src/refund.rs"));
+    assert!(changed.contains(&"docs/billing.adoc"));
+
+    // Parity: (id, impacts_path matched paths) pairs equal review's impact[].
+    let impacted_pairs: Vec<(String, Vec<String>)> = impacted_value["impacted"]
+        .as_array()
+        .expect("impacted array")
+        .iter()
+        .map(|record| {
+            let id = record["id"].as_str().expect("id").to_string();
+            let paths: Vec<String> = record["reasons"]
+                .as_array()
+                .expect("reasons")
+                .iter()
+                .filter(|reason| reason["kind"] == "impacts_path")
+                .map(|reason| {
+                    reason["matched_path"]
+                        .as_str()
+                        .expect("matched_path")
+                        .to_string()
+                })
+                .collect();
+            (id, paths)
+        })
+        .collect();
+    let review_pairs: Vec<(String, Vec<String>)> = review_value["impact"]
+        .as_array()
+        .expect("impact array")
+        .iter()
+        .map(|entry| {
+            let id = entry["id"].as_str().expect("id").to_string();
+            let paths: Vec<String> = entry["paths"]
+                .as_array()
+                .expect("paths")
+                .iter()
+                .map(|p| p.as_str().expect("path").to_string())
+                .collect();
+            (id, paths)
+        })
+        .collect();
+    assert_eq!(
+        impacted_pairs, review_pairs,
+        "impacted-by --ref main must match review main's impact[]"
+    );
+    assert!(
+        !impacted_pairs.is_empty(),
+        "parity must be over a non-empty impact set"
+    );
+}
+
+/// An unresolvable `--ref` is a user-input error: exit 1, envelope still
+/// emitted with the fix-oriented `impacted.ref_unresolvable` diagnostic.
+#[test]
+fn impacted_by_unknown_ref_exits_one_with_ref_unresolvable_diagnostic() {
+    let workspace = build_billing_pilot_with_impacts("impacted-by-bad-ref");
+    build_graph_artifact(&workspace);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["impacted-by", "--ref", "does-not-exist", "--format", "json"])
+        .output()
+        .expect("adoc impacted-by runs");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "unresolvable ref is a user-input error\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("JSON envelope still emitted on refusal");
+    assert_eq!(value["schema_version"], "adoc.impacted.v0");
+    assert_eq!(value["impacted"], serde_json::json!([]));
+    assert_eq!(value["diagnostics"][0]["code"], "impacted.ref_unresolvable");
+}
+
+/// An invalid positional path is a user-input error: exit 1 with
+/// `impacted.invalid_path`.
+#[test]
+fn impacted_by_invalid_path_argument_exits_one_with_invalid_path_diagnostic() {
+    let workspace = build_billing_pilot_with_impacts("impacted-by-bad-path");
+    build_graph_artifact(&workspace);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["impacted-by", "/absolute/path.rs", "--format", "json"])
+        .output()
+        .expect("adoc impacted-by runs");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "invalid path is a user-input error\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("JSON envelope still emitted on refusal");
+    assert_eq!(value["diagnostics"][0]["code"], "impacted.invalid_path");
+}
+
+/// The two input shapes are mutually exclusive and one is required — both
+/// violations are clap parse errors (exit 1, no envelope).
+#[test]
+fn impacted_by_input_shapes_are_mutually_exclusive_and_one_is_required() {
+    let workspace = build_billing_pilot_with_impacts("impacted-by-xor");
+
+    let both = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["impacted-by", "--ref", "main", "extra/path.rs"])
+        .output()
+        .expect("adoc impacted-by runs");
+    assert_eq!(
+        both.status.code(),
+        Some(1),
+        "paths and --ref together must be a parse error\nstderr:\n{}",
+        stderr(&both)
+    );
+
+    let neither = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["impacted-by"])
+        .output()
+        .expect("adoc impacted-by runs");
+    assert_eq!(
+        neither.status.code(),
+        Some(1),
+        "neither paths nor --ref must be a parse error\nstderr:\n{}",
+        stderr(&neither)
+    );
+}
+
+/// `--format markdown` renders the V3.5-style PR-comment shape: an
+/// `## Impacted by` header plus the proof-obligations task list.
+#[test]
+fn impacted_by_markdown_renders_header_and_obligation_task_list() {
+    let workspace = build_billing_pilot_with_impacts("impacted-by-markdown");
+    build_graph_artifact(&workspace);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "impacted-by",
+            "crates/billing/src/refund.rs",
+            "--format",
+            "markdown",
+        ])
+        .output()
+        .expect("adoc impacted-by runs");
+
+    assert!(
+        output.status.success(),
+        "markdown is a supported impacted-by format\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let stdout = stdout(&output);
+    assert!(
+        stdout.contains("## Impacted by"),
+        "markdown must open with the impacted-by header; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("`billing.refunds`"),
+        "impacted object id must be code-quoted; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("`crates/billing/src/refund.rs`"),
+        "matched path must be code-quoted; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("- [ ] `billing.refunds`"),
+        "proof obligations must render as a GitHub task list; got:\n{stdout}"
+    );
+}

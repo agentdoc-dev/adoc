@@ -29,8 +29,8 @@ use std::fmt::Write as FmtWrite;
 use std::io;
 
 use adoc_core::{
-    ChangedObject, FieldChange, ImpactedObject, ObjectDiffEnvelope, ProofObligation,
-    RequiredReviewer, ReviewEnvelope,
+    ChangedObject, FieldChange, ImpactReasonKind, ImpactedEnvelope, ImpactedObject,
+    ObjectDiffEnvelope, ProofObligation, RequiredReviewer, ReviewEnvelope,
 };
 
 pub(crate) struct MarkdownReviewPresenter;
@@ -55,6 +55,54 @@ impl MarkdownReviewPresenter {
             &envelope.proof_obligations,
         );
         out.write_all(body.as_bytes())
+    }
+
+    /// V6.3 `adoc impacted-by --format markdown`: the PR-comment shape —
+    /// `## Impacted by` header with code-quoted changed paths, one bullet per
+    /// impacted object with its reasons, then the same proof-obligations
+    /// task list as `adoc review`.
+    pub(crate) fn write_impacted(
+        envelope: &ImpactedEnvelope,
+        out: &mut dyn io::Write,
+    ) -> io::Result<()> {
+        let mut body = String::new();
+        render_impacted_by(&mut body, envelope);
+        if !envelope.proof_obligations.is_empty() {
+            render_obligations(&mut body, &envelope.proof_obligations);
+        }
+        out.write_all(body.as_bytes())
+    }
+}
+
+fn render_impacted_by(output: &mut String, envelope: &ImpactedEnvelope) {
+    let paths: Vec<String> = envelope
+        .changed_paths
+        .iter()
+        .map(|path| format!("`{path}`"))
+        .collect();
+    writeln!(output, "## Impacted by: {}", paths.join(", ")).expect("write to String");
+    if envelope.impacted.is_empty() {
+        writeln!(output).expect("write to String");
+        writeln!(output, "No impacted Knowledge Objects.").expect("write to String");
+    }
+    for record in &envelope.impacted {
+        let reasons: Vec<String> = record
+            .reasons
+            .iter()
+            .map(|reason| {
+                let label = match reason.kind {
+                    ImpactReasonKind::ImpactsPath => "impacts",
+                    ImpactReasonKind::EvidencePath => "evidence",
+                };
+                match &reason.via_source_object {
+                    Some(source) => {
+                        format!("`{}` ({label} via `{source}`)", reason.matched_path)
+                    }
+                    None => format!("`{}` ({label})", reason.matched_path),
+                }
+            })
+            .collect();
+        writeln!(output, "- `{}` → {}", record.id, reasons.join(", ")).expect("write to String");
     }
 }
 
