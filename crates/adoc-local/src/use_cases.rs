@@ -10,17 +10,19 @@ use adoc_core::{
     BuildInput as CoreBuildInput, CompileInput, CompileResult, ContradictionsEnvelope, Diagnostic,
     DiagnosticCode, EmbeddingProviderSelection, GitRef, GraphArtifactInspectionInput,
     GraphDirection, GraphInput as CoreGraphInput, GraphRelationKind, GraphTraversalEnvelope,
-    GraphTraversalQuery, GraphTraversalResult, ObjectDiffEnvelope, PatchCheckResult, PatchInput,
-    RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, RetrievalRecord, ReviewEnvelope,
-    ReviewError, ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters,
-    SearchMode, SearchQuery, Severity, SnapshotSelector, StaleEnvelope,
-    build_workspace_with_embedding_provider, check_patch as core_check_patch, compile_workspace,
-    diff_objects, embed_query_with_embedding_provider, empty_contradictions_envelope,
-    empty_stale_envelope, evaluate_contradictions, evaluate_stale, git_review_available,
+    GraphTraversalQuery, GraphTraversalResult, ImpactedEnvelope, ObjectDiffEnvelope,
+    PatchCheckResult, PatchInput, RelPath, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
+    RetrievalRecord, ReviewEnvelope, ReviewError, ReviewInput as CoreReviewInput,
+    SearchArtifactInspectionInput, SearchFilters, SearchMode, SearchQuery, Severity,
+    SnapshotSelector, StaleEnvelope, build_workspace_with_embedding_provider,
+    changed_files_from_git, changed_paths_strings, check_patch as core_check_patch,
+    compile_workspace, diff_objects, embed_query_with_embedding_provider,
+    empty_contradictions_envelope, empty_impacted_envelope, empty_stale_envelope,
+    evaluate_contradictions, evaluate_impacted, evaluate_stale, git_review_available,
     inspect_graph_artifact, inspect_search_artifact, load_graph_session,
     load_retrieval_session_with_embedding_provider, load_review_from_git,
     load_review_with_changed_files_from_git, parse_patch_from_path, parse_patch_from_value,
-    review_with_patch, search as core_search, traverse_graph, why_object,
+    review_with_patch, search as core_search, traverse_graph, validate_changed_paths, why_object,
 };
 use serde::Serialize;
 
@@ -143,6 +145,30 @@ pub struct ContradictionsInput {
 #[derive(Debug, Clone, Serialize)]
 pub struct ContradictionsOutcome {
     pub envelope: ContradictionsEnvelope,
+    pub exit_code: i32,
+}
+
+/// V6.3 — the two mutually exclusive `adoc impacted-by` input shapes. The
+/// XOR is enforced at the interface layer (clap / MCP argument validation);
+/// this enum makes the exclusivity structural here.
+#[derive(Debug, Clone)]
+pub enum ImpactedChangedSet {
+    /// Explicit repo-relative changed paths (`adoc impacted-by <path>...`).
+    Paths(Vec<String>),
+    /// Derive the changed set from git: `<git-ref>` vs the working tree
+    /// (`adoc impacted-by --ref <git-ref>`).
+    GitRef(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct ImpactedInput {
+    pub artifact: Option<PathBuf>,
+    pub changed: ImpactedChangedSet,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImpactedOutcome {
+    pub envelope: ImpactedEnvelope,
     pub exit_code: i32,
 }
 
@@ -435,6 +461,27 @@ where
 
     pub fn run(&self, input: ContradictionsInput) -> Result<ContradictionsOutcome, LocalError> {
         contradictions_with_context(&self.context, input)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ImpactedUseCase<P>
+where
+    P: PathPolicy,
+{
+    context: LocalContext<P>,
+}
+
+impl<P> ImpactedUseCase<P>
+where
+    P: PathPolicy,
+{
+    pub fn new(context: LocalContext<P>) -> Self {
+        Self { context }
+    }
+
+    pub fn run(&self, input: ImpactedInput) -> Result<ImpactedOutcome, LocalError> {
+        impacted_with_context(&self.context, input)
     }
 }
 
@@ -811,6 +858,63 @@ where
     let envelope = evaluate_contradictions(&session, input.all, diagnostics);
     let exit_code = signal_query_exit_code(&envelope.diagnostics);
     Ok(ContradictionsOutcome {
+        envelope,
+        exit_code,
+    })
+}
+
+fn impacted_with_context<P>(
+    context: &LocalContext<P>,
+    input: ImpactedInput,
+) -> Result<ImpactedOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    // Resolve the changed set before touching the artifact so input errors
+    // short-circuit deterministically (the envelope still ships, ADR-0038).
+    let changed = match &input.changed {
+        ImpactedChangedSet::Paths(paths) => validate_changed_paths(paths),
+        ImpactedChangedSet::GitRef(base_ref) => {
+            changed_files_from_git(context.config_start().to_path_buf(), base_ref)
+        }
+    };
+    let changed: Vec<RelPath> = match changed {
+        Ok(changed) => changed,
+        Err(diagnostics) => {
+            let exit_code = impacted_exit_code(&diagnostics);
+            return Ok(ImpactedOutcome {
+                envelope: empty_impacted_envelope(Vec::new(), diagnostics),
+                exit_code,
+            });
+        }
+    };
+
+    let artifact = input
+        .artifact
+        .as_deref()
+        .map(|path| context.path_policy().resolve_read_path(path))
+        .transpose()?;
+    let config = discover_project_config_if(artifact.is_none(), context.config_start())?;
+    let graph_artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
+    let graph_artifact = context.path_policy().resolve_read_path(&graph_artifact)?;
+    let load_result = load_graph_session(CoreGraphInput {
+        graph_artifact_path: graph_artifact,
+    });
+    let diagnostics = load_result.diagnostics;
+    let session = load_result
+        .session
+        .filter(|_| !diagnostics_have_errors(&diagnostics));
+    let Some(session) = session else {
+        let exit_code = impacted_exit_code(&diagnostics);
+        return Ok(ImpactedOutcome {
+            envelope: empty_impacted_envelope(changed_paths_strings(&changed), diagnostics),
+            exit_code,
+        });
+    };
+
+    let envelope = evaluate_impacted(&session, &changed, diagnostics);
+    let exit_code = impacted_exit_code(&envelope.diagnostics);
+    Ok(ImpactedOutcome {
         envelope,
         exit_code,
     })
@@ -1676,6 +1780,23 @@ fn signal_query_exit_code(diagnostics: &[Diagnostic]) -> i32 {
 fn signal_query_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
     match diagnostic.severity {
         Severity::Error => Some(2),
+        _ => None,
+    }
+}
+
+/// V6.3 exit-code split: user-input errors (invalid path argument,
+/// unresolvable `--ref`) exit 1; environment errors (git unavailable,
+/// artifact load failure) exit 2; findings never affect the exit code.
+fn impacted_exit_code(diagnostics: &[Diagnostic]) -> i32 {
+    exit_code_for_diagnostics(diagnostics, impacted_diagnostic_exit_code)
+}
+
+fn impacted_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
+    match (diagnostic.code, diagnostic.severity) {
+        (DiagnosticCode::ImpactedInvalidPath | DiagnosticCode::ImpactedRefUnresolvable, _) => {
+            Some(1)
+        }
+        (_, Severity::Error) => Some(2),
         _ => None,
     }
 }
