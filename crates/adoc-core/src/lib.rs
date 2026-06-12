@@ -27,7 +27,8 @@ pub use application::review::{
 pub use application::review_envelope::{ObjectDiffEnvelope, ReviewEnvelope};
 pub use application::signals::{
     CONTRADICTIONS_SCHEMA_VERSION, ContradictedClaimRecord, ContradictionRecord,
-    ContradictionsEnvelope, STALE_SCHEMA_VERSION, StaleCategory, StaleEnvelope, StaleRecord,
+    ContradictionsEnvelope, IMPACTED_SCHEMA_VERSION, ImpactReason, ImpactedEnvelope,
+    ImpactedRecord, STALE_SCHEMA_VERSION, StaleCategory, StaleEnvelope, StaleRecord,
 };
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::graph::{
@@ -41,7 +42,7 @@ pub use domain::retrieval::{
     RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSource, SearchMode,
 };
 pub use domain::review::field_change::{FieldChange, RelationKind};
-pub use domain::review::impact::{ImpactedObject, compute_impact};
+pub use domain::review::impact::{ImpactReasonKind, ImpactedObject, compute_impact};
 pub use domain::review::object_change::ChangedObject;
 pub use domain::review::object_diff::ObjectDiff;
 pub use domain::review::reviewer::{RequiredReviewer, required_reviewers};
@@ -165,6 +166,64 @@ pub fn empty_contradictions_envelope(diagnostics: Vec<Diagnostic>) -> Contradict
 /// `evaluated_at` is still populated.
 pub fn empty_stale_envelope(diagnostics: Vec<Diagnostic>) -> StaleEnvelope {
     application::signals::empty_stale_envelope_today(diagnostics)
+}
+
+/// Evaluate the V6.3 `adoc impacted-by` query: verified claims and accepted
+/// decisions implicated by the changed-path set, each carrying its
+/// impact-review proof obligation. No clock dependence — a pure function of
+/// the artifact and the changed set.
+pub fn evaluate_impacted(
+    session: &GraphSession,
+    changed_files: &[RelPath],
+    diagnostics: Vec<Diagnostic>,
+) -> ImpactedEnvelope {
+    application::signals::evaluate_impacted(session, changed_files, diagnostics)
+}
+
+/// Empty `adoc.impacted.v0` envelope for failure paths (invalid input,
+/// artifact load failure). `changed_paths` echoes whatever was resolved
+/// before the failure.
+pub fn empty_impacted_envelope(
+    changed_paths: Vec<String>,
+    diagnostics: Vec<Diagnostic>,
+) -> ImpactedEnvelope {
+    application::signals::empty_impacted_envelope(changed_paths, diagnostics)
+}
+
+/// Sorted, deduplicated wire strings for an `adoc.impacted.v0` envelope's
+/// `changed_paths` — shared by the success and failure paths.
+pub fn changed_paths_strings(changed_files: &[RelPath]) -> Vec<String> {
+    application::signals::changed_paths_strings(changed_files)
+}
+
+/// V6.3 — changed files for `adoc impacted-by --ref <base>`: base = git ref,
+/// head = working tree (the `adoc review <ref>` selector shape). No compile,
+/// no snapshot worktree. Failure is returned as ready-to-embed envelope
+/// diagnostics (`impacted.ref_unresolvable` or `impacted.git_unavailable`),
+/// symmetric with [`validate_changed_paths`].
+pub fn changed_files_from_git(
+    repo_root: std::path::PathBuf,
+    base_ref: &str,
+) -> Result<Vec<RelPath>, Vec<Diagnostic>> {
+    use domain::ports::changed_files::ChangedFilesProvider;
+    let provider = infrastructure::git::changed_files::GitChangedFilesProvider::new(repo_root);
+    provider
+        .changed_files(
+            &SnapshotSelector::GitRef(GitRef::new(base_ref)),
+            &SnapshotSelector::Workdir,
+        )
+        .map_err(|error| {
+            vec![application::signals::changed_files_failure_diagnostic(
+                &error, base_ref,
+            )]
+        })
+}
+
+/// V6.3 — validate explicit positional changed paths. Every invalid value
+/// yields one `impacted.invalid_path` diagnostic; all are collected, not
+/// first-error.
+pub fn validate_changed_paths(paths: &[String]) -> Result<Vec<RelPath>, Vec<Diagnostic>> {
+    application::signals::validate_changed_paths(paths)
 }
 
 pub fn check_patch(input: PatchInput) -> PatchCheckResult {
