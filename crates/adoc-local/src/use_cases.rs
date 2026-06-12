@@ -7,16 +7,17 @@ use std::time::{Duration, Instant};
 
 use adoc_core::{
     ArtifactInspection, ArtifactLoadStatus, BuildArtifacts, BuildEmbeddingMode,
-    BuildInput as CoreBuildInput, CompileInput, CompileResult, Diagnostic, DiagnosticCode,
-    EmbeddingProviderSelection, GitRef, GraphArtifactInspectionInput, GraphDirection,
-    GraphInput as CoreGraphInput, GraphRelationKind, GraphTraversalEnvelope, GraphTraversalQuery,
-    GraphTraversalResult, ObjectDiffEnvelope, PatchCheckResult, PatchInput, RetrievalEnvelope,
-    RetrievalInput, RetrievalLoadResult, RetrievalRecord, ReviewEnvelope, ReviewError,
-    ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters, SearchMode,
-    SearchQuery, Severity, SnapshotSelector, StaleEnvelope,
+    BuildInput as CoreBuildInput, CompileInput, CompileResult, ContradictionsEnvelope, Diagnostic,
+    DiagnosticCode, EmbeddingProviderSelection, GitRef, GraphArtifactInspectionInput,
+    GraphDirection, GraphInput as CoreGraphInput, GraphRelationKind, GraphTraversalEnvelope,
+    GraphTraversalQuery, GraphTraversalResult, ObjectDiffEnvelope, PatchCheckResult, PatchInput,
+    RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, RetrievalRecord, ReviewEnvelope,
+    ReviewError, ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters,
+    SearchMode, SearchQuery, Severity, SnapshotSelector, StaleEnvelope,
     build_workspace_with_embedding_provider, check_patch as core_check_patch, compile_workspace,
-    diff_objects, embed_query_with_embedding_provider, empty_stale_envelope, evaluate_stale,
-    git_review_available, inspect_graph_artifact, inspect_search_artifact, load_graph_session,
+    diff_objects, embed_query_with_embedding_provider, empty_contradictions_envelope,
+    empty_stale_envelope, evaluate_contradictions, evaluate_stale, git_review_available,
+    inspect_graph_artifact, inspect_search_artifact, load_graph_session,
     load_retrieval_session_with_embedding_provider, load_review_from_git,
     load_review_with_changed_files_from_git, parse_patch_from_path, parse_patch_from_value,
     review_with_patch, search as core_search, traverse_graph, why_object,
@@ -128,6 +129,20 @@ pub struct StaleInput {
 #[derive(Debug, Clone, Serialize)]
 pub struct StaleOutcome {
     pub envelope: StaleEnvelope,
+    pub exit_code: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ContradictionsInput {
+    pub artifact: Option<PathBuf>,
+    /// `--all`: include `resolved` and `dismissed` contradictions in the
+    /// listing (never affects `contradicted_claims`).
+    pub all: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ContradictionsOutcome {
+    pub envelope: ContradictionsEnvelope,
     pub exit_code: i32,
 }
 
@@ -399,6 +414,27 @@ where
 
     pub fn run(&self, input: StaleInput) -> Result<StaleOutcome, LocalError> {
         stale_with_context(&self.context, input)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ContradictionsUseCase<P>
+where
+    P: PathPolicy,
+{
+    context: LocalContext<P>,
+}
+
+impl<P> ContradictionsUseCase<P>
+where
+    P: PathPolicy,
+{
+    pub fn new(context: LocalContext<P>) -> Self {
+        Self { context }
+    }
+
+    pub fn run(&self, input: ContradictionsInput) -> Result<ContradictionsOutcome, LocalError> {
+        contradictions_with_context(&self.context, input)
     }
 }
 
@@ -727,7 +763,7 @@ where
         .session
         .filter(|_| !diagnostics_have_errors(&diagnostics));
     let Some(session) = session else {
-        let exit_code = stale_exit_code_for_diagnostics(&diagnostics);
+        let exit_code = signal_query_exit_code(&diagnostics);
         return Ok(StaleOutcome {
             envelope: empty_stale_envelope(diagnostics),
             exit_code,
@@ -735,8 +771,46 @@ where
     };
 
     let envelope = evaluate_stale(&session, input.within_days, diagnostics);
-    let exit_code = stale_exit_code_for_diagnostics(&envelope.diagnostics);
+    let exit_code = signal_query_exit_code(&envelope.diagnostics);
     Ok(StaleOutcome {
+        envelope,
+        exit_code,
+    })
+}
+
+fn contradictions_with_context<P>(
+    context: &LocalContext<P>,
+    input: ContradictionsInput,
+) -> Result<ContradictionsOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    let artifact = input
+        .artifact
+        .as_deref()
+        .map(|path| context.path_policy().resolve_read_path(path))
+        .transpose()?;
+    let config = discover_project_config_if(artifact.is_none(), context.config_start())?;
+    let graph_artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
+    let graph_artifact = context.path_policy().resolve_read_path(&graph_artifact)?;
+    let load_result = load_graph_session(CoreGraphInput {
+        graph_artifact_path: graph_artifact,
+    });
+    let diagnostics = load_result.diagnostics;
+    let session = load_result
+        .session
+        .filter(|_| !diagnostics_have_errors(&diagnostics));
+    let Some(session) = session else {
+        let exit_code = signal_query_exit_code(&diagnostics);
+        return Ok(ContradictionsOutcome {
+            envelope: empty_contradictions_envelope(diagnostics),
+            exit_code,
+        });
+    };
+
+    let envelope = evaluate_contradictions(&session, input.all, diagnostics);
+    let exit_code = signal_query_exit_code(&envelope.diagnostics);
+    Ok(ContradictionsOutcome {
         envelope,
         exit_code,
     })
@@ -1593,13 +1667,13 @@ fn graph_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
     }
 }
 
-/// `adoc stale` is a query, not a gate: records never affect the exit code;
-/// only artifact-load errors do.
-fn stale_exit_code_for_diagnostics(diagnostics: &[Diagnostic]) -> i32 {
-    exit_code_for_diagnostics(diagnostics, stale_diagnostic_exit_code)
+/// Lifecycle-signal queries (`adoc stale`, `adoc contradictions`) are queries,
+/// not gates: records never affect the exit code; only artifact-load errors do.
+fn signal_query_exit_code(diagnostics: &[Diagnostic]) -> i32 {
+    exit_code_for_diagnostics(diagnostics, signal_query_diagnostic_exit_code)
 }
 
-fn stale_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
+fn signal_query_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
     match diagnostic.severity {
         Severity::Error => Some(2),
         _ => None,
