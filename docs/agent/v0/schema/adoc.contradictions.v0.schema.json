@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.contradictions.v0.schema.json",
+  "title": "AgentDoc Contradictions Query",
+  "description": "Listing of unresolved contradictions (all statuses with --all) plus every contradicted claim with the contradiction ids that implicate it, so consumers never join the two lists. Emitted by `adoc contradictions` and the `adoc_contradictions` MCP tool. A pure function of the graph artifact: no evaluation date, byte-identical output for the same artifact on any day. Contradictions are sorted severity-descending then by Object ID; contradicted claims by Object ID. See ROADMAP-V6.md §V6.2 and ADR-0038.",
+  "type": "object",
+  "required": ["schema_version", "contradictions", "contradicted_claims", "diagnostics"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.contradictions.v0" },
+    "contradictions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contradictionRecord" }
+    },
+    "contradicted_claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contradictedClaim" }
+    },
+    "diagnostics": {
+      "description": "Artifact-load diagnostics. Contradiction findings themselves are data, not diagnostics.",
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  },
+  "$defs": {
+    "contradictionRecord": {
+      "type": "object",
+      "required": ["id", "severity", "status", "claims", "source_path", "summary"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "severity": { "enum": ["low", "medium", "high", "critical"] },
+        "status": {
+          "description": "Echo of the authored status. The default listing contains only `unresolved`; `resolved` and `dismissed` appear only with --all.",
+          "enum": ["unresolved", "resolved", "dismissed"]
+        },
+        "claims": {
+          "description": "The claim Object IDs this contradiction links, sorted and deduplicated at parse time.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "owner": { "type": "string" },
+        "source_path": { "type": "string" },
+        "summary": {
+          "description": "First non-empty body line, truncated to 120 characters with a trailing ellipsis when cut.",
+          "type": "string"
+        }
+      }
+    },
+    "contradictedClaim": {
+      "type": "object",
+      "required": ["id", "contradiction_ids"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "authored_status": { "type": "string" },
+        "effective_status": {
+          "description": "Contradiction-axis derivation only: `contradicted` when implicated by an unresolved contradiction, otherwise an echo of the authored status. The expiry axis is `adoc stale`'s job.",
+          "type": "string"
+        },
+        "effective_reason": {
+          "description": "`contradiction:<id>` where `<id>` is the lexicographically smallest implicating contradiction — identical to the build-time projection. Absent when no unresolved contradiction implicates the claim.",
+          "type": "string",
+          "pattern": "^contradiction:.+$"
+        },
+        "contradiction_ids": {
+          "description": "All implicating unresolved contradiction ids, sorted ascending. Empty only for a claim whose authored status is `contradicted` while no unresolved contradiction references it.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -167,6 +167,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/stale.md"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/contradictions",
+        name: "schema-contradictions",
+        title: "Contradictions Query Schema Reference",
+        description: "Markdown reference for adoc.contradictions.v0.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/schema/contradictions.md"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/retrieval-envelope.json",
         name: "schema-retrieval-envelope-json",
         title: "Retrieval Envelope JSON Schema",
@@ -237,6 +245,14 @@ const RESOURCES: &[AgentResource] = &[
         description: "JSON Schema for adoc.stale.v0.",
         mime_type: JSON_SCHEMA,
         contents: include_str!("../../../docs/agent/v0/schema/adoc.stale.v0.schema.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.contradictions.v0.schema.json",
+        name: "schema-adoc-contradictions-v0-json",
+        title: "Contradictions Query JSON Schema",
+        description: "JSON Schema for adoc.contradictions.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.contradictions.v0.schema.json"),
     },
 ];
 
