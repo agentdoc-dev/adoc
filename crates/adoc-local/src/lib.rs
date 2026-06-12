@@ -12,12 +12,12 @@ pub use error::LocalError;
 pub use path_policy::{PathPolicy, ProjectRootPathPolicy, UnrestrictedPathPolicy};
 pub use use_cases::{
     BuildInput, BuildOutcome, BuildOutputs, BuildUseCase, CheckInput, CheckOutcome, CheckUseCase,
-    DiffInput, DiffOutcome, DiffUseCase, GraphInput, GraphOutcome, GraphUseCase, InitInput,
-    InitOutcome, InitUseCase, PatchCheckInput, PatchCheckOutcome, PatchCheckUseCase,
-    ProjectArtifactLoadStatus, ProjectArtifactStatus, ProjectStatusArtifacts, ProjectStatusConfig,
-    ProjectStatusInput, ProjectStatusOutcome, ProjectStatusPaths, ProjectStatusReadiness,
-    ProjectStatusRefresh, ProjectStatusRefreshReport, ProjectStatusUseCase,
-    ResolvedRetrievalRecord, ReviewInput, ReviewOutcome, ReviewPatchSource, ReviewUseCase,
-    SearchInput, SearchOutcome, SearchUseCase, StaleInput, StaleOutcome, StaleUseCase, WhyInput,
-    WhyOutcome, WhyUseCase,
+    ContradictionsInput, ContradictionsOutcome, ContradictionsUseCase, DiffInput, DiffOutcome,
+    DiffUseCase, GraphInput, GraphOutcome, GraphUseCase, InitInput, InitOutcome, InitUseCase,
+    PatchCheckInput, PatchCheckOutcome, PatchCheckUseCase, ProjectArtifactLoadStatus,
+    ProjectArtifactStatus, ProjectStatusArtifacts, ProjectStatusConfig, ProjectStatusInput,
+    ProjectStatusOutcome, ProjectStatusPaths, ProjectStatusReadiness, ProjectStatusRefresh,
+    ProjectStatusRefreshReport, ProjectStatusUseCase, ResolvedRetrievalRecord, ReviewInput,
+    ReviewOutcome, ReviewPatchSource, ReviewUseCase, SearchInput, SearchOutcome, SearchUseCase,
+    StaleInput, StaleOutcome, StaleUseCase, WhyInput, WhyOutcome, WhyUseCase,
 };
