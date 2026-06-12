@@ -990,6 +990,40 @@ fn impacted_by_unknown_ref_exits_one_with_ref_unresolvable_diagnostic() {
     assert_eq!(value["diagnostics"][0]["code"], "impacted.ref_unresolvable");
 }
 
+/// `--format markdown` on a refusal still writes a visible error block to
+/// stdout: a PR-comment bot pasting the output must show *something*, not an
+/// empty comment (JSON gets the envelope; plain/styled get stderr only).
+#[test]
+fn impacted_by_markdown_error_renders_blockquote_on_stdout() {
+    let workspace = build_billing_pilot_with_impacts("impacted-by-md-error");
+    build_graph_artifact(&workspace);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "impacted-by",
+            "--ref",
+            "does-not-exist",
+            "--format",
+            "markdown",
+        ])
+        .output()
+        .expect("adoc impacted-by runs");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "unresolvable ref stays a user-input error\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let stdout = stdout(&output);
+    assert!(
+        stdout.contains("> ⚠️ adoc impacted-by failed: `impacted.ref_unresolvable`"),
+        "markdown error block must name the diagnostic code on stdout; got:\n{stdout}"
+    );
+}
+
 /// An invalid positional path is a user-input error: exit 1 with
 /// `impacted.invalid_path`.
 #[test]

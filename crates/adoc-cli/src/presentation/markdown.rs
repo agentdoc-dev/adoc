@@ -29,7 +29,7 @@ use std::fmt::Write as FmtWrite;
 use std::io;
 
 use adoc_core::{
-    ChangedObject, FieldChange, ImpactReasonKind, ImpactedEnvelope, ImpactedObject,
+    ChangedObject, Diagnostic, FieldChange, ImpactReasonKind, ImpactedEnvelope, ImpactedObject,
     ObjectDiffEnvelope, ProofObligation, RequiredReviewer, ReviewEnvelope,
 };
 
@@ -69,6 +69,25 @@ impl MarkdownReviewPresenter {
         render_impacted_by(&mut body, envelope);
         if !envelope.proof_obligations.is_empty() {
             render_obligations(&mut body, &envelope.proof_obligations);
+        }
+        out.write_all(body.as_bytes())
+    }
+
+    /// V6.3 `adoc impacted-by --format markdown` refusal path: one blockquote
+    /// per diagnostic, so a PR-comment consumer pasting stdout never posts an
+    /// empty comment (JSON gets the envelope; plain/styled use stderr only).
+    pub(crate) fn write_impacted_error(
+        diagnostics: &[Diagnostic],
+        out: &mut dyn io::Write,
+    ) -> io::Result<()> {
+        let mut body = String::new();
+        for diagnostic in diagnostics {
+            writeln!(
+                body,
+                "> ⚠️ adoc impacted-by failed: `{}` — {}",
+                diagnostic.code, diagnostic.message
+            )
+            .expect("write to String");
         }
         out.write_all(body.as_bytes())
     }
@@ -515,6 +534,26 @@ mod tests {
         assert_eq!(
             output,
             "## Impacted by: _(no changed paths)_\n\nNo impacted Knowledge Objects.\n"
+        );
+    }
+
+    #[test]
+    fn impacted_error_renders_one_blockquote_per_diagnostic() {
+        use adoc_core::{DiagnosticCode, Severity};
+        let diagnostics = vec![Diagnostic {
+            code: DiagnosticCode::ImpactedRefUnresolvable,
+            severity: Severity::Error,
+            message: "ref `nope` did not resolve".to_string(),
+            span: None,
+            object_id: None,
+            help: None,
+        }];
+        let mut out = Vec::new();
+        MarkdownReviewPresenter::write_impacted_error(&diagnostics, &mut out)
+            .expect("write to Vec");
+        assert_eq!(
+            String::from_utf8(out).expect("utf8"),
+            "> ⚠️ adoc impacted-by failed: `impacted.ref_unresolvable` — ref `nope` did not resolve\n"
         );
     }
 

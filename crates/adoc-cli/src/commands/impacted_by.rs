@@ -64,11 +64,25 @@ fn emit_impacted_error(
     resolved: ResolvedFormat,
     exit_code: i32,
 ) -> i32 {
-    if resolved == ResolvedFormat::Json {
-        return write_impacted_json(&envelope, exit_code);
+    match resolved {
+        // JSON consumers always get the envelope (ADR-0038).
+        ResolvedFormat::Json => write_impacted_json(&envelope, exit_code),
+        // Markdown is a PR-comment surface: a bot pasting stdout must show a
+        // visible refusal, not an empty comment. Stderr keeps the
+        // fix-oriented diagnostics for terminal users either way.
+        ResolvedFormat::Markdown => {
+            eprint_diagnostics(&envelope.diagnostics);
+            MarkdownReviewPresenter::write_impacted_error(&envelope.diagnostics, &mut io::stdout())
+                .map_or_else(
+                    |source| report(CliError::RetrievalIo { source }),
+                    |()| exit_code,
+                )
+        }
+        ResolvedFormat::Plain | ResolvedFormat::Styled => {
+            eprint_diagnostics(&envelope.diagnostics);
+            exit_code
+        }
     }
-    eprint_diagnostics(&envelope.diagnostics);
-    exit_code
 }
 
 fn write_impacted_json(envelope: &ImpactedEnvelope, exit_code: i32) -> i32 {
