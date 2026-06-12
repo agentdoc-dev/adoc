@@ -209,13 +209,11 @@ fn into_intent(
             let Some(body) = required_change(changes.body, op, "body", &mut diagnostics) else {
                 return Err(diagnostics);
             };
-            let placement = match changes.placement {
-                Some(placement) => placement.into_domain(),
-                None => {
-                    diagnostics.push(required_change_diagnostic(op, "placement"));
-                    return Err(diagnostics);
-                }
-            };
+            // V6.4 TB3: placement is optional on the wire. A missing
+            // placement is a check-time WARNING and an apply-time ERROR
+            // (`patch.create_missing_placement`), both emitted by the
+            // domain validator and the apply orchestration — not here.
+            let placement = changes.placement.map(PlacementHintDto::into_domain);
             if diagnostics.is_empty() {
                 Ok(PatchIntent::CreateObject {
                     kind,
@@ -481,6 +479,31 @@ mod tests {
             diagnostics,
             "create_object does not accept changes.supersedes",
         );
+    }
+
+    #[test]
+    fn create_object_without_placement_parses_with_none_placement() {
+        // V6.4 TB3: placement is optional on the wire; the missing-placement
+        // policy (check WARNING / apply ERROR) is enforced downstream.
+        let document = read_patch_value(serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.new-credits",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Created body."
+            },
+            "reason": "create object"
+        }))
+        .expect("placement-less create parses");
+
+        match document.intent {
+            PatchIntent::CreateObject { placement, .. } => {
+                assert!(placement.is_none(), "placement lowers to None");
+            }
+            other => panic!("expected CreateObject intent, got {other:?}"),
+        }
     }
 
     #[test]

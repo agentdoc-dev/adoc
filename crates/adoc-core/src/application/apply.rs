@@ -17,15 +17,19 @@ use crate::application::compile::compile_with_provider;
 use crate::application::hashing::sha256_prefixed;
 use crate::application::patch::{PatchCheckResult, check_patch_documents};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
-use crate::domain::graph::{GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode};
+use crate::domain::graph::{
+    GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode, GraphPageNode,
+};
 use crate::domain::obligation::ProofObligation;
-use crate::domain::patch::{PatchDocument, PatchIntent};
+use crate::domain::patch::{PatchDocument, PatchIntent, PlacementHint};
 use crate::domain::ports::artifact_reader::ArtifactReader;
 use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::ports::workspace_writer::{WorkspaceWriteError, WorkspaceWriter};
 use crate::domain::source::SourceFile;
 use crate::domain::source_edit::SourceEditPlan;
-use crate::domain::source_edit::planner::{plan_replace_body, plan_update_fields};
+use crate::domain::source_edit::planner::{
+    CreateInsertion, plan_create_object, plan_replace_body, plan_update_fields,
+};
 use crate::infrastructure::parser::layout::typed_block_layout;
 
 pub const PATCH_APPLY_SCHEMA_VERSION: &str = "adoc.patch.apply.v0";
@@ -183,6 +187,20 @@ where
         Err(diagnostics) => return PatchApplyResult::refused(diagnostics, trace),
     };
     let target_node = find_object(&graph_document, &patch.target).cloned();
+    // TB3: a create with an `after` anchor splices against that anchor's
+    // block, so the anchor joins the drift gate. Captured before the check
+    // consumes the document.
+    let anchor_artifact_hash = match &patch.intent {
+        PatchIntent::CreateObject {
+            placement: Some(placement),
+            ..
+        } => placement
+            .after
+            .as_ref()
+            .and_then(|after| find_object(&graph_document, after))
+            .map(|node| node.content_hash.clone()),
+        _ => None,
+    };
     let check = check_patch_documents(graph_document, patch.clone());
     if !check.valid {
         let diagnostics = check.diagnostics.clone();
@@ -207,12 +225,38 @@ where
         serde_json::from_str(&recompiled_artifacts.graph_json)
             .expect("compile output graph_json is well-formed (compile pipeline invariant)");
 
+    // TB3: create_object has its own drift-gate variant and placement
+    // resolution; everything below this dispatch targets an existing object.
+    if let PatchIntent::CreateObject {
+        kind,
+        status,
+        body,
+        fields,
+        placement,
+    } = &patch.intent
+    {
+        return apply_create_object(
+            CreateApplyContext {
+                check,
+                trace,
+                target: &patch.target,
+                kind,
+                status: status.as_deref(),
+                body,
+                fields,
+                placement: placement.as_ref(),
+                anchor_artifact_hash,
+            },
+            &recompiled_document,
+            source_provider,
+            writer,
+        );
+    }
+
     // 3. Source-drift gate: the recompiled target must reproduce the
     //    artifact's content_hash, else the artifact is stale over moved-on
     //    source and spans cannot be trusted.
     let Some(artifact_node) = target_node else {
-        // Validation passed without a target node only for create_object;
-        // TB1 ships replace_body/update_fields, later TBs extend dispatch.
         return refuse_unsupported_operation(check, trace);
     };
     let drifted = find_object(&recompiled_document, &patch.target)
@@ -303,14 +347,7 @@ where
     }
 
     // 8. Post-apply re-check from disk. Reported, never acted on.
-    let post_compile = compile_with_provider(source_provider);
-    let error_count = count_severity(&post_compile.diagnostics, Severity::Error);
-    let warning_count = count_severity(&post_compile.diagnostics, Severity::Warning);
-    let after_content_hash = post_compile.artifacts.as_ref().and_then(|artifacts| {
-        let document: GraphArtifactDocument = serde_json::from_str(&artifacts.graph_json)
-            .expect("compile output graph_json is well-formed (compile pipeline invariant)");
-        find_object(&document, &patch.target).map(|node| node.content_hash.clone())
-    });
+    let (post_check, after_content_hash) = run_post_check(source_provider, &patch.target);
 
     PatchApplyResult {
         schema_version: PATCH_APPLY_SCHEMA_VERSION,
@@ -328,16 +365,206 @@ where
             before_content_hash: Some(before_content_hash),
             after_content_hash,
         },
-        post_check: PostCheckReport {
+        post_check,
+        artifacts_stale: true,
+        trace,
+        diagnostics: Vec::new(),
+    }
+}
+
+/// Borrowed inputs for the TB3 `create_object` apply path.
+struct CreateApplyContext<'a> {
+    check: PatchCheckResult,
+    trace: ApplyTrace,
+    target: &'a str,
+    kind: &'a str,
+    status: Option<&'a str>,
+    body: &'a str,
+    fields: &'a std::collections::BTreeMap<String, String>,
+    placement: Option<&'a PlacementHint>,
+    /// The artifact's `content_hash` for the `after` anchor, when one is
+    /// named — the anchor's half of the drift gate.
+    anchor_artifact_hash: Option<String>,
+}
+
+fn apply_create_object<P, W>(
+    context: CreateApplyContext<'_>,
+    recompiled_document: &GraphArtifactDocument,
+    source_provider: &P,
+    writer: &W,
+) -> PatchApplyResult
+where
+    P: SourceProvider,
+    W: WorkspaceWriter,
+{
+    let CreateApplyContext {
+        check,
+        trace,
+        target,
+        kind,
+        status,
+        body,
+        fields,
+        placement,
+        anchor_artifact_hash,
+    } = context;
+
+    // Placement is a WARNING on --check and an ERROR here (ADR-0036).
+    let Some(placement) = placement else {
+        let diagnostics = vec![
+            Diagnostic::error(
+                DiagnosticCode::PatchCreateMissingPlacement,
+                format!("create_object for `{target}` cannot apply without a placement"),
+            )
+            .with_object_id(target),
+        ];
+        return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+    };
+
+    // Create-variant drift gate: the target must not already exist in the
+    // current source, the placement page must still exist, and a named
+    // anchor must reproduce its artifact hash (it anchors the splice).
+    if find_object(recompiled_document, target).is_some() {
+        let diagnostics = vec![
+            Diagnostic::error(
+                DiagnosticCode::PatchSourceDrift,
+                format!(
+                    "`{target}` already exists in current source but not in the graph artifact; \
+                     run adoc build and re-propose"
+                ),
+            )
+            .with_object_id(target),
+        ];
+        return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+    }
+    let Some(page) = find_page(recompiled_document, &placement.page_id) else {
+        let diagnostics = vec![Diagnostic::error(
+            DiagnosticCode::PatchSourceDrift,
+            format!(
+                "placement page `{}` is not in the current source; run adoc build and re-propose",
+                placement.page_id
+            ),
+        )];
+        return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+    };
+    if !page.source_path.ends_with(".adoc") {
+        let diagnostics = vec![Diagnostic::error(
+            DiagnosticCode::PatchPlacementNotAdoc,
+            format!(
+                "placement page `{}` is backed by `{}`; .md pages cannot host typed blocks",
+                placement.page_id, page.source_path
+            ),
+        )];
+        return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+    }
+
+    let target_path = PathBuf::from(&page.source_path);
+    let original_text = match writer.read_to_string(&target_path) {
+        Ok(text) => text,
+        Err(error) => {
+            let diagnostics = vec![write_error_diagnostic(&error)];
+            return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+        }
+    };
+    let before_file_hash = sha256_prefixed(original_text.as_bytes());
+
+    let insertion = match &placement.after {
+        Some(after) => {
+            let anchor_fresh = matches!(
+                (&anchor_artifact_hash, find_object(recompiled_document, after)),
+                (Some(artifact_hash), Some(node)) if &node.content_hash == artifact_hash
+            );
+            if !anchor_fresh {
+                let diagnostics = vec![source_drift(after)];
+                return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+            }
+            let source_file = SourceFile::new_with_identity_path(
+                target_path.clone(),
+                original_text.clone(),
+                target_path.clone(),
+            );
+            let Some(layout) = typed_block_layout(&source_file, after) else {
+                let diagnostics = vec![source_drift(after)];
+                return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+            };
+            CreateInsertion::AfterCloseFence {
+                close_fence_end: layout.close_fence.end,
+            }
+        }
+        None => CreateInsertion::EndOfFile,
+    };
+
+    let plan = match plan_create_object(&original_text, insertion, kind, target, status, fields, body)
+    {
+        Ok(plan) => plan,
+        Err(diagnostics) => return PatchApplyResult::refused_with_check(check, trace, diagnostics),
+    };
+    let new_text = match plan.splice(&original_text) {
+        Ok(text) => text,
+        Err(error) => {
+            let diagnostics = vec![Diagnostic::error(
+                DiagnosticCode::PatchValidationFailed,
+                format!("internal splice failure: {error}"),
+            )];
+            return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+        }
+    };
+    let after_file_hash = sha256_prefixed(new_text.as_bytes());
+
+    if let Err(error) = writer.write_atomic(&target_path, &new_text, &before_file_hash) {
+        let diagnostics = vec![write_error_diagnostic(&error)];
+        return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+    }
+
+    let (post_check, after_content_hash) = run_post_check(source_provider, target);
+
+    PatchApplyResult {
+        schema_version: PATCH_APPLY_SCHEMA_VERSION,
+        applied: true,
+        target: check.target.clone(),
+        operation: check.operation.clone(),
+        proof_obligations: check.proof_obligations.clone(),
+        check: Some(check),
+        written_files: vec![WrittenFile {
+            path: page.source_path.clone(),
+            before_file_hash,
+            after_file_hash,
+        }],
+        object: ObjectHashes {
+            before_content_hash: None,
+            after_content_hash,
+        },
+        post_check,
+        artifacts_stale: true,
+        trace,
+        diagnostics: Vec::new(),
+    }
+}
+
+/// Recompile from disk after the rename and embed every diagnostic; returns
+/// the report plus the target's post-apply `content_hash` when the recompile
+/// produced artifacts. Reported, never acted on.
+fn run_post_check<P: SourceProvider>(
+    source_provider: &P,
+    target: &str,
+) -> (PostCheckReport, Option<String>) {
+    let post_compile = compile_with_provider(source_provider);
+    let error_count = count_severity(&post_compile.diagnostics, Severity::Error);
+    let warning_count = count_severity(&post_compile.diagnostics, Severity::Warning);
+    let after_content_hash = post_compile.artifacts.as_ref().and_then(|artifacts| {
+        let document: GraphArtifactDocument = serde_json::from_str(&artifacts.graph_json)
+            .expect("compile output graph_json is well-formed (compile pipeline invariant)");
+        find_object(&document, target).map(|node| node.content_hash.clone())
+    });
+    (
+        PostCheckReport {
             ran: true,
             error_count,
             warning_count,
             diagnostics: post_compile.diagnostics,
         },
-        artifacts_stale: true,
-        trace,
-        diagnostics: Vec::new(),
-    }
+        after_content_hash,
+    )
 }
 
 fn refuse_unsupported_operation(check: PatchCheckResult, trace: ApplyTrace) -> PatchApplyResult {
@@ -375,6 +602,13 @@ fn find_object<'a>(
 ) -> Option<&'a GraphKnowledgeObjectNode> {
     document.nodes.iter().find_map(|node| match node {
         GraphNode::KnowledgeObject(object) if object.id == target => Some(object),
+        _ => None,
+    })
+}
+
+fn find_page<'a>(document: &'a GraphArtifactDocument, page_id: &str) -> Option<&'a GraphPageNode> {
+    document.nodes.iter().find_map(|node| match node {
+        GraphNode::Page(page) if page.id == page_id => Some(page),
         _ => None,
     })
 }
@@ -757,35 +991,205 @@ Original body line.
         assert_eq!(result.diagnostics[0].code, DiagnosticCode::IoArtifactMissing);
     }
 
-    #[test]
-    fn unsupported_operation_refuses_after_valid_check() {
-        use crate::domain::patch::PlacementHint;
-
-        let fs = SharedFs::with_file(PAGE_PATH, PAGE_TEXT);
-        let document = built_artifact(&fs);
-        let patch = PatchDocument {
-            target: "billing.new-claim".to_string(),
+    fn create_patch(
+        target: &str,
+        placement: Option<crate::domain::patch::PlacementHint>,
+        fields: BTreeMap<String, String>,
+    ) -> PatchDocument {
+        PatchDocument {
+            target: target.to_string(),
             intent: PatchIntent::CreateObject {
                 kind: "claim".to_string(),
                 status: Some("draft".to_string()),
                 body: "New claim body.".to_string(),
-                fields: BTreeMap::new(),
-                placement: PlacementHint {
-                    page_id: "docs.billing".to_string(),
-                    after: None,
-                },
+                fields,
+                placement,
             },
             reason: "test".to_string(),
             proposer: None,
-        };
+        }
+    }
 
-        let result = apply(&fs, document, patch);
+    fn placement(
+        page_id: &str,
+        after: Option<&str>,
+    ) -> Option<crate::domain::patch::PlacementHint> {
+        Some(crate::domain::patch::PlacementHint {
+            page_id: page_id.to_string(),
+            after: after.map(str::to_string),
+        })
+    }
+
+    #[test]
+    fn create_appends_at_end_of_file_when_after_is_absent() {
+        use crate::domain::review::object_diff::ObjectDiff;
+
+        let fs = SharedFs::with_file(PAGE_PATH, PAGE_TEXT);
+        let document = built_artifact(&fs);
+        let base_nodes: Vec<_> = document
+            .nodes
+            .iter()
+            .filter_map(|node| match node {
+                GraphNode::KnowledgeObject(object) => Some(object.clone()),
+                _ => None,
+            })
+            .collect();
+
+        let result = apply(
+            &fs,
+            document,
+            create_patch("billing.new-claim", placement("docs.billing", None), BTreeMap::new()),
+        );
+
+        assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert_eq!(result.operation, "create_object");
+        assert!(result.object.before_content_hash.is_none());
+        assert!(result.object.after_content_hash.is_some());
+        assert_eq!(result.post_check.error_count, 0);
+        assert_eq!(
+            fs.read(PAGE_PATH),
+            format!(
+                "{PAGE_TEXT}\n::claim billing.new-claim\nstatus: draft\n--\nNew claim body.\n::\n"
+            ),
+            "block appended at EOF with one separating blank line"
+        );
+
+        // Post-apply recompile shows exactly one Added object.
+        let head_nodes: Vec<_> = built_artifact(&fs)
+            .nodes
+            .iter()
+            .filter_map(|node| match node {
+                GraphNode::KnowledgeObject(object) => Some(object.clone()),
+                _ => None,
+            })
+            .collect();
+        let diff = ObjectDiff::compute(&base_nodes, &head_nodes);
+        assert_eq!(diff.created.len(), 1);
+        assert_eq!(diff.created[0].id, "billing.new-claim");
+        assert!(diff.deleted.is_empty());
+        assert!(diff.changed.is_empty());
+    }
+
+    #[test]
+    fn create_inserts_immediately_after_the_anchor_close_fence() {
+        let page_text = "\
+# Billing
+
+::claim billing.credits
+status: draft
+--
+Original body line.
+::
+
+Trailing prose stays put.
+";
+        let fs = SharedFs::with_file(PAGE_PATH, page_text);
+        let document = built_artifact(&fs);
+
+        let result = apply(
+            &fs,
+            document,
+            create_patch(
+                "billing.new-claim",
+                placement("docs.billing", Some("billing.credits")),
+                BTreeMap::new(),
+            ),
+        );
+
+        assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert_eq!(
+            fs.read(PAGE_PATH),
+            "\
+# Billing
+
+::claim billing.credits
+status: draft
+--
+Original body line.
+::
+
+::claim billing.new-claim
+status: draft
+--
+New claim body.
+::
+
+Trailing prose stays put.
+",
+            "block inserted after the anchor's close fence; trailing prose byte-identical"
+        );
+    }
+
+    #[test]
+    fn create_renders_fields_in_sorted_order_with_status_merged() {
+        let fs = SharedFs::with_file(PAGE_PATH, PAGE_TEXT);
+        let document = built_artifact(&fs);
+
+        let result = apply(
+            &fs,
+            document,
+            create_patch(
+                "billing.new-claim",
+                placement("docs.billing", None),
+                BTreeMap::from([
+                    ("owner".to_string(), "team-billing".to_string()),
+                    ("expires_at".to_string(), "2120-01-01".to_string()),
+                ]),
+            ),
+        );
+
+        assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert!(fs.read(PAGE_PATH).ends_with(
+            "\n::claim billing.new-claim\nexpires_at: 2120-01-01\nowner: team-billing\nstatus: draft\n--\nNew claim body.\n::\n"
+        ));
+    }
+
+    #[test]
+    fn create_without_placement_is_check_warning_but_apply_error() {
+        let fs = SharedFs::with_file(PAGE_PATH, PAGE_TEXT);
+        let document = built_artifact(&fs);
+
+        let result = apply(&fs, document, create_patch("billing.new-claim", None, BTreeMap::new()));
 
         assert!(!result.applied);
         let check = result.check.as_ref().expect("check embedded");
-        assert!(check.valid, "diagnostics: {:?}", check.diagnostics);
-        assert!(result.diagnostics[0].message.contains("not yet supported"));
-        assert_eq!(fs.read(PAGE_PATH), PAGE_TEXT);
+        assert!(check.valid, "check accepts a placement-less create proposal");
+        assert!(check.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::PatchCreateMissingPlacement
+                && diagnostic.severity == Severity::Warning
+        }));
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchCreateMissingPlacement
+        );
+        assert_eq!(result.diagnostics[0].severity, Severity::Error);
+        assert_eq!(fs.read(PAGE_PATH), PAGE_TEXT, "nothing written");
+    }
+
+    #[test]
+    fn create_on_a_markdown_page_refuses_with_placement_not_adoc() {
+        let fs = SharedFs::with_file(PAGE_PATH, PAGE_TEXT);
+        fs.files.borrow_mut().insert(
+            PathBuf::from("docs/notes.md"),
+            "# Notes\n\nMarkdown prose only.\n".to_string(),
+        );
+        let document = built_artifact(&fs);
+
+        let result = apply(
+            &fs,
+            document,
+            create_patch("billing.new-claim", placement("docs.notes", None), BTreeMap::new()),
+        );
+
+        assert!(!result.applied);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchPlacementNotAdoc
+        );
+        assert!(
+            !fs.read("docs/notes.md").contains("billing.new-claim"),
+            "nothing written"
+        );
     }
 
     #[test]

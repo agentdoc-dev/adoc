@@ -79,6 +79,8 @@ pub enum DiagnosticCode {
     PatchTargetAlreadyExists,
     PatchPlacementInvalid,
     PatchSourceDrift,
+    PatchCreateMissingPlacement,
+    PatchPlacementNotAdoc,
     SchemaImpactsInvalidPath,
     SchemaImpactsEmpty,
     SchemaPolicyMissingStatus,
@@ -207,6 +209,8 @@ impl DiagnosticCode {
             DiagnosticCode::PatchTargetAlreadyExists,
             DiagnosticCode::PatchPlacementInvalid,
             DiagnosticCode::PatchSourceDrift,
+            DiagnosticCode::PatchCreateMissingPlacement,
+            DiagnosticCode::PatchPlacementNotAdoc,
             DiagnosticCode::SchemaImpactsInvalidPath,
             DiagnosticCode::SchemaImpactsEmpty,
             DiagnosticCode::SchemaPolicyMissingStatus,
@@ -321,6 +325,8 @@ impl DiagnosticCode {
             DiagnosticCode::PatchTargetAlreadyExists => "patch.target_already_exists",
             DiagnosticCode::PatchPlacementInvalid => "patch.placement_invalid",
             DiagnosticCode::PatchSourceDrift => "patch.source_drift",
+            DiagnosticCode::PatchCreateMissingPlacement => "patch.create_missing_placement",
+            DiagnosticCode::PatchPlacementNotAdoc => "patch.placement_not_adoc",
             DiagnosticCode::SchemaImpactsInvalidPath => "schema.impacts_invalid_path",
             DiagnosticCode::SchemaImpactsEmpty => "schema.impacts_empty",
             DiagnosticCode::SchemaPolicyMissingStatus => "schema.policy_missing_status",
@@ -571,6 +577,12 @@ impl DiagnosticCode {
             DiagnosticCode::PatchSourceDrift => {
                 "Source changed since last build; run adoc build and re-propose the patch."
             }
+            DiagnosticCode::PatchCreateMissingPlacement => {
+                "Add changes.placement with a page_id (and optional after) so apply knows where to insert the new block."
+            }
+            DiagnosticCode::PatchPlacementNotAdoc => {
+                "Place the new object on an .adoc page; .md pages cannot host typed blocks."
+            }
             DiagnosticCode::SchemaImpactsInvalidPath => {
                 "Use a repo-relative path under the project root; remove leading `/`, `..` segments, and blank entries."
             }
@@ -794,6 +806,8 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "patch.target_already_exists",
     "patch.placement_invalid",
     "patch.source_drift",
+    "patch.create_missing_placement",
+    "patch.placement_not_adoc",
     "schema.impacts_invalid_path",
     "schema.impacts_empty",
     "schema.policy_missing_status",

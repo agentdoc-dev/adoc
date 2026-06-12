@@ -354,10 +354,10 @@ mod tests {
                 status: Some("draft".to_string()),
                 body: "Created body.".to_string(),
                 fields: BTreeMap::new(),
-                placement: PlacementHint {
+                placement: Some(PlacementHint {
                     page_id: "team.page".to_string(),
                     after: None,
-                },
+                }),
             },
             reason: "create object".to_string(),
             proposer: None,
