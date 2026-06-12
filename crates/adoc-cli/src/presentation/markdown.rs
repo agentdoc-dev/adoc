@@ -82,10 +82,13 @@ impl MarkdownReviewPresenter {
     ) -> io::Result<()> {
         let mut body = String::new();
         for diagnostic in diagnostics {
+            // Diagnostic messages can be multi-line (git stderr); every line
+            // gets the `> ` prefix so strict renderers keep the blockquote.
+            let message = diagnostic.message.replace('\n', "\n> ");
             writeln!(
                 body,
-                "> ⚠️ adoc impacted-by failed: `{}` — {}",
-                diagnostic.code, diagnostic.message
+                "> ⚠️ adoc impacted-by failed: `{}` — {message}",
+                diagnostic.code
             )
             .expect("write to String");
         }
@@ -554,6 +557,30 @@ mod tests {
         assert_eq!(
             String::from_utf8(out).expect("utf8"),
             "> ⚠️ adoc impacted-by failed: `impacted.ref_unresolvable` — ref `nope` did not resolve\n"
+        );
+    }
+
+    #[test]
+    fn impacted_error_quotes_every_line_of_a_multiline_message() {
+        // Git stderr is multi-line (e.g. `fatal: ambiguous argument` plus a
+        // hint). Every line must carry the `> ` prefix — GFM lazy
+        // continuation would render unprefixed lines, but strict renderers
+        // and markdown linters break the quote there.
+        use adoc_core::{DiagnosticCode, Severity};
+        let diagnostics = vec![Diagnostic {
+            code: DiagnosticCode::ImpactedRefUnresolvable,
+            severity: Severity::Error,
+            message: "fatal: ambiguous argument 'nope'\nUse '--' to separate paths".to_string(),
+            span: None,
+            object_id: None,
+            help: None,
+        }];
+        let mut out = Vec::new();
+        MarkdownReviewPresenter::write_impacted_error(&diagnostics, &mut out)
+            .expect("write to Vec");
+        assert_eq!(
+            String::from_utf8(out).expect("utf8"),
+            "> ⚠️ adoc impacted-by failed: `impacted.ref_unresolvable` — fatal: ambiguous argument 'nope'\n> Use '--' to separate paths\n"
         );
     }
 
