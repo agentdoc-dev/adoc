@@ -75,12 +75,19 @@ impl MarkdownReviewPresenter {
 }
 
 fn render_impacted_by(output: &mut String, envelope: &ImpactedEnvelope) {
-    let paths: Vec<String> = envelope
-        .changed_paths
-        .iter()
-        .map(|path| format!("`{path}`"))
-        .collect();
-    writeln!(output, "## Impacted by: {}", paths.join(", ")).expect("write to String");
+    // An empty changed set (e.g. `--ref` with no diff) gets an explicit
+    // marker so a PR-comment reader can tell "ref had no diff" apart from
+    // a header that simply lost its path list.
+    if envelope.changed_paths.is_empty() {
+        writeln!(output, "## Impacted by: _(no changed paths)_").expect("write to String");
+    } else {
+        let paths: Vec<String> = envelope
+            .changed_paths
+            .iter()
+            .map(|path| format!("`{path}`"))
+            .collect();
+        writeln!(output, "## Impacted by: {}", paths.join(", ")).expect("write to String");
+    }
     if envelope.impacted.is_empty() {
         writeln!(output).expect("write to String");
         writeln!(output, "No impacted Knowledge Objects.").expect("write to String");
@@ -495,6 +502,20 @@ mod tests {
             &[ReviewSection::Obligations(empty_obligations)],
         );
         assert_eq!(output, "");
+    }
+
+    #[test]
+    fn impacted_by_header_marks_empty_changed_paths() {
+        // Reachable via `--ref <ref>` with no diff: valid envelope, empty
+        // changed_paths. The header must say so instead of rendering
+        // `## Impacted by: ` with a trailing space.
+        let envelope = ImpactedEnvelope::new(Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let mut output = String::new();
+        render_impacted_by(&mut output, &envelope);
+        assert_eq!(
+            output,
+            "## Impacted by: _(no changed paths)_\n\nNo impacted Knowledge Objects.\n"
+        );
     }
 
     #[test]
