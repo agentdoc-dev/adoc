@@ -40,15 +40,18 @@ The V6.1–V6.3 commands (`adoc stale`, `adoc contradictions`,
    `GraphSession` index. Operational failures (missing artifact, malformed
    JSON, `SchemaUnsupportedVersion`) surface through the existing diagnostics
    with exit code 2.
-2. **Clock-dependent signals are re-derived at read time.** The shared
-   derivation core is extracted as
-   `derive_effective_status_from_fields(status, expires_at, today)` in
-   `infrastructure/artifact/graph_json.rs`; the build-time
-   `derive_effective_status` delegates to it, so build and read can never
-   disagree on the rule. The evaluation date enters once, via the hoisted
-   `application::local_today()`, and every envelope carries `evaluated_at`.
-   The persisted `effective_status` projection is never consulted at read
-   time.
+2. **Signals are re-derived at read time from shared derivation cores.** The
+   expiry core is extracted as
+   `derive_effective_status_from_fields(status, expires_at, today)` and the
+   contradiction reverse index as `unresolved_contradiction_claim_index`,
+   both in `infrastructure/artifact/graph_json.rs`; the build-time
+   `derive_effective_status` / `apply_contradiction_effective_status`
+   delegate to them, so build and read can never disagree on a rule. For
+   clock-dependent signals the evaluation date enters once, via the hoisted
+   `application::local_today()`, and the envelope carries `evaluated_at`;
+   a clock-free envelope (`adoc.contradictions.v0`) deliberately omits
+   `evaluated_at` — it is a pure function of the artifact bytes. The
+   persisted `effective_status` projection is never consulted at read time.
 3. **Queries, not gates.** Exit code 0 whether or not records exist. Findings
    are data in a versioned envelope (`adoc.stale.v0`,
    `adoc.contradictions.v0`, `adoc.impacted.v0`), JSON-Schema'd and
@@ -69,6 +72,16 @@ re-derives `"stale"` only for verified objects (the ADR-0033 rule) and
 otherwise echoes the authored status. Records sort most-overdue first, then
 Object ID, then a fixed category ordinal. The full rule table, edge cases, and
 surfaces are pinned in [V6-DESIGN.md](../V6-DESIGN.md).
+
+For `adoc contradictions` specifically (V6.2, implemented): membership in
+`contradicted_claims` is implication by ≥ 1 unresolved contradiction **or**
+authored status `contradicted`, recomputed from the artifact's contradiction
+nodes via the shared reverse index. The envelope reports the contradiction
+axis only — a claim both expired and contradicted reads `stale` from
+`adoc stale` and `contradicted` here, while the build artifact's single
+`effective_status` slot keeps its stale-wins precedence. Sorting is severity
+descending then Object ID; `--all` widens only the contradictions listing,
+never `contradicted_claims`. Pinned in [V6-DESIGN.md](../V6-DESIGN.md) §V6.2.
 
 ## Consequences
 

@@ -121,6 +121,25 @@ exactly 3 records, most-overdue first:
 then `auth.mfa.enforced` as `expiring_soon`. All dates are wide-margin fixed
 dates, so the records and their order are clock-stable.
 
+## V6.2 `adoc contradictions` Acceptance
+
+The pilot is also the acceptance fixture for the V6.2 contradictions query
+(`crates/adoc-cli/tests/expanded_pilot.rs::expanded_pilot_contradictions_query`).
+Against a built pilot artifact, `adoc contradictions --format json` exits 0
+with exactly 1 contradiction — `auth.session.conflict` (severity `high`,
+status `unresolved`, summary = the first body line) — and exactly 3
+`contradicted_claims` in id order:
+
+| # | Claim | Authored | Effective | Via |
+| :- | :---- | :------- | :-------- | :-- |
+| 1 | `auth.session.csrf-protection` | `accepted` | `contradicted` | `auth.session.conflict` |
+| 2 | `auth.session.local-storage-allowed` | `contradicted` | `contradicted` | `auth.session.conflict` |
+| 3 | `auth.session.memory-storage` | `contradicted` | `contradicted` | `auth.session.conflict` |
+
+`--all` output is identical (the pilot has no resolved or dismissed
+contradictions). The envelope carries no `evaluated_at`: it is a pure
+function of the artifact, stable on any run date.
+
 ## What This Pilot Exercises
 
 - **Every V5 kind** with a complete authoring → validation → rendering →

@@ -372,6 +372,10 @@ _Avoid_: health score, validation error, trusting the artifact's build-time `eff
 The V6.1 read command `adoc stale` / MCP tool `adoc_stale` (implemented): a graph-artifact reader emitting `adoc.stale.v0` — `evaluated_at` plus records categorized `stale | review_overdue | expiring_soon`, sorted most-overdue first then Object ID. The `stale` category lists any object with a past expiry (the `lifecycle.expired` breadth); the record's `effective_status` re-derives `stale` only for verified objects and otherwise echoes the authored status. Exit 0 with or without records; logic in `application/signals.rs`. See `docs/V6-DESIGN.md` §V6.1.
 _Avoid_: recompiling source to answer staleness, exit codes that gate on findings, `--fail-on` thresholds before measured demand
 
+**Contradictions Query**:
+The V6.2 read command `adoc contradictions` / MCP tool `adoc_contradictions` (implemented): a graph-artifact reader emitting `adoc.contradictions.v0` — every `unresolved` contradiction (`--all` adds resolved/dismissed) joined with every contradicted claim and its implicating contradiction ids, so consumers never join the lists. Implication is recomputed at read time via the `unresolved_contradiction_claim_index` shared with the build-time projection. **Clock-free by design**: no `evaluated_at`, byte-identical output for the same artifact on any day; the envelope reports the contradiction axis only (the expiry axis is the **Stale Query**'s job). Sorted severity-descending then Object ID. See `docs/V6-DESIGN.md` §V6.2.
+_Avoid_: trusting the artifact's persisted `effective_status`, threading a clock into the contradictions path, `--all` changing `contradicted_claims`, consumers re-joining contradictions to claims
+
 ## Relationships
 
 - **AgentDoc Source** contains prose and typed blocks that compile into **Knowledge Objects**.
