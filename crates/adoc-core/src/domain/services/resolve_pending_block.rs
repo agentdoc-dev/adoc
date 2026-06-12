@@ -234,6 +234,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         }
     }
 

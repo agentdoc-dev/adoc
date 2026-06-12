@@ -13,6 +13,10 @@ pub use application::graph::{
     GRAPH_TRAVERSAL_SCHEMA_VERSION, GraphInput, GraphLoadResult, GraphSession,
     GraphTraversalEnvelope, traverse_graph,
 };
+pub use application::apply::{
+    ApplyProposer, ApplyTrace, ObjectHashes, PATCH_APPLY_SCHEMA_VERSION, PatchApplyResult,
+    PostCheckReport, WrittenFile,
+};
 pub use application::patch::{
     PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput, PatchJsonInput, PatchParseError,
 };
@@ -308,6 +312,49 @@ pub fn check_patch_json(input: PatchJsonInput) -> PatchCheckResult {
     };
 
     application::patch::check_patch_documents(graph_document, patch_document)
+}
+
+/// V6.4 — input for [`apply_patch`]. `docs_root` must be resolved through the
+/// same chain `adoc check`/`adoc build` use: `content_hash` payloads embed
+/// source paths, so the apply-time recompile reproduces artifact hashes only
+/// when the docs root is spelled byte-identically. `project_root` bounds the
+/// write sandbox.
+#[derive(Debug, Clone)]
+pub struct PatchApplyInput {
+    pub graph_artifact_path: std::path::PathBuf,
+    pub docs_root: std::path::PathBuf,
+    pub project_root: std::path::PathBuf,
+    /// Recorded in the envelope's `trace.interface` (`"cli"` or `"mcp"`).
+    pub interface: String,
+}
+
+/// V6.4 — apply a parsed patch document to AgentDoc source (ADR-0036).
+/// Refusals come back as the same `adoc.patch.apply.v0` envelope with
+/// `applied: false`; this function never panics on user input.
+pub fn apply_patch(input: PatchApplyInput, patch: PatchDocument) -> PatchApplyResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::new(input.docs_root);
+    let writer = infrastructure::source::fs_writer::FsWorkspaceWriter::new(input.project_root);
+    application::apply::apply_patch_with_ports(
+        &input.graph_artifact_path,
+        patch,
+        &infrastructure::artifact::GraphJsonArtifact,
+        &provider,
+        &writer,
+        &input.interface,
+    )
+}
+
+/// V6.4 — build a refusal envelope from parse-failure diagnostics, so the
+/// orchestration layers (CLI, MCP) can report unparseable patch input inside
+/// the normal `adoc.patch.apply.v0` shape instead of a process error.
+pub fn patch_apply_refusal(diagnostics: Vec<Diagnostic>, interface: &str) -> PatchApplyResult {
+    PatchApplyResult::refused(
+        diagnostics,
+        ApplyTrace {
+            interface: interface.to_string(),
+            proposer: None,
+        },
+    )
 }
 
 fn embedding_provider(

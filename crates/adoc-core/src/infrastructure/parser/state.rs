@@ -21,7 +21,9 @@ pub(super) enum ParseState {
     Paragraph(ParagraphBuilder),
     List(ListBuilder),
     CodeBlock(CodeBlockBuilder),
-    TypedBlock(TypedBlockBuildingState),
+    /// Boxed: the builder carries span state (V6.4) that would otherwise
+    /// dominate the enum's stack footprint.
+    TypedBlock(Box<TypedBlockBuildingState>),
 }
 
 /// Transient accumulator for a typed block while lines are being read.
@@ -38,6 +40,7 @@ pub(super) struct TypedBlockBuildingState {
     pub(super) body_lines: Vec<String>,
     pub(super) body_spans: Vec<SourceSpan>,
     pub(super) content_spans: Vec<SourceSpan>,
+    pub(super) body_separator_span: Option<SourceSpan>,
 }
 
 /// Phase of a typed block currently being parsed.

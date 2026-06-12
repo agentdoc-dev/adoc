@@ -201,6 +201,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         }
     }
 
@@ -217,6 +219,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         }
     }
 
@@ -233,6 +237,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         }
     }
 
@@ -292,6 +298,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -324,6 +332,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -370,6 +380,8 @@ mod tests {
                     offset: 19,
                 },
             },
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -404,6 +416,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -433,6 +447,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -466,6 +482,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -530,6 +548,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -573,6 +593,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -610,6 +632,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -658,6 +682,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -694,6 +720,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -720,6 +748,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
@@ -751,6 +781,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let page = page_with_pending(pending);
         let mut pairs = vec![(source(), page)];
