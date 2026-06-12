@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted.
+Accepted. Superseded in part by [ADR-0037](0037-mcp-patch-apply-opt-in.md):
+the "does not apply patches" promise is re-scoped — since V6.4 the gateway
+applies validated patches through the always-registered, config-gated
+`adoc_patch_apply` tool; every other tool still never writes AgentDoc Source.
 
 ## Context
 

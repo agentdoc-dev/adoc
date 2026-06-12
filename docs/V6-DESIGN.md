@@ -2,7 +2,7 @@
 
 This document is the implementation contract for V6: the Agent Editing Loop. It is the V5-DESIGN equivalent for the [ROADMAP-V6.md](ROADMAP-V6.md) cycle. Per the roadmap, contract sections are recorded **at slice start** — this file grows one section per slice rather than being written all at once. Sections for slices that have not started are stubs.
 
-V6 closes the loop opened by V2: three new read commands expose the V5.10 derived lifecycle signals and source-path impact (V6.1–V6.3), then patch application makes every already-validated op family actually rewrite `.adoc` source via formatting-preserving span splices (V6.4). The architectural choices live in ADR-0038 (lifecycle-signal read commands as graph-artifact readers) and, when V6.4 starts, ADR-0036/0037.
+V6 closes the loop opened by V2: three new read commands expose the V5.10 derived lifecycle signals and source-path impact (V6.1–V6.3), then patch application makes every already-validated op family actually rewrite `.adoc` source via formatting-preserving span splices (V6.4). The architectural choices live in ADR-0038 (lifecycle-signal read commands as graph-artifact readers), ADR-0036 (patch application as formatting-preserving span splice), and ADR-0037 (MCP `adoc_patch_apply` opt-in).
 
 ## Goals
 
@@ -262,3 +262,74 @@ The same path matched via `impacts:` and via evidence yields **two reasons on on
 Against the V3.3 billing-pilot impact fixture (`crates/adoc-cli/tests/review_cli.rs`): `adoc impacted-by crates/billing/src/refund.rs --format json` exits 0 with exactly `billing.refunds` (claim, verified, owner `team-billing`) under `reasons[].kind: "impacts_path"` and one impact-review obligation; `adoc impacted-by --ref main --format json` produces the same `(id, impacts_path paths)` set as `adoc review main`'s `impact[]` over the two-commit fixture. Against the Expanded Pilot (`crates/adoc-cli/tests/expanded_pilot.rs::expanded_pilot_impacted_by_query`): the `consume.use-case.ts` query returns exactly `billing.credits.consume` (claim, verified) and `billing.credits.use-ledger` (decision, accepted), each with one `evidence_path` reason `via_source_object: billing.consume-use-case` and one obligation; the constraint-declared `crates/auth/src/session.rs` query returns an empty set, exit 0.
 
 ## V6.4: Patch Apply — contract recorded at slice start (ADR-0036, ADR-0037)
+
+### Wire contract
+
+`adoc.patch.apply.v0`, emitted by `adoc patch --apply` and the config-gated MCP tool `adoc_patch_apply`:
+
+```json
+{
+  "schema_version": "adoc.patch.apply.v0",
+  "applied": true,
+  "target": "billing.credits.consume",
+  "operation": "replace_body",
+  "check": { "schema_version": "adoc.patch.check.v0", "valid": true, "...": "embedded check envelope, unchanged" },
+  "written_files": [
+    { "path": "billing/claims.adoc", "before_file_hash": "sha256:...", "after_file_hash": "sha256:..." }
+  ],
+  "object": { "before_content_hash": "sha256:...", "after_content_hash": "sha256:..." },
+  "post_check": { "ran": true, "error_count": 0, "warning_count": 5, "diagnostics": [] },
+  "artifacts_stale": true,
+  "proof_obligations": [],
+  "trace": { "interface": "cli", "proposer": { "kind": "agent", "id": "..." } },
+  "diagnostics": []
+}
+```
+
+Refusals (validation failure, source drift, missing placement, disabled MCP gate) are the **same envelope** with `applied: false`, empty `written_files`, `post_check.ran: false`, and fix-oriented diagnostics — never a protocol error. `target`, `operation`, `check`, and `object` hashes are optional so refusal envelopes that never reached those stages still validate.
+
+JSON Schema: `docs/agent/v0/schema/adoc.patch.apply.v0.schema.json` (resource `adoc://agent/v0/schema/adoc.patch.apply.v0.schema.json`); prose reference folded into `docs/agent/v0/schema/patch.md`; loop guidance `docs/agent/v0/patch-apply-guide.md` (resource `adoc://agent/v0/patch-apply-guide`). Contract-tested in `crates/adoc-mcp/tests/contract_schemas.rs` with applied, gate-refusal, and base-hash-refusal envelopes.
+
+### Apply pipeline
+
+1. Load the graph artifact; run the **unchanged** V2 validation (`check_patch_documents`). Invalid → refusal with the embedded check.
+2. Recompile the working tree in memory (`compile_with_provider` over the same docs-root resolution chain `check`/`build` use — hash-critical, since `content_hash` payloads include `source_span` paths). Compile errors → refusal with `patch.source_drift`.
+3. **Source-drift gate** (the second freshness layer, ADR-0036): the recompiled target's `content_hash` must equal the artifact's, else refusal with `patch.source_drift` ("source changed since last build; run adoc build and re-propose"). `base_hash` proves proposer-saw-artifact; this gate proves artifact-matches-source.
+4. Splice plan from **fresh parser spans** (`TypedBlockLayout`, byte offsets from `SourcePosition.offset` only — never artifact spans, never char columns), pure splice in `domain/source_edit/`.
+5. Atomic write through the `WorkspaceWriter` port: temp file in the same directory, write, fsync; the on-disk file is re-hashed immediately before rename and apply refuses on mismatch (TOCTOU). Cross-process locking is a non-goal.
+6. Post-apply re-check: recompile from disk, embed every diagnostic in `post_check`. Reported, never acted on — no auto-revert, ever.
+7. `artifacts_stale: true` always when applied; apply never rewrites `dist/` artifacts.
+
+### Determinism
+
+`SourceEditPlan` is sorted and non-overlapping (factory rejects overlap); every byte outside the edited ranges is copied verbatim by construction. Created blocks render with deterministic sorted field order (`status` merged into the field map) and exactly one separating blank line. Synthesized text joins with the target file's detected line ending.
+
+### Edge cases (decided)
+
+- `update_fields` rewrites only targeted field-value spans; a **new** key inserts one `key: value` line after the last field line (after the open fence when the block has no fields). An empty authored value (`key:`) has a zero-width span; the planner restores the separating space.
+- `replace_body` replaces only the region between `--` and the closing `::`; a block with a separator but empty body inserts after the separator; a block with no separator inserts `--` + body before the close fence. Blank edge lines around the trimmed body region are preserved.
+- `supersede`/`revoke` are field-line edits (merged `supersedes:` value — existing targets first, patch order after; `status: revoked`) with the same splice discipline.
+- `create_object`: `placement.page_id` resolves to a file via the page node's `source_path`; `after: <id>` inserts immediately after that block's close fence; absent `after` appends at end of file (file stays newline-terminated). `placement` is optional on the wire — `patch.create_missing_placement` is WARNING on `--check`, ERROR on `--apply`; `patch.placement_not_adoc` rejects `.md` placement pages; new-file creation is deferred. `adoc.patch.v0` stays at v0.
+- Planner guards refuse field values containing newlines, edits targeting duplicate keys, and body lines that would re-fence (`::` or open-fence-shaped).
+- CRLF: parser spans never cover `\r`, so in-range replacements preserve it; synthesized multi-line text uses the detected EOL. Multibyte: all math on byte offsets, char-boundary-checked at splice time.
+- One patch document, one target, one file write per apply; multi-patch transactions deferred.
+
+### Surfaces
+
+- **CLI:** `adoc patch --apply <path-or-@-stdin> [--artifact <path>] --format auto|plain|styled|json`; bare `adoc patch --check` keeps today's behavior, the two flags are mutually exclusive. Human-initiated, ungated.
+- **MCP:** `adoc_patch_apply { project_root?, artifact?, patch|patch_path }` — **registered always**; refuses with one `mcp.patch_apply_disabled` diagnostic unless the project opts in via `mcp: { patch_apply: enabled }` in `agentdoc.config.yaml` (absent ⇒ disabled; `adoc init` never writes the key). Project-root sandbox and both freshness layers apply identically. `adoc.project.status.v0` gains additive `readiness.patch_apply_enabled`.
+- **Exit codes:** `0` applied and post-check clean; `1` refused, nothing written (including stale `base_hash` — distinct from `--check`'s exit-4 convention); `2` applied but post-check reports new errors — agents must treat `2` as "stop and surface to a human".
+
+### Module layout
+
+- `crates/adoc-core/src/domain/source_edit/` — `SpanEdit`, `SourceEditPlan`, `splice`, `LineEnding`, `TypedBlockLayout`, op planners, `render_typed_block` (pure byte math, no I/O).
+- `crates/adoc-core/src/infrastructure/parser/` — close-fence and `--` separator span retention on `ParsedTypedBlock` (behavior-preserving); `layout.rs` extracting `TypedBlockLayout` from a fresh single-file parse.
+- `crates/adoc-core/src/domain/ports/workspace_writer.rs` — `WorkspaceWriter` port; `infrastructure/source/fs_writer.rs` — sandboxed temp+fsync+rename implementation.
+- `crates/adoc-core/src/application/apply.rs` — orchestration, `PatchApplyResult`, refusal constructor.
+- `crates/adoc-local/src/use_cases.rs` — `PatchApplyUseCase` (docs-root resolution identical to `check`); `config.rs` — `mcp.patch_apply` gate.
+- `crates/adoc-cli/src/commands/patch.rs` — `--apply` dispatch and presenters.
+- `crates/adoc-mcp/src/lib.rs` — `adoc_patch_apply`; resources and `adoc_propose_patch_v1` prompt (v0 prompt byte-stable per ADR-0014).
+
+### Acceptance (pinned in tests)
+
+The full loop against a tempdir copy of the Expanded Pilot (`crates/adoc-cli/tests/apply_loop.rs`): `adoc impacted-by` flags `billing.credits.consume` → a `replace_body` patch applies with exit 0, the rewritten `billing/claims.adoc` is byte-equal to a golden fixture and every other file is byte-identical to the original → post-check clean (0 errors, budgeted warnings) → `adoc stale` / `adoc contradictions` envelopes unchanged → after rebuild, re-applying the same patch exits 1 with `patch.base_hash_mismatch` and writes nothing. A `create_object` patch without placement exits 1 under `--apply` with `patch.create_missing_placement`. MCP: with the config key absent `adoc_patch_apply` refuses naming `mcp.patch_apply`; with `patch_apply: enabled` it returns the CLI-identical envelope modulo `trace.interface`.
