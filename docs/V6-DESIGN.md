@@ -261,7 +261,7 @@ The same path matched via `impacts:` and via evidence yields **two reasons on on
 
 Against the V3.3 billing-pilot impact fixture (`crates/adoc-cli/tests/review_cli.rs`): `adoc impacted-by crates/billing/src/refund.rs --format json` exits 0 with exactly `billing.refunds` (claim, verified, owner `team-billing`) under `reasons[].kind: "impacts_path"` and one impact-review obligation; `adoc impacted-by --ref main --format json` produces the same `(id, impacts_path paths)` set as `adoc review main`'s `impact[]` over the two-commit fixture. Against the Expanded Pilot (`crates/adoc-cli/tests/expanded_pilot.rs::expanded_pilot_impacted_by_query`): the `consume.use-case.ts` query returns exactly `billing.credits.consume` (claim, verified) and `billing.credits.use-ledger` (decision, accepted), each with one `evidence_path` reason `via_source_object: billing.consume-use-case` and one obligation; the constraint-declared `crates/auth/src/session.rs` query returns an empty set, exit 0.
 
-## V6.4: Patch Apply — contract recorded at slice start (ADR-0036, ADR-0037)
+## V6.4: Patch Apply — Implemented (ADR-0036, ADR-0037)
 
 ### Wire contract
 
