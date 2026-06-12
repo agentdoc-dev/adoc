@@ -207,6 +207,11 @@ pub(crate) struct ParsedTypedBlock {
     pub(crate) body_spans: Vec<SourceSpan>,
     pub(crate) content_spans: Vec<SourceSpan>,
     pub(crate) span: SourceSpan,
+    /// Span of the closing `::` fence line. Retained since V6.4 so a block's
+    /// full byte range is recoverable for patch-apply splicing.
+    pub(crate) close_fence_span: SourceSpan,
+    /// Span of the `--` field/body separator line, when the block has one.
+    pub(crate) body_separator_span: Option<SourceSpan>,
 }
 
 #[cfg(test)]
@@ -267,6 +272,8 @@ mod tests {
             body_spans: Vec::new(),
             content_spans: Vec::new(),
             span: span(),
+            close_fence_span: span(),
+            body_separator_span: None,
         };
         let pending_block = BlockAst::KnowledgeObjectPending(Box::new(parsed));
         assert_eq!(pending_block, pending_block.clone());

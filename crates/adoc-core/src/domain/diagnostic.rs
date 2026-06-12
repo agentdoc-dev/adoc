@@ -78,6 +78,7 @@ pub enum DiagnosticCode {
     PatchBaseHashMismatch,
     PatchTargetAlreadyExists,
     PatchPlacementInvalid,
+    PatchSourceDrift,
     SchemaImpactsInvalidPath,
     SchemaImpactsEmpty,
     SchemaPolicyMissingStatus,
@@ -205,6 +206,7 @@ impl DiagnosticCode {
             DiagnosticCode::PatchBaseHashMismatch,
             DiagnosticCode::PatchTargetAlreadyExists,
             DiagnosticCode::PatchPlacementInvalid,
+            DiagnosticCode::PatchSourceDrift,
             DiagnosticCode::SchemaImpactsInvalidPath,
             DiagnosticCode::SchemaImpactsEmpty,
             DiagnosticCode::SchemaPolicyMissingStatus,
@@ -318,6 +320,7 @@ impl DiagnosticCode {
             DiagnosticCode::PatchBaseHashMismatch => "patch.base_hash_mismatch",
             DiagnosticCode::PatchTargetAlreadyExists => "patch.target_already_exists",
             DiagnosticCode::PatchPlacementInvalid => "patch.placement_invalid",
+            DiagnosticCode::PatchSourceDrift => "patch.source_drift",
             DiagnosticCode::SchemaImpactsInvalidPath => "schema.impacts_invalid_path",
             DiagnosticCode::SchemaImpactsEmpty => "schema.impacts_empty",
             DiagnosticCode::SchemaPolicyMissingStatus => "schema.policy_missing_status",
@@ -565,6 +568,9 @@ impl DiagnosticCode {
             DiagnosticCode::PatchPlacementInvalid => {
                 "Use an existing page_id and, when after is supplied, an object already on that page."
             }
+            DiagnosticCode::PatchSourceDrift => {
+                "Source changed since last build; run adoc build and re-propose the patch."
+            }
             DiagnosticCode::SchemaImpactsInvalidPath => {
                 "Use a repo-relative path under the project root; remove leading `/`, `..` segments, and blank entries."
             }
@@ -787,6 +793,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "patch.base_hash_mismatch",
     "patch.target_already_exists",
     "patch.placement_invalid",
+    "patch.source_drift",
     "schema.impacts_invalid_path",
     "schema.impacts_empty",
     "schema.policy_missing_status",

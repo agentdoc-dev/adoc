@@ -22,8 +22,10 @@ const NESTED_TYPED_BLOCK_HELP: &str =
 pub(super) enum TypedBlockOpen {
     /// Not a typed-block opener at all (e.g. line was `::` alone or indented).
     None,
-    /// Valid typed-block opener — transition to `TypedBlock` state.
-    Opened(TypedBlockBuildingState),
+    /// Valid typed-block opener — transition to `TypedBlock` state. Boxed:
+    /// the builder carries span state (V6.4) that would otherwise dominate
+    /// the enum's stack footprint.
+    Opened(Box<TypedBlockBuildingState>),
     /// Recognised typed-block syntax but malformed or unknown kind — emit the
     /// diagnostic; consume the line; do NOT enter any block state.
     Diagnostic(Diagnostic),
@@ -121,7 +123,7 @@ pub(super) fn try_open_typed_block(
     // so character count matches displayed source columns.
     let kind_word_span =
         source.span_for_line_columns(line_number, 3, 3 + word.chars().count() as u32);
-    TypedBlockOpen::Opened(TypedBlockBuildingState {
+    TypedBlockOpen::Opened(Box::new(TypedBlockBuildingState {
         kind_word: word.to_string(),
         kind_word_span,
         id_text,
@@ -133,7 +135,8 @@ pub(super) fn try_open_typed_block(
         body_lines: Vec::new(),
         body_spans: Vec::new(),
         content_spans: Vec::new(),
-    })
+        body_separator_span: None,
+    }))
 }
 
 fn is_fence_word(word: &str) -> bool {
@@ -200,6 +203,7 @@ pub(super) fn consume_typed_block_line(
                 // Close fence in fields region — no body.
                 return TypedBlockLineOutcome::Closed(Box::new(build_parsed_typed_block(
                     state,
+                    source.span_for_line(line_number, line),
                     diagnostics,
                 )));
             }
@@ -207,6 +211,7 @@ pub(super) fn consume_typed_block_line(
             if line == "--" {
                 // Separator: transition to reading the body.
                 state.phase = TypedBlockPhase::ReadingBody;
+                state.body_separator_span = Some(source.span_for_line(line_number, line));
                 return TypedBlockLineOutcome::Continue;
             }
 
@@ -265,6 +270,7 @@ pub(super) fn consume_typed_block_line(
                 // Close fence.
                 return TypedBlockLineOutcome::Closed(Box::new(build_parsed_typed_block(
                     state,
+                    source.span_for_line(line_number, line),
                     diagnostics,
                 )));
             }
@@ -351,6 +357,7 @@ fn try_parse_field(trimmed: &str) -> Option<ParsedFieldLine> {
 /// Leading and trailing fully-blank lines are trimmed from `body_lines`.
 fn build_parsed_typed_block(
     state: &TypedBlockBuildingState,
+    close_fence_span: SourceSpan,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ParsedTypedBlock {
     let body_range = trim_blank_edges_range(&state.body_lines);
@@ -370,6 +377,8 @@ fn build_parsed_typed_block(
         body_spans,
         content_spans: state.content_spans.clone(),
         span: state.open_fence_span.clone(),
+        close_fence_span,
+        body_separator_span: state.body_separator_span.clone(),
     }
 }
 
@@ -460,6 +469,7 @@ mod tests {
             body_lines: Vec::new(),
             body_spans: Vec::new(),
             content_spans: Vec::new(),
+            body_separator_span: None,
         }
     }
 
@@ -1031,6 +1041,59 @@ mod tests {
 
         assert!(diagnostics.is_empty());
         assert_eq!(state.raw_fields.len(), 2);
+    }
+
+    #[test]
+    fn close_fence_span_is_recorded_when_closing_from_body_phase() {
+        let source = make_source("status: verified\n--\nBody.\n::\n");
+        let mut state = fresh_state("billing.credits");
+        let mut diagnostics = Vec::new();
+
+        consume_typed_block_line(&mut state, "status: verified", 1, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "--", 2, &source, &mut diagnostics);
+        consume_typed_block_line(&mut state, "Body.", 3, &source, &mut diagnostics);
+        let outcome = consume_typed_block_line(&mut state, "::", 4, &source, &mut diagnostics);
+
+        match outcome {
+            TypedBlockLineOutcome::Closed(parsed) => {
+                assert_eq!(parsed.close_fence_span.start.line, 4);
+                assert_eq!(parsed.close_fence_span.start.column, 1);
+                assert_eq!(parsed.close_fence_span.end.column, 3);
+                // "status: verified\n--\nBody.\n" = 17 + 3 + 6 = 26 bytes before `::`.
+                assert_eq!(parsed.close_fence_span.start.offset, 26);
+                assert_eq!(parsed.close_fence_span.end.offset, 28);
+                let separator = parsed
+                    .body_separator_span
+                    .as_ref()
+                    .expect("separator span recorded");
+                assert_eq!(separator.start.line, 2);
+                assert_eq!(separator.start.offset, 17);
+                assert_eq!(separator.end.offset, 19);
+            }
+            TypedBlockLineOutcome::Continue => panic!("expected Closed"),
+        }
+    }
+
+    #[test]
+    fn close_fence_span_is_recorded_when_closing_from_fields_phase_without_separator() {
+        let source = make_source("status: verified\n::\n");
+        let mut state = fresh_state("billing.credits");
+        let mut diagnostics = Vec::new();
+
+        consume_typed_block_line(&mut state, "status: verified", 1, &source, &mut diagnostics);
+        let outcome = consume_typed_block_line(&mut state, "::", 2, &source, &mut diagnostics);
+
+        match outcome {
+            TypedBlockLineOutcome::Closed(parsed) => {
+                assert_eq!(parsed.close_fence_span.start.line, 2);
+                assert_eq!(parsed.close_fence_span.start.offset, 17);
+                assert!(
+                    parsed.body_separator_span.is_none(),
+                    "no separator line was parsed"
+                );
+            }
+            TypedBlockLineOutcome::Continue => panic!("expected Closed"),
+        }
     }
 
     // Test: finalize_unclosed_typed_block emits the right diagnostic

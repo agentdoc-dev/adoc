@@ -10,6 +10,7 @@ mod builders;
 pub(crate) mod extension_classifier;
 mod front_matter;
 mod inline;
+pub(crate) mod layout;
 mod markdown;
 mod state;
 mod typed_block;
@@ -173,7 +174,7 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
 
     // Handle unclosed typed blocks at EOF before the general commit.
     if let ParseState::TypedBlock(typed_block_state) = state {
-        typed_block::finalize_unclosed_typed_block(typed_block_state, &mut diagnostics);
+        typed_block::finalize_unclosed_typed_block(*typed_block_state, &mut diagnostics);
         state = ParseState::Idle;
     }
     commit_in_progress(&mut state, source, &mut page.blocks, &mut diagnostics);
