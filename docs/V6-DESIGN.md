@@ -170,6 +170,95 @@ Two record classes from one artifact pass, joined for the consumer:
 
 Against the Expanded Pilot (`crates/adoc-cli/tests/expanded_pilot.rs::expanded_pilot_contradictions_query`): exactly 1 contradiction (`auth.session.conflict`, severity `high`, status `unresolved`) and exactly 3 `contradicted_claims` in id order — `auth.session.csrf-protection` (authored `accepted`, effective `contradicted`), `auth.session.local-storage-allowed` and `auth.session.memory-storage` (authored `contradicted`) — each with `contradiction_ids: ["auth.session.conflict"]`. `--all` output is identical on this pilot.
 
-## V6.3: `adoc impacted-by` — contract recorded at slice start
+## V6.3: `adoc impacted-by` — Implemented
+
+### Wire contract
+
+`adoc.impacted.v0`, emitted by `adoc impacted-by` and the MCP tool `adoc_impacted_by`:
+
+```json
+{
+  "schema_version": "adoc.impacted.v0",
+  "changed_paths": ["crates/billing/src/refund.rs"],
+  "impacted": [
+    {
+      "id": "billing.refunds",
+      "kind": "claim",
+      "status": "verified",
+      "owner": "team-billing",
+      "reasons": [
+        {
+          "kind": "impacts_path",
+          "matched_path": "crates/billing/src/refund.rs"
+        }
+      ]
+    }
+  ],
+  "proof_obligations": [
+    {
+      "object_id": "billing.refunds",
+      "reason": "review impacted claim",
+      "required_evidence": ["source_code"]
+    }
+  ],
+  "diagnostics": []
+}
+```
+
+JSON Schema: `docs/agent/v0/schema/adoc.impacted.v0.schema.json` (resource `adoc://agent/v0/schema/adoc.impacted.v0.schema.json`); prose reference `docs/agent/v0/schema/impacted.md` (resource `adoc://agent/v0/schema/impacted`). Contract-tested in `crates/adoc-mcp/tests/contract_schemas.rs` with a populated paths-shape query covering all three reason routes, the dual-reason single-record case, the scope exclusion, the empty no-match envelope, and the paths-XOR-ref argument rule.
+
+### Input shapes
+
+Exactly two, mutually exclusive, enforced at the interface layer (clap `required_unless_present` + `conflicts_with`; MCP argument validation) and made structural in `adoc-local`'s `ImpactedChangedSet` enum:
+
+- **Explicit paths** — `adoc impacted-by <path>...` / MCP `paths`: repo-relative paths as emitted by `git diff --name-only`. Validated via `RelPath::try_new`; every invalid value yields one `impacted.invalid_path` diagnostic (all collected, not first-error).
+- **Git ref** — `adoc impacted-by --ref <git-ref>` / MCP `ref`: the changed set is derived by the V3.3 `GitChangedFilesProvider` with base = `GitRef(ref)`, head = `Workdir` — the exact `adoc review <ref>` selector shape, which is what makes the review-parity acceptance well-defined. No compile, no snapshot worktree.
+
+The changed set resolves **before** artifact load, so input errors short-circuit deterministically to an empty envelope that still ships.
+
+### Derivation and membership rules
+
+Scope is **verified subjects only** — claims with status `verified`, decisions with status `accepted` — via the same `is_verified_subject` gate as V3.3 `compute_impact`. A draft is already untrusted; flagging it adds nothing, and the shared scope guarantees `--ref main` parity with `adoc review main`'s `impact[]`. Per ADR-0038, `impacted_objects(objects, changed_paths)` in `domain/review/impact.rs` is a **sibling** of `compute_impact`, not a reuse: same exact per-path matching (no globs), inverse direction — current knowledge instead of a diff projection. It shares `impact_entry_for` for the `impacts:` route.
+
+Reason kinds, deduplicated on `(matched_path, kind, via_source_object)`:
+
+- **`impacts_path`** — the object's declared `impacts:` contains a changed path.
+- **`evidence_path`**, two routes:
+  - inline evidence whose kind is `source_code` or `test` and whose `value` equals a changed path (the kind filter keeps non-path values like `test: cargo test credits` from matching only by accident of content — and non-path kinds like `human_review` never match);
+  - object-ref evidence (`evidence_ref:`) whose referenced `source` object's `fields["path"]` equals a changed path — the hit carries `via_source_object: <source-id>`. **No kind filter on the ref side**: the target being a `source` object with a matching `path` is the rule. Referenced sources are resolved from the same object slice in a first pass — the function stays pure, no graph-index injection.
+
+The same path matched via `impacts:` and via evidence yields **two reasons on one record**. Each impacted record gets exactly one impact-review obligation via the shared `obligations_for_impact` (`required_evidence: ["source_code"]`), merged with `ProofObligation::merge_dedup_sorted`.
+
+**Clock-free by design**, like V6.2: no `evaluated_at`; the envelope is a pure function of the artifact bytes and the changed-path set.
+
+### Determinism and sorting
+
+`changed_paths` is the normalized query echo: sorted ascending, deduplicated, identical for both input shapes and on failure envelopes (whatever was resolved before the failure). Records sort by Object ID; reasons sort `(matched_path, kind ordinal impacts_path < evidence_path, via_source_object None < Some)` via the domain `ImpactReasonHit` `Ord`.
+
+### Edge cases (decided)
+
+- **Empty changed set** (e.g. `--ref` with no changes): empty `impacted`, exit 0 — `impacted_objects(objects, [])` is empty by the `compute_impact` precedent.
+- **Dangling `evidence_ref`** (target absent from the artifact) and **url-only sources** (no `path` field): no hit, no diagnostic — compile already owns reference validation.
+- **Duplicate inline evidence entries** for the same path: one reason.
+- **Non-verified subjects with matching paths** (draft claims, proposed decisions, constraints/procedures with `impacts:`): never listed. The Expanded Pilot's only `impacts:` declarations sit on a constraint and a procedure, which doubles as the scope-negative fixture.
+
+### Surfaces
+
+- **CLI:** `adoc impacted-by <path>... | --ref <git-ref> [--artifact <path>] --format auto|plain|styled|json|markdown`. Markdown joins diff/review as the third PR-comment presenter: `## Impacted by: <paths>` header, one bullet per record with reason annotations (`impacts` / `evidence via <source-id>`), then the same `## Proof obligations` task list as `adoc review`.
+- **MCP:** `adoc_impacted_by { project_root?, artifact?, paths?, ref? }` returning the envelope directly; the paths-XOR-ref violation is an `InvalidArguments` protocol error (there is no envelope to ship — the question itself is malformed at the argument layer).
+- **Exit codes** — a deliberate divergence from `adoc review`'s hard `error[review.failed]` path, per the ADR-0038 posture that a query emits its envelope even when the question was bad: `0` query ran (impacted or not); `1` user-input error (`impacted.invalid_path`, `impacted.ref_unresolvable`); `2` environment error (`impacted.git_unavailable`, artifact-load failure). JSON consumers always receive a valid `adoc.impacted.v0` envelope.
+
+### Module layout
+
+- `crates/adoc-core/src/domain/review/impact.rs` — `ImpactReasonKind`, `ImpactReasonHit`, pure `impacted_objects` beside `compute_impact`/`impact_entry_for`.
+- `crates/adoc-core/src/application/signals.rs` — `ImpactReason`/`ImpactedRecord`/`ImpactedEnvelope`, `evaluate_impacted`, path validation and `ChangedFilesError`-to-diagnostic mapping (shared module with V6.1/V6.2 per ADR-0038).
+- `crates/adoc-core/src/lib.rs` — `changed_files_from_git` (git changed set without a review compile), `validate_changed_paths`, `evaluate_impacted`, `empty_impacted_envelope`.
+- `crates/adoc-local/src/use_cases.rs` — `ImpactedChangedSet`, `ImpactedUseCase`, `impacted_exit_code` (the 1-vs-2 split beside `signal_query_exit_code`).
+- `crates/adoc-cli/src/commands/impacted_by.rs` — thin subcommand; `crates/adoc-cli/src/presentation/markdown.rs` — `write_impacted`.
+- `crates/adoc-mcp/src/lib.rs` — `adoc_impacted_by` tool; resources registered in `resources.rs`.
+
+### Acceptance (pinned in tests)
+
+Against the V3.3 billing-pilot impact fixture (`crates/adoc-cli/tests/review_cli.rs`): `adoc impacted-by crates/billing/src/refund.rs --format json` exits 0 with exactly `billing.refunds` (claim, verified, owner `team-billing`) under `reasons[].kind: "impacts_path"` and one impact-review obligation; `adoc impacted-by --ref main --format json` produces the same `(id, impacts_path paths)` set as `adoc review main`'s `impact[]` over the two-commit fixture. Against the Expanded Pilot (`crates/adoc-cli/tests/expanded_pilot.rs::expanded_pilot_impacted_by_query`): the `consume.use-case.ts` query returns exactly `billing.credits.consume` (claim, verified) and `billing.credits.use-ledger` (decision, accepted), each with one `evidence_path` reason `via_source_object: billing.consume-use-case` and one obligation; the constraint-declared `crates/auth/src/session.rs` query returns an empty set, exit 0.
 
 ## V6.4: Patch Apply — contract recorded at slice start (ADR-0036, ADR-0037)

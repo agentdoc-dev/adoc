@@ -376,6 +376,10 @@ _Avoid_: recompiling source to answer staleness, exit codes that gate on finding
 The V6.2 read command `adoc contradictions` / MCP tool `adoc_contradictions` (implemented): a graph-artifact reader emitting `adoc.contradictions.v0` — every `unresolved` contradiction (`--all` adds resolved/dismissed) joined with every contradicted claim and its implicating contradiction ids, so consumers never join the lists. Implication is recomputed at read time via the `unresolved_contradiction_claim_index` shared with the build-time projection. **Clock-free by design**: no `evaluated_at`, byte-identical output for the same artifact on any day; the envelope reports the contradiction axis only (the expiry axis is the **Stale Query**'s job). Sorted severity-descending then Object ID. See `docs/V6-DESIGN.md` §V6.2.
 _Avoid_: trusting the artifact's persisted `effective_status`, threading a clock into the contradictions path, `--all` changing `contradicted_claims`, consumers re-joining contradictions to claims
 
+**Impacted Query**:
+The V6.3 read command `adoc impacted-by` / MCP tool `adoc_impacted_by` (implemented): a graph-artifact reader emitting `adoc.impacted.v0` — the inverse of review impact: given changed source paths (explicit list XOR `--ref <git-ref>` against the working tree), every verified claim and accepted decision whose declared `impacts:` or evidence paths exactly match, with per-path `reasons` (`impacts_path` / `evidence_path`, optionally `via_source_object`) and one impact-review proof obligation each. `impacted_objects` is a pure sibling of `compute_impact` sharing `impact_entry_for` (ADR-0038); clock-free; exit 1 for bad input, 2 for environment failure, 0 otherwise. See `docs/V6-DESIGN.md` §V6.3.
+_Avoid_: reusing `compute_impact`'s diff projection, glob `impacts:` matching, listing non-verified subjects, recompiling source to answer impact
+
 ## Relationships
 
 - **AgentDoc Source** contains prose and typed blocks that compile into **Knowledge Objects**.

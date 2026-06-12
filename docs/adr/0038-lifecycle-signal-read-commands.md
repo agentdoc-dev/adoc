@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-06-11
-**Slice:** V6.1 (`adoc stale`); forward-records the shared design for V6.2 (`adoc contradictions`) and V6.3 (`adoc impacted-by`)
+**Slice:** V6.1 (`adoc stale`); forward-recorded the shared design for V6.2 (`adoc contradictions`) and V6.3 (`adoc impacted-by`) — all three implemented
 
 Recorded out of numeric order deliberately: ADR-0036 (patch application as
 formatting-preserving span splice) and ADR-0037 (MCP `adoc_patch_apply`
@@ -57,10 +57,10 @@ The V6.1–V6.3 commands (`adoc stale`, `adoc contradictions`,
    `adoc.contradictions.v0`, `adoc.impacted.v0`), JSON-Schema'd and
    contract-tested per ADR-0015, each with a paired MCP tool.
 4. **One module hosts the signal logic.** `application/signals.rs` owns the
-   pure evaluation functions (`evaluate_stale_for_date` now; the
-   contradictions listing next), keeping the session-loading pattern and the
-   sorting/determinism rules in one place.
-5. **`impacted_objects` will be a sibling of `compute_impact`, not a reuse.**
+   pure evaluation functions (`evaluate_stale_for_date`, the contradictions
+   listing, the impacted evaluation), keeping the session-loading pattern and
+   the sorting/determinism rules in one place.
+5. **`impacted_objects` is a sibling of `compute_impact`, not a reuse.**
    V6.3 adds a pure `impacted_objects(objects, changed_paths)` in
    `domain/review/impact.rs` answering the inverse-direction question over
    current knowledge, sharing `impact_entry_for` but not the diff projection.
@@ -82,6 +82,22 @@ axis only — a claim both expired and contradicted reads `stale` from
 `effective_status` slot keeps its stale-wins precedence. Sorting is severity
 descending then Object ID; `--all` widens only the contradictions listing,
 never `contradicted_claims`. Pinned in [V6-DESIGN.md](../V6-DESIGN.md) §V6.2.
+
+For `adoc impacted-by` specifically (V6.3, implemented): scope is verified
+subjects only (claim `verified` / decision `accepted`, the V3.3
+`is_verified_subject` gate), which guarantees `--ref main` parity with
+`adoc review main`'s `impact[]`. Reasons are exact per-path, no globs:
+`impacts_path` from the declared `impacts:` list, `evidence_path` from inline
+`source_code`/`test` evidence values or from a referenced `source` object's
+`path` field (`via_source_object`), resolved from the same object slice so
+the domain function stays pure. The envelope is clock-free, and each impacted
+record carries one impact-review obligation via the shared
+`obligations_for_impact`. Exit codes split user-input errors
+(`impacted.invalid_path`, `impacted.ref_unresolvable` → 1) from environment
+errors (`impacted.git_unavailable`, artifact-load failure → 2) — a deliberate
+divergence from `adoc review`'s hard `review.failed` error path: a query
+emits its envelope even when the question could not be derived. Pinned in
+[V6-DESIGN.md](../V6-DESIGN.md) §V6.3.
 
 ## Consequences
 

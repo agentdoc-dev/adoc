@@ -74,7 +74,7 @@ Deferred: automated contradiction detection (Later), resolution workflow command
 
 ### V6.3: `adoc impacted-by` Slice
 
-Goal: answer "this code changed — which knowledge is now suspect?" per PRD §21.6.
+Goal: answer "this code changed — which knowledge is now suspect?" per PRD §21.6. Implemented (ADR-0038, [V6-DESIGN.md](V6-DESIGN.md) §V6.3).
 
 Scope:
 
