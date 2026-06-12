@@ -604,6 +604,92 @@ fn patch_apply_revoke_rewrites_only_the_status_value() {
 }
 
 #[test]
+fn patch_apply_create_object_inserts_after_anchor() {
+    let workspace = build_apply_workspace("patch-apply-create");
+    workspace.write(
+        "patch.json",
+        &serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.ledger-claim",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Ledger commits settle credits.",
+                "placement": { "page_id": "team.billing", "after": "billing.credits" }
+            },
+            "reason": "Document ledger behavior."
+        })
+        .to_string(),
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["patch", "--apply", "patch.json", "--format", "json"])
+        .output()
+        .expect("adoc patch runs");
+
+    assert_eq!(output.status.code(), Some(0), "stderr:\n{}", stderr(&output));
+    let envelope: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("stdout is JSON");
+    assert_eq!(envelope["applied"], true);
+    assert_eq!(envelope["operation"], "create_object");
+
+    let rewritten =
+        std::fs::read_to_string(workspace.root.join("docs/billing.adoc")).expect("source readable");
+    assert!(rewritten.contains(
+        "Credits apply after payment.\n::\n\n::claim billing.ledger-claim\nstatus: draft\n--\nLedger commits settle credits.\n::\n"
+    ));
+}
+
+#[test]
+fn patch_apply_create_object_without_placement_exits_one() {
+    let workspace = build_apply_workspace("patch-apply-create-no-placement");
+    workspace.write(
+        "patch.json",
+        &serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.ledger-claim",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Ledger commits settle credits."
+            },
+            "reason": "Document ledger behavior."
+        })
+        .to_string(),
+    );
+
+    // --check accepts the placement-less proposal with a warning…
+    let check = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["patch", "--check", "patch.json", "--format", "json"])
+        .output()
+        .expect("adoc patch check runs");
+    assert_eq!(check.status.code(), Some(0), "stderr:\n{}", stderr(&check));
+    assert!(stdout(&check).contains("patch.create_missing_placement"));
+
+    // …but --apply refuses it as an error and writes nothing.
+    let original =
+        std::fs::read_to_string(workspace.root.join("docs/billing.adoc")).expect("source readable");
+    let apply = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["patch", "--apply", "patch.json", "--format", "json"])
+        .output()
+        .expect("adoc patch apply runs");
+    assert_eq!(apply.status.code(), Some(1));
+    let envelope: serde_json::Value =
+        serde_json::from_str(&stdout(&apply)).expect("stdout is JSON");
+    assert_eq!(envelope["applied"], false);
+    assert!(stdout(&apply).contains("patch.create_missing_placement"));
+    assert_eq!(
+        std::fs::read_to_string(workspace.root.join("docs/billing.adoc")).expect("source readable"),
+        original
+    );
+}
+
+#[test]
 fn patch_check_and_apply_flags_conflict() {
     let output = adoc_command()
         .args(["patch", "--check", "a.json", "--apply", "b.json"])

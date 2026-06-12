@@ -60,7 +60,10 @@ pub(crate) enum PatchIntent {
         status: Option<String>,
         body: String,
         fields: BTreeMap<String, String>,
-        placement: PlacementHint,
+        /// V6.4 TB3: optional on the wire. Absent placement is a WARNING on
+        /// `--check` and an ERROR on `--apply`
+        /// (`patch.create_missing_placement`).
+        placement: Option<PlacementHint>,
     },
     Supersede {
         base_hash: String,
@@ -182,7 +185,7 @@ impl PatchValidator<'_> {
                 status.as_deref(),
                 &body,
                 fields,
-                &placement,
+                placement.as_ref(),
             ),
             PatchIntent::Supersede {
                 base_hash,
@@ -357,7 +360,7 @@ impl PatchValidator<'_> {
         status: Option<&str>,
         body: &str,
         fields: BTreeMap<String, String>,
-        placement: &PlacementHint,
+        placement: Option<&PlacementHint>,
     ) {
         if self.graph.contains_object(target) {
             self.diagnostics.push(
@@ -381,8 +384,27 @@ impl PatchValidator<'_> {
         for obligation in draft_validation.proof_obligations {
             self.add_proof_obligation(&obligation.object_id, &obligation.reason);
         }
-        self.validate_placement(target, placement);
+        match placement {
+            Some(placement) => self.validate_placement(target, placement),
+            None => self.diagnostics.push(
+                Diagnostic::warning(
+                    DiagnosticCode::PatchCreateMissingPlacement,
+                    format!(
+                        "create_object for `{target}` has no placement; \
+                         --check accepts the proposal, --apply refuses it"
+                    ),
+                )
+                .with_object_id(target.as_str()),
+            ),
+        }
 
+        let placement_json = match placement {
+            Some(placement) => serde_json::json!({
+                "page_id": placement.page_id.clone(),
+                "after": placement.after.clone(),
+            }),
+            None => serde_json::Value::Null,
+        };
         self.diffs.push(PatchDiff {
             field: "object".to_string(),
             old: None,
@@ -392,10 +414,7 @@ impl PatchValidator<'_> {
                 "status": status,
                 "body": body,
                 "fields": fields,
-                "placement": {
-                    "page_id": placement.page_id.clone(),
-                    "after": placement.after.clone(),
-                }
+                "placement": placement_json,
             })),
         });
     }
@@ -741,10 +760,10 @@ mod tests {
                 status: status.map(str::to_string),
                 body: "Created body.".to_string(),
                 fields,
-                placement: PlacementHint {
+                placement: Some(PlacementHint {
                     page_id: "team.page".to_string(),
                     after: Some("billing.credits".to_string()),
-                },
+                }),
             },
             reason: "create object".to_string(),
             proposer: None,
@@ -835,10 +854,10 @@ mod tests {
                 status: Some("draft".to_string()),
                 body: "Created body.".to_string(),
                 fields: BTreeMap::new(),
-                placement: PlacementHint {
+                placement: Some(PlacementHint {
                     page_id: "team.missing".to_string(),
                     after: None,
-                },
+                }),
             },
             reason: "create new object".to_string(),
             proposer: None,
@@ -856,10 +875,10 @@ mod tests {
             status: Some("draft".to_string()),
             body: "Created body.".to_string(),
             fields: BTreeMap::new(),
-            placement: PlacementHint {
+            placement: Some(PlacementHint {
                 page_id: "team.page".to_string(),
                 after: Some("billing.credits".to_string()),
-            },
+            }),
         };
         let report = validate_patch(&graph, patch);
         assert!(report.valid);

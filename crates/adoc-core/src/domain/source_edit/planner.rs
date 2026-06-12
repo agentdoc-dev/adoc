@@ -159,6 +159,119 @@ pub(crate) fn plan_update_fields(
     SourceEditPlan::new(edits).map_err(|error| vec![internal_plan_error(error)])
 }
 
+/// Where `plan_create_object` inserts the rendered block (V6.4 TB3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CreateInsertion {
+    /// Immediately after the anchor block's closing `::` fence; the value is
+    /// the byte offset of the fence line's last content byte (its span end).
+    AfterCloseFence { close_fence_end: usize },
+    EndOfFile,
+}
+
+/// Render a complete typed block with deterministic field order: `status`
+/// merges into the field map so one sort rule covers everything.
+pub(crate) fn render_typed_block(
+    kind: &str,
+    id: &str,
+    status: Option<&str>,
+    fields: &BTreeMap<String, String>,
+    body: &str,
+    eol: LineEnding,
+) -> String {
+    let eol = eol.as_str();
+    let mut merged: BTreeMap<&str, &str> = fields
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    if let Some(status) = status {
+        merged.insert("status", status);
+    }
+
+    let mut output = format!("::{kind} {id}{eol}");
+    for (key, value) in merged {
+        output.push_str(key);
+        output.push_str(": ");
+        output.push_str(value);
+        output.push_str(eol);
+    }
+    output.push_str("--");
+    output.push_str(eol);
+    for line in body.split('\n') {
+        output.push_str(line.strip_suffix('\r').unwrap_or(line));
+        output.push_str(eol);
+    }
+    output.push_str("::");
+    output.push_str(eol);
+    output
+}
+
+/// Plan a `create_object` insertion: one separating blank line against the
+/// existing content, and the file stays newline-terminated.
+pub(crate) fn plan_create_object(
+    source: &str,
+    insertion: CreateInsertion,
+    kind: &str,
+    id: &str,
+    status: Option<&str>,
+    fields: &BTreeMap<String, String>,
+    body: &str,
+) -> Result<SourceEditPlan, Vec<Diagnostic>> {
+    let mut diagnostics = guard_body_lines(body);
+    for (key, value) in fields {
+        if value.contains('\n') || value.contains('\r') {
+            diagnostics.push(Diagnostic::error(
+                DiagnosticCode::PatchValidationFailed,
+                format!("field `{key}` value contains a line break and cannot be applied"),
+            ));
+        }
+        if !is_field_key(key) {
+            diagnostics.push(Diagnostic::error(
+                DiagnosticCode::PatchValidationFailed,
+                format!(
+                    "field key `{key}` does not match [a-z][a-z0-9_]* \
+                     and would not reparse as a field line"
+                ),
+            ));
+        }
+    }
+    if !diagnostics.is_empty() {
+        return Err(diagnostics);
+    }
+
+    let eol = LineEnding::detect(source);
+    let block = render_typed_block(kind, id, status, fields, body, eol);
+    let eol = eol.as_str();
+
+    let edit = match insertion {
+        CreateInsertion::AfterCloseFence { close_fence_end } => {
+            // Insert at the start of the line after the anchor's close fence,
+            // separated from the fence by one blank line. Whatever followed
+            // the anchor stays byte-identical after the inserted block.
+            let range = insertion_offset_after_line(source, close_fence_end);
+            SpanEdit {
+                byte_range: range,
+                replacement: format!("{eol}{block}"),
+            }
+        }
+        CreateInsertion::EndOfFile => {
+            let replacement = if source.is_empty() {
+                block
+            } else if source.ends_with('\n') {
+                format!("{eol}{block}")
+            } else {
+                // Terminate the unterminated last line, then separate.
+                format!("{eol}{eol}{block}")
+            };
+            SpanEdit {
+                byte_range: source.len()..source.len(),
+                replacement,
+            }
+        }
+    };
+
+    SourceEditPlan::new(vec![edit]).map_err(|error| vec![internal_plan_error(error)])
+}
+
 /// Reject body lines that would re-fence the block on reparse: a bare `::`
 /// closes the fence early, and a grammar-valid open-fence shape becomes a
 /// nested-block error.
