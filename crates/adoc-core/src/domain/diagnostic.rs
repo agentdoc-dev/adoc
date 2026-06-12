@@ -81,6 +81,7 @@ pub enum DiagnosticCode {
     PatchSourceDrift,
     PatchCreateMissingPlacement,
     PatchPlacementNotAdoc,
+    McpPatchApplyDisabled,
     SchemaImpactsInvalidPath,
     SchemaImpactsEmpty,
     SchemaPolicyMissingStatus,
@@ -211,6 +212,7 @@ impl DiagnosticCode {
             DiagnosticCode::PatchSourceDrift,
             DiagnosticCode::PatchCreateMissingPlacement,
             DiagnosticCode::PatchPlacementNotAdoc,
+            DiagnosticCode::McpPatchApplyDisabled,
             DiagnosticCode::SchemaImpactsInvalidPath,
             DiagnosticCode::SchemaImpactsEmpty,
             DiagnosticCode::SchemaPolicyMissingStatus,
@@ -327,6 +329,7 @@ impl DiagnosticCode {
             DiagnosticCode::PatchSourceDrift => "patch.source_drift",
             DiagnosticCode::PatchCreateMissingPlacement => "patch.create_missing_placement",
             DiagnosticCode::PatchPlacementNotAdoc => "patch.placement_not_adoc",
+            DiagnosticCode::McpPatchApplyDisabled => "mcp.patch_apply_disabled",
             DiagnosticCode::SchemaImpactsInvalidPath => "schema.impacts_invalid_path",
             DiagnosticCode::SchemaImpactsEmpty => "schema.impacts_empty",
             DiagnosticCode::SchemaPolicyMissingStatus => "schema.policy_missing_status",
@@ -583,6 +586,9 @@ impl DiagnosticCode {
             DiagnosticCode::PatchPlacementNotAdoc => {
                 "Place the new object on an .adoc page; .md pages cannot host typed blocks."
             }
+            DiagnosticCode::McpPatchApplyDisabled => {
+                "Set `mcp: { patch_apply: enabled }` in agentdoc.config.yaml to opt this project into MCP patch apply; adoc_patch_check remains available."
+            }
             DiagnosticCode::SchemaImpactsInvalidPath => {
                 "Use a repo-relative path under the project root; remove leading `/`, `..` segments, and blank entries."
             }
@@ -808,6 +814,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "patch.source_drift",
     "patch.create_missing_placement",
     "patch.placement_not_adoc",
+    "mcp.patch_apply_disabled",
     "schema.impacts_invalid_path",
     "schema.impacts_empty",
     "schema.policy_missing_status",
