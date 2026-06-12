@@ -903,7 +903,10 @@ fn validates_adoc_impacted_v0_envelope_against_schema() {
     assert_eq!(empty["impacted"], json!([]));
     assert_eq!(empty["proof_obligations"], json!([]));
 
-    // Exactly one of `paths` / `ref` — both and neither are argument errors.
+    // Exactly one of `paths` / `ref` — both, neither, and empty `paths` are
+    // argument errors. Empty `paths` mirrors the CLI, where clap treats an
+    // empty Vec as "not present": an agent forwarding an empty diff must get
+    // an argument error, not a silent empty envelope.
     for params in [
         ImpactedByParams {
             project_root: None,
@@ -915,6 +918,12 @@ fn validates_adoc_impacted_v0_envelope_against_schema() {
             project_root: None,
             artifact: None,
             paths: None,
+            git_ref: None,
+        },
+        ImpactedByParams {
+            project_root: None,
+            artifact: None,
+            paths: Some(Vec::new()),
             git_ref: None,
         },
     ] {
