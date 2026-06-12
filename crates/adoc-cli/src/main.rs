@@ -9,8 +9,9 @@ use clap::{Parser, error::ErrorKind};
 
 use crate::cli::{Cli, Commands};
 use crate::commands::{
-    DiffCommandInput, GraphCommandInput, PatchCommandInput, ReviewCommandInput, SearchCommandInput,
-    StaleCommandInput, build, check, diff, graph, init, patch, review, search_command, stale, why,
+    ContradictionsCommandInput, DiffCommandInput, GraphCommandInput, PatchCommandInput,
+    ReviewCommandInput, SearchCommandInput, StaleCommandInput, build, check, contradictions, diff,
+    graph, init, patch, review, search_command, stale, why,
 };
 use crate::presentation::{ResolvedFormat, terminal};
 
@@ -67,6 +68,9 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     },
                     resolved,
                 ),
+                Commands::Contradictions { artifact, all } => {
+                    contradictions(ContradictionsCommandInput { artifact, all }, resolved)
+                }
                 Commands::Patch { check, artifact } => patch(
                     PatchCommandInput {
                         patch_path: check,
