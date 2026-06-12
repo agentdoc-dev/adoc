@@ -11,12 +11,13 @@ use adoc_core::{
     DiagnosticCode, EmbeddingProviderSelection, GitRef, GraphArtifactInspectionInput,
     GraphDirection, GraphInput as CoreGraphInput, GraphRelationKind, GraphTraversalEnvelope,
     GraphTraversalQuery, GraphTraversalResult, ImpactedEnvelope, ObjectDiffEnvelope,
-    PatchCheckResult, PatchInput, RelPath, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
-    RetrievalRecord, ReviewEnvelope, ReviewError, ReviewInput as CoreReviewInput,
-    SearchArtifactInspectionInput, SearchFilters, SearchMode, SearchQuery, Severity,
-    SnapshotSelector, StaleEnvelope, build_workspace_with_embedding_provider,
+    PatchApplyInput as CorePatchApplyInput, PatchApplyResult, PatchCheckResult, PatchInput,
+    RelPath, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, RetrievalRecord,
+    ReviewEnvelope, ReviewError, ReviewInput as CoreReviewInput, SearchArtifactInspectionInput,
+    SearchFilters, SearchMode, SearchQuery, Severity, SnapshotSelector, StaleEnvelope,
+    apply_patch as core_apply_patch, build_workspace_with_embedding_provider,
     changed_files_from_git, changed_paths_strings, check_patch as core_check_patch,
-    compile_workspace, diff_objects, embed_query_with_embedding_provider,
+    compile_workspace, diff_objects, embed_query_with_embedding_provider, patch_apply_refusal,
     empty_contradictions_envelope, empty_impacted_envelope, empty_stale_envelope,
     evaluate_contradictions, evaluate_impacted, evaluate_stale, git_review_available,
     inspect_graph_artifact, inspect_search_artifact, load_graph_session,
@@ -207,6 +208,31 @@ pub struct PatchCheckInput {
 pub struct PatchCheckOutcome {
     #[serde(flatten)]
     pub result: PatchCheckResult,
+    pub exit_code: i32,
+}
+
+/// V6.4 — patch source for `adoc patch --apply` and the MCP
+/// `adoc_patch_apply` tool. Mirrors [`ReviewPatchSource`] (path vs inline
+/// JSON) so the same driving adapters can populate either variant.
+#[derive(Debug, Clone)]
+pub enum PatchApplySource {
+    Path(PathBuf),
+    Inline(serde_json::Value),
+}
+
+#[derive(Debug, Clone)]
+pub struct PatchApplyInput {
+    pub patch: PatchApplySource,
+    pub artifact: Option<PathBuf>,
+    /// Recorded in the envelope's `trace.interface` (`"cli"` or `"mcp"`).
+    pub interface: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PatchApplyOutcome {
+    #[serde(flatten)]
+    pub result: PatchApplyResult,
+    #[serde(skip)]
     pub exit_code: i32,
 }
 
@@ -524,6 +550,27 @@ where
 
     pub fn run(&self, input: PatchCheckInput) -> Result<PatchCheckOutcome, LocalError> {
         patch_check_with_context(&self.context, input)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PatchApplyUseCase<P>
+where
+    P: PathPolicy,
+{
+    context: LocalContext<P>,
+}
+
+impl<P> PatchApplyUseCase<P>
+where
+    P: PathPolicy,
+{
+    pub fn new(context: LocalContext<P>) -> Self {
+        Self { context }
+    }
+
+    pub fn run(&self, input: PatchApplyInput) -> Result<PatchApplyOutcome, LocalError> {
+        patch_apply_with_context(&self.context, input)
     }
 }
 
@@ -1178,6 +1225,65 @@ where
     Ok(PatchCheckOutcome { result, exit_code })
 }
 
+/// V6.4 — patch apply orchestration. The docs root resolves through the
+/// identical chain `check_with_context` uses: `content_hash` payloads embed
+/// source paths, so the apply-time recompile reproduces artifact hashes only
+/// when the docs root is spelled byte-identically to the one `adoc build`
+/// used. A parse failure becomes a refusal envelope (exit 1), not a process
+/// error.
+fn patch_apply_with_context<P>(
+    context: &LocalContext<P>,
+    input: PatchApplyInput,
+) -> Result<PatchApplyOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    let patch = match input.patch {
+        PatchApplySource::Path(path) => {
+            let resolved = context.path_policy().resolve_read_path(&path)?;
+            parse_patch_from_path(&resolved)
+        }
+        PatchApplySource::Inline(value) => parse_patch_from_value(value),
+    };
+    let patch = match patch {
+        Ok(patch) => patch,
+        Err(error) => {
+            let result = patch_apply_refusal(error.diagnostics().to_vec(), &input.interface);
+            return Ok(PatchApplyOutcome {
+                result,
+                exit_code: 1,
+            });
+        }
+    };
+
+    let artifact = input
+        .artifact
+        .as_deref()
+        .map(|path| context.path_policy().resolve_read_path(path))
+        .transpose()?;
+    let config = discover_project_config_if(true, context.config_start())?;
+    let graph_artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
+    let graph_artifact = context.path_policy().resolve_read_path(&graph_artifact)?;
+    let docs_root = resolve_docs_path_with_config(None, config.as_ref())?;
+    let docs_root = context.path_policy().resolve_read_path(&docs_root)?;
+    let project_root = context
+        .path_policy()
+        .resolve_write_path(context.config_start())?;
+
+    let result = core_apply_patch(
+        CorePatchApplyInput {
+            graph_artifact_path: graph_artifact,
+            docs_root,
+            project_root,
+            interface: input.interface,
+        },
+        patch,
+    );
+    let exit_code = patch_apply_exit_code(&result);
+
+    Ok(PatchApplyOutcome { result, exit_code })
+}
+
 fn project_status_with_context<P>(
     context: &LocalContext<P>,
     input: ProjectStatusInput,
@@ -1824,6 +1930,20 @@ fn patch_exit_code(result: &PatchCheckResult) -> i32 {
         0
     } else {
         exit_code_for_diagnostics(&result.diagnostics, patch_diagnostic_exit_code).max(1)
+    }
+}
+
+/// V6.4 apply exit codes (ADR-0036), deliberately distinct from the check's
+/// 0–4 map: `0` applied and post-check clean; `1` refused, nothing written
+/// (including a stale `base_hash`); `2` applied but the post-check reports
+/// new errors — agents must treat `2` as "stop and surface to a human".
+fn patch_apply_exit_code(result: &PatchApplyResult) -> i32 {
+    if !result.applied {
+        1
+    } else if result.post_check.error_count > 0 {
+        2
+    } else {
+        0
     }
 }
 
