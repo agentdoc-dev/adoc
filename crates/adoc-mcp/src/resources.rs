@@ -71,6 +71,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/patch-contract.md"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/patch-apply-guide",
+        name: "agent-patch-apply-guide",
+        title: "Patch Apply Guide",
+        description: "V6.4 gated apply loop: propose, check, apply, re-check, cite the post-check.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/patch-apply-guide.md"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/project-status-guide",
         name: "agent-project-status-guide",
         title: "Project Status Guide",
@@ -269,6 +277,14 @@ const RESOURCES: &[AgentResource] = &[
         description: "JSON Schema for adoc.impacted.v0.",
         mime_type: JSON_SCHEMA,
         contents: include_str!("../../../docs/agent/v0/schema/adoc.impacted.v0.schema.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.patch.apply.v0.schema.json",
+        name: "schema-adoc-patch-apply-v0-json",
+        title: "Patch Apply JSON Schema",
+        description: "JSON Schema for adoc.patch.apply.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.patch.apply.v0.schema.json"),
     },
 ];
 
