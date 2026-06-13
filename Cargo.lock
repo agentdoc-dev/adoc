@@ -33,6 +33,7 @@ name = "adoc-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dirs",
  "fastembed",
  "pulldown-cmark",
  "serde",

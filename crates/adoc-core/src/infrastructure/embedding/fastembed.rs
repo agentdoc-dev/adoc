@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
@@ -16,7 +17,12 @@ pub(crate) struct FastEmbedProvider {
 
 impl FastEmbedProvider {
     pub(crate) fn try_new() -> Result<Self, EmbeddingError> {
-        let model = TextEmbedding::try_new(InitOptions::new(EmbeddingModel::BGESmallENV15))
+        let mut options = InitOptions::new(EmbeddingModel::BGESmallENV15);
+        if let Some(cache_dir) = resolve_cache_dir() {
+            options = options.with_cache_dir(cache_dir);
+        }
+
+        let model = TextEmbedding::try_new(options)
             .map_err(|error| EmbeddingError::ModelLoad(error.to_string()))?;
 
         Ok(Self {
@@ -102,6 +108,28 @@ impl EmbeddingProvider for FastEmbedProvider {
         let vectors = self.validate_vector_dimensions(self.embed_texts(vec![query])?)?;
         query_vector_from_fastembed_response(vectors)
     }
+}
+
+/// Resolves a stable, absolute cache directory for the downloaded embedding
+/// model so the same cache is shared across every working directory.
+///
+/// Without this, fastembed defaults to `./.fastembed_cache` relative to the
+/// process's current directory, which re-downloads the ~128 MB model into a new
+/// folder each time the binary or a test runs from a different cwd.
+///
+/// Resolution order:
+/// 1. `FASTEMBED_CACHE_DIR` (the env var fastembed itself honours) — explicit override.
+/// 2. The per-user OS cache dir (`~/Library/Caches` on macOS, `~/.cache` on Linux)
+///    under `adoc/fastembed`.
+///
+/// Returns `None` only when no cache directory can be determined, in which case
+/// the caller leaves fastembed on its default behaviour.
+fn resolve_cache_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("FASTEMBED_CACHE_DIR") {
+        return Some(PathBuf::from(dir));
+    }
+
+    dirs::cache_dir().map(|base| base.join("adoc").join("fastembed"))
 }
 
 fn format_query_for_passage_search(query: &str) -> String {

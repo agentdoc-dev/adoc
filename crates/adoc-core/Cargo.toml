@@ -7,12 +7,13 @@ rust-version.workspace = true
 
 [features]
 default = ["embeddings"]
-embeddings = ["dep:fastembed"]
+embeddings = ["dep:fastembed", "dep:dirs"]
 fastembed-it = ["embeddings"]
 test-embedding-provider = []
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+dirs = { version = "6", optional = true }
 fastembed = { version = "5", optional = true }
 pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
 serde = { version = "1", features = ["derive"] }
