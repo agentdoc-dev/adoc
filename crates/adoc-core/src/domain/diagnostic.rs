@@ -853,14 +853,12 @@ impl DiagnosticCode {
                 "Remove `resolved_by` or set `status: answered`."
             }
             DiagnosticCode::SchemaTaskMissingOwner => {
-                "Add a non-empty `owner` field to the task; a task without an owner is a wish."
+                "Tasks require a non-empty `owner` field; a task without an owner is a wish."
             }
             DiagnosticCode::SchemaTaskMissingStatus => {
-                "Add a `status` field to the task: one of open, done."
+                "Tasks require non-empty `status`. Valid task statuses are: open, done."
             }
-            DiagnosticCode::SchemaTaskInvalidStatus => {
-                "Use a valid task status: one of open, done."
-            }
+            DiagnosticCode::SchemaTaskInvalidStatus => "Valid task statuses are: open, done.",
             DiagnosticCode::SchemaTaskInvalidDue => "Use a valid `YYYY-MM-DD` date for `due`.",
             DiagnosticCode::TaskOverdue => {
                 "Complete the task and set `status: done`, or move its `due` date."

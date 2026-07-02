@@ -21,11 +21,6 @@ use crate::domain::values::{Body, OptionalFields, trim_ascii_edges};
 const STATUS_FIELD: &str = "status";
 pub(crate) const DUE_FIELD: &str = "due";
 
-const TASK_MISSING_STATUS_HELP: &str =
-    "Tasks require non-empty `status`. Valid task statuses are: open, done.";
-const TASK_INVALID_STATUS_HELP: &str = "Valid task statuses are: open, done.";
-const TASK_MISSING_OWNER_HELP: &str =
-    "Tasks require a non-empty `owner` field; a task without an owner is a wish.";
 const TASK_MISSING_BODY_HELP: &str = "Tasks require non-empty body text describing the action.";
 
 /// A documentation action item (PRD §13.11, V6.5.4).
@@ -217,12 +212,12 @@ fn emit_task_error(parsed: &ParsedTypedBlock, error: TaskError, diagnostics: &mu
                 parsed.id_text
             ),
         )
-        .with_help(TASK_MISSING_STATUS_HELP),
+        .with_help(DiagnosticCode::SchemaTaskMissingStatus.default_help()),
         TaskError::InvalidStatus(status) => Diagnostic::error(
             DiagnosticCode::SchemaTaskInvalidStatus,
             format!("task `{}` has invalid status `{status}`", parsed.id_text),
         )
-        .with_help(TASK_INVALID_STATUS_HELP),
+        .with_help(DiagnosticCode::SchemaTaskInvalidStatus.default_help()),
         TaskError::MissingOwner => Diagnostic::error(
             DiagnosticCode::SchemaTaskMissingOwner,
             format!(
@@ -230,7 +225,7 @@ fn emit_task_error(parsed: &ParsedTypedBlock, error: TaskError, diagnostics: &mu
                 parsed.id_text
             ),
         )
-        .with_help(TASK_MISSING_OWNER_HELP),
+        .with_help(DiagnosticCode::SchemaTaskMissingOwner.default_help()),
         TaskError::InvalidDue(value) => Diagnostic::error(
             DiagnosticCode::SchemaTaskInvalidDue,
             format!(
