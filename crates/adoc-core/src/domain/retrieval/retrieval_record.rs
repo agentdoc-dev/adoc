@@ -47,6 +47,12 @@ pub struct RetrievalRecord {
     /// evidence entry. `None` otherwise. Clone-through from the graph node.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence_quality: Option<String>,
+    /// V6.5.3: IDs of answered questions whose `resolved_by` names this
+    /// object. Populated only on the `adoc why` path; always empty (and
+    /// omitted from serialization) on search records — additive within
+    /// `adoc.retrieval.v0`, byte-stable when empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub resolved_questions: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -192,6 +198,7 @@ impl RetrievalRecord {
             effective_status: object.effective_status.clone(),
             effective_reason: object.effective_reason.clone(),
             evidence_quality: object.evidence_quality.clone(),
+            resolved_questions: Vec::new(),
         }
     }
 }

@@ -7,6 +7,7 @@ use crate::domain::artifact::{SearchArtifactDocument, SearchModelHeader};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::graph::{GraphArtifactDocument, GraphIndex, GraphTraversalQuery};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
+use crate::domain::knowledge_object::question::{ANSWERED_STATUS, RESOLVED_BY_FIELD};
 use crate::domain::ports::artifact_reader::ArtifactReader;
 pub use crate::domain::retrieval::SearchFilters;
 use crate::domain::retrieval::hybrid_ranker::HybridRanker;
@@ -243,8 +244,10 @@ pub fn why_object(session: &RetrievalSession, id: &str) -> WhyResult {
     };
 
     if let Some(object) = session.graph_session.object(&object_id) {
+        let mut record = RetrievalRecord::from(object);
+        record.resolved_questions = resolved_questions(session, &object.id);
         return WhyResult {
-            records: vec![RetrievalRecord::from(object)],
+            records: vec![record],
             diagnostics: Vec::new(),
         };
     }
@@ -262,6 +265,22 @@ pub fn why_object(session: &RetrievalSession, id: &str) -> WhyResult {
             ),
         ],
     }
+}
+
+/// V6.5.3: answered questions whose `resolved_by` names `target_id`. `why` is
+/// a single-record path, so a one-pass reverse scan over the session's
+/// question nodes beats building an index. Search records never populate this.
+fn resolved_questions(session: &RetrievalSession, target_id: &str) -> Vec<String> {
+    session
+        .graph_session
+        .objects()
+        .filter(|object| {
+            object.kind == "question"
+                && object.status.as_deref() == Some(ANSWERED_STATUS)
+                && object.fields.get(RESOLVED_BY_FIELD).map(String::as_str) == Some(target_id)
+        })
+        .map(|object| object.id.clone())
+        .collect()
 }
 
 pub fn search(session: &RetrievalSession, query: SearchQuery) -> SearchResult {

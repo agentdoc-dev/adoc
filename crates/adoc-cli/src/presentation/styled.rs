@@ -270,6 +270,7 @@ mod tests {
             effective_status: None,
             effective_reason: None,
             evidence_quality: None,
+            resolved_questions: Vec::new(),
         }
     }
 
@@ -384,6 +385,7 @@ mod tests {
             effective_status: None,
             effective_reason: None,
             evidence_quality: None,
+            resolved_questions: Vec::new(),
         };
         let view = view_for(record);
         let text = strip_ansi(&render(&view));
@@ -487,6 +489,7 @@ mod tests {
             effective_status: None,
             effective_reason: None,
             evidence_quality: None,
+            resolved_questions: Vec::new(),
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -757,6 +760,7 @@ mod tests {
             effective_status: None,
             effective_reason: None,
             evidence_quality: None,
+            resolved_questions: Vec::new(),
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -807,6 +811,7 @@ mod tests {
             effective_status: None,
             effective_reason: None,
             evidence_quality: None,
+            resolved_questions: Vec::new(),
         };
         let view = view_for(record);
         let raw = render(&view);
@@ -850,6 +855,7 @@ mod tests {
             effective_status: None,
             effective_reason: None,
             evidence_quality: None,
+            resolved_questions: Vec::new(),
         };
         let view = view_for(record);
         let raw = render(&view);
