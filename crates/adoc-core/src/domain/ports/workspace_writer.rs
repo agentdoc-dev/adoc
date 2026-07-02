@@ -37,7 +37,11 @@ impl fmt::Display for WorkspaceWriteError {
 /// One file per patch (ADR-0036). The implementation must be atomic per file
 /// — temp file in the same directory, write, fsync, re-hash the target
 /// immediately before rename, refuse on mismatch — and must never touch the
-/// target on any error path. Cross-process locking is an explicit non-goal.
+/// target on any error path. Cross-process locking is an explicit non-goal,
+/// and so is closing the last instant before the rename: a target swapped
+/// for a symlink after containment resolution is refused when observed, but
+/// a swap landing between that final check and `rename(2)` is accepted risk,
+/// same as any other concurrent writer.
 pub(crate) trait WorkspaceWriter {
     fn read_to_string(&self, path: &Path) -> Result<String, WorkspaceWriteError>;
 
