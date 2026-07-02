@@ -135,6 +135,11 @@ pub enum FieldChange {
         before: Option<String>,
         after: Option<String>,
     },
+    /// V6.5.4: the `due` date on a `task` object changed.
+    Due {
+        before: Option<String>,
+        after: Option<String>,
+    },
 }
 
 impl FieldChange {
@@ -175,6 +180,7 @@ impl FieldChange {
             FieldChange::ApiMethod { .. } => "method changed",
             FieldChange::ApiPath { .. } => "path changed",
             FieldChange::QuestionResolvedBy { .. } => "resolved_by changed",
+            FieldChange::Due { .. } => "due changed",
         }
     }
 }
@@ -276,6 +282,12 @@ impl fmt::Display for FieldChange {
             FieldChange::QuestionResolvedBy { before, after } => write!(
                 f,
                 "resolved_by: {} → {}",
+                optional(before.as_deref()),
+                optional(after.as_deref())
+            ),
+            FieldChange::Due { before, after } => write!(
+                f,
+                "due: {} → {}",
                 optional(before.as_deref()),
                 optional(after.as_deref())
             ),
@@ -1036,6 +1048,42 @@ mod tests {
             }
             .to_string(),
             "path: /a → /b"
+        );
+    }
+
+    // ── V6.5.4 task variants ───────────────────────────────────────────────
+
+    #[test]
+    fn due_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::Due {
+            before: Some("2026-05-20".to_string()),
+            after: Some("2026-06-30".to_string()),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(value["type"], "due");
+        assert_eq!(value["before"], "2026-05-20");
+        assert_eq!(value["after"], "2026-06-30");
+    }
+
+    #[test]
+    fn summary_label_and_display_cover_v6_5_task_due_variant() {
+        assert_eq!(
+            FieldChange::Due {
+                before: None,
+                after: None,
+            }
+            .summary_label(),
+            "due changed"
+        );
+        assert_eq!(
+            FieldChange::Due {
+                before: Some("2026-05-20".to_string()),
+                after: None,
+            }
+            .to_string(),
+            "due: 2026-05-20 → (none)"
         );
     }
 

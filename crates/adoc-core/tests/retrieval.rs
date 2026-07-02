@@ -2204,3 +2204,40 @@ fn question_object_body_is_lexically_findable() {
     assert_eq!(record.kind, "question");
     assert_eq!(record.status.as_deref(), Some("open"));
 }
+
+// ── V6.5.4: task Knowledge Object retrieval coverage ────────────────────────
+
+/// The retrieval pipeline is kind-generic by construction: a `task` node's
+/// body is BM25-findable and its record echoes kind, lifecycle status, and
+/// the owner/due riding the fields map.
+#[test]
+fn task_object_is_lexically_findable_with_owner_and_due_fields() {
+    let mut task = retrieval_search_object(
+        "billing.update-support-runbook",
+        "task",
+        Some("open"),
+        Some("support-ops"),
+        "docs/billing-tasks.adoc",
+        "Update the support runbook to mention refund behavior after persistence failure.",
+    );
+    task["fields"]["due"] = json!("2026-05-20");
+
+    let session = load_session_from_objects(vec![task]);
+
+    let result = search(
+        &session,
+        lexical_query("support runbook refund", 3, SearchFilters::default()),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), vec!["billing.update-support-runbook"]);
+    let record = &result.records[0];
+    assert_eq!(record.kind, "task");
+    assert_eq!(record.status.as_deref(), Some("open"));
+    // `owner` is a typed record slot, not a generic fields entry.
+    assert_eq!(record.owner.as_deref(), Some("support-ops"));
+    assert_eq!(
+        record.fields.get("due").map(String::as_str),
+        Some("2026-05-20")
+    );
+}
