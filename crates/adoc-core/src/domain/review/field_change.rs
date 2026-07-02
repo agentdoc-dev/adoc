@@ -130,6 +130,11 @@ pub enum FieldChange {
         before: Option<String>,
         after: Option<String>,
     },
+    /// V6.5.3: the `resolved_by` on a `question` object changed.
+    QuestionResolvedBy {
+        before: Option<String>,
+        after: Option<String>,
+    },
 }
 
 impl FieldChange {
@@ -169,6 +174,7 @@ impl FieldChange {
             FieldChange::ContradictionClaimsRemoved { .. } => "contradiction_claims removed",
             FieldChange::ApiMethod { .. } => "method changed",
             FieldChange::ApiPath { .. } => "path changed",
+            FieldChange::QuestionResolvedBy { .. } => "resolved_by changed",
         }
     }
 }
@@ -264,6 +270,12 @@ impl fmt::Display for FieldChange {
             FieldChange::ApiPath { before, after } => write!(
                 f,
                 "path: {} → {}",
+                optional(before.as_deref()),
+                optional(after.as_deref())
+            ),
+            FieldChange::QuestionResolvedBy { before, after } => write!(
+                f,
+                "resolved_by: {} → {}",
                 optional(before.as_deref()),
                 optional(after.as_deref())
             ),

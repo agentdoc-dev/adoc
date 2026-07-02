@@ -2120,3 +2120,33 @@ fn observation_object_is_lexically_findable_with_metadata_fields() {
         Some("2026-04-30")
     );
 }
+
+// ── V6.5.3: question Knowledge Object retrieval coverage ────────────────────
+
+/// The retrieval pipeline is kind-generic by construction: a `question`
+/// node's body is BM25-findable and its record echoes kind and lifecycle
+/// status.
+#[test]
+fn question_object_body_is_lexically_findable() {
+    let question = retrieval_search_object(
+        "billing.trial-credit-expiration",
+        "question",
+        Some("open"),
+        Some("product-growth"),
+        "docs/billing-questions.adoc",
+        "Should unused trial credits expire after 30 days or remain available indefinitely?",
+    );
+
+    let session = load_session_from_objects(vec![question]);
+
+    let result = search(
+        &session,
+        lexical_query("trial credits expire", 3, SearchFilters::default()),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), vec!["billing.trial-credit-expiration"]);
+    let record = &result.records[0];
+    assert_eq!(record.kind, "question");
+    assert_eq!(record.status.as_deref(), Some("open"));
+}
