@@ -6,12 +6,19 @@ use std::path::{Path, PathBuf};
 /// Why a workspace write was refused or failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum WorkspaceWriteError {
-    Io { path: PathBuf, message: String },
+    Io {
+        path: PathBuf,
+        message: String,
+    },
     /// The path escapes the writer's sandbox root.
-    OutsideSandbox { path: PathBuf },
+    OutsideSandbox {
+        path: PathBuf,
+    },
     /// The on-disk file no longer matches the hash the edit plan was built
     /// against (TOCTOU guard) — nothing was written.
-    ConcurrentModification { path: PathBuf },
+    ConcurrentModification {
+        path: PathBuf,
+    },
 }
 
 impl fmt::Display for WorkspaceWriteError {

@@ -720,7 +720,10 @@ fn read_json_line(stdout: &mut impl BufRead) -> serde_json::Value {
 // V6.4 TB4 — gated adoc_patch_apply
 // ---------------------------------------------------------------------------
 
-fn patch_apply_project(name: &str, mcp_block: &str) -> (tempfile::TempDir, AgentDocMcpServer, String) {
+fn patch_apply_project(
+    name: &str,
+    mcp_block: &str,
+) -> (tempfile::TempDir, AgentDocMcpServer, String) {
     let _ = name;
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();
@@ -804,8 +807,14 @@ fn patch_apply_refuses_with_one_fix_oriented_diagnostic_when_disabled() {
     assert_eq!(diagnostics.len(), 1, "exactly one diagnostic");
     assert_eq!(diagnostics[0]["code"], "mcp.patch_apply_disabled");
     let message = diagnostics[0]["message"].as_str().expect("message");
-    assert!(message.contains("mcp: { patch_apply: enabled }"), "names the config key: {message}");
-    assert!(message.contains("adoc_patch_check"), "names the fallback: {message}");
+    assert!(
+        message.contains("mcp: { patch_apply: enabled }"),
+        "names the config key: {message}"
+    );
+    assert!(
+        message.contains("adoc_patch_check"),
+        "names the fallback: {message}"
+    );
 
     assert_eq!(
         fs::read_to_string(workspace.path().join("docs/billing.adoc")).expect("source"),
@@ -836,8 +845,7 @@ fn patch_apply_applies_through_the_sandboxed_use_case_when_enabled() {
     assert_eq!(envelope["artifacts_stale"], true);
     assert_eq!(envelope["trace"]["interface"], "mcp");
 
-    let rewritten =
-        fs::read_to_string(workspace.path().join("docs/billing.adoc")).expect("source");
+    let rewritten = fs::read_to_string(workspace.path().join("docs/billing.adoc")).expect("source");
     assert!(rewritten.contains("Credits apply after ledger commit."));
     assert_eq!(
         rewritten,
@@ -884,7 +892,10 @@ fn propose_patch_v0_prompt_stays_byte_stable_and_v1_is_apply_aware() {
         .as_str()
         .expect("text")
         .to_string();
-    assert_eq!(v0_text, PINNED_V0_BODY, "adoc_propose_patch_v0 must stay byte-stable (ADR-0014)");
+    assert_eq!(
+        v0_text, PINNED_V0_BODY,
+        "adoc_propose_patch_v0 must stay byte-stable (ADR-0014)"
+    );
 
     let alias = server
         .get_agent_prompt("adoc_propose_patch", None)

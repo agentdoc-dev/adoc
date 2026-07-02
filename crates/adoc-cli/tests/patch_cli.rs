@@ -382,7 +382,12 @@ fn patch_apply_json_rewrites_body_and_exits_zero() {
         .output()
         .expect("adoc patch runs");
 
-    assert_eq!(output.status.code(), Some(0), "stderr:\n{}", stderr(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr:\n{}",
+        stderr(&output)
+    );
     let envelope: serde_json::Value =
         serde_json::from_str(&stdout(&output)).expect("stdout is JSON");
     assert_eq!(envelope["schema_version"], "adoc.patch.apply.v0");
@@ -483,7 +488,10 @@ fn patch_apply_with_post_check_errors_exits_two_and_keeps_the_write() {
     );
     let written =
         std::fs::read_to_string(workspace.root.join("docs/billing.adoc")).expect("source readable");
-    assert!(written.contains("no.such.object"), "the write stays on disk");
+    assert!(
+        written.contains("no.such.object"),
+        "the write stays on disk"
+    );
 }
 
 #[test]
@@ -511,7 +519,12 @@ fn patch_apply_reads_inline_patch_from_stdin_with_at_dash() {
         .expect("write patch to stdin");
     let output = child.wait_with_output().expect("adoc patch runs");
 
-    assert_eq!(output.status.code(), Some(0), "stderr:\n{}", stderr(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr:\n{}",
+        stderr(&output)
+    );
     let envelope: serde_json::Value =
         serde_json::from_str(&stdout(&output)).expect("stdout is JSON");
     assert_eq!(envelope["applied"], true);
@@ -542,7 +555,12 @@ fn patch_apply_supersede_rewrites_only_the_supersedes_field_line() {
         .output()
         .expect("adoc patch runs");
 
-    assert_eq!(output.status.code(), Some(0), "stderr:\n{}", stderr(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr:\n{}",
+        stderr(&output)
+    );
     let envelope: serde_json::Value =
         serde_json::from_str(&stdout(&output)).expect("stdout is JSON");
     assert_eq!(envelope["applied"], true);
@@ -585,7 +603,12 @@ fn patch_apply_revoke_rewrites_only_the_status_value() {
         .output()
         .expect("adoc patch runs");
 
-    assert_eq!(output.status.code(), Some(0), "stderr:\n{}", stderr(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr:\n{}",
+        stderr(&output)
+    );
     let envelope: serde_json::Value =
         serde_json::from_str(&stdout(&output)).expect("stdout is JSON");
     assert_eq!(envelope["applied"], true);
@@ -629,7 +652,12 @@ fn patch_apply_create_object_inserts_after_anchor() {
         .output()
         .expect("adoc patch runs");
 
-    assert_eq!(output.status.code(), Some(0), "stderr:\n{}", stderr(&output));
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr:\n{}",
+        stderr(&output)
+    );
     let envelope: serde_json::Value =
         serde_json::from_str(&stdout(&output)).expect("stdout is JSON");
     assert_eq!(envelope["applied"], true);

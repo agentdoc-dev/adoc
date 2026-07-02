@@ -226,7 +226,9 @@ fn home_boundary() -> Option<PathBuf> {
 mod tests {
     use super::*;
 
-    fn config_in_tempdir(contents: &str) -> (tempfile::TempDir, Result<Option<ProjectConfig>, LocalError>) {
+    fn config_in_tempdir(
+        contents: &str,
+    ) -> (tempfile::TempDir, Result<Option<ProjectConfig>, LocalError>) {
         let dir = tempfile::tempdir().expect("create tempdir");
         fs::write(dir.path().join(CONFIG_FILE_NAME), contents).expect("write config");
         let result = ProjectConfig::discover_from(dir.path());

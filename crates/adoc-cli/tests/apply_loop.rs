@@ -31,7 +31,10 @@ const NEW_BODY: &str = "Credit consumption is settled ledger-first by the use-ca
 
 fn pilot_workspace(name: &str) -> TestWorkspace {
     let workspace = TestWorkspace::new(name);
-    copy_tree(&repo_root().join("examples/expanded-pilot"), &workspace.root);
+    copy_tree(
+        &repo_root().join("examples/expanded-pilot"),
+        &workspace.root,
+    );
     workspace
 }
 
@@ -128,8 +131,7 @@ fn expanded_pilot_apply_loop() {
 
     // 2. Baselines before the apply.
     let (_, stale_before) = run_json(&workspace, &["stale", "--format", "json"]);
-    let (_, contradictions_before) =
-        run_json(&workspace, &["contradictions", "--format", "json"]);
+    let (_, contradictions_before) = run_json(&workspace, &["contradictions", "--format", "json"]);
 
     // 3. Apply the proposed body update.
     write_patch(&workspace, &content_hash(&workspace, TARGET));
@@ -211,8 +213,7 @@ fn expanded_pilot_apply_loop() {
     //    identities, not raw bytes.
     build(&workspace);
     let (_, stale_after) = run_json(&workspace, &["stale", "--format", "json"]);
-    let (_, contradictions_after) =
-        run_json(&workspace, &["contradictions", "--format", "json"]);
+    let (_, contradictions_after) = run_json(&workspace, &["contradictions", "--format", "json"]);
     assert_eq!(
         stale_after["records"], stale_before["records"],
         "adoc stale records unchanged by the apply"

@@ -512,8 +512,15 @@ where
         None => CreateInsertion::EndOfFile,
     };
 
-    let plan = match plan_create_object(&original_text, insertion, kind, target, status, fields, body)
-    {
+    let plan = match plan_create_object(
+        &original_text,
+        insertion,
+        kind,
+        target,
+        status,
+        fields,
+        body,
+    ) {
         Ok(plan) => plan,
         Err(diagnostics) => return PatchApplyResult::refused_with_check(check, trace, diagnostics),
     };
@@ -758,7 +765,10 @@ Original body line.
     }
 
     fn content_hash(document: &GraphArtifactDocument, id: &str) -> String {
-        find_object(document, id).expect("object present").content_hash.clone()
+        find_object(document, id)
+            .expect("object present")
+            .content_hash
+            .clone()
     }
 
     fn replace_body_patch(base_hash: &str, body: &str) -> PatchDocument {
@@ -776,7 +786,11 @@ Original body line.
         }
     }
 
-    fn apply(fs: &SharedFs, document: GraphArtifactDocument, patch: PatchDocument) -> PatchApplyResult {
+    fn apply(
+        fs: &SharedFs,
+        document: GraphArtifactDocument,
+        patch: PatchDocument,
+    ) -> PatchApplyResult {
         apply_patch_with_ports(
             Path::new("dist/docs.graph.json"),
             patch,
@@ -793,7 +807,11 @@ Original body line.
         let document = built_artifact(&fs);
         let base_hash = content_hash(&document, "billing.credits");
 
-        let result = apply(&fs, document, replace_body_patch(&base_hash, "New body line."));
+        let result = apply(
+            &fs,
+            document,
+            replace_body_patch(&base_hash, "New body line."),
+        );
 
         assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
         assert_eq!(result.schema_version, PATCH_APPLY_SCHEMA_VERSION);
@@ -814,7 +832,10 @@ Original body line.
             Some(base_hash.as_str())
         );
         assert!(result.object.after_content_hash.is_some());
-        assert_ne!(result.object.before_content_hash, result.object.after_content_hash);
+        assert_ne!(
+            result.object.before_content_hash,
+            result.object.after_content_hash
+        );
         assert_eq!(result.trace.interface, "cli");
         assert_eq!(
             result.trace.proposer.as_ref().map(|p| p.kind.as_str()),
@@ -872,8 +893,12 @@ Original body line.
         assert!(!result.post_check.ran);
         assert!(!result.artifacts_stale);
         assert!(!result.check.as_ref().expect("check embedded").valid);
-        assert!(result.diagnostics.iter().any(|diagnostic| diagnostic.code
-            == DiagnosticCode::PatchBaseHashMismatch));
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::PatchBaseHashMismatch)
+        );
         assert_eq!(fs.read(PAGE_PATH), PAGE_TEXT, "refusal must write nothing");
     }
 
@@ -887,7 +912,9 @@ Original body line.
         // body — the patch's base_hash still matches the (stale) artifact.
         fs.files.borrow_mut().insert(
             PathBuf::from(PAGE_PATH),
-            PAGE_TEXT.replace("Original body line.", "Moved-on body line.").to_string(),
+            PAGE_TEXT
+                .replace("Original body line.", "Moved-on body line.")
+                .to_string(),
         );
 
         let result = apply(&fs, document, replace_body_patch(&base_hash, "New body."));
@@ -974,7 +1001,9 @@ Original body line.
         assert!(!result.applied);
         assert_eq!(result.diagnostics[0].code, DiagnosticCode::PatchSourceDrift);
         assert!(
-            result.diagnostics[0].message.contains("changed during apply"),
+            result.diagnostics[0]
+                .message
+                .contains("changed during apply"),
             "message: {}",
             result.diagnostics[0].message
         );
@@ -1006,7 +1035,10 @@ Original body line.
 
         assert!(!result.applied);
         assert!(result.check.is_none());
-        assert_eq!(result.diagnostics[0].code, DiagnosticCode::IoArtifactMissing);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::IoArtifactMissing
+        );
     }
 
     fn create_patch(
@@ -1056,7 +1088,11 @@ Original body line.
         let result = apply(
             &fs,
             document,
-            create_patch("billing.new-claim", placement("docs.billing", None), BTreeMap::new()),
+            create_patch(
+                "billing.new-claim",
+                placement("docs.billing", None),
+                BTreeMap::new(),
+            ),
         );
 
         assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
@@ -1167,11 +1203,18 @@ Trailing prose stays put.
         let fs = SharedFs::with_file(PAGE_PATH, PAGE_TEXT);
         let document = built_artifact(&fs);
 
-        let result = apply(&fs, document, create_patch("billing.new-claim", None, BTreeMap::new()));
+        let result = apply(
+            &fs,
+            document,
+            create_patch("billing.new-claim", None, BTreeMap::new()),
+        );
 
         assert!(!result.applied);
         let check = result.check.as_ref().expect("check embedded");
-        assert!(check.valid, "check accepts a placement-less create proposal");
+        assert!(
+            check.valid,
+            "check accepts a placement-less create proposal"
+        );
         assert!(check.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == DiagnosticCode::PatchCreateMissingPlacement
                 && diagnostic.severity == Severity::Warning
@@ -1196,7 +1239,11 @@ Trailing prose stays put.
         let result = apply(
             &fs,
             document,
-            create_patch("billing.new-claim", placement("docs.notes", None), BTreeMap::new()),
+            create_patch(
+                "billing.new-claim",
+                placement("docs.notes", None),
+                BTreeMap::new(),
+            ),
         );
 
         assert!(!result.applied);
@@ -1335,7 +1382,11 @@ Original body line.
         let base_nodes = knowledge_objects(&document);
         let base_hash = content_hash(&document, "billing.credits");
 
-        let result = apply(&fs, document, replace_body_patch(&base_hash, "New body line."));
+        let result = apply(
+            &fs,
+            document,
+            replace_body_patch(&base_hash, "New body line."),
+        );
         assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
 
         let head_nodes = knowledge_objects(&built_artifact(&fs));

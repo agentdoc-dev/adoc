@@ -17,13 +17,14 @@ use adoc_core::{
     SearchFilters, SearchMode, SearchQuery, Severity, SnapshotSelector, StaleEnvelope,
     apply_patch as core_apply_patch, build_workspace_with_embedding_provider,
     changed_files_from_git, changed_paths_strings, check_patch as core_check_patch,
-    compile_workspace, diff_objects, embed_query_with_embedding_provider, patch_apply_refusal,
+    compile_workspace, diff_objects, embed_query_with_embedding_provider,
     empty_contradictions_envelope, empty_impacted_envelope, empty_stale_envelope,
     evaluate_contradictions, evaluate_impacted, evaluate_stale, git_review_available,
     inspect_graph_artifact, inspect_search_artifact, load_graph_session,
     load_retrieval_session_with_embedding_provider, load_review_from_git,
     load_review_with_changed_files_from_git, parse_patch_from_path, parse_patch_from_value,
-    review_with_patch, search as core_search, traverse_graph, validate_changed_paths, why_object,
+    patch_apply_refusal, review_with_patch, search as core_search, traverse_graph,
+    validate_changed_paths, why_object,
 };
 use serde::Serialize;
 
