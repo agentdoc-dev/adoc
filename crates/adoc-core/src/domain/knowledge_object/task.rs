@@ -26,7 +26,6 @@ const TASK_MISSING_STATUS_HELP: &str =
 const TASK_INVALID_STATUS_HELP: &str = "Valid task statuses are: open, done.";
 const TASK_MISSING_OWNER_HELP: &str =
     "Tasks require a non-empty `owner` field; a task without an owner is a wish.";
-const TASK_INVALID_DUE_HELP: &str = "Use a valid `YYYY-MM-DD` date for `due`.";
 const TASK_MISSING_BODY_HELP: &str = "Tasks require non-empty body text describing the action.";
 
 /// A documentation action item (PRD §13.11, V6.5.4).
@@ -232,16 +231,14 @@ fn emit_task_error(parsed: &ParsedTypedBlock, error: TaskError, diagnostics: &mu
             ),
         )
         .with_help(TASK_MISSING_OWNER_HELP),
-        // Reuses the generic field code — the roadmap's task vocabulary is the
-        // closed four-code set; `due` misuse is an ordinary field-value error.
         TaskError::InvalidDue(value) => Diagnostic::error(
-            DiagnosticCode::SchemaMissingField,
+            DiagnosticCode::SchemaTaskInvalidDue,
             format!(
                 "task `{}` has invalid `due` value `{value}`",
                 parsed.id_text
             ),
         )
-        .with_help(TASK_INVALID_DUE_HELP),
+        .with_help(DiagnosticCode::SchemaTaskInvalidDue.default_help()),
         TaskError::MissingBody => Diagnostic::error(
             DiagnosticCode::SchemaMissingField,
             format!("task `{}` is missing required body", parsed.id_text),
@@ -477,7 +474,7 @@ mod tests {
         assert!(
             diagnostics
                 .iter()
-                .any(|d| d.code == DiagnosticCode::SchemaMissingField
+                .any(|d| d.code == DiagnosticCode::SchemaTaskInvalidDue
                     && d.message.contains("invalid `due` value")),
             "expected invalid-due diagnostic, got: {diagnostics:?}"
         );

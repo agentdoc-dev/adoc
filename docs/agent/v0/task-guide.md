@@ -15,7 +15,7 @@ A `task` object records tracked documentation work: the action in prose (the bod
 | `owner` | Non-empty accountable party |
 | `body` | Non-empty prose describing the action |
 
-Missing or invalid values emit `schema.task_missing_status` / `schema.task_invalid_status` / `schema.task_missing_owner`.
+Missing or invalid values emit `schema.task_missing_status` / `schema.task_invalid_status` / `schema.task_missing_owner` / `schema.task_invalid_due`.
 
 ## Optional fields
 
