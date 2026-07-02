@@ -264,6 +264,45 @@ mod tests {
         );
     }
 
+    /// V6.5.2: observation has no typed `FieldChange` variants — an edit to a
+    /// fields-map scalar like `sample_size` flips the content hash and
+    /// surfaces as a `changed` entry whose base/head fields carry the delta.
+    #[test]
+    fn observation_sample_size_edit_produces_fields_map_delta() {
+        let mut base_node = test_node("onboarding.credit-confusion", "sha256:base-observation");
+        base_node.kind = "observation".to_string();
+        base_node.status = Some("observed".to_string());
+        base_node
+            .fields
+            .insert("sample_size".to_string(), "37".to_string());
+        let mut head_node = base_node.clone();
+        head_node.content_hash = "sha256:head-observation".to_string();
+        head_node
+            .fields
+            .insert("sample_size".to_string(), "52".to_string());
+
+        let diff = ObjectDiff::compute(&[base_node], &[head_node]);
+
+        assert_eq!(diff.changed().len(), 1);
+        let entry = &diff.changed()[0];
+        assert_eq!(entry.id, "onboarding.credit-confusion");
+        assert_eq!(
+            entry.base.fields.get("sample_size").map(String::as_str),
+            Some("37")
+        );
+        assert_eq!(
+            entry.head.fields.get("sample_size").map(String::as_str),
+            Some("52")
+        );
+        // No typed FieldChange variant claims the delta — the fields map is
+        // the carrier (unlike api's method/path).
+        assert!(
+            entry.field_changes.is_empty(),
+            "unexpected typed field changes: {:?}",
+            entry.field_changes
+        );
+    }
+
     #[test]
     fn diff_arrays_are_sorted_by_object_id_regardless_of_input_order() {
         let base = vec![
