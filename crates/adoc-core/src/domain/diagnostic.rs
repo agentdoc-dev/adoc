@@ -149,6 +149,9 @@ pub enum DiagnosticCode {
     /// V6.5.3: the `resolved_by:` on a question names an Object ID that exists
     /// but is neither a `claim` nor a `decision`.
     SchemaQuestionResolvedByWrongKind,
+    /// V6.5.3: a non-`answered` question carries a `resolved_by:` field —
+    /// only answered questions name the object that answered them.
+    SchemaQuestionUnexpectedResolvedBy,
     /// V5.8 TB2: the `evidence_ref:` on a claim names an Object ID that does
     /// not exist anywhere in the workspace.
     SchemaEvidenceTargetNotFound,
@@ -293,6 +296,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaQuestionAnsweredMissingResolvedBy,
             DiagnosticCode::SchemaQuestionResolvedByNotFound,
             DiagnosticCode::SchemaQuestionResolvedByWrongKind,
+            DiagnosticCode::SchemaQuestionUnexpectedResolvedBy,
             DiagnosticCode::SchemaEvidenceTargetNotFound,
             DiagnosticCode::SchemaEvidenceTargetNotASource,
             DiagnosticCode::ClaimEvidenceQualityLow,
@@ -476,6 +480,9 @@ impl DiagnosticCode {
             }
             DiagnosticCode::SchemaQuestionResolvedByWrongKind => {
                 "schema.question_resolved_by_wrong_kind"
+            }
+            DiagnosticCode::SchemaQuestionUnexpectedResolvedBy => {
+                "schema.question_unexpected_resolved_by"
             }
             DiagnosticCode::SchemaEvidenceTargetNotFound => "schema.evidence_target_not_found",
             DiagnosticCode::SchemaEvidenceTargetNotASource => "schema.evidence_target_not_a_source",
@@ -823,6 +830,9 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaQuestionResolvedByWrongKind => {
                 "`resolved_by` must reference a `claim` or `decision` object — the knowledge that answered the question."
             }
+            DiagnosticCode::SchemaQuestionUnexpectedResolvedBy => {
+                "Remove `resolved_by` or set `status: answered`."
+            }
             DiagnosticCode::SchemaEvidenceTargetNotFound => {
                 "Ensure every `evidence_ref` ID refers to an existing `source` object in the workspace."
             }
@@ -988,6 +998,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.question_answered_missing_resolved_by",
     "schema.question_resolved_by_not_found",
     "schema.question_resolved_by_wrong_kind",
+    "schema.question_unexpected_resolved_by",
     "schema.evidence_target_not_found",
     "schema.evidence_target_not_a_source",
     "claim.evidence_quality_low",

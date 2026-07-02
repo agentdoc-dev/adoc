@@ -47,6 +47,20 @@ Should unused trial credits expire after 30 days or remain available indefinitel
 ::
 ";
 
+const OPEN_WITH_RESOLVED_BY_QUESTION: &str = "\
+# Billing Questions @doc(team.billing-questions)
+
+Open questions tracked by the billing team.
+
+::question billing.trial-credit-expiration
+owner: product-growth
+status: open
+resolved_by: billing.credits-expire
+--
+Should unused trial credits expire after 30 days or remain available indefinitely?
+::
+";
+
 const RESOLVED_BY_NOT_FOUND_QUESTION: &str = "\
 # Billing Questions @doc(team.billing-questions)
 
@@ -167,6 +181,30 @@ fn check_rejects_answered_question_without_resolved_by() {
     assert!(
         combined.contains("error[schema.question_answered_missing_resolved_by]"),
         "expected answered-missing-resolved_by diagnostic, got:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+}
+
+#[test]
+fn check_rejects_resolved_by_on_open_question() {
+    let workspace = TestWorkspace::new("question-open-with-resolved-by");
+    workspace.write("questions.adoc", OPEN_WITH_RESOLVED_BY_QUESTION);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", "questions.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected check to fail for an open question carrying resolved_by"
+    );
+    let combined = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(
+        combined.contains("error[schema.question_unexpected_resolved_by]"),
+        "expected unexpected-resolved_by diagnostic, got:\nstdout:\n{}\nstderr:\n{}",
         stdout(&output),
         stderr(&output)
     );

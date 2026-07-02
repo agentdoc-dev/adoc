@@ -50,9 +50,6 @@ pub(crate) enum QuestionError {
     MissingBody,
     AnsweredMissingResolvedBy,
     InvalidResolvedBy(ObjectIdError),
-    // Constructed only by the test-only `try_new`; `build_from_parsed` leaves
-    // a `resolved_by:` on an open question in the optional fields map instead.
-    #[allow(dead_code)]
     UnexpectedResolvedBy,
 }
 
@@ -89,9 +86,10 @@ impl Question {
             .as_deref()
             .and_then(Owner::try_new);
 
-        // `resolved_by` is typed only on answered questions; on open questions
-        // it rides the optional fields map untouched (the api precedent for
-        // verification fields on non-verified apis).
+        // `resolved_by` is typed only on answered questions. On a question
+        // whose status is known and not `answered`, its presence is an error
+        // (V6.5.3) — left in the untyped fields map it would enter the graph
+        // and diff projection unvalidated.
         let resolved_by = if status.is_some_and(QuestionStatus::is_answered) {
             match parse_resolved_by(&mut parsed) {
                 Ok(resolved_by) => Some(Some(resolved_by)),
@@ -100,6 +98,9 @@ impl Question {
                     None
                 }
             }
+        } else if status.is_some() && parsed.raw_fields.contains_key(RESOLVED_BY_FIELD) {
+            emit_question_error(&parsed, QuestionError::UnexpectedResolvedBy, diagnostics);
+            None
         } else {
             Some(None)
         };
@@ -263,9 +264,14 @@ fn emit_question_error(
             ),
         )
         .with_help(OBJECT_ID_GRAMMAR_HELP),
-        QuestionError::UnexpectedResolvedBy => {
-            unreachable!("open questions keep `resolved_by` in the optional fields map")
-        }
+        QuestionError::UnexpectedResolvedBy => Diagnostic::error(
+            DiagnosticCode::SchemaQuestionUnexpectedResolvedBy,
+            format!(
+                "question `{}` has `resolved_by` but its status is not `answered`",
+                parsed.id_text
+            ),
+        )
+        .with_help(DiagnosticCode::SchemaQuestionUnexpectedResolvedBy.default_help()),
     };
     diagnostics.push(
         diagnostic
@@ -539,9 +545,9 @@ mod tests {
     }
 
     #[test]
-    fn build_from_parsed_keeps_resolved_by_on_open_question_in_optional_fields() {
-        // An open question authoring `resolved_by:` is not the aggregate's
-        // concern — the field rides the optional fields map like any other.
+    fn build_from_parsed_rejects_resolved_by_on_open_question() {
+        // V6.5.3: an open question authoring `resolved_by:` is an error —
+        // production now enforces the invariant `try_new` always had.
         let parsed = parsed_question(BTreeMap::from([
             ("status".to_string(), "open".to_string()),
             (
@@ -551,18 +557,17 @@ mod tests {
         ]));
         let mut diagnostics = Vec::new();
 
-        let question =
-            Question::build_from_parsed(parsed, &mut diagnostics).expect("valid question");
+        let question = Question::build_from_parsed(parsed, &mut diagnostics);
 
-        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
-        assert!(question.resolved_by().is_none());
+        assert!(question.is_none());
+        assert_eq!(diagnostics.len(), 1);
         assert_eq!(
-            question
-                .fields()
-                .iter()
-                .next()
-                .map(|(key, value)| (key.as_str(), value.as_str())),
-            Some(("resolved_by", "billing.credits-expire"))
+            diagnostics[0].code,
+            DiagnosticCode::SchemaQuestionUnexpectedResolvedBy
+        );
+        assert_eq!(
+            diagnostics[0].object_id.as_deref(),
+            Some("billing.trial-credit-expiration")
         );
     }
 

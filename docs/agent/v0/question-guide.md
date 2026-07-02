@@ -28,6 +28,7 @@ A missing status emits `schema.question_missing_status`.
 An `answered` question must point at the knowledge that answered it:
 
 - `status: answered` without `resolved_by:` emits `schema.question_answered_missing_resolved_by`.
+- `resolved_by:` on a question whose status is not `answered` emits `schema.question_unexpected_resolved_by`.
 - `resolved_by:` naming an Object ID that does not exist emits `schema.question_resolved_by_not_found`.
 - `resolved_by:` naming an object that is not a `claim` or `decision` (e.g. a `glossary` term) emits `schema.question_resolved_by_wrong_kind`.
 
