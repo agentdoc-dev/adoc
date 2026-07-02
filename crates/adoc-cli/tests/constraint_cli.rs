@@ -50,7 +50,7 @@ fn check_accepts_valid_constraint() {
 }
 
 #[test]
-fn build_emits_constraint_into_graph_v3() {
+fn build_emits_constraint_into_graph_v4() {
     let workspace = TestWorkspace::new("constraint-build");
     workspace.write("constraint.adoc", VALID_CONSTRAINT);
 
@@ -71,7 +71,7 @@ fn build_emits_constraint_into_graph_v3() {
         .expect("graph artifact is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph json parses");
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v3");
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
 
     let constraint = graph["nodes"]
         .as_array()
@@ -81,9 +81,9 @@ fn build_emits_constraint_into_graph_v3() {
         .expect("graph contains a constraint node");
 
     assert_eq!(constraint["id"], "auth.session.no-local-storage");
-    // `status` keeps carrying the severity discriminant within adoc.graph.v3;
-    // the dedicated `severity` field is the ADR-0035 dual-emit.
-    assert_eq!(constraint["status"], "critical");
+    // ADR-0039: constraints carry no lifecycle status; `severity` is the
+    // sole, authored, hashed carrier.
+    assert!(constraint.get("status").is_none());
     assert_eq!(constraint["severity"], "critical");
     assert_eq!(
         constraint["body"],

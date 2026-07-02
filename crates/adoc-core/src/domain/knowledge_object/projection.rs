@@ -23,6 +23,11 @@ const URL_FIELD: &str = "url";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct KnowledgeObjectMetadata<'a> {
     discriminant: Option<MetadataDiscriminant<'a>>,
+    /// ADR-0039: the authored severity for `warning`/`constraint`/
+    /// `contradiction`. Lives beside the lifecycle discriminant, never in it.
+    severity: Option<&'a Severity>,
+    /// ADR-0039: the authored trust level for `agent_instruction`.
+    trust: Option<&'a Trust>,
     fields: Vec<MetadataField<'a>>,
     /// V5.8: typed evidence entries, separated from the flat `fields` map.
     /// These are converted to `GraphEvidence` and stored in
@@ -46,26 +51,16 @@ impl<'a> KnowledgeObjectMetadata<'a> {
         &self.evidence
     }
 
-    /// ADR-0035: the typed severity for kinds that carry one — `warning` and
-    /// `constraint` store it as the status-slot discriminant; `contradiction`
-    /// stores it as a metadata field. `None` for every other kind.
+    /// ADR-0039: the typed severity for `warning`/`constraint`/
+    /// `contradiction`. `None` for every other kind.
     pub(crate) fn severity(&self) -> Option<&'a Severity> {
-        if let Some(MetadataDiscriminant::Severity(severity)) = self.discriminant {
-            return Some(severity);
-        }
-        self.fields.iter().find_map(|field| match field {
-            MetadataField::Severity(severity) => Some(*severity),
-            _ => None,
-        })
+        self.severity
     }
 
-    /// ADR-0035: the typed trust level for `agent_instruction` (stored as the
-    /// status-slot discriminant). `None` for every other kind.
+    /// ADR-0039: the typed trust level for `agent_instruction`. `None` for
+    /// every other kind.
     pub(crate) fn trust(&self) -> Option<&'a Trust> {
-        match self.discriminant {
-            Some(MetadataDiscriminant::Trust(trust)) => Some(trust),
-            _ => None,
-        }
+        self.trust
     }
 
     /// Convert the typed evidence slice to the `GraphEvidence` wire format.
@@ -91,6 +86,11 @@ impl<'a> KnowledgeObjectMetadata<'a> {
     }
 }
 
+/// ADR-0039: lifecycle-only by construction. Kinds without a lifecycle
+/// (`warning`, `constraint`, `agent_instruction`, `source`) have no
+/// discriminant; their Severity/Trust live in the dedicated projection slots.
+// The uniform `Status` postfix is the point: every variant IS a lifecycle status.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MetadataDiscriminant<'a> {
     ClaimStatus(&'a ClaimStatus),
@@ -98,12 +98,7 @@ pub(crate) enum MetadataDiscriminant<'a> {
     PolicyStatus(&'a PolicyStatus),
     ProcedureStatus(&'a ProcedureStatus),
     ExampleStatus(&'a ExampleStatus),
-    Severity(&'a Severity),
-    /// V5.5: trust level for `agent_instruction`. Stored in the graph node's
-    /// `status` slot so it participates in the diff projection correctly.
-    Trust(&'a Trust),
-    /// V5.6: lifecycle status for `contradiction`. Stored in the graph node's
-    /// `status` slot so it participates in the diff projection correctly.
+    /// V5.6: lifecycle status for `contradiction`.
     ContradictionStatus(&'a ContradictionStatus),
 }
 
@@ -115,8 +110,6 @@ impl<'a> MetadataDiscriminant<'a> {
             Self::PolicyStatus(status) => status.as_str(),
             Self::ProcedureStatus(status) => status.as_str(),
             Self::ExampleStatus(status) => status.as_str(),
-            Self::Severity(severity) => severity.as_str(),
-            Self::Trust(trust) => trust.as_str(),
             Self::ContradictionStatus(status) => status.as_str(),
         }
     }
@@ -125,7 +118,6 @@ impl<'a> MetadataDiscriminant<'a> {
 const EFFECTIVE_AT_FIELD: &str = "effective_at";
 const REVIEW_INTERVAL_FIELD: &str = "review_interval";
 const SCOPE_FIELD: &str = "scope";
-const SEVERITY_FIELD: &str = "severity";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MetadataField<'a> {
@@ -145,10 +137,6 @@ pub(crate) enum MetadataField<'a> {
     ReviewInterval(&'a ReviewInterval),
     /// V5.5: agent_instruction `scope` glob string.
     Scope(&'a Scope),
-    /// V5.6: contradiction `severity` typed value. Emitted as a metadata field
-    /// (key `severity`) so it appears in the graph `fields` map; it is NOT the
-    /// discriminant (the discriminant is the `ContradictionStatus`).
-    Severity(&'a Severity),
 }
 
 impl MetadataField<'_> {
@@ -161,7 +149,6 @@ impl MetadataField<'_> {
             Self::EffectiveAt(_) => EFFECTIVE_AT_FIELD,
             Self::ReviewInterval(_) => REVIEW_INTERVAL_FIELD,
             Self::Scope(_) => SCOPE_FIELD,
-            Self::Severity(_) => SEVERITY_FIELD,
         }
     }
 
@@ -174,7 +161,6 @@ impl MetadataField<'_> {
             Self::EffectiveAt(effective_at) => effective_at.as_str(),
             Self::ReviewInterval(review_interval) => review_interval.as_str(),
             Self::Scope(scope) => scope.as_str(),
-            Self::Severity(severity) => severity.as_str(),
         }
     }
 }
@@ -191,6 +177,8 @@ impl KnowledgeObject {
             .collect();
 
         let mut evidence: Vec<&Evidence> = Vec::new();
+        let mut severity: Option<&Severity> = None;
+        let mut trust: Option<&Trust> = None;
 
         let discriminant = match self {
             Self::Claim(claim) => {
@@ -207,9 +195,15 @@ impl KnowledgeObject {
                 Some(MetadataDiscriminant::DecisionStatus(decision.status()))
             }
             Self::Glossary(_) => None,
-            Self::Warning(warning) => Some(MetadataDiscriminant::Severity(warning.severity())),
+            // ADR-0039: warning/constraint have no lifecycle — severity lives
+            // in its dedicated slot, never in the status discriminant.
+            Self::Warning(warning) => {
+                severity = Some(warning.severity());
+                None
+            }
             Self::Constraint(constraint) => {
-                Some(MetadataDiscriminant::Severity(constraint.severity()))
+                severity = Some(constraint.severity());
+                None
             }
             Self::Policy(policy) => {
                 fields.push(MetadataField::Owner(policy.owner()));
@@ -229,10 +223,13 @@ impl KnowledgeObject {
             }
             Self::AgentInstruction(ai) => {
                 fields.push(MetadataField::Scope(ai.scope()));
-                Some(MetadataDiscriminant::Trust(ai.trust()))
+                trust = Some(ai.trust());
+                None
             }
             Self::Contradiction(contradiction) => {
-                fields.push(MetadataField::Severity(contradiction.severity()));
+                // ADR-0039: severity's sole home is the dedicated slot — the
+                // v3 fields["severity"] copy is gone.
+                severity = Some(contradiction.severity());
                 Some(MetadataDiscriminant::ContradictionStatus(
                     contradiction.status(),
                 ))
@@ -262,6 +259,8 @@ impl KnowledgeObject {
 
         KnowledgeObjectMetadata {
             discriminant,
+            severity,
+            trust,
             fields,
             evidence,
         }
@@ -502,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    fn warning_projection_has_severity_discriminant_and_sorted_stored_fields() {
+    fn warning_projection_is_lifecycle_free_with_dedicated_severity_slot() {
         let object = KnowledgeObject::Warning(
             Warning::try_new(
                 "auth.session",
@@ -519,12 +518,9 @@ mod tests {
 
         let projection = object.metadata_projection();
 
-        assert_eq!(
-            projection
-                .discriminant()
-                .map(MetadataDiscriminant::value_as_str),
-            Some("critical")
-        );
+        // ADR-0039: no lifecycle discriminant; severity has its own slot.
+        assert_eq!(projection.discriminant(), None);
+        assert_eq!(projection.severity().map(|s| s.as_str()), Some("critical"));
         assert_eq!(
             field_entries(&projection),
             vec![entry("audience", "sre"), entry("owner", "platform")]

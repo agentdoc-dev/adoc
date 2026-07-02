@@ -12,7 +12,7 @@ use crate::domain::knowledge_object::{
     contradiction::Contradiction,
     policy::Policy,
     procedure::ordered_step_marker_len,
-    projection::{KnowledgeObjectMetadata, MetadataDiscriminant, MetadataField},
+    projection::{KnowledgeObjectMetadata, MetadataField},
 };
 use crate::domain::url_safety::verdict;
 use crate::infrastructure::artifact::graph_json::derive_effective_status;
@@ -373,7 +373,7 @@ fn render_glossary(
     html: &mut String,
 ) {
     render_object_section_open(knowledge_object, "glossary", html);
-    render_object_header(knowledge_object, metadata.discriminant(), html);
+    render_object_header(knowledge_object, status_badge(metadata), html);
     render_object_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
@@ -384,11 +384,11 @@ fn render_warning(
     metadata: &KnowledgeObjectMetadata<'_>,
     html: &mut String,
 ) {
-    let discriminant = severity_discriminant(metadata);
-    let class = format!("warning warning--{}", discriminant.value_as_str());
+    let severity = required_severity(metadata);
+    let class = format!("warning warning--{severity}");
 
     render_object_section_open(knowledge_object, &class, html);
-    render_object_header(knowledge_object, Some(discriminant), html);
+    render_object_header(knowledge_object, Some(("severity", severity)), html);
     render_object_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
@@ -399,11 +399,11 @@ fn render_constraint(
     metadata: &KnowledgeObjectMetadata<'_>,
     html: &mut String,
 ) {
-    let discriminant = severity_discriminant(metadata);
-    let class = format!("constraint constraint--{}", discriminant.value_as_str());
+    let severity = required_severity(metadata);
+    let class = format!("constraint constraint--{severity}");
 
     render_object_section_open(knowledge_object, &class, html);
-    render_object_header(knowledge_object, Some(discriminant), html);
+    render_object_header(knowledge_object, Some(("severity", severity)), html);
     render_object_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
@@ -414,20 +414,13 @@ fn render_contradiction(
     metadata: &KnowledgeObjectMetadata<'_>,
     html: &mut String,
 ) {
-    // For contradiction the discriminant is the status; severity is a field.
-    // Use `metadata.discriminant()` directly for status, and read severity
-    // from the MetadataField list (the existing `severity_discriminant` helper
-    // assumes the discriminant IS severity, which is wrong for contradiction).
+    // For contradiction the discriminant is the lifecycle status; severity
+    // lives in its dedicated ADR-0039 slot.
     let status_str = metadata
         .discriminant()
         .map(|d| d.value_as_str())
         .unwrap_or("unresolved");
-    let severity_str = metadata
-        .fields()
-        .iter()
-        .find(|f| f.key() == "severity")
-        .map(|f| f.value_as_str())
-        .unwrap_or("low");
+    let severity_str = required_severity(metadata);
     let class =
         format!("contradiction contradiction--{status_str} contradiction--severity-{severity_str}");
 
@@ -438,7 +431,7 @@ fn render_contradiction(
     html.push_str(&escape_html(severity_str));
     html.push_str("</span>\n");
 
-    render_object_header(knowledge_object, metadata.discriminant(), html);
+    render_object_header(knowledge_object, status_badge(metadata), html);
 
     // Status line.
     html.push_str("<p class=\"contradiction__status\">status: ");
@@ -516,7 +509,7 @@ fn render_procedure(
     html: &mut String,
 ) {
     render_object_section_open(knowledge_object, "procedure", html);
-    render_object_header(knowledge_object, metadata.discriminant(), html);
+    render_object_header(knowledge_object, status_badge(metadata), html);
     render_procedure_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);
     html.push_str("</section>\n");
@@ -528,7 +521,7 @@ fn render_policy(
     html: &mut String,
 ) {
     render_object_section_open(knowledge_object, "policy", html);
-    render_object_header(knowledge_object, metadata.discriminant(), html);
+    render_object_header(knowledge_object, status_badge(metadata), html);
     render_object_body(knowledge_object, html);
 
     // Approval block: list effective_at, each approver, and optional review_interval.
@@ -569,7 +562,8 @@ fn render_agent_instruction(
     // ADR-0025: mandatory "NOT runtime ACL" banner — exact text is non-negotiable.
     html.push_str("<div class=\"agent_instruction__banner\"><p>Agent Instruction. Authored knowledge, NOT runtime ACL. See <a href=\"adoc://agent/v0/agent-instruction-guide\">agent-instruction-guide</a>.</p></div>\n");
 
-    render_object_header(knowledge_object, metadata.discriminant(), html);
+    let trust_badge = metadata.trust().map(|trust| ("trust", trust.as_str()));
+    render_object_header(knowledge_object, trust_badge, html);
 
     let KnowledgeObject::AgentInstruction(ai) = knowledge_object else {
         unreachable!("render_agent_instruction called with non-agent_instruction object");
@@ -707,7 +701,7 @@ fn render_example(
     html: &mut String,
 ) {
     render_object_section_open(knowledge_object, "example", html);
-    render_object_header(knowledge_object, metadata.discriminant(), html);
+    render_object_header(knowledge_object, status_badge(metadata), html);
 
     // Render optional checks/sandbox metadata above the code body.
     let KnowledgeObject::Example(example) = knowledge_object else {
@@ -753,12 +747,11 @@ fn render_example(
     html.push_str("</section>\n");
 }
 
-fn severity_discriminant<'a>(metadata: &KnowledgeObjectMetadata<'a>) -> MetadataDiscriminant<'a> {
-    match metadata.discriminant() {
-        Some(discriminant @ MetadataDiscriminant::Severity(_)) => discriminant,
-        Some(_) => unreachable!("severity-bearing kind metadata projection must use severity"),
-        None => unreachable!("severity-bearing kind metadata projection must include severity"),
-    }
+fn required_severity<'a>(metadata: &KnowledgeObjectMetadata<'a>) -> &'a str {
+    metadata
+        .severity()
+        .map(|severity| severity.as_str())
+        .expect("severity-bearing kind metadata projection must include severity")
 }
 
 fn render_decision(
@@ -772,7 +765,7 @@ fn render_decision(
         "decision"
     };
     render_object_section_open(knowledge_object, class, html);
-    render_object_header(knowledge_object, metadata.discriminant(), html);
+    render_object_header(knowledge_object, status_badge(metadata), html);
     render_object_body(knowledge_object, html);
     if let Some(decided_by) = accepted_decision_field(metadata) {
         html.push_str("<div class=\"decision__verdict\"><dl>");
@@ -798,7 +791,7 @@ fn render_claim(
         "claim"
     };
     render_object_section_open(knowledge_object, class, html);
-    render_object_header(knowledge_object, metadata.discriminant(), html);
+    render_object_header(knowledge_object, status_badge(metadata), html);
     render_object_body(knowledge_object, html);
 
     if let (Some(owner), Some(verified_at)) = (
@@ -906,9 +899,12 @@ fn render_object_section_open(
     html.push_str("\">\n");
 }
 
+/// Header badge: `(field_name, value)` — `("status", …)` for lifecycle
+/// discriminants, `("severity", …)`/`("trust", …)` for the dedicated
+/// ADR-0039 carriers.
 fn render_object_header(
     knowledge_object: &KnowledgeObject,
-    discriminant: Option<MetadataDiscriminant<'_>>,
+    badge: Option<(&str, &str)>,
     html: &mut String,
 ) {
     let kind = knowledge_object.kind().as_str();
@@ -927,30 +923,23 @@ fn render_object_header(
     html.push_str(&escape_html(knowledge_object.id().as_str()));
     html.push_str("</code>");
 
-    if let Some(discriminant) = discriminant {
+    if let Some((field_name, value)) = badge {
         html.push_str("<span class=\"");
         html.push_str(kind);
         html.push_str("__");
-        html.push_str(discriminant_field_name(discriminant));
+        html.push_str(field_name);
         html.push_str("\">");
-        html.push_str(&escape_html(discriminant.value_as_str()));
+        html.push_str(&escape_html(value));
         html.push_str("</span>");
     }
 
     html.push_str("</header>\n");
 }
 
-fn discriminant_field_name(discriminant: MetadataDiscriminant<'_>) -> &'static str {
-    match discriminant {
-        MetadataDiscriminant::ClaimStatus(_)
-        | MetadataDiscriminant::DecisionStatus(_)
-        | MetadataDiscriminant::PolicyStatus(_)
-        | MetadataDiscriminant::ProcedureStatus(_)
-        | MetadataDiscriminant::ExampleStatus(_)
-        | MetadataDiscriminant::ContradictionStatus(_) => "status",
-        MetadataDiscriminant::Severity(_) => "severity",
-        MetadataDiscriminant::Trust(_) => "trust",
-    }
+fn status_badge<'a>(metadata: &KnowledgeObjectMetadata<'a>) -> Option<(&'static str, &'a str)> {
+    metadata
+        .discriminant()
+        .map(|discriminant| ("status", discriminant.value_as_str()))
 }
 
 fn render_object_body(knowledge_object: &KnowledgeObject, html: &mut String) {

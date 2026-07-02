@@ -16,7 +16,7 @@ Use this checklist when hand-reviewing the generated `docs.html` and
 
 ## Graph JSON
 
-- `schema_version` is `adoc.graph.v3`.
+- `schema_version` is `adoc.graph.v4`.
 - 18 Knowledge Object nodes: 6 claim, 1 decision, 2 glossary, 1 constraint, 1 procedure, 2 example, 1 policy, 1 agent_instruction, 1 contradiction, 2 source.
 - Two `evidence` edges: `billing.credits.consume` and `billing.credits.use-ledger` → `billing.consume-use-case`.
 - `relation` and `reference` edges preserve source direction.

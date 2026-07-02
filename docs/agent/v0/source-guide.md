@@ -6,7 +6,7 @@
 
 A `source` object (PRD §13.15) is a named, reusable reference to evidence outside the documentation workspace. It can point to a repo-relative file path (e.g. a source code file or test) or an absolute URL (e.g. a pull request, incident report, or external specification). Once authored, a `source` object can be cited anywhere a Knowledge Object ID is accepted.
 
-Source objects appear in `adoc.graph.v3` nodes with `kind: "source"`. Evidence kind and path or URL are projected into the node's `fields` map.
+Source objects appear in `adoc.graph.v4` nodes with `kind: "source"`. Evidence kind and path or URL are projected into the node's `fields` map.
 
 ## Required fields
 
@@ -96,7 +96,7 @@ Stripe Charges API documentation. Referenced by the payment processing claim.
 
 ## Wire surface
 
-`source` nodes are emitted into the graph artifact (`adoc.graph.v3`) with:
+`source` nodes are emitted into the graph artifact (`adoc.graph.v4`) with:
 
 - `kind: "source"` — the node-level kind discriminant
 - `fields["kind"]` — the evidence kind string (e.g. `"source_code"`)

@@ -125,7 +125,7 @@ fn build_emits_example_into_graph_v3() {
         .expect("graph artifact is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph json parses");
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v3");
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
 
     let example = graph["nodes"]
         .as_array()

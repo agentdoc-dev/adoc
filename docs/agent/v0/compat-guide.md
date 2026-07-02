@@ -1,6 +1,6 @@
 # AgentDoc Markdown Compatibility Guide
 
-V4 introduces **Compatibility Mode**: AgentDoc accepts `.md` source alongside `.adoc`, parses it with a CommonMark + GFM parser, and emits the same `adoc.graph.v3` artifact and `dist/docs.html` as native AgentDoc Source. Compatibility Mode is selected purely by file extension; `.adoc` files always validate under Strict Mode, `.md` files always validate under Compatibility Mode. There is no flag or config block to toggle this (ADR-0022).
+V4 introduces **Compatibility Mode**: AgentDoc accepts `.md` source alongside `.adoc`, parses it with a CommonMark + GFM parser, and emits the same `adoc.graph.v4` artifact and `dist/docs.html` as native AgentDoc Source. Compatibility Mode is selected purely by file extension; `.adoc` files always validate under Strict Mode, `.md` files always validate under Compatibility Mode. There is no flag or config block to toggle this (ADR-0022).
 
 This guide tells MCP agents how to reason about `.md` content correctly.
 

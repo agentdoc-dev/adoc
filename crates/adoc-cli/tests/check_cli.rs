@@ -178,7 +178,7 @@ fn read_graph_artifact(path: &Path) -> Value {
 
 fn assert_graph_artifact(text: &str) -> Value {
     let graph: Value = serde_json::from_str(text).expect("graph artifact is valid JSON");
-    assert_eq!(graph["schema_version"], "adoc.graph.v3");
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
     assert!(graph["nodes"].as_array().is_some());
     assert!(graph["edges"].as_array().is_some());
     assert_eq!(
@@ -1773,7 +1773,9 @@ fn build_renders_v0_4_warning_to_graph_json() {
     let node = graph_node(&graph, "auth.session.clock-skew");
     assert_eq!(node["type"], "knowledge_object");
     assert_eq!(node["kind"], "warning");
-    assert_eq!(node["status"], "high");
+    // ADR-0039: no lifecycle status on warnings; severity is dedicated.
+    assert!(node.get("status").is_none());
+    assert_eq!(node["severity"], "high");
     assert!(node["fields"].get("severity").is_none());
     assert!(!workspace.root.join("dist").join("docs.agent.json").exists());
 }
@@ -1968,8 +1970,14 @@ fn build_renders_v0_4_core_object_set_to_graph_json() {
         "verified"
     );
     assert_eq!(graph_node(&graph, "billing.policy")["status"], "accepted");
+    // ADR-0039: warnings carry `severity`, never `status`.
+    assert!(
+        graph_node(&graph, "auth.session.clock-skew")
+            .get("status")
+            .is_none()
+    );
     assert_eq!(
-        graph_node(&graph, "auth.session.clock-skew")["status"],
+        graph_node(&graph, "auth.session.clock-skew")["severity"],
         "high"
     );
     assert!(

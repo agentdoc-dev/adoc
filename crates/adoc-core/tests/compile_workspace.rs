@@ -36,6 +36,9 @@ struct TestGraphObject {
     id: String,
     kind: String,
     status: Option<String>,
+    /// ADR-0039: dedicated severity carrier.
+    #[serde(default)]
+    severity: Option<String>,
     body: String,
     page_id: String,
     source_span: TestGraphSourceSpan,
@@ -471,7 +474,9 @@ fn compile_workspace_resolves_warning_into_artifacts() {
     let record = first_graph_object(&artifacts);
     assert_eq!(record.id, "auth.session.clock-skew");
     assert_eq!(record.kind, "warning");
-    assert_eq!(record.status.as_deref(), Some("high"));
+    // ADR-0039: warnings carry no lifecycle status; severity is dedicated.
+    assert_eq!(record.status, None);
+    assert_eq!(record.severity.as_deref(), Some("high"));
     assert_eq!(
         record.body,
         "Session clocks can drift enough to reject otherwise valid tokens."

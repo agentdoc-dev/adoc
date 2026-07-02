@@ -81,7 +81,7 @@ impl GraphArtifactDocument {
 
 // `GraphKnowledgeObjectNode` is large by design (carries all graph-node fields
 // inline for zero-copy serde). Boxing here would add indirection on every graph
-// traversal; the size asymmetry is acceptable per the `adoc.graph.v3` contract.
+// traversal; the size asymmetry is acceptable per the `adoc.graph.v4` contract.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -181,15 +181,14 @@ pub(crate) struct GraphKnowledgeObjectNode {
     pub(crate) content_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) status: Option<String>,
-    /// ADR-0035 dual-emit: derived duplicate of the kind-specific severity
-    /// discriminant/field. Populated for `warning`, `constraint`, and
-    /// `contradiction` nodes. NOT hashed; additive within `adoc.graph.v3`.
+    /// ADR-0039: the authored severity carrier. Populated for `warning`,
+    /// `constraint`, and `contradiction` nodes; part of `content_hash`.
     /// Skipped when `None` so other kinds remain byte-stable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) severity: Option<String>,
-    /// ADR-0035 dual-emit: derived duplicate of the trust discriminant.
-    /// Populated for `agent_instruction` nodes only. NOT hashed; additive
-    /// within `adoc.graph.v3`. Skipped when `None`.
+    /// ADR-0039: the authored trust carrier. Populated for
+    /// `agent_instruction` nodes only; part of `content_hash`. Skipped when
+    /// `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) trust: Option<String>,
     pub(crate) body: String,
@@ -719,7 +718,7 @@ mod tests {
 
     fn graph_document(content_hash: Option<&str>) -> GraphArtifactDocument {
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v3".to_string(),
+            schema_version: "adoc.graph.v4".to_string(),
             nodes: vec![
                 GraphNode::Page(GraphPageNode {
                     id: "team.page".to_string(),
@@ -813,7 +812,7 @@ mod tests {
             })
             .collect();
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v3".to_string(),
+            schema_version: "adoc.graph.v4".to_string(),
             nodes,
             edges: Vec::new(),
             diagnostics: Vec::new(),

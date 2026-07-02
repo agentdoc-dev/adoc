@@ -25,7 +25,7 @@ use crate::domain::value_objects::evidence_kind::EvidenceKind;
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GraphJsonArtifact;
 
-pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v3";
+pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v4";
 
 pub(crate) fn read_graph_artifact_document(
     path: &Path,
@@ -324,7 +324,7 @@ fn block_to_graph_node(
         }),
         // V4.2: GFM Table, FootnoteDefinition, and UnknownExtension also
         // project to a single prose block whose text is the original source
-        // text. The graph schema (`adoc.graph.v3`) is unchanged.
+        // text. The graph schema is unchanged by these projections.
         BlockAst::Table(table) => GraphNode::Paragraph(GraphBlockNode {
             id: id.to_string(),
             page_id: page_id.to_string(),
@@ -423,7 +423,7 @@ fn knowledge_object_to_graph_node_without_hash(
         kind: knowledge_object.kind().as_str().to_string(),
         content_hash: String::new(),
         status,
-        // ADR-0035 dual-emit: derived — NOT part of content_hash.
+        // ADR-0039: sole authored carriers — part of content_hash.
         severity: metadata.severity().map(|s| s.as_str().to_string()),
         trust: metadata.trust().map(|t| t.as_str().to_string()),
         body: knowledge_object.body().to_source(),
@@ -661,6 +661,12 @@ struct KnowledgeObjectHashPayload<'a> {
     id: &'a str,
     kind: &'a str,
     status: &'a Option<String>,
+    /// ADR-0039: authored carriers, hashed. Omitted when absent so kinds that
+    /// carry neither keep their v3 `content_hash` byte-for-byte.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: &'a Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trust: &'a Option<String>,
     body: &'a str,
     page_id: &'a str,
     source_span: &'a GraphSourceSpan,
@@ -697,6 +703,8 @@ pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNod
         id: &node.id,
         kind: &node.kind,
         status: &node.status,
+        severity: &node.severity,
+        trust: &node.trust,
         body: &node.body,
         page_id: &node.page_id,
         source_span: &node.source_span,
@@ -1614,23 +1622,59 @@ mod tests {
         );
     }
 
-    /// `content_hash` must be identical whether or not the ADR-0035 dual-emit
-    /// `severity`/`trust` fields are set, proving they are excluded from the
-    /// hash payload like the other derived fields.
+    /// ADR-0039: `severity`/`trust` are authored carriers and MUST enter the
+    /// hash payload — a severity or trust edit changes `content_hash`.
     #[test]
-    fn content_hash_is_stable_regardless_of_severity_and_trust() {
+    fn content_hash_covers_severity_and_trust() {
         let node_without = make_ko_node(None, None);
-        let mut node_with = make_ko_node(None, None);
-        node_with.severity = Some("critical".to_string());
-        node_with.trust = Some("team".to_string());
+        let mut node_with_severity = make_ko_node(None, None);
+        node_with_severity.severity = Some("critical".to_string());
+        let mut node_with_trust = make_ko_node(None, None);
+        node_with_trust.trust = Some("team".to_string());
 
         let hash_without = graph_knowledge_object_content_hash(&node_without);
-        let hash_with = graph_knowledge_object_content_hash(&node_with);
 
-        assert_eq!(
-            hash_without, hash_with,
-            "content_hash must be identical whether or not severity/trust are set; \
-             the ADR-0035 dual-emit fields are not part of the hash payload"
+        assert_ne!(
+            hash_without,
+            graph_knowledge_object_content_hash(&node_with_severity),
+            "content_hash must change when severity changes; severity is an \
+             authored, hashed carrier per ADR-0039"
+        );
+        assert_ne!(
+            hash_without,
+            graph_knowledge_object_content_hash(&node_with_trust),
+            "content_hash must change when trust changes; trust is an \
+             authored, hashed carrier per ADR-0039"
+        );
+    }
+
+    /// ADR-0039: kinds that carry neither severity nor trust keep their v3
+    /// hash payload byte-for-byte — the absent fields are skipped, not null.
+    #[test]
+    fn hash_payload_omits_absent_severity_and_trust() {
+        let node = make_ko_node(None, None);
+        let payload = KnowledgeObjectHashPayload {
+            id: &node.id,
+            kind: &node.kind,
+            status: &node.status,
+            severity: &node.severity,
+            trust: &node.trust,
+            body: &node.body,
+            page_id: &node.page_id,
+            source_span: &node.source_span,
+            fields: &node.fields,
+            relations: &node.relations,
+            impacts: &node.impacts,
+            approved_by: &node.approved_by,
+            allowed_actions: &node.allowed_actions,
+            forbidden_actions: &node.forbidden_actions,
+            contradiction_claims: &node.contradiction_claims,
+            evidence: &node.evidence,
+        };
+        let canonical = serde_json::to_string(&payload).expect("payload serializes");
+        assert!(
+            !canonical.contains("severity") && !canonical.contains("trust"),
+            "absent severity/trust must be omitted from the hash payload: {canonical}"
         );
     }
 

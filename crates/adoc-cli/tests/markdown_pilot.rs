@@ -198,7 +198,7 @@ fn markdown_pilot_build_emits_safe_html_and_mixed_graph() {
     let graph_text = std::fs::read_to_string(output_directory.join("docs.graph.json"))
         .expect("pilot graph JSON is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph JSON is valid");
-    assert_eq!(graph["schema_version"], "adoc.graph.v3");
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
 
     let nodes = graph["nodes"]
         .as_array()

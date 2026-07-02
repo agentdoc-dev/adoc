@@ -356,11 +356,10 @@ pub(crate) fn evaluate_contradictions(
         .filter(|node| include_all || node.status.as_deref() == Some("unresolved"))
         .map(|node| ContradictionRecord {
             id: node.id.clone(),
-            severity: node
-                .severity
-                .clone()
-                .or_else(|| node.fields.get("severity").cloned())
-                .unwrap_or_default(),
+            // ADR-0039: top-level `severity` is the sole carrier in v4; the
+            // v3 fields["severity"] fallback is dead (v3 artifacts are
+            // rejected at the version gate).
+            severity: node.severity.clone().unwrap_or_default(),
             status: node.status.clone().unwrap_or_default(),
             claims: node.contradiction_claims.clone(),
             owner: node.fields.get("owner").cloned(),
@@ -659,7 +658,7 @@ mod tests {
         })];
         all_nodes.extend(nodes);
         let document = GraphArtifactDocument {
-            schema_version: "adoc.graph.v3".to_string(),
+            schema_version: "adoc.graph.v4".to_string(),
             nodes: all_nodes,
             edges: Vec::new(),
             diagnostics: Vec::new(),
@@ -993,11 +992,13 @@ mod tests {
             id,
             "contradiction",
             Some(status),
-            &[("severity", severity), ("owner", "platform-security")],
+            &[("owner", "platform-security")],
         );
         let GraphNode::KnowledgeObject(ko) = &mut node else {
             unreachable!("ko_node builds a knowledge object");
         };
+        // ADR-0039: severity is a dedicated node field, not a fields entry.
+        ko.severity = Some(severity.to_string());
         ko.contradiction_claims = claims.iter().map(|claim| (*claim).to_string()).collect();
         ko.body = body.to_string();
         node
@@ -1126,15 +1127,15 @@ mod tests {
         assert_eq!(envelope.contradictions[5].severity, "panic");
     }
 
-    /// The ADR-0035 top-level severity dual-emit wins over the fields map when
-    /// both are present.
+    /// ADR-0039: the top-level `severity` field is the sole carrier — a stray
+    /// fields["severity"] entry (impossible on a v4 artifact) is ignored.
     #[test]
-    fn contradiction_severity_prefers_top_level_dual_emit() {
-        let mut node = contradiction_node("conflict.dual", "low", "unresolved", &["c.a", "c.b"]);
+    fn contradiction_severity_reads_top_level_field_only() {
+        let mut node = contradiction_node("conflict.dual", "critical", "unresolved", &["c.a"]);
         let GraphNode::KnowledgeObject(ko) = &mut node else {
             unreachable!();
         };
-        ko.severity = Some("critical".to_string());
+        ko.fields.insert("severity".to_string(), "low".to_string());
 
         let session = session_with(vec![node]);
         let envelope = evaluate_contradictions(&session, false, Vec::new());

@@ -59,7 +59,15 @@ pub(crate) fn indexed_field_values(object: &GraphKnowledgeObjectNode) -> Vec<&st
 }
 
 pub(crate) fn embedding_input(object: &GraphKnowledgeObjectNode) -> String {
-    let status = object.status.as_deref().unwrap_or("unknown");
+    // ponytail: severity/trust reuse the [status: …] line so the v4 embedding
+    // text stays byte-identical to v3; dedicated labels would be an Embedding
+    // Composition change, i.e. an adoc.search contract bump (ADR-0039).
+    let status = object
+        .status
+        .as_deref()
+        .or(object.severity.as_deref())
+        .or(object.trust.as_deref())
+        .unwrap_or("unknown");
     let owner = owner(object).unwrap_or("unknown");
     let body = normalized_embedding_body(&object.body);
     format!(

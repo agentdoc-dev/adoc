@@ -41,11 +41,11 @@ Only `unresolved` contradictions are **active** and must be surfaced when answer
 
 ## Wire surface
 
-`contradiction` nodes are emitted into the graph artifact (`adoc.graph.v3`) with:
+`contradiction` nodes are emitted into the graph artifact (`adoc.graph.v4`) with:
 
 - `kind: "contradiction"`
 - `status`: the lifecycle status (`unresolved`, `resolved`, `dismissed`)
-- `fields.severity`: the severity level
+- `severity`: the severity level (top-level node field, ADR-0039)
 - `contradiction_claims`: the list of conflicting claim Object IDs (sorted, deduplicated)
 - `body`: the prose explanation
 

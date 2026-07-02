@@ -458,7 +458,7 @@ fn project_status_build_refresh_writes_artifacts_and_reports_readiness() {
     assert!(outcome.artifacts.graph.exists);
     assert_eq!(
         outcome.artifacts.graph.schema_version.as_deref(),
-        Some("adoc.graph.v3")
+        Some("adoc.graph.v4")
     );
     assert_eq!(outcome.artifacts.graph.object_count, Some(1));
     assert_eq!(

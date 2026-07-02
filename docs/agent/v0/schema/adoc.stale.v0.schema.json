@@ -36,7 +36,7 @@
           "enum": ["stale", "review_overdue", "expiring_soon"]
         },
         "authored_status": {
-          "description": "The status slot as authored. For warning/constraint/agent_instruction this slot carries Severity/Trust until the adoc.graph.v4 cleanup (ADR-0035).",
+          "description": "The lifecycle status as authored. Absent for kinds without a lifecycle (warning/constraint/agent_instruction/source), per ADR-0039.",
           "type": "string"
         },
         "effective_status": {

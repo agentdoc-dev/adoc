@@ -11,14 +11,12 @@ pub struct RetrievalRecord {
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-    /// ADR-0035 dual-emit: derived duplicate of the kind-specific severity
-    /// (`warning`, `constraint`, `contradiction`). Not authored, not hashed.
-    /// Clone-through from the graph node.
+    /// ADR-0039: the authored severity carrier (`warning`, `constraint`,
+    /// `contradiction`). Clone-through from the graph node.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub severity: Option<String>,
-    /// ADR-0035 dual-emit: derived duplicate of the trust discriminant
-    /// (`agent_instruction` only). Not authored, not hashed. Clone-through
-    /// from the graph node.
+    /// ADR-0039: the authored trust carrier (`agent_instruction` only).
+    /// Clone-through from the graph node.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trust: Option<String>,
     pub content_hash: String,

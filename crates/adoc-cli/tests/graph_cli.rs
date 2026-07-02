@@ -70,7 +70,7 @@ fn build_writes_graph_json_even_when_embeddings_are_skipped() {
         .expect("graph artifact is readable");
     let graph_json: serde_json::Value =
         serde_json::from_str(&graph_text).expect("graph artifact is JSON");
-    assert_eq!(graph_json["schema_version"], "adoc.graph.v3");
+    assert_eq!(graph_json["schema_version"], "adoc.graph.v4");
     assert_eq!(
         graph_json["nodes"]
             .as_array()

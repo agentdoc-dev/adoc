@@ -95,12 +95,12 @@ fn build_renders_ordered_steps_and_emits_procedure_into_graph_v3() {
         "first step text with marker stripped\n{html}"
     );
 
-    // Graph: the procedure node is emitted into adoc.graph.v3 with verified metadata.
+    // Graph: the procedure node is emitted into adoc.graph.v4 with verified metadata.
     let graph_text = fs::read_to_string(workspace.root.join("dist").join("docs.graph.json"))
         .expect("graph artifact is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph json parses");
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v3");
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
 
     let procedure = graph["nodes"]
         .as_array()
