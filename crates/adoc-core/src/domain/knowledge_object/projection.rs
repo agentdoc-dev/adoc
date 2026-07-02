@@ -9,6 +9,7 @@ use crate::domain::knowledge_object::{
     },
     decision::{DECIDED_BY_FIELD, DecidedBy, DecisionStatus},
     example::{CHECKS_FIELD, ExampleStatus, FORMAT_FIELD, LANG_FIELD, SANDBOX_FIELD},
+    observation::{OBSERVED_AT_FIELD, ObservationStatus, SAMPLE_SIZE_FIELD},
     policy::PolicyStatus,
     procedure::ProcedureStatus,
 };
@@ -105,6 +106,8 @@ pub(crate) enum MetadataDiscriminant<'a> {
     ContradictionStatus(&'a ContradictionStatus),
     /// V6.5.1: lifecycle status for `api`.
     ApiStatus(&'a ApiStatus),
+    /// V6.5.2: lifecycle status for `observation`.
+    ObservationStatus(&'a ObservationStatus),
 }
 
 impl<'a> MetadataDiscriminant<'a> {
@@ -117,6 +120,7 @@ impl<'a> MetadataDiscriminant<'a> {
             Self::ExampleStatus(status) => status.as_str(),
             Self::ContradictionStatus(status) => status.as_str(),
             Self::ApiStatus(status) => status.as_str(),
+            Self::ObservationStatus(status) => status.as_str(),
         }
     }
 }
@@ -268,6 +272,28 @@ impl KnowledgeObject {
                 }
                 append_verification_fields(&mut fields, &mut evidence, api.verification());
                 api.status().map(MetadataDiscriminant::ApiStatus)
+            }
+            Self::Observation(observation) => {
+                // Typed optionals project as stored scalars so they enter the
+                // hashed graph `fields` map.
+                if let Some(sample_size) = observation.sample_size() {
+                    fields.push(MetadataField::Stored {
+                        key: SAMPLE_SIZE_FIELD,
+                        value: sample_size.as_str(),
+                    });
+                }
+                if let Some(observed_at) = observation.observed_at() {
+                    fields.push(MetadataField::Stored {
+                        key: OBSERVED_AT_FIELD,
+                        value: observed_at.as_str(),
+                    });
+                }
+                // Inline `source:` evidence joins the typed evidence vec, so
+                // derived evidence_quality applies unchanged (V5 model).
+                evidence.extend(observation.source_evidence());
+                Some(MetadataDiscriminant::ObservationStatus(
+                    observation.status(),
+                ))
             }
             Self::Source(source) => {
                 // Evidence kind projected as a stored scalar under key "kind".

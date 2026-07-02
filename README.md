@@ -418,6 +418,7 @@ Supported object kinds:
 - `contradiction`
 - `source`
 - `api`
+- `observation`
 <!-- /adoc:kinds -->
 
 Supported relation fields:

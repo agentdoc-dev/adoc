@@ -133,6 +133,11 @@ pub enum DiagnosticCode {
     /// entry nor an `evidence_ref` resolving to an `api_schema`/`source_code`
     /// source — an API contract is verified by its schema source.
     ApiVerifiedMissingSchemaEvidence,
+    /// V6.5.2: `observation` Knowledge Object (PRD §13.9).
+    SchemaObservationMissingStatus,
+    SchemaObservationInvalidStatus,
+    SchemaObservationInvalidSampleSize,
+    SchemaObservationInvalidObservedAt,
     /// V5.8 TB2: the `evidence_ref:` on a claim names an Object ID that does
     /// not exist anywhere in the workspace.
     SchemaEvidenceTargetNotFound,
@@ -269,6 +274,10 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaApiConflictingPathAndSymbol,
             DiagnosticCode::SchemaApiInvalidPath,
             DiagnosticCode::ApiVerifiedMissingSchemaEvidence,
+            DiagnosticCode::SchemaObservationMissingStatus,
+            DiagnosticCode::SchemaObservationInvalidStatus,
+            DiagnosticCode::SchemaObservationInvalidSampleSize,
+            DiagnosticCode::SchemaObservationInvalidObservedAt,
             DiagnosticCode::SchemaEvidenceTargetNotFound,
             DiagnosticCode::SchemaEvidenceTargetNotASource,
             DiagnosticCode::ClaimEvidenceQualityLow,
@@ -432,6 +441,14 @@ impl DiagnosticCode {
                 "schema.api_conflicting_path_and_symbol"
             }
             DiagnosticCode::SchemaApiInvalidPath => "schema.api_invalid_path",
+            DiagnosticCode::SchemaObservationMissingStatus => "schema.observation_missing_status",
+            DiagnosticCode::SchemaObservationInvalidStatus => "schema.observation_invalid_status",
+            DiagnosticCode::SchemaObservationInvalidSampleSize => {
+                "schema.observation_invalid_sample_size"
+            }
+            DiagnosticCode::SchemaObservationInvalidObservedAt => {
+                "schema.observation_invalid_observed_at"
+            }
             DiagnosticCode::ApiVerifiedMissingSchemaEvidence => {
                 "api.verified_missing_schema_evidence"
             }
@@ -757,6 +774,18 @@ impl DiagnosticCode {
             DiagnosticCode::ApiVerifiedMissingSchemaEvidence => {
                 "A verified api requires schema evidence: an inline `source:` entry or an `evidence_ref` to an `api_schema`/`source_code` source object."
             }
+            DiagnosticCode::SchemaObservationMissingStatus => {
+                "Add a `status` field to the observation. The only valid observation status is: observed."
+            }
+            DiagnosticCode::SchemaObservationInvalidStatus => {
+                "The only valid observation status is: observed."
+            }
+            DiagnosticCode::SchemaObservationInvalidSampleSize => {
+                "Use a positive integer for `sample_size` (e.g. `37`)."
+            }
+            DiagnosticCode::SchemaObservationInvalidObservedAt => {
+                "Use a valid `YYYY-MM-DD` date for `observed_at`."
+            }
             DiagnosticCode::SchemaEvidenceTargetNotFound => {
                 "Ensure every `evidence_ref` ID refers to an existing `source` object in the workspace."
             }
@@ -914,6 +943,10 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.api_conflicting_path_and_symbol",
     "schema.api_invalid_path",
     "api.verified_missing_schema_evidence",
+    "schema.observation_missing_status",
+    "schema.observation_invalid_status",
+    "schema.observation_invalid_sample_size",
+    "schema.observation_invalid_observed_at",
     "schema.evidence_target_not_found",
     "schema.evidence_target_not_a_source",
     "claim.evidence_quality_low",
