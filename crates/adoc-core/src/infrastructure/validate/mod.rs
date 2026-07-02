@@ -25,6 +25,7 @@ mod knowledge_object_unique_ids;
 pub(crate) mod mode_pipeline;
 mod policy_active_approval;
 mod policy_review_drift;
+mod question_resolved_by;
 mod raw_html_forbidden;
 mod unsafe_link_forbidden;
 pub(crate) mod url_walker;
@@ -40,6 +41,7 @@ use knowledge_object_lifecycle::KnowledgeObjectLifecycle;
 use knowledge_object_unique_ids::KnowledgeObjectUniqueIds;
 use policy_active_approval::PolicyActiveApproval;
 use policy_review_drift::PolicyReviewDrift;
+use question_resolved_by::QuestionResolvedBy;
 use raw_html_forbidden::RawHtmlForbidden;
 use unsafe_link_forbidden::UnsafeLinkForbidden;
 
@@ -59,6 +61,7 @@ const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[
     &ContradictionClaimsResolve,
     &EvidenceRefResolves,
     &ApiVerifiedEvidence,
+    &QuestionResolvedBy,
     &ClaimContradictedNudge,
 ];
 

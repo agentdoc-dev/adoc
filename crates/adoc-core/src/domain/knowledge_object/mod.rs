@@ -28,6 +28,7 @@ pub(crate) mod observation;
 pub(crate) mod policy;
 pub(crate) mod procedure;
 pub(crate) mod projection;
+pub(crate) mod question;
 pub(crate) mod source;
 pub(crate) mod warning;
 
@@ -42,6 +43,7 @@ use glossary::Glossary;
 use observation::Observation;
 use policy::Policy;
 use procedure::Procedure;
+use question::Question;
 use source::Source;
 use warning::Warning;
 
@@ -821,6 +823,7 @@ pub(crate) enum BlockKind {
     Source,
     Api,
     Observation,
+    Question,
 }
 
 impl BlockKind {
@@ -838,6 +841,7 @@ impl BlockKind {
         Self::Source,
         Self::Api,
         Self::Observation,
+        Self::Question,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -855,6 +859,7 @@ impl BlockKind {
             Self::Source => "source",
             Self::Api => "api",
             Self::Observation => "observation",
+            Self::Question => "question",
         }
     }
 
@@ -889,6 +894,7 @@ pub(crate) enum KnowledgeObject {
     Source(Source),
     Api(Api),
     Observation(Observation),
+    Question(Question),
 }
 
 impl KnowledgeObject {
@@ -907,6 +913,7 @@ impl KnowledgeObject {
             Self::Source(_) => BlockKind::Source,
             Self::Api(_) => BlockKind::Api,
             Self::Observation(_) => BlockKind::Observation,
+            Self::Question(_) => BlockKind::Question,
         }
     }
 
@@ -925,6 +932,7 @@ impl KnowledgeObject {
             Self::Source(source) => source.id(),
             Self::Api(api) => api.id(),
             Self::Observation(observation) => observation.id(),
+            Self::Question(question) => question.id(),
         }
     }
 
@@ -943,6 +951,7 @@ impl KnowledgeObject {
             Self::Source(source) => source.span(),
             Self::Api(api) => api.span(),
             Self::Observation(observation) => observation.span(),
+            Self::Question(question) => question.span(),
         }
     }
 
@@ -961,6 +970,7 @@ impl KnowledgeObject {
             Self::Source(source) => source.body(),
             Self::Api(api) => api.body(),
             Self::Observation(observation) => observation.body(),
+            Self::Question(question) => question.body(),
         }
     }
 
@@ -979,6 +989,7 @@ impl KnowledgeObject {
             Self::Source(source) => source.body_mut(),
             Self::Api(api) => api.body_mut(),
             Self::Observation(observation) => observation.body_mut(),
+            Self::Question(question) => question.body_mut(),
         }
     }
 
@@ -997,6 +1008,7 @@ impl KnowledgeObject {
             Self::Source(source) => source.relations(),
             Self::Api(api) => api.relations(),
             Self::Observation(observation) => observation.relations(),
+            Self::Question(question) => question.relations(),
         }
     }
 
@@ -1018,6 +1030,7 @@ impl KnowledgeObject {
             | Self::Contradiction(_)
             | Self::Source(_)
             | Self::Observation(_) => &[],
+            Self::Question(_) => &[],
         }
     }
 
@@ -1036,6 +1049,7 @@ impl KnowledgeObject {
             Self::Source(source) => source.fields(),
             Self::Api(api) => api.fields(),
             Self::Observation(observation) => observation.fields(),
+            Self::Question(question) => question.fields(),
         }
     }
 }
@@ -1342,6 +1356,7 @@ mod tests {
                 BlockKind::Source,
                 BlockKind::Api,
                 BlockKind::Observation,
+                BlockKind::Question,
             ]
         );
     }

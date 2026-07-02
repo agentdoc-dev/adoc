@@ -17,6 +17,9 @@ use crate::domain::knowledge_object::decision::{
 use crate::domain::knowledge_object::observation::{
     OBSERVED_AT_FIELD, ObservationStatus, SAMPLE_SIZE_FIELD,
 };
+use crate::domain::knowledge_object::question::{
+    ANSWERED_STATUS, QuestionStatus, RESOLVED_BY_FIELD,
+};
 use crate::domain::value_objects::effective_date::EffectiveDate;
 use crate::domain::value_objects::http_method::HttpMethod;
 use crate::domain::value_objects::sample_size::SampleSize;
@@ -72,6 +75,7 @@ impl DraftValidator<'_> {
             "warning" => self.validate_warning(),
             "api" => self.validate_api(),
             "observation" => self.validate_observation(),
+            "question" => self.validate_question(),
             kind => self.error(format!("unknown Knowledge Object kind `{kind}`")),
         }
     }
@@ -185,6 +189,22 @@ impl DraftValidator<'_> {
             self.error(format!(
                 "observation has invalid observed_at `{observed_at}`"
             ));
+        }
+    }
+
+    fn validate_question(&mut self) {
+        if QuestionStatus::try_new(self.draft.status.unwrap_or("")).is_err() {
+            match self.draft.status {
+                Some(status) => self.error(format!("question has invalid status `{status}`")),
+                None => self.error("question requires status"),
+            }
+            return;
+        }
+
+        if self.draft.status == Some(ANSWERED_STATUS)
+            && !self.draft.fields.contains_key(RESOLVED_BY_FIELD)
+        {
+            self.error("answered question requires non-empty fields.resolved_by");
         }
     }
 
@@ -431,6 +451,38 @@ mod tests {
                 .message
                 .contains("changes.status")
         );
+    }
+
+    // ── V6.5.3: question drafts ───────────────────────────────────────────
+
+    #[test]
+    fn answered_question_without_resolved_by_is_invalid() {
+        let validation = validate(
+            "question",
+            Some("answered"),
+            "Should unused trial credits expire?",
+            BTreeMap::new(),
+        );
+
+        assert_eq!(validation.diagnostics.len(), 1);
+        assert!(
+            validation.diagnostics[0]
+                .message
+                .contains("fields.resolved_by")
+        );
+    }
+
+    #[test]
+    fn open_question_is_valid_without_resolved_by() {
+        let validation = validate(
+            "question",
+            Some("open"),
+            "Should unused trial credits expire?",
+            BTreeMap::new(),
+        );
+
+        assert!(validation.diagnostics.is_empty());
+        assert!(validation.proof_obligations.is_empty());
     }
 
     // ── V5.8 TB4: evidence_ref counts as evidence in draft path ──────────────

@@ -356,6 +356,9 @@ fn render_knowledge_object(
         KnowledgeObject::Observation(_) => {
             render_observation(knowledge_object, &metadata, html);
         }
+        KnowledgeObject::Question(_) => {
+            render_question(knowledge_object, &metadata, html);
+        }
     }
 
     // V5.10: append effective_status badge after the section close tag if set.
@@ -564,6 +567,37 @@ fn render_observation(
             html.push_str("</span>");
         }
         html.push_str("</div>\n");
+    }
+
+    render_object_body(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
+    html.push_str("</section>\n");
+}
+
+fn render_question(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    let KnowledgeObject::Question(question) = knowledge_object else {
+        unreachable!("render_question called with non-question object");
+    };
+
+    render_object_section_open(knowledge_object, "question", html);
+    render_object_header(knowledge_object, status_badge(metadata), html);
+
+    // Open questions carry a prominent badge; answered ones link to the
+    // resolving claim/decision (PRD §13.10).
+    if let Some(resolved_by) = question.resolved_by() {
+        html.push_str(
+            "<div class=\"question__resolved-by\">Answered by <a class=\"object-ref\" href=\"#",
+        );
+        html.push_str(&escape_html(resolved_by.as_str()));
+        html.push_str("\">");
+        html.push_str(&escape_html(resolved_by.as_str()));
+        html.push_str("</a></div>\n");
+    } else {
+        html.push_str("<div class=\"question__open-badge\">Open</div>\n");
     }
 
     render_object_body(knowledge_object, html);

@@ -111,6 +111,7 @@ impl GraphJsonArtifact {
                 push_reference_edges(&mut edges, block, &node_id);
                 if let BlockAst::KnowledgeObject(knowledge_object) = block {
                     push_relation_edges(&mut edges, knowledge_object);
+                    push_question_resolved_by_edge(&mut edges, knowledge_object);
                 }
             }
         }
@@ -764,6 +765,25 @@ fn push_relation_edges(edges: &mut Vec<GraphEdge>, knowledge_object: &KnowledgeO
             });
         }
     }
+}
+
+/// V6.5.3: an answered question's `resolved_by:` reference becomes a derived
+/// edge so traversal can walk question → answering claim/decision (the
+/// evidence-edge precedent).
+fn push_question_resolved_by_edge(edges: &mut Vec<GraphEdge>, knowledge_object: &KnowledgeObject) {
+    let KnowledgeObject::Question(question) = knowledge_object else {
+        return;
+    };
+    let Some(resolved_by) = question.resolved_by() else {
+        return;
+    };
+    edges.push(GraphEdge {
+        kind: GraphEdgeKind::ResolvedBy,
+        source: question.id().as_str().to_string(),
+        target: resolved_by.as_str().to_string(),
+        relation: None,
+        order: None,
+    });
 }
 
 /// Recursively collect plain-text representation of a block into `parts`.

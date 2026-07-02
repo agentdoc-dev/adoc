@@ -279,6 +279,10 @@ pub(crate) enum GraphEdgeKind {
     /// `evidence_ref:`. Not a user relation field; not traversable via the
     /// `--relation` filter.
     Evidence,
+    /// V6.5.3: a derived edge from an answered `question` to the
+    /// claim/decision named in `resolved_by:`. Not a user relation field;
+    /// not traversable via the `--relation` filter.
+    ResolvedBy,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
