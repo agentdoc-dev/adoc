@@ -206,6 +206,14 @@ impl DraftValidator<'_> {
         {
             self.error("answered question requires non-empty fields.resolved_by");
         }
+
+        // V6.5.3 parity with `schema.question_unexpected_resolved_by`: only
+        // answered questions name the object that answered them.
+        if self.draft.status != Some(ANSWERED_STATUS)
+            && self.draft.fields.contains_key(RESOLVED_BY_FIELD)
+        {
+            self.error("question with fields.resolved_by requires `status: answered`");
+        }
     }
 
     fn validate_verified_api_obligation(&mut self) {
@@ -469,6 +477,26 @@ mod tests {
             validation.diagnostics[0]
                 .message
                 .contains("fields.resolved_by")
+        );
+    }
+
+    #[test]
+    fn open_question_with_resolved_by_is_invalid() {
+        let validation = validate(
+            "question",
+            Some("open"),
+            "Should unused trial credits expire?",
+            BTreeMap::from([(
+                RESOLVED_BY_FIELD.to_string(),
+                "billing.credits-expire".to_string(),
+            )]),
+        );
+
+        assert_eq!(validation.diagnostics.len(), 1);
+        assert!(
+            validation.diagnostics[0]
+                .message
+                .contains("status: answered")
         );
     }
 

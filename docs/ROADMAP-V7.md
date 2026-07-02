@@ -160,7 +160,7 @@ Scope:
 - Required: `id`, `status`, `body`. Statuses: closed `open | answered`. Optional: `owner`. (PRD §13.10 does not spell out `resolved_by` or the status enum — ROADMAP-V6.md is the authoritative spec here, and this file preserves it.)
 - `answered` requires `resolved_by: <object-id>` referencing an existing `claim` or `decision` — an answered question must point at the knowledge that answered it. This is a cross-aggregate rule, so it lives in `infrastructure/validate/` beside `contradiction_claims_resolve.rs` (the V5.6 precedent): target exists and has claim/decision kind. The reference emits a graph edge so traversal can walk question → answer; `adoc why` on the answering claim shows the question in its neighborhood for free.
 - HTML renders open questions with a prominent "Open" badge; answered ones link to the resolving object (`render_question`).
-- `FieldChange::QuestionResolvedBy`; diagnostics `schema.question_missing_status`, `schema.question_answered_missing_resolved_by`, `schema.question_resolved_by_not_found`, `schema.question_resolved_by_wrong_kind`.
+- `FieldChange::QuestionResolvedBy`; diagnostics `schema.question_missing_status`, `schema.question_answered_missing_resolved_by`, `schema.question_unexpected_resolved_by`, `schema.question_resolved_by_not_found`, `schema.question_resolved_by_wrong_kind`.
 
 The acceptance fixture is the PRD §13.10 example, verbatim:
 
