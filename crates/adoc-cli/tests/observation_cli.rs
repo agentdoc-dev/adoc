@@ -37,6 +37,19 @@ Users often misunderstand credit usage before their first generation.
 ::
 ";
 
+const DANGLING_EVIDENCE_REF_OBSERVATION: &str = "\
+# Onboarding findings @doc(team.onboarding-findings)
+
+Findings from support, analytics, and research.
+
+::observation onboarding.credit-confusion
+status: observed
+evidence_ref: no.such.source
+--
+Users often misunderstand credit usage before their first generation.
+::
+";
+
 const VERIFIED_STATUS_OBSERVATION: &str = "\
 # Onboarding findings @doc(team.onboarding-findings)
 
@@ -124,6 +137,30 @@ fn check_rejects_negative_sample_size() {
     assert!(
         combined.contains("error[schema.observation_invalid_sample_size]"),
         "expected invalid sample_size diagnostic, got:\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+}
+
+#[test]
+fn check_rejects_dangling_evidence_ref() {
+    let workspace = TestWorkspace::new("observation-dangling-evidence-ref");
+    workspace.write("observation.adoc", DANGLING_EVIDENCE_REF_OBSERVATION);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", "observation.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected check to fail for an evidence_ref to a missing source"
+    );
+    let combined = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(
+        combined.contains("error[schema.evidence_target_not_found]"),
+        "expected evidence_target_not_found diagnostic, got:\nstdout:\n{}\nstderr:\n{}",
         stdout(&output),
         stderr(&output)
     );

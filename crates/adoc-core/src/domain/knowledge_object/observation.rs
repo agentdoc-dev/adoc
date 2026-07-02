@@ -185,6 +185,31 @@ impl Observation {
         })
     }
 
+    /// Test-only constructor that also accepts evidence refs.
+    ///
+    /// Each `ObjectId` in `ref_ids` is wrapped in `Evidence::ObjectRef`.
+    #[cfg(test)]
+    pub(crate) fn try_new_with_refs(
+        id_text: &str,
+        status_text: &str,
+        body_text: &str,
+        optional_fields: BTreeMap<String, String>,
+        ref_ids: Vec<ObjectId>,
+        span: SourceSpan,
+    ) -> Result<Self, ObservationError> {
+        let mut observation = Self::try_new(
+            id_text,
+            status_text,
+            None,
+            None,
+            body_text,
+            optional_fields,
+            span,
+        )?;
+        observation.evidence_refs = ref_ids.into_iter().map(Evidence::object_ref).collect();
+        Ok(observation)
+    }
+
     // ── Accessors ────────────────────────────────────────────────────────────
 
     pub(crate) fn id(&self) -> &ObjectId {

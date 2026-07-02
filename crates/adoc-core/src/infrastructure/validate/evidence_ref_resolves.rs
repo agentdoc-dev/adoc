@@ -28,7 +28,8 @@ impl WorkspaceRule for EvidenceRefResolves {
             }
         }
 
-        // For every claim, decision, and api, check each evidence_ref id.
+        // For every claim, decision, api, and observation, check each
+        // evidence_ref id.
         for page in &workspace.pages {
             for block in &page.blocks {
                 let BlockAst::KnowledgeObject(ko) = block else {
@@ -42,6 +43,7 @@ impl WorkspaceRule for EvidenceRefResolves {
                         (decision.id(), decision.span(), decision.evidence_refs())
                     }
                     KnowledgeObject::Api(api) => (api.id(), api.span(), api.evidence_refs()),
+                    KnowledgeObject::Observation(o) => (o.id(), o.span(), o.evidence_refs()),
                     _ => continue,
                 };
                 for ev in refs {
@@ -97,6 +99,7 @@ mod tests {
         claim::Claim,
         constraint::Constraint,
         decision::{AcceptedVerdict, DecidedBy, Decision},
+        observation::Observation,
         source::Source,
     };
 
@@ -203,6 +206,20 @@ mod tests {
         )
         .expect("valid accepted decision");
         BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision)))
+    }
+
+    fn observation_block_with_refs(observation_id: &str, refs: Vec<&str>) -> BlockAst {
+        let ref_ids: Vec<ObjectId> = refs.into_iter().map(id).collect();
+        let observation = Observation::try_new_with_refs(
+            observation_id,
+            "observed",
+            "Observation body.",
+            BTreeMap::new(),
+            ref_ids,
+            span("observations.adoc", 1, 1),
+        )
+        .expect("valid observation");
+        BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Observation(observation)))
     }
 
     fn check(workspace: WorkspaceAst) -> Vec<Diagnostic> {
@@ -487,5 +504,75 @@ mod tests {
         let diagnostics = check(workspace);
 
         assert!(diagnostics.is_empty(), "got: {diagnostics:?}");
+    }
+
+    // ── V6.5.2: observation evidence_ref validation ───────────────────────────
+
+    #[test]
+    fn observation_evidence_ref_missing_target_emits_not_found() {
+        let workspace = WorkspaceAst {
+            pages: vec![page(
+                "one.adoc",
+                vec![observation_block_with_refs(
+                    "onboarding.credit-confusion",
+                    vec!["billing.missing-source"],
+                )],
+            )],
+        };
+
+        let diagnostics = check(workspace);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::SchemaEvidenceTargetNotFound
+        );
+        assert!(
+            diagnostics[0].message.contains("billing.missing-source"),
+            "message must name the missing id: {:?}",
+            diagnostics[0]
+        );
+        assert!(
+            diagnostics[0].message.contains("no object with that id"),
+            "message must say no such object: {:?}",
+            diagnostics[0]
+        );
+        assert_eq!(
+            diagnostics[0].object_id.as_deref(),
+            Some("onboarding.credit-confusion")
+        );
+    }
+
+    #[test]
+    fn observation_evidence_ref_wrong_kind_emits_not_a_source() {
+        let workspace = WorkspaceAst {
+            pages: vec![page(
+                "one.adoc",
+                vec![
+                    constraint_block("billing.constraint"),
+                    observation_block_with_refs(
+                        "onboarding.credit-confusion",
+                        vec!["billing.constraint"],
+                    ),
+                ],
+            )],
+        };
+
+        let diagnostics = check(workspace);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::SchemaEvidenceTargetNotASource
+        );
+        assert!(
+            diagnostics[0].message.contains("constraint"),
+            "message must mention the actual kind: {:?}",
+            diagnostics[0]
+        );
+        assert_eq!(
+            diagnostics[0].object_id.as_deref(),
+            Some("onboarding.credit-confusion")
+        );
     }
 }
