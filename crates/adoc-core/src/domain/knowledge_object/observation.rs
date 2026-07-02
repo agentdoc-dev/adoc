@@ -27,7 +27,6 @@ pub(crate) const SAMPLE_SIZE_FIELD: &str = "sample_size";
 pub(crate) const OBSERVED_AT_FIELD: &str = "observed_at";
 const STATUS_FIELD: &str = "status";
 
-const OBSERVATION_INVALID_STATUS_HELP: &str = "The only valid observation status is: observed.";
 const OBSERVATION_MISSING_BODY_HELP: &str =
     "Observations require non-empty body text describing what was seen.";
 
@@ -324,7 +323,7 @@ fn emit_observation_error(
                 parsed.id_text
             ),
         )
-        .with_help(OBSERVATION_INVALID_STATUS_HELP),
+        .with_help(DiagnosticCode::SchemaObservationInvalidStatus.default_help()),
         ObservationError::MissingBody => Diagnostic::error(
             DiagnosticCode::SchemaMissingField,
             format!("observation `{}` is missing required body", parsed.id_text),

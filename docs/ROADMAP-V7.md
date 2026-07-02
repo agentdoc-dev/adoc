@@ -131,7 +131,7 @@ Scope:
 - Observations plug into the V5 evidence model rather than inventing a parallel one; derived `evidence_quality` applies unchanged when evidence is present — no new validate rule, the existing `evidence_quality.rs` covers it by construction.
 - `sample_size` and `observed_at` ride the hashed `fields` map; extending `embedding_input` for them is **not** warranted — kind, body, id, status suffice, and the numbers are metadata, not meaning.
 - HTML renders an observation card with sample size and observed date as metadata chips (`render_observation`).
-- Diagnostics: `schema.observation_missing_status`, `schema.observation_invalid_status`, `schema.observation_invalid_sample_size`.
+- Diagnostics: `schema.observation_missing_status`, `schema.observation_invalid_status`, `schema.observation_invalid_sample_size`, `schema.observation_invalid_observed_at` (the optional `observed_at` date implies an invalid-date case; follows the `schema.policy_invalid_effective_at` precedent).
 
 The acceptance fixture is the PRD §13.9 example, verbatim:
 
