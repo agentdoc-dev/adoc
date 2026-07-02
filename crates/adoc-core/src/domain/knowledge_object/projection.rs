@@ -13,6 +13,7 @@ use crate::domain::knowledge_object::{
     policy::PolicyStatus,
     procedure::ProcedureStatus,
     question::{QuestionStatus, RESOLVED_BY_FIELD},
+    task::{DUE_FIELD, TaskStatus},
 };
 use crate::domain::value_objects::contradiction_status::ContradictionStatus;
 use crate::domain::value_objects::effective_date::EffectiveDate;
@@ -111,6 +112,8 @@ pub(crate) enum MetadataDiscriminant<'a> {
     ObservationStatus(&'a ObservationStatus),
     /// V6.5.3: lifecycle status for `question`.
     QuestionStatus(&'a QuestionStatus),
+    /// V6.5.4: lifecycle status for `task`.
+    TaskStatus(&'a TaskStatus),
 }
 
 impl<'a> MetadataDiscriminant<'a> {
@@ -125,6 +128,7 @@ impl<'a> MetadataDiscriminant<'a> {
             Self::ApiStatus(status) => status.as_str(),
             Self::ObservationStatus(status) => status.as_str(),
             Self::QuestionStatus(status) => status.as_str(),
+            Self::TaskStatus(status) => status.as_str(),
         }
     }
 }
@@ -313,6 +317,18 @@ impl KnowledgeObject {
                     });
                 }
                 Some(MetadataDiscriminant::QuestionStatus(question.status()))
+            }
+            Self::Task(task) => {
+                fields.push(MetadataField::Owner(task.owner()));
+                // `due` projects as a stored scalar so it enters the hashed
+                // graph `fields` map (the api method/path pattern).
+                if let Some(due) = task.due() {
+                    fields.push(MetadataField::Stored {
+                        key: DUE_FIELD,
+                        value: due.as_str(),
+                    });
+                }
+                Some(MetadataDiscriminant::TaskStatus(task.status()))
             }
             Self::Source(source) => {
                 // Evidence kind projected as a stored scalar under key "kind".
@@ -664,6 +680,43 @@ mod tests {
                 entry(LANG_FIELD, "ts"),
                 entry(CHECKS_FIELD, "npm test"),
                 entry(SANDBOX_FIELD, "node-test"),
+            ]
+        );
+    }
+
+    #[test]
+    fn task_projection_maps_status_discriminant_with_typed_owner_and_stored_due() {
+        use crate::domain::knowledge_object::task::Task;
+
+        let object = KnowledgeObject::Task(
+            Task::try_new(
+                "billing.update-support-runbook",
+                "open",
+                "support-ops",
+                Some("2026-05-20"),
+                "Update the support runbook.",
+                BTreeMap::from([("audience".to_string(), "support".to_string())]),
+                span(),
+            )
+            .expect("valid task"),
+        );
+
+        let projection = object.metadata_projection();
+
+        assert_eq!(
+            projection
+                .discriminant()
+                .map(MetadataDiscriminant::value_as_str),
+            Some("open")
+        );
+        assert_eq!(projection.severity(), None);
+        assert_eq!(projection.trust(), None);
+        assert_eq!(
+            field_entries(&projection),
+            vec![
+                entry("audience", "support"),
+                entry("owner", "support-ops"),
+                entry("due", "2026-05-20"),
             ]
         );
     }

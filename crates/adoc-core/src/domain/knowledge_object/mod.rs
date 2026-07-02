@@ -30,6 +30,7 @@ pub(crate) mod procedure;
 pub(crate) mod projection;
 pub(crate) mod question;
 pub(crate) mod source;
+pub(crate) mod task;
 pub(crate) mod warning;
 
 use agent_instruction::AgentInstruction;
@@ -45,6 +46,7 @@ use policy::Policy;
 use procedure::Procedure;
 use question::Question;
 use source::Source;
+use task::Task;
 use warning::Warning;
 
 pub(super) fn reject_duplicate_fields(
@@ -824,6 +826,7 @@ pub(crate) enum BlockKind {
     Api,
     Observation,
     Question,
+    Task,
 }
 
 impl BlockKind {
@@ -842,6 +845,7 @@ impl BlockKind {
         Self::Api,
         Self::Observation,
         Self::Question,
+        Self::Task,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -860,6 +864,7 @@ impl BlockKind {
             Self::Api => "api",
             Self::Observation => "observation",
             Self::Question => "question",
+            Self::Task => "task",
         }
     }
 
@@ -895,6 +900,7 @@ pub(crate) enum KnowledgeObject {
     Api(Api),
     Observation(Observation),
     Question(Question),
+    Task(Task),
 }
 
 impl KnowledgeObject {
@@ -914,6 +920,7 @@ impl KnowledgeObject {
             Self::Api(_) => BlockKind::Api,
             Self::Observation(_) => BlockKind::Observation,
             Self::Question(_) => BlockKind::Question,
+            Self::Task(_) => BlockKind::Task,
         }
     }
 
@@ -933,6 +940,7 @@ impl KnowledgeObject {
             Self::Api(api) => api.id(),
             Self::Observation(observation) => observation.id(),
             Self::Question(question) => question.id(),
+            Self::Task(task) => task.id(),
         }
     }
 
@@ -952,6 +960,7 @@ impl KnowledgeObject {
             Self::Api(api) => api.span(),
             Self::Observation(observation) => observation.span(),
             Self::Question(question) => question.span(),
+            Self::Task(task) => task.span(),
         }
     }
 
@@ -971,6 +980,7 @@ impl KnowledgeObject {
             Self::Api(api) => api.body(),
             Self::Observation(observation) => observation.body(),
             Self::Question(question) => question.body(),
+            Self::Task(task) => task.body(),
         }
     }
 
@@ -990,6 +1000,7 @@ impl KnowledgeObject {
             Self::Api(api) => api.body_mut(),
             Self::Observation(observation) => observation.body_mut(),
             Self::Question(question) => question.body_mut(),
+            Self::Task(task) => task.body_mut(),
         }
     }
 
@@ -1009,6 +1020,7 @@ impl KnowledgeObject {
             Self::Api(api) => api.relations(),
             Self::Observation(observation) => observation.relations(),
             Self::Question(question) => question.relations(),
+            Self::Task(task) => task.relations(),
         }
     }
 
@@ -1031,6 +1043,7 @@ impl KnowledgeObject {
             | Self::Source(_)
             | Self::Observation(_) => &[],
             Self::Question(_) => &[],
+            Self::Task(_) => &[],
         }
     }
 
@@ -1050,6 +1063,7 @@ impl KnowledgeObject {
             Self::Api(api) => api.fields(),
             Self::Observation(observation) => observation.fields(),
             Self::Question(question) => question.fields(),
+            Self::Task(task) => task.fields(),
         }
     }
 }
@@ -1073,6 +1087,7 @@ mod tests {
     use crate::domain::knowledge_object::policy::Policy;
     use crate::domain::knowledge_object::procedure::Procedure;
     use crate::domain::knowledge_object::source::Source;
+    use crate::domain::knowledge_object::task::Task;
     use crate::domain::knowledge_object::warning::Warning;
 
     fn span(file: &str, line: u32, column: u32) -> SourceSpan {
@@ -1239,6 +1254,21 @@ mod tests {
         )
     }
 
+    fn task_object() -> KnowledgeObject {
+        KnowledgeObject::Task(
+            Task::try_new(
+                "billing.update-support-runbook",
+                "open",
+                "support-ops",
+                Some("2026-05-20"),
+                "Update the support runbook.",
+                BTreeMap::from([("audience".to_string(), "support".to_string())]),
+                span("task.adoc", 27, 1),
+            )
+            .expect("valid task"),
+        )
+    }
+
     fn source_object() -> KnowledgeObject {
         KnowledgeObject::Source(
             Source::try_new(
@@ -1284,6 +1314,7 @@ mod tests {
         assert_eq!(BlockKind::Source.as_str(), "source");
         assert_eq!(BlockKind::Api.as_str(), "api");
         assert_eq!(BlockKind::Observation.as_str(), "observation");
+        assert_eq!(BlockKind::Task.as_str(), "task");
     }
 
     #[test]
@@ -1334,6 +1365,7 @@ mod tests {
             BlockKind::from_fence_word("observation"),
             Some(BlockKind::Observation)
         );
+        assert_eq!(BlockKind::from_fence_word("task"), Some(BlockKind::Task));
         assert_eq!(BlockKind::from_fence_word("fact"), None);
         assert_eq!(BlockKind::from_fence_word("Claim"), None);
     }
@@ -1357,6 +1389,7 @@ mod tests {
                 BlockKind::Api,
                 BlockKind::Observation,
                 BlockKind::Question,
+                BlockKind::Task,
             ]
         );
     }
@@ -1488,6 +1521,15 @@ mod tests {
                 "observation.adoc",
                 27,
                 "owner",
+            ),
+            (
+                task_object(),
+                BlockKind::Task,
+                "billing.update-support-runbook",
+                "Update the support runbook.",
+                "task.adoc",
+                27,
+                "audience",
             ),
         ];
 

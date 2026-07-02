@@ -27,6 +27,7 @@ mod policy_active_approval;
 mod policy_review_drift;
 mod question_resolved_by;
 mod raw_html_forbidden;
+mod task_overdue;
 mod unsafe_link_forbidden;
 pub(crate) mod url_walker;
 
@@ -43,6 +44,7 @@ use policy_active_approval::PolicyActiveApproval;
 use policy_review_drift::PolicyReviewDrift;
 use question_resolved_by::QuestionResolvedBy;
 use raw_html_forbidden::RawHtmlForbidden;
+use task_overdue::TaskOverdue;
 use unsafe_link_forbidden::UnsafeLinkForbidden;
 
 use crate::domain::ast::{PageAst, WorkspaceAst};
@@ -81,11 +83,13 @@ pub(crate) fn validate_resolved_page(
     let lifecycle = KnowledgeObjectLifecycle::new(today);
     let policy_active_approval = PolicyActiveApproval::new(today);
     let drift = PolicyReviewDrift::new(today);
-    let rules: [&dyn ValidationRule; 5] = [
+    let task_overdue = TaskOverdue::new(today);
+    let rules: [&dyn ValidationRule; 6] = [
         &KnowledgeObjectBodyUnsafeLinksForbidden,
         &lifecycle,
         &policy_active_approval,
         &drift,
+        &task_overdue,
         &ClaimEvidenceQualityLowRule,
     ];
     validate_page_with_rules(page, source, &rules)

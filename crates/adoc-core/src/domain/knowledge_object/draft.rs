@@ -20,6 +20,7 @@ use crate::domain::knowledge_object::observation::{
 use crate::domain::knowledge_object::question::{
     ANSWERED_STATUS, QuestionStatus, RESOLVED_BY_FIELD,
 };
+use crate::domain::knowledge_object::task::{DUE_FIELD, TaskStatus};
 use crate::domain::value_objects::effective_date::EffectiveDate;
 use crate::domain::value_objects::http_method::HttpMethod;
 use crate::domain::value_objects::sample_size::SampleSize;
@@ -76,6 +77,7 @@ impl DraftValidator<'_> {
             "api" => self.validate_api(),
             "observation" => self.validate_observation(),
             "question" => self.validate_question(),
+            "task" => self.validate_task(),
             kind => self.error(format!("unknown Knowledge Object kind `{kind}`")),
         }
     }
@@ -213,6 +215,31 @@ impl DraftValidator<'_> {
             && self.draft.fields.contains_key(RESOLVED_BY_FIELD)
         {
             self.error("question with fields.resolved_by requires `status: answered`");
+        }
+    }
+
+    fn validate_task(&mut self) {
+        if TaskStatus::try_new(self.draft.status.unwrap_or("")).is_err() {
+            match self.draft.status {
+                Some(status) => self.error(format!("task has invalid status `{status}`")),
+                None => self.error("task requires status"),
+            }
+        }
+
+        if self
+            .draft
+            .fields
+            .get(OWNER_FIELD)
+            .and_then(|value| Owner::try_new(value))
+            .is_none()
+        {
+            self.error("task requires non-empty fields.owner");
+        }
+
+        if let Some(due) = self.draft.fields.get(DUE_FIELD)
+            && EffectiveDate::try_new(due).is_err()
+        {
+            self.error(format!("task has invalid due `{due}`"));
         }
     }
 
@@ -542,6 +569,64 @@ mod tests {
                 .contains("requires review evidence before approval"),
             "unexpected obligation reason: {}",
             validation.proof_obligations[0].reason
+        );
+    }
+
+    // ── V6.5.4: task drafts ──────────────────────────────────────────────────
+
+    #[test]
+    fn open_task_with_owner_is_valid() {
+        let validation = validate(
+            "task",
+            Some("open"),
+            "Update the support runbook.",
+            BTreeMap::from([(OWNER_FIELD.to_string(), "support-ops".to_string())]),
+        );
+
+        assert!(validation.diagnostics.is_empty());
+        assert!(validation.proof_obligations.is_empty());
+    }
+
+    #[test]
+    fn task_without_owner_is_invalid() {
+        let validation = validate(
+            "task",
+            Some("open"),
+            "Update the support runbook.",
+            BTreeMap::new(),
+        );
+
+        assert_eq!(validation.diagnostics.len(), 1);
+        assert!(validation.diagnostics[0].message.contains("fields.owner"));
+    }
+
+    #[test]
+    fn task_with_invalid_status_or_due_is_invalid() {
+        let bad_status = validate(
+            "task",
+            Some("blocked"),
+            "Update the support runbook.",
+            BTreeMap::from([(OWNER_FIELD.to_string(), "support-ops".to_string())]),
+        );
+        assert!(
+            bad_status.diagnostics[0]
+                .message
+                .contains("invalid status `blocked`")
+        );
+
+        let bad_due = validate(
+            "task",
+            Some("open"),
+            "Update the support runbook.",
+            BTreeMap::from([
+                (OWNER_FIELD.to_string(), "support-ops".to_string()),
+                (DUE_FIELD.to_string(), "someday".to_string()),
+            ]),
+        );
+        assert!(
+            bad_due.diagnostics[0]
+                .message
+                .contains("invalid due `someday`")
         );
     }
 

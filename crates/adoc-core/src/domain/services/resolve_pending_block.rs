@@ -11,7 +11,7 @@ use crate::domain::knowledge_object::{
     BlockKind, KnowledgeObject, agent_instruction::AgentInstruction, api::Api, claim::Claim,
     constraint::Constraint, contradiction::Contradiction, decision::Decision, example::Example,
     glossary::Glossary, observation::Observation, policy::Policy, procedure::Procedure,
-    question::Question, source::Source, warning::Warning,
+    question::Question, source::Source, task::Task, warning::Warning,
 };
 
 type KnowledgeObjectBuilder = fn(ParsedTypedBlock, &mut Vec<Diagnostic>) -> Option<KnowledgeObject>;
@@ -79,6 +79,10 @@ const RESOLVERS: &[KnowledgeObjectResolver] = &[
     KnowledgeObjectResolver {
         kind: BlockKind::Question,
         build: build_question,
+    },
+    KnowledgeObjectResolver {
+        kind: BlockKind::Task,
+        build: build_task,
     },
 ];
 
@@ -213,6 +217,13 @@ fn build_question(
     Question::build_from_parsed(parsed, diagnostics).map(KnowledgeObject::Question)
 }
 
+fn build_task(
+    parsed: ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<KnowledgeObject> {
+    Task::build_from_parsed(parsed, diagnostics).map(KnowledgeObject::Task)
+}
+
 fn unknown_kind_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
     let mut diagnostic = Diagnostic::error(
         DiagnosticCode::SchemaUnknownKind,
@@ -337,7 +348,7 @@ mod tests {
 
         assert_eq!(
             help,
-            "supported kinds: claim, decision, glossary, warning, constraint, policy, procedure, example, agent_instruction, contradiction, source, api, observation, question. \
+            "supported kinds: claim, decision, glossary, warning, constraint, policy, procedure, example, agent_instruction, contradiction, source, api, observation, question, task. \
             Custom schemas are deferred."
         );
         for kind in BlockKind::ALL {
