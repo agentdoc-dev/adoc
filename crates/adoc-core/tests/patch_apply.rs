@@ -63,11 +63,8 @@ impl Workspace {
         let artifact_dir = self.root.path().join("dist");
         fs::create_dir_all(&artifact_dir).expect("mkdir dist");
         let artifact = artifact_dir.join("docs.graph.json");
-        fs::write(
-            &artifact,
-            result.artifacts.expect("artifacts").graph_json,
-        )
-        .expect("write artifact");
+        fs::write(&artifact, result.artifacts.expect("artifacts").graph_json)
+            .expect("write artifact");
         artifact
     }
 

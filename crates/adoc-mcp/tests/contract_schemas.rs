@@ -973,7 +973,10 @@ fn validates_patch_apply_envelopes_against_contract_schema() {
         .expect("gate refusal is a normal envelope");
     assert_valid("adoc.patch.apply.v0.schema.json", &refusal);
     assert_eq!(refusal["applied"], false);
-    assert_eq!(refusal["diagnostics"][0]["code"], "mcp.patch_apply_disabled");
+    assert_eq!(
+        refusal["diagnostics"][0]["code"],
+        "mcp.patch_apply_disabled"
+    );
 
     // Enabled project: applied success, then a stale-base-hash refusal.
     let workspace = tempfile::tempdir().expect("workspace");

@@ -88,7 +88,11 @@ pub(crate) fn plan_update_fields(
             ));
             continue;
         }
-        if layout.duplicate_keys.iter().any(|duplicate| duplicate == key) {
+        if layout
+            .duplicate_keys
+            .iter()
+            .any(|duplicate| duplicate == key)
+        {
             diagnostics.push(Diagnostic::error(
                 DiagnosticCode::PatchValidationFailed,
                 format!(
@@ -164,7 +168,9 @@ pub(crate) fn plan_update_fields(
 pub(crate) enum CreateInsertion {
     /// Immediately after the anchor block's closing `::` fence; the value is
     /// the byte offset of the fence line's last content byte (its span end).
-    AfterCloseFence { close_fence_end: usize },
+    AfterCloseFence {
+        close_fence_end: usize,
+    },
     EndOfFile,
 }
 
@@ -464,7 +470,10 @@ After text.
         };
         let plan = plan_replace_body(source, &layout, "Inserted body.").expect("plans");
         let spliced = plan.splice(source).expect("splices");
-        assert_eq!(spliced, "::claim a.b\nstatus: draft\n--\nInserted body.\n::\n");
+        assert_eq!(
+            spliced,
+            "::claim a.b\nstatus: draft\n--\nInserted body.\n::\n"
+        );
     }
 
     #[test]
@@ -515,7 +524,11 @@ After text.
             plan_replace_body(SOURCE, &layout, "ok\n::\nmore").expect_err("must refuse");
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::PatchValidationFailed);
-        assert!(diagnostics[0].message.contains("close the typed-block fence"));
+        assert!(
+            diagnostics[0]
+                .message
+                .contains("close the typed-block fence")
+        );
     }
 
     #[test]
@@ -618,12 +631,10 @@ After text.
         let spliced = plan.splice(SOURCE).expect("splices");
         assert_eq!(
             spliced,
-            SOURCE
-                .replace("verified", "deprecated")
-                .replace(
-                    "owner: team-billing\n",
-                    "owner: team-billing\nexpires_at: 2027-01-01\n"
-                )
+            SOURCE.replace("verified", "deprecated").replace(
+                "owner: team-billing\n",
+                "owner: team-billing\nexpires_at: 2027-01-01\n"
+            )
         );
     }
 
@@ -721,6 +732,9 @@ After text.
         let fields = BTreeMap::from([("owner".to_string(), "\u{1f980}-crew".to_string())]);
         let plan = plan_update_fields(source, &layout, &fields).expect("plans");
         let spliced = plan.splice(source).expect("splices");
-        assert_eq!(spliced, "::claim a.b\nowner: \u{1f980}-crew\nstatus: draft\n::\n");
+        assert_eq!(
+            spliced,
+            "::claim a.b\nowner: \u{1f980}-crew\nstatus: draft\n::\n"
+        );
     }
 }

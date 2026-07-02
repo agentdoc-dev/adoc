@@ -2,6 +2,10 @@ mod application;
 mod domain;
 mod infrastructure;
 
+pub use application::apply::{
+    ApplyProposer, ApplyTrace, ObjectHashes, PATCH_APPLY_SCHEMA_VERSION, PatchApplyResult,
+    PostCheckReport, WrittenFile, mcp_patch_apply_disabled_refusal,
+};
 pub use application::artifact_inspection::{
     ArtifactInspection, ArtifactLoadStatus, GraphArtifactInspectionInput,
     SearchArtifactInspectionInput,
@@ -12,10 +16,6 @@ pub use application::compile::{
 pub use application::graph::{
     GRAPH_TRAVERSAL_SCHEMA_VERSION, GraphInput, GraphLoadResult, GraphSession,
     GraphTraversalEnvelope, traverse_graph,
-};
-pub use application::apply::{
-    ApplyProposer, ApplyTrace, ObjectHashes, PATCH_APPLY_SCHEMA_VERSION, PatchApplyResult,
-    PostCheckReport, WrittenFile, mcp_patch_apply_disabled_refusal,
 };
 pub use application::patch::{
     PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput, PatchJsonInput, PatchParseError,
