@@ -63,6 +63,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/source-guide.md"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/api-guide",
+        name: "agent-api-guide",
+        title: "API Guide",
+        description: "V6.5.1 api objects are typed API contracts; verified apis require schema evidence.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/api-guide.md"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/patch-contract",
         name: "agent-patch-contract",
         title: "Agent Patch Contract",

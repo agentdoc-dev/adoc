@@ -504,3 +504,54 @@ fn graph_traversal_applies_direction_and_relation_filters() {
     assert_eq!(traversal.edges[0].target, "billing.a");
     assert_eq!(traversal.edges[0].relation, GraphRelationKind::RelatedTo);
 }
+
+// ── V6.5.1: v4 golden api node ───────────────────────────────────────────────
+
+/// Pins the `adoc.graph.v4` api node shape: lifecycle-only `status`, method
+/// and path in the hashed `fields` map, and no `severity`/`trust` carriers —
+/// api is born under the ADR-0039 lifecycle-only rule.
+#[test]
+fn built_api_node_is_lifecycle_only_with_method_and_path_fields() {
+    let graph = build_graph_value(
+        "# Billing API @doc(team.billing-api)\n\
+         \n\
+         ::api billing.consume-credit\n\
+         method: POST\n\
+         path: /api/billing/credits/consume\n\
+         status: verified\n\
+         source: openapi/billing.yaml#/paths/~1credits~1consume\n\
+         owner: backend-platform\n\
+         verified_at: 2026-04-30\n\
+         --\n\
+         Consumes one or more credits for a completed generation job.\n\
+         ::\n",
+    );
+
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+
+    let api = graph["nodes"]
+        .as_array()
+        .expect("nodes array")
+        .iter()
+        .find(|node| node["kind"] == "api")
+        .expect("graph contains the api node");
+
+    assert_eq!(api["id"], "billing.consume-credit");
+    assert_eq!(api["status"], "verified");
+    assert_eq!(api["fields"]["method"], "POST");
+    assert_eq!(api["fields"]["path"], "/api/billing/credits/consume");
+    assert_eq!(api["fields"]["owner"], "backend-platform");
+    assert_eq!(api["fields"]["verified_at"], "2026-04-30");
+    assert!(
+        api.get("severity").is_none() && api.get("trust").is_none(),
+        "api nodes carry no severity/trust: {api}"
+    );
+    // Inline `source:` evidence lands in the typed evidence array.
+    assert_eq!(api["evidence"][0]["kind"], "source_code");
+    assert!(
+        api["content_hash"]
+            .as_str()
+            .expect("content_hash")
+            .starts_with("sha256:")
+    );
+}
