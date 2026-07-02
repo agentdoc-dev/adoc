@@ -204,7 +204,7 @@ Goal: introduce the `question` Knowledge Object for tracked open questions (PRD 
 Scope:
 
 - Required: `id`, `status`, `body`. Statuses: closed `open | answered`. Optional: `owner`.
-- `answered` requires `resolved_by: <object-id>` referencing an existing `claim` or `decision` — an answered question must point at the knowledge that answered it. This is a cross-aggregate rule, so it lives in `infrastructure/validate/objects/` (the V5.6 contradiction-claims precedent): target exists and has claim/decision kind. The reference emits a graph edge so traversal can walk question → answer.
+- `answered` requires `resolved_by: <object-id>` referencing an existing `claim` or `decision` — an answered question must point at the knowledge that answered it. This is a cross-aggregate rule, so it lives in `infrastructure/validate/objects/` (the V5.6 contradiction-claims precedent): target exists and has claim/decision kind. The reference emits a derived `resolved_by` JSON edge in the graph artifact for external consumers (`adoc graph` does not walk it); `adoc why` on the answering object lists the question's ID in `resolved_questions`.
 - HTML renders open questions with a prominent "Open" badge; answered ones link to the resolving object.
 - `FieldChange::QuestionResolvedBy`; diagnostics `schema.question_missing_status`, `schema.question_answered_missing_resolved_by`, `schema.question_resolved_by_not_found`, `schema.question_resolved_by_wrong_kind`.
 

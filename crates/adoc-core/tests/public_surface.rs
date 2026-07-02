@@ -287,6 +287,7 @@ fn public_surface_compiles_with_only_documented_imports() {
         effective_status: None,
         effective_reason: None,
         evidence_quality: None,
+        resolved_questions: Vec::new(),
     };
     let _: RetrievalRecord = record;
 

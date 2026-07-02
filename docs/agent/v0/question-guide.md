@@ -52,7 +52,7 @@ Should unused trial credits expire after 30 days or remain available indefinitel
 - `fields["owner"]` / `fields["resolved_by"]` — when authored
 - `body` — the prose question
 
-An answered question additionally emits a derived `resolved_by` graph edge from the question to the answering claim/decision, so traversal (and `adoc why` on the answering object) can walk question → answer.
+The question → answer link surfaces in three places: the question's own retrieval record carries `fields["resolved_by"]`; `adoc why` on the answering object lists the question's ID in `resolved_questions`; and the graph artifact emits a derived `resolved_by` JSON edge for external consumers — `adoc graph` does not walk this edge (it traverses authored relations only).
 
 They fold into the retrieval surface (`adoc.retrieval.v0`) like any other Knowledge Object — the question body is searchable.
 

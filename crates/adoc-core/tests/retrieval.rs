@@ -410,6 +410,7 @@ fn hybrid_match_serializes_rrf_score_and_omits_missing_rank_fields() {
         effective_status: None,
         effective_reason: None,
         evidence_quality: None,
+        resolved_questions: Vec::new(),
     };
 
     let value = serde_json::to_value(RetrievalEnvelope::new(vec![record], Vec::new()))
@@ -1606,6 +1607,57 @@ fn why_object_serializes_record_without_search_match_block() {
 }
 
 #[test]
+fn why_object_lists_answered_questions_resolving_the_target() {
+    // V6.5.3: `why` on an answering object surfaces the answered questions
+    // whose `resolved_by` names it; unrelated objects omit the field entirely.
+    let mut question = retrieval_filter_object(
+        "billing.trial-credit-expiration",
+        "question",
+        Some("answered"),
+        None,
+        "questions.adoc",
+    );
+    question["fields"]["resolved_by"] = json!("billing.credits-expire");
+    let session = load_session_from_objects(vec![
+        retrieval_filter_object(
+            "billing.credits-expire",
+            "claim",
+            Some("draft"),
+            None,
+            "billing.adoc",
+        ),
+        retrieval_filter_object(
+            "billing.unrelated",
+            "claim",
+            Some("draft"),
+            None,
+            "billing.adoc",
+        ),
+        question,
+    ]);
+
+    let why_result = why_object(&session, "billing.credits-expire");
+
+    assert!(
+        why_result.diagnostics.is_empty(),
+        "expected clean why result, got {:?}",
+        why_result.diagnostics
+    );
+    assert_eq!(why_result.records.len(), 1);
+    assert_eq!(
+        why_result.records[0].resolved_questions,
+        ["billing.trial-credit-expiration"]
+    );
+
+    let unrelated = why_object(&session, "billing.unrelated");
+    let value = serde_json::to_value(&unrelated.records[0]).expect("record serializes");
+    assert!(
+        value.get("resolved_questions").is_none(),
+        "empty resolved_questions must be omitted from serialization"
+    );
+}
+
+#[test]
 fn retrieval_envelope_serializes_stable_schema_with_records_and_diagnostics() {
     let artifact = verified_claim_graph_artifact();
     let result = load_retrieval_session(RetrievalInput {
@@ -1649,6 +1701,7 @@ fn retrieval_record_serializes_lexical_search_match_contract() {
         effective_status: None,
         effective_reason: None,
         evidence_quality: None,
+        resolved_questions: Vec::new(),
     };
     let value = serde_json::to_value(&record).expect("record serializes");
 
@@ -1687,6 +1740,7 @@ fn retrieval_envelope_can_be_created_from_search_result() {
         effective_status: None,
         effective_reason: None,
         evidence_quality: None,
+        resolved_questions: Vec::new(),
     };
     let result = SearchResult {
         records: vec![record],
