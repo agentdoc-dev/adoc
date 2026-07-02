@@ -12,6 +12,7 @@ use crate::domain::knowledge_object::{
     observation::{OBSERVED_AT_FIELD, ObservationStatus, SAMPLE_SIZE_FIELD},
     policy::PolicyStatus,
     procedure::ProcedureStatus,
+    question::{QuestionStatus, RESOLVED_BY_FIELD},
 };
 use crate::domain::value_objects::contradiction_status::ContradictionStatus;
 use crate::domain::value_objects::effective_date::EffectiveDate;
@@ -108,6 +109,8 @@ pub(crate) enum MetadataDiscriminant<'a> {
     ApiStatus(&'a ApiStatus),
     /// V6.5.2: lifecycle status for `observation`.
     ObservationStatus(&'a ObservationStatus),
+    /// V6.5.3: lifecycle status for `question`.
+    QuestionStatus(&'a QuestionStatus),
 }
 
 impl<'a> MetadataDiscriminant<'a> {
@@ -121,6 +124,7 @@ impl<'a> MetadataDiscriminant<'a> {
             Self::ContradictionStatus(status) => status.as_str(),
             Self::ApiStatus(status) => status.as_str(),
             Self::ObservationStatus(status) => status.as_str(),
+            Self::QuestionStatus(status) => status.as_str(),
         }
     }
 }
@@ -294,6 +298,21 @@ impl KnowledgeObject {
                 Some(MetadataDiscriminant::ObservationStatus(
                     observation.status(),
                 ))
+            }
+            Self::Question(question) => {
+                if let Some(owner) = question.owner() {
+                    fields.push(MetadataField::Owner(owner));
+                }
+                // The answered-question reference projects as a stored scalar
+                // so it enters the hashed graph `fields` map (and the
+                // diff/review projection reads it from there).
+                if let Some(resolved_by) = question.resolved_by() {
+                    fields.push(MetadataField::Stored {
+                        key: RESOLVED_BY_FIELD,
+                        value: resolved_by.as_str(),
+                    });
+                }
+                Some(MetadataDiscriminant::QuestionStatus(question.status()))
             }
             Self::Source(source) => {
                 // Evidence kind projected as a stored scalar under key "kind".

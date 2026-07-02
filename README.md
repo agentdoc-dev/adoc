@@ -419,6 +419,7 @@ Supported object kinds:
 - `source`
 - `api`
 - `observation`
+- `question`
 <!-- /adoc:kinds -->
 
 Supported relation fields:
