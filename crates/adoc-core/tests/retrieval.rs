@@ -2079,3 +2079,44 @@ fn api_object_is_lexically_findable_with_method_and_path_fields() {
         Some("/api/billing/credits/consume")
     );
 }
+
+// ── V6.5.2: observation Knowledge Object retrieval coverage ─────────────────
+
+/// An `observation` node's body is BM25-findable and its record echoes kind,
+/// the `observed` lifecycle status, and the sample_size/observed_at scalars
+/// riding the fields map. The numbers themselves are metadata, not meaning —
+/// they are echoed on the record but not indexed.
+#[test]
+fn observation_object_is_lexically_findable_with_metadata_fields() {
+    let mut observation = retrieval_search_object(
+        "onboarding.credit-confusion",
+        "observation",
+        Some("observed"),
+        None,
+        "docs/onboarding.adoc",
+        "Users often misunderstand credit usage before their first generation.",
+    );
+    observation["fields"]["sample_size"] = json!("37");
+    observation["fields"]["observed_at"] = json!("2026-04-30");
+
+    let session = load_session_from_objects(vec![observation]);
+
+    let result = search(
+        &session,
+        lexical_query("misunderstand credit usage", 3, SearchFilters::default()),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), vec!["onboarding.credit-confusion"]);
+    let record = &result.records[0];
+    assert_eq!(record.kind, "observation");
+    assert_eq!(record.status.as_deref(), Some("observed"));
+    assert_eq!(
+        record.fields.get("sample_size").map(String::as_str),
+        Some("37")
+    );
+    assert_eq!(
+        record.fields.get("observed_at").map(String::as_str),
+        Some("2026-04-30")
+    );
+}
