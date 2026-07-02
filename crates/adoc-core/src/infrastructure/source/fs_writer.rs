@@ -1,9 +1,10 @@
 //! Filesystem implementation of the patch-apply write port (V6.4, ADR-0036).
 //!
 //! Atomicity per file: temp file in the same directory (`create_new`), write,
-//! fsync, re-hash the target immediately before rename (TOCTOU guard), then
-//! rename over the target. The target is never touched on any error path and
-//! never reverted after the rename. Containment mirrors `adoc-local`'s
+//! fsync, re-hash the target immediately before rename (TOCTOU guard, which
+//! also refuses a target that became a symlink since containment resolved
+//! it), then rename over the target. The target is never touched on any
+//! error path and never reverted after the rename. Containment mirrors `adoc-local`'s
 //! `ProjectRootPathPolicy` (which lives downstream and cannot be reused here):
 //! `..` components are rejected and the resolved path must stay under the
 //! sandbox root.
@@ -116,6 +117,24 @@ impl WorkspaceWriter for FsWorkspaceWriter {
             return Err(WorkspaceWriteError::ConcurrentModification { path: resolved });
         }
 
+        // `resolved` is canonical, so its leaf was not a symlink when the
+        // containment check ran; one swapped in since would make the hash
+        // check read through the link while the rename replaces the link
+        // itself, orphaning the linked file. Refuse when observed. This
+        // guards a race window no deterministic test can open; the residual
+        // instant before `rename(2)` is accepted (see the port docs).
+        match std::fs::symlink_metadata(&resolved) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                let _ = std::fs::remove_file(&temp_path);
+                return Err(WorkspaceWriteError::ConcurrentModification { path: resolved });
+            }
+            Ok(_) => {}
+            Err(error) => {
+                let _ = std::fs::remove_file(&temp_path);
+                return Err(io_error(&resolved, error));
+            }
+        }
+
         std::fs::rename(&temp_path, &resolved).map_err(|error| {
             let _ = std::fs::remove_file(&temp_path);
             io_error(&resolved, error)
@@ -213,6 +232,34 @@ mod tests {
             WorkspaceWriteError::ConcurrentModification { .. }
         ));
         assert_eq!(std::fs::read_to_string(&target).expect("read"), "moved on");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// A symlink present when `write_atomic` starts is canonicalized by the
+    /// containment check: the write lands on the real file and the link
+    /// survives, still pointing at it.
+    #[test]
+    #[cfg(unix)]
+    fn write_atomic_writes_through_a_preexisting_symlink() {
+        let root = temp_dir("symlink-through");
+        let real = root.join("real.adoc");
+        let link = root.join("link.adoc");
+        std::fs::write(&real, "before").expect("seed");
+        std::os::unix::fs::symlink(&real, &link).expect("symlink");
+        let writer = FsWorkspaceWriter::new(&root);
+
+        writer
+            .write_atomic(&link, "after", &sha256_prefixed(b"before"))
+            .expect("writes");
+
+        assert_eq!(std::fs::read_to_string(&real).expect("read"), "after");
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .expect("stat link")
+                .file_type()
+                .is_symlink(),
+            "the link itself must survive the write"
+        );
         std::fs::remove_dir_all(&root).ok();
     }
 
