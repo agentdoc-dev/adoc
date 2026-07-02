@@ -2039,3 +2039,43 @@ fn migration_hint_appears_in_retrieval_envelope() {
     );
     assert_eq!(diagnostics[0]["severity"], "warning");
 }
+
+// ── V6.5.1: api Knowledge Object retrieval coverage ─────────────────────────
+
+/// The retrieval pipeline is kind-generic by construction: an `api` node's
+/// body is BM25-findable and its record echoes kind, lifecycle status, and
+/// the method/path riding the fields map.
+#[test]
+fn api_object_is_lexically_findable_with_method_and_path_fields() {
+    let mut api = retrieval_search_object(
+        "billing.consume-credit",
+        "api",
+        Some("verified"),
+        Some("backend-platform"),
+        "docs/billing-api.adoc",
+        "Consumes one or more credits for a completed generation job.",
+    );
+    api["fields"]["method"] = json!("POST");
+    api["fields"]["path"] = json!("/api/billing/credits/consume");
+
+    let session = load_session_from_objects(vec![api]);
+
+    let result = search(
+        &session,
+        lexical_query("generation job credits", 3, SearchFilters::default()),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), vec!["billing.consume-credit"]);
+    let record = &result.records[0];
+    assert_eq!(record.kind, "api");
+    assert_eq!(record.status.as_deref(), Some("verified"));
+    assert_eq!(
+        record.fields.get("method").map(String::as_str),
+        Some("POST")
+    );
+    assert_eq!(
+        record.fields.get("path").map(String::as_str),
+        Some("/api/billing/credits/consume")
+    );
+}

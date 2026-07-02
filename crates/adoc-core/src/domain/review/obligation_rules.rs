@@ -22,6 +22,7 @@ use super::object_change::ChangedObject;
 
 const CLAIM_KIND: &str = "claim";
 const POLICY_KIND: &str = "policy";
+const API_KIND: &str = "api";
 const AGENT_INSTRUCTION_KIND: &str = "agent_instruction";
 const CONTRADICTION_KIND: &str = "contradiction";
 const VERIFIED_STATUS: &str = "verified";
@@ -46,6 +47,8 @@ pub(crate) const REASON_SECURITY_REVIEW_TRUST_UPGRADE: &str = "security review (
 pub(crate) const REASON_SECURITY_REVIEW_FORBIDDEN_REMOVED: &str =
     "security review (forbidden action removed)";
 pub(crate) const REASON_OWNER_REASSERT: &str = "owner re-assert (unresolved contradiction changed)";
+pub(crate) const REASON_REVERIFY_API_CONTRACT: &str =
+    "re-verify api contract (method/path changed)";
 
 /// Dispatch the V3.4 trigger table against one `Changed` entry.
 ///
@@ -175,6 +178,19 @@ fn push_for_field_change(
                 required_evidence: Vec::new(),
             });
         }
+        // V6.5.1: a method or path change on a verified api invalidates the
+        // schema evidence the verification rested on.
+        FieldChange::ApiMethod { .. } | FieldChange::ApiPath { .. } if is_verified_api(head) => {
+            out.push(ProofObligation {
+                object_id: id.to_string(),
+                reason: REASON_REVERIFY_API_CONTRACT.to_string(),
+                required_evidence: vec![
+                    crate::domain::value_objects::evidence_kind::EvidenceKind::ApiSchema
+                        .as_str()
+                        .to_string(),
+                ],
+            });
+        }
         // EvidenceAdded, ApprovedByAdded, RelationAdded/Removed,
         // ImpactsAdded/Removed, AllowedActionsAdded/Removed,
         // ForbiddenActionsAdded, Trust (downgrade/same), plus future
@@ -214,6 +230,10 @@ fn is_active_policy(node: &GraphKnowledgeObjectNode) -> bool {
     node.kind == POLICY_KIND && node.status.as_deref() == Some(ACTIVE_STATUS)
 }
 
+fn is_verified_api(node: &GraphKnowledgeObjectNode) -> bool {
+    node.kind == API_KIND && node.status.as_deref() == Some(VERIFIED_STATUS)
+}
+
 fn is_agent_instruction(node: &GraphKnowledgeObjectNode) -> bool {
     node.kind == AGENT_INSTRUCTION_KIND
 }
@@ -227,9 +247,9 @@ fn is_unresolved_contradiction(node: &GraphKnowledgeObjectNode) -> bool {
 
 /// Return `true` when a trust change is an upgrade (after > before).
 ///
-/// Both sides are optional strings taken from the graph node's `status` slot,
-/// where trust is stored for `agent_instruction` nodes. Returns `false` if
-/// either side is absent or cannot be parsed as a valid `Trust`.
+/// Both sides are optional strings taken from the graph node's dedicated
+/// `trust` field (ADR-0039). Returns `false` if either side is absent or
+/// cannot be parsed as a valid `Trust`.
 fn trust_is_upgrade(before: &Option<String>, after: &Option<String>) -> bool {
     use crate::domain::value_objects::trust::Trust;
     let (Some(b), Some(a)) = (before, after) else {
@@ -696,6 +716,53 @@ mod tests {
         assert_eq!(obligations.len(), 1);
         assert_eq!(obligations[0].reason, REASON_REAPPROVE_APPROVER_REMOVED);
         assert_eq!(obligations[0].required_evidence, vec!["approved_by"]);
+    }
+
+    fn verified_api(id: &str) -> GraphKnowledgeObjectNode {
+        let mut node = test_node(id, "sha256:dummy");
+        node.kind = API_KIND.to_string();
+        node.status = Some(VERIFIED_STATUS.to_string());
+        node
+    }
+
+    #[test]
+    fn method_change_on_verified_api_emits_reverify_obligation() {
+        let base = verified_api("billing.consume-credit");
+        let head = verified_api("billing.consume-credit");
+        let change = changed_with(
+            "billing.consume-credit",
+            base,
+            head,
+            vec![FieldChange::ApiMethod {
+                before: Some("POST".to_string()),
+                after: Some("PUT".to_string()),
+            }],
+        );
+
+        let obligations = obligations_for_change(&change);
+
+        assert_eq!(obligations.len(), 1);
+        assert_eq!(obligations[0].reason, REASON_REVERIFY_API_CONTRACT);
+        assert_eq!(obligations[0].required_evidence, vec!["api_schema"]);
+    }
+
+    #[test]
+    fn path_change_on_non_verified_api_emits_no_obligation() {
+        let mut base = verified_api("billing.consume-credit");
+        base.status = Some("draft".to_string());
+        let mut head = verified_api("billing.consume-credit");
+        head.status = Some("draft".to_string());
+        let change = changed_with(
+            "billing.consume-credit",
+            base,
+            head,
+            vec![FieldChange::ApiPath {
+                before: Some("/api/v1".to_string()),
+                after: Some("/api/v2".to_string()),
+            }],
+        );
+
+        assert!(obligations_for_change(&change).is_empty());
     }
 
     #[test]

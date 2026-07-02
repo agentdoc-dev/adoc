@@ -18,6 +18,7 @@ use super::object_diff::ObjectDiff;
 
 const CLAIM_KIND: &str = "claim";
 const DECISION_KIND: &str = "decision";
+const API_KIND: &str = "api";
 const VERIFIED_STATUS: &str = "verified";
 const ACCEPTED_STATUS: &str = "accepted";
 const SOURCE_KIND: &str = "source";
@@ -216,6 +217,9 @@ fn is_verified_subject(node: &GraphKnowledgeObjectNode) -> bool {
     match node.kind.as_str() {
         CLAIM_KIND => status == VERIFIED_STATUS,
         DECISION_KIND => status == ACCEPTED_STATUS,
+        // V6.5.1 (within the ADR-0038 reason set): a verified api naturally
+        // declares its schema/source files via `impacts:`.
+        API_KIND => status == VERIFIED_STATUS,
         _ => false,
     }
 }

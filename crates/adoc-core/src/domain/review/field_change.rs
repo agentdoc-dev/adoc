@@ -120,6 +120,16 @@ pub enum FieldChange {
     ContradictionClaimsRemoved {
         value: String,
     },
+    /// V6.5.1: the `method` on an `api` object changed.
+    ApiMethod {
+        before: Option<String>,
+        after: Option<String>,
+    },
+    /// V6.5.1: the `path` on an `api` object changed.
+    ApiPath {
+        before: Option<String>,
+        after: Option<String>,
+    },
 }
 
 impl FieldChange {
@@ -157,6 +167,8 @@ impl FieldChange {
             FieldChange::ForbiddenActionsRemoved { .. } => "forbidden_actions removed",
             FieldChange::ContradictionClaimsAdded { .. } => "contradiction_claims added",
             FieldChange::ContradictionClaimsRemoved { .. } => "contradiction_claims removed",
+            FieldChange::ApiMethod { .. } => "method changed",
+            FieldChange::ApiPath { .. } => "path changed",
         }
     }
 }
@@ -243,6 +255,18 @@ impl fmt::Display for FieldChange {
             FieldChange::ContradictionClaimsRemoved { value } => {
                 write!(f, "contradiction_claims: -{value}")
             }
+            FieldChange::ApiMethod { before, after } => write!(
+                f,
+                "method: {} → {}",
+                optional(before.as_deref()),
+                optional(after.as_deref())
+            ),
+            FieldChange::ApiPath { before, after } => write!(
+                f,
+                "path: {} → {}",
+                optional(before.as_deref()),
+                optional(after.as_deref())
+            ),
         }
     }
 }
@@ -934,6 +958,72 @@ mod tests {
             }
             .to_string(),
             "contradiction_claims: -auth.b"
+        );
+    }
+
+    // ── V6.5.1 api variants ────────────────────────────────────────────────
+
+    #[test]
+    fn api_method_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::ApiMethod {
+            before: Some("POST".to_string()),
+            after: Some("PUT".to_string()),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(value["type"], "api_method");
+        assert_eq!(value["before"], "POST");
+        assert_eq!(value["after"], "PUT");
+    }
+
+    #[test]
+    fn api_path_variant_serializes_with_snake_case_tag() {
+        let change = FieldChange::ApiPath {
+            before: Some("/api/v1/consume".to_string()),
+            after: Some("/api/v2/consume".to_string()),
+        };
+
+        let value = serde_json::to_value(&change).expect("FieldChange serializes");
+
+        assert_eq!(value["type"], "api_path");
+        assert_eq!(value["before"], "/api/v1/consume");
+        assert_eq!(value["after"], "/api/v2/consume");
+    }
+
+    #[test]
+    fn summary_label_and_display_cover_v6_5_api_variants() {
+        assert_eq!(
+            FieldChange::ApiMethod {
+                before: None,
+                after: None,
+            }
+            .summary_label(),
+            "method changed"
+        );
+        assert_eq!(
+            FieldChange::ApiPath {
+                before: None,
+                after: None,
+            }
+            .summary_label(),
+            "path changed"
+        );
+        assert_eq!(
+            FieldChange::ApiMethod {
+                before: Some("POST".to_string()),
+                after: Some("PUT".to_string()),
+            }
+            .to_string(),
+            "method: POST → PUT"
+        );
+        assert_eq!(
+            FieldChange::ApiPath {
+                before: Some("/a".to_string()),
+                after: Some("/b".to_string()),
+            }
+            .to_string(),
+            "path: /a → /b"
         );
     }
 

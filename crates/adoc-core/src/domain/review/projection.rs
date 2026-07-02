@@ -15,6 +15,10 @@
 
 use std::collections::BTreeSet;
 
+use crate::domain::knowledge_object::BlockKind;
+use crate::domain::knowledge_object::api::{
+    METHOD_FIELD as API_METHOD_FIELD, PATH_FIELD as API_PATH_FIELD,
+};
 use crate::domain::knowledge_object::metadata::KnowledgeObjectMetadata;
 
 const EFFECTIVE_AT_FIELD: &str = "effective_at";
@@ -149,6 +153,28 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
     }
 
     project_approved_by(&mut out, &base.approved_by, &head.approved_by);
+
+    // V6.5.1: api method/path scalar diffs off the graph fields map, gated on
+    // kind — `source` nodes also project a `path` into fields, and an
+    // ungated diff would mislabel a source path edit as `api_path`.
+    if head.kind == BlockKind::Api.as_str() {
+        let base_method = base.fields.get(API_METHOD_FIELD).map(String::as_str);
+        let head_method = head.fields.get(API_METHOD_FIELD).map(String::as_str);
+        if base_method != head_method {
+            out.push(FieldChange::ApiMethod {
+                before: base_method.map(str::to_string),
+                after: head_method.map(str::to_string),
+            });
+        }
+        let base_path = base.fields.get(API_PATH_FIELD).map(String::as_str);
+        let head_path = head.fields.get(API_PATH_FIELD).map(String::as_str);
+        if base_path != head_path {
+            out.push(FieldChange::ApiPath {
+                before: base_path.map(str::to_string),
+                after: head_path.map(str::to_string),
+            });
+        }
+    }
 
     // V5.5: agent_instruction scope scalar diff and action-set diffs. `scope`
     // lives in the graph fields map (unlike `trust`, which has its own node
@@ -872,6 +898,97 @@ mod tests {
         head.approved_by = vec!["approver-a".to_string(), "approver-b".to_string()];
 
         assert!(project_changed(&changed_from(base, head)).is_empty());
+    }
+
+    // ── V6.5.1 api method/path diffs ───────────────────────────────────────
+
+    fn api_node(content_hash: &str, method: &str, path: &str) -> GraphKnowledgeObjectNode {
+        let mut n = node(
+            "billing.consume-credit",
+            content_hash,
+            "Consumes credits.",
+            Some("verified"),
+            BTreeMap::from([
+                ("method".to_string(), method.to_string()),
+                ("path".to_string(), path.to_string()),
+            ]),
+            GraphRelations::default(),
+        );
+        n.kind = "api".to_string();
+        n
+    }
+
+    #[test]
+    fn api_method_change_emits_api_method_field_change() {
+        let base = api_node("sha256:a", "POST", "/api/v1/consume");
+        let head = api_node("sha256:b", "PUT", "/api/v1/consume");
+
+        assert_eq!(
+            project_changed(&ChangedObject::new(
+                "billing.consume-credit".to_string(),
+                base,
+                head,
+            )),
+            vec![FieldChange::ApiMethod {
+                before: Some("POST".to_string()),
+                after: Some("PUT".to_string()),
+            }]
+        );
+    }
+
+    #[test]
+    fn api_path_change_emits_api_path_field_change() {
+        let base = api_node("sha256:a", "POST", "/api/v1/consume");
+        let head = api_node("sha256:b", "POST", "/api/v2/consume");
+
+        assert_eq!(
+            project_changed(&ChangedObject::new(
+                "billing.consume-credit".to_string(),
+                base,
+                head,
+            )),
+            vec![FieldChange::ApiPath {
+                before: Some("/api/v1/consume".to_string()),
+                after: Some("/api/v2/consume".to_string()),
+            }]
+        );
+    }
+
+    #[test]
+    fn source_path_edit_does_not_emit_api_path_field_change() {
+        // `source` nodes project `path` into the fields map too; the api diff
+        // is kind-gated so a source path edit stays out of the api vocabulary.
+        let source_node = |content_hash: &str, path: &str| {
+            let mut n = node(
+                "billing.openapi",
+                content_hash,
+                "The billing OpenAPI schema.",
+                None,
+                BTreeMap::from([
+                    ("kind".to_string(), "api_schema".to_string()),
+                    ("path".to_string(), path.to_string()),
+                ]),
+                GraphRelations::default(),
+            );
+            n.kind = "source".to_string();
+            n
+        };
+
+        let base = source_node("sha256:a", "openapi/billing.yaml");
+        let head = source_node("sha256:b", "openapi/billing-v2.yaml");
+
+        let changes = project_changed(&ChangedObject::new(
+            "billing.openapi".to_string(),
+            base,
+            head,
+        ));
+
+        assert!(
+            !changes
+                .iter()
+                .any(|change| matches!(change, FieldChange::ApiPath { .. })),
+            "source path edits must not project as api_path: {changes:?}"
+        );
     }
 
     #[test]
