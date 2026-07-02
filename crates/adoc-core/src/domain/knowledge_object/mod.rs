@@ -24,6 +24,7 @@ pub(crate) mod draft;
 pub(crate) mod example;
 pub(crate) mod glossary;
 pub(crate) mod metadata;
+pub(crate) mod observation;
 pub(crate) mod policy;
 pub(crate) mod procedure;
 pub(crate) mod projection;
@@ -38,6 +39,7 @@ use contradiction::Contradiction;
 use decision::Decision;
 use example::Example;
 use glossary::Glossary;
+use observation::Observation;
 use policy::Policy;
 use procedure::Procedure;
 use source::Source;
@@ -818,6 +820,7 @@ pub(crate) enum BlockKind {
     Contradiction,
     Source,
     Api,
+    Observation,
 }
 
 impl BlockKind {
@@ -834,6 +837,7 @@ impl BlockKind {
         Self::Contradiction,
         Self::Source,
         Self::Api,
+        Self::Observation,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -850,6 +854,7 @@ impl BlockKind {
             Self::Contradiction => "contradiction",
             Self::Source => "source",
             Self::Api => "api",
+            Self::Observation => "observation",
         }
     }
 
@@ -883,6 +888,7 @@ pub(crate) enum KnowledgeObject {
     Contradiction(Contradiction),
     Source(Source),
     Api(Api),
+    Observation(Observation),
 }
 
 impl KnowledgeObject {
@@ -900,6 +906,7 @@ impl KnowledgeObject {
             Self::Contradiction(_) => BlockKind::Contradiction,
             Self::Source(_) => BlockKind::Source,
             Self::Api(_) => BlockKind::Api,
+            Self::Observation(_) => BlockKind::Observation,
         }
     }
 
@@ -917,6 +924,7 @@ impl KnowledgeObject {
             Self::Contradiction(contradiction) => contradiction.id(),
             Self::Source(source) => source.id(),
             Self::Api(api) => api.id(),
+            Self::Observation(observation) => observation.id(),
         }
     }
 
@@ -934,6 +942,7 @@ impl KnowledgeObject {
             Self::Contradiction(contradiction) => contradiction.span(),
             Self::Source(source) => source.span(),
             Self::Api(api) => api.span(),
+            Self::Observation(observation) => observation.span(),
         }
     }
 
@@ -951,6 +960,7 @@ impl KnowledgeObject {
             Self::Contradiction(contradiction) => contradiction.body(),
             Self::Source(source) => source.body(),
             Self::Api(api) => api.body(),
+            Self::Observation(observation) => observation.body(),
         }
     }
 
@@ -968,6 +978,7 @@ impl KnowledgeObject {
             Self::Contradiction(contradiction) => contradiction.body_mut(),
             Self::Source(source) => source.body_mut(),
             Self::Api(api) => api.body_mut(),
+            Self::Observation(observation) => observation.body_mut(),
         }
     }
 
@@ -985,12 +996,13 @@ impl KnowledgeObject {
             Self::Contradiction(contradiction) => contradiction.relations(),
             Self::Source(source) => source.relations(),
             Self::Api(api) => api.relations(),
+            Self::Observation(observation) => observation.relations(),
         }
     }
 
     /// V3.3 opt-in `impacts:` list. Empty slice for kinds that do not carry
-    /// this field (`glossary`, `warning`, `agent_instruction`, `contradiction`)
-    /// or for objects without it.
+    /// this field (`glossary`, `warning`, `agent_instruction`, `contradiction`,
+    /// `observation`) or for objects without it.
     pub(crate) fn impacts(&self) -> &[RelPath] {
         match self {
             Self::Claim(claim) => claim.impacts().unwrap_or(&[]),
@@ -1004,7 +1016,8 @@ impl KnowledgeObject {
             | Self::Warning(_)
             | Self::AgentInstruction(_)
             | Self::Contradiction(_)
-            | Self::Source(_) => &[],
+            | Self::Source(_)
+            | Self::Observation(_) => &[],
         }
     }
 
@@ -1022,6 +1035,7 @@ impl KnowledgeObject {
             Self::Contradiction(contradiction) => contradiction.fields(),
             Self::Source(source) => source.fields(),
             Self::Api(api) => api.fields(),
+            Self::Observation(observation) => observation.fields(),
         }
     }
 }
@@ -1041,6 +1055,7 @@ mod tests {
     use crate::domain::knowledge_object::decision::{AcceptedVerdict, DecidedBy, Decision};
     use crate::domain::knowledge_object::example::Example;
     use crate::domain::knowledge_object::glossary::Glossary;
+    use crate::domain::knowledge_object::observation::Observation;
     use crate::domain::knowledge_object::policy::Policy;
     use crate::domain::knowledge_object::procedure::Procedure;
     use crate::domain::knowledge_object::source::Source;
@@ -1225,6 +1240,21 @@ mod tests {
         )
     }
 
+    fn observation_object() -> KnowledgeObject {
+        KnowledgeObject::Observation(
+            Observation::try_new(
+                "onboarding.credit-confusion",
+                "observed",
+                Some("37"),
+                Some("2026-04-30"),
+                "Users misunderstand credit usage.",
+                BTreeMap::from([("owner".to_string(), "product-growth".to_string())]),
+                span("observation.adoc", 27, 1),
+            )
+            .expect("valid observation"),
+        )
+    }
+
     #[test]
     fn block_kind_labels_match_source_fence_words() {
         assert_eq!(BlockKind::Claim.as_str(), "claim");
@@ -1238,6 +1268,7 @@ mod tests {
         assert_eq!(BlockKind::AgentInstruction.as_str(), "agent_instruction");
         assert_eq!(BlockKind::Contradiction.as_str(), "contradiction");
         assert_eq!(BlockKind::Source.as_str(), "source");
+        assert_eq!(BlockKind::Observation.as_str(), "observation");
     }
 
     #[test]
@@ -1283,6 +1314,10 @@ mod tests {
             BlockKind::from_fence_word("source"),
             Some(BlockKind::Source)
         );
+        assert_eq!(
+            BlockKind::from_fence_word("observation"),
+            Some(BlockKind::Observation)
+        );
         assert_eq!(BlockKind::from_fence_word("fact"), None);
         assert_eq!(BlockKind::from_fence_word("Claim"), None);
     }
@@ -1304,6 +1339,7 @@ mod tests {
                 BlockKind::Contradiction,
                 BlockKind::Source,
                 BlockKind::Api,
+                BlockKind::Observation,
             ]
         );
     }
@@ -1425,6 +1461,15 @@ mod tests {
                 "Source implementation for credit consumption.",
                 "source.adoc",
                 25,
+                "owner",
+            ),
+            (
+                observation_object(),
+                BlockKind::Observation,
+                "onboarding.credit-confusion",
+                "Users misunderstand credit usage.",
+                "observation.adoc",
+                27,
                 "owner",
             ),
         ];

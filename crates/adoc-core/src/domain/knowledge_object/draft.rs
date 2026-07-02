@@ -14,7 +14,12 @@ use crate::domain::knowledge_object::claim::{
 use crate::domain::knowledge_object::decision::{
     ACCEPTED_STATUS, DECIDED_BY_FIELD, DecidedBy, DecisionStatus,
 };
+use crate::domain::knowledge_object::observation::{
+    OBSERVED_AT_FIELD, ObservationStatus, SAMPLE_SIZE_FIELD,
+};
+use crate::domain::value_objects::effective_date::EffectiveDate;
 use crate::domain::value_objects::http_method::HttpMethod;
+use crate::domain::value_objects::sample_size::SampleSize;
 use crate::domain::value_objects::severity::Severity;
 use crate::domain::values::NonEmptyText;
 
@@ -66,6 +71,7 @@ impl DraftValidator<'_> {
             "glossary" => self.validate_glossary(),
             "warning" => self.validate_warning(),
             "api" => self.validate_api(),
+            "observation" => self.validate_observation(),
             kind => self.error(format!("unknown Knowledge Object kind `{kind}`")),
         }
     }
@@ -153,6 +159,32 @@ impl DraftValidator<'_> {
 
         if self.draft.status == Some(VERIFIED_STATUS) {
             self.validate_verified_api_obligation();
+        }
+    }
+
+    fn validate_observation(&mut self) {
+        match self.draft.status {
+            Some(status) => {
+                if ObservationStatus::try_new(status).is_err() {
+                    self.error(format!("observation has invalid status `{status}`"));
+                }
+            }
+            None => self.error("observation requires status"),
+        }
+
+        if let Some(sample_size) = self.draft.fields.get(SAMPLE_SIZE_FIELD)
+            && SampleSize::try_new(sample_size).is_err()
+        {
+            self.error(format!(
+                "observation has invalid sample_size `{sample_size}`"
+            ));
+        }
+        if let Some(observed_at) = self.draft.fields.get(OBSERVED_AT_FIELD)
+            && EffectiveDate::try_new(observed_at).is_err()
+        {
+            self.error(format!(
+                "observation has invalid observed_at `{observed_at}`"
+            ));
         }
     }
 

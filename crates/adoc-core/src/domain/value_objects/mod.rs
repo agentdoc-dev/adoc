@@ -17,6 +17,7 @@ pub(crate) mod http_method;
 pub(crate) mod lang;
 pub(crate) mod rel_path;
 pub(crate) mod review_interval;
+pub(crate) mod sample_size;
 pub(crate) mod sandbox;
 pub(crate) mod scope;
 pub(crate) mod severity;
