@@ -589,13 +589,9 @@ fn render_question(
     // Open questions carry a prominent badge; answered ones link to the
     // resolving claim/decision (PRD §13.10).
     if let Some(resolved_by) = question.resolved_by() {
-        html.push_str(
-            "<div class=\"question__resolved-by\">Answered by <a class=\"object-ref\" href=\"#",
-        );
-        html.push_str(&escape_html(resolved_by.as_str()));
-        html.push_str("\">");
-        html.push_str(&escape_html(resolved_by.as_str()));
-        html.push_str("</a></div>\n");
+        html.push_str("<div class=\"question__resolved-by\">Answered by ");
+        render_object_ref_anchor(resolved_by.as_str(), html);
+        html.push_str("</div>\n");
     } else {
         html.push_str("<div class=\"question__open-badge\">Open</div>\n");
     }
