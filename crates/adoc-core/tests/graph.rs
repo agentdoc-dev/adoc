@@ -602,3 +602,51 @@ fn built_observation_node_is_lifecycle_only_with_sample_size_and_observed_at_fie
             .starts_with("sha256:")
     );
 }
+
+// ── V6.5.3: question → answer edge ───────────────────────────────────────────
+
+/// Pins the derived `resolved_by` edge: an answered question emits a
+/// question → answering-claim edge (the evidence-edge precedent) so
+/// traversal can walk from the question to the knowledge that answered it.
+#[test]
+fn built_answered_question_emits_resolved_by_edge_to_answering_claim() {
+    let graph = build_graph_value(
+        "# Billing Questions @doc(team.billing-questions)\n\
+         \n\
+         ::claim billing.trial-credit-decision\n\
+         status: draft\n\
+         --\n\
+         Unused trial credits expire after 30 days.\n\
+         ::\n\
+         \n\
+         ::question billing.trial-credit-expiration\n\
+         owner: product-growth\n\
+         status: answered\n\
+         resolved_by: billing.trial-credit-decision\n\
+         --\n\
+         Should unused trial credits expire after 30 days or remain available indefinitely?\n\
+         ::\n",
+    );
+
+    let question = graph["nodes"]
+        .as_array()
+        .expect("nodes array")
+        .iter()
+        .find(|node| node["kind"] == "question")
+        .expect("graph contains the question node");
+    assert_eq!(question["id"], "billing.trial-credit-expiration");
+    assert_eq!(question["status"], "answered");
+    assert_eq!(
+        question["fields"]["resolved_by"],
+        "billing.trial-credit-decision"
+    );
+
+    let edge = graph["edges"]
+        .as_array()
+        .expect("edges array")
+        .iter()
+        .find(|edge| edge["kind"] == "resolved_by")
+        .expect("graph contains the resolved_by edge");
+    assert_eq!(edge["source"], "billing.trial-credit-expiration");
+    assert_eq!(edge["target"], "billing.trial-credit-decision");
+}

@@ -20,6 +20,7 @@ use crate::domain::knowledge_object::api::{
     METHOD_FIELD as API_METHOD_FIELD, PATH_FIELD as API_PATH_FIELD,
 };
 use crate::domain::knowledge_object::metadata::KnowledgeObjectMetadata;
+use crate::domain::knowledge_object::question::RESOLVED_BY_FIELD;
 
 const EFFECTIVE_AT_FIELD: &str = "effective_at";
 const SCOPE_FIELD: &str = "scope";
@@ -172,6 +173,19 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
             out.push(FieldChange::ApiPath {
                 before: base_path.map(str::to_string),
                 after: head_path.map(str::to_string),
+            });
+        }
+    }
+
+    // V6.5.3: question resolved_by scalar diff off the graph fields map,
+    // kind-gated like the api method/path diffs above.
+    if head.kind == BlockKind::Question.as_str() {
+        let base_resolved = base.fields.get(RESOLVED_BY_FIELD).map(String::as_str);
+        let head_resolved = head.fields.get(RESOLVED_BY_FIELD).map(String::as_str);
+        if base_resolved != head_resolved {
+            out.push(FieldChange::QuestionResolvedBy {
+                before: base_resolved.map(str::to_string),
+                after: head_resolved.map(str::to_string),
             });
         }
     }
@@ -988,6 +1002,57 @@ mod tests {
                 .iter()
                 .any(|change| matches!(change, FieldChange::ApiPath { .. })),
             "source path edits must not project as api_path: {changes:?}"
+        );
+    }
+
+    // ── V6.5.3 question resolved_by diff ─────────────────────────────────
+
+    fn question_node(
+        content_hash: &str,
+        status: &str,
+        resolved_by: Option<&str>,
+    ) -> GraphKnowledgeObjectNode {
+        let mut fields = BTreeMap::new();
+        if let Some(resolved_by) = resolved_by {
+            fields.insert("resolved_by".to_string(), resolved_by.to_string());
+        }
+        let mut n = node(
+            "billing.trial-credit-expiration",
+            content_hash,
+            "Should unused trial credits expire after 30 days?",
+            Some(status),
+            fields,
+            GraphRelations::default(),
+        );
+        n.kind = "question".to_string();
+        n
+    }
+
+    #[test]
+    fn question_open_to_answered_emits_status_and_resolved_by_field_changes() {
+        let base = question_node("sha256:a", "open", None);
+        let head = question_node(
+            "sha256:b",
+            "answered",
+            Some("billing.trial-credit-decision"),
+        );
+
+        assert_eq!(
+            project_changed(&ChangedObject::new(
+                "billing.trial-credit-expiration".to_string(),
+                base,
+                head,
+            )),
+            vec![
+                FieldChange::Status {
+                    before: Some("open".to_string()),
+                    after: Some("answered".to_string()),
+                },
+                FieldChange::QuestionResolvedBy {
+                    before: None,
+                    after: Some("billing.trial-credit-decision".to_string()),
+                },
+            ]
         );
     }
 
