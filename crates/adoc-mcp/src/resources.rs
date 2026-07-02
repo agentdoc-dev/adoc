@@ -87,6 +87,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/question-guide.md"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/task-guide",
+        name: "agent-task-guide",
+        title: "Task Guide",
+        description: "V6.5.4 task objects are documentation action items; open tasks with a past due date warn task.overdue.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/task-guide.md"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/patch-contract",
         name: "agent-patch-contract",
         title: "Agent Patch Contract",

@@ -650,3 +650,66 @@ fn built_answered_question_emits_resolved_by_edge_to_answering_claim() {
     assert_eq!(edge["source"], "billing.trial-credit-expiration");
     assert_eq!(edge["target"], "billing.trial-credit-decision");
 }
+
+// ── V6.5.4: v4 golden task node ──────────────────────────────────────────────
+
+/// Pins the `adoc.graph.v4` task node shape: lifecycle-only `status`, owner
+/// and due in the hashed `fields` map, and no `severity`/`trust` carriers —
+/// task is born under the ADR-0039 lifecycle-only rule. The PRD §13.11
+/// `depends_on` relation emits a graph edge.
+#[test]
+fn built_task_node_is_lifecycle_only_with_owner_and_due_fields() {
+    let graph = build_graph_value(
+        "# Billing Tasks @doc(team.billing-tasks)\n\
+         \n\
+         ::claim billing.credits.refund-on-failed-persistence\n\
+         status: plain\n\
+         --\n\
+         Credits are refunded when persistence fails after generation.\n\
+         ::\n\
+         \n\
+         ::task billing.update-support-runbook\n\
+         owner: support-ops\n\
+         status: open\n\
+         due: 2026-05-20\n\
+         depends_on: billing.credits.refund-on-failed-persistence\n\
+         --\n\
+         Update the support runbook to mention refund behavior after persistence failure.\n\
+         ::\n",
+    );
+
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+
+    let task = graph["nodes"]
+        .as_array()
+        .expect("nodes array")
+        .iter()
+        .find(|node| node["kind"] == "task")
+        .expect("graph contains the task node");
+
+    assert_eq!(task["id"], "billing.update-support-runbook");
+    assert_eq!(task["status"], "open");
+    assert_eq!(task["fields"]["owner"], "support-ops");
+    assert_eq!(task["fields"]["due"], "2026-05-20");
+    assert!(
+        task.get("severity").is_none() && task.get("trust").is_none(),
+        "task nodes carry no severity/trust: {task}"
+    );
+    assert!(
+        task["content_hash"]
+            .as_str()
+            .expect("content_hash")
+            .starts_with("sha256:")
+    );
+
+    let has_depends_on_edge = graph["edges"]
+        .as_array()
+        .expect("edges array")
+        .iter()
+        .any(|edge| {
+            edge["relation"] == "depends_on"
+                && edge["source"] == "billing.update-support-runbook"
+                && edge["target"] == "billing.credits.refund-on-failed-persistence"
+        });
+    assert!(has_depends_on_edge, "expected the task depends_on edge");
+}
