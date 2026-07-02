@@ -22,8 +22,6 @@ pub(crate) const RESOLVED_BY_FIELD: &str = "resolved_by";
 pub(crate) const ANSWERED_STATUS: &str = "answered";
 const STATUS_FIELD: &str = "status";
 
-const QUESTION_MISSING_STATUS_HELP: &str =
-    "Questions require non-empty `status`. Valid question statuses are: open, answered.";
 const QUESTION_INVALID_STATUS_HELP: &str = "Valid question statuses are: open, answered.";
 const QUESTION_MISSING_BODY_HELP: &str =
     "Questions require non-empty body text stating the open question.";
@@ -233,8 +231,7 @@ fn emit_question_error(
         QuestionError::MissingStatus => Diagnostic::error(
             DiagnosticCode::SchemaQuestionMissingStatus,
             "question is missing required field `status`",
-        )
-        .with_help(QUESTION_MISSING_STATUS_HELP),
+        ),
         QuestionError::InvalidStatus(status) => Diagnostic::error(
             DiagnosticCode::SchemaInvalidStatus,
             format!(
