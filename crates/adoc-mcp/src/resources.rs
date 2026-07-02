@@ -71,6 +71,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/api-guide.md"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/observation-guide",
+        name: "agent-observation-guide",
+        title: "Observation Guide",
+        description: "V6.5.2 observation objects record findings from support, analytics, research, and ops.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/observation-guide.md"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/patch-contract",
         name: "agent-patch-contract",
         title: "Agent Patch Contract",

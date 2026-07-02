@@ -555,3 +555,50 @@ fn built_api_node_is_lifecycle_only_with_method_and_path_fields() {
             .starts_with("sha256:")
     );
 }
+
+/// V6.5.2: the PRD §13.9 observation example emits a v4 node with the
+/// `observed` lifecycle status, sample_size/observed_at in the hashed
+/// `fields` map, inline `source:` as typed evidence, and no `severity`/`trust`
+/// carriers — observation is born under the ADR-0039 lifecycle-only rule.
+#[test]
+fn built_observation_node_is_lifecycle_only_with_sample_size_and_observed_at_fields() {
+    let graph = build_graph_value(
+        "# Onboarding findings @doc(team.onboarding-findings)\n\
+         \n\
+         ::observation onboarding.credit-confusion\n\
+         status: observed\n\
+         source: support_tickets\n\
+         sample_size: 37\n\
+         observed_at: 2026-04-30\n\
+         --\n\
+         Users often misunderstand credit usage before their first generation.\n\
+         ::\n",
+    );
+
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+
+    let observation = graph["nodes"]
+        .as_array()
+        .expect("nodes array")
+        .iter()
+        .find(|node| node["kind"] == "observation")
+        .expect("graph contains the observation node");
+
+    assert_eq!(observation["id"], "onboarding.credit-confusion");
+    assert_eq!(observation["status"], "observed");
+    assert_eq!(observation["fields"]["sample_size"], "37");
+    assert_eq!(observation["fields"]["observed_at"], "2026-04-30");
+    assert!(
+        observation.get("severity").is_none() && observation.get("trust").is_none(),
+        "observation nodes carry no severity/trust: {observation}"
+    );
+    // Inline `source:` evidence lands in the typed evidence array.
+    assert_eq!(observation["evidence"][0]["kind"], "source_code");
+    assert_eq!(observation["evidence"][0]["value"], "support_tickets");
+    assert!(
+        observation["content_hash"]
+            .as_str()
+            .expect("content_hash")
+            .starts_with("sha256:")
+    );
+}
