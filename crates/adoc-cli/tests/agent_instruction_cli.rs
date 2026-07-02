@@ -182,12 +182,12 @@ fn build_emits_agent_instruction_into_graph_and_renders_banner() {
     );
 
     // Graph: the agent_instruction node carries kind, trust, scope, and both
-    // action sets (schema stays adoc.graph.v3 — additive).
+    // action sets (schema stays adoc.graph.v4 — additive).
     let graph_text = fs::read_to_string(workspace.root.join("dist").join("docs.graph.json"))
         .expect("graph artifact is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph json parses");
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v3");
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
 
     let node = graph["nodes"]
         .as_array()
@@ -197,9 +197,9 @@ fn build_emits_agent_instruction_into_graph_and_renders_banner() {
         .expect("graph contains an agent_instruction node");
 
     assert_eq!(node["id"], "auth.docs-answering-policy");
-    // `trust` rides the node `status` slot via the discriminant projection;
-    // the dedicated `trust` field is the ADR-0035 dual-emit.
-    assert_eq!(node["status"], "team");
+    // ADR-0039: agent_instruction has no lifecycle status; `trust` is the
+    // sole, authored, hashed carrier.
+    assert_eq!(node["status"], Value::Null);
     assert_eq!(node["trust"], "team");
     assert_eq!(node["fields"]["scope"], "docs/auth/*");
     assert!(

@@ -1,5 +1,5 @@
 {
-  "schema_version": "adoc.graph.v3",
+  "schema_version": "adoc.graph.v4",
   "nodes": [
     {
       "type": "page",
@@ -62,7 +62,7 @@
         "supersedes": [],
         "related_to": []
       },
-      "status": "high"
+      "severity": "high"
     },
     {
       "type": "knowledge_object",

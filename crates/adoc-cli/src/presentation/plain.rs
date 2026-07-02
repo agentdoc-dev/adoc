@@ -49,12 +49,16 @@ pub(crate) fn render_record(
 ) {
     writeln!(output, "Object: {}", record.id).expect("writing to String cannot fail");
     writeln!(output, "Kind: {}", record.kind).expect("writing to String cannot fail");
+    // ADR-0039: status is lifecycle-only; severity/trust have their own
+    // record fields (this also fixes constraints mislabelled "Status:").
     if let Some(status) = &record.status {
-        if record.kind == "warning" {
-            writeln!(output, "Severity: {status}").expect("writing to String cannot fail");
-        } else {
-            writeln!(output, "Status: {status}").expect("writing to String cannot fail");
-        }
+        writeln!(output, "Status: {status}").expect("writing to String cannot fail");
+    }
+    if let Some(severity) = &record.severity {
+        writeln!(output, "Severity: {severity}").expect("writing to String cannot fail");
+    }
+    if let Some(trust) = &record.trust {
+        writeln!(output, "Trust: {trust}").expect("writing to String cannot fail");
     }
     if let Some(owner) = &record.owner {
         writeln!(output, "Owner: {owner}").expect("writing to String cannot fail");
@@ -264,8 +268,9 @@ mod tests {
 
     #[test]
     fn plain_presenter_uses_severity_label_for_warnings() {
+        // ADR-0039: severity is a dedicated record field, not the status slot.
         let mut record = make_record("team.warn", "warning");
-        record.status = Some("high".to_string());
+        record.severity = Some("high".to_string());
         let view = view_for(record);
         let text = render(&view);
 

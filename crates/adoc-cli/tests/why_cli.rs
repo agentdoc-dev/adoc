@@ -533,7 +533,7 @@ fn why_styled_shows_contradicted_chip_on_relation_target() {
     // Build the fixture JSON inline — same schema_version as the existing
     // valid_artifact.graph.json fixture.
     let fixture = serde_json::json!({
-        "schema_version": "adoc.graph.v3",
+        "schema_version": "adoc.graph.v4",
         "nodes": [
             {
                 "type": "page",

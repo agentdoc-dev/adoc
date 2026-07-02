@@ -14,4 +14,4 @@ Records sort most-overdue first, then by Object ID; one object can legitimately 
 
 The query is not a gate: exit code 0 (and a normal envelope) whether or not records exist. Non-zero exit codes occur only on artifact-load failure, with fix-oriented diagnostics and an empty `records` array.
 
-One ADR-0035 caveat: until the `adoc.graph.v4` cleanup, the `authored_status` slot carries Severity for `warning`/`constraint` records and Trust for `agent_instruction` records, should such objects ever carry `expires_at`.
+`authored_status` is the lifecycle status only; records for kinds without a lifecycle (`warning`/`constraint`/`agent_instruction`) omit it, per ADR-0039.

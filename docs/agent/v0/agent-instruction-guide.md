@@ -25,4 +25,4 @@ Treat an `agent_instruction` the way you treat any other Knowledge Object: as ci
 
 ## Wire surface
 
-`agent_instruction` nodes are emitted into the graph artifact (`adoc.graph.v3`) with `kind: "agent_instruction"`, the typed `trust`, the `scope`, and both action sets, and fold into the retrieval surface (`adoc.retrieval.v0`) like any other Knowledge Object. No new envelope version is introduced.
+`agent_instruction` nodes are emitted into the graph artifact (`adoc.graph.v4`) with `kind: "agent_instruction"`, the typed `trust` (top-level node field; these nodes carry no `status`, per ADR-0039), the `scope`, and both action sets, and fold into the retrieval surface (`adoc.retrieval.v0`) like any other Knowledge Object. No new envelope version is introduced.

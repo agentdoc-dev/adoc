@@ -58,7 +58,7 @@ fn relation_edge(source: &str, relation: GraphRelationKind, target: &str) -> Val
 
 fn graph_document(nodes: Vec<Value>, edges: Vec<Value>) -> String {
     serde_json::to_string_pretty(&json!({
-        "schema_version": "adoc.graph.v3",
+        "schema_version": "adoc.graph.v4",
         "nodes": nodes,
         "edges": edges,
         "diagnostics": []
@@ -165,7 +165,7 @@ fn graph_artifact_serializes_with_v2_shape() {
 
     let value: Value = serde_json::from_str(&artifact).expect("graph artifact serializes");
 
-    assert_eq!(value["schema_version"], "adoc.graph.v3");
+    assert_eq!(value["schema_version"], "adoc.graph.v4");
     assert_eq!(value.get("graph_artifact_hash"), None);
     assert!(
         !artifact.contains("\"html\""),
@@ -331,7 +331,7 @@ fn build_workspace_emits_graph_artifact_with_deterministic_order_when_embeddings
     );
     let artifacts = result.artifacts.expect("artifacts are produced");
     let graph: Value = serde_json::from_str(&artifacts.graph_json).expect("graph artifact is JSON");
-    assert_eq!(graph["schema_version"], "adoc.graph.v3");
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
     assert!(
         !artifacts.graph_json.contains("\"html\""),
         "graph artifact must not serialize HTML fragments: {}",

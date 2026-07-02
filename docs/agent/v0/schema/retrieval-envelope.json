@@ -16,6 +16,8 @@
           "kind": { "type": "string" },
           "content_hash": { "type": "string", "pattern": "^sha256:" },
           "status": { "type": ["string", "null"] },
+          "severity": { "type": "string" },
+          "trust": { "type": "string" },
           "owner": { "type": "string" },
           "verified_at": { "type": "string" },
           "body": { "type": "string" },

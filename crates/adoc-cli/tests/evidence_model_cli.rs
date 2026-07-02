@@ -141,8 +141,8 @@ fn build_records_evidence_ref_in_typed_array_and_edge() {
 
     // schema_version guard
     assert_eq!(
-        graph["schema_version"], "adoc.graph.v3",
-        "schema_version must be adoc.graph.v3"
+        graph["schema_version"], "adoc.graph.v4",
+        "schema_version must be adoc.graph.v4"
     );
 
     // ---- find the claim node -----------------------------------------------
@@ -340,7 +340,7 @@ fn build_records_evidence_edge_for_accepted_decision() {
         .expect("graph artifact is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph json parses");
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v3");
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
 
     let edges = graph["edges"]
         .as_array()

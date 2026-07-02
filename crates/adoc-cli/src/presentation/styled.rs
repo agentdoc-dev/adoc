@@ -59,17 +59,22 @@ fn render_styled_record(output: &mut String, presentation_record: &PresentationR
     writeln!(output, "{} {}", faint_label("Kind:"), record.kind)
         .expect("writing to String cannot fail");
 
+    // ADR-0039: status is lifecycle-only; severity/trust have their own
+    // record fields. Severity strings feed the same chip palette.
     if let Some(status) = &record.status {
-        let palette = status_color(Some(status.as_str()));
-        let chip = status_chip(palette, status.as_str());
-        if record.kind == "warning" {
-            // Warnings use "Severity:" label but still get a chip.
-            writeln!(output, "{} {chip}", faint_label("Severity:"))
-                .expect("writing to String cannot fail");
-        } else {
-            writeln!(output, "{} {chip}", faint_label("Status:"))
-                .expect("writing to String cannot fail");
-        }
+        let chip = status_chip(status_color(Some(status.as_str())), status.as_str());
+        writeln!(output, "{} {chip}", faint_label("Status:"))
+            .expect("writing to String cannot fail");
+    }
+    if let Some(severity) = &record.severity {
+        let chip = status_chip(status_color(Some(severity.as_str())), severity.as_str());
+        writeln!(output, "{} {chip}", faint_label("Severity:"))
+            .expect("writing to String cannot fail");
+    }
+    if let Some(trust) = &record.trust {
+        let chip = status_chip(status_color(Some(trust.as_str())), trust.as_str());
+        writeln!(output, "{} {chip}", faint_label("Trust:"))
+            .expect("writing to String cannot fail");
     }
 
     if let Some(owner) = &record.owner {
@@ -408,8 +413,9 @@ mod tests {
 
     #[test]
     fn styled_uses_severity_label_for_warnings() {
+        // ADR-0039: severity is a dedicated record field, not the status slot.
         let mut record = make_record("team.warn", "warning");
-        record.status = Some("high".to_string());
+        record.severity = Some("high".to_string());
         let view = view_for(record);
         let text = strip_ansi(&render(&view));
 

@@ -98,7 +98,7 @@ fn expanded_pilot_check_emits_documented_diagnostic_budget() {
     );
 }
 
-/// V5.10 acceptance: `adoc build` emits an `adoc.graph.v3` artifact carrying
+/// V5.10 acceptance: `adoc build` emits an `adoc.graph.v4` artifact carrying
 /// every V5 kind with exact per-kind node counts, the V5.8 evidence edges,
 /// V5.10 derived lifecycle fields (`effective_status`, `evidence_quality`),
 /// and pilot-scoped source spans; `docs.html` renders each kind distinctly.
@@ -132,7 +132,7 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
     let graph_text = std::fs::read_to_string(output_directory.join("docs.graph.json"))
         .expect("pilot graph JSON is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph JSON is valid");
-    assert_eq!(graph["schema_version"], "adoc.graph.v3");
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
 
     let nodes = graph["nodes"]
         .as_array()

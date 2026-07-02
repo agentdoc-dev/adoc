@@ -893,7 +893,7 @@ mod tests {
         edges: Vec<GraphEdge>,
     ) -> GraphArtifactDocument {
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v3".to_string(),
+            schema_version: "adoc.graph.v4".to_string(),
             nodes: objects
                 .into_iter()
                 .map(GraphNode::KnowledgeObject)
@@ -936,7 +936,7 @@ mod tests {
             },
         }));
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v3".to_string(),
+            schema_version: "adoc.graph.v4".to_string(),
             nodes,
             edges: Vec::new(),
             diagnostics: Vec::new(),

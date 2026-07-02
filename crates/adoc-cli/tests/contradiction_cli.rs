@@ -218,7 +218,7 @@ fn build_emits_contradiction_graph_node_with_expected_fields() {
         .expect("graph artifact is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph json parses");
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v3");
+    assert_eq!(graph["schema_version"], "adoc.graph.v4");
 
     let node = graph["nodes"]
         .as_array()
@@ -230,9 +230,9 @@ fn build_emits_contradiction_graph_node_with_expected_fields() {
     assert_eq!(node["id"], "auth.session.conflict");
     // status carries the contradiction lifecycle status (discriminant slot).
     assert_eq!(node["status"], "unresolved");
-    // severity is a typed metadata field.
-    assert_eq!(node["fields"]["severity"], "high");
-    // ADR-0035 dual-emit: severity also appears as a top-level derived field.
+    // ADR-0039: the top-level `severity` field is the sole carrier — the v3
+    // fields["severity"] copy is gone.
+    assert!(node["fields"].get("severity").is_none());
     assert_eq!(node["severity"], "high");
     // contradiction_claims list contains both claim ids (sorted).
     let claims = node["contradiction_claims"]

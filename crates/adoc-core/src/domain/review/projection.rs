@@ -15,7 +15,6 @@
 
 use std::collections::BTreeSet;
 
-use crate::domain::knowledge_object::BlockKind;
 use crate::domain::knowledge_object::metadata::KnowledgeObjectMetadata;
 
 const EFFECTIVE_AT_FIELD: &str = "effective_at";
@@ -44,20 +43,27 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
         });
     }
 
+    // ADR-0039: `status` is lifecycle-only; `severity`/`trust` are dedicated
+    // node fields. Three independent diffs — the v3 kind-keyed re-labeling
+    // (and its warning-not-relabeled quirk) is retired.
     if base.status != head.status {
-        let before = base.status.clone();
-        let after = head.status.clone();
-        // Some kinds repurpose the graph node's `status` slot for a typed
-        // discriminant rather than a lifecycle status: `constraint` stores its
-        // shared `Severity`, and `agent_instruction` stores its `Trust`. Project
-        // the delta under the matching variant so the change is not mislabelled
-        // as a lifecycle Status change (and not double-counted below).
-        out.push(if head.kind.as_str() == BlockKind::Constraint.as_str() {
-            FieldChange::Severity { before, after }
-        } else if head.kind.as_str() == BlockKind::AgentInstruction.as_str() {
-            FieldChange::Trust { before, after }
-        } else {
-            FieldChange::Status { before, after }
+        out.push(FieldChange::Status {
+            before: base.status.clone(),
+            after: head.status.clone(),
+        });
+    }
+
+    if base.severity != head.severity {
+        out.push(FieldChange::Severity {
+            before: base.severity.clone(),
+            after: head.severity.clone(),
+        });
+    }
+
+    if base.trust != head.trust {
+        out.push(FieldChange::Trust {
+            before: base.trust.clone(),
+            after: head.trust.clone(),
         });
     }
 
@@ -145,8 +151,8 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
     project_approved_by(&mut out, &base.approved_by, &head.approved_by);
 
     // V5.5: agent_instruction scope scalar diff and action-set diffs. `scope`
-    // lives in the graph fields map (unlike `trust`, which rides the `status`
-    // slot and is projected as `FieldChange::Trust` above).
+    // lives in the graph fields map (unlike `trust`, which has its own node
+    // field and is projected as `FieldChange::Trust` above).
     let base_scope = base.fields.get(SCOPE_FIELD).map(String::as_str);
     let head_scope = head.fields.get(SCOPE_FIELD).map(String::as_str);
     if base_scope != head_scope {
@@ -387,8 +393,8 @@ mod tests {
             id: "auth.session.no-local-storage".to_string(),
             kind: "constraint".to_string(),
             content_hash: content_hash.to_string(),
-            status: Some(severity.to_string()),
-            severity: None,
+            status: None,
+            severity: Some(severity.to_string()),
             trust: None,
             body: "Session tokens must not be stored in localStorage.".to_string(),
             page_id: "team.auth".to_string(),
@@ -426,18 +432,52 @@ mod tests {
         );
     }
 
+    /// ADR-0039: the v3 quirk (warning severity deltas mislabelled as
+    /// `Status`) is retired — warnings emit `Severity` like constraints.
+    #[test]
+    fn warning_severity_change_emits_severity_field_change_not_status() {
+        let warning_node = |content_hash: &str, severity: &str| {
+            let mut n = node(
+                "auth.session.clock-skew",
+                content_hash,
+                "Clock skew breaks sessions.",
+                None,
+                BTreeMap::new(),
+                GraphRelations::default(),
+            );
+            n.kind = "warning".to_string();
+            n.severity = Some(severity.to_string());
+            n
+        };
+
+        let base = warning_node("sha256:a", "high");
+        let head = warning_node("sha256:b", "critical");
+
+        assert_eq!(
+            project_changed(&ChangedObject::new(
+                "auth.session.clock-skew".to_string(),
+                base,
+                head,
+            )),
+            vec![FieldChange::Severity {
+                before: Some("high".to_string()),
+                after: Some("critical".to_string()),
+            }]
+        );
+    }
+
     #[test]
     fn agent_instruction_trust_change_emits_only_trust_field_change_not_status() {
-        // `trust` rides the `status` slot via the discriminant projection; a
-        // trust change must surface as exactly one `Trust` variant — never a
-        // mislabelled `Status` change, and never both.
+        // ADR-0039: `trust` is a dedicated node field; a trust change must
+        // surface as exactly one `Trust` variant — never a mislabelled
+        // `Status` change, and never both.
         let agent_node = |content_hash: &str, trust: &str| GraphKnowledgeObjectNode {
             id: "auth.docs-answering-policy".to_string(),
             kind: "agent_instruction".to_string(),
             content_hash: content_hash.to_string(),
-            status: Some(trust.to_string()),
+            status: None,
             severity: None,
-            trust: None,
+            trust: Some(trust.to_string()),
             body: "Prefer verified claims over draft notes.".to_string(),
             page_id: "team.auth".to_string(),
             source_span: GraphSourceSpan {
