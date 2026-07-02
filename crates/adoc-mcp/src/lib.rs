@@ -312,7 +312,7 @@ impl AgentDocMcpServer {
     }
 }
 
-#[tool_router(router = tool_router)]
+#[tool_router(router = tool_router, vis = "pub")]
 impl AgentDocMcpServer {
     #[tool(
         name = "adoc_init",

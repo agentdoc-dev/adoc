@@ -39,6 +39,7 @@ pub use domain::graph::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
     GraphTraversalResult,
 };
+pub use domain::knowledge_object::block_kind_names;
 pub use domain::obligation::ProofObligation;
 pub use domain::patch::{AffectedRelation, PatchDiff, PatchDocument, PatchOperation};
 pub use domain::ports::snapshot_workspace::{GitRef, SnapshotError, SnapshotSelector};

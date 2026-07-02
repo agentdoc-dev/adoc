@@ -853,6 +853,17 @@ impl BlockKind {
     }
 }
 
+/// Kind name strings for every supported typed block, in `BlockKind::ALL`
+/// order. Public so the published-docs guard (ADR-0041) can assert doc kind
+/// lists against the shipped vocabulary without widening `BlockKind` itself.
+pub fn block_kind_names() -> Vec<&'static str> {
+    BlockKind::ALL
+        .iter()
+        .copied()
+        .map(BlockKind::as_str)
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum KnowledgeObject {
     Claim(Claim),
