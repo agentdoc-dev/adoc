@@ -6,7 +6,7 @@ Two naming notes up front. This "V7 cycle" is not the old "V7: web and governanc
 
 The product bet: V6 shipped the loop — notice, propose, apply, re-check — and proved it end to end on the Expanded Pilot. But the loop runs over eleven of fifteen kinds, is blind to every paragraph of prose, and the project's own published docs lie about what it ships. The MVP acceptance bar (PRD §50.1: at least one pilot project using AgentDoc for real docs, at least one agent citing object IDs) cannot be honestly discharged by a tool whose README lists 8 of its 14 MCP tools. This cycle finishes the vocabulary, makes prose retrievable, makes every published promise true, and then **runs the pilot and writes down the evidence**. The loop is the product; the pilot is the proof.
 
-Where [ROADMAP-V6.md](ROADMAP-V6.md) already specs V6.5 and V1.7, this file preserves those decisions verbatim and expands them into engineering detail — module paths, commit shapes, test files, budgets. Conflicts resolve in favor of ROADMAP-V6.md.
+Where [ROADMAP-V6.md](ROADMAP-V6.md) already specs V6.5 and V1.7, this file preserves those decisions verbatim and expands them into engineering detail — module paths, commit shapes, test files, budgets. Conflicts resolve in favor of ROADMAP-V6.md — with one carve-out: on module paths, the tree wins. Where V6 named a path the codebase moved past (its `infrastructure/validate/objects/` was never created — validate rules live flat, as siblings of `contradiction_claims_resolve.rs`), this file follows the tree; don't go looking for the directory V6 promised.
 
 Implementation contracts follow at implementation time as `V7-DESIGN.md` in the V5-DESIGN style; the ADRs to record are listed per milestone below.
 
