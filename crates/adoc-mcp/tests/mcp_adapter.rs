@@ -267,6 +267,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/source-guide",
         "adoc://agent/v0/api-guide",
         "adoc://agent/v0/observation-guide",
+        "adoc://agent/v0/question-guide",
         "adoc://agent/v0/patch-contract",
         "adoc://agent/v0/patch-apply-guide",
         "adoc://agent/v0/project-status-guide",
