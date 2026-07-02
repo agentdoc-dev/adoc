@@ -145,6 +145,7 @@ impl GraphJsonArtifact {
                 let refs_slice = match ko.as_ref() {
                     KnowledgeObject::Claim(claim) => claim.evidence_refs(),
                     KnowledgeObject::Decision(decision) => decision.evidence_refs(),
+                    KnowledgeObject::Api(api) => api.evidence_refs(),
                     _ => return None,
                 };
                 if refs_slice.is_empty() {

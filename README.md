@@ -417,6 +417,7 @@ Supported object kinds:
 - `agent_instruction`
 - `contradiction`
 - `source`
+- `api`
 <!-- /adoc:kinds -->
 
 Supported relation fields:

@@ -1,11 +1,12 @@
 ---
 source: crates/adoc-cli/tests/snapshots_cli.rs
+assertion_line: 299
 expression: combined
 ---
 exit-success: false
 ---stdout---
 unknown_kind.adoc:5:3: error[schema.unknown_kind] unknown typed-block kind `fact`
   object_id: billing.policy
-  help: supported kinds: claim, decision, glossary, warning, constraint, policy, procedure, example, agent_instruction, contradiction, source. Custom schemas are deferred.
+  help: supported kinds: claim, decision, glossary, warning, constraint, policy, procedure, example, agent_instruction, contradiction, source, api. Custom schemas are deferred.
 1 errors, 0 warnings
 ---stderr---

@@ -13,6 +13,7 @@ pub(crate) mod contradiction_status;
 pub(crate) mod effective_date;
 pub(crate) mod evidence;
 pub(crate) mod evidence_kind;
+pub(crate) mod http_method;
 pub(crate) mod lang;
 pub(crate) mod rel_path;
 pub(crate) mod review_interval;
