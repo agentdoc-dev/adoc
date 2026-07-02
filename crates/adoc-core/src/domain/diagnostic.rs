@@ -152,6 +152,14 @@ pub enum DiagnosticCode {
     /// V6.5.3: a non-`answered` question carries a `resolved_by:` field —
     /// only answered questions name the object that answered them.
     SchemaQuestionUnexpectedResolvedBy,
+    /// V6.5.4: `task` Knowledge Object (PRD §13.11).
+    SchemaTaskMissingOwner,
+    SchemaTaskMissingStatus,
+    SchemaTaskInvalidStatus,
+    /// V6.5.4: an `open` task's `due` date is strictly before today. WARNING
+    /// severity — clock-dependent, so fixture dates use the wide-margin
+    /// discipline (the `schema.policy_review_overdue` precedent).
+    TaskOverdue,
     /// V5.8 TB2: the `evidence_ref:` on a claim names an Object ID that does
     /// not exist anywhere in the workspace.
     SchemaEvidenceTargetNotFound,
@@ -297,6 +305,10 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaQuestionResolvedByNotFound,
             DiagnosticCode::SchemaQuestionResolvedByWrongKind,
             DiagnosticCode::SchemaQuestionUnexpectedResolvedBy,
+            DiagnosticCode::SchemaTaskMissingOwner,
+            DiagnosticCode::SchemaTaskMissingStatus,
+            DiagnosticCode::SchemaTaskInvalidStatus,
+            DiagnosticCode::TaskOverdue,
             DiagnosticCode::SchemaEvidenceTargetNotFound,
             DiagnosticCode::SchemaEvidenceTargetNotASource,
             DiagnosticCode::ClaimEvidenceQualityLow,
@@ -484,6 +496,10 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaQuestionUnexpectedResolvedBy => {
                 "schema.question_unexpected_resolved_by"
             }
+            DiagnosticCode::SchemaTaskMissingOwner => "schema.task_missing_owner",
+            DiagnosticCode::SchemaTaskMissingStatus => "schema.task_missing_status",
+            DiagnosticCode::SchemaTaskInvalidStatus => "schema.task_invalid_status",
+            DiagnosticCode::TaskOverdue => "task.overdue",
             DiagnosticCode::SchemaEvidenceTargetNotFound => "schema.evidence_target_not_found",
             DiagnosticCode::SchemaEvidenceTargetNotASource => "schema.evidence_target_not_a_source",
             DiagnosticCode::ClaimEvidenceQualityLow => "claim.evidence_quality_low",
@@ -833,6 +849,18 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaQuestionUnexpectedResolvedBy => {
                 "Remove `resolved_by` or set `status: answered`."
             }
+            DiagnosticCode::SchemaTaskMissingOwner => {
+                "Add a non-empty `owner` field to the task; a task without an owner is a wish."
+            }
+            DiagnosticCode::SchemaTaskMissingStatus => {
+                "Add a `status` field to the task: one of open, done."
+            }
+            DiagnosticCode::SchemaTaskInvalidStatus => {
+                "Use a valid task status: one of open, done."
+            }
+            DiagnosticCode::TaskOverdue => {
+                "Complete the task and set `status: done`, or move its `due` date."
+            }
             DiagnosticCode::SchemaEvidenceTargetNotFound => {
                 "Ensure every `evidence_ref` ID refers to an existing `source` object in the workspace."
             }
@@ -999,6 +1027,10 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.question_resolved_by_not_found",
     "schema.question_resolved_by_wrong_kind",
     "schema.question_unexpected_resolved_by",
+    "schema.task_missing_owner",
+    "schema.task_missing_status",
+    "schema.task_invalid_status",
+    "task.overdue",
     "schema.evidence_target_not_found",
     "schema.evidence_target_not_a_source",
     "claim.evidence_quality_low",

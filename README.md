@@ -420,6 +420,7 @@ Supported object kinds:
 - `api`
 - `observation`
 - `question`
+- `task`
 <!-- /adoc:kinds -->
 
 Supported relation fields:

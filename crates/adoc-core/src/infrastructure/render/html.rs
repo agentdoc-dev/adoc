@@ -359,6 +359,9 @@ fn render_knowledge_object(
         KnowledgeObject::Question(_) => {
             render_question(knowledge_object, &metadata, html);
         }
+        KnowledgeObject::Task(_) => {
+            render_task(knowledge_object, &metadata, html);
+        }
     }
 
     // V5.10: append effective_status badge after the section close tag if set.
@@ -595,6 +598,39 @@ fn render_question(
     } else {
         html.push_str("<div class=\"question__open-badge\">Open</div>\n");
     }
+
+    render_object_body(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
+    html.push_str("</section>\n");
+}
+
+fn render_task(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    let KnowledgeObject::Task(task) = knowledge_object else {
+        unreachable!("render_task called with non-task object");
+    };
+
+    // Task card: open/done state on the section class and the status badge,
+    // owner and due date as a definition list above the body (PRD §13.11).
+    let status_str = task.status().as_str();
+    let class = format!("task task--{status_str}");
+
+    render_object_section_open(knowledge_object, &class, html);
+    render_object_header(knowledge_object, status_badge(metadata), html);
+
+    html.push_str("<div class=\"task__fields\">\n<dl>\n");
+    html.push_str("<div class=\"task__field-item\"><dt>owner</dt><dd>");
+    html.push_str(&escape_html(task.owner().as_str()));
+    html.push_str("</dd></div>\n");
+    if let Some(due) = task.due() {
+        html.push_str("<div class=\"task__field-item\"><dt>due</dt><dd>");
+        html.push_str(&escape_html(due.as_str()));
+        html.push_str("</dd></div>\n");
+    }
+    html.push_str("</dl>\n</div>\n");
 
     render_object_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);
