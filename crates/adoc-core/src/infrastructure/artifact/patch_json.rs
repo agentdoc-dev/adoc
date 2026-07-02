@@ -10,6 +10,7 @@ use crate::domain::patch::{
     PatchDocument, PatchIntent, PatchOperation, PatchProposer, PlacementHint,
 };
 use crate::domain::ports::artifact_reader::ArtifactReader;
+use crate::domain::values::trim_ascii_edges;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct PatchJsonArtifact;
@@ -217,7 +218,15 @@ fn into_intent(
             if diagnostics.is_empty() {
                 Ok(PatchIntent::CreateObject {
                     kind,
-                    status: changes.status,
+                    // V6.5.3: normalize the wire status once at the choke
+                    // point. Every `*Status::try_new` trims ASCII edges, but
+                    // the status-keyed draft gates compare raw and the apply
+                    // planner writes the string verbatim — a padded status
+                    // (`"answered "`) would pass validity yet bypass the
+                    // gates and land on disk padded.
+                    status: changes
+                        .status
+                        .map(|status| trim_ascii_edges(&status).to_string()),
                     body,
                     fields: changes.fields.unwrap_or_default(),
                     placement,
@@ -352,6 +361,7 @@ mod tests {
     use std::fs;
 
     use super::*;
+    use crate::domain::patch::validate_patch;
 
     #[test]
     fn reads_valid_patch_document() {
@@ -534,6 +544,110 @@ mod tests {
         .expect_err("patch must fail during DTO lowering");
 
         assert_invalid_document_message(diagnostics, "revoke does not accept changes.fields");
+    }
+
+    // ── V6.5.3: wire-status normalization ────────────────────────────────
+
+    #[test]
+    fn create_object_trims_ascii_padding_from_wire_status() {
+        let document = read_patch_value(serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.trial-question",
+            "changes": {
+                "kind": "question",
+                "status": "answered ",
+                "body": "Should unused trial credits expire?"
+            },
+            "reason": "create object"
+        }))
+        .expect("padded status parses");
+
+        match document.intent {
+            PatchIntent::CreateObject { status, .. } => {
+                assert_eq!(status.as_deref(), Some("answered"));
+            }
+            other => panic!("expected CreateObject intent, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn padded_answered_status_no_longer_bypasses_question_draft_gate() {
+        // Before the trim, `status: "answered "` compared unequal to
+        // `"answered"` in the draft gate, so a question without `resolved_by`
+        // passed patch validation and the padded status was written to disk.
+        let document = read_patch_value(serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.trial-question",
+            "changes": {
+                "kind": "question",
+                "status": "answered ",
+                "body": "Should unused trial credits expire?",
+                "placement": { "page_id": "team.page" }
+            },
+            "reason": "create object"
+        }))
+        .expect("padded status parses");
+
+        let report = validate_patch(&page_only_graph(), document);
+
+        assert!(!report.valid);
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("fields.resolved_by")),
+            "expected the answered-requires-resolved_by gate to fire, got {:?}",
+            report.diagnostics
+        );
+    }
+
+    #[test]
+    fn padded_verified_status_no_longer_bypasses_claim_obligation() {
+        let document = read_patch_value(serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.new-credits",
+            "changes": {
+                "kind": "claim",
+                "status": "verified ",
+                "body": "Credits are verified.",
+                "placement": { "page_id": "team.page" }
+            },
+            "reason": "create object"
+        }))
+        .expect("padded status parses");
+
+        let report = validate_patch(&page_only_graph(), document);
+
+        assert_eq!(report.proof_obligations.len(), 1);
+        assert!(
+            report.proof_obligations[0]
+                .reason
+                .contains("missing complete verification evidence"),
+            "expected the verified-claim obligation, got {:?}",
+            report.proof_obligations
+        );
+    }
+
+    fn page_only_graph() -> crate::domain::graph::GraphIndex {
+        use crate::domain::graph::{
+            GraphArtifactDocument, GraphEdge, GraphIndex, GraphNode, GraphPageNode,
+        };
+
+        GraphIndex::from_document(GraphArtifactDocument {
+            schema_version: "adoc.graph.v4".to_string(),
+            nodes: vec![GraphNode::Page(GraphPageNode {
+                id: "team.page".to_string(),
+                order: 0,
+                title: Some("Team".to_string()),
+                source_path: "docs/team.adoc".to_string(),
+            })],
+            edges: Vec::<GraphEdge>::new(),
+            diagnostics: Vec::new(),
+        })
+        .expect("graph indexes")
     }
 
     fn read_patch_value(value: serde_json::Value) -> Result<PatchDocument, Vec<Diagnostic>> {
