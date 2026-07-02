@@ -2,7 +2,7 @@
 
 This roadmap converts the broad PRD into small tracer-bullet milestones. A milestone is not complete just because one subsystem exists; it is complete when a user can start with `.adoc` source, run the `adoc` CLI, receive useful diagnostics, and get both human HTML and graph JSON outputs.
 
-The initial product is a local CLI for native AgentDoc authoring in Git repositories. The compiler, graph artifact, local retrieval loop, hybrid search, graph traversal, retrieval evaluation harness, local workflow, agent patch validation, and local MCP gateway are now implemented. The next product bet is team CI and review: AgentDoc should turn object-level changes, proof obligations, and ownership into useful pull-request feedback.
+The initial product is a local CLI for native AgentDoc authoring in Git repositories. The compiler, graph artifact, local retrieval loop, hybrid search, graph traversal, retrieval evaluation harness, local workflow, agent patch validation, local MCP gateway, team CI diff/review, Markdown compatibility mode, the V5 Expanded Knowledge Model, lifecycle automation, and the V6 agent editing loop (lifecycle read commands plus gated patch apply) are now implemented. The next product bet is the V7 cycle ([ROADMAP-V7.md](ROADMAP-V7.md)): complete the fifteen-kind vocabulary, make prose retrievable, keep published docs true by guard test, and run the pilot that discharges the MVP acceptance bar.
 
 V0 implementation stack: Rust for the `adoc` CLI, parser, validator, compiler, HTML renderer, and graph JSON emitter. The Rust project starts as a Cargo workspace with `crates/adoc-cli` for command-line behavior and `crates/adoc-core` for reusable compiler behavior. Future editor, web, and agent integrations should consume the compiled artifacts or core library rather than own the source grammar.
 
@@ -43,14 +43,17 @@ Implemented:
 - V5 Expanded Knowledge Model: seven new typed kinds (`constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source`), the shared `Severity` value object, the typed `EvidenceKind` evidence model (`evidence_ref` to `source` objects with edge + projection, symmetric `claim`/`decision` evidence), the additive `adoc.graph.v2` → `adoc.graph.v3` bump, the `agent_instruction` runtime-not-enforced banner and `adoc://agent/v0/agent-instruction-guide` / `contradiction-guide` resources, and the Expanded Pilot end-to-end harness ([expanded-pilot.md](expanded-pilot.md)). Closes PRD MVP must-have #4 for the seven object types, plus PRD §13.3–§13.15, §14.3 (proof obligations for the new kinds), and §15 (typed evidence model). The implementation contract is [V5-DESIGN.md](V5-DESIGN.md); the decisions are ADR-0024 through ADR-0032.
 - V5.10 Lifecycle Automation: four additive derived signals layered on the V5 Expanded Object Set without new wire-envelope versions or source-authoring changes. (1) `schema.policy_review_overdue` (WARNING) when an active policy's `effective_at + review_interval` is before today — ADR-0033. (2) Derived `effective_status: "stale"` / `effective_reason: "expired:<date>"` on any `verified` object whose `expires_at` is in the past — displayed as an HTML badge and emitted in graph nodes and retrieval records. (3) Derived `evidence_quality: "high"|"medium"|"low"` on objects with evidence, computed from the `EvidenceTier` mapping in ADR-0034; plus `claim.evidence_quality_low` (WARNING) when a verified claim's only inline evidence is Low-tier. (4) Derived `effective_status: "contradicted"` on a claim referenced by an unresolved contradiction, plus `schema.claim_contradicted_by_unresolved` (WARNING) when that claim's authored status is not already `contradicted` — stale takes precedence when both apply. All derived fields are additive and excluded from `content_hash`. The Expanded Pilot now exercises all four signals with clock-stable wide-margin fixture dates; the exact-match budget is 0 errors, 5 warnings. The implementation contract is [V5-DESIGN.md](V5-DESIGN.md) §V5.10.
 
+- V6.1–V6.3 lifecycle-signal read commands ([ROADMAP-V6.md](ROADMAP-V6.md), ADR-0038): `adoc stale`, `adoc contradictions`, and `adoc impacted-by` as read-only graph-artifact readers that re-derive lifecycle signals as of the query date, with versioned envelopes (`adoc.stale.v0`, `adoc.contradictions.v0`, `adoc.impacted.v0`), paired MCP tools (`adoc_stale`, `adoc_contradictions`, `adoc_impacted_by`), and `--format markdown` PR-comment output for `impacted-by`.
+- V6.4 patch apply ([ROADMAP-V6.md](ROADMAP-V6.md), ADR-0036, ADR-0037): `adoc patch --apply` rewrites `.adoc` source via formatting-preserving span splices — atomic per-file temp-write and rename, apply-time source-drift gate (`patch.source_drift`), post-apply re-check, never auto-revert — emitting `adoc.patch.apply.v0`; `create_object` placement semantics; the MCP `adoc_patch_apply` tool gated behind `mcp: { patch_apply: enabled }` with the `adoc://agent/v0/patch-apply-guide` resource and the additive `patch_apply_enabled` readiness flag in `adoc.project.status.v0`; the Expanded Pilot full-loop test (impacted-by → propose → check → apply → post-check).
+
 Next:
 
-- V6 composition and advanced graphs: `@include`, nested typed blocks, custom schema registry, automated contradiction detection. Sequenced after V5 and V5.10 because V6 assumes the V5 Expanded Object Set plus the V5.10 lifecycle contract are stable.
+- The V7 cycle ([ROADMAP-V7.md](ROADMAP-V7.md)): V6.5 vocabulary completion (`api`, `observation`, `question`, `task` — the full fifteen-kind PRD §13 set), V1.7 prose retrieval, V7.1 docs-truth hygiene, and the V7.2 pilot readiness gate.
 
 Later:
 
 - V4.5 Markdown migration (`adoc migrate`, suggested-claim extraction, import report, `adoc.migrate.report.v0` envelope, MCP integration). Sequenced after V4 once compatibility-mode usage surfaces measured friction. PRD MVP must-have #18.
-- V1.7 prose retrieval. Extends BM25 and embedding pipelines to index prose blocks symmetrically across `.adoc` and `.md` sources. Independent of V4 / V5 sequencing; can ship before or after.
+- Composition and advanced graphs (formerly "V6"): `@include`, nested typed blocks, custom schema registry, automated contradiction detection. Postponed until the editing loop and full vocabulary are proven in real use; un-gating is measured by the V7.2 pilot report ([ROADMAP-V7.md](ROADMAP-V7.md) Later section).
 - V7 web surfaces and governance: read-only object explorer, review dashboard, ownership and approval workflows, agent activity log, SSO/RBAC/audit/compliance, hosted storage.
 
 ## V0: Native CLI Compiler
@@ -361,7 +364,7 @@ Acceptance:
 - Read/query tools return existing `adoc.retrieval.v0`, `adoc.graph.traversal.v0`, and `adoc.patch.check.v0` envelopes where applicable.
 - Build/init writes are constrained by a project-root sandbox.
 - Patch validation accepts either a patch file path or inline `adoc.patch.v0` JSON.
-- MCP does not apply patches, approve knowledge, rewrite source from patches, or introduce hosted review state.
+- MCP does not approve knowledge or introduce hosted review state. (Patch application over MCP shipped later in V6.4 as `adoc_patch_apply`, gated behind the explicit `mcp: { patch_apply: enabled }` config opt-in; in this slice MCP was read-and-validate only.)
 
 ## V2.2: Agent Usage Contract and MCP Guidance
 
@@ -853,11 +856,11 @@ The currently resolved and implemented local cut is:
 - Build output directory: created automatically when missing.
 - Source extension: `.adoc`.
 - Authoring workflow: native AgentDoc Source first.
-- Commands: `adoc init`, `adoc check`, `adoc build`, `adoc why`, `adoc graph`, `adoc search`.
-- MCP tools: `adoc_init`, `adoc_check`, `adoc_build`, `adoc_why`, `adoc_graph`, `adoc_search`, `adoc_patch_check`, `adoc_project_status`.
+- Commands: `adoc init`, `adoc check`, `adoc build`, `adoc why`, `adoc graph`, `adoc stale`, `adoc contradictions`, `adoc impacted-by`, `adoc patch`, `adoc diff`, `adoc review`, `adoc search`.
+- MCP tools: the registered set in `crates/adoc-mcp/src/lib.rs` — the canonical published list lives in [README.md](../README.md) and [mcp-agent-gateway.md](mcp-agent-gateway.md), guard-tested against the registry (ADR-0041).
 - Modes: strict mode only.
 - Config: minimal `agentdoc.config.yaml` for local docs path, outputs, and `embeddings.provider: local|deterministic|none`.
-- Initial objects: `claim`, `decision`, `warning`, `glossary`.
+- Objects: the eleven-kind vocabulary — the canonical published list lives in [README.md](../README.md), guard-tested against `BlockKind::ALL` (ADR-0041).
 - Verified support: verified claims only.
 - V0 evidence: `source`, `test`, `reviewed_by`.
 - Relations: `depends_on`, `supersedes`, `related_to`.
