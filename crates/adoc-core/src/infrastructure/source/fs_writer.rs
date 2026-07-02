@@ -3,8 +3,9 @@
 //! Atomicity per file: temp file in the same directory (`create_new`), write,
 //! fsync, re-hash the target immediately before rename (TOCTOU guard, which
 //! also refuses a target that became a symlink since containment resolved
-//! it), then rename over the target. The target is never touched on any
-//! error path and never reverted after the rename. Containment mirrors `adoc-local`'s
+//! it), then rename over the target and best-effort fsync the parent
+//! directory so the rename itself is durable. The target is never touched on
+//! any error path and never reverted after the rename. Containment mirrors `adoc-local`'s
 //! `ProjectRootPathPolicy` (which lives downstream and cannot be reused here):
 //! `..` components are rejected and the resolved path must stay under the
 //! sandbox root.
@@ -138,7 +139,14 @@ impl WorkspaceWriter for FsWorkspaceWriter {
         std::fs::rename(&temp_path, &resolved).map_err(|error| {
             let _ = std::fs::remove_file(&temp_path);
             io_error(&resolved, error)
-        })
+        })?;
+
+        // Persist the rename's dirent update, not just the temp file's
+        // bytes. Best-effort: the write already succeeded, and reporting a
+        // directory-sync failure as an apply failure would lie about the
+        // file's contents (opening a directory also fails on non-Unix).
+        let _ = std::fs::File::open(directory).and_then(|dir| dir.sync_all());
+        Ok(())
     }
 }
 
