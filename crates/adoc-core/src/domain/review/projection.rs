@@ -21,6 +21,7 @@ use crate::domain::knowledge_object::api::{
 };
 use crate::domain::knowledge_object::metadata::KnowledgeObjectMetadata;
 use crate::domain::knowledge_object::question::RESOLVED_BY_FIELD;
+use crate::domain::knowledge_object::task::DUE_FIELD;
 
 const EFFECTIVE_AT_FIELD: &str = "effective_at";
 const SCOPE_FIELD: &str = "scope";
@@ -186,6 +187,20 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
             out.push(FieldChange::QuestionResolvedBy {
                 before: base_resolved.map(str::to_string),
                 after: head_resolved.map(str::to_string),
+            });
+        }
+    }
+
+    // V6.5.4: task due scalar diff off the graph fields map, gated on kind so
+    // an unrelated `due` optional field on another kind never projects as the
+    // typed task vocabulary.
+    if head.kind == BlockKind::Task.as_str() {
+        let base_due = base.fields.get(DUE_FIELD).map(String::as_str);
+        let head_due = head.fields.get(DUE_FIELD).map(String::as_str);
+        if base_due != head_due {
+            out.push(FieldChange::Due {
+                before: base_due.map(str::to_string),
+                after: head_due.map(str::to_string),
             });
         }
     }
@@ -1028,6 +1043,25 @@ mod tests {
         n
     }
 
+    // ── V6.5.4 task due diffs ──────────────────────────────────────────────
+
+    fn task_node(content_hash: &str, due: Option<&str>) -> GraphKnowledgeObjectNode {
+        let mut fields = BTreeMap::from([("owner".to_string(), "support-ops".to_string())]);
+        if let Some(due) = due {
+            fields.insert("due".to_string(), due.to_string());
+        }
+        let mut n = node(
+            "billing.update-support-runbook",
+            content_hash,
+            "Update the support runbook.",
+            Some("open"),
+            fields,
+            GraphRelations::default(),
+        );
+        n.kind = "task".to_string();
+        n
+    }
+
     #[test]
     fn question_open_to_answered_emits_status_and_resolved_by_field_changes() {
         let base = question_node("sha256:a", "open", None);
@@ -1053,6 +1087,63 @@ mod tests {
                     after: Some("billing.trial-credit-decision".to_string()),
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn task_due_change_emits_due_field_change() {
+        let base = task_node("sha256:a", Some("2026-05-20"));
+        let head = task_node("sha256:b", Some("2026-06-30"));
+
+        assert_eq!(
+            project_changed(&ChangedObject::new(
+                "billing.update-support-runbook".to_string(),
+                base,
+                head,
+            )),
+            vec![FieldChange::Due {
+                before: Some("2026-05-20".to_string()),
+                after: Some("2026-06-30".to_string()),
+            }]
+        );
+    }
+
+    #[test]
+    fn task_due_removal_emits_due_field_change_with_none_after() {
+        let base = task_node("sha256:a", Some("2026-05-20"));
+        let head = task_node("sha256:b", None);
+
+        assert_eq!(
+            project_changed(&ChangedObject::new(
+                "billing.update-support-runbook".to_string(),
+                base,
+                head,
+            )),
+            vec![FieldChange::Due {
+                before: Some("2026-05-20".to_string()),
+                after: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn non_task_due_field_edit_does_not_emit_due_field_change() {
+        // The due diff is kind-gated: a free-form `due` optional field on a
+        // claim must not project as the typed task vocabulary.
+        let mut base = baseline("x");
+        base.fields
+            .insert("due".to_string(), "2026-05-20".to_string());
+        let mut head = baseline("x");
+        head.fields
+            .insert("due".to_string(), "2026-06-30".to_string());
+
+        let changes = project_changed(&changed_from(base, head));
+
+        assert!(
+            !changes
+                .iter()
+                .any(|change| matches!(change, FieldChange::Due { .. })),
+            "claim due edits must not project as the task due variant: {changes:?}"
         );
     }
 
