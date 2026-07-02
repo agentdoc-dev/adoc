@@ -350,6 +350,9 @@ fn render_knowledge_object(
         KnowledgeObject::Source(_) => {
             render_source(knowledge_object, &metadata, html);
         }
+        KnowledgeObject::Api(_) => {
+            render_api(knowledge_object, &metadata, html);
+        }
     }
 
     // V5.10: append effective_status badge after the section close tag if set.
@@ -485,6 +488,46 @@ fn render_source(
         html.push_str("</a></dd>\n");
     }
     html.push_str("</dl>\n</div>\n");
+
+    render_object_body(knowledge_object, html);
+    render_object_metadata(knowledge_object, metadata, html);
+    html.push_str("</section>\n");
+}
+
+fn render_api(
+    knowledge_object: &KnowledgeObject,
+    metadata: &KnowledgeObjectMetadata<'_>,
+    html: &mut String,
+) {
+    let KnowledgeObject::Api(api) = knowledge_object else {
+        unreachable!("render_api called with non-api object");
+    };
+
+    render_object_section_open(knowledge_object, "api", html);
+    render_object_header(knowledge_object, status_badge(metadata), html);
+
+    // Endpoint signature: method badge (or interface type) plus path/symbol
+    // in code style, above the prose body (PRD §13.7).
+    html.push_str("<div class=\"api__signature\">");
+    if let Some(method) = api.method() {
+        html.push_str("<span class=\"api__method\">");
+        html.push_str(method.as_str());
+        html.push_str("</span>");
+    } else if let Some(interface_type) = api.interface_type() {
+        html.push_str("<span class=\"api__interface-type\">");
+        html.push_str(&escape_html(interface_type));
+        html.push_str("</span>");
+    }
+    if let Some(path) = api.path() {
+        html.push_str("<code class=\"api__path\">");
+        html.push_str(&escape_html(path));
+        html.push_str("</code>");
+    } else if let Some(symbol) = api.symbol() {
+        html.push_str("<code class=\"api__symbol\">");
+        html.push_str(&escape_html(symbol));
+        html.push_str("</code>");
+    }
+    html.push_str("</div>\n");
 
     render_object_body(knowledge_object, html);
     render_object_metadata(knowledge_object, metadata, html);

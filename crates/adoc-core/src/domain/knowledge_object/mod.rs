@@ -15,6 +15,7 @@ pub(super) const IMPACTS_FIELD: &str = "impacts";
 pub(crate) const APPROVED_BY_FIELD: &str = "approved_by";
 
 pub(crate) mod agent_instruction;
+pub(crate) mod api;
 pub(crate) mod claim;
 pub(crate) mod constraint;
 pub(crate) mod contradiction;
@@ -30,6 +31,7 @@ pub(crate) mod source;
 pub(crate) mod warning;
 
 use agent_instruction::AgentInstruction;
+use api::Api;
 use claim::Claim;
 use constraint::Constraint;
 use contradiction::Contradiction;
@@ -815,6 +817,7 @@ pub(crate) enum BlockKind {
     AgentInstruction,
     Contradiction,
     Source,
+    Api,
 }
 
 impl BlockKind {
@@ -830,6 +833,7 @@ impl BlockKind {
         Self::AgentInstruction,
         Self::Contradiction,
         Self::Source,
+        Self::Api,
     ];
 
     pub(crate) const fn as_str(self) -> &'static str {
@@ -845,6 +849,7 @@ impl BlockKind {
             Self::AgentInstruction => "agent_instruction",
             Self::Contradiction => "contradiction",
             Self::Source => "source",
+            Self::Api => "api",
         }
     }
 
@@ -877,6 +882,7 @@ pub(crate) enum KnowledgeObject {
     AgentInstruction(AgentInstruction),
     Contradiction(Contradiction),
     Source(Source),
+    Api(Api),
 }
 
 impl KnowledgeObject {
@@ -893,6 +899,7 @@ impl KnowledgeObject {
             Self::AgentInstruction(_) => BlockKind::AgentInstruction,
             Self::Contradiction(_) => BlockKind::Contradiction,
             Self::Source(_) => BlockKind::Source,
+            Self::Api(_) => BlockKind::Api,
         }
     }
 
@@ -909,6 +916,7 @@ impl KnowledgeObject {
             Self::AgentInstruction(ai) => ai.id(),
             Self::Contradiction(contradiction) => contradiction.id(),
             Self::Source(source) => source.id(),
+            Self::Api(api) => api.id(),
         }
     }
 
@@ -925,6 +933,7 @@ impl KnowledgeObject {
             Self::AgentInstruction(ai) => ai.span(),
             Self::Contradiction(contradiction) => contradiction.span(),
             Self::Source(source) => source.span(),
+            Self::Api(api) => api.span(),
         }
     }
 
@@ -941,6 +950,7 @@ impl KnowledgeObject {
             Self::AgentInstruction(ai) => ai.body(),
             Self::Contradiction(contradiction) => contradiction.body(),
             Self::Source(source) => source.body(),
+            Self::Api(api) => api.body(),
         }
     }
 
@@ -957,6 +967,7 @@ impl KnowledgeObject {
             Self::AgentInstruction(ai) => ai.body_mut(),
             Self::Contradiction(contradiction) => contradiction.body_mut(),
             Self::Source(source) => source.body_mut(),
+            Self::Api(api) => api.body_mut(),
         }
     }
 
@@ -973,6 +984,7 @@ impl KnowledgeObject {
             Self::AgentInstruction(ai) => ai.relations(),
             Self::Contradiction(contradiction) => contradiction.relations(),
             Self::Source(source) => source.relations(),
+            Self::Api(api) => api.relations(),
         }
     }
 
@@ -982,6 +994,7 @@ impl KnowledgeObject {
     pub(crate) fn impacts(&self) -> &[RelPath] {
         match self {
             Self::Claim(claim) => claim.impacts().unwrap_or(&[]),
+            Self::Api(api) => api.impacts().unwrap_or(&[]),
             Self::Decision(decision) => decision.impacts().unwrap_or(&[]),
             Self::Constraint(constraint) => constraint.impacts().unwrap_or(&[]),
             Self::Policy(policy) => policy.impacts().unwrap_or(&[]),
@@ -1008,6 +1021,7 @@ impl KnowledgeObject {
             Self::AgentInstruction(ai) => ai.fields(),
             Self::Contradiction(contradiction) => contradiction.fields(),
             Self::Source(source) => source.fields(),
+            Self::Api(api) => api.fields(),
         }
     }
 }
@@ -1289,6 +1303,7 @@ mod tests {
                 BlockKind::AgentInstruction,
                 BlockKind::Contradiction,
                 BlockKind::Source,
+                BlockKind::Api,
             ]
         );
     }

@@ -13,6 +13,7 @@
 //! `application/` and call domain services where aggregate-family behavior is
 //! needed.
 
+mod api_verified_evidence;
 mod claim_contradicted_nudge;
 mod compat;
 mod contradiction_claims_resolve;
@@ -28,6 +29,7 @@ mod raw_html_forbidden;
 mod unsafe_link_forbidden;
 pub(crate) mod url_walker;
 
+use api_verified_evidence::ApiVerifiedEvidence;
 use chrono::NaiveDate;
 use claim_contradicted_nudge::ClaimContradictedNudge;
 use contradiction_claims_resolve::ContradictionClaimsResolve;
@@ -56,6 +58,7 @@ const WORKSPACE_RULES: &[&dyn WorkspaceRule] = &[
     &KnowledgeObjectUniqueIds,
     &ContradictionClaimsResolve,
     &EvidenceRefResolves,
+    &ApiVerifiedEvidence,
     &ClaimContradictedNudge,
 ];
 

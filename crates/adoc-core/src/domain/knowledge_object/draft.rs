@@ -4,6 +4,9 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::ObjectId;
 use crate::domain::knowledge_object::EVIDENCE_REF_FIELD;
+use crate::domain::knowledge_object::api::{
+    ApiStatus, INTERFACE_TYPE_FIELD, METHOD_FIELD, PATH_FIELD as API_PATH_FIELD, SYMBOL_FIELD,
+};
 use crate::domain::knowledge_object::claim::{
     ClaimStatus, Evidence, OWNER_FIELD, Owner, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
     VERIFIED_AT_FIELD, VERIFIED_STATUS, VerifiedAt,
@@ -11,6 +14,7 @@ use crate::domain::knowledge_object::claim::{
 use crate::domain::knowledge_object::decision::{
     ACCEPTED_STATUS, DECIDED_BY_FIELD, DecidedBy, DecisionStatus,
 };
+use crate::domain::value_objects::http_method::HttpMethod;
 use crate::domain::value_objects::severity::Severity;
 use crate::domain::values::NonEmptyText;
 
@@ -61,6 +65,7 @@ impl DraftValidator<'_> {
             "decision" => self.validate_decision(),
             "glossary" => self.validate_glossary(),
             "warning" => self.validate_warning(),
+            "api" => self.validate_api(),
             kind => self.error(format!("unknown Knowledge Object kind `{kind}`")),
         }
     }
@@ -109,6 +114,84 @@ impl DraftValidator<'_> {
                 None => self.error("warning requires severity"),
             }
         }
+    }
+
+    fn validate_api(&mut self) {
+        // Status is optional; when present it must be the closed set.
+        if let Some(status) = self.draft.status
+            && ApiStatus::try_new(status).is_err()
+        {
+            self.error(format!("api has invalid status `{status}`"));
+            return;
+        }
+
+        let has_method = self.draft.fields.contains_key(METHOD_FIELD);
+        let has_interface_type = self.draft.fields.contains_key(INTERFACE_TYPE_FIELD);
+        match (has_method, has_interface_type) {
+            (true, true) => self.error("api provides both `method` and `interface_type`"),
+            (false, false) => self.error("api requires one of `method` or `interface_type`"),
+            _ => {}
+        }
+        if let Some(method) = self.draft.fields.get(METHOD_FIELD)
+            && HttpMethod::try_new(method).is_err()
+        {
+            self.error(format!("api has invalid method `{method}`"));
+        }
+
+        let has_path = self.draft.fields.contains_key(API_PATH_FIELD);
+        let has_symbol = self.draft.fields.contains_key(SYMBOL_FIELD);
+        match (has_path, has_symbol) {
+            (true, true) => self.error("api provides both `path` and `symbol`"),
+            (false, false) => self.error("api requires one of `path` or `symbol`"),
+            _ => {}
+        }
+        if let Some(path) = self.draft.fields.get(API_PATH_FIELD)
+            && !path.trim().starts_with('/')
+        {
+            self.error(format!("api has invalid path `{path}`"));
+        }
+
+        if self.draft.status == Some(VERIFIED_STATUS) {
+            self.validate_verified_api_obligation();
+        }
+    }
+
+    fn validate_verified_api_obligation(&mut self) {
+        let owner = self
+            .draft
+            .fields
+            .get(OWNER_FIELD)
+            .and_then(|value| Owner::try_new(value));
+        let verified_at = self
+            .draft
+            .fields
+            .get(VERIFIED_AT_FIELD)
+            .and_then(|value| VerifiedAt::try_new(value));
+        let has_schema_evidence = self
+            .draft
+            .fields
+            .get(SOURCE_FIELD)
+            .and_then(|value| Evidence::from_field(SOURCE_FIELD, value))
+            .is_some()
+            || self
+                .draft
+                .fields
+                .get(EVIDENCE_REF_FIELD)
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false);
+
+        let reason = if owner.is_some() && verified_at.is_some() && has_schema_evidence {
+            "Verified api creation requires schema-evidence review before approval."
+        } else {
+            "Verified api creation is missing complete schema evidence."
+        };
+
+        self.validation
+            .proof_obligations
+            .push(DraftProofObligation {
+                object_id: self.draft.id.as_str().to_string(),
+                reason: reason.to_string(),
+            });
     }
 
     fn validate_fields(&mut self) {

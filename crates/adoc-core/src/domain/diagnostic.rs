@@ -122,6 +122,17 @@ pub enum DiagnosticCode {
     SchemaSourceInvalidPath,
     SchemaSourceInvalidUrl,
     SchemaSourceKindTargetMismatch,
+    /// V6.5.1: `api` Knowledge Object (PRD §13.7).
+    SchemaApiMissingMethodOrInterfaceType,
+    SchemaApiConflictingMethodAndInterfaceType,
+    SchemaApiInvalidMethod,
+    SchemaApiMissingPathOrSymbol,
+    SchemaApiConflictingPathAndSymbol,
+    SchemaApiInvalidPath,
+    /// V6.5.1: a `verified` api has neither an inline `source_code` evidence
+    /// entry nor an `evidence_ref` resolving to an `api_schema`/`source_code`
+    /// source — an API contract is verified by its schema source.
+    ApiVerifiedMissingSchemaEvidence,
     /// V5.8 TB2: the `evidence_ref:` on a claim names an Object ID that does
     /// not exist anywhere in the workspace.
     SchemaEvidenceTargetNotFound,
@@ -251,6 +262,13 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaSourceInvalidPath,
             DiagnosticCode::SchemaSourceInvalidUrl,
             DiagnosticCode::SchemaSourceKindTargetMismatch,
+            DiagnosticCode::SchemaApiMissingMethodOrInterfaceType,
+            DiagnosticCode::SchemaApiConflictingMethodAndInterfaceType,
+            DiagnosticCode::SchemaApiInvalidMethod,
+            DiagnosticCode::SchemaApiMissingPathOrSymbol,
+            DiagnosticCode::SchemaApiConflictingPathAndSymbol,
+            DiagnosticCode::SchemaApiInvalidPath,
+            DiagnosticCode::ApiVerifiedMissingSchemaEvidence,
             DiagnosticCode::SchemaEvidenceTargetNotFound,
             DiagnosticCode::SchemaEvidenceTargetNotASource,
             DiagnosticCode::ClaimEvidenceQualityLow,
@@ -402,6 +420,21 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaSourceInvalidPath => "schema.source_invalid_path",
             DiagnosticCode::SchemaSourceInvalidUrl => "schema.source_invalid_url",
             DiagnosticCode::SchemaSourceKindTargetMismatch => "schema.source_kind_target_mismatch",
+            DiagnosticCode::SchemaApiMissingMethodOrInterfaceType => {
+                "schema.api_missing_method_or_interface_type"
+            }
+            DiagnosticCode::SchemaApiConflictingMethodAndInterfaceType => {
+                "schema.api_conflicting_method_and_interface_type"
+            }
+            DiagnosticCode::SchemaApiInvalidMethod => "schema.api_invalid_method",
+            DiagnosticCode::SchemaApiMissingPathOrSymbol => "schema.api_missing_path_or_symbol",
+            DiagnosticCode::SchemaApiConflictingPathAndSymbol => {
+                "schema.api_conflicting_path_and_symbol"
+            }
+            DiagnosticCode::SchemaApiInvalidPath => "schema.api_invalid_path",
+            DiagnosticCode::ApiVerifiedMissingSchemaEvidence => {
+                "api.verified_missing_schema_evidence"
+            }
             DiagnosticCode::SchemaEvidenceTargetNotFound => "schema.evidence_target_not_found",
             DiagnosticCode::SchemaEvidenceTargetNotASource => "schema.evidence_target_not_a_source",
             DiagnosticCode::ClaimEvidenceQualityLow => "claim.evidence_quality_low",
@@ -703,6 +736,27 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaSourceKindTargetMismatch => {
                 "The evidence kind restricts target to path-only or url-only. Adjust the `kind`, `path`, or `url` field accordingly."
             }
+            DiagnosticCode::SchemaApiMissingMethodOrInterfaceType => {
+                "Add either a `method` (HTTP method, e.g. POST) or an `interface_type` (e.g. grpc, graphql) field to the api object."
+            }
+            DiagnosticCode::SchemaApiConflictingMethodAndInterfaceType => {
+                "Provide only one of `method` or `interface_type` on an api object, not both."
+            }
+            DiagnosticCode::SchemaApiInvalidMethod => {
+                "Use an uppercase HTTP method: one of GET, HEAD, POST, PUT, DELETE, CONNECT, OPTIONS, TRACE, PATCH."
+            }
+            DiagnosticCode::SchemaApiMissingPathOrSymbol => {
+                "Add either a `path` (`/`-prefixed route template) or a `symbol` (code symbol) field to the api object."
+            }
+            DiagnosticCode::SchemaApiConflictingPathAndSymbol => {
+                "Provide only one of `path` or `symbol` on an api object, not both."
+            }
+            DiagnosticCode::SchemaApiInvalidPath => {
+                "Use a non-empty `/`-prefixed route template (e.g. `/api/billing/credits/consume`)."
+            }
+            DiagnosticCode::ApiVerifiedMissingSchemaEvidence => {
+                "A verified api requires schema evidence: an inline `source:` entry or an `evidence_ref` to an `api_schema`/`source_code` source object."
+            }
             DiagnosticCode::SchemaEvidenceTargetNotFound => {
                 "Ensure every `evidence_ref` ID refers to an existing `source` object in the workspace."
             }
@@ -853,6 +907,13 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.source_invalid_path",
     "schema.source_invalid_url",
     "schema.source_kind_target_mismatch",
+    "schema.api_missing_method_or_interface_type",
+    "schema.api_conflicting_method_and_interface_type",
+    "schema.api_invalid_method",
+    "schema.api_missing_path_or_symbol",
+    "schema.api_conflicting_path_and_symbol",
+    "schema.api_invalid_path",
+    "api.verified_missing_schema_evidence",
     "schema.evidence_target_not_found",
     "schema.evidence_target_not_a_source",
     "claim.evidence_quality_low",

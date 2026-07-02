@@ -28,7 +28,7 @@ impl WorkspaceRule for EvidenceRefResolves {
             }
         }
 
-        // For every claim and decision, check each evidence_ref id.
+        // For every claim, decision, and api, check each evidence_ref id.
         for page in &workspace.pages {
             for block in &page.blocks {
                 let BlockAst::KnowledgeObject(ko) = block else {
@@ -41,6 +41,7 @@ impl WorkspaceRule for EvidenceRefResolves {
                     KnowledgeObject::Decision(decision) => {
                         (decision.id(), decision.span(), decision.evidence_refs())
                     }
+                    KnowledgeObject::Api(api) => (api.id(), api.span(), api.evidence_refs()),
                     _ => continue,
                 };
                 for ev in refs {

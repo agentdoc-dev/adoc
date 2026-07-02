@@ -1,6 +1,9 @@
 use crate::domain::graph::GraphEvidence;
 use crate::domain::knowledge_object::{
     KnowledgeObject,
+    api::{
+        ApiStatus, INTERFACE_TYPE_FIELD, METHOD_FIELD, PATH_FIELD as API_PATH_FIELD, SYMBOL_FIELD,
+    },
     claim::{
         ClaimStatus, Evidence, OWNER_FIELD, Owner, VERIFIED_AT_FIELD, Verification, VerifiedAt,
     },
@@ -100,6 +103,8 @@ pub(crate) enum MetadataDiscriminant<'a> {
     ExampleStatus(&'a ExampleStatus),
     /// V5.6: lifecycle status for `contradiction`.
     ContradictionStatus(&'a ContradictionStatus),
+    /// V6.5.1: lifecycle status for `api`.
+    ApiStatus(&'a ApiStatus),
 }
 
 impl<'a> MetadataDiscriminant<'a> {
@@ -111,6 +116,7 @@ impl<'a> MetadataDiscriminant<'a> {
             Self::ProcedureStatus(status) => status.as_str(),
             Self::ExampleStatus(status) => status.as_str(),
             Self::ContradictionStatus(status) => status.as_str(),
+            Self::ApiStatus(status) => status.as_str(),
         }
     }
 }
@@ -233,6 +239,35 @@ impl KnowledgeObject {
                 Some(MetadataDiscriminant::ContradictionStatus(
                     contradiction.status(),
                 ))
+            }
+            Self::Api(api) => {
+                // Operation and location project as stored scalars so they
+                // enter the hashed graph `fields` map (and the diff/review
+                // projection reads them from there).
+                if let Some(method) = api.method() {
+                    fields.push(MetadataField::Stored {
+                        key: METHOD_FIELD,
+                        value: method.as_str(),
+                    });
+                } else if let Some(interface_type) = api.interface_type() {
+                    fields.push(MetadataField::Stored {
+                        key: INTERFACE_TYPE_FIELD,
+                        value: interface_type,
+                    });
+                }
+                if let Some(path) = api.path() {
+                    fields.push(MetadataField::Stored {
+                        key: API_PATH_FIELD,
+                        value: path,
+                    });
+                } else if let Some(symbol) = api.symbol() {
+                    fields.push(MetadataField::Stored {
+                        key: SYMBOL_FIELD,
+                        value: symbol,
+                    });
+                }
+                append_verification_fields(&mut fields, &mut evidence, api.verification());
+                api.status().map(MetadataDiscriminant::ApiStatus)
             }
             Self::Source(source) => {
                 // Evidence kind projected as a stored scalar under key "kind".
