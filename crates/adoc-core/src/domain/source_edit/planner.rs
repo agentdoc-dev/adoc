@@ -196,7 +196,7 @@ pub(crate) fn render_typed_block(
     }
     output.push_str("--");
     output.push_str(eol);
-    for line in body.split('\n') {
+    for line in trim_one_trailing_newline(body).split('\n') {
         output.push_str(line.strip_suffix('\r').unwrap_or(line));
         output.push_str(eol);
     }
@@ -336,10 +336,19 @@ fn is_field_key(key: &str) -> bool {
 /// Join patch body text (LF-normalised JSON string) into the file's
 /// line-ending convention.
 fn join_lines(body: &str, eol: LineEnding) -> String {
-    body.split('\n')
+    trim_one_trailing_newline(body)
+        .split('\n')
         .map(|line| line.strip_suffix('\r').unwrap_or(line))
         .collect::<Vec<_>>()
         .join(eol.as_str())
+}
+
+/// A single trailing newline is a line terminator, not an extra blank line:
+/// `"a\n"` and `"a"` must render byte-identically or re-applying the same
+/// patch stops being idempotent.
+fn trim_one_trailing_newline(body: &str) -> &str {
+    let body = body.strip_suffix('\n').unwrap_or(body);
+    body.strip_suffix('\r').unwrap_or(body)
 }
 
 /// Insertion point at the start of the line following the line that ends at
@@ -641,6 +650,55 @@ After text.
         let fields = BTreeMap::from([("Bad-Key".to_string(), "x".to_string())]);
         let diagnostics = plan_update_fields(SOURCE, &layout, &fields).expect_err("must refuse");
         assert!(diagnostics[0].message.contains("would not reparse"));
+    }
+
+    #[test]
+    fn render_typed_block_treats_one_trailing_newline_as_line_terminator() {
+        let fields = BTreeMap::from([("owner".to_string(), "team-a".to_string())]);
+        let with_terminator = render_typed_block(
+            "claim",
+            "a.b",
+            Some("draft"),
+            &fields,
+            "line1\nline2\n",
+            LineEnding::Lf,
+        );
+        let without = render_typed_block(
+            "claim",
+            "a.b",
+            Some("draft"),
+            &fields,
+            "line1\nline2",
+            LineEnding::Lf,
+        );
+        assert_eq!(with_terminator, without);
+    }
+
+    #[test]
+    fn render_typed_block_keeps_deliberate_trailing_blank_line() {
+        let block = render_typed_block(
+            "claim",
+            "a.b",
+            None,
+            &BTreeMap::new(),
+            "line1\n\n",
+            LineEnding::Lf,
+        );
+        assert_eq!(block, "::claim a.b\n--\nline1\n\n::\n");
+    }
+
+    #[test]
+    fn replace_body_treats_one_trailing_newline_as_line_terminator() {
+        let layout = layout_for_fixture(SOURCE);
+        let with_terminator = plan_replace_body(SOURCE, &layout, "New body.\n")
+            .expect("plans")
+            .splice(SOURCE)
+            .expect("splices");
+        let without = plan_replace_body(SOURCE, &layout, "New body.")
+            .expect("plans")
+            .splice(SOURCE)
+            .expect("splices");
+        assert_eq!(with_terminator, without);
     }
 
     #[test]
