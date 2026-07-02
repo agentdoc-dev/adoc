@@ -187,7 +187,7 @@ Scope:
 - Required: `id`, `status`, `owner`, `body` — task is the only kind beyond policy requiring `owner` unconditionally (a task without an owner is a wish). Statuses: closed `open | done`. Optional: `due` (date). Existing relation fields (`depends_on`, ...) work unchanged, matching the PRD example.
 - New clock-dependent lifecycle warning `task.overdue` (WARNING) when an `open` task's `due` is before today — same `today` threading as the policy review rule (`policy_review_drift.rs` is the pattern; the task rule is its sibling in `infrastructure/validate/`), same wide-margin fixture-date discipline. Because `task.overdue` is clock-dependent by design, the wide-margin fixed past date (2020–2024 range) is the stability mechanism, exactly as it is for `schema.policy_review_overdue`. Note the seam: only the unit-level rule takes an injected `today`; the CLI compile path runs on the real clock with no injection point, so CLI fixtures use fixed past dates to fire the warning and far-future dates (the pilot's 2120/2125 `expires_at` precedent) to stay quiet.
 - HTML renders a task card with owner, due date, and open/done state (`render_task`).
-- `FieldChange::Due`; diagnostics `schema.task_missing_owner`, `schema.task_missing_status`, `schema.task_invalid_status`, `task.overdue`.
+- `FieldChange::Due`; diagnostics `schema.task_missing_owner`, `schema.task_missing_status`, `schema.task_invalid_status`, `schema.task_invalid_due`, `task.overdue`.
 
 The acceptance fixture is the PRD §13.11 example, verbatim:
 

@@ -156,6 +156,7 @@ pub enum DiagnosticCode {
     SchemaTaskMissingOwner,
     SchemaTaskMissingStatus,
     SchemaTaskInvalidStatus,
+    SchemaTaskInvalidDue,
     /// V6.5.4: an `open` task's `due` date is strictly before today. WARNING
     /// severity — clock-dependent, so fixture dates use the wide-margin
     /// discipline (the `schema.policy_review_overdue` precedent).
@@ -308,6 +309,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaTaskMissingOwner,
             DiagnosticCode::SchemaTaskMissingStatus,
             DiagnosticCode::SchemaTaskInvalidStatus,
+            DiagnosticCode::SchemaTaskInvalidDue,
             DiagnosticCode::TaskOverdue,
             DiagnosticCode::SchemaEvidenceTargetNotFound,
             DiagnosticCode::SchemaEvidenceTargetNotASource,
@@ -499,6 +501,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaTaskMissingOwner => "schema.task_missing_owner",
             DiagnosticCode::SchemaTaskMissingStatus => "schema.task_missing_status",
             DiagnosticCode::SchemaTaskInvalidStatus => "schema.task_invalid_status",
+            DiagnosticCode::SchemaTaskInvalidDue => "schema.task_invalid_due",
             DiagnosticCode::TaskOverdue => "task.overdue",
             DiagnosticCode::SchemaEvidenceTargetNotFound => "schema.evidence_target_not_found",
             DiagnosticCode::SchemaEvidenceTargetNotASource => "schema.evidence_target_not_a_source",
@@ -858,6 +861,7 @@ impl DiagnosticCode {
             DiagnosticCode::SchemaTaskInvalidStatus => {
                 "Use a valid task status: one of open, done."
             }
+            DiagnosticCode::SchemaTaskInvalidDue => "Use a valid `YYYY-MM-DD` date for `due`.",
             DiagnosticCode::TaskOverdue => {
                 "Complete the task and set `status: done`, or move its `due` date."
             }
@@ -1030,6 +1034,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "schema.task_missing_owner",
     "schema.task_missing_status",
     "schema.task_invalid_status",
+    "schema.task_invalid_due",
     "task.overdue",
     "schema.evidence_target_not_found",
     "schema.evidence_target_not_a_source",

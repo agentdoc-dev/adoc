@@ -296,6 +296,43 @@ Update the support runbook to mention refund behavior after persistence failure.
 }
 
 #[test]
+fn check_rejects_task_with_malformed_due_date() {
+    let workspace = TestWorkspace::new("task-invalid-due");
+    workspace.write(
+        "tasks.adoc",
+        "\
+# Billing Tasks @doc(team.billing-tasks)
+
+Billing documentation action items.
+
+::task billing.update-support-runbook
+owner: support-ops
+status: open
+due: someday
+--
+Update the support runbook to mention refund behavior after persistence failure.
+::
+",
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", "tasks.adoc"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "expected check to fail for a malformed due date"
+    );
+    let combined = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(
+        combined.contains("error[schema.task_invalid_due]"),
+        "expected invalid-due diagnostic, got:\n{combined}"
+    );
+}
+
+#[test]
 fn check_emits_exactly_one_overdue_warning_for_wide_margin_past_due() {
     let workspace = TestWorkspace::new("task-past-due");
     workspace.write("tasks.adoc", WIDE_MARGIN_PAST_DUE_TASK);
