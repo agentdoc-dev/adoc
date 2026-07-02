@@ -12,6 +12,28 @@ refuses unless the project opts in with `mcp: { patch_apply: enabled }` in
 `agentdoc.config.yaml` (V6.4, ADR-0037); every other tool never writes
 AgentDoc Source.
 
+## Tool Surface
+
+The gateway registers these tools (this list is guard-tested against the
+`crates/adoc-mcp` registry, ADR-0041):
+
+<!-- adoc:mcp-tools -->
+- `adoc_init`
+- `adoc_check`
+- `adoc_build`
+- `adoc_why`
+- `adoc_graph`
+- `adoc_stale`
+- `adoc_contradictions`
+- `adoc_impacted_by`
+- `adoc_search`
+- `adoc_patch_check`
+- `adoc_patch_apply`
+- `adoc_diff`
+- `adoc_review`
+- `adoc_project_status`
+<!-- /adoc:mcp-tools -->
+
 ## Build The Server
 
 From this repository:
@@ -69,15 +91,22 @@ inventing tool order:
 3. Call `adoc_project_status` with no arguments for a read-only Project Status Report.
 4. If artifacts are missing or stale, call `adoc_project_status` with `refresh: "check"` for diagnostics or `refresh: "build"` to write configured artifacts.
 5. Use `adoc_search`, `adoc_why`, and `adoc_graph` for evidence.
-6. Use `adoc_patch_check` for inline `adoc.patch.v0` proposals.
-7. When the project has opted in (`readiness.patch_apply_enabled: true`), use
+6. Use `adoc_stale`, `adoc_contradictions`, and `adoc_impacted_by` to check
+   which knowledge is suspect right now — stale or review-overdue objects,
+   unresolved contradictions, and objects implicated by changed source paths.
+7. Use `adoc_diff` and `adoc_review` to inspect Knowledge Object changes
+   against a git ref, with source-path impact and required reviewers.
+8. Use `adoc_patch_check` for inline `adoc.patch.v0` proposals.
+9. When the project has opted in (`readiness.patch_apply_enabled: true`), use
    `adoc_patch_apply` to apply a validated patch; follow
    `adoc://agent/v0/patch-apply-guide`.
 
 The Project Status Report has schema version `adoc.project.status.v0`. Retrieval
 tools return `adoc.retrieval.v0` and graph traversal returns
-`adoc.graph.traversal.v0`. Patch validation returns `adoc.patch.check.v0`;
-patch application returns `adoc.patch.apply.v0`.
+`adoc.graph.traversal.v0`. The lifecycle read tools return `adoc.stale.v0`,
+`adoc.contradictions.v0`, and `adoc.impacted.v0`. Diff and review return
+`adoc.diff.v0` and `adoc.review.v0`. Patch validation returns
+`adoc.patch.check.v0`; patch application returns `adoc.patch.apply.v0`.
 
 ## JSON-RPC Smoke Flow
 

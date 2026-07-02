@@ -28,7 +28,7 @@ AgentDoc is pre-release compiler and retrieval infrastructure. The source-to-art
 - path-derived page identity when no annotation exists
 - headings, paragraphs, unordered lists, ordered lists, and fenced code blocks
 - rich inline rendering for inline code, emphasis, strong text, and links
-- typed Knowledge Objects: `claim`, `decision`, `warning`, and `glossary`
+- typed Knowledge Objects across the full kind vocabulary (the canonical list is under "Supported object kinds" below)
 - verified claims with `owner`, `verified_at`, and V0 evidence fields
 - object references written as `[[object.id]]`
 - relation fields `depends_on`, `supersedes`, and `related_to`
@@ -143,7 +143,7 @@ Explicit paths still work and override config defaults where provided:
 
 ### Try The Billing Pilot
 
-The realistic V0 pilot under [examples/billing-pilot](examples/billing-pilot) exercises the full core object set: `claim`, `decision`, `warning`, and `glossary`. It contains 30+ Knowledge Objects, 8+ verified claims, object references, relations, source spans, and a golden retrieval set.
+The realistic V0 pilot under [examples/billing-pilot](examples/billing-pilot) exercises the four V0 core kinds: `claim`, `decision`, `warning`, and `glossary`. It contains 30+ Knowledge Objects, 8+ verified claims, object references, relations, source spans, and a golden retrieval set.
 
 ```bash
 rm -rf /tmp/adoc-billing-pilot
@@ -178,9 +178,25 @@ cargo build -p adoc-mcp --release
 
 Configure your MCP client to launch `target/release/adoc-mcp` over stdio with
 the AgentDoc project as the process working directory. The gateway exposes
-`adoc_init`, `adoc_check`, `adoc_build`, `adoc_why`, `adoc_graph`,
-`adoc_search`, `adoc_patch_check`, and `adoc_project_status`, plus versioned
-Agent Guidance Resources and Agent Workflow Prompts.
+these tools, plus versioned Agent Guidance Resources and Agent Workflow
+Prompts:
+
+<!-- adoc:mcp-tools -->
+- `adoc_init`
+- `adoc_check`
+- `adoc_build`
+- `adoc_why`
+- `adoc_graph`
+- `adoc_stale`
+- `adoc_contradictions`
+- `adoc_impacted_by`
+- `adoc_search`
+- `adoc_patch_check`
+- `adoc_patch_apply`
+- `adoc_diff`
+- `adoc_review`
+- `adoc_project_status`
+<!-- /adoc:mcp-tools -->
 
 Agents should begin by reading `adoc://agent/v0/usage-contract`, getting the
 `adoc_answer_with_citations` prompt, and calling `adoc_project_status` before
@@ -213,6 +229,12 @@ adoc check [path]
 adoc build [path] [--out <directory>] [--no-embeddings]
 adoc why <object-id> [--artifact <path>] [--format auto|plain|styled|json]
 adoc graph <object-id> [--artifact <path>] [--relation depends_on|supersedes|related_to] [--direction outgoing|incoming|both] [--format auto|plain|styled|json]
+adoc stale [--artifact <path>] [--within <Nd>] [--format auto|plain|styled|json]
+adoc contradictions [--artifact <path>] [--all] [--format auto|plain|styled|json]
+adoc impacted-by [path]... [--ref <git-ref>] [--artifact <path>] [--format auto|plain|styled|json|markdown]
+adoc patch (--check <patch-json> | --apply <patch-json|@->) [--artifact <path>] [--format auto|plain|styled|json]
+adoc diff <base-ref> [--format auto|plain|styled|json|markdown]
+adoc review <base-ref> [--patch <patch-json>] [--format auto|plain|styled|json|markdown]
 adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | --semantic] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--related-to <object-id>] [--relation depends_on|supersedes|related_to] [--direction outgoing|incoming|both] [--top <n>] [--format auto|plain|styled|json]
 ```
 
@@ -273,6 +295,42 @@ as global config.
 - includes the root node at distance `0` and preserves original edge direction in output
 - supports `--relation depends_on|supersedes|related_to` and `--direction outgoing|incoming|both`
 - supports `--format auto|plain|styled|json`
+
+`adoc stale`:
+
+- reads a compiled graph artifact; it does not compile source
+- lists stale, review-overdue, and expiring Knowledge Objects, re-deriving lifecycle signals as of the query date
+- accepts `--within <Nd>` to widen the expiring-soon horizon
+- exits `0` whether or not records exist and emits the `adoc.stale.v0` envelope
+
+`adoc contradictions`:
+
+- reads a compiled graph artifact; it does not compile source
+- lists unresolved contradictions and contradicted claims; `--all` widens the contradictions listing to resolved ones
+- exits `0` whether or not records exist and emits the `adoc.contradictions.v0` envelope
+
+`adoc impacted-by`:
+
+- reads a compiled graph artifact; it does not compile source
+- lists verified Knowledge Objects implicated by changed source paths, passed explicitly or derived from `--ref <git-ref>`
+- emits the `adoc.impacted.v0` envelope and supports `--format markdown` for PR-comment output
+
+`adoc patch`:
+
+- validates one `adoc.patch.v0` document against the compiled graph artifact's `content_hash` preconditions
+- `--check <patch-json>` is read-only and emits the `adoc.patch.check.v0` envelope
+- `--apply <patch-json>` (or `@-` to read from stdin) validates, then rewrites the affected source spans and emits the `adoc.patch.apply.v0` envelope
+
+`adoc diff`:
+
+- diffs Knowledge Objects between `<base-ref>` and the working tree, emitting the `adoc.diff.v0` envelope
+- supports `--format markdown` for PR-comment output
+
+`adoc review`:
+
+- reviews Knowledge Object changes since `<base-ref>` with source-path impact and required reviewers, emitting the `adoc.review.v0` envelope
+- `--patch <patch-json>` embeds an `adoc.patch.check.v0` result in the review
+- supports `--format markdown` for PR-comment output
 
 `adoc search`:
 
@@ -347,10 +405,19 @@ The customer-visible balance available for future invoices.
 
 Supported object kinds:
 
+<!-- adoc:kinds -->
 - `claim`
 - `decision`
-- `warning`
 - `glossary`
+- `warning`
+- `constraint`
+- `policy`
+- `procedure`
+- `example`
+- `agent_instruction`
+- `contradiction`
+- `source`
+<!-- /adoc:kinds -->
 
 Supported relation fields:
 
