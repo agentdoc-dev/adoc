@@ -3,8 +3,9 @@
 //! Introduced in V6.5.2. Constructed only via [`SampleSize::try_new`]; the
 //! accepted grammar is one or more ASCII digits denoting a positive integer
 //! (e.g. `37`, `1200`). Zero (`0`, `000`), signs (`-3`, `+3`), and any
-//! non-digit characters are rejected. The token is stored in its
-//! ASCII-trimmed form.
+//! non-digit characters are rejected. The value is stored in canonical
+//! decimal form (leading zeros dropped, e.g. `00037` → `37`) so that
+//! cosmetically different authored tokens hash identically.
 
 use std::fmt;
 
@@ -12,8 +13,8 @@ use crate::domain::values::trim_ascii_edges;
 
 /// A positive sample size with constructor-asserted validity.
 ///
-/// Once constructed the inner string satisfies the grammar `[0-9]+`, parses
-/// as a `u64`, and is greater than zero.
+/// Once constructed the inner string is the canonical decimal rendering of
+/// a positive `u64` (no leading zeros).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SampleSize(String);
 
@@ -37,12 +38,16 @@ impl SampleSize {
         if trimmed.is_empty() {
             return Err(SampleSizeError::Missing);
         }
-        let is_positive_integer = trimmed.bytes().all(|b| b.is_ascii_digit())
-            && trimmed.parse::<u64>().is_ok_and(|n| n > 0);
-        if is_positive_integer {
-            Ok(Self(trimmed.to_string()))
-        } else {
-            Err(SampleSizeError::Invalid(trimmed.to_string()))
+        let parsed = trimmed
+            .bytes()
+            .all(|b| b.is_ascii_digit())
+            .then(|| trimmed.parse::<u64>().ok())
+            .flatten()
+            .filter(|&n| n > 0);
+        match parsed {
+            // Canonicalize so leading-zero variants hash identically.
+            Some(n) => Ok(Self(n.to_string())),
+            None => Err(SampleSizeError::Invalid(trimmed.to_string())),
         }
     }
 
@@ -92,6 +97,14 @@ mod tests {
     fn sample_size_rejects_empty_and_whitespace_only() {
         assert_eq!(SampleSize::try_new(""), Err(SampleSizeError::Missing));
         assert_eq!(SampleSize::try_new("   "), Err(SampleSizeError::Missing));
+    }
+
+    #[test]
+    fn sample_size_canonicalizes_leading_zeros() {
+        let sample_size = SampleSize::try_new("00037").expect("valid sample size");
+        assert_eq!(sample_size.as_str(), "37");
+        let sample_size = SampleSize::try_new("010").expect("valid sample size");
+        assert_eq!(sample_size.as_str(), "10");
     }
 
     #[test]
