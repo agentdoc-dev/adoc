@@ -1268,6 +1268,7 @@ mod tests {
         assert_eq!(BlockKind::AgentInstruction.as_str(), "agent_instruction");
         assert_eq!(BlockKind::Contradiction.as_str(), "contradiction");
         assert_eq!(BlockKind::Source.as_str(), "source");
+        assert_eq!(BlockKind::Api.as_str(), "api");
         assert_eq!(BlockKind::Observation.as_str(), "observation");
     }
 
@@ -1314,6 +1315,7 @@ mod tests {
             BlockKind::from_fence_word("source"),
             Some(BlockKind::Source)
         );
+        assert_eq!(BlockKind::from_fence_word("api"), Some(BlockKind::Api));
         assert_eq!(
             BlockKind::from_fence_word("observation"),
             Some(BlockKind::Observation)
