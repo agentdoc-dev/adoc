@@ -264,11 +264,14 @@ fn parse_status(parsed: &mut ParsedTypedBlock) -> Result<ObservationStatus, Obse
     let Some(raw) = parsed.raw_fields.remove(STATUS_FIELD) else {
         return Err(ObservationError::MissingStatus);
     };
-    let trimmed = trim_ascii_edges(&raw);
-    if trimmed.is_empty() {
-        return Err(ObservationError::MissingStatus);
+    match ObservationStatus::try_new(&raw) {
+        // `try_new` trims, so an empty rejected value means the field was
+        // blank — report it as missing, not invalid.
+        Err(ObservationError::InvalidStatus(value)) if value.is_empty() => {
+            Err(ObservationError::MissingStatus)
+        }
+        result => result,
     }
-    ObservationStatus::try_new(trimmed)
 }
 
 /// Optional positive integer; present-but-blank is treated as absent.
@@ -546,6 +549,21 @@ mod tests {
         assert_eq!(
             diagnostics[0].object_id.as_deref(),
             Some("onboarding.credit-confusion")
+        );
+    }
+
+    #[test]
+    fn build_from_parsed_reports_blank_status_as_missing() {
+        let parsed =
+            parsed_observation(BTreeMap::from([("status".to_string(), "   ".to_string())]));
+        let mut diagnostics = Vec::new();
+
+        let observation = Observation::build_from_parsed(parsed, &mut diagnostics);
+
+        assert!(observation.is_none());
+        assert_eq!(
+            diagnostics[0].code,
+            DiagnosticCode::SchemaObservationMissingStatus
         );
     }
 
