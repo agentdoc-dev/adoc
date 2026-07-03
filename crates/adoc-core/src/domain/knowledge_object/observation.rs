@@ -149,26 +149,28 @@ impl Observation {
     ) -> Result<Self, ObservationError> {
         let id = ObjectId::new(id_text).map_err(ObservationError::InvalidId)?;
         let status = ObservationStatus::try_new(status_text)?;
-        let sample_size = sample_size_text
-            .map(|value| {
-                SampleSize::try_new(value).map_err(|error| match error {
-                    SampleSizeError::Missing => ObservationError::InvalidSampleSize(String::new()),
-                    SampleSizeError::Invalid(value) => ObservationError::InvalidSampleSize(value),
-                })
-            })
-            .transpose()?;
-        let observed_at = observed_at_text
-            .map(|value| {
-                EffectiveDate::try_new(value).map_err(|error| match error {
-                    EffectiveDateError::Missing => {
-                        ObservationError::InvalidObservedAt(String::new())
-                    }
-                    EffectiveDateError::Invalid(value) => {
-                        ObservationError::InvalidObservedAt(value)
-                    }
-                })
-            })
-            .transpose()?;
+        // Present-but-blank optional fields are absent, matching the parser
+        // paths (`parse_sample_size` / `parse_observed_at`).
+        let sample_size = match sample_size_text {
+            Some(value) => match SampleSize::try_new(value) {
+                Ok(sample_size) => Some(sample_size),
+                Err(SampleSizeError::Missing) => None,
+                Err(SampleSizeError::Invalid(value)) => {
+                    return Err(ObservationError::InvalidSampleSize(value));
+                }
+            },
+            None => None,
+        };
+        let observed_at = match observed_at_text {
+            Some(value) => match EffectiveDate::try_new(value) {
+                Ok(observed_at) => Some(observed_at),
+                Err(EffectiveDateError::Missing) => None,
+                Err(EffectiveDateError::Invalid(value)) => {
+                    return Err(ObservationError::InvalidObservedAt(value));
+                }
+            },
+            None => None,
+        };
         let body = Body::from_plain_text(body_text).ok_or(ObservationError::MissingBody)?;
         Ok(Self {
             id,
@@ -439,6 +441,25 @@ mod tests {
             observation.observed_at().map(EffectiveDate::as_str),
             Some("2026-04-30")
         );
+    }
+
+    #[test]
+    fn try_new_treats_blank_optional_fields_as_absent() {
+        // Mirrors the parser path: present-but-blank `sample_size` /
+        // `observed_at` behave like absent fields.
+        let observation = Observation::try_new(
+            "onboarding.credit-confusion",
+            "observed",
+            Some(""),
+            Some("   "),
+            "Users often misunderstand credit usage.",
+            BTreeMap::new(),
+            span(),
+        )
+        .expect("blank optional fields are absent, not invalid");
+
+        assert!(observation.sample_size().is_none());
+        assert!(observation.observed_at().is_none());
     }
 
     #[test]
