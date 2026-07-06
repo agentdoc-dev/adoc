@@ -104,20 +104,14 @@ impl SearchQuery {
         self.scope != SearchRecordScope::ProseOnly
     }
 
-    /// ADR-0040: a prose-only query cannot be satisfied by semantic search
-    /// (no prose vectors until V1.7.2) or combined with Knowledge Object
-    /// metadata filters (filters imply object intent). Adapters reject these
-    /// combinations at argument-parse time; a direct library caller gets a
-    /// diagnostic instead of a silent empty result.
+    /// ADR-0040: a prose-only query cannot be combined with Knowledge Object
+    /// metadata filters (filters imply object intent). Adapters reject the
+    /// combination at argument-parse time; a direct library caller gets a
+    /// diagnostic instead of a silent empty result. The V1.7.1 prose-only ×
+    /// semantic conflict is gone: prose vectors ship in `adoc.search.v1`.
     fn scope_conflict(&self) -> Option<Diagnostic> {
         if self.scope != SearchRecordScope::ProseOnly {
             return None;
-        }
-        if self.mode == SearchMode::Semantic {
-            return Some(Diagnostic::error(
-                DiagnosticCode::SearchInvalidScope,
-                "Semantic search has no prose vectors; a prose-only query requires lexical or blended search.",
-            ));
         }
         if self.filters.constrains_objects() {
             return Some(Diagnostic::error(
@@ -476,9 +470,13 @@ fn search_hybrid_impl(session: &RetrievalSession, query: SearchQuery) -> SearchR
         .query_vector
         .as_deref()
         .expect("query_vector is checked above");
-    // Prose has no vectors until V1.7.2 (adoc.search.v1): only Knowledge
-    // Objects enter the vector ranking; prose fuses on lexical rank alone.
-    let vector_hits = vector_index.rank_among(query_vector, ko_ids.iter().copied(), ko_ids.len());
+    // V1.7.2 (adoc.search.v1): prose vectors ship in the search artifact, so
+    // the whole blended pool enters the vector ranking.
+    let vector_hits = vector_index.rank_among(
+        query_vector,
+        candidate_ids.iter().copied(),
+        candidate_ids.len(),
+    );
     let ranker = HybridRanker;
     let ranked_hits = ranker.rank(
         &query.text,
@@ -551,9 +549,9 @@ fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> Searc
         return missing_query_vector_result(SearchMode::Semantic);
     }
 
-    // Semantic search stays Knowledge-Object-only until prose vectors ship
-    // in V1.7.2 (adoc.search.v1); ProseOnly therefore yields no candidates.
-    let candidates = match SearchScope::resolve(session, &query.filters) {
+    // V1.7.2 (adoc.search.v1): the semantic pool blends Knowledge Objects
+    // and prose, mirroring hybrid; prose vectors ship in the search artifact.
+    let ko_candidates = match SearchScope::resolve(session, &query.filters) {
         Ok(scope) if query.include_objects() => {
             scope.metadata_and_graph_candidates(session, &query.filters)
         }
@@ -565,7 +563,15 @@ fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> Searc
             };
         }
     };
-    if candidates.is_empty() {
+    let ko_ids: Vec<&str> = ko_candidates
+        .iter()
+        .map(|object| object.id.as_str())
+        .collect();
+    let mut candidate_ids = ko_ids.clone();
+    if query.include_prose() {
+        candidate_ids.extend(prose_candidate_ids(session));
+    }
+    if candidate_ids.is_empty() {
         return SearchResult {
             records: Vec::new(),
             diagnostics: Vec::new(),
@@ -576,7 +582,6 @@ fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> Searc
         .query_vector
         .as_deref()
         .expect("query_vector is checked above");
-    let candidate_ids: Vec<&str> = candidates.iter().map(|object| object.id.as_str()).collect();
     let hits = index.rank_among(
         query_vector,
         candidate_ids.iter().copied(),
@@ -586,9 +591,10 @@ fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> Searc
 
     // Pins ride above the `top` budget (ADR-0040): the scored slots stay
     // reserved for vector hits even when the query prefix-pins an id.
+    // Only Knowledge Object ids are pinnable; prose ids are never Object IDs.
     let ranker = HybridRanker;
     let result_ids = merge_pinned_then_scored(
-        ranker.pinned_candidate_ids(&query.text, &candidate_ids),
+        ranker.pinned_candidate_ids(&query.text, &ko_ids),
         hits.iter().map(|hit| hit.id.clone()),
         |id| id.as_str(),
         query.top.get(),
@@ -600,11 +606,6 @@ fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> Searc
         .map(|(idx, id)| {
             // Semantic result IDs are pinned candidate IDs or vector hits
             // ranked from the same candidate pool; all were validated at load.
-            let object_id = ObjectId::new_unchecked(id.clone());
-            let object = session
-                .graph_session
-                .object(&object_id)
-                .expect("hit must exist in graph index");
             let search_match = hits_by_id.get(id.as_str()).map_or_else(
                 || RetrievalMatch {
                     mode: SearchMode::Semantic,
@@ -616,10 +617,7 @@ fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> Searc
                 },
                 |hit| RetrievalMatch::semantic((idx + 1) as u32, hit.vector_rank, hit.cosine_score),
             );
-            RetrievalEntry::KnowledgeObject(RetrievalRecord::from_object_with_match(
-                object,
-                search_match,
-            ))
+            resolve_entry(session, &id, search_match)
         })
         .collect();
 
@@ -1304,23 +1302,25 @@ mod tests {
         assert!(result.records[0].as_knowledge_object().is_some());
     }
 
-    /// V1.7.1 (ADR-0040): semantic search has no prose vectors until V1.7.2,
-    /// so a prose-only semantic query is structurally unsatisfiable. Adapters
-    /// reject the combination at argument-parse time; a direct library caller
-    /// gets a diagnostic instead of a silent empty result.
+    /// V1.7.2 (ADR-0040): prose vectors ship in adoc.search.v1, so a
+    /// prose-only semantic query is a valid scope; without a search artifact
+    /// it fails on the missing artifact, not on the scope.
     #[test]
-    fn semantic_search_with_prose_only_scope_diagnoses_invalid_scope() {
+    fn semantic_search_with_prose_only_scope_requires_search_artifact_only() {
         let session = load_session_from_document(mixed_graph_document());
 
         let mut query = lexical_search_query("credits", SearchRecordScope::ProseOnly);
         query.mode = SearchMode::Semantic;
         let result = search(&session, query);
 
+        // V1.7.2: prose-only semantic search is a valid scope now that prose
+        // vectors ship in adoc.search.v1; on a session without a search
+        // artifact it fails exactly like any other semantic query.
         assert!(result.records.is_empty());
         assert_eq!(result.diagnostics.len(), 1);
         assert_eq!(
             result.diagnostics[0].code,
-            DiagnosticCode::SearchInvalidScope
+            DiagnosticCode::SearchArtifactMissing
         );
     }
 

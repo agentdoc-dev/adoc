@@ -645,9 +645,10 @@ pub struct SearchParams {
     /// Conflicts with `prose_only`.
     #[serde(default)]
     pub objects_only: bool,
-    /// Return only prose records. Prose has no Knowledge Object metadata or
-    /// vectors, so this conflicts with `semantic` and the metadata filters
-    /// (`kind`, `status`, `owner`, `source_path`, `related_to`).
+    /// Return only prose records. Prose has no Knowledge Object metadata,
+    /// so this conflicts with the metadata filters (`kind`, `status`,
+    /// `owner`, `source_path`, `related_to`). Semantic prose search works
+    /// since V1.7.2 (adoc.search.v1 prose vectors).
     #[serde(default)]
     pub prose_only: bool,
     pub kind: Option<String>,
@@ -743,9 +744,10 @@ where
 }
 
 /// V1.7.1 (ADR-0040): maps the mutually exclusive scope params onto the
-/// structural enum, mirroring the CLI's clap conflicts. `prose_only` also
-/// conflicts with `semantic` (no prose vectors until V1.7.2) and with every
-/// Knowledge Object metadata filter (prose has none to filter on).
+/// structural enum, mirroring the CLI's clap conflicts. `prose_only`
+/// conflicts with every Knowledge Object metadata filter (prose has none to
+/// filter on); the V1.7.1 `semantic` conflict is gone now that prose vectors
+/// ship in `adoc.search.v1` (V1.7.2).
 fn search_record_scope(params: &SearchParams) -> McpAdapterResult<adoc_core::SearchRecordScope> {
     if params.objects_only && params.prose_only {
         return Err(McpAdapterError::InvalidArguments(
@@ -753,11 +755,6 @@ fn search_record_scope(params: &SearchParams) -> McpAdapterResult<adoc_core::Sea
         ));
     }
     if params.prose_only {
-        if params.semantic {
-            return Err(McpAdapterError::InvalidArguments(
-                "prose_only cannot be combined with semantic: prose has no vectors until adoc.search.v1 (V1.7.2)".to_string(),
-            ));
-        }
         if params.kind.is_some()
             || params.status.is_some()
             || params.owner.is_some()

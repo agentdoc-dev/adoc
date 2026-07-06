@@ -453,13 +453,13 @@ pub(crate) enum Commands {
         /// Return only Knowledge Object records (the pre-V1.7 result set).
         #[arg(long, conflicts_with = "prose_only")]
         objects_only: bool,
-        /// Return only prose records. Prose has no Knowledge Object metadata
-        /// or vectors, so this conflicts with the metadata filters and
-        /// --semantic.
+        /// Return only prose records. Prose has no Knowledge Object metadata,
+        /// so this conflicts with the metadata filters. Semantic prose search
+        /// works since V1.7.2 (adoc.search.v1 prose vectors).
         #[arg(
             long,
             conflicts_with_all = [
-                "objects_only", "semantic", "kind", "status", "owner",
+                "objects_only", "kind", "status", "owner",
                 "source_path", "related_to",
             ]
         )]

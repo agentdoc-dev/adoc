@@ -147,7 +147,42 @@ struct CanonicalGraphDocument {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum CanonicalGraphNode {
+    Page(CanonicalPageNode),
+    Heading(CanonicalBlockNode),
+    Paragraph(CanonicalBlockNode),
+    List(CanonicalBlockNode),
+    CodeBlock(CanonicalBlockNode),
     KnowledgeObject(CanonicalKnowledgeObject),
+}
+
+/// V1.7.2: mirrors `GraphPageNode` serialization order so prose fixtures
+/// round-trip byte-identically for the graph_artifact_hash check.
+#[derive(Debug, Serialize, Deserialize)]
+struct CanonicalPageNode {
+    id: String,
+    order: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    source_path: String,
+}
+
+/// V1.7.2: mirrors `GraphBlockNode` serialization order.
+#[derive(Debug, Serialize, Deserialize)]
+struct CanonicalBlockNode {
+    id: String,
+    page_id: String,
+    order: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    level: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    items: Vec<String>,
+    source_span: CanonicalSourceSpan,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -2463,4 +2498,187 @@ fn prose_record_serializes_with_record_type_and_normalized_match_shape() {
         heading_record.get("heading_context").is_none(),
         "a top-level heading has no ancestor context, got {heading_record:?}"
     );
+}
+
+/// V1.7.2 (ADR-0040): a prose session backed by a v1 search artifact whose
+/// prose entries carry vectors, so semantic and hybrid ranking can score
+/// prose blocks.
+fn load_prose_session_with_vectors(vectors: Vec<(&str, Vec<f32>)>) -> RetrievalSession {
+    let canonical: CanonicalGraphDocument = serde_json::from_str(&prose_symmetry_graph_json("md"))
+        .expect("prose fixture has canonical shape");
+    let graph_json =
+        serde_json::to_string_pretty(&canonical).expect("prose fixture serializes canonically");
+    let artifact = write_temp_artifact("prose-vectors-graph", &graph_json);
+    let search_document = json!({
+        "schema_version": "adoc.search.v1",
+        "model": {
+            "id": "bge-small-en-v1.5",
+            "provider": "fastembed",
+            "dim": 384
+        },
+        "graph_artifact_hash": sha256_prefixed(graph_json.as_bytes()),
+        "embeddings": vectors
+            .into_iter()
+            .map(|(id, vector)| json!({
+                "id": id,
+                "entry_kind": if id.contains('#') { "prose" } else { "knowledge_object" },
+                "content_hash": "sha256:test",
+                "vector": vector
+            }))
+            .collect::<Vec<_>>()
+    });
+    let search_artifact = write_temp_search_artifact(
+        "prose-vectors-search",
+        &serde_json::to_string_pretty(&search_document).expect("search fixture serializes"),
+    );
+
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: Some(search_artifact.path().to_path_buf()),
+    });
+    assert!(
+        result.diagnostics.is_empty(),
+        "expected clean prose vector fixture load, got {:?}",
+        result.diagnostics
+    );
+    result.session.expect("prose vector session loads")
+}
+
+/// V1.7.2 (ADR-0040): prose ids coming out of the vector index resolve to
+/// prose records instead of panicking on the Knowledge-Object lookup.
+#[test]
+fn semantic_search_returns_prose_records_ranked_by_cosine() {
+    let session = load_prose_session_with_vectors(vec![
+        ("guides.page#block-0001", vec![1.0, 0.0]),
+        ("guides.page#block-0002", vec![0.0, 1.0]),
+    ]);
+
+    let result = search(
+        &session,
+        semantic_query(
+            "credit spending",
+            vec![1.0, 0.0],
+            10,
+            SearchFilters::default(),
+        ),
+    );
+
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    assert_eq!(
+        search_ids(&result),
+        vec!["guides.page#block-0001", "guides.page#block-0002"]
+    );
+    let RetrievalEntry::Prose(record) = &result.records[0] else {
+        panic!("semantic prose hit must resolve to a prose record");
+    };
+    let search_match = record
+        .search_match
+        .as_ref()
+        .expect("semantic hit carries match metadata");
+    assert_eq!(search_match.mode, SearchMode::Semantic);
+    assert_eq!(search_match.vector_rank, Some(1));
+    let cosine = search_match
+        .cosine_score
+        .expect("semantic hit carries cosine score");
+    assert!(
+        (cosine - 1.0).abs() < 1e-6,
+        "expected cosine 1.0, got {cosine}"
+    );
+}
+
+/// V1.7.2: prose-only semantic search is un-gated now that prose vectors
+/// exist in adoc.search.v1.
+#[test]
+fn prose_only_semantic_search_returns_prose_without_scope_conflict() {
+    let session = load_prose_session_with_vectors(vec![
+        ("guides.page#block-0001", vec![1.0, 0.0]),
+        ("guides.page#block-0002", vec![0.0, 1.0]),
+    ]);
+
+    let query = SearchQuery {
+        text: "credit spending".to_string(),
+        mode: SearchMode::Semantic,
+        filters: SearchFilters::default(),
+        top: NonZeroUsize::new(10).expect("test search top is non-zero"),
+        query_vector: Some(vec![0.0, 1.0]),
+        scope: SearchRecordScope::ProseOnly,
+    };
+    let result = search(&session, query);
+
+    assert!(
+        result.diagnostics.is_empty(),
+        "prose-only semantic search must not report a scope conflict: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        search_ids(&result),
+        vec!["guides.page#block-0002", "guides.page#block-0001"]
+    );
+}
+
+/// V1.7.2: objects-only semantic search keeps prose vectors out of the pool.
+#[test]
+fn objects_only_semantic_search_excludes_prose_vectors() {
+    let session = load_prose_session_with_vectors(vec![("guides.page#block-0001", vec![1.0, 0.0])]);
+
+    let query = SearchQuery {
+        text: "credit spending".to_string(),
+        mode: SearchMode::Semantic,
+        filters: SearchFilters::default(),
+        top: NonZeroUsize::new(10).expect("test search top is non-zero"),
+        query_vector: Some(vec![1.0, 0.0]),
+        scope: SearchRecordScope::ObjectsOnly,
+    };
+    let result = search(&session, query);
+
+    // The V4.3 migration hint fires: an objects-only search over a
+    // prose-only project finds no Knowledge Objects, by design.
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code)
+            .collect::<Vec<_>>(),
+        vec![DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration]
+    );
+    assert!(
+        result.records.is_empty(),
+        "the fixture has no Knowledge Objects, so objects-only semantic search returns nothing"
+    );
+}
+
+/// V1.7.2: hybrid fusion scores prose on both lexical and vector rank once
+/// prose vectors exist.
+#[test]
+fn hybrid_search_prose_hits_carry_vector_ranks() {
+    let session = load_prose_session_with_vectors(vec![
+        ("guides.page#block-0001", vec![1.0, 0.0]),
+        ("guides.page#block-0002", vec![0.0, 1.0]),
+    ]);
+
+    let result = search(
+        &session,
+        hybrid_query(
+            "credits consumed",
+            vec![1.0, 0.0],
+            10,
+            SearchFilters::default(),
+        ),
+    );
+
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let RetrievalEntry::Prose(record) = &result.records[0] else {
+        panic!("hybrid prose hit must resolve to a prose record");
+    };
+    assert_eq!(record.id, "guides.page#block-0001");
+    let search_match = record
+        .search_match
+        .as_ref()
+        .expect("hybrid hit carries match metadata");
+    assert_eq!(
+        search_match.vector_rank,
+        Some(1),
+        "prose must enter the vector ranking in hybrid mode (V1.7.2)"
+    );
+    assert_eq!(search_match.lexical_rank, Some(1));
 }
