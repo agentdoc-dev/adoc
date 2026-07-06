@@ -42,7 +42,7 @@ pub(crate) fn read_search_artifact_document(
                 ),
             )
             .with_help(format!(
-                "Expected schema_version '{}'.",
+                "Expected schema_version '{}'. Rebuild the artifact with `adoc build`.",
                 SUPPORTED_SEARCH_SCHEMA_VERSION
             )),
         ]);
@@ -109,6 +109,11 @@ mod tests {
         assert_eq!(
             diagnostics[0].code,
             DiagnosticCode::SchemaUnsupportedVersion
+        );
+        let help = diagnostics[0].help.as_deref().expect("diagnostic has help");
+        assert!(
+            help.contains("adoc build"),
+            "help must point at the rebuild fix, got: {help}"
         );
     }
 
