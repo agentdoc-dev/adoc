@@ -72,37 +72,22 @@ impl HybridRanker {
                 .then_with(|| left.id.cmp(&right.id))
         });
 
-        let pinned = self.pinned_candidate_ids(query_text, pinnable_ids);
-        let mut seen = BTreeSet::new();
-        let mut results = Vec::new();
-        for id in pinned {
-            if seen.insert(id.clone()) {
+        let pinned_hits: Vec<_> = self
+            .pinned_candidate_ids(query_text, pinnable_ids)
+            .into_iter()
+            .map(|id| {
                 let lexical_rank = lexical_by_id.get(id.as_str()).map(|hit| hit.lexical_rank);
                 let vector_rank = vector_by_id.get(id.as_str()).map(|hit| hit.vector_rank);
-                let rrf_score = lexical_rank.map(rrf_component).unwrap_or(0.0)
-                    + vector_rank.map(rrf_component).unwrap_or(0.0);
-                results.push(HybridRankedHit {
+                HybridRankedHit {
+                    rrf_score: lexical_rank.map(rrf_component).unwrap_or(0.0)
+                        + vector_rank.map(rrf_component).unwrap_or(0.0),
                     id,
-                    rrf_score,
                     lexical_rank,
                     vector_rank,
-                });
-            }
-            if results.len() >= top {
-                return results;
-            }
-        }
-
-        for hit in ranked {
-            if seen.insert(hit.id.clone()) {
-                results.push(hit);
-            }
-            if results.len() >= top {
-                break;
-            }
-        }
-
-        results
+                }
+            })
+            .collect();
+        merge_pinned_then_scored(pinned_hits, ranked, |hit| hit.id.as_str(), top)
     }
 
     /// Returns Object ID prefix matches before scored hits.
@@ -128,6 +113,36 @@ impl HybridRanker {
             .sort_by(|left, right| left.len().cmp(&right.len()).then_with(|| left.cmp(right)));
         pinned_ids
     }
+}
+
+/// The single merge policy for pinned and scored hits (ADR-0040): pins first
+/// (deduped), then scored items until `top` non-pinned items are taken. `top`
+/// bounds the scored budget only — pinned ids ride above it and can never
+/// displace a scored result, so results may exceed `top` by the pin count.
+pub(crate) fn merge_pinned_then_scored<T>(
+    pinned: Vec<T>,
+    scored: impl IntoIterator<Item = T>,
+    id_of: impl Fn(&T) -> &str,
+    top: usize,
+) -> Vec<T> {
+    let mut seen = BTreeSet::new();
+    let mut results = Vec::new();
+    for item in pinned {
+        if seen.insert(id_of(&item).to_string()) {
+            results.push(item);
+        }
+    }
+    let mut scored_taken = 0;
+    for item in scored {
+        if scored_taken >= top {
+            break;
+        }
+        if seen.insert(id_of(&item).to_string()) {
+            results.push(item);
+            scored_taken += 1;
+        }
+    }
+    results
 }
 
 impl HybridRankedHit {
@@ -242,6 +257,29 @@ mod tests {
         assert_eq!(hits[0].rrf_score, 0.0);
         assert_eq!(hits[0].lexical_rank, None);
         assert_eq!(hits[0].vector_rank, None);
+    }
+
+    /// V1.7.1 review follow-up: `top` bounds scored hits only. A pinned id
+    /// rides above the budget and must never displace a scored result.
+    #[test]
+    fn pinned_ids_ride_above_the_scored_budget() {
+        let ranker = HybridRanker;
+
+        let hits = ranker.rank(
+            "billing.credit",
+            &["billing.credit", "guides.page#block-0001"],
+            &["billing.credit"],
+            &[lexical("guides.page#block-0001", 1)],
+            &[],
+            1,
+        );
+
+        let ids: Vec<_> = hits.iter().map(|hit| hit.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["billing.credit", "guides.page#block-0001"],
+            "the pin must not consume the single scored slot"
+        );
     }
 
     #[test]

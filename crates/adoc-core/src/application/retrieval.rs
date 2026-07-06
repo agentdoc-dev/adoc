@@ -10,7 +10,7 @@ use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::knowledge_object::question::{ANSWERED_STATUS, RESOLVED_BY_FIELD};
 use crate::domain::ports::artifact_reader::ArtifactReader;
 pub use crate::domain::retrieval::SearchFilters;
-use crate::domain::retrieval::hybrid_ranker::HybridRanker;
+use crate::domain::retrieval::hybrid_ranker::{HybridRanker, merge_pinned_then_scored};
 use crate::domain::retrieval::lexical_index::LexicalIndex;
 use crate::domain::retrieval::vector_index::VectorIndex;
 use crate::domain::retrieval::{
@@ -489,8 +489,20 @@ fn search_hybrid_impl(session: &RetrievalSession, query: SearchQuery) -> SearchR
         candidate_ids.len(),
     );
 
+    // Pins ride above the `top` budget (ADR-0040): only non-pinned hits
+    // consume scored slots, so a prefix-pinned id can never displace a
+    // scored result.
+    let pinned_ids: BTreeSet<String> = ranker
+        .pinned_candidate_ids(&query.text, &ko_ids)
+        .into_iter()
+        .collect();
     let mut records = Vec::new();
+    let mut scored_taken = 0usize;
     for hit in ranked_hits {
+        let is_pinned = pinned_ids.contains(&hit.id);
+        if !is_pinned && scored_taken >= query.top.get() {
+            break;
+        }
         // Metadata filters constrain Knowledge Objects only; prose is in the
         // pool only when no filter is set (ADR-0040), so the check is
         // vacuous for prose hits.
@@ -514,8 +526,8 @@ fn search_hybrid_impl(session: &RetrievalSession, query: SearchQuery) -> SearchR
             hit.vector_rank,
         );
         records.push(resolve_entry(session, &hit.id, search_match));
-        if records.len() >= query.top.get() {
-            break;
+        if !is_pinned {
+            scored_taken += 1;
         }
     }
 
@@ -572,22 +584,15 @@ fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> Searc
     );
     let hits_by_id: BTreeMap<_, _> = hits.iter().map(|hit| (hit.id.as_str(), hit)).collect();
 
+    // Pins ride above the `top` budget (ADR-0040): the scored slots stay
+    // reserved for vector hits even when the query prefix-pins an id.
     let ranker = HybridRanker;
-    let mut result_ids: Vec<_> = ranker
-        .pinned_candidate_ids(&query.text, &candidate_ids)
-        .into_iter()
-        .collect();
-    let mut seen_ids: BTreeSet<_> = result_ids.iter().cloned().collect();
-
-    for hit in &hits {
-        if seen_ids.insert(hit.id.clone()) {
-            result_ids.push(hit.id.clone());
-        }
-        if result_ids.len() >= query.top.get() {
-            break;
-        }
-    }
-    result_ids.truncate(query.top.get());
+    let result_ids = merge_pinned_then_scored(
+        ranker.pinned_candidate_ids(&query.text, &candidate_ids),
+        hits.iter().map(|hit| hit.id.clone()),
+        |id| id.as_str(),
+        query.top.get(),
+    );
 
     let records = result_ids
         .into_iter()
@@ -699,9 +704,9 @@ fn search_lexical_impl(session: &RetrievalSession, query: SearchQuery) -> Search
 
     // Object ID pins are Knowledge-Object-only (ADR-0040): prose block ids
     // never pin, so a page-id-prefix query cannot float a page's blocks
-    // above scored results.
+    // above scored results. Pins ride above the `top` budget.
     let ranker = HybridRanker;
-    let mut result_hits: Vec<_> = ranker
+    let pinned_hits: Vec<_> = ranker
         .pinned_candidate_ids(&query.text, &ko_ids)
         .into_iter()
         .map(|id| {
@@ -709,21 +714,14 @@ fn search_lexical_impl(session: &RetrievalSession, query: SearchQuery) -> Search
             (id, lexical_rank)
         })
         .collect();
-    let mut seen_ids: BTreeSet<_> = result_hits
-        .iter()
-        .map(|(id, _lexical_rank)| id.clone())
-        .collect();
-
-    for hit in lexical_hits {
-        if seen_ids.insert(hit.id.clone()) {
-            result_hits.push((hit.id, Some(hit.lexical_rank)));
-        }
-        if result_hits.len() >= query.top.get() {
-            break;
-        }
-    }
-
-    result_hits.truncate(query.top.get());
+    let result_hits = merge_pinned_then_scored(
+        pinned_hits,
+        lexical_hits
+            .into_iter()
+            .map(|hit| (hit.id, Some(hit.lexical_rank))),
+        |(id, _lexical_rank)| id.as_str(),
+        query.top.get(),
+    );
     SearchResult {
         records: result_hits
             .into_iter()
@@ -1338,6 +1336,27 @@ mod tests {
         assert_eq!(
             result.diagnostics[0].code,
             DiagnosticCode::SearchInvalidScope
+        );
+    }
+
+    /// V1.7.1 review follow-up: pins ride above the `top` budget across every
+    /// search path — an exact-id query at `--top 1` returns the pinned
+    /// Knowledge Object AND the best-scored prose hit.
+    #[test]
+    fn pinned_object_does_not_displace_scored_prose_at_small_top() {
+        let session = load_session_from_document(mixed_graph_document());
+
+        let mut query = lexical_search_query("billing.credits", SearchRecordScope::Blended);
+        query.top = NonZeroUsize::new(1).expect("non-zero");
+        let result = search(&session, query);
+
+        assert!(result.diagnostics.is_empty());
+        assert_eq!(result.records.len(), 2);
+        assert_eq!(result.records[0].id(), "billing.credits");
+        assert!(
+            matches!(result.records[1], RetrievalEntry::Prose(_)),
+            "the scored prose hit keeps the single scored slot, got {:?}",
+            result.records
         );
     }
 

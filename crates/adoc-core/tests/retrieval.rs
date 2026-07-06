@@ -552,6 +552,50 @@ fn hybrid_search_filters_after_ranking_and_preserves_full_pool_ranks() {
     assert_eq!(search_match.vector_rank, Some(2));
 }
 
+/// V1.7.1 review follow-up: pins ride above the `top` budget in hybrid mode —
+/// a prefix-pinned Knowledge Object and the best-scored hit both return at
+/// `top = 1`.
+#[test]
+fn hybrid_search_pins_ride_above_the_scored_budget() {
+    let session = load_session_from_objects_with_vectors(
+        vec![
+            retrieval_search_object(
+                "billing.credits",
+                "claim",
+                None,
+                Some("team-billing"),
+                "docs/billing.adoc",
+                "Prefix target.",
+            ),
+            retrieval_search_object(
+                "support.winner",
+                "claim",
+                None,
+                Some("team-support"),
+                "docs/support.adoc",
+                "Vector winner.",
+            ),
+        ],
+        vec![
+            ("billing.credits", vec![0.0, 1.0]),
+            ("support.winner", vec![1.0, 0.0]),
+        ],
+    );
+
+    let result = search(
+        &session,
+        hybrid_query(
+            "billing.credits",
+            vec![1.0, 0.0],
+            1,
+            SearchFilters::default(),
+        ),
+    );
+
+    assert!(result.diagnostics.is_empty());
+    assert_eq!(search_ids(&result), ["billing.credits", "support.winner"]);
+}
+
 #[test]
 fn lexical_search_indexes_v0_evidence_fields() {
     let mut object = retrieval_search_object(
@@ -702,7 +746,9 @@ fn semantic_search_pins_id_prefix_matches_before_vector_hits() {
     );
 
     assert!(result.diagnostics.is_empty());
-    assert_eq!(search_ids(&result), ["billing.credits"]);
+    // The pin rides above the top=1 budget; the vector winner keeps the
+    // single scored slot (V1.7.1 review follow-up).
+    assert_eq!(search_ids(&result), ["billing.credits", "support.vector"]);
     let search_match = result.records[0].search_match().unwrap();
     assert_eq!(search_match.mode, SearchMode::Semantic);
     assert_eq!(search_match.vector_rank, Some(2));
@@ -743,7 +789,12 @@ fn semantic_search_pins_id_prefix_matches_without_vector_hit() {
     );
 
     assert!(result.diagnostics.is_empty());
-    assert_eq!(search_ids(&result), ["billing.new-object"]);
+    // The pin rides above the top=1 budget even without a vector hit of its
+    // own (V1.7.1 review follow-up).
+    assert_eq!(
+        search_ids(&result),
+        ["billing.new-object", "support.vector"]
+    );
     let search_match = result.records[0].search_match().unwrap();
     assert_eq!(search_match.mode, SearchMode::Semantic);
     assert_eq!(search_match.vector_rank, None);
@@ -815,13 +866,15 @@ fn retrieval_search_billing_pilot_subset_pins_exact_and_prefix_ids() {
         Some("billing.credits.decrement-after-success")
     );
 
+    // Pins ride above the `top` budget (V1.7.1 review follow-up): the four
+    // prefix pins return in addition to the four scored slots.
     let prefix = search(
         &session,
         lexical_query("billing.credits", 4, SearchFilters::default()),
     );
     assert!(prefix.diagnostics.is_empty());
     assert_eq!(
-        search_ids(&prefix),
+        search_ids(&prefix)[..4],
         [
             "billing.credits",
             "billing.credits.nonnegative",
@@ -829,7 +882,8 @@ fn retrieval_search_billing_pilot_subset_pins_exact_and_prefix_ids() {
             "billing.credits.decrement-after-success"
         ]
     );
-    assert_eq!(search_ranks(&prefix), [1, 2, 3, 4]);
+    assert_eq!(prefix.records.len(), 8);
+    assert_eq!(search_ranks(&prefix), [1, 2, 3, 4, 5, 6, 7, 8]);
 }
 
 #[test]

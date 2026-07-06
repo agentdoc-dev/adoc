@@ -83,6 +83,14 @@ vectors arrive with `adoc.search.v1` (§4).
   prose IDs — a query prefix-matching a page ID must not pin that page's
   blocks above scored results. "Pins stay on top" stays literally about
   Object IDs.
+- **Pins ride above the `top` budget** (V1.7.1 review amendment). `top`
+  bounds scored hits only; pinned ids are always included in addition, so a
+  result set may exceed `top` by the pin count. Review of the first cut
+  showed pins sharing the budget: at small `top`, several prefix-matching
+  Object IDs could displace every higher-scoring prose hit. One merge policy
+  (`merge_pinned_then_scored`) is shared by the lexical, semantic, and hybrid
+  paths. This also settles the pin-vs-budget question that was deferred to
+  the V1.7.3 tuning baseline.
 - **Blended by default.** Prose records are on for every project unless
   `--objects-only`; `--prose-only` suppresses Knowledge Objects. This finally
   gives `.md`-only projects working search. The two flags conflict;

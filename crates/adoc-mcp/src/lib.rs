@@ -422,7 +422,7 @@ impl AgentDocMcpServer {
 
     #[tool(
         name = "adoc_search",
-        description = "Search compiled AgentDoc graph and search artifacts. Returns adoc.retrieval.v1: one blended, RRF-ranked list of record_type knowledge_object | prose records; objects_only/prose_only restrict the list, and any Knowledge Object metadata filter implies objects_only. Prose records are orientation context, never citable knowledge — cite Knowledge Object records."
+        description = "Search compiled AgentDoc graph and search artifacts. Returns adoc.retrieval.v1: one blended, RRF-ranked list of record_type knowledge_object | prose records; objects_only/prose_only restrict the list, and any Knowledge Object metadata filter implies objects_only. `top` bounds scored hits only: Object ID prefix pins are always included in addition. Prose records are orientation context, never citable knowledge — cite Knowledge Object records."
     )]
     pub fn adoc_search(
         &self,

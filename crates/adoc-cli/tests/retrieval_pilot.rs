@@ -163,7 +163,13 @@ fn run_retrieval_set(backend: EmbeddingBackend, workspace_name: &str) {
                 let envelope: Value = serde_json::from_slice(&output.stdout)
                     .unwrap_or_else(|error| panic!("case `{}` stdout is JSON: {error}", case.name));
                 assert_eq!(envelope["schema_version"], "adoc.retrieval.v1");
-                assert_record_contract(&case.name, &envelope, case.mode, case.must_appear_in_top);
+                assert_record_contract(
+                    &case.name,
+                    &envelope,
+                    case.mode,
+                    &case.query,
+                    case.must_appear_in_top,
+                );
                 assert_expected_diagnostics(case, &envelope);
                 expected_id_assertions += assert_expected_ids(case, &envelope);
                 assert_expected_evidence(case, &envelope);
@@ -235,6 +241,7 @@ fn assert_property_invariants(backend: EmbeddingBackend, workspace_name: &str) {
             &format!("object-id invariant for {id}"),
             &id_envelope,
             RetrievalMode::Lexical,
+            id,
             1,
         );
         assert_first_id(&format!("object-id invariant for {id}"), &id_envelope, id);
@@ -245,6 +252,7 @@ fn assert_property_invariants(backend: EmbeddingBackend, workspace_name: &str) {
             &format!("body invariant for {id}"),
             &body_envelope,
             RetrievalMode::Lexical,
+            body,
             3,
         );
         let body_ids = record_ids(&body_envelope);
@@ -275,6 +283,7 @@ fn assert_property_invariants(backend: EmbeddingBackend, workspace_name: &str) {
             &format!("owner invariant for {owner}"),
             &envelope,
             RetrievalMode::Lexical,
+            "",
             expected_ids.len(),
         );
         let actual_ids = record_ids(&envelope);
@@ -437,11 +446,28 @@ fn assert_success(label: &str, output: &Output) {
     );
 }
 
-fn assert_record_contract(label: &str, envelope: &Value, expected_mode: RetrievalMode, top: usize) {
+fn assert_record_contract(
+    label: &str,
+    envelope: &Value,
+    expected_mode: RetrievalMode,
+    query: &str,
+    top: usize,
+) {
     let records = envelope["records"].as_array().expect("records is an array");
+    // Pins ride above the `top` budget (ADR-0040): `top` bounds scored hits,
+    // so the record count may exceed it by the query-prefix pin count.
+    let pinned = records
+        .iter()
+        .filter(|record| {
+            !query.is_empty()
+                && record["id"]
+                    .as_str()
+                    .is_some_and(|id| id.starts_with(query))
+        })
+        .count();
     assert!(
-        records.len() <= top,
-        "{label} returned more records than top {top}: {records:?}"
+        records.len() <= top + pinned,
+        "{label} returned more records than top {top} plus {pinned} pins: {records:?}"
     );
 
     let mut seen_ids = BTreeSet::new();
