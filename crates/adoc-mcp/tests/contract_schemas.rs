@@ -52,6 +52,12 @@ fn project_with_built_graph() -> (tempfile::TempDir, AgentDocMcpServer, String) 
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();
     write(&root.join("docs/index.adoc"), source());
+    // V1.7.1: a .md page contributes prose blocks so retrieval-envelope
+    // validation covers both record types.
+    write(
+        &root.join("docs/guides/onboarding.md"),
+        "# Onboarding\n\nBilling onboarding starts with a sandbox workspace.\n",
+    );
     write(
         &root.join("agentdoc.config.yaml"),
         "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n",
@@ -92,10 +98,7 @@ fn validates_representative_serialized_agent_envelopes_against_contract_schemas(
             search_artifact: None,
             semantic: false,
             lexical: true,
-            // V1.7.1: the published schema covers Knowledge Object records;
-            // the discriminated prose branch lands with the v1 contract-test
-            // commit, which validates the blended envelope.
-            objects_only: true,
+            objects_only: false,
             prose_only: false,
             kind: None,
             status: None,
@@ -756,6 +759,14 @@ fn mcp_serves_v3_schema_resources_byte_equal_to_on_disk_files() {
 
     for (uri, file) in [
         (
+            "adoc://agent/v0/schema/retrieval-envelope.json",
+            "retrieval-envelope.json",
+        ),
+        (
+            "adoc://agent/v0/schema/retrieval-envelope.v0.json",
+            "retrieval-envelope.v0.json",
+        ),
+        (
             "adoc://agent/v0/schema/adoc.diff.v0.schema.json",
             "adoc.diff.v0.schema.json",
         ),
@@ -1034,4 +1045,90 @@ fn validates_patch_apply_envelopes_against_contract_schema() {
         .expect("refusal is a normal envelope");
     assert_valid("adoc.patch.apply.v0.schema.json", &stale);
     assert_eq!(stale["applied"], false);
+}
+
+/// V1.7.1 (ADR-0040): the discriminated `adoc.retrieval.v1` envelope — the
+/// blended list carrying both record types, each scope restriction, and the
+/// Knowledge-Object-only `adoc_why` envelope — validates against
+/// `retrieval-envelope.json`, and the legacy v0 schema stays published and
+/// self-consistent.
+#[test]
+fn validates_retrieval_v1_envelopes_against_discriminated_schema() {
+    let (_workspace, server, _base_hash) = project_with_built_graph();
+
+    let search_params = |objects_only: bool, prose_only: bool| SearchParams {
+        project_root: None,
+        query: "billing".to_string(),
+        artifact: None,
+        search_artifact: None,
+        semantic: false,
+        lexical: true,
+        objects_only,
+        prose_only,
+        kind: None,
+        status: None,
+        owner: None,
+        source_path: None,
+        related_to: None,
+        relation: None,
+        direction: None,
+        top: Some(10),
+    };
+
+    let blended = server
+        .run_search(search_params(false, false))
+        .expect("blended search succeeds");
+    assert_valid("retrieval-envelope.json", &blended);
+    let record_types: Vec<&str> = blended["records"]
+        .as_array()
+        .expect("records array")
+        .iter()
+        .filter_map(|record| record["record_type"].as_str())
+        .collect();
+    assert!(
+        record_types.contains(&"knowledge_object") && record_types.contains(&"prose"),
+        "the blended fixture must exercise both schema branches, got {record_types:?}"
+    );
+
+    let objects_only = server
+        .run_search(search_params(true, false))
+        .expect("objects-only search succeeds");
+    assert_valid("retrieval-envelope.json", &objects_only);
+
+    let prose_only = server
+        .run_search(search_params(false, true))
+        .expect("prose-only search succeeds");
+    assert_valid("retrieval-envelope.json", &prose_only);
+
+    let why = server
+        .run_why(adoc_mcp::WhyParams {
+            project_root: None,
+            object_id: "billing.ready".to_string(),
+            artifact: None,
+        })
+        .expect("why succeeds");
+    assert_valid("retrieval-envelope.json", &why);
+    assert_eq!(why["records"][0]["record_type"], "knowledge_object");
+
+    // The "v0 stays published" guarantee: the legacy schema still validates a
+    // hand-built v0 envelope and still rejects the v1 version string.
+    let legacy_instance = json!({
+        "schema_version": "adoc.retrieval.v0",
+        "records": [{
+            "id": "billing.ready",
+            "kind": "claim",
+            "content_hash": "sha256:legacy",
+            "body": "Billing docs are ready.",
+            "source": { "path": "docs/index.adoc", "line": 3, "column": 1 },
+            "relations": { "depends_on": [], "supersedes": [], "related_to": [] }
+        }],
+        "diagnostics": []
+    });
+    assert_valid("retrieval-envelope.v0.json", &legacy_instance);
+    let legacy_schema = schema("retrieval-envelope.v0.json");
+    let validator = jsonschema::validator_for(&legacy_schema).expect("legacy schema compiles");
+    assert!(
+        !validator.is_valid(&blended),
+        "the legacy v0 schema must reject a v1 envelope"
+    );
 }
