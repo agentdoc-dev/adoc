@@ -49,4 +49,4 @@ Only `unresolved` contradictions are **active** and must be surfaced when answer
 - `contradiction_claims`: the list of conflicting claim Object IDs (sorted, deduplicated)
 - `body`: the prose explanation
 
-They fold into the retrieval surface (`adoc.retrieval.v0`) like any other Knowledge Object.
+They fold into the retrieval surface (`adoc.retrieval.v1`) like any other Knowledge Object.

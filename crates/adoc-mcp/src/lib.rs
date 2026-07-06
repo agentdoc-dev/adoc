@@ -163,6 +163,7 @@ impl AgentDocMcpServer {
     }
 
     pub fn run_search(&self, params: SearchParams) -> McpAdapterResult<serde_json::Value> {
+        let scope = search_record_scope(&params)?;
         let context = self.context(params.project_root)?;
         let top = NonZeroUsize::new(params.top.unwrap_or(10)).ok_or_else(|| {
             McpAdapterError::InvalidArguments("top must be greater than zero".to_string())
@@ -181,10 +182,7 @@ impl AgentDocMcpServer {
             relation: parse_relation(params.relation.as_deref())?,
             direction: parse_direction(params.direction.as_deref())?,
             top,
-            // V1.7.1: pinned until the scope params land with the tool
-            // description update in the next commit — MCP result sets stay
-            // Knowledge-Object-only while the CLI goes blended.
-            scope: adoc_core::SearchRecordScope::ObjectsOnly,
+            scope,
         })?;
         serde_json::to_value(outcome.envelope).map_err(Into::into)
     }
@@ -359,7 +357,7 @@ impl AgentDocMcpServer {
 
     #[tool(
         name = "adoc_why",
-        description = "Return the retrieval record for a Knowledge Object ID."
+        description = "Return the adoc.retrieval.v1 record for a Knowledge Object ID. Knowledge Objects only: prose block ids from search results cannot be resolved here."
     )]
     pub fn adoc_why(
         &self,
@@ -424,7 +422,7 @@ impl AgentDocMcpServer {
 
     #[tool(
         name = "adoc_search",
-        description = "Search compiled AgentDoc graph and search artifacts."
+        description = "Search compiled AgentDoc graph and search artifacts. Returns adoc.retrieval.v1: one blended, RRF-ranked list of record_type knowledge_object | prose records; objects_only/prose_only restrict the list, and any Knowledge Object metadata filter implies objects_only. Prose records are orientation context, never citable knowledge — cite Knowledge Object records."
     )]
     pub fn adoc_search(
         &self,
@@ -643,6 +641,15 @@ pub struct SearchParams {
     pub semantic: bool,
     #[serde(default)]
     pub lexical: bool,
+    /// Return only Knowledge Object records (the pre-V1.7 result set).
+    /// Conflicts with `prose_only`.
+    #[serde(default)]
+    pub objects_only: bool,
+    /// Return only prose records. Prose has no Knowledge Object metadata or
+    /// vectors, so this conflicts with `semantic` and the metadata filters
+    /// (`kind`, `status`, `owner`, `source_path`, `related_to`).
+    #[serde(default)]
+    pub prose_only: bool,
     pub kind: Option<String>,
     pub status: Option<String>,
     pub owner: Option<String>,
@@ -733,6 +740,40 @@ where
         .path_policy()
         .resolve_read_path(&artifact)
         .map_err(Into::into)
+}
+
+/// V1.7.1 (ADR-0040): maps the mutually exclusive scope params onto the
+/// structural enum, mirroring the CLI's clap conflicts. `prose_only` also
+/// conflicts with `semantic` (no prose vectors until V1.7.2) and with every
+/// Knowledge Object metadata filter (prose has none to filter on).
+fn search_record_scope(params: &SearchParams) -> McpAdapterResult<adoc_core::SearchRecordScope> {
+    if params.objects_only && params.prose_only {
+        return Err(McpAdapterError::InvalidArguments(
+            "objects_only and prose_only are mutually exclusive".to_string(),
+        ));
+    }
+    if params.prose_only {
+        if params.semantic {
+            return Err(McpAdapterError::InvalidArguments(
+                "prose_only cannot be combined with semantic: prose has no vectors until adoc.search.v1 (V1.7.2)".to_string(),
+            ));
+        }
+        if params.kind.is_some()
+            || params.status.is_some()
+            || params.owner.is_some()
+            || params.source_path.is_some()
+            || params.related_to.is_some()
+        {
+            return Err(McpAdapterError::InvalidArguments(
+                "prose_only cannot be combined with Knowledge Object metadata filters (kind, status, owner, source_path, related_to)".to_string(),
+            ));
+        }
+        return Ok(adoc_core::SearchRecordScope::ProseOnly);
+    }
+    if params.objects_only {
+        return Ok(adoc_core::SearchRecordScope::ObjectsOnly);
+    }
+    Ok(adoc_core::SearchRecordScope::Blended)
 }
 
 fn parse_relation(value: Option<&str>) -> McpAdapterResult<Option<GraphRelationKind>> {

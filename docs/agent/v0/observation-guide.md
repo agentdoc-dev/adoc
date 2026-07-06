@@ -48,7 +48,7 @@ Users often misunderstand credit usage before their first generation.
 - `evidence` — the inline `source:` entry and any resolved `evidence_ref` targets, feeding the derived `evidence_quality` unchanged (V5 evidence model)
 - `body` — the prose finding
 
-They fold into the retrieval surface (`adoc.retrieval.v0`) like any other Knowledge Object; the body is searchable, while `sample_size`/`observed_at` are echoed on records as metadata, not indexed as meaning.
+They fold into the retrieval surface (`adoc.retrieval.v1`) like any other Knowledge Object; the body is searchable, while `sample_size`/`observed_at` are echoed on records as metadata, not indexed as meaning.
 
 ## How to cite observation objects in answers
 

@@ -2,7 +2,7 @@
 
 V2.2 gives agents a stable local contract over AgentDoc artifacts. Agents must retrieve or inspect AgentDoc data through MCP tools and resources instead of guessing file paths, shell command order, or private Rust DTO shapes.
 
-The stable read contracts are `adoc.retrieval.v0`, `adoc.graph.traversal.v0`, `adoc.patch.check.v0`, `adoc.project.status.v0`, `adoc.diff.v0`, `adoc.review.v0`, `adoc.stale.v0`, `adoc.contradictions.v0`, `adoc.impacted.v0`, and `adoc.mcp.command.v0`. The write contract is `adoc.patch.apply.v0`, reachable only through the config-gated `adoc_patch_apply` tool (V6.4, ADR-0037).
+The stable read contracts are `adoc.retrieval.v1`, `adoc.graph.traversal.v0`, `adoc.patch.check.v0`, `adoc.project.status.v0`, `adoc.diff.v0`, `adoc.review.v0`, `adoc.stale.v0`, `adoc.contradictions.v0`, `adoc.impacted.v0`, and `adoc.mcp.command.v0`. The write contract is `adoc.patch.apply.v0`, reachable only through the config-gated `adoc_patch_apply` tool (V6.4, ADR-0037).
 
 ## Rules
 

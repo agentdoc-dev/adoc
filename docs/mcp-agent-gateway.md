@@ -102,7 +102,9 @@ inventing tool order:
    `adoc://agent/v0/patch-apply-guide`.
 
 The Project Status Report has schema version `adoc.project.status.v0`. Retrieval
-tools return `adoc.retrieval.v0` and graph traversal returns
+tools return `adoc.retrieval.v1` (blended `record_type: knowledge_object | prose`
+records from `adoc_search`; Knowledge Objects only from `adoc_why`, per
+ADR-0040) and graph traversal returns
 `adoc.graph.traversal.v0`. The lifecycle read tools return `adoc.stale.v0`,
 `adoc.contradictions.v0`, and `adoc.impacted.v0`. Diff and review return
 `adoc.diff.v0` and `adoc.review.v0`. Patch validation returns

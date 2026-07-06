@@ -51,7 +51,7 @@ Update the support runbook to mention refund behavior after persistence failure.
 - `fields["due"]` — the due date, when authored
 - `body` — the prose action description
 
-Relation fields emit graph edges as usual (`depends_on` and friends). Tasks fold into the retrieval surface (`adoc.retrieval.v0`) like any other Knowledge Object.
+Relation fields emit graph edges as usual (`depends_on` and friends). Tasks fold into the retrieval surface (`adoc.retrieval.v1`) like any other Knowledge Object.
 
 ## How to cite task objects in answers
 

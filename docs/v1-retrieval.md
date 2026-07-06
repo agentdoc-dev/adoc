@@ -137,20 +137,25 @@ JSON output:
 adoc search "refund audit" --format json
 ```
 
-Search and why both emit `adoc.retrieval.v0`:
+Search and why both emit `adoc.retrieval.v1`:
 
 ```json
 {
-  "schema_version": "adoc.retrieval.v0",
+  "schema_version": "adoc.retrieval.v1",
   "records": [],
   "diagnostics": []
 }
 ```
 
-Each search record includes a `match` block with `mode`, `result_rank`, and
-mode-specific rank metadata. Hybrid records include `rrf_score` and may include
-`lexical_rank` and `vector_rank`. Semantic records include `vector_rank` and
-`cosine_score`.
+Every record carries `record_type: "knowledge_object" | "prose"` (V1.7.1,
+ADR-0040). `adoc search` blends both types in one RRF-ranked list —
+`--objects-only` and `--prose-only` restrict it, and any Knowledge Object
+metadata filter implies `--objects-only`; `adoc why` returns Knowledge Object
+records only. Each search record includes a `match` block with `mode`,
+`result_rank`, and mode-specific rank metadata. Hybrid records include
+`rrf_score` and may include `lexical_rank` and `vector_rank`. Semantic records
+include `vector_rank` and `cosine_score`; prose records rank lexically until
+`adoc.search.v1` ships prose vectors (V1.7.2).
 
 ## Citation Pattern
 
