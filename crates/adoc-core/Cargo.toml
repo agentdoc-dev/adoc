@@ -12,6 +12,7 @@ fastembed-it = ["embeddings"]
 test-embedding-provider = []
 
 [dependencies]
+tracing = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 dirs = { version = "6", optional = true }
 fastembed = { version = "5", optional = true }

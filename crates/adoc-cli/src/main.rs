@@ -16,7 +16,24 @@ use crate::commands::{
 use crate::presentation::{ResolvedFormat, terminal};
 
 fn main() -> ExitCode {
+    init_tracing();
     ExitCode::from(run(std::env::args()) as u8)
+}
+
+/// Logs go to stderr only — stdout carries command output and JSON
+/// envelopes. Filtered by `ADOC_LOG` (falling back to `RUST_LOG`); silent
+/// when neither is set, so default CLI behavior is unchanged.
+fn init_tracing() {
+    use tracing_subscriber::EnvFilter;
+
+    let filter = EnvFilter::try_from_env("ADOC_LOG")
+        .or_else(|_| EnvFilter::try_from_default_env())
+        .unwrap_or_else(|_| EnvFilter::new("off"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::CLOSE)
+        .with_writer(std::io::stderr)
+        .try_init();
 }
 
 fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
