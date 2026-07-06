@@ -199,6 +199,19 @@ info[build.embeddings_cached] embeddings: cached N, computed M
 
 No action is required. It is a visibility diagnostic for cache reuse.
 
+### Migrating a pre-V1.7.2 search artifact
+
+V1.7.2 bumped the search artifact schema from `adoc.search.v0` to
+`adoc.search.v1` (prose entries, `entry_kind` discriminator). The version
+check is exact-match, so an existing `docs.search.json` from V1.7.1 or
+earlier behaves as follows after upgrading:
+
+- `adoc build` warns that the prior cache is ignored and recomputes all
+  vectors once; warm rebuilds are cached again afterwards.
+- `adoc search --semantic` (and hybrid) reject the stale artifact with
+  `schema.unsupported_version`; the diagnostic's help points at the
+  fix — rebuild with `adoc build`.
+
 ### V1.7.2 build-time and size measurements
 
 Recorded on the pilots when prose entries landed in `adoc.search.v1`
