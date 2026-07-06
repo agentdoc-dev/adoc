@@ -1048,4 +1048,23 @@ fn adoc_search_rejects_conflicting_scope_arguments() {
         .run_search(prose_filtered)
         .expect_err("prose_only + kind filter conflicts");
     assert!(error.to_string().contains("metadata filters"));
+
+    // Graph traversal arguments are Knowledge-Object-only too; the CLI blocks
+    // them transitively (`relation`/`direction` require `related_to`), and the
+    // MCP adapter must not be looser.
+    let mut prose_relation = mixed_mode_search_params("credits");
+    prose_relation.prose_only = true;
+    prose_relation.relation = Some("depends_on".to_string());
+    let error = server
+        .run_search(prose_relation)
+        .expect_err("prose_only + relation conflicts");
+    assert!(error.to_string().contains("metadata filters"));
+
+    let mut prose_direction = mixed_mode_search_params("credits");
+    prose_direction.prose_only = true;
+    prose_direction.direction = Some("down".to_string());
+    let error = server
+        .run_search(prose_direction)
+        .expect_err("prose_only + direction conflicts");
+    assert!(error.to_string().contains("metadata filters"));
 }
