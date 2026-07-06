@@ -103,6 +103,30 @@ impl SearchQuery {
     fn include_objects(&self) -> bool {
         self.scope != SearchRecordScope::ProseOnly
     }
+
+    /// ADR-0040: a prose-only query cannot be satisfied by semantic search
+    /// (no prose vectors until V1.7.2) or combined with Knowledge Object
+    /// metadata filters (filters imply object intent). Adapters reject these
+    /// combinations at argument-parse time; a direct library caller gets a
+    /// diagnostic instead of a silent empty result.
+    fn scope_conflict(&self) -> Option<Diagnostic> {
+        if self.scope != SearchRecordScope::ProseOnly {
+            return None;
+        }
+        if self.mode == SearchMode::Semantic {
+            return Some(Diagnostic::error(
+                DiagnosticCode::SearchInvalidScope,
+                "Semantic search has no prose vectors; a prose-only query requires lexical or blended search.",
+            ));
+        }
+        if self.filters.constrains_objects() {
+            return Some(Diagnostic::error(
+                DiagnosticCode::SearchInvalidScope,
+                "A prose-only search cannot be combined with Knowledge Object metadata filters.",
+            ));
+        }
+        None
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -318,6 +342,12 @@ fn resolved_questions(session: &RetrievalSession, target_id: &str) -> Vec<String
 }
 
 pub fn search(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
+    if let Some(diagnostic) = query.scope_conflict() {
+        return SearchResult {
+            records: Vec::new(),
+            diagnostics: vec![diagnostic],
+        };
+    }
     match query.mode {
         SearchMode::Hybrid => search_hybrid(session, query),
         SearchMode::Lexical => search_lexical(session, query),
@@ -1271,6 +1301,44 @@ mod tests {
         assert!(result.diagnostics.is_empty());
         assert_eq!(result.records[0].id(), "billing.credits");
         assert!(result.records[0].as_knowledge_object().is_some());
+    }
+
+    /// V1.7.1 (ADR-0040): semantic search has no prose vectors until V1.7.2,
+    /// so a prose-only semantic query is structurally unsatisfiable. Adapters
+    /// reject the combination at argument-parse time; a direct library caller
+    /// gets a diagnostic instead of a silent empty result.
+    #[test]
+    fn semantic_search_with_prose_only_scope_diagnoses_invalid_scope() {
+        let session = load_session_from_document(mixed_graph_document());
+
+        let mut query = lexical_search_query("credits", SearchRecordScope::ProseOnly);
+        query.mode = SearchMode::Semantic;
+        let result = search(&session, query);
+
+        assert!(result.records.is_empty());
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::SearchInvalidScope
+        );
+    }
+
+    /// ADR-0040: metadata filters imply object intent, so a prose-only query
+    /// carrying one is contradictory — diagnosed, never silently empty.
+    #[test]
+    fn prose_only_scope_with_metadata_filter_diagnoses_invalid_scope() {
+        let session = load_session_from_document(mixed_graph_document());
+
+        let mut query = lexical_search_query("credits", SearchRecordScope::ProseOnly);
+        query.filters.kind = Some("claim".to_string());
+        let result = search(&session, query);
+
+        assert!(result.records.is_empty());
+        assert_eq!(result.diagnostics.len(), 1);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::SearchInvalidScope
+        );
     }
 
     #[test]
