@@ -66,7 +66,7 @@ fn format_json_flag_emits_json_envelope() {
         .success()
         .stdout(predicate::str::starts_with("{"))
         .stdout(predicate::str::contains("schema_version"))
-        .stdout(predicate::str::contains("adoc.retrieval.v0"))
+        .stdout(predicate::str::contains("adoc.retrieval.v1"))
         .stdout(predicate::str::contains("billing.refunds.issue-credit"));
 }
 

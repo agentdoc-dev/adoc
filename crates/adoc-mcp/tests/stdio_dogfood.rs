@@ -198,7 +198,7 @@ fn stdio_server_runs_documented_mcp_agent_gateway_quickstart() {
     let search = server.receive();
     assert_eq!(search["id"], 6);
     let search_content = structured_content(&search);
-    assert_eq!(search_content["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(search_content["schema_version"], "adoc.retrieval.v1");
     assert!(
         search_content["records"]
             .as_array()

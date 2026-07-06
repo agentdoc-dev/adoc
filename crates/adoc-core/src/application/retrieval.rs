@@ -13,9 +13,21 @@ pub use crate::domain::retrieval::SearchFilters;
 use crate::domain::retrieval::hybrid_ranker::HybridRanker;
 use crate::domain::retrieval::lexical_index::LexicalIndex;
 use crate::domain::retrieval::vector_index::VectorIndex;
-use crate::domain::retrieval::{RetrievalMatch, RetrievalRecord, SearchMode};
+use crate::domain::retrieval::{
+    ProseRecord, RetrievalEntry, RetrievalMatch, RetrievalRecord, SearchMode,
+};
 
-pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v0";
+pub const RETRIEVAL_SCHEMA_VERSION: &str = "adoc.retrieval.v1";
+
+/// V1.7.1 (ADR-0040): which record types a search returns. `Blended` is the
+/// default — prose competes with Knowledge Objects in one RRF-ranked list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SearchRecordScope {
+    #[default]
+    Blended,
+    ObjectsOnly,
+    ProseOnly,
+}
 
 #[derive(Debug, Clone)]
 pub struct RetrievalInput {
@@ -77,23 +89,37 @@ pub struct SearchQuery {
     pub filters: SearchFilters,
     pub top: NonZeroUsize,
     pub query_vector: Option<Vec<f32>>,
+    pub scope: SearchRecordScope,
+}
+
+impl SearchQuery {
+    /// Prose joins the corpus unless the caller asked for objects only or
+    /// set a Knowledge Object metadata filter (ADR-0040: filters imply
+    /// object intent).
+    fn include_prose(&self) -> bool {
+        self.scope != SearchRecordScope::ObjectsOnly && !self.filters.constrains_objects()
+    }
+
+    fn include_objects(&self) -> bool {
+        self.scope != SearchRecordScope::ProseOnly
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
-    pub records: Vec<RetrievalRecord>,
+    pub records: Vec<RetrievalEntry>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RetrievalEnvelope {
     pub schema_version: &'static str,
-    pub records: Vec<RetrievalRecord>,
+    pub records: Vec<RetrievalEntry>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
 impl RetrievalEnvelope {
-    pub fn new(records: Vec<RetrievalRecord>, diagnostics: Vec<Diagnostic>) -> Self {
+    pub fn new(records: Vec<RetrievalEntry>, diagnostics: Vec<Diagnostic>) -> Self {
         Self {
             schema_version: RETRIEVAL_SCHEMA_VERSION,
             records,
@@ -104,7 +130,14 @@ impl RetrievalEnvelope {
 
 impl From<WhyResult> for RetrievalEnvelope {
     fn from(result: WhyResult) -> Self {
-        Self::new(result.records, result.diagnostics)
+        Self::new(
+            result
+                .records
+                .into_iter()
+                .map(RetrievalEntry::KnowledgeObject)
+                .collect(),
+            result.diagnostics,
+        )
     }
 }
 
@@ -152,7 +185,8 @@ where
             };
         }
     };
-    let lexical_index = LexicalIndex::from_objects(graph_session.objects());
+    let lexical_index =
+        LexicalIndex::from_corpus(graph_session.objects(), graph_session.prose_blocks());
 
     let mut diagnostics = document_diagnostics;
     let mut vector_index: Option<VectorIndex> = None;
@@ -306,7 +340,7 @@ fn search_semantic(session: &RetrievalSession, query: SearchQuery) -> SearchResu
 /// V4.3 migration hint: when the search yields zero records against a graph
 /// that has prose blocks but no Knowledge Objects, emit a structured warning
 /// explaining the structural absence. The diagnostic rides in the existing
-/// `adoc.retrieval.v0.diagnostics[]` array; schema version is unchanged.
+/// `adoc.retrieval.v1.diagnostics[]` array; schema version is unchanged.
 fn finalize_search_result(session: &RetrievalSession, mut result: SearchResult) -> SearchResult {
     if let Some(hint) = maybe_migration_hint(session, &result.records) {
         result.diagnostics.push(hint);
@@ -316,7 +350,7 @@ fn finalize_search_result(session: &RetrievalSession, mut result: SearchResult) 
 
 fn maybe_migration_hint(
     session: &RetrievalSession,
-    records: &[RetrievalRecord],
+    records: &[RetrievalEntry],
 ) -> Option<Diagnostic> {
     let graph = session.graph_session();
     if records.is_empty()
@@ -331,6 +365,39 @@ fn maybe_migration_hint(
     } else {
         None
     }
+}
+
+/// V1.7.1: resolve a ranked hit id to its typed record. Prose block ids
+/// contain `#` and can never be valid Object IDs, so the prose lookup is
+/// collision-free; every non-prose id must be a Knowledge Object validated at
+/// session load.
+fn resolve_entry(
+    session: &RetrievalSession,
+    id: &str,
+    search_match: RetrievalMatch,
+) -> RetrievalEntry {
+    if let Some(block) = session.graph_session.prose_block(id) {
+        return RetrievalEntry::Prose(ProseRecord::from_block_with_match(block, search_match));
+    }
+    let object_id = ObjectId::new_unchecked(id.to_string());
+    let object = session
+        .graph_session
+        .object(&object_id)
+        .expect("search result IDs must come from the loaded retrieval session");
+    RetrievalEntry::KnowledgeObject(RetrievalRecord::from_object_with_match(
+        object,
+        search_match,
+    ))
+}
+
+/// All prose block ids, in per-page document order — the prose half of the
+/// blended candidate pool.
+fn prose_candidate_ids(session: &RetrievalSession) -> Vec<&str> {
+    session
+        .graph_session
+        .prose_blocks()
+        .map(|block| block.id.as_str())
+        .collect()
 }
 
 fn search_hybrid_impl(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
@@ -351,7 +418,18 @@ fn search_hybrid_impl(session: &RetrievalSession, query: SearchQuery) -> SearchR
         }
     };
 
-    let candidate_ids = scope.graph_scoped_candidate_ids(session);
+    let ko_ids = if query.include_objects() {
+        scope.graph_scoped_candidate_ids(session)
+    } else {
+        Vec::new()
+    };
+    let prose_ids = if query.include_prose() {
+        prose_candidate_ids(session)
+    } else {
+        Vec::new()
+    };
+    let mut candidate_ids = ko_ids.clone();
+    candidate_ids.extend(prose_ids.iter().copied());
     if candidate_ids.is_empty() {
         return SearchResult {
             records: Vec::new(),
@@ -368,15 +446,14 @@ fn search_hybrid_impl(session: &RetrievalSession, query: SearchQuery) -> SearchR
         .query_vector
         .as_deref()
         .expect("query_vector is checked above");
-    let vector_hits = vector_index.rank_among(
-        query_vector,
-        candidate_ids.iter().copied(),
-        candidate_ids.len(),
-    );
+    // Prose has no vectors until V1.7.2 (adoc.search.v1): only Knowledge
+    // Objects enter the vector ranking; prose fuses on lexical rank alone.
+    let vector_hits = vector_index.rank_among(query_vector, ko_ids.iter().copied(), ko_ids.len());
     let ranker = HybridRanker;
     let ranked_hits = ranker.rank(
         &query.text,
         &candidate_ids,
+        &ko_ids,
         &lexical_hits,
         &vector_hits,
         candidate_ids.len(),
@@ -384,26 +461,29 @@ fn search_hybrid_impl(session: &RetrievalSession, query: SearchQuery) -> SearchR
 
     let mut records = Vec::new();
     for hit in ranked_hits {
-        // `hit.id` comes from candidate IDs collected from `GraphIndex`, so
-        // it already passed `ObjectId::new` during session load.
-        let object_id = ObjectId::new_unchecked(hit.id.clone());
-        let object = session
-            .graph_session
-            .object(&object_id)
-            .expect("search result IDs must come from the loaded retrieval session");
-        if !query.filters.matches(object) {
-            continue;
+        // Metadata filters constrain Knowledge Objects only; prose is in the
+        // pool only when no filter is set (ADR-0040), so the check is
+        // vacuous for prose hits.
+        if session.graph_session.prose_block(&hit.id).is_none() {
+            // `hit.id` comes from candidate IDs collected from `GraphIndex`,
+            // so it already passed `ObjectId::new` during session load.
+            let object_id = ObjectId::new_unchecked(hit.id.clone());
+            let object = session
+                .graph_session
+                .object(&object_id)
+                .expect("search result IDs must come from the loaded retrieval session");
+            if !query.filters.matches(object) {
+                continue;
+            }
         }
 
-        records.push(RetrievalRecord::from_object_with_match(
-            object,
-            RetrievalMatch::hybrid(
-                records.len() as u32 + 1,
-                hit.rrf_score,
-                hit.lexical_rank,
-                hit.vector_rank,
-            ),
-        ));
+        let search_match = RetrievalMatch::hybrid(
+            records.len() as u32 + 1,
+            hit.rrf_score,
+            hit.lexical_rank,
+            hit.vector_rank,
+        );
+        records.push(resolve_entry(session, &hit.id, search_match));
         if records.len() >= query.top.get() {
             break;
         }
@@ -429,8 +509,13 @@ fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> Searc
         return missing_query_vector_result(SearchMode::Semantic);
     }
 
+    // Semantic search stays Knowledge-Object-only until prose vectors ship
+    // in V1.7.2 (adoc.search.v1); ProseOnly therefore yields no candidates.
     let candidates = match SearchScope::resolve(session, &query.filters) {
-        Ok(scope) => scope.metadata_and_graph_candidates(session, &query.filters),
+        Ok(scope) if query.include_objects() => {
+            scope.metadata_and_graph_candidates(session, &query.filters)
+        }
+        Ok(_) => Vec::new(),
         Err(diagnostics) => {
             return SearchResult {
                 records: Vec::new(),
@@ -496,7 +581,10 @@ fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> Searc
                 },
                 |hit| RetrievalMatch::semantic((idx + 1) as u32, hit.vector_rank, hit.cosine_score),
             );
-            RetrievalRecord::from_object_with_match(object, search_match)
+            RetrievalEntry::KnowledgeObject(RetrievalRecord::from_object_with_match(
+                object,
+                search_match,
+            ))
         })
         .collect();
 
@@ -522,8 +610,11 @@ fn missing_query_vector_result(mode: SearchMode) -> SearchResult {
 }
 
 fn search_lexical_impl(session: &RetrievalSession, query: SearchQuery) -> SearchResult {
-    let candidates = match SearchScope::resolve(session, &query.filters) {
-        Ok(scope) => scope.metadata_and_graph_candidates(session, &query.filters),
+    let ko_candidates = match SearchScope::resolve(session, &query.filters) {
+        Ok(scope) if query.include_objects() => {
+            scope.metadata_and_graph_candidates(session, &query.filters)
+        }
+        Ok(_) => Vec::new(),
         Err(diagnostics) => {
             return SearchResult {
                 records: Vec::new(),
@@ -531,42 +622,57 @@ fn search_lexical_impl(session: &RetrievalSession, query: SearchQuery) -> Search
             };
         }
     };
-    if candidates.is_empty() {
-        return SearchResult {
-            records: Vec::new(),
-            diagnostics: Vec::new(),
-        };
-    }
 
+    // The empty-query listing stays Knowledge-Object-only (ADR-0040):
+    // enumerating every prose block of a project is noise, not retrieval.
     if query.text.trim().is_empty() {
         return SearchResult {
-            records: candidates
+            records: ko_candidates
                 .into_iter()
                 .take(query.top.get())
                 .enumerate()
                 .map(|(index, object)| {
-                    RetrievalRecord::from_object_with_match(
+                    RetrievalEntry::KnowledgeObject(RetrievalRecord::from_object_with_match(
                         object,
                         RetrievalMatch::lexical((index + 1) as u32, None),
-                    )
+                    ))
                 })
                 .collect(),
             diagnostics: Vec::new(),
         };
     }
 
-    let candidate_ids: Vec<_> = candidates.iter().map(|object| object.id.as_str()).collect();
-    let lexical_hits = session
-        .lexical_index
-        .search_candidates(&query.text, candidate_ids.iter().copied());
+    let ko_ids: Vec<_> = ko_candidates
+        .iter()
+        .map(|object| object.id.as_str())
+        .collect();
+    let prose_ids = if query.include_prose() {
+        prose_candidate_ids(session)
+    } else {
+        Vec::new()
+    };
+    if ko_ids.is_empty() && prose_ids.is_empty() {
+        return SearchResult {
+            records: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+    }
+
+    let lexical_hits = session.lexical_index.search_candidates(
+        &query.text,
+        ko_ids.iter().copied().chain(prose_ids.iter().copied()),
+    );
     let lexical_ranks_by_id: BTreeMap<_, _> = lexical_hits
         .iter()
         .map(|hit| (hit.id.as_str(), hit.lexical_rank))
         .collect();
 
+    // Object ID pins are Knowledge-Object-only (ADR-0040): prose block ids
+    // never pin, so a page-id-prefix query cannot float a page's blocks
+    // above scored results.
     let ranker = HybridRanker;
     let mut result_hits: Vec<_> = ranker
-        .pinned_candidate_ids(&query.text, &candidate_ids)
+        .pinned_candidate_ids(&query.text, &ko_ids)
         .into_iter()
         .map(|id| {
             let lexical_rank = lexical_ranks_by_id.get(id.as_str()).copied();
@@ -593,16 +699,9 @@ fn search_lexical_impl(session: &RetrievalSession, query: SearchQuery) -> Search
             .into_iter()
             .enumerate()
             .map(|(index, (id, lexical_rank))| {
-                // Lexical result IDs are pinned candidate IDs or BM25 hits
-                // ranked from the same candidate pool; all were validated at
-                // load.
-                let object_id = ObjectId::new_unchecked(id.clone());
-                let object = session
-                    .graph_session
-                    .object(&object_id)
-                    .expect("search result IDs must come from the loaded retrieval session");
-                RetrievalRecord::from_object_with_match(
-                    object,
+                resolve_entry(
+                    session,
+                    &id,
                     RetrievalMatch::lexical((index + 1) as u32, lexical_rank),
                 )
             })
@@ -877,6 +976,7 @@ mod tests {
                 },
                 top: NonZeroUsize::new(10).expect("non-zero"),
                 query_vector: None,
+                scope: SearchRecordScope::default(),
             },
         );
 
@@ -884,7 +984,7 @@ mod tests {
             result
                 .records
                 .iter()
-                .map(|record| record.id.as_str())
+                .map(|record| record.id())
                 .collect::<Vec<_>>(),
             vec!["billing.target"]
         );
@@ -985,6 +1085,7 @@ mod tests {
             filters: SearchFilters::default(),
             top: NonZeroUsize::new(10).expect("non-zero"),
             query_vector: None,
+            scope: SearchRecordScope::default(),
         }
     }
 
@@ -1021,6 +1122,169 @@ mod tests {
         assert!(
             hint.is_some(),
             "migration hint must fire when a .md page is present in a prose-only graph"
+        );
+    }
+
+    fn lexical_search_query(text: &str, scope: SearchRecordScope) -> SearchQuery {
+        SearchQuery {
+            text: text.to_string(),
+            mode: SearchMode::Lexical,
+            filters: SearchFilters::default(),
+            top: NonZeroUsize::new(10).expect("non-zero"),
+            query_vector: None,
+            scope,
+        }
+    }
+
+    /// One Knowledge Object plus one `.md` prose paragraph whose text shares
+    /// tokens with the object id — the blended-search test corpus.
+    fn mixed_graph_document() -> GraphArtifactDocument {
+        let mut document = graph_document(
+            vec![object(
+                "billing.credits",
+                "Credits decrement after payment.",
+            )],
+            Vec::new(),
+        );
+        document.nodes.push(GraphNode::Page(GraphPageNode {
+            id: "guides.page".to_string(),
+            order: 0,
+            title: None,
+            source_path: "docs/guide.md".to_string(),
+        }));
+        document.nodes.push(GraphNode::Paragraph(GraphBlockNode {
+            id: "guides.page#block-0001".to_string(),
+            page_id: "guides.page".to_string(),
+            order: 1,
+            level: None,
+            text: Some("How billing credits work, explained for humans.".to_string()),
+            language: None,
+            code: None,
+            items: Vec::new(),
+            source_span: GraphSourceSpan {
+                path: "docs/guide.md".to_string(),
+                line: 5,
+                column: 1,
+            },
+        }));
+        document
+    }
+
+    /// V1.7.1 acceptance seed: a `.md`-only project finally gets working
+    /// search — a matching query returns a prose record and no migration hint.
+    #[test]
+    fn blended_search_returns_prose_record_for_md_only_project() {
+        let document = prose_only_graph_document(&["docs/guide.md"]);
+        let session = load_session_from_document(document);
+
+        let result = search(
+            &session,
+            lexical_search_query("prose", SearchRecordScope::Blended),
+        );
+
+        assert!(
+            result.diagnostics.is_empty(),
+            "matching prose search must be hint-free, got {:?}",
+            result.diagnostics
+        );
+        let [RetrievalEntry::Prose(record)] = result.records.as_slice() else {
+            panic!(
+                "expected exactly one prose record, got {:?}",
+                result.records
+            );
+        };
+        assert_eq!(record.id, "para.0");
+        assert_eq!(record.text, "Some prose.");
+        let search_match = record.search_match.as_ref().expect("prose match metadata");
+        assert_eq!(search_match.mode, SearchMode::Lexical);
+        assert_eq!(search_match.result_rank, 1);
+    }
+
+    #[test]
+    fn objects_only_scope_suppresses_prose_and_keeps_the_hint_honest() {
+        let document = prose_only_graph_document(&["docs/guide.md"]);
+        let session = load_session_from_document(document);
+
+        let result = search(
+            &session,
+            lexical_search_query("prose", SearchRecordScope::ObjectsOnly),
+        );
+
+        assert!(result.records.is_empty());
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.code == DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration),
+            "objects-only search over a prose-only .md project still hints"
+        );
+    }
+
+    #[test]
+    fn prose_only_scope_suppresses_knowledge_objects() {
+        let session = load_session_from_document(mixed_graph_document());
+
+        let result = search(
+            &session,
+            lexical_search_query("credits", SearchRecordScope::ProseOnly),
+        );
+
+        assert!(result.diagnostics.is_empty());
+        assert_eq!(result.records.len(), 1);
+        assert!(
+            matches!(result.records[0], RetrievalEntry::Prose(_)),
+            "prose-only scope must exclude Knowledge Objects, got {:?}",
+            result.records
+        );
+    }
+
+    /// ADR-0040 filter policy: a Knowledge Object metadata filter implies
+    /// object intent and suppresses prose from the blended list.
+    #[test]
+    fn metadata_filters_suppress_prose_records() {
+        let session = load_session_from_document(mixed_graph_document());
+
+        let mut query = lexical_search_query("credits", SearchRecordScope::Blended);
+        query.filters.kind = Some("claim".to_string());
+        let result = search(&session, query);
+
+        assert!(result.diagnostics.is_empty());
+        assert_eq!(result.records.len(), 1);
+        assert_eq!(result.records[0].id(), "billing.credits");
+        assert!(
+            result.records[0].as_knowledge_object().is_some(),
+            "filtered search must return Knowledge Objects only"
+        );
+    }
+
+    /// Object ID pins stay literal (ADR-0040): the exact-id query pins the
+    /// Knowledge Object first even though the prose paragraph shares tokens.
+    #[test]
+    fn exact_object_id_query_pins_knowledge_object_above_prose() {
+        let session = load_session_from_document(mixed_graph_document());
+
+        let result = search(
+            &session,
+            lexical_search_query("billing.credits", SearchRecordScope::Blended),
+        );
+
+        assert!(result.diagnostics.is_empty());
+        assert_eq!(result.records[0].id(), "billing.credits");
+        assert!(result.records[0].as_knowledge_object().is_some());
+    }
+
+    #[test]
+    fn empty_query_with_prose_only_scope_returns_no_records() {
+        let session = load_session_from_document(mixed_graph_document());
+
+        let result = search(
+            &session,
+            lexical_search_query("", SearchRecordScope::ProseOnly),
+        );
+
+        assert!(
+            result.records.is_empty(),
+            "the empty-query listing is Knowledge-Object-only (ADR-0040)"
         );
     }
 }

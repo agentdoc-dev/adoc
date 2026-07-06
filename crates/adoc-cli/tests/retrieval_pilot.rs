@@ -162,7 +162,7 @@ fn run_retrieval_set(backend: EmbeddingBackend, workspace_name: &str) {
                 );
                 let envelope: Value = serde_json::from_slice(&output.stdout)
                     .unwrap_or_else(|error| panic!("case `{}` stdout is JSON: {error}", case.name));
-                assert_eq!(envelope["schema_version"], "adoc.retrieval.v0");
+                assert_eq!(envelope["schema_version"], "adoc.retrieval.v1");
                 assert_record_contract(&case.name, &envelope, case.mode, case.must_appear_in_top);
                 assert_expected_diagnostics(case, &envelope);
                 expected_id_assertions += assert_expected_ids(case, &envelope);

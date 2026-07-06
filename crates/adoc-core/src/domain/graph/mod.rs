@@ -143,8 +143,6 @@ pub enum ProseBlockKind {
 }
 
 impl ProseBlockKind {
-    // V1.7.1: consumed by the prose retrieval corpus in the next commit.
-    #[allow(dead_code)]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Heading => "heading",
@@ -175,6 +173,23 @@ pub(crate) struct GraphProseBlock {
     /// precede any heading on their page.
     pub(crate) heading_context: Option<String>,
     pub(crate) source_span: GraphSourceSpan,
+}
+
+impl GraphProseBlock {
+    /// The block's canonical searchable text: `text` for headings and
+    /// paragraphs, `code` for code blocks, newline-joined `items` for lists
+    /// (a list's `text` is its `ordered`/`unordered` marker, not content).
+    /// Feeds both the lexical corpus and the `adoc.retrieval.v1` prose
+    /// record's `text` field (ADR-0040).
+    pub(crate) fn content_text(&self) -> String {
+        match self.kind {
+            ProseBlockKind::CodeBlock => self.code.clone().unwrap_or_default(),
+            ProseBlockKind::List => self.items.join("\n"),
+            ProseBlockKind::Heading | ProseBlockKind::Paragraph => {
+                self.text.clone().unwrap_or_default()
+            }
+        }
+    }
 }
 
 /// V5.8 inline evidence entry in the graph node's `evidence` array.
@@ -519,8 +534,6 @@ impl GraphIndex {
         self.prose.len()
     }
 
-    // V1.7.1: consumed by the prose retrieval corpus in the next commit.
-    #[allow(dead_code)]
     pub(crate) fn prose_block(&self, id: &str) -> Option<&GraphProseBlock> {
         self.prose.get(id)
     }
@@ -729,7 +742,10 @@ fn index_prose_blocks(
 ) {
     let mut by_page: BTreeMap<String, Vec<(ProseBlockKind, GraphBlockNode)>> = BTreeMap::new();
     for (kind, block) in prose_nodes {
-        by_page.entry(block.page_id.clone()).or_default().push((kind, block));
+        by_page
+            .entry(block.page_id.clone())
+            .or_default()
+            .push((kind, block));
     }
 
     let mut prose = BTreeMap::new();
@@ -1006,8 +1022,20 @@ mod tests {
     #[test]
     fn from_document_retains_prose_blocks_and_derives_count() {
         let graph = GraphIndex::from_document(prose_document(vec![
-            GraphNode::Heading(block("guides.page#block-0000", "guides.page", 0, Some(1), "Intro")),
-            GraphNode::Paragraph(block("guides.page#block-0001", "guides.page", 1, None, "Body.")),
+            GraphNode::Heading(block(
+                "guides.page#block-0000",
+                "guides.page",
+                0,
+                Some(1),
+                "Intro",
+            )),
+            GraphNode::Paragraph(block(
+                "guides.page#block-0001",
+                "guides.page",
+                1,
+                None,
+                "Body.",
+            )),
         ]))
         .expect("indexes without errors");
 
@@ -1023,14 +1051,62 @@ mod tests {
     #[test]
     fn heading_context_tracks_ancestor_stack_and_pops_on_level_decrease() {
         let graph = GraphIndex::from_document(prose_document(vec![
-            GraphNode::Paragraph(block("guides.page#block-0000", "guides.page", 0, None, "Preamble.")),
-            GraphNode::Heading(block("guides.page#block-0001", "guides.page", 1, Some(1), "Billing basics")),
-            GraphNode::Heading(block("guides.page#block-0002", "guides.page", 2, Some(2), "How credits are spent")),
-            GraphNode::Paragraph(block("guides.page#block-0003", "guides.page", 3, None, "Credits burn on completion.")),
-            GraphNode::Heading(block("guides.page#block-0004", "guides.page", 4, Some(2), "Refunds")),
-            GraphNode::Paragraph(block("guides.page#block-0005", "guides.page", 5, None, "Refunds are manual.")),
-            GraphNode::Heading(block("guides.page#block-0006", "guides.page", 6, Some(1), "Appendix")),
-            GraphNode::Paragraph(block("guides.page#block-0007", "guides.page", 7, None, "Fin.")),
+            GraphNode::Paragraph(block(
+                "guides.page#block-0000",
+                "guides.page",
+                0,
+                None,
+                "Preamble.",
+            )),
+            GraphNode::Heading(block(
+                "guides.page#block-0001",
+                "guides.page",
+                1,
+                Some(1),
+                "Billing basics",
+            )),
+            GraphNode::Heading(block(
+                "guides.page#block-0002",
+                "guides.page",
+                2,
+                Some(2),
+                "How credits are spent",
+            )),
+            GraphNode::Paragraph(block(
+                "guides.page#block-0003",
+                "guides.page",
+                3,
+                None,
+                "Credits burn on completion.",
+            )),
+            GraphNode::Heading(block(
+                "guides.page#block-0004",
+                "guides.page",
+                4,
+                Some(2),
+                "Refunds",
+            )),
+            GraphNode::Paragraph(block(
+                "guides.page#block-0005",
+                "guides.page",
+                5,
+                None,
+                "Refunds are manual.",
+            )),
+            GraphNode::Heading(block(
+                "guides.page#block-0006",
+                "guides.page",
+                6,
+                Some(1),
+                "Appendix",
+            )),
+            GraphNode::Paragraph(block(
+                "guides.page#block-0007",
+                "guides.page",
+                7,
+                None,
+                "Fin.",
+            )),
         ]))
         .expect("indexes without errors");
 
@@ -1065,16 +1141,37 @@ mod tests {
         );
         // A new H1 pops everything.
         assert_eq!(context("guides.page#block-0006"), None);
-        assert_eq!(context("guides.page#block-0007"), Some("Appendix".to_string()));
+        assert_eq!(
+            context("guides.page#block-0007"),
+            Some("Appendix".to_string())
+        );
     }
 
     #[test]
     fn prose_blocks_iterate_in_page_order_regardless_of_artifact_node_order() {
         // Nodes deliberately out of document order in the artifact.
         let graph = GraphIndex::from_document(prose_document(vec![
-            GraphNode::Paragraph(block("guides.page#block-0002", "guides.page", 2, None, "Second.")),
-            GraphNode::Heading(block("guides.page#block-0000", "guides.page", 0, Some(1), "Title")),
-            GraphNode::Paragraph(block("guides.page#block-0001", "guides.page", 1, None, "First.")),
+            GraphNode::Paragraph(block(
+                "guides.page#block-0002",
+                "guides.page",
+                2,
+                None,
+                "Second.",
+            )),
+            GraphNode::Heading(block(
+                "guides.page#block-0000",
+                "guides.page",
+                0,
+                Some(1),
+                "Title",
+            )),
+            GraphNode::Paragraph(block(
+                "guides.page#block-0001",
+                "guides.page",
+                1,
+                None,
+                "First.",
+            )),
         ]))
         .expect("indexes without errors");
 

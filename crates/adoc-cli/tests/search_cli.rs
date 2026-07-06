@@ -419,7 +419,7 @@ fn search_cli_json_success_includes_envelope_records_diagnostics_and_match_metad
         "success JSON mode should not emit stderr diagnostics"
     );
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
-    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v1");
     assert_eq!(value["diagnostics"], serde_json::json!([]));
     assert_eq!(value["records"][0]["id"], "billing.refunds.issue-credit");
     assert_eq!(value["records"][0]["match"]["mode"], "lexical");
@@ -452,7 +452,7 @@ fn search_cli_json_invalid_filter_exits_1_with_envelope_diagnostics_and_no_stder
         "JSON diagnostics should be emitted in stdout envelope"
     );
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
-    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v1");
     assert_eq!(value["records"], serde_json::json!([]));
     assert_eq!(value["diagnostics"][0]["code"], "search.invalid_filter");
     assert!(

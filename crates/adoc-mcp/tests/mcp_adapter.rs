@@ -448,7 +448,7 @@ fn dogfood_billing_pilot_flow_uses_status_search_why_and_patch_check() {
             top: Some(5),
         })
         .expect("lexical search succeeds");
-    assert_eq!(search["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(search["schema_version"], "adoc.retrieval.v1");
     assert!(
         search["records"]
             .as_array()

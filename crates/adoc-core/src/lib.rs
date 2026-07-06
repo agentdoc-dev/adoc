@@ -22,7 +22,8 @@ pub use application::patch::{
 };
 pub use application::retrieval::{
     RETRIEVAL_SCHEMA_VERSION, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
-    RetrievalSession, SearchFilters, SearchQuery, SearchResult, WhyResult, search, why_object,
+    RetrievalSession, SearchFilters, SearchQuery, SearchRecordScope, SearchResult, WhyResult,
+    search, why_object,
 };
 pub use application::review::{
     DIFF_SCHEMA_VERSION, REVIEW_SCHEMA_VERSION, ReviewError, ReviewInput, ReviewLoadResult,
@@ -37,14 +38,15 @@ pub use application::signals::{
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::graph::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
-    GraphTraversalResult,
+    GraphTraversalResult, ProseBlockKind,
 };
 pub use domain::knowledge_object::block_kind_names;
 pub use domain::obligation::ProofObligation;
 pub use domain::patch::{AffectedRelation, PatchDiff, PatchDocument, PatchOperation};
 pub use domain::ports::snapshot_workspace::{GitRef, SnapshotError, SnapshotSelector};
 pub use domain::retrieval::{
-    RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSource, SearchMode,
+    ProseRecord, RetrievalEntry, RetrievalMatch, RetrievalRecord, RetrievalRelations,
+    RetrievalSource, SearchMode,
 };
 pub use domain::review::field_change::{FieldChange, RelationKind};
 pub use domain::review::impact::{ImpactReasonKind, ImpactedObject, compute_impact};

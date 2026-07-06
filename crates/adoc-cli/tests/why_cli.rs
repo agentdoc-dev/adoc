@@ -244,7 +244,7 @@ fn why_format_json_invalid_object_id_exits_1_with_envelope() {
         "JSON diagnostics should be emitted in stdout envelope"
     );
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
-    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v1");
     assert_eq!(value["records"], serde_json::json!([]));
     assert_eq!(value["diagnostics"][0]["code"], "id.invalid");
     assert_eq!(value["diagnostics"][0]["object_id"], "bad");
@@ -293,7 +293,7 @@ fn why_format_json_object_not_found_exits_3_with_envelope() {
         "JSON diagnostics should be emitted in stdout envelope"
     );
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
-    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v1");
     assert_eq!(value["records"], serde_json::json!([]));
     assert_eq!(
         value["diagnostics"][0]["code"],
@@ -340,7 +340,7 @@ fn why_format_json_artifact_errors_exit_2_with_envelope() {
         );
         let value: serde_json::Value =
             serde_json::from_slice(&output.stdout).expect("stdout is JSON");
-        assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+        assert_eq!(value["schema_version"], "adoc.retrieval.v1");
         assert_eq!(value["records"], serde_json::json!([]));
         assert_eq!(value["diagnostics"][0]["code"], expected_code);
     }
@@ -667,7 +667,7 @@ fn why_format_json_preserves_load_warnings_in_envelope() {
     let value: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("stdout must be valid JSON");
     assert_eq!(
-        value["schema_version"], "adoc.retrieval.v0",
+        value["schema_version"], "adoc.retrieval.v1",
         "envelope schema_version must be present"
     );
     assert_eq!(

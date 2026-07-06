@@ -17,10 +17,17 @@ pub(crate) struct HybridRankedHit {
 }
 
 impl HybridRanker {
+    /// Fuses lexical and vector ranks with RRF over `candidate_ids`.
+    ///
+    /// `pinnable_ids` is the subset eligible for Object ID prefix pinning —
+    /// Knowledge Object ids only (ADR-0040): prose block ids ride
+    /// `candidate_ids` for fusion but must never pin, or a page-id-prefix
+    /// query would pin that page's blocks above scored results.
     pub(crate) fn rank(
         &self,
         query_text: &str,
         candidate_ids: &[&str],
+        pinnable_ids: &[&str],
         lexical_hits: &[LexicalSearchHit],
         vector_hits: &[VectorHit],
         top: usize,
@@ -65,7 +72,7 @@ impl HybridRanker {
                 .then_with(|| left.id.cmp(&right.id))
         });
 
-        let pinned = self.pinned_candidate_ids(query_text, candidate_ids);
+        let pinned = self.pinned_candidate_ids(query_text, pinnable_ids);
         let mut seen = BTreeSet::new();
         let mut results = Vec::new();
         for id in pinned {
@@ -167,6 +174,7 @@ mod tests {
         let hits = ranker.rank(
             "credit ledger",
             &["billing.lexical", "billing.semantic"],
+            &["billing.lexical", "billing.semantic"],
             &[lexical("billing.lexical", 1)],
             &[vector("billing.semantic", 1)],
             10,
@@ -190,6 +198,7 @@ mod tests {
         let hits = ranker.rank(
             "same",
             &["zeta.same", "alpha.same"],
+            &["zeta.same", "alpha.same"],
             &[lexical("zeta.same", 1)],
             &[vector("alpha.same", 1)],
             10,
@@ -203,15 +212,17 @@ mod tests {
     fn pins_id_prefix_matches_by_length_then_lex_before_fused_hits() {
         let ranker = HybridRanker;
 
+        let candidates = [
+            "support.heavy",
+            "billing.credits.b",
+            "billing.credit",
+            "billing.credits.a",
+            "billing.credits",
+        ];
         let hits = ranker.rank(
             "billing.credit",
-            &[
-                "support.heavy",
-                "billing.credits.b",
-                "billing.credit",
-                "billing.credits.a",
-                "billing.credits",
-            ],
+            &candidates,
+            &candidates,
             &[lexical("support.heavy", 1)],
             &[vector("support.heavy", 1)],
             10,
@@ -231,5 +242,34 @@ mod tests {
         assert_eq!(hits[0].rrf_score, 0.0);
         assert_eq!(hits[0].lexical_rank, None);
         assert_eq!(hits[0].vector_rank, None);
+    }
+
+    #[test]
+    fn prose_ids_outside_the_pinnable_set_never_pin() {
+        let ranker = HybridRanker;
+
+        // A page-id-prefix query with a prose block id in the fusion pool:
+        // the prose id must rank by score, never pin (ADR-0040).
+        let hits = ranker.rank(
+            "guides.getting-started",
+            &["guides.getting-started#block-0007", "billing.credits"],
+            &["billing.credits"],
+            &[
+                lexical("billing.credits", 1),
+                lexical("guides.getting-started#block-0007", 2),
+            ],
+            &[],
+            10,
+        );
+
+        let ids: Vec<_> = hits.iter().map(|hit| hit.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["billing.credits", "guides.getting-started#block-0007"]
+        );
+        assert!(
+            hits[1].rrf_score > 0.0,
+            "prose hit is scored, not pinned with a zero score"
+        );
     }
 }
