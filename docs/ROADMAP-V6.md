@@ -28,7 +28,7 @@ All rules from [ROADMAP.md](ROADMAP.md) continue to apply. Three new rules for t
 
 | Milestone | Closes |
 | --- | --- |
-| V6 | §7.7 (edits as semantic transactions, now actually applied), §18.6 (agent patch protocol: apply, freshness, obligations), §21.2 (`adoc stale`, `adoc contradictions`), §21.6 (`adoc impacted-by`), §21.7 (`adoc patch` validates **and applies**, working tree), §14.4 (staleness rules gain a query surface). Resolves V2's open question on create-op placement. Goes deliberately past MVP Could-Have #4 ("patch validation without application") into PRD Phase 3 agent-native territory, because the loop is the product. |
+| V6 | §7.7 (edits as semantic transactions, now actually applied), §18.6 (agent patch protocol: apply, freshness, obligations), §21.2 (`adoc stale`, `adoc contradictions`), §21.6 (`adoc impacted-by`), §21.7 (`adoc patch` validates **and applies**, working tree), §14.4 (staleness rules gain a query surface). Resolves V2's open question on create-op placement. Goes deliberately past MVP Could-Have #4 ("patch validation without application") into PRD Phase 4 agent-native territory, because the loop is the product. |
 | V6.5 | §13.7 (`api`), §13.9 (`observation`), §13.10 (`question`), §13.11 (`task`); completes MVP Must-Haves #2 (typed blocks) and #4 (core schema validation) across the full fifteen-kind §13 vocabulary; §15.4 evidence requirements for `api`. |
 | V1.7 | §19.1–§19.2 (retrieval over both objects and prose), §30.7 search requirements, MVP Must-Haves #12 and #19 now covering prose. Discharges the V4 prose-only-project migration hint: `.md` prose becomes genuinely searchable. |
 
