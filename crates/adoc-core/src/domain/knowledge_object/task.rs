@@ -176,14 +176,18 @@ impl Task {
         let id = ObjectId::new(id_text).map_err(TaskError::InvalidId)?;
         let status = TaskStatus::try_new(status_text)?;
         let owner = Owner::try_new(owner_text).ok_or(TaskError::MissingOwner)?;
-        let due = due_text
-            .map(|raw| {
-                EffectiveDate::try_new(raw).map_err(|error| match error {
-                    EffectiveDateError::Missing => TaskError::InvalidDue(String::new()),
-                    EffectiveDateError::Invalid(value) => TaskError::InvalidDue(value),
-                })
-            })
-            .transpose()?;
+        // Present-but-blank `due` is absent, matching the parser path
+        // (`parse_due`).
+        let due = match due_text {
+            Some(raw) => match EffectiveDate::try_new(raw) {
+                Ok(date) => Some(date),
+                Err(EffectiveDateError::Missing) => None,
+                Err(EffectiveDateError::Invalid(value)) => {
+                    return Err(TaskError::InvalidDue(value));
+                }
+            },
+            None => None,
+        };
         let body = Body::from_plain_text(body_text).ok_or(TaskError::MissingBody)?;
         Ok(Self {
             id,
@@ -473,6 +477,41 @@ mod tests {
                     && d.message.contains("invalid `due` value")),
             "expected invalid-due diagnostic, got: {diagnostics:?}"
         );
+    }
+
+    #[test]
+    fn build_from_parsed_treats_blank_due_as_absent() {
+        let mut fields = valid_fields();
+        fields.insert(DUE_FIELD.to_string(), String::new());
+        let parsed = parsed_task(fields, BODY);
+        let mut diagnostics = Vec::new();
+
+        let task = Task::build_from_parsed(parsed, &mut diagnostics);
+
+        let task = task.expect("blank `due:` builds like an absent field");
+        assert!(
+            diagnostics.is_empty(),
+            "expected no diagnostics, got: {diagnostics:?}"
+        );
+        assert!(task.due().is_none());
+    }
+
+    #[test]
+    fn try_new_treats_blank_due_as_absent() {
+        // Mirrors the parser path (`parse_due`): present-but-blank `due`
+        // behaves like an absent field.
+        let task = Task::try_new(
+            "billing.update-support-runbook",
+            "open",
+            "support-ops",
+            Some("   "),
+            BODY,
+            BTreeMap::new(),
+            span(),
+        )
+        .expect("blank due is absent, not invalid");
+
+        assert!(task.due().is_none());
     }
 
     #[test]
