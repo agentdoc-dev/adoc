@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/retrieval-envelope.json",
+  "title": "AgentDoc Retrieval Envelope",
+  "type": "object",
+  "required": ["schema_version", "records", "diagnostics"],
+  "properties": {
+    "schema_version": { "const": "adoc.retrieval.v0" },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "content_hash", "body", "source", "relations"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string" },
+          "content_hash": { "type": "string", "pattern": "^sha256:" },
+          "status": { "type": ["string", "null"] },
+          "severity": { "type": "string" },
+          "trust": { "type": "string" },
+          "owner": { "type": "string" },
+          "verified_at": { "type": "string" },
+          "body": { "type": "string" },
+          "source": { "type": "object" },
+          "evidence": { "type": "object", "additionalProperties": { "type": "string" } },
+          "fields": { "type": "object", "additionalProperties": { "type": "string" } },
+          "relations": { "type": "object" },
+          "match": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "diagnostics": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": false
+}

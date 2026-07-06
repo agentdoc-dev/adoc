@@ -92,6 +92,11 @@ fn validates_representative_serialized_agent_envelopes_against_contract_schemas(
             search_artifact: None,
             semantic: false,
             lexical: true,
+            // V1.7.1: the published schema covers Knowledge Object records;
+            // the discriminated prose branch lands with the v1 contract-test
+            // commit, which validates the blended envelope.
+            objects_only: true,
+            prose_only: false,
             kind: None,
             status: None,
             owner: None,

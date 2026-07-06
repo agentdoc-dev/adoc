@@ -54,7 +54,7 @@ Should unused trial credits expire after 30 days or remain available indefinitel
 
 The question → answer link surfaces in three places: the question's own retrieval record carries `fields["resolved_by"]`; `adoc why` on the answering object lists the question's ID in `resolved_questions`; and the graph artifact emits a derived `resolved_by` JSON edge for external consumers — `adoc graph` does not walk this edge (it traverses authored relations only).
 
-They fold into the retrieval surface (`adoc.retrieval.v0`) like any other Knowledge Object — the question body is searchable.
+They fold into the retrieval surface (`adoc.retrieval.v1`) like any other Knowledge Object — the question body is searchable.
 
 ## How to cite question objects in answers
 

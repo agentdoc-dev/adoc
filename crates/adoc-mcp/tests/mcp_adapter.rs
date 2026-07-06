@@ -286,6 +286,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/contradictions",
         "adoc://agent/v0/schema/impacted",
         "adoc://agent/v0/schema/retrieval-envelope.json",
+        "adoc://agent/v0/schema/retrieval-envelope.v0.json",
         "adoc://agent/v0/schema/graph-traversal-envelope.json",
         "adoc://agent/v0/schema/patch-input.json",
         "adoc://agent/v0/schema/patch-check.json",
@@ -438,6 +439,8 @@ fn dogfood_billing_pilot_flow_uses_status_search_why_and_patch_check() {
             search_artifact: None,
             semantic: false,
             lexical: true,
+            objects_only: false,
+            prose_only: false,
             kind: None,
             status: None,
             owner: None,
@@ -914,4 +917,135 @@ fn propose_patch_v0_prompt_stays_byte_stable_and_v1_is_apply_aware() {
     assert!(v1_text.contains("patch_apply_enabled"));
     assert!(v1_text.contains("post_check"));
     assert!(v1_text.contains("artifacts_stale"));
+}
+
+// ---------------------------------------------------------------------------
+// V1.7.1 (ADR-0040): blended prose search through the MCP gateway.
+// ---------------------------------------------------------------------------
+
+fn mixed_mode_search_params(query: &str) -> SearchParams {
+    SearchParams {
+        project_root: None,
+        query: query.to_string(),
+        artifact: None,
+        search_artifact: None,
+        semantic: false,
+        lexical: true,
+        objects_only: false,
+        prose_only: false,
+        kind: None,
+        status: None,
+        owner: None,
+        source_path: None,
+        related_to: None,
+        relation: None,
+        direction: None,
+        top: Some(10),
+    }
+}
+
+/// Builds a mixed `.adoc` + `.md` project and returns its server.
+fn mixed_mode_server() -> (tempfile::TempDir, AgentDocMcpServer) {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), source());
+    write(
+        &root.join("docs/guides/onboarding.md"),
+        "# Onboarding\n\nFollow the onboarding checklist before requesting credits.\n",
+    );
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+    let server = AgentDocMcpServer::new(root.to_path_buf());
+    let build = server
+        .run_build(BuildParams {
+            project_root: None,
+            path: None,
+            out: None,
+            no_embeddings: true,
+        })
+        .expect("build succeeds");
+    assert_eq!(build["exit_code"], 0, "build must be clean, got {build:#}");
+    (workspace, server)
+}
+
+#[test]
+fn adoc_search_blends_prose_records_into_v1_envelope() {
+    let (_workspace, server) = mixed_mode_server();
+
+    let envelope = server
+        .run_search(mixed_mode_search_params("credits"))
+        .expect("blended search succeeds");
+
+    assert_eq!(envelope["schema_version"], "adoc.retrieval.v1");
+    let records = envelope["records"].as_array().expect("records array");
+    assert!(
+        records
+            .iter()
+            .any(|record| record["record_type"] == "knowledge_object"),
+        "blended search returns the claim, got {envelope:#}"
+    );
+    let prose = records
+        .iter()
+        .find(|record| record["record_type"] == "prose")
+        .expect("blended search returns the .md paragraph");
+    assert_eq!(prose["page_id"], "guides.onboarding");
+    assert_eq!(prose["heading_context"], "Onboarding");
+
+    let mut objects_only = mixed_mode_search_params("credits");
+    objects_only.objects_only = true;
+    let envelope = server
+        .run_search(objects_only)
+        .expect("objects-only search succeeds");
+    assert!(
+        envelope["records"]
+            .as_array()
+            .expect("records array")
+            .iter()
+            .all(|record| record["record_type"] == "knowledge_object"),
+        "objects_only restricts to Knowledge Objects"
+    );
+
+    let mut prose_only = mixed_mode_search_params("credits");
+    prose_only.prose_only = true;
+    let envelope = server
+        .run_search(prose_only)
+        .expect("prose-only search succeeds");
+    assert!(
+        envelope["records"]
+            .as_array()
+            .expect("records array")
+            .iter()
+            .all(|record| record["record_type"] == "prose"),
+        "prose_only restricts to prose records"
+    );
+}
+
+#[test]
+fn adoc_search_rejects_conflicting_scope_arguments() {
+    let (_workspace, server) = mixed_mode_server();
+
+    let mut both = mixed_mode_search_params("credits");
+    both.objects_only = true;
+    both.prose_only = true;
+    let error = server.run_search(both).expect_err("both scopes conflict");
+    assert!(error.to_string().contains("mutually exclusive"));
+
+    let mut prose_semantic = mixed_mode_search_params("credits");
+    prose_semantic.prose_only = true;
+    prose_semantic.semantic = true;
+    prose_semantic.lexical = false;
+    let error = server
+        .run_search(prose_semantic)
+        .expect_err("prose_only + semantic conflicts");
+    assert!(error.to_string().contains("no vectors"));
+
+    let mut prose_filtered = mixed_mode_search_params("credits");
+    prose_filtered.prose_only = true;
+    prose_filtered.kind = Some("claim".to_string());
+    let error = server
+        .run_search(prose_filtered)
+        .expect_err("prose_only + kind filter conflicts");
+    assert!(error.to_string().contains("metadata filters"));
 }

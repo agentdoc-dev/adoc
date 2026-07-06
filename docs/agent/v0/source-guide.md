@@ -104,7 +104,7 @@ Stripe Charges API documentation. Referenced by the payment processing claim.
 - `fields["url"]` — the absolute URL, if the target is a URL
 - `body` — the prose description
 
-They fold into the retrieval surface (`adoc.retrieval.v0`) like any other Knowledge Object.
+They fold into the retrieval surface (`adoc.retrieval.v1`) like any other Knowledge Object.
 
 ## How to cite source objects in answers
 

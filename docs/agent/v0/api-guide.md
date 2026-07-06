@@ -56,7 +56,7 @@ Consumes one or more credits for a completed generation job.
 - `fields["path"]` / `fields["symbol"]` — the location half
 - `body` — the prose contract description
 
-They fold into the retrieval surface (`adoc.retrieval.v0`) like any other Knowledge Object. A verified api with `impacts:` participates in `adoc impacted-by`: a change to its declared schema file flags the api for contract re-verification.
+They fold into the retrieval surface (`adoc.retrieval.v1`) like any other Knowledge Object. A verified api with `impacts:` participates in `adoc impacted-by`: a change to its declared schema file flags the api for contract re-verification.
 
 ## How to cite api objects in answers
 

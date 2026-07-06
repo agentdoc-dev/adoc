@@ -1,6 +1,6 @@
 # AgentDoc Answer Contract
 
-V2.2 answers must be grounded in AgentDoc retrieval records and graph traversal output.
+Answers must be grounded in AgentDoc retrieval records and graph traversal output.
 
 ## Required Citation Shape
 
@@ -13,9 +13,9 @@ When answering from AgentDoc, include:
 - evidence fields such as `source`, `test`, `reviewed_by`, or `verified_at`
 - caveats from diagnostics, missing artifacts, stale search warnings, or proof obligations
 
-Do not cite raw source snippets as the authority when a retrieval record exists. The stable answer surface is `adoc.retrieval.v0`.
+Do not cite raw source snippets as the authority when a retrieval record exists. The stable answer surface is `adoc.retrieval.v1`.
 
-Do not cite content originating from `.md` files. Markdown source is ingested under V4 Compatibility Mode (`adoc://agent/v0/compat-guide`) and contributes prose-block nodes only — it never produces Knowledge Objects and carries none of the citation fields (`status`, `owner`, evidence) the answer contract requires.
+Search results blend two record types (V1.7.1, ADR-0040). Only `record_type: "knowledge_object"` records satisfy the citation shape above. `record_type: "prose"` records — from `.md` or `.adoc` sources alike — are orientation context: use them to find and understand material, quote them as background with their source span, but never present a prose hit as verified knowledge. Prose records carry none of the required citation fields (`status`, `owner`, evidence), their positional block ids renumber on edit, and `adoc_why` cannot resolve them. Markdown source is ingested under V4 Compatibility Mode (`adoc://agent/v0/compat-guide`) and never produces Knowledge Objects.
 
 ## Citing `agent_instruction` objects
 
