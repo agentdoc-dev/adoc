@@ -100,9 +100,15 @@ impl Example {
         // 3. lang
         let lang = match super::take_optional_scalar(&mut parsed, LANG_FIELD, Lang::try_new) {
             Ok(lang) => lang,
-            Err(LangError::Missing) => None,
-            Err(LangError::Invalid(val)) => {
-                emit_example_error(&parsed, ExampleError::InvalidLang(val), diagnostics);
+            // `Missing` is unreachable: `take_optional_scalar` filters blank
+            // input before the ctor runs. If that invariant ever breaks,
+            // surface a diagnostic instead of silently dropping the field.
+            Err(error) => {
+                let value = match error {
+                    LangError::Invalid(value) => value,
+                    LangError::Missing => String::new(),
+                };
+                emit_example_error(&parsed, ExampleError::InvalidLang(value), diagnostics);
                 return None;
             }
         };
@@ -114,9 +120,16 @@ impl Example {
         let sandbox =
             match super::take_optional_scalar(&mut parsed, SANDBOX_FIELD, SandboxName::try_new) {
                 Ok(sandbox) => sandbox,
-                Err(SandboxNameError::Missing) => None,
-                Err(SandboxNameError::Invalid(val)) => {
-                    emit_example_error(&parsed, ExampleError::InvalidSandbox(val), diagnostics);
+                // `Missing` is unreachable: `take_optional_scalar` filters
+                // blank input before the ctor runs. If that invariant ever
+                // breaks, surface a diagnostic instead of silently dropping
+                // the field.
+                Err(error) => {
+                    let value = match error {
+                        SandboxNameError::Invalid(value) => value,
+                        SandboxNameError::Missing => String::new(),
+                    };
+                    emit_example_error(&parsed, ExampleError::InvalidSandbox(value), diagnostics);
                     return None;
                 }
             };
@@ -697,6 +710,44 @@ mod tests {
             "message should quote rejected sandbox: {:?}",
             diagnostics[0]
         );
+    }
+
+    #[test]
+    fn build_from_parsed_treats_blank_lang_as_absent() {
+        // Blank `lang:` behaves like an absent field; `format` satisfies
+        // the lang-or-format requirement.
+        let parsed = parsed_example(
+            BTreeMap::from([
+                (LANG_FIELD.to_string(), "   ".to_string()),
+                (FORMAT_FIELD.to_string(), "json".to_string()),
+            ]),
+            BODY,
+        );
+        let mut diagnostics = Vec::new();
+
+        let example = Example::build_from_parsed(parsed, &mut diagnostics)
+            .expect("blank `lang:` builds like an absent field");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        assert!(example.lang().is_none());
+    }
+
+    #[test]
+    fn build_from_parsed_treats_blank_sandbox_as_absent() {
+        let parsed = parsed_example(
+            BTreeMap::from([
+                (LANG_FIELD.to_string(), "ts".to_string()),
+                (SANDBOX_FIELD.to_string(), String::new()),
+            ]),
+            BODY,
+        );
+        let mut diagnostics = Vec::new();
+
+        let example = Example::build_from_parsed(parsed, &mut diagnostics)
+            .expect("blank `sandbox:` builds like an absent field");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        assert!(example.sandbox().is_none());
     }
 
     #[test]

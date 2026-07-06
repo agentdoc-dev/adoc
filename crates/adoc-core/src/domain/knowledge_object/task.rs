@@ -86,8 +86,14 @@ impl Task {
         let due = match super::take_optional_scalar(&mut parsed, DUE_FIELD, EffectiveDate::try_new)
         {
             Ok(due) => Some(due),
-            Err(EffectiveDateError::Missing) => Some(None),
-            Err(EffectiveDateError::Invalid(value)) => {
+            // `Missing` is unreachable: `take_optional_scalar` filters blank
+            // input before the ctor runs. If that invariant ever breaks,
+            // surface a diagnostic instead of silently dropping the field.
+            Err(error) => {
+                let value = match error {
+                    EffectiveDateError::Invalid(value) => value,
+                    EffectiveDateError::Missing => String::new(),
+                };
                 emit_task_error(&parsed, TaskError::InvalidDue(value), diagnostics);
                 None
             }
