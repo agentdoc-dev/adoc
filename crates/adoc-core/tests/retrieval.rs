@@ -2380,6 +2380,15 @@ fn prose_symmetry_graph_json(extension: &str) -> String {
                 "order": 2,
                 "text": "Refunds are handled manually by support.",
                 "source_span": { "path": path, "line": 5, "column": 1 }
+            },
+            {
+                "type": "code_block",
+                "id": "guides.page#block-0003",
+                "page_id": "guides.page",
+                "order": 3,
+                "language": "shell",
+                "code": "adoc build --provider fastembed",
+                "source_span": { "path": path, "line": 7, "column": 1 }
             }
         ],
         "edges": [],
@@ -2681,4 +2690,63 @@ fn hybrid_search_prose_hits_carry_vector_ranks() {
         "prose must enter the vector ranking in hybrid mode (V1.7.2)"
     );
     assert_eq!(search_match.lexical_rank, Some(1));
+}
+
+/// ADR-0040: code stays lexical-only. The v1 artifact never embeds code
+/// blocks, yet they remain in the blended candidate pool — a code-block hit
+/// fuses into hybrid results on lexical rank alone and never surfaces in
+/// semantic mode.
+#[test]
+fn code_block_prose_ranks_lexically_in_hybrid_but_never_semantically() {
+    let session = load_prose_session_with_vectors(vec![
+        ("guides.page#block-0001", vec![1.0, 0.0]),
+        ("guides.page#block-0002", vec![0.0, 1.0]),
+    ]);
+
+    let hybrid = search(
+        &session,
+        hybrid_query(
+            "provider fastembed",
+            vec![1.0, 0.0],
+            10,
+            SearchFilters::default(),
+        ),
+    );
+    assert!(hybrid.diagnostics.is_empty(), "{:?}", hybrid.diagnostics);
+    let code_hit = hybrid
+        .records
+        .iter()
+        .find_map(|entry| match entry {
+            RetrievalEntry::Prose(record) if record.id == "guides.page#block-0003" => Some(record),
+            _ => None,
+        })
+        .expect("code block must fuse into hybrid results on its lexical hit");
+    let search_match = code_hit
+        .search_match
+        .as_ref()
+        .expect("hybrid hit carries match metadata");
+    assert_eq!(search_match.lexical_rank, Some(1));
+    assert_eq!(
+        search_match.vector_rank, None,
+        "code blocks are never embedded, so a hybrid code hit carries no vector rank (ADR-0040)"
+    );
+
+    let semantic = search(
+        &session,
+        semantic_query(
+            "provider fastembed",
+            vec![1.0, 0.0],
+            10,
+            SearchFilters::default(),
+        ),
+    );
+    assert!(
+        semantic.diagnostics.is_empty(),
+        "{:?}",
+        semantic.diagnostics
+    );
+    assert!(
+        !search_ids(&semantic).contains(&"guides.page#block-0003"),
+        "semantic search must never surface a code block: it has no vector (ADR-0040)"
+    );
 }
