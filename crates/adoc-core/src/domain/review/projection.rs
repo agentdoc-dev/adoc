@@ -143,7 +143,13 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
         &head.relations.related_to,
     );
 
-    project_impacts(&mut out, &base.impacts, &head.impacts);
+    project_set_diff(
+        &mut out,
+        &base.impacts,
+        &head.impacts,
+        |path| FieldChange::ImpactsAdded { path },
+        |path| FieldChange::ImpactsRemoved { path },
+    );
 
     let base_effective = base.fields.get(EFFECTIVE_AT_FIELD).map(String::as_str);
     let head_effective = head.fields.get(EFFECTIVE_AT_FIELD).map(String::as_str);
@@ -154,7 +160,13 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
         });
     }
 
-    project_approved_by(&mut out, &base.approved_by, &head.approved_by);
+    project_set_diff(
+        &mut out,
+        &base.approved_by,
+        &head.approved_by,
+        |value| FieldChange::ApprovedByAdded { value },
+        |value| FieldChange::ApprovedByRemoved { value },
+    );
 
     // V6.5.1: api method/path scalar diffs off the graph fields map, gated on
     // kind — `source` nodes also project a `path` into fields, and an
@@ -217,14 +229,14 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
         });
     }
 
-    project_action_list(
+    project_set_diff(
         &mut out,
         &base.allowed_actions,
         &head.allowed_actions,
         |value| FieldChange::AllowedActionsAdded { value },
         |value| FieldChange::AllowedActionsRemoved { value },
     );
-    project_action_list(
+    project_set_diff(
         &mut out,
         &base.forbidden_actions,
         &head.forbidden_actions,
@@ -232,61 +244,21 @@ pub(crate) fn project_changed(c: &ChangedObject) -> Vec<FieldChange> {
         |value| FieldChange::ForbiddenActionsRemoved { value },
     );
 
-    project_contradiction_claims(
+    project_set_diff(
         &mut out,
         &base.contradiction_claims,
         &head.contradiction_claims,
+        |value| FieldChange::ContradictionClaimsAdded { value },
+        |value| FieldChange::ContradictionClaimsRemoved { value },
     );
 
     out
 }
 
-fn project_impacts(out: &mut Vec<FieldChange>, base: &[String], head: &[String]) {
-    let base_set: BTreeSet<&str> = base.iter().map(String::as_str).collect();
-    let head_set: BTreeSet<&str> = head.iter().map(String::as_str).collect();
-    for path in head_set.difference(&base_set) {
-        out.push(FieldChange::ImpactsAdded {
-            path: (*path).to_string(),
-        });
-    }
-    for path in base_set.difference(&head_set) {
-        out.push(FieldChange::ImpactsRemoved {
-            path: (*path).to_string(),
-        });
-    }
-}
-
-fn project_contradiction_claims(out: &mut Vec<FieldChange>, base: &[String], head: &[String]) {
-    let base_set: BTreeSet<&str> = base.iter().map(String::as_str).collect();
-    let head_set: BTreeSet<&str> = head.iter().map(String::as_str).collect();
-    for value in head_set.difference(&base_set) {
-        out.push(FieldChange::ContradictionClaimsAdded {
-            value: (*value).to_string(),
-        });
-    }
-    for value in base_set.difference(&head_set) {
-        out.push(FieldChange::ContradictionClaimsRemoved {
-            value: (*value).to_string(),
-        });
-    }
-}
-
-fn project_approved_by(out: &mut Vec<FieldChange>, base: &[String], head: &[String]) {
-    let base_set: BTreeSet<&str> = base.iter().map(String::as_str).collect();
-    let head_set: BTreeSet<&str> = head.iter().map(String::as_str).collect();
-    for value in head_set.difference(&base_set) {
-        out.push(FieldChange::ApprovedByAdded {
-            value: (*value).to_string(),
-        });
-    }
-    for value in base_set.difference(&head_set) {
-        out.push(FieldChange::ApprovedByRemoved {
-            value: (*value).to_string(),
-        });
-    }
-}
-
-fn project_action_list(
+/// One set-diff primitive for every list-valued field projection: pushes an
+/// added-variant per entry in `head \ base` and a removed-variant per entry in
+/// `base \ head`, deduplicated and ordered via `BTreeSet`.
+fn project_set_diff(
     out: &mut Vec<FieldChange>,
     base: &[String],
     head: &[String],
@@ -309,20 +281,13 @@ fn project_relation(
     base: &[String],
     head: &[String],
 ) {
-    let base_set: BTreeSet<&str> = base.iter().map(String::as_str).collect();
-    let head_set: BTreeSet<&str> = head.iter().map(String::as_str).collect();
-    for target in head_set.difference(&base_set) {
-        out.push(FieldChange::RelationAdded {
-            kind,
-            target: (*target).to_string(),
-        });
-    }
-    for target in base_set.difference(&head_set) {
-        out.push(FieldChange::RelationRemoved {
-            kind,
-            target: (*target).to_string(),
-        });
-    }
+    project_set_diff(
+        out,
+        base,
+        head,
+        |target| FieldChange::RelationAdded { kind, target },
+        |target| FieldChange::RelationRemoved { kind, target },
+    );
 }
 
 #[cfg(test)]
