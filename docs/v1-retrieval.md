@@ -154,8 +154,9 @@ metadata filter implies `--objects-only`; `adoc why` returns Knowledge Object
 records only. Each search record includes a `match` block with `mode`,
 `result_rank`, and mode-specific rank metadata. Hybrid records include
 `rrf_score` and may include `lexical_rank` and `vector_rank`. Semantic records
-include `vector_rank` and `cosine_score`; prose records rank lexically until
-`adoc.search.v1` ships prose vectors (V1.7.2).
+include `vector_rank` and `cosine_score`; since V1.7.2 (`adoc.search.v1`)
+prose blocks carry vectors too, so semantic and hybrid ranking cover both
+record types, and `--prose-only --semantic` is a valid combination.
 
 ## Citation Pattern
 
@@ -187,13 +188,37 @@ the retrieval set rationale, and rebuild the artifact.
 
 Each search entry has a content hash. During `adoc build`, unchanged Object IDs
 reuse prior vectors from the previous output directory's `docs.search.json`.
-Build output reports:
+Prose entries (V1.7.2, ADR-0040) reuse by content hash and model alone, never
+by block id — order-derived `#block-NNNN` ids renumber when a block is
+inserted mid-page, and hash-keyed reuse makes renumbering free. Build output
+reports:
 
 ```text
 info[build.embeddings_cached] embeddings: cached N, computed M
 ```
 
 No action is required. It is a visibility diagnostic for cache reuse.
+
+### V1.7.2 build-time and size measurements
+
+Recorded on the pilots when prose entries landed in `adoc.search.v1`
+(post-`adoc.graph.v4`, per the ROADMAP-V7 sequencing note), cold builds into a
+fresh output directory, debug binary, Apple Silicon. "Before" is `origin/main`
+with V1.7.1 (Knowledge-Object-only artifact); "after" is V1.7.2. The Markdown
+Pilot's config pins the deterministic provider; the Expanded Pilot uses local
+fastembed (`bge-small-en-v1.5`, cached model).
+
+| Pilot | Provider | Build before | Build after | Artifact before | Artifact after | Entries before (KO) | Entries after (KO + prose) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| markdown-pilot | deterministic | 1.8 s | 2.1 s | 49 KiB | 664 KiB | 6 | 6 + 75 |
+| expanded-pilot | fastembed | 0.5 s | 2.0 s | 221 KiB | 377 KiB | 27 | 27 + 19 |
+
+Warm rebuilds with an unchanged tree fully reuse the cache on both pilots
+(`cached 81, computed 0` / `cached 46, computed 0`, ~0.25 s). The size growth
+is proportional to indexed prose volume (vectors dominate; 384 dims per
+entry); code blocks and sub-threshold blocks are never embedded. Chunking and
+ANN indexes remain the named next steps if real corpora push these numbers up
+(measured, per the V1 rule).
 
 ## Retrieval Set Updates
 
