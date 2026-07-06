@@ -89,10 +89,19 @@ fn current_dir() -> Result<PathBuf, CliError> {
     std::env::current_dir().map_err(|source| adoc_local::LocalError::CurrentDir { source }.into())
 }
 
-fn print_diagnostics(diagnostics: &[Diagnostic]) {
+/// The single implementation of the stable human diagnostic format
+/// (`file:line:col: severity[code] message` plus `object_id:`/`help:`
+/// continuation lines). Both the stdout and stderr printers render through
+/// this, so the format is written once and unit-testable without spawning
+/// the binary.
+fn format_diagnostics(diagnostics: &[Diagnostic]) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
     for diagnostic in diagnostics {
         if let Some(span) = &diagnostic.span {
-            println!(
+            writeln!(
+                out,
                 "{}:{}:{}: {}[{}] {}",
                 span.file.display(),
                 span.start.line,
@@ -100,50 +109,27 @@ fn print_diagnostics(diagnostics: &[Diagnostic]) {
                 diagnostic.severity,
                 diagnostic.code,
                 diagnostic.message
-            );
+            )
+            .expect("write to String");
         } else {
-            println!(
+            writeln!(
+                out,
                 "{}[{}] {}",
                 diagnostic.severity, diagnostic.code, diagnostic.message
-            );
+            )
+            .expect("write to String");
         }
         if let Some(object_id) = &diagnostic.object_id {
-            println!("  object_id: {object_id}");
+            writeln!(out, "  object_id: {object_id}").expect("write to String");
         }
         if let Some(help) = &diagnostic.help {
-            println!("  help: {help}");
+            writeln!(out, "  help: {help}").expect("write to String");
         }
     }
+    out
 }
 
-fn eprint_diagnostics(diagnostics: &[Diagnostic]) {
-    for diagnostic in diagnostics {
-        if let Some(span) = &diagnostic.span {
-            eprintln!(
-                "{}:{}:{}: {}[{}] {}",
-                span.file.display(),
-                span.start.line,
-                span.start.column,
-                diagnostic.severity,
-                diagnostic.code,
-                diagnostic.message
-            );
-        } else {
-            eprintln!(
-                "{}[{}] {}",
-                diagnostic.severity, diagnostic.code, diagnostic.message
-            );
-        }
-        if let Some(object_id) = &diagnostic.object_id {
-            eprintln!("  object_id: {object_id}");
-        }
-        if let Some(help) = &diagnostic.help {
-            eprintln!("  help: {help}");
-        }
-    }
-}
-
-fn print_summary(diagnostics: &[Diagnostic]) {
+fn format_summary(diagnostics: &[Diagnostic]) -> String {
     let errors = diagnostics
         .iter()
         .filter(|diagnostic| diagnostic.severity == Severity::Error)
@@ -153,5 +139,75 @@ fn print_summary(diagnostics: &[Diagnostic]) {
         .filter(|diagnostic| diagnostic.severity == Severity::Warning)
         .count();
 
-    println!("{errors} errors, {warnings} warnings");
+    format!("{errors} errors, {warnings} warnings")
+}
+
+fn print_diagnostics(diagnostics: &[Diagnostic]) {
+    print!("{}", format_diagnostics(diagnostics));
+}
+
+fn eprint_diagnostics(diagnostics: &[Diagnostic]) {
+    eprint!("{}", format_diagnostics(diagnostics));
+}
+
+fn print_summary(diagnostics: &[Diagnostic]) {
+    println!("{}", format_summary(diagnostics));
+}
+
+#[cfg(test)]
+mod format_tests {
+    use adoc_core::{Diagnostic, DiagnosticCode, Severity};
+
+    use super::{format_diagnostics, format_summary};
+
+    // The spanned `file:line:col:` prefix stays covered by the check_cli
+    // integration suite — `SourceSpan` is not on the Public Core Surface, so
+    // a spanned Diagnostic cannot be constructed here.
+    fn diagnostic(severity: Severity, message: &str) -> Diagnostic {
+        Diagnostic {
+            code: DiagnosticCode::SchemaMissingField,
+            severity,
+            message: message.to_string(),
+            span: None,
+            object_id: None,
+            help: None,
+        }
+    }
+
+    #[test]
+    fn spanless_diagnostic_renders_severity_code_and_message() {
+        assert_eq!(
+            format_diagnostics(&[diagnostic(Severity::Error, "missing `owner`")]),
+            "error[schema.missing_field] missing `owner`\n"
+        );
+    }
+
+    #[test]
+    fn object_id_and_help_render_as_continuation_lines() {
+        let mut with_details = diagnostic(Severity::Error, "bad field");
+        with_details.object_id = Some("billing.credits".to_string());
+        with_details.help = Some("Add the missing field.".to_string());
+        assert_eq!(
+            format_diagnostics(&[with_details]),
+            "error[schema.missing_field] bad field\n  object_id: billing.credits\n  help: Add the missing field.\n"
+        );
+    }
+
+    #[test]
+    fn no_diagnostics_renders_nothing() {
+        assert_eq!(format_diagnostics(&[]), "");
+    }
+
+    #[test]
+    fn summary_counts_errors_and_warnings() {
+        assert_eq!(format_summary(&[]), "0 errors, 0 warnings");
+        assert_eq!(
+            format_summary(&[
+                diagnostic(Severity::Error, "x"),
+                diagnostic(Severity::Error, "y"),
+                diagnostic(Severity::Warning, "expired"),
+            ]),
+            "2 errors, 1 warnings"
+        );
+    }
 }
