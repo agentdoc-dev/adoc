@@ -1,0 +1,19 @@
+# Billing Questions @doc(billing.questions)
+
+Tracked open questions for the billing feature. Answered questions point at the
+claim or decision that resolved them.
+
+::question billing.trial-credit-expiration
+owner: product-growth
+status: open
+--
+Should unused trial credits expire after 30 days or remain available indefinitely?
+::
+
+::question billing.ledger-architecture
+owner: backend-platform
+status: answered
+resolved_by: billing.credits.use-ledger
+--
+Should credit movements be tracked in a dedicated ledger or as counters on the account record?
+::

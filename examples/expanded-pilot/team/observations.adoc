@@ -1,0 +1,13 @@
+# Onboarding Findings @doc(team.onboarding-findings)
+
+Support, analytics, and research findings recorded as observations. Observations
+record what was seen; their authority comes from the data itself.
+
+::observation onboarding.credit-confusion
+status: observed
+source: support_tickets
+sample_size: 37
+observed_at: 2024-04-30
+--
+Users often misunderstand credit usage before their first generation.
+::
