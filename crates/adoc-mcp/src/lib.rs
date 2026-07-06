@@ -763,9 +763,11 @@ fn search_record_scope(params: &SearchParams) -> McpAdapterResult<adoc_core::Sea
             || params.owner.is_some()
             || params.source_path.is_some()
             || params.related_to.is_some()
+            || params.relation.is_some()
+            || params.direction.is_some()
         {
             return Err(McpAdapterError::InvalidArguments(
-                "prose_only cannot be combined with Knowledge Object metadata filters (kind, status, owner, source_path, related_to)".to_string(),
+                "prose_only cannot be combined with Knowledge Object metadata filters (kind, status, owner, source_path, related_to, relation, direction)".to_string(),
             ));
         }
         return Ok(adoc_core::SearchRecordScope::ProseOnly);
