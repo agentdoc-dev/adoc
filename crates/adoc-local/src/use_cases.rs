@@ -9,18 +9,19 @@ use adoc_core::{
     ArtifactInspection, ArtifactLoadStatus, BuildArtifacts, BuildEmbeddingMode,
     BuildInput as CoreBuildInput, CompileInput, CompileResult, ContradictionsEnvelope, Diagnostic,
     DiagnosticCode, EmbeddingProviderSelection, GitRef, GraphArtifactInspectionInput,
-    GraphDirection, GraphInput as CoreGraphInput, GraphRelationKind, GraphTraversalEnvelope,
-    GraphTraversalQuery, GraphTraversalResult, ImpactedEnvelope, ObjectDiffEnvelope,
-    PatchApplyInput as CorePatchApplyInput, PatchApplyResult, PatchCheckResult, PatchInput,
-    ProseRecord, RelPath, RetrievalEntry, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
-    RetrievalRecord, ReviewEnvelope, ReviewError, ReviewInput as CoreReviewInput,
-    SearchArtifactInspectionInput, SearchFilters, SearchMode, SearchQuery, SearchRecordScope,
-    Severity, SnapshotSelector, StaleEnvelope, apply_patch as core_apply_patch,
-    build_workspace_with_embedding_provider, changed_files_from_git, changed_paths_strings,
-    check_patch as core_check_patch, compile_workspace, diff_objects,
-    embed_query_with_embedding_provider, empty_contradictions_envelope, empty_impacted_envelope,
-    empty_stale_envelope, evaluate_contradictions, evaluate_impacted, evaluate_stale,
-    git_review_available, inspect_graph_artifact, inspect_search_artifact, load_graph_session,
+    GraphDirection, GraphInput as CoreGraphInput, GraphRelationKind, GraphSession,
+    GraphTraversalEnvelope, GraphTraversalQuery, GraphTraversalResult, ImpactedEnvelope,
+    ObjectDiffEnvelope, PatchApplyInput as CorePatchApplyInput, PatchApplyResult, PatchCheckResult,
+    PatchInput, ProseRecord, RelPath, RetrievalEntry, RetrievalEnvelope, RetrievalInput,
+    RetrievalLoadResult, RetrievalRecord, ReviewEnvelope, ReviewError,
+    ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters, SearchMode,
+    SearchQuery, SearchRecordScope, Severity, SnapshotSelector, StaleEnvelope,
+    apply_patch as core_apply_patch, build_workspace_with_embedding_provider,
+    changed_files_from_git, changed_paths_strings, check_patch as core_check_patch,
+    compile_workspace, diff_objects, embed_query_with_embedding_provider,
+    empty_contradictions_envelope, empty_impacted_envelope, empty_stale_envelope,
+    evaluate_contradictions, evaluate_impacted, evaluate_stale, git_review_available,
+    inspect_graph_artifact, inspect_search_artifact, load_graph_session,
     load_retrieval_session_with_embedding_provider, load_review_from_git,
     load_review_with_changed_files_from_git, parse_patch_from_path, parse_patch_from_value,
     patch_apply_refusal, review_with_patch, search as core_search, traverse_graph,
@@ -509,18 +510,47 @@ where
     }
 }
 
-fn why_with_context<P>(context: &LocalContext<P>, input: WhyInput) -> Result<WhyOutcome, LocalError>
+/// The shared read-command prefix (ADR-0038: every artifact reader locates
+/// the Graph Artifact the same way): resolve an explicit `--artifact` through
+/// the path policy, discover project config only when no explicit path was
+/// given, resolve the effective artifact path, and gate the final path
+/// through the policy again.
+fn resolve_graph_artifact_for_read<P>(
+    context: &LocalContext<P>,
+    artifact_arg: Option<&Path>,
+) -> Result<PathBuf, LocalError>
 where
     P: PathPolicy,
 {
-    let artifact = input
-        .artifact
-        .as_deref()
+    let artifact = artifact_arg
         .map(|path| context.path_policy().resolve_read_path(path))
         .transpose()?;
     let config = discover_project_config_if(artifact.is_none(), context.config_start())?;
     let artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
-    let artifact = context.path_policy().resolve_read_path(&artifact)?;
+    context.path_policy().resolve_read_path(&artifact)
+}
+
+/// Load the graph session for a read command. The session is usable only
+/// when it loaded AND its diagnostics carry no errors; otherwise the caller
+/// ships its command-specific empty envelope with these load diagnostics.
+fn load_graph_session_for_query(
+    graph_artifact: PathBuf,
+) -> (Option<GraphSession>, Vec<Diagnostic>) {
+    let load_result = load_graph_session(CoreGraphInput {
+        graph_artifact_path: graph_artifact,
+    });
+    let diagnostics = load_result.diagnostics;
+    let session = load_result
+        .session
+        .filter(|_| !diagnostics_have_errors(&diagnostics));
+    (session, diagnostics)
+}
+
+fn why_with_context<P>(context: &LocalContext<P>, input: WhyInput) -> Result<WhyOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    let artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
     let load_result = load_retrieval_session_with_embedding_provider(
         RetrievalInput {
             artifact_path: artifact.clone(),
@@ -570,19 +600,9 @@ fn graph_with_context<P>(
 where
     P: PathPolicy,
 {
-    let artifact = input
-        .artifact
-        .as_deref()
-        .map(|path| context.path_policy().resolve_read_path(path))
-        .transpose()?;
-    let config = discover_project_config_if(artifact.is_none(), context.config_start())?;
-    let graph_artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
-    let graph_artifact = context.path_policy().resolve_read_path(&graph_artifact)?;
-    let load_result = load_graph_session(CoreGraphInput {
-        graph_artifact_path: graph_artifact,
-    });
-    let mut diagnostics = load_result.diagnostics;
-    let Some(session) = load_result.session else {
+    let graph_artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
+    let (session, mut diagnostics) = load_graph_session_for_query(graph_artifact);
+    let Some(session) = session else {
         let exit_code = graph_exit_code_for_diagnostics(&diagnostics);
         return Ok(GraphOutcome {
             envelope: GraphTraversalEnvelope::new(
@@ -594,19 +614,6 @@ where
             exit_code,
         });
     };
-
-    if diagnostics_have_errors(&diagnostics) {
-        let exit_code = graph_exit_code_for_diagnostics(&diagnostics);
-        return Ok(GraphOutcome {
-            envelope: GraphTraversalEnvelope::new(
-                input.object_id,
-                Vec::new(),
-                Vec::new(),
-                diagnostics,
-            ),
-            exit_code,
-        });
-    }
 
     let traversal = traverse_graph(
         &session,
@@ -638,21 +645,8 @@ fn stale_with_context<P>(
 where
     P: PathPolicy,
 {
-    let artifact = input
-        .artifact
-        .as_deref()
-        .map(|path| context.path_policy().resolve_read_path(path))
-        .transpose()?;
-    let config = discover_project_config_if(artifact.is_none(), context.config_start())?;
-    let graph_artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
-    let graph_artifact = context.path_policy().resolve_read_path(&graph_artifact)?;
-    let load_result = load_graph_session(CoreGraphInput {
-        graph_artifact_path: graph_artifact,
-    });
-    let diagnostics = load_result.diagnostics;
-    let session = load_result
-        .session
-        .filter(|_| !diagnostics_have_errors(&diagnostics));
+    let graph_artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
+    let (session, diagnostics) = load_graph_session_for_query(graph_artifact);
     let Some(session) = session else {
         let exit_code = signal_query_exit_code(&diagnostics);
         return Ok(StaleOutcome {
@@ -676,21 +670,8 @@ fn contradictions_with_context<P>(
 where
     P: PathPolicy,
 {
-    let artifact = input
-        .artifact
-        .as_deref()
-        .map(|path| context.path_policy().resolve_read_path(path))
-        .transpose()?;
-    let config = discover_project_config_if(artifact.is_none(), context.config_start())?;
-    let graph_artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
-    let graph_artifact = context.path_policy().resolve_read_path(&graph_artifact)?;
-    let load_result = load_graph_session(CoreGraphInput {
-        graph_artifact_path: graph_artifact,
-    });
-    let diagnostics = load_result.diagnostics;
-    let session = load_result
-        .session
-        .filter(|_| !diagnostics_have_errors(&diagnostics));
+    let graph_artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
+    let (session, diagnostics) = load_graph_session_for_query(graph_artifact);
     let Some(session) = session else {
         let exit_code = signal_query_exit_code(&diagnostics);
         return Ok(ContradictionsOutcome {
@@ -739,21 +720,8 @@ where
         }
     };
 
-    let artifact = input
-        .artifact
-        .as_deref()
-        .map(|path| context.path_policy().resolve_read_path(path))
-        .transpose()?;
-    let config = discover_project_config_if(artifact.is_none(), context.config_start())?;
-    let graph_artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
-    let graph_artifact = context.path_policy().resolve_read_path(&graph_artifact)?;
-    let load_result = load_graph_session(CoreGraphInput {
-        graph_artifact_path: graph_artifact,
-    });
-    let diagnostics = load_result.diagnostics;
-    let session = load_result
-        .session
-        .filter(|_| !diagnostics_have_errors(&diagnostics));
+    let graph_artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
+    let (session, diagnostics) = load_graph_session_for_query(graph_artifact);
     let Some(session) = session else {
         let exit_code = impacted_exit_code(&diagnostics);
         return Ok(ImpactedOutcome {
@@ -999,14 +967,7 @@ where
     P: PathPolicy,
 {
     let patch_path = context.path_policy().resolve_read_path(&input.patch_path)?;
-    let artifact = input
-        .artifact
-        .as_deref()
-        .map(|path| context.path_policy().resolve_read_path(path))
-        .transpose()?;
-    let config = discover_project_config_if(artifact.is_none(), context.config_start())?;
-    let graph_artifact = resolve_graph_artifact_path_with_config(artifact, config.as_ref());
-    let graph_artifact = context.path_policy().resolve_read_path(&graph_artifact)?;
+    let graph_artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
     let result = core_check_patch(PatchInput {
         graph_artifact_path: graph_artifact,
         patch_path,
