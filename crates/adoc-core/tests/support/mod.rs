@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) struct TestWorkspace {
@@ -8,11 +9,20 @@ pub(crate) struct TestWorkspace {
 
 impl TestWorkspace {
     pub(crate) fn new(name: &str) -> Self {
+        // The timestamp alone is not unique: parallel tests sharing a `name`
+        // can observe the same clock reading (coarse resolution), collide on
+        // the root, and delete each other's files on Drop. Match the
+        // adoc-cli/adoc-mcp support pattern: pid + per-process counter.
+        static WORKSPACE_COUNTER: AtomicU64 = AtomicU64::new(0);
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock is after epoch")
             .as_nanos();
-        let root = std::env::temp_dir().join(format!("adoc-{name}-{nonce}"));
+        let counter = WORKSPACE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "adoc-{name}-{}-{counter}-{nonce}",
+            std::process::id()
+        ));
         fs::create_dir_all(&root).expect("test workspace can be created");
         Self { root }
     }
