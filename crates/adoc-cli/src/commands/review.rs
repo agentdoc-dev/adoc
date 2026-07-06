@@ -70,12 +70,12 @@ fn write_review_text(envelope: &ReviewEnvelope, styled: bool, exit_code: i32) ->
 fn render_impact_section(output: &mut String, entries: &[ImpactedObject], styled: bool) {
     let label = "Impact:";
     if styled {
-        writeln!(output, "{}", faint_label(label)).expect("write to String");
+        writeln!(output, "{}", faint_label(label)).expect("writing to String cannot fail");
     } else {
-        writeln!(output, "{label}").expect("write to String");
+        writeln!(output, "{label}").expect("writing to String cannot fail");
     }
     if entries.is_empty() {
-        writeln!(output, "  (none)").expect("write to String");
+        writeln!(output, "  (none)").expect("writing to String cannot fail");
         return;
     }
     for entry in entries {
@@ -85,7 +85,7 @@ fn render_impact_section(output: &mut String, entries: &[ImpactedObject], styled
             entry.id.clone()
         };
         let paths = entry.paths.join(", ");
-        writeln!(output, "  - {id} ({paths})").expect("write to String");
+        writeln!(output, "  - {id} ({paths})").expect("writing to String cannot fail");
     }
 }
 
@@ -96,12 +96,12 @@ fn render_required_reviewers_section(
 ) {
     let label = "Required reviewers:";
     if styled {
-        writeln!(output, "{}", faint_label(label)).expect("write to String");
+        writeln!(output, "{}", faint_label(label)).expect("writing to String cannot fail");
     } else {
-        writeln!(output, "{label}").expect("write to String");
+        writeln!(output, "{label}").expect("writing to String cannot fail");
     }
     if entries.is_empty() {
-        writeln!(output, "  (none)").expect("write to String");
+        writeln!(output, "  (none)").expect("writing to String cannot fail");
         return;
     }
     for entry in entries {
@@ -111,7 +111,7 @@ fn render_required_reviewers_section(
             entry.owner.clone()
         };
         let ids = entry.object_ids.join(", ");
-        writeln!(output, "  - {owner}: {ids}").expect("write to String");
+        writeln!(output, "  - {owner}: {ids}").expect("writing to String cannot fail");
     }
 }
 
@@ -122,12 +122,12 @@ fn render_proof_obligations_section(
 ) {
     let label = "Proof obligations:";
     if styled {
-        writeln!(output, "{}", faint_label(label)).expect("write to String");
+        writeln!(output, "{}", faint_label(label)).expect("writing to String cannot fail");
     } else {
-        writeln!(output, "{label}").expect("write to String");
+        writeln!(output, "{label}").expect("writing to String cannot fail");
     }
     if entries.is_empty() {
-        writeln!(output, "  (none)").expect("write to String");
+        writeln!(output, "  (none)").expect("writing to String cannot fail");
         return;
     }
     for entry in entries {
@@ -138,10 +138,10 @@ fn render_proof_obligations_section(
         };
         let evidence = entry.required_evidence.join(", ");
         if evidence.is_empty() {
-            writeln!(output, "  - {id}: {}", entry.reason).expect("write to String");
+            writeln!(output, "  - {id}: {}", entry.reason).expect("writing to String cannot fail");
         } else {
             writeln!(output, "  - {id}: {} [evidence: {evidence}]", entry.reason)
-                .expect("write to String");
+                .expect("writing to String cannot fail");
         }
     }
 }
