@@ -43,7 +43,7 @@
             "required": ["record_type", "id", "page_id", "block_kind", "text", "source"],
             "properties": {
               "record_type": { "const": "prose" },
-              "id": { "type": "string", "pattern": "#block-" },
+              "id": { "type": "string", "pattern": "^.+#block-[0-9]+$" },
               "page_id": { "type": "string" },
               "block_kind": { "enum": ["heading", "paragraph", "list", "code_block"] },
               "text": { "type": "string" },

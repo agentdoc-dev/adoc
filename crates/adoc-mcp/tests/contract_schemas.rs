@@ -1176,3 +1176,36 @@ fn legacy_v0_schema_accepts_resolved_questions() {
     });
     assert_valid("retrieval-envelope.v0.json", &legacy_instance);
 }
+
+/// V1.7.1 (ADR-0040 §1): prose record ids follow `<page-id>#block-NNNN`, so
+/// the v1 schema must reject values that merely contain the block marker.
+#[test]
+fn v1_schema_anchors_the_prose_record_id_pattern() {
+    let prose_envelope = |id: &str| {
+        json!({
+            "schema_version": "adoc.retrieval.v1",
+            "records": [{
+                "record_type": "prose",
+                "id": id,
+                "page_id": "guides.onboarding",
+                "block_kind": "paragraph",
+                "text": "Billing onboarding starts with a sandbox workspace.",
+                "source": { "path": "docs/guides/onboarding.md", "line": 3 }
+            }],
+            "diagnostics": []
+        })
+    };
+    assert_valid(
+        "retrieval-envelope.json",
+        &prose_envelope("guides.onboarding#block-0001"),
+    );
+
+    let v1_schema = schema("retrieval-envelope.json");
+    let validator = jsonschema::validator_for(&v1_schema).expect("schema compiles");
+    for malformed in ["#block-", "foo #block- bar", "guides.onboarding#block-"] {
+        assert!(
+            !validator.is_valid(&prose_envelope(malformed)),
+            "the v1 schema must reject the malformed prose id {malformed:?}"
+        );
+    }
+}
