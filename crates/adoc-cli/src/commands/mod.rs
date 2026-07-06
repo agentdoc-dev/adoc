@@ -137,20 +137,20 @@ fn format_diagnostics(diagnostics: &[Diagnostic]) -> String {
                 diagnostic.code,
                 diagnostic.message
             )
-            .expect("write to String");
+            .expect("writing to String cannot fail");
         } else {
             writeln!(
                 out,
                 "{}[{}] {}",
                 diagnostic.severity, diagnostic.code, diagnostic.message
             )
-            .expect("write to String");
+            .expect("writing to String cannot fail");
         }
         if let Some(object_id) = &diagnostic.object_id {
-            writeln!(out, "  object_id: {object_id}").expect("write to String");
+            writeln!(out, "  object_id: {object_id}").expect("writing to String cannot fail");
         }
         if let Some(help) = &diagnostic.help {
-            writeln!(out, "  help: {help}").expect("write to String");
+            writeln!(out, "  help: {help}").expect("writing to String cannot fail");
         }
     }
     out

@@ -90,7 +90,7 @@ impl MarkdownReviewPresenter {
                 "> ⚠️ adoc impacted-by failed: `{}` — {message}",
                 diagnostic.code
             )
-            .expect("write to String");
+            .expect("writing to String cannot fail");
         }
         out.write_all(body.as_bytes())
     }
@@ -101,18 +101,20 @@ fn render_impacted_by(output: &mut String, envelope: &ImpactedEnvelope) {
     // marker so a PR-comment reader can tell "ref had no diff" apart from
     // a header that simply lost its path list.
     if envelope.changed_paths.is_empty() {
-        writeln!(output, "## Impacted by: _(no changed paths)_").expect("write to String");
+        writeln!(output, "## Impacted by: _(no changed paths)_")
+            .expect("writing to String cannot fail");
     } else {
         let paths: Vec<String> = envelope
             .changed_paths
             .iter()
             .map(|path| format!("`{path}`"))
             .collect();
-        writeln!(output, "## Impacted by: {}", paths.join(", ")).expect("write to String");
+        writeln!(output, "## Impacted by: {}", paths.join(", "))
+            .expect("writing to String cannot fail");
     }
     if envelope.impacted.is_empty() {
-        writeln!(output).expect("write to String");
-        writeln!(output, "No impacted Knowledge Objects.").expect("write to String");
+        writeln!(output).expect("writing to String cannot fail");
+        writeln!(output, "No impacted Knowledge Objects.").expect("writing to String cannot fail");
     }
     for record in &envelope.impacted {
         let reasons: Vec<String> = record
@@ -131,7 +133,8 @@ fn render_impacted_by(output: &mut String, envelope: &ImpactedEnvelope) {
                 }
             })
             .collect();
-        writeln!(output, "- `{}` → {}", record.id, reasons.join(", ")).expect("write to String");
+        writeln!(output, "- `{}` → {}", record.id, reasons.join(", "))
+            .expect("writing to String cannot fail");
     }
 }
 
@@ -232,8 +235,9 @@ fn drive(output: &mut String, sections: &[ReviewSection<'_>]) {
 
 fn render_reviewers_header(output: &mut String, reviewers: &[RequiredReviewer]) {
     let mentions: Vec<String> = reviewers.iter().map(|r| format!("@{}", r.owner)).collect();
-    writeln!(output, "**Required reviewers:** {}", mentions.join(" ")).expect("write to String");
-    writeln!(output).expect("write to String");
+    writeln!(output, "**Required reviewers:** {}", mentions.join(" "))
+        .expect("writing to String cannot fail");
+    writeln!(output).expect("writing to String cannot fail");
 }
 
 fn render_summary(output: &mut String, created: usize, deleted: usize, changed: usize) {
@@ -241,12 +245,12 @@ fn render_summary(output: &mut String, created: usize, deleted: usize, changed: 
         output,
         "## Diff: {created} created, {deleted} deleted, {changed} changed",
     )
-    .expect("write to String");
+    .expect("writing to String cannot fail");
 }
 
 fn render_changed(output: &mut String, entries: &[ChangedObject], obligations: &[ProofObligation]) {
     for entry in entries {
-        writeln!(output).expect("write to String");
+        writeln!(output).expect("writing to String cannot fail");
         let icon = icon_for(entry, obligations);
         let labels = field_change_summary_labels(entry.field_changes());
         writeln!(
@@ -254,11 +258,11 @@ fn render_changed(output: &mut String, entries: &[ChangedObject], obligations: &
             "<details><summary>{icon} <code>{id}</code> — {labels}</summary>",
             id = entry.id,
         )
-        .expect("write to String");
-        writeln!(output).expect("write to String");
+        .expect("writing to String cannot fail");
+        writeln!(output).expect("writing to String cannot fail");
         render_field_changes(output, entry.field_changes());
-        writeln!(output).expect("write to String");
-        writeln!(output, "</details>").expect("write to String");
+        writeln!(output).expect("writing to String cannot fail");
+        writeln!(output, "</details>").expect("writing to String cannot fail");
     }
 }
 
@@ -309,7 +313,7 @@ fn render_field_changes(output: &mut String, changes: &[FieldChange]) {
                     optional(before.as_deref()),
                     optional(after.as_deref())
                 )
-                .expect("write to String");
+                .expect("writing to String cannot fail");
             }
             FieldChange::Owner { before, after } => {
                 writeln!(
@@ -318,7 +322,7 @@ fn render_field_changes(output: &mut String, changes: &[FieldChange]) {
                     optional(before.as_deref()),
                     optional(after.as_deref())
                 )
-                .expect("write to String");
+                .expect("writing to String cannot fail");
             }
             FieldChange::VerifiedAt { before, after } => {
                 writeln!(
@@ -327,25 +331,29 @@ fn render_field_changes(output: &mut String, changes: &[FieldChange]) {
                     optional(before.as_deref()),
                     optional(after.as_deref())
                 )
-                .expect("write to String");
+                .expect("writing to String cannot fail");
             }
             FieldChange::EvidenceAdded { field, value } => {
-                writeln!(output, "+ evidence.{field}: {value}").expect("write to String");
+                writeln!(output, "+ evidence.{field}: {value}")
+                    .expect("writing to String cannot fail");
             }
             FieldChange::EvidenceRemoved { field, value } => {
-                writeln!(output, "- evidence.{field}: {value}").expect("write to String");
+                writeln!(output, "- evidence.{field}: {value}")
+                    .expect("writing to String cannot fail");
             }
             FieldChange::RelationAdded { kind, target } => {
-                writeln!(output, "+ {}: {target}", kind.as_str()).expect("write to String");
+                writeln!(output, "+ {}: {target}", kind.as_str())
+                    .expect("writing to String cannot fail");
             }
             FieldChange::RelationRemoved { kind, target } => {
-                writeln!(output, "- {}: {target}", kind.as_str()).expect("write to String");
+                writeln!(output, "- {}: {target}", kind.as_str())
+                    .expect("writing to String cannot fail");
             }
             FieldChange::ImpactsAdded { path } => {
-                writeln!(output, "+ impacts: {path}").expect("write to String");
+                writeln!(output, "+ impacts: {path}").expect("writing to String cannot fail");
             }
             FieldChange::ImpactsRemoved { path } => {
-                writeln!(output, "- impacts: {path}").expect("write to String");
+                writeln!(output, "- impacts: {path}").expect("writing to String cannot fail");
             }
             // Same fallback rule as commands/diff.rs:150 — a future variant
             // surfaces with a stub line so the CLI keeps rendering when the
@@ -355,43 +363,44 @@ fn render_field_changes(output: &mut String, changes: &[FieldChange]) {
                     output,
                     "_field_change: (unsupported variant; upgrade the CLI)_"
                 )
-                .expect("write to String");
+                .expect("writing to String cannot fail");
             }
         }
     }
 }
 
 fn render_body_diff(output: &mut String, before: &str, after: &str) {
-    writeln!(output, "```diff").expect("write to String");
+    writeln!(output, "```diff").expect("writing to String cannot fail");
     for line in before.lines() {
-        writeln!(output, "- {line}").expect("write to String");
+        writeln!(output, "- {line}").expect("writing to String cannot fail");
     }
     for line in after.lines() {
-        writeln!(output, "+ {line}").expect("write to String");
+        writeln!(output, "+ {line}").expect("writing to String cannot fail");
     }
-    writeln!(output, "```").expect("write to String");
+    writeln!(output, "```").expect("writing to String cannot fail");
 }
 
 fn render_id_list_section(output: &mut String, label: &str, ids: &[&str]) {
-    writeln!(output).expect("write to String");
-    writeln!(output, "## {label}").expect("write to String");
+    writeln!(output).expect("writing to String cannot fail");
+    writeln!(output, "## {label}").expect("writing to String cannot fail");
     for id in ids {
-        writeln!(output, "- `{id}`").expect("write to String");
+        writeln!(output, "- `{id}`").expect("writing to String cannot fail");
     }
 }
 
 fn render_impact(output: &mut String, impact: &[ImpactedObject]) {
-    writeln!(output).expect("write to String");
-    writeln!(output, "## Impact").expect("write to String");
+    writeln!(output).expect("writing to String cannot fail");
+    writeln!(output, "## Impact").expect("writing to String cannot fail");
     for entry in impact {
         let paths: Vec<String> = entry.paths.iter().map(|p| format!("`{p}`")).collect();
-        writeln!(output, "- `{}` → {}", entry.id, paths.join(", ")).expect("write to String");
+        writeln!(output, "- `{}` → {}", entry.id, paths.join(", "))
+            .expect("writing to String cannot fail");
     }
 }
 
 fn render_obligations(output: &mut String, obligations: &[ProofObligation]) {
-    writeln!(output).expect("write to String");
-    writeln!(output, "## Proof obligations").expect("write to String");
+    writeln!(output).expect("writing to String cannot fail");
+    writeln!(output, "## Proof obligations").expect("writing to String cannot fail");
     for obligation in obligations {
         if obligation.required_evidence.is_empty() {
             writeln!(
@@ -399,7 +408,7 @@ fn render_obligations(output: &mut String, obligations: &[ProofObligation]) {
                 "- [ ] `{}`: {}",
                 obligation.object_id, obligation.reason
             )
-            .expect("write to String");
+            .expect("writing to String cannot fail");
         } else {
             writeln!(
                 output,
@@ -408,7 +417,7 @@ fn render_obligations(output: &mut String, obligations: &[ProofObligation]) {
                 obligation.reason,
                 obligation.required_evidence.join(", ")
             )
-            .expect("write to String");
+            .expect("writing to String cannot fail");
         }
     }
 }

@@ -70,9 +70,9 @@ pub(super) fn render_diff_text(output: &mut String, envelope: &ObjectDiffEnvelop
         envelope.changed_count()
     );
     if styled {
-        writeln!(output, "{}", faint_label(&summary)).expect("write to String");
+        writeln!(output, "{}", faint_label(&summary)).expect("writing to String cannot fail");
     } else {
-        writeln!(output, "{summary}").expect("write to String");
+        writeln!(output, "{summary}").expect("writing to String cannot fail");
     }
 
     render_id_list(output, "Created:", envelope.created_ids(), styled);
@@ -87,40 +87,40 @@ fn render_id_list<'a, I: Iterator<Item = &'a str>>(
     styled: bool,
 ) {
     if styled {
-        writeln!(output, "{}", faint_label(label)).expect("write to String");
+        writeln!(output, "{}", faint_label(label)).expect("writing to String cannot fail");
     } else {
-        writeln!(output, "{label}").expect("write to String");
+        writeln!(output, "{label}").expect("writing to String cannot fail");
     }
     let mut empty = true;
     for id in ids {
         empty = false;
         if styled {
-            writeln!(output, "  - {}", cyan_key(id)).expect("write to String");
+            writeln!(output, "  - {}", cyan_key(id)).expect("writing to String cannot fail");
         } else {
-            writeln!(output, "  - {id}").expect("write to String");
+            writeln!(output, "  - {id}").expect("writing to String cannot fail");
         }
     }
     if empty {
-        writeln!(output, "  (none)").expect("write to String");
+        writeln!(output, "  (none)").expect("writing to String cannot fail");
     }
 }
 
 fn render_changed_section(output: &mut String, entries: &[ChangedObject], styled: bool) {
     let label = "Changed:";
     if styled {
-        writeln!(output, "{}", faint_label(label)).expect("write to String");
+        writeln!(output, "{}", faint_label(label)).expect("writing to String cannot fail");
     } else {
-        writeln!(output, "{label}").expect("write to String");
+        writeln!(output, "{label}").expect("writing to String cannot fail");
     }
     if entries.is_empty() {
-        writeln!(output, "  (none)").expect("write to String");
+        writeln!(output, "  (none)").expect("writing to String cannot fail");
         return;
     }
     for entry in entries {
         if styled {
-            writeln!(output, "  - {}", cyan_key(&entry.id)).expect("write to String");
+            writeln!(output, "  - {}", cyan_key(&entry.id)).expect("writing to String cannot fail");
         } else {
-            writeln!(output, "  - {}", &entry.id).expect("write to String");
+            writeln!(output, "  - {}", &entry.id).expect("writing to String cannot fail");
         }
         for change in entry.field_changes() {
             render_field_change(output, change, styled);
@@ -131,8 +131,8 @@ fn render_changed_section(output: &mut String, entries: &[ChangedObject], styled
 fn render_field_change(output: &mut String, change: &FieldChange, styled: bool) {
     let line = change.to_string();
     if styled {
-        writeln!(output, "      {}", faint_label(&line)).expect("write to String");
+        writeln!(output, "      {}", faint_label(&line)).expect("writing to String cannot fail");
     } else {
-        writeln!(output, "      {line}").expect("write to String");
+        writeln!(output, "      {line}").expect("writing to String cannot fail");
     }
 }
