@@ -22,6 +22,7 @@ use crate::domain::knowledge_object::claim::{
     Verification, VerifiedAt,
 };
 use crate::domain::value_objects::http_method::{HttpMethod, HttpMethodError};
+use crate::domain::value_objects::lifecycle_status::{LifecycleStatus, LifecycleStatusError};
 use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::values::{Body, NonEmpty, OptionalFields, trim_ascii_edges};
 
@@ -30,7 +31,6 @@ pub(crate) const INTERFACE_TYPE_FIELD: &str = "interface_type";
 pub(crate) const PATH_FIELD: &str = "path";
 pub(crate) const SYMBOL_FIELD: &str = "symbol";
 const STATUS_FIELD: &str = "status";
-const VERIFIED_STATUS: &str = "verified";
 
 const API_INVALID_STATUS_HELP: &str = "Valid api statuses are: draft, verified, deprecated.";
 const API_MISSING_BODY_HELP: &str =
@@ -59,7 +59,7 @@ pub(crate) enum ApiLocation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Api {
     id: ObjectId,
-    status: Option<ApiStatus>,
+    status: Option<LifecycleStatus>,
     operation: ApiOperation,
     location: ApiLocation,
     body: Body,
@@ -131,7 +131,7 @@ impl Api {
         // whose only evidence is an `evidence_ref:` is accepted (the claim
         // precedent); the schema-quality gate is the workspace rule's job.
         let evidence_refs = super::parse_evidence_refs(&mut parsed, diagnostics);
-        let verification = if status.as_ref().is_some_and(ApiStatus::is_verified) {
+        let verification = if status.as_ref().is_some_and(LifecycleStatus::is_verified) {
             let has_refs = !evidence_refs.is_empty();
             match build_verification(&parsed, &parsed.raw_fields, has_refs, diagnostics) {
                 Some(verification) => Some(verification),
@@ -184,7 +184,7 @@ impl Api {
         span: SourceSpan,
     ) -> Result<Self, ApiError> {
         let id = ObjectId::new(id_text).map_err(ApiError::InvalidId)?;
-        let status = status_text.map(ApiStatus::try_new).transpose()?;
+        let status = status_text.map(status_from_text).transpose()?;
         let operation = match (method_text, interface_type_text) {
             (Some(_), Some(_)) => return Err(ApiError::ConflictingMethodAndInterfaceType),
             (None, None) => return Err(ApiError::MissingMethodOrInterfaceType),
@@ -204,7 +204,7 @@ impl Api {
             (Some(path), None) => ApiLocation::Path(parse_path_template(path)?),
             (None, Some(symbol)) => ApiLocation::Symbol(trim_ascii_edges(symbol).to_string()),
         };
-        let is_verified = status.as_ref().is_some_and(ApiStatus::is_verified);
+        let is_verified = status.as_ref().is_some_and(LifecycleStatus::is_verified);
         if is_verified && verification.is_none() {
             return Err(ApiError::MissingVerification);
         }
@@ -238,7 +238,7 @@ impl Api {
         &self.id
     }
 
-    pub(crate) fn status(&self) -> Option<&ApiStatus> {
+    pub(crate) fn status(&self) -> Option<&LifecycleStatus> {
         self.status.as_ref()
     }
 
@@ -305,15 +305,8 @@ impl Api {
 
 /// Optional closed status. `status:` absent → `None`; present-but-blank is
 /// also treated as absent (nothing to validate).
-fn parse_status(parsed: &mut ParsedTypedBlock) -> Result<Option<ApiStatus>, ApiError> {
-    let Some(raw) = parsed.raw_fields.remove(STATUS_FIELD) else {
-        return Ok(None);
-    };
-    let trimmed = trim_ascii_edges(&raw);
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    ApiStatus::try_new(trimmed).map(Some)
+fn parse_status(parsed: &mut ParsedTypedBlock) -> Result<Option<LifecycleStatus>, ApiError> {
+    super::take_optional_scalar(parsed, STATUS_FIELD, status_from_text)
 }
 
 fn parse_operation(
@@ -550,34 +543,13 @@ fn emit_api_error(parsed: &ParsedTypedBlock, error: ApiError, diagnostics: &mut 
     );
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ApiStatus {
-    Draft,
-    Verified,
-    Deprecated,
-}
-
-impl ApiStatus {
-    pub(crate) fn try_new(value: &str) -> Result<Self, ApiError> {
-        match trim_ascii_edges(value) {
-            "draft" => Ok(Self::Draft),
-            VERIFIED_STATUS => Ok(Self::Verified),
-            "deprecated" => Ok(Self::Deprecated),
-            other => Err(ApiError::InvalidStatus(other.to_string())),
-        }
-    }
-
-    pub(crate) fn as_str(&self) -> &str {
-        match self {
-            Self::Draft => "draft",
-            Self::Verified => VERIFIED_STATUS,
-            Self::Deprecated => "deprecated",
-        }
-    }
-
-    pub(crate) fn is_verified(&self) -> bool {
-        matches!(self, Self::Verified)
-    }
+/// Maps the shared [`LifecycleStatus`] parse errors into api's own error
+/// vocabulary: a blank status keeps its historical `InvalidStatus("")` shape.
+pub(crate) fn status_from_text(value: &str) -> Result<LifecycleStatus, ApiError> {
+    LifecycleStatus::try_new(value).map_err(|error| match error {
+        LifecycleStatusError::Missing => ApiError::InvalidStatus(String::new()),
+        LifecycleStatusError::Invalid(value) => ApiError::InvalidStatus(value),
+    })
 }
 
 #[cfg(test)]
@@ -654,7 +626,7 @@ mod tests {
         assert_eq!(api.path(), Some("/api/billing/credits/consume"));
         assert_eq!(api.interface_type(), None);
         assert_eq!(api.symbol(), None);
-        assert_eq!(api.status().map(ApiStatus::as_str), Some("draft"));
+        assert_eq!(api.status().map(LifecycleStatus::as_str), Some("draft"));
     }
 
     #[test]
@@ -938,7 +910,7 @@ mod tests {
     #[test]
     fn status_try_new_rejects_unknown_values() {
         assert_eq!(
-            ApiStatus::try_new("active"),
+            status_from_text("active"),
             Err(ApiError::InvalidStatus("active".to_string()))
         );
     }

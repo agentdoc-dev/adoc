@@ -9,7 +9,7 @@ use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::value_objects::approved_by::ApprovedBy;
 use crate::domain::value_objects::evidence::Evidence;
 use crate::domain::value_objects::rel_path::RelPath;
-use crate::domain::values::{Body, NonEmpty};
+use crate::domain::values::{Body, NonEmpty, trim_ascii_edges};
 
 pub(super) const IMPACTS_FIELD: &str = "impacts";
 pub(crate) const APPROVED_BY_FIELD: &str = "approved_by";
@@ -574,6 +574,50 @@ fn push_impact_segment(
     }
 }
 
+/// Remove a scalar field and apply the shared scalar invariant every kind
+/// follows: edge-trim, then treat a blank value exactly like an absent field.
+/// The trimmed non-empty value goes through `ctor`; the calling aggregate maps
+/// the error into its own variant so per-kind diagnostic codes stay put.
+///
+/// The scalar sibling of [`extract_action_list`] — list-shaped fields got a
+/// shared reader in V5.5, this closes the same gap for scalars.
+pub(super) fn take_optional_scalar<T, E>(
+    parsed: &mut ParsedTypedBlock,
+    field_name: &str,
+    ctor: impl FnOnce(&str) -> Result<T, E>,
+) -> Result<Option<T>, E> {
+    let Some(raw) = parsed.raw_fields.remove(field_name) else {
+        return Ok(None);
+    };
+    let trimmed = trim_ascii_edges(&raw);
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    ctor(trimmed).map(Some)
+}
+
+/// [`take_optional_scalar`] for required fields: absent or blank becomes the
+/// caller-supplied `missing` error instead of `None`.
+pub(super) fn take_required_scalar<T, E>(
+    parsed: &mut ParsedTypedBlock,
+    field_name: &str,
+    ctor: impl FnOnce(&str) -> Result<T, E>,
+    missing: impl FnOnce() -> E,
+) -> Result<T, E> {
+    take_optional_scalar(parsed, field_name, ctor)?.ok_or_else(missing)
+}
+
+/// [`take_optional_scalar`] for plain text fields with no domain constructor:
+/// the trimmed value verbatim, blank-as-absent.
+pub(super) fn take_scalar_text(parsed: &mut ParsedTypedBlock, field_name: &str) -> Option<String> {
+    let raw = parsed.raw_fields.remove(field_name)?;
+    let trimmed = trim_ascii_edges(&raw);
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
 /// Parse a comma-separated or scalar list field into a sorted, deduplicated
 /// `Vec<T>` using the provided constructor closure. Accepts both scalar
 /// (`field: value`) and bracket-list (`field: [a, b]`) syntax. Returns `None`
@@ -1104,6 +1148,81 @@ mod tests {
                 offset: 20,
             },
         }
+    }
+
+    fn parsed_block_with_fields(fields: &[(&str, &str)]) -> ParsedTypedBlock {
+        let block_span = span("test.adoc", 1, 1);
+        ParsedTypedBlock {
+            kind_word: "claim".to_string(),
+            kind_word_span: block_span.clone(),
+            id_text: "billing.credits".to_string(),
+            raw_fields: fields
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                .collect(),
+            raw_field_spans: BTreeMap::new(),
+            duplicate_keys: Vec::new(),
+            body_text: "x".to_string(),
+            body_inlines: ParsedTypedBlock::test_body_inlines_from_text("x"),
+            body_spans: Vec::new(),
+            content_spans: Vec::new(),
+            span: block_span.clone(),
+            close_fence_span: block_span,
+            body_separator_span: None,
+        }
+    }
+
+    #[test]
+    fn take_optional_scalar_treats_blank_as_absent_and_trims() {
+        let mut parsed =
+            parsed_block_with_fields(&[("status", "  "), ("lang", "  rust  "), ("keep", "x")]);
+
+        let blank: Result<Option<String>, ()> =
+            take_optional_scalar(&mut parsed, "status", |s| Ok(s.to_string()));
+        assert_eq!(blank, Ok(None));
+
+        let absent: Result<Option<String>, ()> =
+            take_optional_scalar(&mut parsed, "missing", |s| Ok(s.to_string()));
+        assert_eq!(absent, Ok(None));
+
+        let trimmed: Result<Option<String>, ()> =
+            take_optional_scalar(&mut parsed, "lang", |s| Ok(s.to_string()));
+        assert_eq!(trimmed, Ok(Some("rust".to_string())));
+
+        // The field is consumed either way; unrelated fields stay.
+        assert!(!parsed.raw_fields.contains_key("status"));
+        assert!(!parsed.raw_fields.contains_key("lang"));
+        assert!(parsed.raw_fields.contains_key("keep"));
+    }
+
+    #[test]
+    fn take_optional_scalar_propagates_ctor_error() {
+        let mut parsed = parsed_block_with_fields(&[("status", "bogus")]);
+        let result: Result<Option<String>, String> =
+            take_optional_scalar(&mut parsed, "status", |s| Err(s.to_string()));
+        assert_eq!(result, Err("bogus".to_string()));
+    }
+
+    #[test]
+    fn take_required_scalar_maps_blank_and_absent_to_missing() {
+        let mut parsed = parsed_block_with_fields(&[("status", "  ")]);
+        let blank: Result<String, &str> =
+            take_required_scalar(&mut parsed, "status", |s| Ok(s.to_string()), || "missing");
+        assert_eq!(blank, Err("missing"));
+        let absent: Result<String, &str> =
+            take_required_scalar(&mut parsed, "status", |s| Ok(s.to_string()), || "missing");
+        assert_eq!(absent, Err("missing"));
+    }
+
+    #[test]
+    fn take_scalar_text_trims_and_treats_blank_as_absent() {
+        let mut parsed = parsed_block_with_fields(&[("format", "  json  "), ("checks", " ")]);
+        assert_eq!(
+            take_scalar_text(&mut parsed, "format"),
+            Some("json".to_string())
+        );
+        assert_eq!(take_scalar_text(&mut parsed, "checks"), None);
+        assert_eq!(take_scalar_text(&mut parsed, "absent"), None);
     }
 
     fn claim_object() -> KnowledgeObject {

@@ -261,28 +261,17 @@ impl Observation {
 /// Required closed status: `status:` absent or blank is
 /// [`ObservationError::MissingStatus`].
 fn parse_status(parsed: &mut ParsedTypedBlock) -> Result<ObservationStatus, ObservationError> {
-    let Some(raw) = parsed.raw_fields.remove(STATUS_FIELD) else {
-        return Err(ObservationError::MissingStatus);
-    };
-    match ObservationStatus::try_new(&raw) {
-        // `try_new` trims, so an empty rejected value means the field was
-        // blank — report it as missing, not invalid.
-        Err(ObservationError::InvalidStatus(value)) if value.is_empty() => {
-            Err(ObservationError::MissingStatus)
-        }
-        result => result,
-    }
+    super::take_required_scalar(parsed, STATUS_FIELD, ObservationStatus::try_new, || {
+        ObservationError::MissingStatus
+    })
 }
 
 /// Optional positive integer; present-but-blank is treated as absent.
 fn parse_sample_size(
     parsed: &mut ParsedTypedBlock,
 ) -> Result<Option<SampleSize>, ObservationError> {
-    let Some(raw) = parsed.raw_fields.remove(SAMPLE_SIZE_FIELD) else {
-        return Ok(None);
-    };
-    match SampleSize::try_new(&raw) {
-        Ok(sample_size) => Ok(Some(sample_size)),
+    match super::take_optional_scalar(parsed, SAMPLE_SIZE_FIELD, SampleSize::try_new) {
+        Ok(sample_size) => Ok(sample_size),
         Err(SampleSizeError::Missing) => Ok(None),
         Err(SampleSizeError::Invalid(value)) => Err(ObservationError::InvalidSampleSize(value)),
     }
@@ -292,11 +281,8 @@ fn parse_sample_size(
 fn parse_observed_at(
     parsed: &mut ParsedTypedBlock,
 ) -> Result<Option<EffectiveDate>, ObservationError> {
-    let Some(raw) = parsed.raw_fields.remove(OBSERVED_AT_FIELD) else {
-        return Ok(None);
-    };
-    match EffectiveDate::try_new(&raw) {
-        Ok(observed_at) => Ok(Some(observed_at)),
+    match super::take_optional_scalar(parsed, OBSERVED_AT_FIELD, EffectiveDate::try_new) {
+        Ok(observed_at) => Ok(observed_at),
         Err(EffectiveDateError::Missing) => Ok(None),
         Err(EffectiveDateError::Invalid(value)) => Err(ObservationError::InvalidObservedAt(value)),
     }
