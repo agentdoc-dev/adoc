@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::graph::{
-    GraphArtifactDocument, GraphIndex, GraphKnowledgeObjectNode, GraphTraversalEdge,
-    GraphTraversalNode, GraphTraversalQuery, GraphTraversalResult,
+    GraphArtifactDocument, GraphIndex, GraphKnowledgeObjectNode, GraphProseBlock,
+    GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery, GraphTraversalResult,
 };
 use crate::domain::identity::ObjectId;
 use crate::domain::ports::artifact_reader::ArtifactReader;
@@ -55,6 +55,17 @@ impl GraphSession {
 
     pub(crate) fn prose_block_count(&self) -> usize {
         self.index.prose_block_count()
+    }
+
+    // V1.7.1: consumed by the prose retrieval corpus in the next commit.
+    #[allow(dead_code)]
+    pub(crate) fn prose_block(&self, id: &str) -> Option<&GraphProseBlock> {
+        self.index.prose_block(id)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn prose_blocks(&self) -> impl Iterator<Item = &GraphProseBlock> {
+        self.index.prose_blocks()
     }
 
     pub(crate) fn has_markdown_pages(&self) -> bool {
