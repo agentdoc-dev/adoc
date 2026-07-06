@@ -10,7 +10,8 @@ pub(crate) use json::JsonPresenter;
 pub(crate) use markdown::MarkdownReviewPresenter;
 pub(crate) use plain::PlainPresenter;
 pub(crate) use port::{
-    ExpiresInfo, PresentationRecord, RenderMeta, RetrievalPresenter, RetrievalView,
+    ExpiresInfo, PresentationEntry, PresentationRecord, RenderMeta, RetrievalPresenter,
+    RetrievalView,
 };
 pub(crate) use styled::StyledPresenter;
 

@@ -1,9 +1,9 @@
 use std::fmt::Write as FmtWrite;
 use std::io;
 
-use adoc_core::{RetrievalRecord, RetrievalRelations};
+use adoc_core::{ProseRecord, RetrievalRecord, RetrievalRelations};
 
-use super::port::{ExpiresInfo, RetrievalPresenter, RetrievalView};
+use super::port::{ExpiresInfo, PresentationEntry, RetrievalPresenter, RetrievalView};
 use super::style::footer::render_footer;
 use super::style::humanise::format_diff;
 
@@ -15,15 +15,18 @@ pub(crate) struct PlainPresenter;
 impl RetrievalPresenter for PlainPresenter {
     fn present(&self, view: &RetrievalView, out: &mut dyn io::Write) -> io::Result<()> {
         let mut buf = String::new();
-        for (index, presentation_record) in view.records.iter().enumerate() {
+        for (index, entry) in view.records.iter().enumerate() {
             if index > 0 {
                 buf.push('\n');
             }
-            render_record(
-                &mut buf,
-                &presentation_record.record,
-                presentation_record.expires.as_ref(),
-            );
+            match entry {
+                PresentationEntry::KnowledgeObject(presentation_record) => render_record(
+                    &mut buf,
+                    &presentation_record.record,
+                    presentation_record.expires.as_ref(),
+                ),
+                PresentationEntry::Prose(record) => render_prose_record(&mut buf, record),
+            }
         }
         if let Some(footer) = &view.footer {
             // Footer: one blank line, then the provenance line.
@@ -116,6 +119,35 @@ pub(crate) fn render_record(
         output.push_str("Relations:\n");
         relations_items(output, &record.relations);
     }
+}
+
+/// V1.7.1 (ADR-0040): renders a prose search hit as plain text.
+///
+/// The `Prose:` label (vs `Object:`) keeps positional block ids visually
+/// distinct from citable Object IDs; prose is orientation context, not
+/// citable knowledge.
+pub(crate) fn render_prose_record(output: &mut String, record: &ProseRecord) {
+    writeln!(output, "Prose: {}", record.id).expect("writing to String cannot fail");
+    writeln!(output, "Kind: {}", record.block_kind.as_str())
+        .expect("writing to String cannot fail");
+    if let Some(context) = &record.heading_context {
+        writeln!(output, "Context: {context}").expect("writing to String cannot fail");
+    }
+
+    output.push('\n');
+    output.push_str("Text:\n");
+    output.push_str(&record.text);
+    if !record.text.ends_with('\n') {
+        output.push('\n');
+    }
+
+    output.push('\n');
+    writeln!(
+        output,
+        "Source: {}:{}:{}",
+        record.source.path, record.source.line, record.source.column
+    )
+    .expect("writing to String cannot fail");
 }
 
 // ---------------------------------------------------------------------------
@@ -235,18 +267,65 @@ mod tests {
 
     fn view_for(record: RetrievalRecord) -> RetrievalView {
         RetrievalView {
-            records: vec![PresentationRecord {
+            records: vec![PresentationEntry::KnowledgeObject(PresentationRecord {
                 record,
                 related_statuses: BTreeMap::new(),
                 expires: None,
-            }],
+            })],
             diagnostics: Vec::new(),
             footer: Some(default_meta()),
         }
     }
 
+    #[test]
+    fn plain_presenter_renders_prose_record_with_context_and_source() {
+        let view = RetrievalView {
+            records: vec![PresentationEntry::Prose(prose_record())],
+            diagnostics: Vec::new(),
+            footer: None,
+        };
+        let mut buf = Vec::new();
+        PlainPresenter.present(&view, &mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+
+        assert_eq!(
+            text,
+            "Prose: guides.page#block-0001\nKind: paragraph\nContext: Billing basics\n\nText:\nCredits burn on completion.\n\nSource: docs/guide.md:7:1\n"
+        );
+    }
+
+    #[test]
+    fn plain_presenter_omits_context_line_for_prose_before_any_heading() {
+        let mut record = prose_record();
+        record.heading_context = None;
+        let mut buf = String::new();
+        render_prose_record(&mut buf, &record);
+
+        assert!(!buf.contains("Context:"));
+        assert!(buf.starts_with("Prose: guides.page#block-0001\nKind: paragraph\n\nText:"));
+    }
+
+    fn prose_record() -> adoc_core::ProseRecord {
+        adoc_core::ProseRecord {
+            id: "guides.page#block-0001".to_string(),
+            page_id: "guides.page".to_string(),
+            block_kind: adoc_core::ProseBlockKind::Paragraph,
+            text: "Credits burn on completion.".to_string(),
+            heading_context: Some("Billing basics".to_string()),
+            source: RetrievalSource {
+                path: "docs/guide.md".to_string(),
+                line: 7,
+                column: 1,
+            },
+            search_match: None,
+        }
+    }
+
     fn primary_mut(view: &mut RetrievalView) -> &mut PresentationRecord {
-        view.records.first_mut().expect("test view has a record")
+        match view.records.first_mut().expect("test view has a record") {
+            PresentationEntry::KnowledgeObject(record) => record,
+            PresentationEntry::Prose(_) => panic!("test view holds a knowledge object"),
+        }
     }
 
     fn render(view: &RetrievalView) -> String {

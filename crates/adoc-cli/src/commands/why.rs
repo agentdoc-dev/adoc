@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use adoc_local::{LocalContext, UnrestrictedPathPolicy, WhyInput, WhyUseCase};
 
 use crate::error::CliError;
-use crate::presentation::{RenderMeta, ResolvedFormat, RetrievalView, make_presenter};
+use crate::presentation::{
+    PresentationEntry, RenderMeta, ResolvedFormat, RetrievalView, make_presenter,
+};
 
 use super::{
     current_dir, emit_retrieval_error, eprint_diagnostics, presentation_record_from_resolved,
@@ -37,11 +39,19 @@ pub(crate) fn why(object_id: String, artifact: Option<PathBuf>, resolved: Resolv
     let records: Vec<_> = outcome
         .records
         .into_iter()
-        .map(|record| presentation_record_from_resolved(record, true))
+        .map(|record| {
+            PresentationEntry::KnowledgeObject(presentation_record_from_resolved(record, true))
+        })
         .collect();
-    let footer = records.first().map(|presentation_record| RenderMeta {
+    let footer = records.first().map(|entry| RenderMeta {
         artifact: outcome.artifact,
-        trust: presentation_record.record.fields.get("trust").cloned(),
+        trust: match entry {
+            PresentationEntry::KnowledgeObject(presentation_record) => {
+                presentation_record.record.fields.get("trust").cloned()
+            }
+            // `adoc why` is Knowledge-Object-only (ADR-0040).
+            PresentationEntry::Prose(_) => None,
+        },
         duration: outcome.duration,
     });
     let view = RetrievalView {

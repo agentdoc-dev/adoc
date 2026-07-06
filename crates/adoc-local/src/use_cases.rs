@@ -12,7 +12,7 @@ use adoc_core::{
     GraphDirection, GraphInput as CoreGraphInput, GraphRelationKind, GraphTraversalEnvelope,
     GraphTraversalQuery, GraphTraversalResult, ImpactedEnvelope, ObjectDiffEnvelope,
     PatchApplyInput as CorePatchApplyInput, PatchApplyResult, PatchCheckResult, PatchInput,
-    RelPath, RetrievalEntry, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
+    ProseRecord, RelPath, RetrievalEntry, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
     RetrievalRecord, ReviewEnvelope, ReviewError, ReviewInput as CoreReviewInput,
     SearchArtifactInspectionInput, SearchFilters, SearchMode, SearchQuery, SearchRecordScope,
     Severity, SnapshotSelector, StaleEnvelope, apply_patch as core_apply_patch,
@@ -189,12 +189,30 @@ pub struct SearchInput {
     pub relation: Option<GraphRelationKind>,
     pub direction: Option<GraphDirection>,
     pub top: NonZeroUsize,
+    /// V1.7.1 (ADR-0040): which record types the search returns. Structural —
+    /// the interface layers (clap conflicts, MCP argument validation) map
+    /// their flag pairs onto this enum, so an invalid combination cannot
+    /// reach the use case.
+    pub scope: SearchRecordScope,
+}
+
+/// V1.7.1: one search result entry — a Knowledge Object record enriched with
+/// its relation-target statuses, or a prose record (which has no relations to
+/// enrich). Serializes with the same `record_type` tag as the wire envelope.
+// Size asymmetry follows the `RetrievalEntry` precedent: the record carries
+// all fields inline; boxing adds indirection for no wire benefit.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "record_type", rename_all = "snake_case")]
+pub enum ResolvedSearchEntry {
+    KnowledgeObject(ResolvedRetrievalRecord),
+    Prose(ProseRecord),
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchOutcome {
     pub envelope: RetrievalEnvelope,
-    pub records: Vec<ResolvedRetrievalRecord>,
+    pub records: Vec<ResolvedSearchEntry>,
     pub diagnostics: Vec<Diagnostic>,
     pub exit_code: i32,
 }
@@ -1107,10 +1125,7 @@ where
             },
             top: input.top,
             query_vector,
-            // V1.7.1: pinned until the CLI/MCP scope flags land in the next
-            // commit — result sets stay byte-identical to pre-V1.7 while the
-            // envelope moves to adoc.retrieval.v1.
-            scope: SearchRecordScope::ObjectsOnly,
+            scope: input.scope,
         },
     );
     let diagnostics = merge_diagnostics(load_diagnostics, search_result.diagnostics);
@@ -1119,29 +1134,14 @@ where
         .records
         .into_iter()
         .map(|entry| match entry {
-            RetrievalEntry::KnowledgeObject(record) => resolved_record(&session, record),
-            RetrievalEntry::Prose(record) => {
-                unreachable!(
-                    "scope is pinned to ObjectsOnly; got prose record `{}`",
-                    record.id
-                )
+            RetrievalEntry::KnowledgeObject(record) => {
+                ResolvedSearchEntry::KnowledgeObject(resolved_record(&session, record))
             }
+            RetrievalEntry::Prose(record) => ResolvedSearchEntry::Prose(record),
         })
         .collect::<Vec<_>>();
-    let envelope = RetrievalEnvelope::new(
-        records
-            .iter()
-            .map(|resolved| RetrievalEntry::KnowledgeObject(resolved.record.clone()))
-            .collect(),
-        diagnostics.clone(),
-    );
 
-    Ok(SearchOutcome {
-        envelope,
-        records,
-        diagnostics,
-        exit_code,
-    })
+    Ok(search_outcome(records, diagnostics, exit_code))
 }
 
 fn diff_with_context<P>(
@@ -1838,14 +1838,19 @@ fn resolved_record(
 }
 
 fn search_outcome(
-    records: Vec<ResolvedRetrievalRecord>,
+    records: Vec<ResolvedSearchEntry>,
     diagnostics: Vec<Diagnostic>,
     exit_code: i32,
 ) -> SearchOutcome {
     let envelope = RetrievalEnvelope::new(
         records
             .iter()
-            .map(|resolved| RetrievalEntry::KnowledgeObject(resolved.record.clone()))
+            .map(|resolved| match resolved {
+                ResolvedSearchEntry::KnowledgeObject(resolved) => {
+                    RetrievalEntry::KnowledgeObject(resolved.record.clone())
+                }
+                ResolvedSearchEntry::Prose(record) => RetrievalEntry::Prose(record.clone()),
+            })
             .collect(),
         diagnostics.clone(),
     );
