@@ -244,7 +244,7 @@ fn prose_tokens(block: &GraphProseBlock) -> Vec<String> {
         .as_deref()
         .map(tokenize)
         .unwrap_or_default();
-    tokens.extend(tokenize(&block.content_text()));
+    tokens.extend(tokenize(&block.content_text_ref()));
     tokens
 }
 
