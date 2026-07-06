@@ -1,5 +1,4 @@
 use std::fmt::Write as FmtWrite;
-use std::io;
 use std::path::PathBuf;
 
 use adoc_core::{
@@ -8,12 +7,11 @@ use adoc_core::{
 };
 use adoc_local::{GraphInput as LocalGraphInput, LocalContext, UnrestrictedPathPolicy};
 
-use crate::error::CliError;
+use crate::presentation::ResolvedFormat;
 use crate::presentation::style::key::cyan_key;
 use crate::presentation::style::kv::faint_label;
-use crate::presentation::{ResolvedFormat, json as json_presentation};
 
-use super::{current_dir, eprint_diagnostics, report};
+use super::{current_dir, emit_envelope_error, eprint_diagnostics, report, write_json_or_report};
 
 pub(crate) struct GraphCommandInput {
     pub(crate) object_id: String,
@@ -39,7 +37,8 @@ pub(crate) fn graph(input: GraphCommandInput, resolved: ResolvedFormat) -> i32 {
     };
     let exit_code = outcome.exit_code;
     if exit_code != 0 {
-        return emit_graph_error(outcome.envelope, resolved, exit_code);
+        let envelope = outcome.envelope;
+        return emit_envelope_error(&envelope, &envelope.diagnostics, resolved, exit_code);
     }
     if resolved != ResolvedFormat::Json && !outcome.envelope.diagnostics.is_empty() {
         eprint_diagnostics(&outcome.envelope.diagnostics);
@@ -51,32 +50,15 @@ pub(crate) fn graph(input: GraphCommandInput, resolved: ResolvedFormat) -> i32 {
         diagnostics: outcome.envelope.diagnostics,
     };
     match resolved {
-        ResolvedFormat::Json => write_graph_json(GraphTraversalEnvelope::from(result), exit_code),
+        ResolvedFormat::Json => {
+            write_json_or_report(&GraphTraversalEnvelope::from(result), exit_code)
+        }
         ResolvedFormat::Plain => write_graph_text(&result, false),
         ResolvedFormat::Styled => write_graph_text(&result, true),
         ResolvedFormat::Markdown => {
             unreachable!("main.rs rejects markdown format for `adoc graph` before dispatch")
         }
     }
-}
-
-fn emit_graph_error(
-    envelope: GraphTraversalEnvelope,
-    resolved: ResolvedFormat,
-    exit_code: i32,
-) -> i32 {
-    if resolved == ResolvedFormat::Json {
-        return write_graph_json(envelope, exit_code);
-    }
-    eprint_diagnostics(&envelope.diagnostics);
-    exit_code
-}
-
-fn write_graph_json(envelope: GraphTraversalEnvelope, exit_code: i32) -> i32 {
-    json_presentation::write_json(&envelope, &mut io::stdout()).map_or_else(
-        |source| report(CliError::RetrievalIo { source }),
-        |()| exit_code,
-    )
 }
 
 fn write_graph_text(result: &GraphTraversalResult, styled: bool) -> i32 {

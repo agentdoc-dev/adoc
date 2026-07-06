@@ -9,11 +9,11 @@ use adoc_local::{
 };
 
 use crate::error::CliError;
+use crate::presentation::ResolvedFormat;
 use crate::presentation::style::key::cyan_key;
 use crate::presentation::style::kv::faint_label;
-use crate::presentation::{ResolvedFormat, json as json_presentation};
 
-use super::{current_dir, eprint_diagnostics, report};
+use super::{current_dir, eprint_diagnostics, report, write_json_or_report};
 
 pub(crate) struct PatchCommandInput {
     pub(crate) check: Option<PathBuf>,
@@ -46,7 +46,7 @@ fn patch_check(patch_path: PathBuf, artifact: Option<PathBuf>, resolved: Resolve
     let exit_code = outcome.exit_code;
 
     match resolved {
-        ResolvedFormat::Json => write_patch_json(&result, exit_code),
+        ResolvedFormat::Json => write_json_or_report(&result, exit_code),
         ResolvedFormat::Plain => write_patch_text(&result, false, exit_code),
         ResolvedFormat::Styled => write_patch_text(&result, true, exit_code),
         ResolvedFormat::Markdown => {
@@ -89,27 +89,13 @@ fn patch_apply(apply: String, artifact: Option<PathBuf>, resolved: ResolvedForma
     let exit_code = outcome.exit_code;
 
     match resolved {
-        ResolvedFormat::Json => write_apply_json(&result, exit_code),
+        ResolvedFormat::Json => write_json_or_report(&result, exit_code),
         ResolvedFormat::Plain => write_apply_text(&result, false, exit_code),
         ResolvedFormat::Styled => write_apply_text(&result, true, exit_code),
         ResolvedFormat::Markdown => {
             unreachable!("main.rs rejects markdown format for `adoc patch` before dispatch")
         }
     }
-}
-
-fn write_patch_json(result: &PatchCheckResult, exit_code: i32) -> i32 {
-    json_presentation::write_json(result, &mut io::stdout()).map_or_else(
-        |source| report(CliError::RetrievalIo { source }),
-        |()| exit_code,
-    )
-}
-
-fn write_apply_json(result: &PatchApplyResult, exit_code: i32) -> i32 {
-    json_presentation::write_json(result, &mut io::stdout()).map_or_else(
-        |source| report(CliError::RetrievalIo { source }),
-        |()| exit_code,
-    )
 }
 
 fn write_apply_text(result: &PatchApplyResult, styled: bool, exit_code: i32) -> i32 {

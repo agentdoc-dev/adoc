@@ -1,16 +1,14 @@
 use std::fmt::Write as FmtWrite;
-use std::io;
 use std::path::PathBuf;
 
 use adoc_core::{StaleCategory, StaleEnvelope, StaleRecord};
 use adoc_local::{LocalContext, StaleInput as LocalStaleInput, UnrestrictedPathPolicy};
 
-use crate::error::CliError;
+use crate::presentation::ResolvedFormat;
 use crate::presentation::style::key::cyan_key;
 use crate::presentation::style::kv::faint_label;
-use crate::presentation::{ResolvedFormat, json as json_presentation};
 
-use super::{current_dir, eprint_diagnostics, report};
+use super::{current_dir, emit_envelope_error, eprint_diagnostics, report, write_json_or_report};
 
 pub(crate) struct StaleCommandInput {
     pub(crate) artifact: Option<PathBuf>,
@@ -32,34 +30,20 @@ pub(crate) fn stale(input: StaleCommandInput, resolved: ResolvedFormat) -> i32 {
     };
     let exit_code = outcome.exit_code;
     if exit_code != 0 {
-        return emit_stale_error(outcome.envelope, resolved, exit_code);
+        let envelope = outcome.envelope;
+        return emit_envelope_error(&envelope, &envelope.diagnostics, resolved, exit_code);
     }
     if resolved != ResolvedFormat::Json && !outcome.envelope.diagnostics.is_empty() {
         eprint_diagnostics(&outcome.envelope.diagnostics);
     }
     match resolved {
-        ResolvedFormat::Json => write_stale_json(&outcome.envelope, exit_code),
+        ResolvedFormat::Json => write_json_or_report(&outcome.envelope, exit_code),
         ResolvedFormat::Plain => write_stale_text(&outcome.envelope, false),
         ResolvedFormat::Styled => write_stale_text(&outcome.envelope, true),
         ResolvedFormat::Markdown => {
             unreachable!("main.rs rejects markdown format for `adoc stale` before dispatch")
         }
     }
-}
-
-fn emit_stale_error(envelope: StaleEnvelope, resolved: ResolvedFormat, exit_code: i32) -> i32 {
-    if resolved == ResolvedFormat::Json {
-        return write_stale_json(&envelope, exit_code);
-    }
-    eprint_diagnostics(&envelope.diagnostics);
-    exit_code
-}
-
-fn write_stale_json(envelope: &StaleEnvelope, exit_code: i32) -> i32 {
-    json_presentation::write_json(envelope, &mut io::stdout()).map_or_else(
-        |source| report(CliError::RetrievalIo { source }),
-        |()| exit_code,
-    )
 }
 
 fn write_stale_text(envelope: &StaleEnvelope, styled: bool) -> i32 {

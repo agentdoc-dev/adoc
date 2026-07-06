@@ -14,9 +14,9 @@ use adoc_local::{
 use crate::error::CliError;
 use crate::presentation::style::key::cyan_key;
 use crate::presentation::style::kv::faint_label;
-use crate::presentation::{MarkdownReviewPresenter, ResolvedFormat, json as json_presentation};
+use crate::presentation::{MarkdownReviewPresenter, ResolvedFormat};
 
-use super::{current_dir, eprint_diagnostics, report};
+use super::{current_dir, eprint_diagnostics, report, write_json_or_report};
 
 pub(crate) struct ImpactedByCommandInput {
     pub(crate) paths: Vec<String>,
@@ -51,7 +51,7 @@ pub(crate) fn impacted_by(input: ImpactedByCommandInput, resolved: ResolvedForma
         eprint_diagnostics(&outcome.envelope.diagnostics);
     }
     match resolved {
-        ResolvedFormat::Json => write_impacted_json(&outcome.envelope, exit_code),
+        ResolvedFormat::Json => write_json_or_report(&outcome.envelope, exit_code),
         ResolvedFormat::Plain => write_impacted_text(&outcome.envelope, false),
         ResolvedFormat::Styled => write_impacted_text(&outcome.envelope, true),
         ResolvedFormat::Markdown => write_impacted_markdown(&outcome.envelope, exit_code),
@@ -65,7 +65,7 @@ fn emit_impacted_error(
 ) -> i32 {
     match resolved {
         // JSON consumers always get the envelope (ADR-0038).
-        ResolvedFormat::Json => write_impacted_json(&envelope, exit_code),
+        ResolvedFormat::Json => write_json_or_report(&envelope, exit_code),
         // Markdown is a PR-comment surface: a bot pasting stdout must show a
         // visible refusal, not an empty comment. Stderr keeps the
         // fix-oriented diagnostics for terminal users either way.
@@ -82,13 +82,6 @@ fn emit_impacted_error(
             exit_code
         }
     }
-}
-
-fn write_impacted_json(envelope: &ImpactedEnvelope, exit_code: i32) -> i32 {
-    json_presentation::write_json(envelope, &mut io::stdout()).map_or_else(
-        |source| report(CliError::RetrievalIo { source }),
-        |()| exit_code,
-    )
 }
 
 fn write_impacted_markdown(envelope: &ImpactedEnvelope, exit_code: i32) -> i32 {

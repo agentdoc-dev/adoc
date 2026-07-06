@@ -34,6 +34,33 @@ pub(crate) use search::{SearchCommandInput, search_command};
 pub(crate) use stale::{StaleCommandInput, stale};
 pub(crate) use why::why;
 
+/// The shared JSON-emission tail of every read command: serialize the
+/// envelope to stdout, keep the command's exit code, and route an I/O
+/// failure through the standard report path.
+fn write_json_or_report<T: serde::Serialize>(envelope: &T, exit_code: i32) -> i32 {
+    json_presentation::write_json(envelope, &mut std::io::stdout()).map_or_else(
+        |source| report(CliError::RetrievalIo { source }),
+        |()| exit_code,
+    )
+}
+
+/// The signal read commands' shared error emission: JSON output still ships
+/// the full envelope; human formats print the diagnostics to stderr. The
+/// impacted-by Markdown error branch is deliberately NOT unified here
+/// (ADR-0038 records the per-command differences as intent).
+fn emit_envelope_error<T: serde::Serialize>(
+    envelope: &T,
+    diagnostics: &[Diagnostic],
+    resolved: ResolvedFormat,
+    exit_code: i32,
+) -> i32 {
+    if resolved == ResolvedFormat::Json {
+        return write_json_or_report(envelope, exit_code);
+    }
+    eprint_diagnostics(diagnostics);
+    exit_code
+}
+
 fn emit_retrieval_error(
     diagnostics: Vec<Diagnostic>,
     resolved: ResolvedFormat,
