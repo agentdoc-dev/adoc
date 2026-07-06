@@ -5,8 +5,7 @@ use std::path::PathBuf;
 
 use adoc_core::{PatchApplyResult, PatchCheckResult};
 use adoc_local::{
-    LocalContext, PatchApplyInput, PatchApplySource, PatchApplyUseCase, PatchCheckInput,
-    PatchCheckUseCase, UnrestrictedPathPolicy,
+    LocalContext, PatchApplyInput, PatchApplySource, PatchCheckInput, UnrestrictedPathPolicy,
 };
 
 use crate::error::CliError;
@@ -36,7 +35,7 @@ fn patch_check(patch_path: PathBuf, artifact: Option<PathBuf>, resolved: Resolve
         Err(error) => return report(error),
     };
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match PatchCheckUseCase::new(context).run(PatchCheckInput {
+    let outcome = match context.patch_check(PatchCheckInput {
         patch_path,
         artifact,
     }) {
@@ -78,7 +77,7 @@ fn patch_apply(apply: String, artifact: Option<PathBuf>, resolved: ResolvedForma
         Err(error) => return report(error),
     };
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match PatchApplyUseCase::new(context).run(PatchApplyInput {
+    let outcome = match context.patch_apply(PatchApplyInput {
         patch: source,
         artifact,
         interface: "cli".to_string(),

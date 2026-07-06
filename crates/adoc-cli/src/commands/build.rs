@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use adoc_local::{BuildInput, BuildUseCase, LocalContext, UnrestrictedPathPolicy};
+use adoc_local::{BuildInput, LocalContext, UnrestrictedPathPolicy};
 
 use super::{current_dir, print_diagnostics, print_summary, report};
 
@@ -11,7 +11,7 @@ pub(crate) fn build(path: Option<PathBuf>, out: Option<PathBuf>, no_embeddings: 
     };
 
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match BuildUseCase::new(context).run(BuildInput {
+    let outcome = match context.build(BuildInput {
         path,
         out,
         no_embeddings,

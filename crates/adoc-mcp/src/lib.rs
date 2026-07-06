@@ -9,13 +9,10 @@ use adoc_core::{
     mcp_patch_apply_disabled_refusal,
 };
 use adoc_local::{
-    BuildInput, BuildUseCase, CheckInput, CheckUseCase, ContradictionsInput, ContradictionsUseCase,
-    DiffInput, DiffUseCase, GraphInput, GraphUseCase, ImpactedChangedSet, ImpactedInput,
-    ImpactedUseCase, InitInput, InitUseCase, LocalContext, PatchApplyInput, PatchApplySource,
-    PatchApplyUseCase, PatchCheckInput, PatchCheckUseCase, PathPolicy, ProjectConfig,
-    ProjectRootPathPolicy, ProjectStatusInput, ProjectStatusRefresh, ProjectStatusUseCase,
-    ReviewInput, ReviewPatchSource, ReviewUseCase, SearchInput, SearchUseCase, StaleInput,
-    StaleUseCase, WhyInput, WhyUseCase,
+    BuildInput, CheckInput, ContradictionsInput, DiffInput, GraphInput, ImpactedChangedSet,
+    ImpactedInput, LocalContext, PatchApplyInput, PatchApplySource, PatchCheckInput, PathPolicy,
+    ProjectConfig, ProjectRootPathPolicy, ProjectStatusInput, ProjectStatusRefresh, ReviewInput,
+    ReviewPatchSource, SearchInput, StaleInput, WhyInput,
 };
 use rmcp::{
     ServerHandler,
@@ -69,21 +66,21 @@ impl AgentDocMcpServer {
 
     pub fn run_init(&self, params: InitParams) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
-        let outcome = InitUseCase::new(context).run(InitInput)?;
+        let outcome = context.init()?;
         serde_json::to_value(command_envelope("adoc_init", outcome.exit_code, outcome))
             .map_err(Into::into)
     }
 
     pub fn run_check(&self, params: CheckParams) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
-        let outcome = CheckUseCase::new(context).run(CheckInput { path: params.path })?;
+        let outcome = context.check(CheckInput { path: params.path })?;
         serde_json::to_value(command_envelope("adoc_check", outcome.exit_code, outcome))
             .map_err(Into::into)
     }
 
     pub fn run_build(&self, params: BuildParams) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
-        let outcome = BuildUseCase::new(context).run(BuildInput {
+        let outcome = context.build(BuildInput {
             path: params.path,
             out: params.out,
             no_embeddings: params.no_embeddings,
@@ -94,7 +91,7 @@ impl AgentDocMcpServer {
 
     pub fn run_why(&self, params: WhyParams) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
-        let outcome = WhyUseCase::new(context).run(WhyInput {
+        let outcome = context.why(WhyInput {
             object_id: params.object_id,
             artifact: params.artifact,
         })?;
@@ -111,7 +108,7 @@ impl AgentDocMcpServer {
 
     pub fn run_graph(&self, params: GraphParams) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
-        let outcome = GraphUseCase::new(context).run(GraphInput {
+        let outcome = context.graph(GraphInput {
             object_id: params.object_id,
             artifact: params.artifact,
             relation: parse_relation(params.relation.as_deref())?,
@@ -122,7 +119,7 @@ impl AgentDocMcpServer {
 
     pub fn run_stale(&self, params: StaleParams) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
-        let outcome = StaleUseCase::new(context).run(StaleInput {
+        let outcome = context.stale(StaleInput {
             artifact: params.artifact,
             within_days: params.within_days,
         })?;
@@ -134,7 +131,7 @@ impl AgentDocMcpServer {
         params: ContradictionsParams,
     ) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
-        let outcome = ContradictionsUseCase::new(context).run(ContradictionsInput {
+        let outcome = context.contradictions(ContradictionsInput {
             artifact: params.artifact,
             all: params.all,
         })?;
@@ -155,7 +152,7 @@ impl AgentDocMcpServer {
             }
         };
         let context = self.context(params.project_root)?;
-        let outcome = ImpactedUseCase::new(context).run(ImpactedInput {
+        let outcome = context.impacted(ImpactedInput {
             artifact: params.artifact,
             changed,
         })?;
@@ -168,7 +165,7 @@ impl AgentDocMcpServer {
         let top = NonZeroUsize::new(params.top.unwrap_or(10)).ok_or_else(|| {
             McpAdapterError::InvalidArguments("top must be greater than zero".to_string())
         })?;
-        let outcome = SearchUseCase::new(context).run(SearchInput {
+        let outcome = context.search(SearchInput {
             query: params.query,
             artifact: params.artifact,
             search_artifact: params.search_artifact,
@@ -194,7 +191,7 @@ impl AgentDocMcpServer {
         let context = self.context(params.project_root)?;
         match params.input {
             PatchInput::Path { patch_path } => {
-                let outcome = PatchCheckUseCase::new(context).run(PatchCheckInput {
+                let outcome = context.patch_check(PatchCheckInput {
                     patch_path,
                     artifact: params.artifact,
                 })?;
@@ -234,7 +231,7 @@ impl AgentDocMcpServer {
             PatchInput::Path { patch_path } => PatchApplySource::Path(patch_path),
             PatchInput::Inline { patch } => PatchApplySource::Inline(patch),
         };
-        let outcome = PatchApplyUseCase::new(context).run(PatchApplyInput {
+        let outcome = context.patch_apply(PatchApplyInput {
             patch,
             artifact: params.artifact,
             interface: "mcp".to_string(),
@@ -244,7 +241,7 @@ impl AgentDocMcpServer {
 
     pub fn run_diff(&self, params: AdocDiffParams) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
-        let outcome = DiffUseCase::new(context).run(DiffInput {
+        let outcome = context.diff(DiffInput {
             base_ref: params.base_ref,
             head_ref: params.head_ref,
         })?;
@@ -257,7 +254,7 @@ impl AgentDocMcpServer {
             PatchInput::Path { patch_path } => ReviewPatchSource::Path(patch_path),
             PatchInput::Inline { patch } => ReviewPatchSource::Inline(patch),
         });
-        let outcome = ReviewUseCase::new(context).run(ReviewInput {
+        let outcome = context.review(ReviewInput {
             base_ref: params.base_ref,
             head_ref: params.head_ref,
             patch,
@@ -270,7 +267,7 @@ impl AgentDocMcpServer {
         params: ProjectStatusParams,
     ) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
-        let outcome = ProjectStatusUseCase::new(context).run(ProjectStatusInput {
+        let outcome = context.project_status(ProjectStatusInput {
             refresh: parse_project_status_refresh(params.refresh.as_deref())?,
             no_embeddings: params.no_embeddings,
         })?;

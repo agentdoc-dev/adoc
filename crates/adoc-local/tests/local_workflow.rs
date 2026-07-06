@@ -4,10 +4,9 @@ use std::path::{Path, PathBuf};
 
 use adoc_core::SearchRecordScope;
 use adoc_local::{
-    BuildInput, BuildUseCase, CheckInput, CheckUseCase, GraphInput, GraphUseCase, InitInput,
-    InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase, ProjectConfig,
-    ProjectStatusInput, ProjectStatusRefresh, ProjectStatusUseCase, ResolvedSearchEntry,
-    SearchInput, SearchUseCase, UnrestrictedPathPolicy, WhyInput, WhyUseCase,
+    BuildInput, CheckInput, GraphInput, LocalContext, PatchCheckInput, ProjectConfig,
+    ProjectStatusInput, ProjectStatusRefresh, ResolvedSearchEntry, SearchInput,
+    UnrestrictedPathPolicy, WhyInput,
 };
 
 fn write(path: &Path, contents: &str) {
@@ -33,8 +32,8 @@ fn write_config(root: &Path, body: &str) {
 }
 
 fn build_with_config(root: &Path) {
-    BuildUseCase::new(context(root))
-        .run(BuildInput {
+    context(root)
+        .build(BuildInput {
             path: None,
             out: None,
             no_embeddings: true,
@@ -93,8 +92,8 @@ fn init_refuses_to_overwrite_existing_project_files() {
     let root = workspace.path();
     write(&root.join("agentdoc.config.yaml"), "version: 1\n");
 
-    let error = InitUseCase::new(context(root))
-        .run(InitInput)
+    let error = context(root)
+        .init()
         .expect_err("init should reject existing config");
 
     assert_eq!(error.exit_code(), 1);
@@ -111,8 +110,8 @@ fn check_uses_configured_docs_path_and_returns_diagnostics_without_printing() {
         "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
     );
 
-    let outcome = CheckUseCase::new(context(root))
-        .run(CheckInput { path: None })
+    let outcome = context(root)
+        .check(CheckInput { path: None })
         .expect("check should run");
 
     assert_eq!(outcome.exit_code, 0);
@@ -130,8 +129,8 @@ fn build_writes_artifacts_and_reports_written_paths() {
     let root = workspace.path();
     write(&root.join("docs/index.adoc"), &valid_source());
 
-    let outcome = BuildUseCase::new(context(root))
-        .run(BuildInput {
+    let outcome = context(root)
+        .build(BuildInput {
             path: Some(root.join("docs")),
             out: Some(root.join("dist")),
             no_embeddings: true,
@@ -151,16 +150,16 @@ fn lexical_search_returns_retrieval_records_and_exit_code() {
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();
     write(&root.join("docs/index.adoc"), &valid_source());
-    BuildUseCase::new(context(root))
-        .run(BuildInput {
+    context(root)
+        .build(BuildInput {
             path: Some(root.join("docs")),
             out: Some(root.join("dist")),
             no_embeddings: true,
         })
         .expect("build should run");
 
-    let outcome = SearchUseCase::new(context(root))
-        .run(SearchInput {
+    let outcome = context(root)
+        .search(SearchInput {
             query: "billing".to_string(),
             artifact: Some(root.join("dist/docs.graph.json")),
             search_artifact: None,
@@ -209,8 +208,8 @@ fn build_uses_configured_exact_paths_and_preserves_prior_search_when_skipped() {
     );
     write(&root.join("cache/docs.search.json"), "prior search cache");
 
-    let outcome = BuildUseCase::new(context(root))
-        .run(BuildInput {
+    let outcome = context(root)
+        .build(BuildInput {
             path: None,
             out: None,
             no_embeddings: false,
@@ -244,8 +243,8 @@ fn build_uses_deterministic_embedding_provider_from_config() {
         "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n",
     );
 
-    let outcome = BuildUseCase::new(context(root))
-        .run(BuildInput {
+    let outcome = context(root)
+        .build(BuildInput {
             path: None,
             out: None,
             no_embeddings: false,
@@ -272,16 +271,16 @@ fn semantic_search_uses_deterministic_provider_from_config() {
         root,
         "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n",
     );
-    BuildUseCase::new(context(root))
-        .run(BuildInput {
+    context(root)
+        .build(BuildInput {
             path: None,
             out: None,
             no_embeddings: false,
         })
         .expect("build should run");
 
-    let outcome = SearchUseCase::new(context(root))
-        .run(SearchInput {
+    let outcome = context(root)
+        .search(SearchInput {
             query: "billing docs readiness".to_string(),
             artifact: None,
             search_artifact: None,
@@ -321,16 +320,16 @@ fn retrieval_graph_search_and_patch_exit_codes_are_mapped_locally() {
     );
     build_with_config(root);
 
-    let why = WhyUseCase::new(context(root))
-        .run(WhyInput {
+    let why = context(root)
+        .why(WhyInput {
             object_id: "bad".to_string(),
             artifact: None,
         })
         .expect("why should run");
     assert_eq!(why.exit_code, 1);
 
-    let graph = GraphUseCase::new(context(root))
-        .run(GraphInput {
+    let graph = context(root)
+        .graph(GraphInput {
             object_id: "billing.missing".to_string(),
             artifact: None,
             relation: None,
@@ -339,8 +338,8 @@ fn retrieval_graph_search_and_patch_exit_codes_are_mapped_locally() {
         .expect("graph should run");
     assert_eq!(graph.exit_code, 3);
 
-    let search = SearchUseCase::new(context(root))
-        .run(SearchInput {
+    let search = context(root)
+        .search(SearchInput {
             query: "billing".to_string(),
             artifact: None,
             search_artifact: None,
@@ -371,8 +370,8 @@ fn retrieval_graph_search_and_patch_exit_codes_are_mapped_locally() {
 }
 "#,
     );
-    let patch = PatchCheckUseCase::new(context(root))
-        .run(PatchCheckInput {
+    let patch = context(root)
+        .patch_check(PatchCheckInput {
             patch_path: root.join("patch.json"),
             artifact: None,
         })
@@ -391,8 +390,8 @@ fn project_status_none_reports_config_and_artifact_readiness_without_refreshing(
     );
     let canonical_root = fs::canonicalize(root).expect("root canonicalizes");
 
-    let outcome = ProjectStatusUseCase::new(context(root))
-        .run(ProjectStatusInput {
+    let outcome = context(root)
+        .project_status(ProjectStatusInput {
             refresh: ProjectStatusRefresh::None,
             no_embeddings: false,
         })
@@ -435,8 +434,8 @@ fn project_status_check_refresh_validates_source_without_writing_artifacts() {
         "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
     );
 
-    let outcome = ProjectStatusUseCase::new(context(root))
-        .run(ProjectStatusInput {
+    let outcome = context(root)
+        .project_status(ProjectStatusInput {
             refresh: ProjectStatusRefresh::Check,
             no_embeddings: true,
         })
@@ -468,8 +467,8 @@ fn project_status_build_refresh_writes_artifacts_and_reports_readiness() {
         "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
     );
 
-    let outcome = ProjectStatusUseCase::new(context(root))
-        .run(ProjectStatusInput {
+    let outcome = context(root)
+        .project_status(ProjectStatusInput {
             refresh: ProjectStatusRefresh::Build,
             no_embeddings: false,
         })
@@ -506,8 +505,8 @@ fn project_status_reports_deterministic_semantic_readiness_with_quality_warning(
         "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: deterministic\n",
     );
 
-    let outcome = ProjectStatusUseCase::new(context(root))
-        .run(ProjectStatusInput {
+    let outcome = context(root)
+        .project_status(ProjectStatusInput {
             refresh: ProjectStatusRefresh::Build,
             no_embeddings: false,
         })

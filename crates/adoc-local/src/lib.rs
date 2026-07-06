@@ -11,15 +11,13 @@ pub use context::LocalContext;
 pub use error::LocalError;
 pub use path_policy::{PathPolicy, ProjectRootPathPolicy, UnrestrictedPathPolicy};
 pub use use_cases::{
-    BuildInput, BuildOutcome, BuildOutputs, BuildUseCase, CheckInput, CheckOutcome, CheckUseCase,
-    ContradictionsInput, ContradictionsOutcome, ContradictionsUseCase, DiffInput, DiffOutcome,
-    DiffUseCase, GraphInput, GraphOutcome, GraphUseCase, ImpactedChangedSet, ImpactedInput,
-    ImpactedOutcome, ImpactedUseCase, InitInput, InitOutcome, InitUseCase, PatchApplyInput,
-    PatchApplyOutcome, PatchApplySource, PatchApplyUseCase, PatchCheckInput, PatchCheckOutcome,
-    PatchCheckUseCase, ProjectArtifactLoadStatus, ProjectArtifactStatus, ProjectStatusArtifacts,
-    ProjectStatusConfig, ProjectStatusInput, ProjectStatusOutcome, ProjectStatusPaths,
-    ProjectStatusReadiness, ProjectStatusRefresh, ProjectStatusRefreshReport, ProjectStatusUseCase,
-    ResolvedRetrievalRecord, ResolvedSearchEntry, ReviewInput, ReviewOutcome, ReviewPatchSource,
-    ReviewUseCase, SearchInput, SearchOutcome, SearchUseCase, StaleInput, StaleOutcome,
-    StaleUseCase, WhyInput, WhyOutcome, WhyUseCase,
+    BuildInput, BuildOutcome, BuildOutputs, CheckInput, CheckOutcome, ContradictionsInput,
+    ContradictionsOutcome, DiffInput, DiffOutcome, GraphInput, GraphOutcome, ImpactedChangedSet,
+    ImpactedInput, ImpactedOutcome, InitOutcome, PatchApplyInput, PatchApplyOutcome,
+    PatchApplySource, PatchCheckInput, PatchCheckOutcome, ProjectArtifactLoadStatus,
+    ProjectArtifactStatus, ProjectStatusArtifacts, ProjectStatusConfig, ProjectStatusInput,
+    ProjectStatusOutcome, ProjectStatusPaths, ProjectStatusReadiness, ProjectStatusRefresh,
+    ProjectStatusRefreshReport, ResolvedRetrievalRecord, ResolvedSearchEntry, ReviewInput,
+    ReviewOutcome, ReviewPatchSource, SearchInput, SearchOutcome, StaleInput, StaleOutcome,
+    WhyInput, WhyOutcome,
 };

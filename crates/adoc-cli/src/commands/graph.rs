@@ -6,9 +6,7 @@ use adoc_core::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalEnvelope,
     GraphTraversalNode, GraphTraversalResult,
 };
-use adoc_local::{
-    GraphInput as LocalGraphInput, GraphUseCase, LocalContext, UnrestrictedPathPolicy,
-};
+use adoc_local::{GraphInput as LocalGraphInput, LocalContext, UnrestrictedPathPolicy};
 
 use crate::error::CliError;
 use crate::presentation::style::key::cyan_key;
@@ -30,7 +28,7 @@ pub(crate) fn graph(input: GraphCommandInput, resolved: ResolvedFormat) -> i32 {
         Err(error) => return report(error),
     };
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match GraphUseCase::new(context).run(LocalGraphInput {
+    let outcome = match context.graph(LocalGraphInput {
         object_id: input.object_id,
         artifact: input.artifact,
         relation: input.relation,

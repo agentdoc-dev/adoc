@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use adoc_local::{CheckInput, CheckUseCase, LocalContext, UnrestrictedPathPolicy};
+use adoc_local::{CheckInput, LocalContext, UnrestrictedPathPolicy};
 
 use super::{current_dir, print_diagnostics, print_summary, report};
 
@@ -11,7 +11,7 @@ pub(crate) fn check(path: Option<PathBuf>) -> i32 {
     };
 
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match CheckUseCase::new(context).run(CheckInput { path }) {
+    let outcome = match context.check(CheckInput { path }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),
     };

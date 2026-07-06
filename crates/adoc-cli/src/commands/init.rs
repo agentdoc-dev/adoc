@@ -1,4 +1,4 @@
-use adoc_local::{InitInput, InitUseCase, LocalContext, UnrestrictedPathPolicy};
+use adoc_local::{LocalContext, UnrestrictedPathPolicy};
 
 use super::{current_dir, report};
 
@@ -12,7 +12,7 @@ pub(crate) fn init() -> i32 {
     };
 
     let context = LocalContext::new(project_root, UnrestrictedPathPolicy);
-    match InitUseCase::new(context).run(InitInput) {
+    match context.init() {
         Ok(_) => {
             println!("Created {INIT_CONFIG_PATH} and {INIT_INDEX_PATH}");
             println!("Next: adoc check");

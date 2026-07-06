@@ -4,8 +4,7 @@ use std::path::PathBuf;
 
 use adoc_core::{ContradictedClaimRecord, ContradictionRecord, ContradictionsEnvelope};
 use adoc_local::{
-    ContradictionsInput as LocalContradictionsInput, ContradictionsUseCase, LocalContext,
-    UnrestrictedPathPolicy,
+    ContradictionsInput as LocalContradictionsInput, LocalContext, UnrestrictedPathPolicy,
 };
 
 use crate::error::CliError;
@@ -26,7 +25,7 @@ pub(crate) fn contradictions(input: ContradictionsCommandInput, resolved: Resolv
         Err(error) => return report(error),
     };
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match ContradictionsUseCase::new(context).run(LocalContradictionsInput {
+    let outcome = match context.contradictions(LocalContradictionsInput {
         artifact: input.artifact,
         all: input.all,
     }) {

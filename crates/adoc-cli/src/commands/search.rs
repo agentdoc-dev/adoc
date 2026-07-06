@@ -3,8 +3,7 @@ use std::path::PathBuf;
 
 use adoc_core::{GraphDirection, GraphRelationKind, SearchRecordScope};
 use adoc_local::{
-    LocalContext, ResolvedSearchEntry, SearchInput as LocalSearchInput, SearchUseCase,
-    UnrestrictedPathPolicy,
+    LocalContext, ResolvedSearchEntry, SearchInput as LocalSearchInput, UnrestrictedPathPolicy,
 };
 
 use crate::error::CliError;
@@ -60,7 +59,7 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
         Err(error) => return report(error),
     };
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match SearchUseCase::new(context).run(LocalSearchInput {
+    let outcome = match context.search(LocalSearchInput {
         query: input.query,
         artifact: input.artifact,
         search_artifact: input.search_artifact,

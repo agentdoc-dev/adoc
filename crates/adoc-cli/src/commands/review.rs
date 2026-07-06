@@ -3,9 +3,7 @@ use std::io;
 use std::path::PathBuf;
 
 use adoc_core::{ImpactedObject, ProofObligation, RequiredReviewer, ReviewEnvelope};
-use adoc_local::{
-    LocalContext, ReviewInput, ReviewPatchSource, ReviewUseCase, UnrestrictedPathPolicy,
-};
+use adoc_local::{LocalContext, ReviewInput, ReviewPatchSource, UnrestrictedPathPolicy};
 
 use crate::error::CliError;
 use crate::presentation::style::key::cyan_key;
@@ -27,7 +25,7 @@ pub(crate) fn review(input: ReviewCommandInput, resolved: ResolvedFormat) -> i32
         Err(error) => return report(error),
     };
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match ReviewUseCase::new(context).run(ReviewInput {
+    let outcome = match context.review(ReviewInput {
         base_ref: input.base_ref,
         head_ref: None,
         patch: input.patch.map(ReviewPatchSource::Path),
