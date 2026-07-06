@@ -774,10 +774,12 @@ fn index_prose_blocks(
                     .join(" > ")
             });
             if kind == ProseBlockKind::Heading {
-                heading_stack.push((
-                    block.level.unwrap_or(1),
-                    block.text.clone().unwrap_or_default(),
-                ));
+                // Untitled headings (malformed source) contribute no
+                // breadcrumb segment.
+                let text = block.text.clone().unwrap_or_default();
+                if !text.is_empty() {
+                    heading_stack.push((block.level.unwrap_or(1), text));
+                }
             }
 
             page_block_ids.push(block.id.clone());
@@ -1145,6 +1147,54 @@ mod tests {
             context("guides.page#block-0007"),
             Some("Appendix".to_string())
         );
+    }
+
+    #[test]
+    fn heading_context_skips_headings_without_text() {
+        // Defence-in-depth: a malformed source (e.g. a bare `#`) can yield a
+        // heading with no text; the breadcrumb must not carry empty segments.
+        let mut untitled_h1 = block("guides.page#block-0000", "guides.page", 0, Some(1), "");
+        untitled_h1.text = None;
+        let empty_h2 = block("guides.page#block-0003", "guides.page", 3, Some(2), "");
+        let graph = GraphIndex::from_document(prose_document(vec![
+            GraphNode::Heading(untitled_h1),
+            GraphNode::Paragraph(block(
+                "guides.page#block-0001",
+                "guides.page",
+                1,
+                None,
+                "Orphaned.",
+            )),
+            GraphNode::Heading(block(
+                "guides.page#block-0002",
+                "guides.page",
+                2,
+                Some(1),
+                "Named",
+            )),
+            GraphNode::Heading(empty_h2),
+            GraphNode::Paragraph(block(
+                "guides.page#block-0004",
+                "guides.page",
+                4,
+                None,
+                "Under the empty heading.",
+            )),
+        ]))
+        .expect("indexes without errors");
+
+        let context = |id: &str| {
+            graph
+                .prose_block(id)
+                .expect("block retained")
+                .heading_context
+                .clone()
+        };
+        // Only ancestor is an untitled heading: no context, not Some("").
+        assert_eq!(context("guides.page#block-0001"), None);
+        // An empty heading between a named ancestor and the block contributes
+        // no segment: "Named", not "Named > ".
+        assert_eq!(context("guides.page#block-0004"), Some("Named".to_string()));
     }
 
     #[test]
