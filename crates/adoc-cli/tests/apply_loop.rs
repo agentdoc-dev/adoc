@@ -1,4 +1,4 @@
-//! V6.4 TB5 — Expanded Pilot full-loop proof.
+//! V6.4 TB5 — Expanded Pilot full-loop proof, extended by V6.5.5.
 //!
 //! Drives the complete agent editing loop against a tempdir **copy** of
 //! `examples/expanded-pilot` (the in-repo pilot is never touched):
@@ -7,7 +7,14 @@
 //! comparison) → post-check clean → `adoc stale` / `adoc contradictions`
 //! outputs unchanged → re-applying the same patch refuses
 //! (`patch.source_drift` before a rebuild, `patch.base_hash_mismatch` after)
-//! and writes nothing. V6.5.5 extends this loop with new-kind objects.
+//! and writes nothing.
+//!
+//! V6.5.5 extends the loop with a second apply against a new-kind object:
+//! an `update_fields` patch marks the pilot's overdue task `done`. Beyond
+//! its own byte-exact golden, this apply pins an exact warning-count
+//! **transition** across the apply step — the documented 6-warning budget
+//! is body-edit-invariant but not status-apply-invariant: `task.overdue`
+//! flips off when the task leaves `open`, so the post-check drops 6 → 5.
 
 use std::fs;
 use std::path::PathBuf;
@@ -28,6 +35,7 @@ fn repo_root() -> PathBuf {
 const TARGET: &str = "billing.credits.consume";
 const EVIDENCE_PATH: &str = "apps/backend/src/features/credits/consume.use-case.ts";
 const NEW_BODY: &str = "Credit consumption is settled ledger-first by the use-case implementation; every movement is recorded against the audit ledger.";
+const TASK_TARGET: &str = "billing.update-support-runbook";
 
 fn pilot_workspace(name: &str) -> TestWorkspace {
     let workspace = TestWorkspace::new(name);
@@ -146,7 +154,7 @@ fn expanded_pilot_apply_loop() {
     assert_eq!(envelope["post_check"]["ran"], true);
     assert_eq!(envelope["post_check"]["error_count"], 0);
     // The documented pilot diagnostic budget is body-edit-invariant.
-    assert_eq!(envelope["post_check"]["warning_count"], 5);
+    assert_eq!(envelope["post_check"]["warning_count"], 6);
     assert_eq!(envelope["artifacts_stale"], true);
     assert_eq!(envelope["trace"]["interface"], "cli");
     assert_eq!(envelope["trace"]["proposer"]["kind"], "agent");
@@ -175,7 +183,7 @@ fn expanded_pilot_apply_loop() {
         golden,
         "rewritten billing/claims.adoc must match the golden byte-for-byte"
     );
-    assert_tree_pristine_except(&workspace, "billing/claims.adoc");
+    assert_tree_pristine_except(&workspace, &["billing/claims.adoc"]);
 
     // 5. External post-check: the budget holds (0 errors gate exit 0).
     let check = adoc_command()
@@ -257,6 +265,71 @@ fn expanded_pilot_apply_loop() {
         golden,
         "refusals never double-write"
     );
+
+    // 9. V6.5.5: a second apply against a new-kind object — mark the overdue
+    //    task `done` via update_fields. The apply flips `task.overdue` off,
+    //    so the post-check pins the exact 6 → 5 warning-count transition
+    //    (the pristine in-repo pilot keeps the 6-warning budget).
+    workspace.write(
+        "task-patch.json",
+        &serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": TASK_TARGET,
+            "base_hash": content_hash(&workspace, TASK_TARGET),
+            "changes": { "fields": { "status": "done" } },
+            "reason": "V6.5.5 loop proof: the support runbook update shipped.",
+            "proposer": { "type": "agent", "id": "tb5-loop" }
+        })
+        .to_string(),
+    );
+    let (code, task_envelope) = run_json(
+        &workspace,
+        &["patch", "--apply", "task-patch.json", "--format", "json"],
+    );
+    assert_eq!(code, Some(0), "envelope: {task_envelope}");
+    assert_eq!(task_envelope["applied"], true);
+    assert_eq!(task_envelope["post_check"]["error_count"], 0);
+    assert_eq!(
+        task_envelope["post_check"]["warning_count"], 5,
+        "marking the task done must drop the budget from 6 to 5 warnings: {task_envelope}"
+    );
+    let task_written = task_envelope["written_files"]
+        .as_array()
+        .expect("written_files");
+    assert_eq!(task_written.len(), 1);
+    assert!(
+        task_written[0]["path"]
+            .as_str()
+            .expect("path")
+            .ends_with("billing/tasks.adoc")
+    );
+
+    // 10. Byte-exact golden for the task apply; nothing else moved beyond
+    //     the two applied files.
+    let task_golden = fs::read(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/v6_4_apply_loop/billing-tasks.after.adoc"),
+    )
+    .expect("task golden readable");
+    assert_eq!(
+        fs::read(workspace.root.join("billing/tasks.adoc")).expect("rewritten file readable"),
+        task_golden,
+        "rewritten billing/tasks.adoc must match the golden byte-for-byte"
+    );
+    assert_tree_pristine_except(&workspace, &["billing/claims.adoc", "billing/tasks.adoc"]);
+
+    // 11. External post-check: exit stays 0 on the reduced budget.
+    let check = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check"])
+        .output()
+        .expect("adoc check runs");
+    assert!(
+        check.status.success(),
+        "post-task-apply check passes\nstderr:\n{}",
+        stderr(&check)
+    );
 }
 
 /// Diagnostic identity without source spans: `(code, object_id, message)`.
@@ -281,10 +354,10 @@ fn diagnostic_identities(envelope: &serde_json::Value) -> Vec<(String, String, S
         .collect()
 }
 
-/// Every copied pilot source file except `exempt` must stay byte-identical
-/// to its `examples/expanded-pilot` original — the "git diff shows only that
-/// hunk" guarantee without git.
-fn assert_tree_pristine_except(workspace: &TestWorkspace, exempt: &str) {
+/// Every copied pilot source file except the `exempt` paths must stay
+/// byte-identical to its `examples/expanded-pilot` original — the "git diff
+/// shows only those hunks" guarantee without git.
+fn assert_tree_pristine_except(workspace: &TestWorkspace, exempt: &[&str]) {
     let pilot = repo_root().join("examples/expanded-pilot");
     let mut pending = vec![pilot.clone()];
     while let Some(directory) = pending.pop() {
@@ -300,7 +373,7 @@ fn assert_tree_pristine_except(workspace: &TestWorkspace, exempt: &str) {
                 .expect("pilot-relative path")
                 .to_string_lossy()
                 .into_owned();
-            if relative == exempt {
+            if exempt.contains(&relative.as_str()) {
                 continue;
             }
             assert_eq!(
