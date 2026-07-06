@@ -7,5 +7,6 @@ pub(crate) mod vector_index;
 
 pub use filter::SearchFilters;
 pub use retrieval_record::{
-    RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSource, SearchMode,
+    ProseRecord, RetrievalEntry, RetrievalMatch, RetrievalRecord, RetrievalRelations,
+    RetrievalSource, SearchMode,
 };

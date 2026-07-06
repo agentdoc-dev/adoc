@@ -225,7 +225,7 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
     );
     let why_json: Value =
         serde_json::from_slice(&why_json_output.stdout).expect("why stdout is JSON");
-    assert_eq!(why_json["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(why_json["schema_version"], "adoc.retrieval.v1");
     assert_eq!(why_json["diagnostics"], serde_json::json!([]));
     assert_eq!(
         why_json["records"][0]["id"],

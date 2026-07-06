@@ -2,8 +2,91 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::domain::graph::{GraphKnowledgeObjectNode, GraphRelations};
+use crate::domain::graph::{
+    GraphKnowledgeObjectNode, GraphProseBlock, GraphRelations, ProseBlockKind,
+};
 use crate::domain::retrieval::metadata;
+
+/// V1.7.1 (ADR-0040): one entry in the `adoc.retrieval.v1` records array.
+///
+/// The internal tag serializes as `record_type: "knowledge_object" | "prose"`.
+/// Knowledge Object records are field-identical to `adoc.retrieval.v0` apart
+/// from the discriminator; prose records are a distinct shape — no
+/// `content_hash`, no relations, no lifecycle, not consumable by `adoc why`.
+// `RetrievalRecord` is large by design (all record fields inline for
+// zero-copy serde, the `GraphKnowledgeObjectNode` precedent); boxing would
+// add indirection on every search result for no wire benefit.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "record_type", rename_all = "snake_case")]
+pub enum RetrievalEntry {
+    KnowledgeObject(RetrievalRecord),
+    Prose(ProseRecord),
+}
+
+impl RetrievalEntry {
+    pub fn id(&self) -> &str {
+        match self {
+            Self::KnowledgeObject(record) => &record.id,
+            Self::Prose(record) => &record.id,
+        }
+    }
+
+    pub fn as_knowledge_object(&self) -> Option<&RetrievalRecord> {
+        match self {
+            Self::KnowledgeObject(record) => Some(record),
+            Self::Prose(_) => None,
+        }
+    }
+
+    pub fn search_match(&self) -> Option<&RetrievalMatch> {
+        match self {
+            Self::KnowledgeObject(record) => record.search_match.as_ref(),
+            Self::Prose(record) => record.search_match.as_ref(),
+        }
+    }
+}
+
+/// V1.7.1 (ADR-0040): a prose hit in `adoc.retrieval.v1`.
+///
+/// `source` and `match` reuse the Knowledge Object record shapes (the ADR
+/// normalizes the roadmap's illustrative JSON): one match type, one source
+/// type across both record types.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProseRecord {
+    /// Order-derived block id, `<page-id>#block-NNNN`. Positional: rebuilt
+    /// per compile, renumbered by mid-page insertions (accepted, ADR-0040).
+    pub id: String,
+    pub page_id: String,
+    pub block_kind: ProseBlockKind,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heading_context: Option<String>,
+    pub source: RetrievalSource,
+    #[serde(rename = "match", skip_serializing_if = "Option::is_none")]
+    pub search_match: Option<RetrievalMatch>,
+}
+
+impl ProseRecord {
+    pub(crate) fn from_block_with_match(
+        block: &GraphProseBlock,
+        search_match: RetrievalMatch,
+    ) -> Self {
+        Self {
+            id: block.id.clone(),
+            page_id: block.page_id.clone(),
+            block_kind: block.kind,
+            text: block.content_text(),
+            heading_context: block.heading_context.clone(),
+            source: RetrievalSource {
+                path: block.source_span.path.clone(),
+                line: block.source_span.line,
+                column: block.source_span.column,
+            },
+            search_match: Some(search_match),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct RetrievalRecord {

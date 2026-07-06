@@ -28,7 +28,9 @@ impl RetrievalPresenter for JsonPresenter {
         let records = view
             .records
             .iter()
-            .map(|presentation_record| presentation_record.record.clone())
+            .map(|presentation_record| {
+                adoc_core::RetrievalEntry::KnowledgeObject(presentation_record.record.clone())
+            })
             .collect();
         let diagnostics =
             merge_diagnostics(self.load_diagnostics.clone(), view.diagnostics.clone());
@@ -141,7 +143,7 @@ mod tests {
             .unwrap();
         let text = String::from_utf8(buf).unwrap();
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+        assert_eq!(value["schema_version"], "adoc.retrieval.v1");
         assert_eq!(value["records"][0]["id"], "test.id");
         assert_eq!(value["diagnostics"], serde_json::json!([]));
     }
@@ -180,13 +182,16 @@ mod tests {
             .unwrap();
         let rendered = String::from_utf8(buf).unwrap();
 
-        let envelope = RetrievalEnvelope::new(vec![record], Vec::new());
+        let envelope = RetrievalEnvelope::new(
+            vec![adoc_core::RetrievalEntry::KnowledgeObject(record)],
+            Vec::new(),
+        );
         let expected = serde_json::to_string_pretty(&envelope).expect("envelope serializes");
         assert_eq!(rendered.trim_end_matches('\n'), expected);
 
         let value: serde_json::Value =
             serde_json::from_str(&rendered).expect("rendered JSON parses");
-        assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+        assert_eq!(value["schema_version"], "adoc.retrieval.v1");
         assert!(value["records"][0].get("match").is_none());
         assert!(value["records"][0].get("retrieval").is_none());
     }
@@ -208,7 +213,7 @@ mod tests {
             .unwrap();
         let text = String::from_utf8(buf).unwrap();
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+        assert_eq!(value["schema_version"], "adoc.retrieval.v1");
         assert_eq!(value["records"][0]["id"], "test.warn");
         assert_eq!(
             value["diagnostics"][0]["code"], "parse.raw_html",

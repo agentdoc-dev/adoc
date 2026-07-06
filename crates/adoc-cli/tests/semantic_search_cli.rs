@@ -38,7 +38,7 @@ fn run_search_json(pilot: &V1_4Pilot, query: &str, semantic: bool) -> serde_json
 fn semantic_search_reports_vector_rank_and_cosine_in_json_envelope() {
     let pilot = build_v1_4_pilot();
     let envelope = run_search_json(&pilot, "ledger entries for credits", true);
-    assert_eq!(envelope["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(envelope["schema_version"], "adoc.retrieval.v1");
     let first = &envelope["records"][0];
     assert_eq!(first["match"]["mode"], "semantic");
     assert!(

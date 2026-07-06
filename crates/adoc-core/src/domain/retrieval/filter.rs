@@ -14,6 +14,17 @@ pub struct SearchFilters {
 }
 
 impl SearchFilters {
+    /// V1.7.1 (ADR-0040) filter policy: any Knowledge Object metadata filter
+    /// implies object intent and suppresses prose records — the single
+    /// switch point if V1.7.3 pilot evidence argues for pass-through.
+    pub(crate) fn constrains_objects(&self) -> bool {
+        self.kind.is_some()
+            || self.status.is_some()
+            || self.owner.is_some()
+            || self.source_path.is_some()
+            || self.related_to.is_some()
+    }
+
     /// Returns whether object metadata matches this filter set.
     ///
     /// Graph-scoped fields (`related_to`, `relation`, `direction`) are

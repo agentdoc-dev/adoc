@@ -400,7 +400,7 @@ fn expanded_pilot_retrieval_why_graph_search() {
         .expect("adoc why runs");
     assert!(why.status.success(), "adoc why must succeed");
     let why_env: Value = serde_json::from_slice(&why.stdout).expect("why stdout is JSON");
-    assert_eq!(why_env["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(why_env["schema_version"], "adoc.retrieval.v1");
     assert_eq!(why_env["records"][0]["id"], "auth.key.rotate");
     assert_eq!(why_env["records"][0]["kind"], "procedure");
     assert_eq!(why_env["records"][0]["status"], "verified");
@@ -490,7 +490,7 @@ fn expanded_pilot_retrieval_why_graph_search() {
         .expect("adoc search runs");
     assert!(search.status.success(), "adoc search must succeed");
     let search_env: Value = serde_json::from_slice(&search.stdout).expect("search stdout is JSON");
-    assert_eq!(search_env["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(search_env["schema_version"], "adoc.retrieval.v1");
     assert_eq!(
         search_env["records"][0]["id"], "security.production-db-access",
         "the active policy must be the top search result for \"policy\""
@@ -754,7 +754,7 @@ fn expanded_pilot_reader_rejects_stale_v2_graph() {
         "stale v2 artifact must produce an artifact error exit"
     );
     let env: Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
-    assert_eq!(env["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(env["schema_version"], "adoc.retrieval.v1");
     assert_eq!(env["diagnostics"][0]["code"], "schema.unsupported_version");
 }
 

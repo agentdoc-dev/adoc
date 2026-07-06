@@ -57,13 +57,10 @@ impl GraphSession {
         self.index.prose_block_count()
     }
 
-    // V1.7.1: consumed by the prose retrieval corpus in the next commit.
-    #[allow(dead_code)]
     pub(crate) fn prose_block(&self, id: &str) -> Option<&GraphProseBlock> {
         self.index.prose_block(id)
     }
 
-    #[allow(dead_code)]
     pub(crate) fn prose_blocks(&self) -> impl Iterator<Item = &GraphProseBlock> {
         self.index.prose_blocks()
     }

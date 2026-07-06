@@ -12,15 +12,15 @@ use adoc_core::{
     GraphDirection, GraphInput as CoreGraphInput, GraphRelationKind, GraphTraversalEnvelope,
     GraphTraversalQuery, GraphTraversalResult, ImpactedEnvelope, ObjectDiffEnvelope,
     PatchApplyInput as CorePatchApplyInput, PatchApplyResult, PatchCheckResult, PatchInput,
-    RelPath, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, RetrievalRecord,
-    ReviewEnvelope, ReviewError, ReviewInput as CoreReviewInput, SearchArtifactInspectionInput,
-    SearchFilters, SearchMode, SearchQuery, Severity, SnapshotSelector, StaleEnvelope,
-    apply_patch as core_apply_patch, build_workspace_with_embedding_provider,
-    changed_files_from_git, changed_paths_strings, check_patch as core_check_patch,
-    compile_workspace, diff_objects, embed_query_with_embedding_provider,
-    empty_contradictions_envelope, empty_impacted_envelope, empty_stale_envelope,
-    evaluate_contradictions, evaluate_impacted, evaluate_stale, git_review_available,
-    inspect_graph_artifact, inspect_search_artifact, load_graph_session,
+    RelPath, RetrievalEntry, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
+    RetrievalRecord, ReviewEnvelope, ReviewError, ReviewInput as CoreReviewInput,
+    SearchArtifactInspectionInput, SearchFilters, SearchMode, SearchQuery, SearchRecordScope,
+    Severity, SnapshotSelector, StaleEnvelope, apply_patch as core_apply_patch,
+    build_workspace_with_embedding_provider, changed_files_from_git, changed_paths_strings,
+    check_patch as core_check_patch, compile_workspace, diff_objects,
+    embed_query_with_embedding_provider, empty_contradictions_envelope, empty_impacted_envelope,
+    empty_stale_envelope, evaluate_contradictions, evaluate_impacted, evaluate_stale,
+    git_review_available, inspect_graph_artifact, inspect_search_artifact, load_graph_session,
     load_retrieval_session_with_embedding_provider, load_review_from_git,
     load_review_with_changed_files_from_git, parse_patch_from_path, parse_patch_from_value,
     patch_apply_refusal, review_with_patch, search as core_search, traverse_graph,
@@ -1107,6 +1107,10 @@ where
             },
             top: input.top,
             query_vector,
+            // V1.7.1: pinned until the CLI/MCP scope flags land in the next
+            // commit — result sets stay byte-identical to pre-V1.7 while the
+            // envelope moves to adoc.retrieval.v1.
+            scope: SearchRecordScope::ObjectsOnly,
         },
     );
     let diagnostics = merge_diagnostics(load_diagnostics, search_result.diagnostics);
@@ -1114,12 +1118,20 @@ where
     let records = search_result
         .records
         .into_iter()
-        .map(|record| resolved_record(&session, record))
+        .map(|entry| match entry {
+            RetrievalEntry::KnowledgeObject(record) => resolved_record(&session, record),
+            RetrievalEntry::Prose(record) => {
+                unreachable!(
+                    "scope is pinned to ObjectsOnly; got prose record `{}`",
+                    record.id
+                )
+            }
+        })
         .collect::<Vec<_>>();
     let envelope = RetrievalEnvelope::new(
         records
             .iter()
-            .map(|resolved| resolved.record.clone())
+            .map(|resolved| RetrievalEntry::KnowledgeObject(resolved.record.clone()))
             .collect(),
         diagnostics.clone(),
     );
@@ -1833,7 +1845,7 @@ fn search_outcome(
     let envelope = RetrievalEnvelope::new(
         records
             .iter()
-            .map(|resolved| resolved.record.clone())
+            .map(|resolved| RetrievalEntry::KnowledgeObject(resolved.record.clone()))
             .collect(),
         diagnostics.clone(),
     );

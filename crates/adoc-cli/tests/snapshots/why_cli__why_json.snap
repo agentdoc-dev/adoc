@@ -1,12 +1,12 @@
 ---
 source: crates/adoc-cli/tests/why_cli.rs
-assertion_line: 274
 expression: stdout
 ---
 {
-  "schema_version": "adoc.retrieval.v0",
+  "schema_version": "adoc.retrieval.v1",
   "records": [
     {
+      "record_type": "knowledge_object",
       "id": "billing.refunds.issue-credit",
       "kind": "claim",
       "status": "verified",

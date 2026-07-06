@@ -5,13 +5,14 @@
   "type": "object",
   "required": ["schema_version", "records", "diagnostics"],
   "properties": {
-    "schema_version": { "const": "adoc.retrieval.v0" },
+    "schema_version": { "const": "adoc.retrieval.v1" },
     "records": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "kind", "content_hash", "body", "source", "relations"],
+        "required": ["record_type", "id", "kind", "content_hash", "body", "source", "relations"],
         "properties": {
+          "record_type": { "const": "knowledge_object" },
           "id": { "type": "string" },
           "kind": { "type": "string" },
           "content_hash": { "type": "string", "pattern": "^sha256:" },

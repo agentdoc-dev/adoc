@@ -9,7 +9,7 @@
 //!   footnotes); MDX/Pandoc/math/attribute-block constructs classified as
 //!   `compat.unknown_extension` and rendered as escaped code.
 //! - V4.3: `adoc search` over a `.md`-only project emits the migration
-//!   hint inside the existing `adoc.retrieval.v0` envelope.
+//!   hint inside the existing `adoc.retrieval.v1` envelope.
 //! - V4.4: full-pilot acceptance over 15 `.md` + 2 `.adoc` files at
 //!   `examples/markdown-pilot/`, exact-match diagnostic and node counts,
 //!   plus mixed-mode `adoc diff` / `adoc review` behavior against a git
@@ -252,7 +252,7 @@ fn markdown_pilot_build_emits_safe_html_and_mixed_graph() {
 /// V4.3 acceptance: `adoc search` over a `.md`-only project returns an
 /// empty result set with exactly one
 /// `retrieval.no_knowledge_objects_consider_migration` diagnostic riding
-/// inside the existing `adoc.retrieval.v0.diagnostics[]` array. The full
+/// inside the existing `adoc.retrieval.v1.diagnostics[]` array. The full
 /// mixed-mode pilot has Knowledge Objects, so the hint sub-test uses a
 /// dedicated `.md`-only TestWorkspace fixture.
 #[test]
@@ -315,7 +315,7 @@ fn markdown_pilot_search_emits_migration_hint_for_md_only_project() {
 
     let envelope: Value =
         serde_json::from_slice(&search_output.stdout).expect("search stdout is JSON");
-    assert_eq!(envelope["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(envelope["schema_version"], "adoc.retrieval.v1");
     let records = envelope["records"].as_array().expect("records is an array");
     assert!(
         records.is_empty(),

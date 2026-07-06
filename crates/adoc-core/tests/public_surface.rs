@@ -13,10 +13,11 @@ use adoc_core::{
     GraphDirection, GraphInput, GraphLoadResult, GraphRelationKind, GraphSession,
     GraphTraversalEnvelope, GraphTraversalQuery, GraphTraversalResult, PATCH_CHECK_SCHEMA_VERSION,
     PatchCheckResult, PatchDiff, PatchInput, PatchJsonInput, PatchOperation, ProofObligation,
-    RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, RetrievalMatch, RetrievalRecord,
-    RetrievalRelations, RetrievalSession, RetrievalSource, SearchFilters, SearchMode, SearchQuery,
-    SearchResult, Severity, WhyResult, check_patch, check_patch_json, compile_workspace,
-    load_graph_session, load_retrieval_session, search, traverse_graph, why_object,
+    ProseBlockKind, ProseRecord, RetrievalEntry, RetrievalEnvelope, RetrievalInput,
+    RetrievalLoadResult, RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSession,
+    RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchRecordScope, SearchResult,
+    Severity, WhyResult, check_patch, check_patch_json, compile_workspace, load_graph_session,
+    load_retrieval_session, search, traverse_graph, why_object,
 };
 
 #[test]
@@ -308,7 +309,28 @@ fn public_surface_compiles_with_only_documented_imports() {
         filters: SearchFilters::default(),
         top: NonZeroUsize::new(10).expect("non-zero top"),
         query_vector: None,
+        scope: SearchRecordScope::Blended,
     };
+    let _: SearchRecordScope = SearchRecordScope::ObjectsOnly;
+    let _: SearchRecordScope = SearchRecordScope::ProseOnly;
+    // V1.7.1 (ADR-0040): the discriminated retrieval entry and prose record.
+    let prose_record = ProseRecord {
+        id: String::from("guides.page#block-0001"),
+        page_id: String::from("guides.page"),
+        block_kind: ProseBlockKind::Paragraph,
+        text: String::from("Credits burn on completion."),
+        heading_context: Some(String::from("Billing basics")),
+        source: RetrievalSource {
+            path: String::from("docs/guide.md"),
+            line: 3,
+            column: 1,
+        },
+        search_match: None,
+    };
+    let entry: RetrievalEntry = RetrievalEntry::Prose(prose_record);
+    let _: &str = entry.id();
+    let _: Option<&RetrievalRecord> = entry.as_knowledge_object();
+    let _: Option<&RetrievalMatch> = entry.search_match();
     let _: RetrievalMatch = RetrievalMatch::lexical(1, Some(1));
     let _: RetrievalMatch = RetrievalMatch::hybrid(1, 0.0312, Some(2), Some(1));
     let search_result = SearchResult {

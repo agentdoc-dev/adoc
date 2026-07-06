@@ -2,10 +2,10 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
 use adoc_core::{
-    DiagnosticCode, GraphDirection, GraphRelationKind, RetrievalEnvelope, RetrievalInput,
-    RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSession, RetrievalSource,
-    SearchFilters, SearchMode, SearchQuery, SearchResult, load_retrieval_session, search,
-    why_object,
+    DiagnosticCode, GraphDirection, GraphRelationKind, RetrievalEntry, RetrievalEnvelope,
+    RetrievalInput, RetrievalMatch, RetrievalRecord, RetrievalRelations, RetrievalSession,
+    RetrievalSource, SearchFilters, SearchMode, SearchQuery, SearchRecordScope, SearchResult,
+    load_retrieval_session, search, why_object,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -317,6 +317,7 @@ fn lexical_query(text: &str, top: usize, filters: SearchFilters) -> SearchQuery 
         filters,
         top: NonZeroUsize::new(top).expect("test search top is non-zero"),
         query_vector: None,
+        scope: SearchRecordScope::default(),
     }
 }
 
@@ -332,6 +333,7 @@ fn hybrid_query(
         filters,
         top: NonZeroUsize::new(top).expect("test search top is non-zero"),
         query_vector: Some(query_vector),
+        scope: SearchRecordScope::default(),
     }
 }
 
@@ -347,15 +349,12 @@ fn semantic_query(
         filters,
         top: NonZeroUsize::new(top).expect("test search top is non-zero"),
         query_vector: Some(query_vector),
+        scope: SearchRecordScope::default(),
     }
 }
 
 fn search_ids(result: &SearchResult) -> Vec<&str> {
-    result
-        .records
-        .iter()
-        .map(|record| record.id.as_str())
-        .collect()
+    result.records.iter().map(|record| record.id()).collect()
 }
 
 fn search_ranks(result: &SearchResult) -> Vec<u32> {
@@ -364,8 +363,7 @@ fn search_ranks(result: &SearchResult) -> Vec<u32> {
         .iter()
         .map(|record| {
             record
-                .search_match
-                .as_ref()
+                .search_match()
                 .expect("search result records include lexical match metadata")
                 .result_rank
         })
@@ -378,8 +376,7 @@ fn search_lexical_ranks(result: &SearchResult) -> Vec<Option<u32>> {
         .iter()
         .map(|record| {
             record
-                .search_match
-                .as_ref()
+                .search_match()
                 .expect("search result records include lexical match metadata")
                 .lexical_rank
         })
@@ -413,8 +410,11 @@ fn hybrid_match_serializes_rrf_score_and_omits_missing_rank_fields() {
         resolved_questions: Vec::new(),
     };
 
-    let value = serde_json::to_value(RetrievalEnvelope::new(vec![record], Vec::new()))
-        .expect("retrieval envelope serializes");
+    let value = serde_json::to_value(RetrievalEnvelope::new(
+        vec![RetrievalEntry::KnowledgeObject(record)],
+        Vec::new(),
+    ))
+    .expect("retrieval envelope serializes");
     let search_match = value["records"][0]["match"]
         .as_object()
         .expect("match block is an object");
@@ -495,8 +495,7 @@ fn hybrid_search_fuses_lexical_and_vector_results_and_reports_match_metadata() {
         Some("billing.blended")
     );
     let search_match = result.records[0]
-        .search_match
-        .as_ref()
+        .search_match()
         .expect("hybrid result has match metadata");
     assert_eq!(search_match.mode, SearchMode::Hybrid);
     assert!(search_match.rrf_score.is_some());
@@ -547,7 +546,7 @@ fn hybrid_search_filters_after_ranking_and_preserves_full_pool_ranks() {
 
     assert!(result.diagnostics.is_empty());
     assert_eq!(search_ids(&result), ["billing.keep"]);
-    let search_match = result.records[0].search_match.as_ref().unwrap();
+    let search_match = result.records[0].search_match().unwrap();
     assert_eq!(search_match.mode, SearchMode::Hybrid);
     assert_eq!(search_match.lexical_rank, Some(2));
     assert_eq!(search_match.vector_rank, Some(2));
@@ -612,7 +611,9 @@ fn retrieval_metadata_classification_is_shared_by_filters_records_and_lexical_in
 
     assert!(result.diagnostics.is_empty());
     assert_eq!(search_ids(&result), ["billing.metadata"]);
-    let record = &result.records[0];
+    let record = result.records[0]
+        .as_knowledge_object()
+        .expect("knowledge object record");
     assert_eq!(record.owner.as_deref(), Some("team-billing"));
     assert_eq!(record.verified_at.as_deref(), Some("2026-05-05"));
     // V5.8: reviewed_by maps to human_review EvidenceKind.
@@ -702,7 +703,7 @@ fn semantic_search_pins_id_prefix_matches_before_vector_hits() {
 
     assert!(result.diagnostics.is_empty());
     assert_eq!(search_ids(&result), ["billing.credits"]);
-    let search_match = result.records[0].search_match.as_ref().unwrap();
+    let search_match = result.records[0].search_match().unwrap();
     assert_eq!(search_match.mode, SearchMode::Semantic);
     assert_eq!(search_match.vector_rank, Some(2));
 }
@@ -743,7 +744,7 @@ fn semantic_search_pins_id_prefix_matches_without_vector_hit() {
 
     assert!(result.diagnostics.is_empty());
     assert_eq!(search_ids(&result), ["billing.new-object"]);
-    let search_match = result.records[0].search_match.as_ref().unwrap();
+    let search_match = result.records[0].search_match().unwrap();
     assert_eq!(search_match.mode, SearchMode::Semantic);
     assert_eq!(search_match.vector_rank, None);
     assert_eq!(search_match.cosine_score, None);
@@ -771,6 +772,7 @@ fn hybrid_search_requires_query_vector_when_vector_index_is_loaded() {
             filters: SearchFilters::default(),
             top: NonZeroUsize::new(1).unwrap(),
             query_vector: None,
+            scope: SearchRecordScope::default(),
         },
     );
 
@@ -929,10 +931,10 @@ fn search_pins_exact_object_id_as_rank_one() {
     );
 
     assert!(result.diagnostics.is_empty());
-    assert_eq!(result.records[0].id, "billing.credits");
+    assert_eq!(result.records[0].id(), "billing.credits");
     assert_eq!(
-        result.records[0].search_match,
-        Some(RetrievalMatch::lexical(1, Some(2)))
+        result.records[0].search_match(),
+        Some(&RetrievalMatch::lexical(1, Some(2)))
     );
 }
 
@@ -1670,7 +1672,7 @@ fn retrieval_envelope_serializes_stable_schema_with_records_and_diagnostics() {
     let value =
         serde_json::to_value(RetrievalEnvelope::from(why_result)).expect("envelope serializes");
 
-    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v1");
     assert_eq!(value["records"][0]["id"], "billing.verified-credits");
     assert_eq!(value["diagnostics"], serde_json::json!([]));
     assert!(value["records"][0].get("match").is_none());
@@ -1743,13 +1745,13 @@ fn retrieval_envelope_can_be_created_from_search_result() {
         resolved_questions: Vec::new(),
     };
     let result = SearchResult {
-        records: vec![record],
+        records: vec![RetrievalEntry::KnowledgeObject(record)],
         diagnostics: Vec::new(),
     };
 
     let value = serde_json::to_value(RetrievalEnvelope::from(result)).expect("envelope serializes");
 
-    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v1");
     assert_eq!(value["records"][0]["match"]["mode"], "lexical");
     assert_eq!(value["records"][0]["match"]["result_rank"], 1);
     assert_eq!(value["records"][0]["match"]["lexical_rank"], 1);
@@ -2083,7 +2085,7 @@ fn migration_hint_appears_in_retrieval_envelope() {
 
     let envelope: RetrievalEnvelope = result.into();
     let value = serde_json::to_value(&envelope).expect("envelope serializes");
-    assert_eq!(value["schema_version"], "adoc.retrieval.v0");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v1");
     assert_eq!(value["records"].as_array().unwrap().len(), 0);
     let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
     assert_eq!(diagnostics.len(), 1);
@@ -2121,7 +2123,9 @@ fn api_object_is_lexically_findable_with_method_and_path_fields() {
 
     assert!(result.diagnostics.is_empty());
     assert_eq!(search_ids(&result), vec!["billing.consume-credit"]);
-    let record = &result.records[0];
+    let record = result.records[0]
+        .as_knowledge_object()
+        .expect("knowledge object record");
     assert_eq!(record.kind, "api");
     assert_eq!(record.status.as_deref(), Some("verified"));
     assert_eq!(
@@ -2162,7 +2166,9 @@ fn observation_object_is_lexically_findable_with_metadata_fields() {
 
     assert!(result.diagnostics.is_empty());
     assert_eq!(search_ids(&result), vec!["onboarding.credit-confusion"]);
-    let record = &result.records[0];
+    let record = result.records[0]
+        .as_knowledge_object()
+        .expect("knowledge object record");
     assert_eq!(record.kind, "observation");
     assert_eq!(record.status.as_deref(), Some("observed"));
     assert_eq!(
@@ -2200,7 +2206,9 @@ fn question_object_body_is_lexically_findable() {
 
     assert!(result.diagnostics.is_empty());
     assert_eq!(search_ids(&result), vec!["billing.trial-credit-expiration"]);
-    let record = &result.records[0];
+    let record = result.records[0]
+        .as_knowledge_object()
+        .expect("knowledge object record");
     assert_eq!(record.kind, "question");
     assert_eq!(record.status.as_deref(), Some("open"));
 }
@@ -2231,7 +2239,9 @@ fn task_object_is_lexically_findable_with_owner_and_due_fields() {
 
     assert!(result.diagnostics.is_empty());
     assert_eq!(search_ids(&result), vec!["billing.update-support-runbook"]);
-    let record = &result.records[0];
+    let record = result.records[0]
+        .as_knowledge_object()
+        .expect("knowledge object record");
     assert_eq!(record.kind, "task");
     assert_eq!(record.status.as_deref(), Some("open"));
     // `owner` is a typed record slot, not a generic fields entry.
@@ -2239,5 +2249,163 @@ fn task_object_is_lexically_findable_with_owner_and_due_fields() {
     assert_eq!(
         record.fields.get("due").map(String::as_str),
         Some("2026-05-20")
+    );
+}
+
+/// V1.7.1 (ADR-0040): a raw graph document carrying prose blocks — the
+/// canonical builders above are Knowledge-Object-only by design, and prose
+/// nodes ride the artifact's own serde shape.
+fn prose_symmetry_graph_json(extension: &str) -> String {
+    let path = format!("docs/guide.{extension}");
+    serde_json::to_string_pretty(&json!({
+        "schema_version": "adoc.graph.v4",
+        "nodes": [
+            {
+                "type": "page",
+                "id": "guides.page",
+                "order": 0,
+                "source_path": path
+            },
+            {
+                "type": "heading",
+                "id": "guides.page#block-0000",
+                "page_id": "guides.page",
+                "order": 0,
+                "level": 1,
+                "text": "Billing basics",
+                "source_span": { "path": path, "line": 1, "column": 1 }
+            },
+            {
+                "type": "paragraph",
+                "id": "guides.page#block-0001",
+                "page_id": "guides.page",
+                "order": 1,
+                "text": "Credits are consumed when a generation job completes, not when it starts.",
+                "source_span": { "path": path, "line": 3, "column": 1 }
+            },
+            {
+                "type": "paragraph",
+                "id": "guides.page#block-0002",
+                "page_id": "guides.page",
+                "order": 2,
+                "text": "Refunds are handled manually by support.",
+                "source_span": { "path": path, "line": 5, "column": 1 }
+            }
+        ],
+        "edges": [],
+        "diagnostics": []
+    }))
+    .expect("prose fixture serializes")
+}
+
+fn load_prose_session(extension: &str) -> RetrievalSession {
+    let artifact = write_temp_artifact(
+        &format!("prose-symmetry-{extension}"),
+        &prose_symmetry_graph_json(extension),
+    );
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
+    });
+    assert!(
+        result.diagnostics.is_empty(),
+        "expected clean prose fixture load, got {:?}",
+        result.diagnostics
+    );
+    result.session.expect("prose fixture session loads")
+}
+
+/// V1.7.1 roadmap acceptance — the symmetry rule: identical prose in a
+/// `.adoc` file and a `.md` file ranks identically; only `source.path`
+/// differs.
+#[test]
+fn identical_prose_ranks_identically_across_adoc_and_md_sources() {
+    let adoc_session = load_prose_session("adoc");
+    let md_session = load_prose_session("md");
+
+    for query in ["credits consumed", "refunds", "billing basics"] {
+        let adoc_result = search(
+            &adoc_session,
+            lexical_query(query, 10, SearchFilters::default()),
+        );
+        let md_result = search(
+            &md_session,
+            lexical_query(query, 10, SearchFilters::default()),
+        );
+
+        assert_eq!(
+            search_ids(&adoc_result),
+            search_ids(&md_result),
+            "result order must be source-mode-independent for {query:?}"
+        );
+        assert_eq!(
+            search_lexical_ranks(&adoc_result),
+            search_lexical_ranks(&md_result),
+            "lexical ranks must be source-mode-independent for {query:?}"
+        );
+        for (adoc_entry, md_entry) in adoc_result.records.iter().zip(&md_result.records) {
+            let (RetrievalEntry::Prose(adoc_record), RetrievalEntry::Prose(md_record)) =
+                (adoc_entry, md_entry)
+            else {
+                panic!("prose-only fixtures must return prose records");
+            };
+            assert!(adoc_record.source.path.ends_with(".adoc"));
+            assert!(md_record.source.path.ends_with(".md"));
+            assert_eq!(adoc_record.text, md_record.text);
+            assert_eq!(adoc_record.heading_context, md_record.heading_context);
+        }
+    }
+}
+
+/// V1.7.1 (ADR-0040): the prose record wire shape — `record_type`
+/// discriminator, the Knowledge Object `match`/`source` shapes (the ADR
+/// normalizes the roadmap's illustrative JSON), heading context present.
+#[test]
+fn prose_record_serializes_with_record_type_and_normalized_match_shape() {
+    let session = load_prose_session("md");
+    let result = search(
+        &session,
+        lexical_query("credits consumed", 10, SearchFilters::default()),
+    );
+
+    let value = serde_json::to_value(RetrievalEnvelope::from(result)).expect("envelope serializes");
+    assert_eq!(value["schema_version"], "adoc.retrieval.v1");
+    let record = &value["records"][0];
+    assert_eq!(record["record_type"], "prose");
+    assert_eq!(record["id"], "guides.page#block-0001");
+    assert_eq!(record["page_id"], "guides.page");
+    assert_eq!(record["block_kind"], "paragraph");
+    assert_eq!(record["heading_context"], "Billing basics");
+    assert_eq!(record["source"]["path"], "docs/guide.md");
+    assert_eq!(record["source"]["line"], 3);
+    assert_eq!(record["source"]["column"], 1);
+    assert_eq!(record["match"]["mode"], "lexical");
+    assert_eq!(record["match"]["result_rank"], 1);
+    assert!(
+        record.get("search_match").is_none(),
+        "the match block serializes under `match`, not `search_match` (ADR-0040)"
+    );
+    assert!(
+        record.get("content_hash").is_none() && record.get("relations").is_none(),
+        "prose records carry no content_hash or relations"
+    );
+
+    // A block before any heading omits heading_context entirely.
+    let heading_hit = search(
+        &session,
+        lexical_query("billing basics", 10, SearchFilters::default()),
+    );
+    let heading_value =
+        serde_json::to_value(RetrievalEnvelope::from(heading_hit)).expect("envelope serializes");
+    let heading_record = heading_value["records"]
+        .as_array()
+        .expect("records array")
+        .iter()
+        .find(|r| r["id"] == "guides.page#block-0000")
+        .expect("heading block is findable")
+        .clone();
+    assert!(
+        heading_record.get("heading_context").is_none(),
+        "a top-level heading has no ancestor context, got {heading_record:?}"
     );
 }

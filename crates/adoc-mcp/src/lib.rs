@@ -102,7 +102,7 @@ impl AgentDocMcpServer {
             outcome
                 .records
                 .into_iter()
-                .map(|record| record.record)
+                .map(|record| adoc_core::RetrievalEntry::KnowledgeObject(record.record))
                 .collect(),
             outcome.diagnostics,
         );
