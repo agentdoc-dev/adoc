@@ -5,9 +5,10 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId, ObjectIdError};
 use crate::domain::knowledge_object::Relations;
 use crate::domain::value_objects::lang::{Lang, LangError};
+use crate::domain::value_objects::lifecycle_status::{LifecycleStatus, LifecycleStatusError};
 use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::value_objects::sandbox::{SandboxName, SandboxNameError};
-use crate::domain::values::{Body, NonEmpty, OptionalFields, trim_ascii_edges};
+use crate::domain::values::{Body, NonEmpty, OptionalFields};
 
 const STATUS_FIELD: &str = "status";
 pub(crate) const LANG_FIELD: &str = "lang";
@@ -35,7 +36,7 @@ const EXAMPLE_INVALID_STATUS_HELP: &str =
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Example {
     id: ObjectId,
-    status: Option<ExampleStatus>,
+    status: Option<LifecycleStatus>,
     lang: Option<Lang>,
     format: Option<String>,
     body: Body,
@@ -47,39 +48,13 @@ pub(crate) struct Example {
     span: SourceSpan,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ExampleStatus {
-    Draft,
-    Verified,
-    Deprecated,
-}
-
-impl ExampleStatus {
-    pub(crate) fn try_new(value: &str) -> Result<Self, ExampleError> {
-        let trimmed = trim_ascii_edges(value);
-        if trimmed.is_empty() {
-            return Err(ExampleError::InvalidStatus(String::new()));
-        }
-        match trimmed {
-            "draft" => Ok(Self::Draft),
-            "verified" => Ok(Self::Verified),
-            "deprecated" => Ok(Self::Deprecated),
-            _ => Err(ExampleError::InvalidStatus(trimmed.to_string())),
-        }
-    }
-
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Draft => "draft",
-            Self::Verified => "verified",
-            Self::Deprecated => "deprecated",
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn is_verified(self) -> bool {
-        matches!(self, Self::Verified)
-    }
+/// Maps the shared [`LifecycleStatus`] parse errors into example's own error
+/// vocabulary: a blank status keeps its historical `InvalidStatus("")` shape.
+fn status_from_text(value: &str) -> Result<LifecycleStatus, ExampleError> {
+    LifecycleStatus::try_new(value).map_err(|error| match error {
+        LifecycleStatusError::Missing => ExampleError::InvalidStatus(String::new()),
+        LifecycleStatusError::Invalid(value) => ExampleError::InvalidStatus(value),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,85 +88,41 @@ impl Example {
         };
 
         // 2. status
-        let status_raw = parsed.raw_fields.remove(STATUS_FIELD);
-        let status = if let Some(ref raw) = status_raw {
-            let trimmed = trim_ascii_edges(raw);
-            if trimmed.is_empty() {
-                None
-            } else {
-                match ExampleStatus::try_new(trimmed) {
-                    Ok(s) => Some(s),
-                    Err(error) => {
-                        emit_example_error(&parsed, error, diagnostics);
-                        return None;
-                    }
-                }
+        let status = match super::take_optional_scalar(&mut parsed, STATUS_FIELD, status_from_text)
+        {
+            Ok(status) => status,
+            Err(error) => {
+                emit_example_error(&parsed, error, diagnostics);
+                return None;
             }
-        } else {
-            None
         };
 
         // 3. lang
-        let lang_raw = parsed.raw_fields.remove(LANG_FIELD);
-        let lang = if let Some(ref raw) = lang_raw {
-            let trimmed = trim_ascii_edges(raw);
-            if trimmed.is_empty() {
-                None
-            } else {
-                match Lang::try_new(trimmed) {
-                    Ok(l) => Some(l),
-                    Err(LangError::Missing) => None,
-                    Err(LangError::Invalid(val)) => {
-                        emit_example_error(&parsed, ExampleError::InvalidLang(val), diagnostics);
-                        return None;
-                    }
-                }
+        let lang = match super::take_optional_scalar(&mut parsed, LANG_FIELD, Lang::try_new) {
+            Ok(lang) => lang,
+            Err(LangError::Missing) => None,
+            Err(LangError::Invalid(val)) => {
+                emit_example_error(&parsed, ExampleError::InvalidLang(val), diagnostics);
+                return None;
             }
-        } else {
-            None
         };
 
         // 4. format
-        let format_raw = parsed.raw_fields.remove(FORMAT_FIELD);
-        let format = format_raw.as_deref().and_then(|raw| {
-            let trimmed = trim_ascii_edges(raw);
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        });
+        let format = super::take_scalar_text(&mut parsed, FORMAT_FIELD);
 
         // 5. sandbox
-        let sandbox_raw = parsed.raw_fields.remove(SANDBOX_FIELD);
-        let sandbox = if let Some(ref raw) = sandbox_raw {
-            let trimmed = trim_ascii_edges(raw);
-            if trimmed.is_empty() {
-                None
-            } else {
-                match SandboxName::try_new(trimmed) {
-                    Ok(s) => Some(s),
-                    Err(SandboxNameError::Missing) => None,
-                    Err(SandboxNameError::Invalid(val)) => {
-                        emit_example_error(&parsed, ExampleError::InvalidSandbox(val), diagnostics);
-                        return None;
-                    }
+        let sandbox =
+            match super::take_optional_scalar(&mut parsed, SANDBOX_FIELD, SandboxName::try_new) {
+                Ok(sandbox) => sandbox,
+                Err(SandboxNameError::Missing) => None,
+                Err(SandboxNameError::Invalid(val)) => {
+                    emit_example_error(&parsed, ExampleError::InvalidSandbox(val), diagnostics);
+                    return None;
                 }
-            }
-        } else {
-            None
-        };
+            };
 
         // 6. checks (preserve verbatim after edge-trim)
-        let checks_raw = parsed.raw_fields.remove(CHECKS_FIELD);
-        let checks = checks_raw.as_deref().and_then(|raw| {
-            let trimmed = trim_ascii_edges(raw);
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            }
-        });
+        let checks = super::take_scalar_text(&mut parsed, CHECKS_FIELD);
 
         // 7. body
         let body = match super::body_from_parsed(&parsed) {
@@ -207,7 +138,7 @@ impl Example {
         if lang.is_none() && format.is_none() {
             emit_example_error(&parsed, ExampleError::MissingLang, diagnostics);
         }
-        if status == Some(ExampleStatus::Verified) {
+        if status == Some(LifecycleStatus::Verified) {
             if checks.is_none() {
                 emit_example_error(&parsed, ExampleError::VerifiedRequiresChecks, diagnostics);
             }
@@ -248,7 +179,7 @@ impl Example {
     #[allow(clippy::too_many_arguments)]
     fn from_parts(
         id: ObjectId,
-        status: Option<ExampleStatus>,
+        status: Option<LifecycleStatus>,
         lang: Option<Lang>,
         format: Option<String>,
         body: Body,
@@ -261,7 +192,7 @@ impl Example {
         if lang.is_none() && format.is_none() {
             return Err(ExampleError::MissingLang);
         }
-        if status == Some(ExampleStatus::Verified) {
+        if status == Some(LifecycleStatus::Verified) {
             if checks.is_none() {
                 return Err(ExampleError::VerifiedRequiresChecks);
             }
@@ -315,7 +246,7 @@ impl Example {
         &self.id
     }
 
-    pub(crate) fn status(&self) -> Option<&ExampleStatus> {
+    pub(crate) fn status(&self) -> Option<&LifecycleStatus> {
         self.status.as_ref()
     }
 
@@ -373,7 +304,7 @@ impl Example {
         span: SourceSpan,
     ) -> Result<Self, ExampleError> {
         let id = ObjectId::new(id_text).map_err(ExampleError::InvalidId)?;
-        let status = status_text.map(ExampleStatus::try_new).transpose()?;
+        let status = status_text.map(status_from_text).transpose()?;
         let lang = lang_text
             .map(|v| {
                 Lang::try_new(v).map_err(|e| match e {
@@ -383,7 +314,7 @@ impl Example {
             })
             .transpose()?;
         let format = format_text.and_then(|v| {
-            let trimmed = trim_ascii_edges(v);
+            let trimmed = crate::domain::values::trim_ascii_edges(v);
             if trimmed.is_empty() {
                 None
             } else {
@@ -399,7 +330,7 @@ impl Example {
             })
             .transpose()?;
         let checks = checks.and_then(|v| {
-            let trimmed = trim_ascii_edges(v);
+            let trimmed = crate::domain::values::trim_ascii_edges(v);
             if trimmed.is_empty() {
                 None
             } else {
@@ -618,7 +549,7 @@ mod tests {
         )
         .expect("valid verified example");
 
-        assert_eq!(example.status(), Some(&ExampleStatus::Verified));
+        assert_eq!(example.status(), Some(&LifecycleStatus::Verified));
         assert!(example.status().copied().unwrap().is_verified());
         assert_eq!(example.checks(), Some("npm run test -- credits"));
         assert_eq!(

@@ -207,14 +207,12 @@ impl Question {
 
 /// An answered question must name the object that answered it.
 fn parse_resolved_by(parsed: &mut ParsedTypedBlock) -> Result<ObjectId, QuestionError> {
-    let Some(raw) = parsed.raw_fields.remove(RESOLVED_BY_FIELD) else {
-        return Err(QuestionError::AnsweredMissingResolvedBy);
-    };
-    let trimmed = trim_ascii_edges(&raw);
-    if trimmed.is_empty() {
-        return Err(QuestionError::AnsweredMissingResolvedBy);
-    }
-    ObjectId::new(trimmed).map_err(QuestionError::InvalidResolvedBy)
+    super::take_required_scalar(
+        parsed,
+        RESOLVED_BY_FIELD,
+        |value| ObjectId::new(value).map_err(QuestionError::InvalidResolvedBy),
+        || QuestionError::AnsweredMissingResolvedBy,
+    )
 }
 
 fn emit_question_error(

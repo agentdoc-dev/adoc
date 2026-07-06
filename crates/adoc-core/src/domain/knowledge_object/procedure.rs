@@ -8,11 +8,11 @@ use crate::domain::knowledge_object::claim::{
     Evidence, HUMAN_REVIEW_FIELD, OWNER_FIELD, Owner, REVIEWED_BY_FIELD, SOURCE_FIELD,
     VERIFIED_AT_FIELD, Verification, VerifiedAt,
 };
+use crate::domain::value_objects::lifecycle_status::{LifecycleStatus, LifecycleStatusError};
 use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::values::{Body, NonEmpty, OptionalFields, trim_ascii_edges};
 
 const STATUS_FIELD: &str = "status";
-const VERIFIED_STATUS: &str = "verified";
 const PROCEDURE_MISSING_STATUS_HELP: &str = "Procedures require non-empty `status`. Valid procedure statuses are: draft, verified, deprecated.";
 const PROCEDURE_INVALID_STATUS_HELP: &str =
     "Valid procedure statuses are: draft, verified, deprecated.";
@@ -29,7 +29,7 @@ const VERIFIED_PROCEDURE_HELP: &str = "Verified procedures require `owner`, `ver
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Procedure {
     id: ObjectId,
-    status: ProcedureStatus,
+    status: LifecycleStatus,
     body: Body,
     fields: OptionalFields,
     verification: Option<Verification>,
@@ -105,7 +105,7 @@ impl Procedure {
         span: SourceSpan,
     ) -> Result<Self, ProcedureError> {
         let id = ObjectId::new(id_text).map_err(ProcedureError::InvalidId)?;
-        let status = ProcedureStatus::try_new(status_text.unwrap_or(""))?;
+        let status = status_from_text(status_text.unwrap_or(""))?;
         let body = Body::from_plain_text(body_text).ok_or(ProcedureError::MissingBody)?;
         Self::from_parts(
             id,
@@ -120,7 +120,7 @@ impl Procedure {
 
     fn from_parts(
         id: ObjectId,
-        status: ProcedureStatus,
+        status: LifecycleStatus,
         body: Body,
         optional_fields: BTreeMap<String, String>,
         verification: Option<Verification>,
@@ -167,9 +167,9 @@ impl Procedure {
     fn parse_basics_from_parsed(
         parsed: &ParsedTypedBlock,
         status_text: Option<&str>,
-    ) -> Result<(ObjectId, ProcedureStatus, Body), ProcedureError> {
+    ) -> Result<(ObjectId, LifecycleStatus, Body), ProcedureError> {
         let id = ObjectId::new(&parsed.id_text).map_err(ProcedureError::InvalidId)?;
-        let status = ProcedureStatus::try_new(status_text.unwrap_or(""))?;
+        let status = status_from_text(status_text.unwrap_or(""))?;
         let body = super::body_from_parsed(parsed).ok_or(ProcedureError::MissingBody)?;
         Ok((id, status, body))
     }
@@ -177,7 +177,7 @@ impl Procedure {
     fn build_verified_from_parsed(
         mut parsed: ParsedTypedBlock,
         id: ObjectId,
-        status: ProcedureStatus,
+        status: LifecycleStatus,
         body: Body,
         diagnostics: &mut Vec<Diagnostic>,
     ) -> Option<Self> {
@@ -208,7 +208,7 @@ impl Procedure {
         &self.id
     }
 
-    pub(crate) fn status(&self) -> &ProcedureStatus {
+    pub(crate) fn status(&self) -> &LifecycleStatus {
         &self.status
     }
 
@@ -444,38 +444,13 @@ fn missing_evidence_diagnostic(parsed: &ParsedTypedBlock) -> Diagnostic {
     .with_help(VERIFIED_PROCEDURE_HELP)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ProcedureStatus {
-    Draft,
-    Verified,
-    Deprecated,
-}
-
-impl ProcedureStatus {
-    pub(crate) fn try_new(value: &str) -> Result<Self, ProcedureError> {
-        let trimmed = trim_ascii_edges(value);
-        if trimmed.is_empty() {
-            return Err(ProcedureError::MissingStatus);
-        }
-        match trimmed {
-            "draft" => Ok(Self::Draft),
-            VERIFIED_STATUS => Ok(Self::Verified),
-            "deprecated" => Ok(Self::Deprecated),
-            _ => Err(ProcedureError::InvalidStatus(trimmed.to_string())),
-        }
-    }
-
-    pub(crate) fn as_str(&self) -> &str {
-        match self {
-            Self::Draft => "draft",
-            Self::Verified => VERIFIED_STATUS,
-            Self::Deprecated => "deprecated",
-        }
-    }
-
-    pub(crate) fn is_verified(&self) -> bool {
-        matches!(self, Self::Verified)
-    }
+/// Maps the shared [`LifecycleStatus`] parse errors into procedure's own
+/// error vocabulary: `status` is required, so blank stays `MissingStatus`.
+fn status_from_text(value: &str) -> Result<LifecycleStatus, ProcedureError> {
+    LifecycleStatus::try_new(value).map_err(|error| match error {
+        LifecycleStatusError::Missing => ProcedureError::MissingStatus,
+        LifecycleStatusError::Invalid(value) => ProcedureError::InvalidStatus(value),
+    })
 }
 
 #[cfg(test)]
@@ -535,16 +510,13 @@ mod tests {
 
     #[test]
     fn status_try_new_rejects_empty() {
-        assert_eq!(
-            ProcedureStatus::try_new("  "),
-            Err(ProcedureError::MissingStatus)
-        );
+        assert_eq!(status_from_text("  "), Err(ProcedureError::MissingStatus));
     }
 
     #[test]
     fn status_try_new_rejects_unknown_values() {
         assert_eq!(
-            ProcedureStatus::try_new("active"),
+            status_from_text("active"),
             Err(ProcedureError::InvalidStatus("active".to_string()))
         );
     }
@@ -552,17 +524,17 @@ mod tests {
     #[test]
     fn status_try_new_accepts_closed_set_and_trims() {
         assert_eq!(
-            ProcedureStatus::try_new("  draft  ").expect("draft"),
-            ProcedureStatus::Draft
+            status_from_text("  draft  ").expect("draft"),
+            LifecycleStatus::Draft
         );
         assert!(
-            ProcedureStatus::try_new("verified")
+            status_from_text("verified")
                 .expect("verified")
                 .is_verified()
         );
         assert_eq!(
-            ProcedureStatus::try_new("deprecated").expect("deprecated"),
-            ProcedureStatus::Deprecated
+            status_from_text("deprecated").expect("deprecated"),
+            LifecycleStatus::Deprecated
         );
     }
 
@@ -702,7 +674,7 @@ mod tests {
     fn build_from_parsed_reports_verified_missing_evidence() {
         let parsed = parsed_procedure(
             BTreeMap::from([
-                (STATUS_FIELD.to_string(), VERIFIED_STATUS.to_string()),
+                (STATUS_FIELD.to_string(), "verified".to_string()),
                 (OWNER_FIELD.to_string(), "platform-security".to_string()),
                 (VERIFIED_AT_FIELD.to_string(), "2026-05-06".to_string()),
             ]),
@@ -724,7 +696,7 @@ mod tests {
     fn build_from_parsed_accepts_verified_with_human_review_and_strips_dedicated_fields() {
         let parsed = parsed_procedure(
             BTreeMap::from([
-                (STATUS_FIELD.to_string(), VERIFIED_STATUS.to_string()),
+                (STATUS_FIELD.to_string(), "verified".to_string()),
                 (OWNER_FIELD.to_string(), "platform-security".to_string()),
                 (VERIFIED_AT_FIELD.to_string(), "2026-05-06".to_string()),
                 (HUMAN_REVIEW_FIELD.to_string(), "ran in staging".to_string()),

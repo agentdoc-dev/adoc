@@ -83,17 +83,14 @@ impl Task {
         };
 
         // Parse due (optional; blank value → treat as absent).
-        let due_raw = parsed.raw_fields.remove(DUE_FIELD);
-        let due = match due_raw.as_deref() {
-            Some(raw) => match EffectiveDate::try_new(raw) {
-                Ok(date) => Some(Some(date)),
-                Err(EffectiveDateError::Missing) => Some(None),
-                Err(EffectiveDateError::Invalid(value)) => {
-                    emit_task_error(&parsed, TaskError::InvalidDue(value), diagnostics);
-                    None
-                }
-            },
-            None => Some(None),
+        let due = match super::take_optional_scalar(&mut parsed, DUE_FIELD, EffectiveDate::try_new)
+        {
+            Ok(due) => Some(due),
+            Err(EffectiveDateError::Missing) => Some(None),
+            Err(EffectiveDateError::Invalid(value)) => {
+                emit_task_error(&parsed, TaskError::InvalidDue(value), diagnostics);
+                None
+            }
         };
 
         let body = match super::body_from_parsed(&parsed) {

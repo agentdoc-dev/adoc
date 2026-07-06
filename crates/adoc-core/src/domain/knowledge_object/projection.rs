@@ -1,22 +1,20 @@
 use crate::domain::graph::GraphEvidence;
 use crate::domain::knowledge_object::{
     KnowledgeObject,
-    api::{
-        ApiStatus, INTERFACE_TYPE_FIELD, METHOD_FIELD, PATH_FIELD as API_PATH_FIELD, SYMBOL_FIELD,
-    },
+    api::{INTERFACE_TYPE_FIELD, METHOD_FIELD, PATH_FIELD as API_PATH_FIELD, SYMBOL_FIELD},
     claim::{
         ClaimStatus, Evidence, OWNER_FIELD, Owner, VERIFIED_AT_FIELD, Verification, VerifiedAt,
     },
     decision::{DECIDED_BY_FIELD, DecidedBy, DecisionStatus},
-    example::{CHECKS_FIELD, ExampleStatus, FORMAT_FIELD, LANG_FIELD, SANDBOX_FIELD},
+    example::{CHECKS_FIELD, FORMAT_FIELD, LANG_FIELD, SANDBOX_FIELD},
     observation::{OBSERVED_AT_FIELD, ObservationStatus, SAMPLE_SIZE_FIELD},
     policy::PolicyStatus,
-    procedure::ProcedureStatus,
     question::{QuestionStatus, RESOLVED_BY_FIELD},
     task::{DUE_FIELD, TaskStatus},
 };
 use crate::domain::value_objects::contradiction_status::ContradictionStatus;
 use crate::domain::value_objects::effective_date::EffectiveDate;
+use crate::domain::value_objects::lifecycle_status::LifecycleStatus;
 use crate::domain::value_objects::review_interval::ReviewInterval;
 use crate::domain::value_objects::scope::Scope;
 use crate::domain::value_objects::severity::Severity;
@@ -102,12 +100,12 @@ pub(crate) enum MetadataDiscriminant<'a> {
     ClaimStatus(&'a ClaimStatus),
     DecisionStatus(&'a DecisionStatus),
     PolicyStatus(&'a PolicyStatus),
-    ProcedureStatus(&'a ProcedureStatus),
-    ExampleStatus(&'a ExampleStatus),
+    ProcedureStatus(&'a LifecycleStatus),
+    ExampleStatus(&'a LifecycleStatus),
     /// V5.6: lifecycle status for `contradiction`.
     ContradictionStatus(&'a ContradictionStatus),
     /// V6.5.1: lifecycle status for `api`.
-    ApiStatus(&'a ApiStatus),
+    ApiStatus(&'a LifecycleStatus),
     /// V6.5.2: lifecycle status for `observation`.
     ObservationStatus(&'a ObservationStatus),
     /// V6.5.3: lifecycle status for `question`.

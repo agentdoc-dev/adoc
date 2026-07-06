@@ -5,7 +5,7 @@ use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::ObjectId;
 use crate::domain::knowledge_object::EVIDENCE_REF_FIELD;
 use crate::domain::knowledge_object::api::{
-    ApiStatus, INTERFACE_TYPE_FIELD, METHOD_FIELD, PATH_FIELD as API_PATH_FIELD, SYMBOL_FIELD,
+    INTERFACE_TYPE_FIELD, METHOD_FIELD, PATH_FIELD as API_PATH_FIELD, SYMBOL_FIELD,
 };
 use crate::domain::knowledge_object::claim::{
     ClaimStatus, Evidence, OWNER_FIELD, Owner, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
@@ -131,7 +131,7 @@ impl DraftValidator<'_> {
     fn validate_api(&mut self) {
         // Status is optional; when present it must be the closed set.
         if let Some(status) = self.draft.status
-            && ApiStatus::try_new(status).is_err()
+            && super::api::status_from_text(status).is_err()
         {
             self.error(format!("api has invalid status `{status}`"));
             return;
