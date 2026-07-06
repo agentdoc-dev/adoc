@@ -80,8 +80,9 @@ Examples:
 ";
 const SEARCH_LONG_HELP: &str = "\
 Search returns one blended, RRF-ranked list of Knowledge Object and prose
-records (adoc.retrieval.v1). Object ID pins stay on top; prose records are
-orientation context, never citable knowledge. Setting any Knowledge Object
+records (adoc.retrieval.v1). Object ID pins stay on top and ride above the
+--top budget (--top bounds scored hits; pinned ids are always included);
+prose records are orientation context, never citable knowledge. Setting any Knowledge Object
 metadata filter (--kind, --status, --owner, --source-path, --related-to)
 implies object intent and suppresses prose records.
 

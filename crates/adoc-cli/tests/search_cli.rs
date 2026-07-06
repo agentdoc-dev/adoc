@@ -106,9 +106,13 @@ fn search_cli_billing_pilot_subset_supports_exact_id_prefix_id_and_filters() {
         .output()
         .expect("adoc search runs");
     assert!(exact.status.success());
+    // Pins ride above --top (ADR-0040): the exact-id pin plus one scored hit.
+    let exact_ids = search_object_ids(&exact.stdout);
+    assert_eq!(exact_ids[0], "billing.credits.decrement-after-success");
     assert_eq!(
-        search_object_ids(&exact.stdout),
-        ["billing.credits.decrement-after-success"]
+        exact_ids.len(),
+        2,
+        "one scored hit keeps the --top 1 budget, got {exact_ids:?}"
     );
 
     let prefix = Command::new(env!("CARGO_BIN_EXE_adoc"))
@@ -124,13 +128,21 @@ fn search_cli_billing_pilot_subset_supports_exact_id_prefix_id_and_filters() {
         .output()
         .expect("adoc search runs");
     assert!(prefix.status.success());
+    // All four prefix pins return in addition to the three scored slots.
+    let prefix_ids = search_object_ids(&prefix.stdout);
     assert_eq!(
-        search_object_ids(&prefix.stdout),
+        prefix_ids[..4],
         [
             "billing.credits",
             "billing.credits.nonnegative",
-            "billing.credits.ledger-source"
+            "billing.credits.ledger-source",
+            "billing.credits.decrement-after-success"
         ]
+    );
+    assert_eq!(
+        prefix_ids.len(),
+        7,
+        "three scored hits keep the --top 3 budget, got {prefix_ids:?}"
     );
 
     let filtered = Command::new(env!("CARGO_BIN_EXE_adoc"))
