@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/search-artifact.json",
+  "title": "AgentDoc Search Artifact (adoc.search.v1)",
+  "description": "The dist/docs.search.json build output. One embedding entry per Knowledge Object and per indexed prose block; code blocks and sub-threshold prose are never embedded, and prose cache reuse is keyed by content hash and model, never by order-derived block id (ADR-0040).",
+  "type": "object",
+  "required": ["schema_version", "model", "graph_artifact_hash", "embeddings"],
+  "properties": {
+    "schema_version": { "const": "adoc.search.v1" },
+    "model": {
+      "type": "object",
+      "required": ["id", "provider", "dim"],
+      "properties": {
+        "id": { "type": "string" },
+        "provider": { "type": "string" },
+        "dim": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "graph_artifact_hash": { "type": "string", "pattern": "^sha256:" },
+    "embeddings": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "title": "Knowledge Object entry",
+            "type": "object",
+            "required": ["id", "entry_kind", "content_hash", "vector"],
+            "properties": {
+              "id": { "type": "string" },
+              "entry_kind": { "const": "knowledge_object" },
+              "content_hash": { "type": "string", "pattern": "^sha256:" },
+              "vector": { "type": "array", "items": { "type": "number" } }
+            },
+            "additionalProperties": false
+          },
+          {
+            "title": "Prose entry (content_hash derives from the prose Embedding Composition)",
+            "type": "object",
+            "required": ["id", "entry_kind", "content_hash", "vector"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^.+#block-[0-9]+$" },
+              "entry_kind": { "const": "prose" },
+              "content_hash": { "type": "string", "pattern": "^sha256:" },
+              "vector": { "type": "array", "items": { "type": "number" } }
+            },
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": false
+}
