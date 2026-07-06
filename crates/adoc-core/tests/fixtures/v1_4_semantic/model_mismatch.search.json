@@ -1,5 +1,5 @@
 {
-  "schema_version": "adoc.search.v0",
+  "schema_version": "adoc.search.v1",
   "model": {
     "id": "bge-large-en-v1.5",
     "provider": "fastembed",

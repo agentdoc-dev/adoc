@@ -213,7 +213,7 @@ fn search_artifact_inspector_validates_model_hash_and_deterministic_quality() {
         embedding_provider: Some(EmbeddingProviderSelection::Deterministic),
     });
     assert_eq!(valid.load_status, ArtifactLoadStatus::Readable);
-    assert_eq!(valid.schema_version.as_deref(), Some("adoc.search.v0"));
+    assert_eq!(valid.schema_version.as_deref(), Some("adoc.search.v1"));
     assert_eq!(valid.object_count, Some(1));
     assert!(
         valid.diagnostics.iter().any(|diagnostic| {

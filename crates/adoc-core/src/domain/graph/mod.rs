@@ -102,6 +102,18 @@ impl GraphNode {
             _ => None,
         }
     }
+
+    /// V1.7.2: the prose counterpart of [`Self::as_knowledge_object`] —
+    /// pairs the block payload with its variant's [`ProseBlockKind`].
+    pub(crate) fn as_prose_block(&self) -> Option<(ProseBlockKind, &GraphBlockNode)> {
+        match self {
+            Self::Heading(block) => Some((ProseBlockKind::Heading, block)),
+            Self::Paragraph(block) => Some((ProseBlockKind::Paragraph, block)),
+            Self::List(block) => Some((ProseBlockKind::List, block)),
+            Self::CodeBlock(block) => Some((ProseBlockKind::CodeBlock, block)),
+            Self::Page(_) | Self::KnowledgeObject(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -152,6 +164,24 @@ impl ProseBlockKind {
             Self::CodeBlock => "code_block",
         }
     }
+
+    /// Selects a block's canonical searchable text from its payload parts:
+    /// `text` for headings and paragraphs, `code` for code blocks,
+    /// newline-joined `items` for lists (a list's `text` is its
+    /// `ordered`/`unordered` marker, not content). Single source of truth
+    /// for both retained prose blocks and raw artifact nodes (V1.7.2).
+    pub(crate) fn content_text_from<'a>(
+        self,
+        text: Option<&'a str>,
+        code: Option<&'a str>,
+        items: &'a [String],
+    ) -> Cow<'a, str> {
+        match self {
+            Self::CodeBlock => Cow::from(code.unwrap_or_default()),
+            Self::List => Cow::from(items.join("\n")),
+            Self::Heading | Self::Paragraph => Cow::from(text.unwrap_or_default()),
+        }
+    }
 }
 
 /// V1.7.1 (ADR-0040): a prose block retained by `GraphIndex` for retrieval.
@@ -184,13 +214,8 @@ impl GraphProseBlock {
     /// record's `text` field (ADR-0040). Borrows wherever the block already
     /// owns the text; only lists allocate (there is no pre-joined string).
     pub(crate) fn content_text_ref(&self) -> Cow<'_, str> {
-        match self.kind {
-            ProseBlockKind::CodeBlock => Cow::from(self.code.as_deref().unwrap_or_default()),
-            ProseBlockKind::List => Cow::from(self.items.join("\n")),
-            ProseBlockKind::Heading | ProseBlockKind::Paragraph => {
-                Cow::from(self.text.as_deref().unwrap_or_default())
-            }
-        }
+        self.kind
+            .content_text_from(self.text.as_deref(), self.code.as_deref(), &self.items)
     }
 
     /// Owned variant of [`Self::content_text_ref`] for record construction.
@@ -424,20 +449,8 @@ impl GraphIndex {
                     has_markdown_pages = true;
                 }
             }
-            match &node {
-                GraphNode::Heading(block) => {
-                    prose_nodes.push((ProseBlockKind::Heading, block.clone()));
-                }
-                GraphNode::Paragraph(block) => {
-                    prose_nodes.push((ProseBlockKind::Paragraph, block.clone()));
-                }
-                GraphNode::List(block) => {
-                    prose_nodes.push((ProseBlockKind::List, block.clone()));
-                }
-                GraphNode::CodeBlock(block) => {
-                    prose_nodes.push((ProseBlockKind::CodeBlock, block.clone()));
-                }
-                GraphNode::Page(_) | GraphNode::KnowledgeObject(_) => {}
+            if let Some((kind, block)) = node.as_prose_block() {
+                prose_nodes.push((kind, block.clone()));
             }
             let Some(knowledge_object) = node.as_knowledge_object().cloned() else {
                 continue;

@@ -523,7 +523,7 @@ fn project_status_reports_deterministic_semantic_readiness_with_quality_warning(
     assert!(outcome.readiness.patch_validation);
     assert_eq!(
         outcome.artifacts.search.schema_version.as_deref(),
-        Some("adoc.search.v0")
+        Some("adoc.search.v1")
     );
     assert!(
         outcome

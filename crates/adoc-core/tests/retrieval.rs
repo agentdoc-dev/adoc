@@ -63,7 +63,7 @@ fn load_session_from_objects_with_vectors(
     let graph_json = graph_json_from_objects(objects, Vec::new());
     let artifact = write_temp_artifact("hybrid-graph", &graph_json);
     let search_document = serde_json::json!({
-        "schema_version": "adoc.search.v0",
+        "schema_version": "adoc.search.v1",
         "model": {
             "id": "bge-small-en-v1.5",
             "provider": "fastembed",
@@ -74,6 +74,7 @@ fn load_session_from_objects_with_vectors(
             .into_iter()
             .map(|(id, vector)| serde_json::json!({
                 "id": id,
+                "entry_kind": "knowledge_object",
                 "content_hash": "sha256:test",
                 "vector": vector
             }))

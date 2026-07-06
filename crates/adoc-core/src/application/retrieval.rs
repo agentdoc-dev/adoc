@@ -834,7 +834,9 @@ mod tests {
 
     use super::*;
     use crate::application::hashing::sha256_prefixed;
-    use crate::domain::artifact::{SearchArtifactDocument, SearchEmbedding, SearchModelHeader};
+    use crate::domain::artifact::{
+        SearchArtifactDocument, SearchEmbedding, SearchEntryKind, SearchModelHeader,
+    };
     use crate::domain::graph::{
         GraphArtifactDocument, GraphBlockNode, GraphEdge, GraphEdgeKind, GraphKnowledgeObjectNode,
         GraphNode, GraphPageNode, GraphRelationKind, GraphRelations, GraphSourceSpan,
@@ -1020,7 +1022,7 @@ mod tests {
 
     fn search_document(graph_artifact_hash: &str) -> SearchArtifactDocument {
         SearchArtifactDocument {
-            schema_version: "adoc.search.v0".to_string(),
+            schema_version: "adoc.search.v1".to_string(),
             model: SearchModelHeader {
                 id: "hash-v1".to_string(),
                 provider: "deterministic".to_string(),
@@ -1029,6 +1031,7 @@ mod tests {
             graph_artifact_hash: graph_artifact_hash.to_string(),
             embeddings: vec![SearchEmbedding {
                 id: "billing.target".to_string(),
+                entry_kind: SearchEntryKind::KnowledgeObject,
                 content_hash: "sha256:content".to_string(),
                 vector: vec![1.0, 0.0],
             }],

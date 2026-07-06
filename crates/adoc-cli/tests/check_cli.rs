@@ -455,7 +455,7 @@ fn build_creates_missing_output_directory_and_writes_artifacts() {
         .expect("search JSON is written");
     let search_json: serde_json::Value =
         serde_json::from_str(&search_json_text).expect("search JSON is valid");
-    assert_eq!(search_json["schema_version"], "adoc.search.v0");
+    assert_eq!(search_json["schema_version"], "adoc.search.v1");
     assert_eq!(search_json["model"]["id"], "hash-v1");
     assert_eq!(search_json["model"]["provider"], "deterministic");
     assert_eq!(search_json["model"]["dim"], 384);
