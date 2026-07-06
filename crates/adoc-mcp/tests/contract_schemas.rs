@@ -778,6 +778,10 @@ fn mcp_serves_v3_schema_resources_byte_equal_to_on_disk_files() {
             "adoc://agent/v0/schema/adoc.patch.apply.v0.schema.json",
             "adoc.patch.apply.v0.schema.json",
         ),
+        (
+            "adoc://agent/v0/schema/search-artifact.json",
+            "search-artifact.json",
+        ),
     ] {
         let result = server
             .read_agent_resource(uri)
@@ -1146,6 +1150,10 @@ fn retrieval_schema_ids_match_their_published_uris() {
         (
             "retrieval-envelope.v0.json",
             "adoc://agent/v0/schema/retrieval-envelope.v0.json",
+        ),
+        (
+            "search-artifact.json",
+            "adoc://agent/v0/schema/search-artifact.json",
         ),
     ] {
         assert_eq!(

@@ -298,6 +298,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/adoc.contradictions.v0.schema.json",
         "adoc://agent/v0/schema/adoc.impacted.v0.schema.json",
         "adoc://agent/v0/schema/adoc.patch.apply.v0.schema.json",
+        "adoc://agent/v0/schema/search-artifact.json",
     ];
 
     let resources = server.list_agent_resources();
