@@ -3,29 +3,32 @@ use std::path::PathBuf;
 
 use adoc_core::{GraphDirection, GraphRelationKind, SearchRecordScope};
 use adoc_local::{
-    BuildInput, BuildUseCase, CheckInput, CheckUseCase, GraphInput, GraphUseCase, InitInput,
-    InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase, ProjectStatusInput,
-    ProjectStatusRefresh, ProjectStatusUseCase, SearchInput, SearchUseCase, UnrestrictedPathPolicy,
-    WhyInput, WhyUseCase,
+    BuildInput, BuildOutcome, CheckInput, CheckOutcome, GraphInput, GraphOutcome, InitOutcome,
+    LocalContext, LocalError, PatchCheckInput, PatchCheckOutcome, ProjectStatusInput,
+    ProjectStatusOutcome, ProjectStatusRefresh, SearchInput, SearchOutcome, UnrestrictedPathPolicy,
+    WhyInput, WhyOutcome,
 };
 
+type Ctx = LocalContext<UnrestrictedPathPolicy>;
+
+/// Pins the Local Workflow Layer's public surface: one method per local
+/// operation on `LocalContext`, taking the operation's `*Input` record and
+/// returning its `*Outcome`. Callers hold exactly one type; the former
+/// per-operation `*UseCase` wrapper structs are gone.
 #[test]
-fn local_public_surface_is_use_case_oriented() {
-    let context = LocalContext::new(PathBuf::from("."), UnrestrictedPathPolicy);
+fn local_public_surface_is_method_oriented() {
+    let _: fn(&Ctx) -> Result<InitOutcome, LocalError> = Ctx::init;
+    let _: fn(&Ctx, CheckInput) -> Result<CheckOutcome, LocalError> = Ctx::check;
+    let _: fn(&Ctx, BuildInput) -> Result<BuildOutcome, LocalError> = Ctx::build;
+    let _: fn(&Ctx, WhyInput) -> Result<WhyOutcome, LocalError> = Ctx::why;
+    let _: fn(&Ctx, GraphInput) -> Result<GraphOutcome, LocalError> = Ctx::graph;
+    let _: fn(&Ctx, SearchInput) -> Result<SearchOutcome, LocalError> = Ctx::search;
+    let _: fn(&Ctx, PatchCheckInput) -> Result<PatchCheckOutcome, LocalError> = Ctx::patch_check;
+    let _: fn(&Ctx, ProjectStatusInput) -> Result<ProjectStatusOutcome, LocalError> =
+        Ctx::project_status;
 
-    let _: InitUseCase<_> = InitUseCase::new(context.clone());
-    let _: CheckUseCase<_> = CheckUseCase::new(context.clone());
-    let _: BuildUseCase<_> = BuildUseCase::new(context.clone());
-    let _: WhyUseCase<_> = WhyUseCase::new(context.clone());
-    let _: GraphUseCase<_> = GraphUseCase::new(context.clone());
-    let _: SearchUseCase<_> = SearchUseCase::new(context.clone());
-    let _: PatchCheckUseCase<_> = PatchCheckUseCase::new(context);
-    let _: ProjectStatusUseCase<_> = ProjectStatusUseCase::new(LocalContext::new(
-        PathBuf::from("."),
-        UnrestrictedPathPolicy,
-    ));
+    let _: Ctx = LocalContext::new(PathBuf::from("."), UnrestrictedPathPolicy);
 
-    let _: InitInput = InitInput;
     let _: CheckInput = CheckInput { path: None };
     let _: BuildInput = BuildInput {
         path: None,

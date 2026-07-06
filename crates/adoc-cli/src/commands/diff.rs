@@ -2,7 +2,7 @@ use std::fmt::Write as FmtWrite;
 use std::io;
 
 use adoc_core::{ChangedObject, FieldChange, ObjectDiffEnvelope};
-use adoc_local::{DiffInput, DiffUseCase, LocalContext, UnrestrictedPathPolicy};
+use adoc_local::{DiffInput, LocalContext, UnrestrictedPathPolicy};
 
 use crate::error::CliError;
 use crate::presentation::style::key::cyan_key;
@@ -21,7 +21,7 @@ pub(crate) fn diff(input: DiffCommandInput, resolved: ResolvedFormat) -> i32 {
         Err(error) => return report(error),
     };
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match DiffUseCase::new(context).run(DiffInput {
+    let outcome = match context.diff(DiffInput {
         base_ref: input.base_ref,
         head_ref: None,
     }) {

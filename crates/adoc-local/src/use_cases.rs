@@ -46,9 +46,6 @@ embeddings:
   provider: local
 ";
 
-#[derive(Debug, Clone)]
-pub struct InitInput;
-
 #[derive(Debug, Clone, Serialize)]
 pub struct InitOutcome {
     pub created: Vec<PathBuf>,
@@ -366,297 +363,74 @@ pub struct ProjectStatusOutcome {
     pub exit_code: i32,
 }
 
-#[derive(Debug, Clone)]
-pub struct InitUseCase<P>
+/// The Local Workflow Layer's command surface: one method per local
+/// operation, on the one type every adapter already holds. Bodies live in
+/// the private `*_with_context` functions below; the `PathPolicy` generic
+/// remains the test seam.
+impl<P> LocalContext<P>
 where
     P: PathPolicy,
 {
-    context: LocalContext<P>,
-}
-
-impl<P> InitUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn init(&self) -> Result<InitOutcome, LocalError> {
+        init_with_context(self)
     }
 
-    pub fn run(&self, _input: InitInput) -> Result<InitOutcome, LocalError> {
-        init_with_context(&self.context)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CheckUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> CheckUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn check(&self, input: CheckInput) -> Result<CheckOutcome, LocalError> {
+        check_with_context(self, input)
     }
 
-    pub fn run(&self, input: CheckInput) -> Result<CheckOutcome, LocalError> {
-        check_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct BuildUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> BuildUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn build(&self, input: BuildInput) -> Result<BuildOutcome, LocalError> {
+        build_with_context(self, input)
     }
 
-    pub fn run(&self, input: BuildInput) -> Result<BuildOutcome, LocalError> {
-        build_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct WhyUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> WhyUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn why(&self, input: WhyInput) -> Result<WhyOutcome, LocalError> {
+        why_with_context(self, input)
     }
 
-    pub fn run(&self, input: WhyInput) -> Result<WhyOutcome, LocalError> {
-        why_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct GraphUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> GraphUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn graph(&self, input: GraphInput) -> Result<GraphOutcome, LocalError> {
+        graph_with_context(self, input)
     }
 
-    pub fn run(&self, input: GraphInput) -> Result<GraphOutcome, LocalError> {
-        graph_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct StaleUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> StaleUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn stale(&self, input: StaleInput) -> Result<StaleOutcome, LocalError> {
+        stale_with_context(self, input)
     }
 
-    pub fn run(&self, input: StaleInput) -> Result<StaleOutcome, LocalError> {
-        stale_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ContradictionsUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> ContradictionsUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn contradictions(
+        &self,
+        input: ContradictionsInput,
+    ) -> Result<ContradictionsOutcome, LocalError> {
+        contradictions_with_context(self, input)
     }
 
-    pub fn run(&self, input: ContradictionsInput) -> Result<ContradictionsOutcome, LocalError> {
-        contradictions_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ImpactedUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> ImpactedUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn impacted(&self, input: ImpactedInput) -> Result<ImpactedOutcome, LocalError> {
+        impacted_with_context(self, input)
     }
 
-    pub fn run(&self, input: ImpactedInput) -> Result<ImpactedOutcome, LocalError> {
-        impacted_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SearchUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> SearchUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn search(&self, input: SearchInput) -> Result<SearchOutcome, LocalError> {
+        search_with_context(self, input)
     }
 
-    pub fn run(&self, input: SearchInput) -> Result<SearchOutcome, LocalError> {
-        search_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct PatchCheckUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> PatchCheckUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn patch_check(&self, input: PatchCheckInput) -> Result<PatchCheckOutcome, LocalError> {
+        patch_check_with_context(self, input)
     }
 
-    pub fn run(&self, input: PatchCheckInput) -> Result<PatchCheckOutcome, LocalError> {
-        patch_check_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct PatchApplyUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> PatchApplyUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn patch_apply(&self, input: PatchApplyInput) -> Result<PatchApplyOutcome, LocalError> {
+        patch_apply_with_context(self, input)
     }
 
-    pub fn run(&self, input: PatchApplyInput) -> Result<PatchApplyOutcome, LocalError> {
-        patch_apply_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct DiffUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> DiffUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn diff(&self, input: DiffInput) -> Result<DiffOutcome, LocalError> {
+        diff_with_context(self, input)
     }
 
-    pub fn run(&self, input: DiffInput) -> Result<DiffOutcome, LocalError> {
-        diff_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ReviewUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> ReviewUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
+    pub fn review(&self, input: ReviewInput) -> Result<ReviewOutcome, LocalError> {
+        review_with_context(self, input)
     }
 
-    pub fn run(&self, input: ReviewInput) -> Result<ReviewOutcome, LocalError> {
-        review_with_context(&self.context, input)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ProjectStatusUseCase<P>
-where
-    P: PathPolicy,
-{
-    context: LocalContext<P>,
-}
-
-impl<P> ProjectStatusUseCase<P>
-where
-    P: PathPolicy,
-{
-    pub fn new(context: LocalContext<P>) -> Self {
-        Self { context }
-    }
-
-    pub fn run(&self, input: ProjectStatusInput) -> Result<ProjectStatusOutcome, LocalError> {
-        project_status_with_context(&self.context, input)
+    pub fn project_status(
+        &self,
+        input: ProjectStatusInput,
+    ) -> Result<ProjectStatusOutcome, LocalError> {
+        project_status_with_context(self, input)
     }
 }
 

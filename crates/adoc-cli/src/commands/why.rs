@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use adoc_local::{LocalContext, UnrestrictedPathPolicy, WhyInput, WhyUseCase};
+use adoc_local::{LocalContext, UnrestrictedPathPolicy, WhyInput};
 
 use crate::error::CliError;
 use crate::presentation::{
@@ -18,7 +18,7 @@ pub(crate) fn why(object_id: String, artifact: Option<PathBuf>, resolved: Resolv
         Err(error) => return report(error),
     };
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match WhyUseCase::new(context).run(WhyInput {
+    let outcome = match context.why(WhyInput {
         object_id,
         artifact,
     }) {

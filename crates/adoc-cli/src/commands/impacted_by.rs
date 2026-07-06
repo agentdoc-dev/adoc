@@ -8,8 +8,7 @@ use std::path::PathBuf;
 
 use adoc_core::{ImpactReason, ImpactReasonKind, ImpactedEnvelope, ImpactedRecord};
 use adoc_local::{
-    ImpactedChangedSet, ImpactedInput as LocalImpactedInput, ImpactedUseCase, LocalContext,
-    UnrestrictedPathPolicy,
+    ImpactedChangedSet, ImpactedInput as LocalImpactedInput, LocalContext, UnrestrictedPathPolicy,
 };
 
 use crate::error::CliError;
@@ -37,7 +36,7 @@ pub(crate) fn impacted_by(input: ImpactedByCommandInput, resolved: ResolvedForma
         None => ImpactedChangedSet::Paths(input.paths),
     };
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match ImpactedUseCase::new(context).run(LocalImpactedInput {
+    let outcome = match context.impacted(LocalImpactedInput {
         artifact: input.artifact,
         changed,
     }) {

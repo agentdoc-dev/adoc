@@ -3,9 +3,7 @@ use std::io;
 use std::path::PathBuf;
 
 use adoc_core::{StaleCategory, StaleEnvelope, StaleRecord};
-use adoc_local::{
-    LocalContext, StaleInput as LocalStaleInput, StaleUseCase, UnrestrictedPathPolicy,
-};
+use adoc_local::{LocalContext, StaleInput as LocalStaleInput, UnrestrictedPathPolicy};
 
 use crate::error::CliError;
 use crate::presentation::style::key::cyan_key;
@@ -25,7 +23,7 @@ pub(crate) fn stale(input: StaleCommandInput, resolved: ResolvedFormat) -> i32 {
         Err(error) => return report(error),
     };
     let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
-    let outcome = match StaleUseCase::new(context).run(LocalStaleInput {
+    let outcome = match context.stale(LocalStaleInput {
         artifact: input.artifact,
         within_days: input.within_days,
     }) {
