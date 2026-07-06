@@ -85,7 +85,8 @@ pub(crate) fn build_search_artifact(
         .map(|cached| (cached.content_hash.as_str(), cached))
         .collect();
     for (kind, block) in embeddable_prose_blocks(graph_document) {
-        let content_text = kind.content_text_from(block.text.as_deref(), None, &block.items);
+        let content_text =
+            kind.content_text_from(block.text.as_deref(), block.code.as_deref(), &block.items);
         if content_text.split_whitespace().count() < MIN_PROSE_EMBEDDING_TOKENS {
             continue;
         }
