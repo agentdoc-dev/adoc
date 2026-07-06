@@ -1032,14 +1032,25 @@ fn adoc_search_rejects_conflicting_scope_arguments() {
     let error = server.run_search(both).expect_err("both scopes conflict");
     assert!(error.to_string().contains("mutually exclusive"));
 
+    // V1.7.2: prose_only + semantic is no longer an argument conflict —
+    // prose vectors ship in adoc.search.v1. On this fixture (built with
+    // provider: none) it fails later, at the missing search artifact.
     let mut prose_semantic = mixed_mode_search_params("credits");
     prose_semantic.prose_only = true;
     prose_semantic.semantic = true;
     prose_semantic.lexical = false;
-    let error = server
+    let envelope = server
         .run_search(prose_semantic)
-        .expect_err("prose_only + semantic conflicts");
-    assert!(error.to_string().contains("no vectors"));
+        .expect("prose_only + semantic passes argument validation");
+    assert!(
+        envelope["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|diagnostic| diagnostic["code"] == "search.artifact_missing"),
+        "expected the missing-artifact diagnostic, not an argument conflict: {envelope:#}"
+    );
+    assert_eq!(envelope["records"], serde_json::json!([]));
 
     let mut prose_filtered = mixed_mode_search_params("credits");
     prose_filtered.prose_only = true;

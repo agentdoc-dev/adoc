@@ -302,3 +302,256 @@ mod paraphrase_recall {
         }
     }
 }
+
+/// V1.7.2 (ADR-0040): prose vectors in adoc.search.v1, exercised through the
+/// real CLI against the Markdown Pilot with the deterministic provider.
+mod prose_semantic {
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    use crate::support::TestWorkspace;
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+    }
+
+    struct MarkdownPilot {
+        _workspace: TestWorkspace,
+        artifact: String,
+        search_artifact: String,
+    }
+
+    fn build_markdown_pilot() -> MarkdownPilot {
+        let workspace = TestWorkspace::new("v1-7-2-markdown-pilot");
+        let output_directory = workspace.root.join("dist");
+        let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+            .current_dir(repo_root())
+            .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+            .args([
+                "build",
+                "examples/markdown-pilot/",
+                "--out",
+                output_directory
+                    .to_str()
+                    .expect("output directory path is utf-8"),
+            ])
+            .output()
+            .expect("adoc build runs");
+        assert!(
+            build_output.status.success(),
+            "markdown pilot must build cleanly\nstderr:\n{}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
+        MarkdownPilot {
+            artifact: output_directory
+                .join("docs.graph.json")
+                .to_string_lossy()
+                .into_owned(),
+            search_artifact: output_directory
+                .join("docs.search.json")
+                .to_string_lossy()
+                .into_owned(),
+            _workspace: workspace,
+        }
+    }
+
+    fn search_json(pilot: &MarkdownPilot, extra_args: &[&str], query: &str) -> serde_json::Value {
+        let mut args = vec![
+            "search",
+            query,
+            "--artifact",
+            &pilot.artifact,
+            "--search-artifact",
+            &pilot.search_artifact,
+        ];
+        args.extend_from_slice(extra_args);
+        args.extend_from_slice(&["--format", "json"]);
+        let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+            .args(&args)
+            .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+            .output()
+            .expect("adoc search runs");
+        assert!(
+            output.status.success(),
+            "search must exit 0\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("search stdout is JSON")
+    }
+
+    /// The Markdown Pilot's v1 search artifact carries prose entries with
+    /// entry_kind, no code_block entries, and no sub-threshold entries.
+    #[test]
+    fn markdown_pilot_search_artifact_carries_prose_entries() {
+        let pilot = build_markdown_pilot();
+        let artifact: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(&pilot.search_artifact).expect("search artifact is readable"),
+        )
+        .expect("search artifact is JSON");
+
+        assert_eq!(artifact["schema_version"], "adoc.search.v1");
+        let embeddings = artifact["embeddings"].as_array().expect("embeddings array");
+        assert!(
+            embeddings
+                .iter()
+                .any(|entry| entry["entry_kind"] == "prose"),
+            "prose entries must be embedded"
+        );
+        assert!(
+            embeddings
+                .iter()
+                .any(|entry| entry["entry_kind"] == "knowledge_object"),
+            "knowledge object entries must remain"
+        );
+    }
+
+    /// V1.7.2 roadmap acceptance: `--semantic --prose-only` is un-gated and
+    /// returns prose records ranked by vector similarity.
+    #[test]
+    fn prose_only_semantic_search_returns_ranked_prose_records() {
+        let pilot = build_markdown_pilot();
+        let envelope = search_json(
+            &pilot,
+            &["--semantic", "--prose-only", "--top", "3"],
+            "how are credits spent during a generation run",
+        );
+
+        assert_eq!(envelope["schema_version"], "adoc.retrieval.v1");
+        let records = envelope["records"].as_array().expect("records array");
+        assert!(
+            !records.is_empty(),
+            "prose-only semantic search returns records"
+        );
+        for record in records {
+            assert_eq!(record["record_type"], "prose");
+            assert_eq!(record["match"]["mode"], "semantic");
+            assert!(
+                record["match"]["vector_rank"].is_number(),
+                "prose semantic hits carry vector_rank: {record}"
+            );
+            assert!(
+                record["match"]["cosine_score"].is_number(),
+                "prose semantic hits carry cosine_score: {record}"
+            );
+        }
+    }
+
+    /// V1.7.2 roadmap acceptance: a paraphrase query returns a prose match
+    /// under `--semantic` that lexical search misses (fixture-pinned with
+    /// deterministic vectors; the pin moves only if the pilot prose or the
+    /// Embedding Composition changes).
+    #[test]
+    fn semantic_search_returns_prose_match_lexical_misses() {
+        let pilot = build_markdown_pilot();
+        let query = "confirming message delivery receipts";
+        let pinned_id = "tutorials.concepts#block-0007";
+
+        let lexical = search_json(&pilot, &["--lexical", "--prose-only"], query);
+        assert!(
+            lexical["records"]
+                .as_array()
+                .expect("records array")
+                .iter()
+                .all(|record| record["id"] != pinned_id),
+            "the pinned block must be lexically unreachable for this query: {lexical}"
+        );
+
+        let semantic = search_json(&pilot, &["--semantic", "--prose-only", "--top", "1"], query);
+        let first = &semantic["records"][0];
+        assert_eq!(first["record_type"], "prose");
+        assert_eq!(first["id"], pinned_id);
+        assert_eq!(first["match"]["mode"], "semantic");
+    }
+
+    /// Prose semantic results are deterministic across two runs.
+    #[test]
+    fn prose_semantic_results_are_deterministic_across_two_runs() {
+        let pilot = build_markdown_pilot();
+        let query = "verifying webhook deliveries during onboarding";
+
+        let first = search_json(&pilot, &["--semantic", "--prose-only", "--top", "5"], query);
+        let second = search_json(&pilot, &["--semantic", "--prose-only", "--top", "5"], query);
+
+        assert_eq!(first, second, "deterministic vectors must rank stably");
+    }
+}
+
+/// V1.7.2: real-model paraphrase recall over Markdown Pilot prose —
+/// the deterministic tests above pin the wiring; this proves the semantics.
+#[cfg(feature = "fastembed-it")]
+mod prose_paraphrase_recall {
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    use crate::support::TestWorkspace;
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+    }
+
+    #[test]
+    fn paraphrase_query_recalls_settlement_prose_in_top_3_with_fastembed() {
+        let workspace = TestWorkspace::new("v1-7-2-markdown-pilot-fastembed");
+        let output_directory = workspace.root.join("dist");
+        let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+            .current_dir(repo_root())
+            // No ADOC_TEST_EMBEDDING_PROVIDER — real fastembed for the corpus.
+            .args([
+                "build",
+                "examples/markdown-pilot/",
+                "--out",
+                output_directory
+                    .to_str()
+                    .expect("output directory path is utf-8"),
+            ])
+            .output()
+            .expect("adoc build runs");
+        assert!(
+            build_output.status.success(),
+            "markdown pilot must build cleanly with fastembed\nstderr:\n{}",
+            String::from_utf8_lossy(&build_output.stderr)
+        );
+
+        let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+            .args([
+                "search",
+                "when do funds become available to withdraw",
+                "--artifact",
+                output_directory.join("docs.graph.json").to_str().unwrap(),
+                "--search-artifact",
+                output_directory.join("docs.search.json").to_str().unwrap(),
+                "--semantic",
+                "--prose-only",
+                "--top",
+                "3",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("adoc search runs");
+        let envelope: serde_json::Value =
+            serde_json::from_slice(&output.stdout).unwrap_or_else(|e| {
+                panic!(
+                    "stdout is JSON: {e}; stderr={}",
+                    String::from_utf8_lossy(&output.stderr)
+                )
+            });
+
+        let records = envelope["records"].as_array().expect("records array");
+        assert!(
+            records.iter().any(|record| {
+                record["record_type"] == "prose"
+                    && record["page_id"] == "tutorials.concepts"
+                    && record["text"]
+                        .as_str()
+                        .is_some_and(|text| text.contains("Settlement"))
+            }),
+            "the settlement paragraph must be a top-3 semantic prose hit, got {envelope:#}"
+        );
+    }
+}
