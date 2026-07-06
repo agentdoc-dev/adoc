@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, VecDeque, btree_map::Entry};
 use std::fmt;
 
@@ -180,15 +181,21 @@ impl GraphProseBlock {
     /// paragraphs, `code` for code blocks, newline-joined `items` for lists
     /// (a list's `text` is its `ordered`/`unordered` marker, not content).
     /// Feeds both the lexical corpus and the `adoc.retrieval.v1` prose
-    /// record's `text` field (ADR-0040).
-    pub(crate) fn content_text(&self) -> String {
+    /// record's `text` field (ADR-0040). Borrows wherever the block already
+    /// owns the text; only lists allocate (there is no pre-joined string).
+    pub(crate) fn content_text_ref(&self) -> Cow<'_, str> {
         match self.kind {
-            ProseBlockKind::CodeBlock => self.code.clone().unwrap_or_default(),
-            ProseBlockKind::List => self.items.join("\n"),
+            ProseBlockKind::CodeBlock => Cow::from(self.code.as_deref().unwrap_or_default()),
+            ProseBlockKind::List => Cow::from(self.items.join("\n")),
             ProseBlockKind::Heading | ProseBlockKind::Paragraph => {
-                self.text.clone().unwrap_or_default()
+                Cow::from(self.text.as_deref().unwrap_or_default())
             }
         }
+    }
+
+    /// Owned variant of [`Self::content_text_ref`] for record construction.
+    pub(crate) fn content_text(&self) -> String {
+        self.content_text_ref().into_owned()
     }
 }
 
@@ -1147,6 +1154,49 @@ mod tests {
             context("guides.page#block-0007"),
             Some("Appendix".to_string())
         );
+    }
+
+    /// The lexical corpus tokenizes via the borrowing accessor while the
+    /// prose record materializes an owned copy — the two must never drift,
+    /// and only lists (which have no pre-joined text) may allocate.
+    #[test]
+    fn content_text_ref_matches_content_text_and_borrows_where_possible() {
+        let prose_block = |kind: ProseBlockKind| GraphProseBlock {
+            id: "guides.page#block-0000".to_string(),
+            page_id: "guides.page".to_string(),
+            kind,
+            order: 0,
+            text: Some("Some text.".to_string()),
+            code: Some("let x = 1;".to_string()),
+            items: vec!["first".to_string(), "second".to_string()],
+            heading_context: None,
+            source_span: GraphSourceSpan {
+                path: "docs/guide.md".to_string(),
+                line: 1,
+                column: 1,
+            },
+        };
+
+        for kind in [
+            ProseBlockKind::Heading,
+            ProseBlockKind::Paragraph,
+            ProseBlockKind::List,
+            ProseBlockKind::CodeBlock,
+        ] {
+            let block = prose_block(kind);
+            assert_eq!(block.content_text_ref(), block.content_text());
+        }
+        for kind in [
+            ProseBlockKind::Heading,
+            ProseBlockKind::Paragraph,
+            ProseBlockKind::CodeBlock,
+        ] {
+            let block = prose_block(kind);
+            assert!(
+                matches!(block.content_text_ref(), std::borrow::Cow::Borrowed(_)),
+                "{kind:?} owns its text and must not allocate for indexing"
+            );
+        }
     }
 
     #[test]
