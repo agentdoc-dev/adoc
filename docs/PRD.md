@@ -3,10 +3,15 @@
 **Product Name:** AgentDoc
 **Category:** Agent-aligned documentation, knowledge management, developer tooling, AI infrastructure
 **Document Type:** Full Product PRD
-**Version:** 0.1
-**Date:** 2026-05-02
+**Version:** 0.2
+**Date:** 2026-07-06
 **Status:** Draft
 **Primary Audience:** Product, engineering, design, developer experience, AI platform, security, technical writing, infrastructure, enterprise architecture
+
+**Revision History:**
+
+- 0.2 (2026-07-06): §32 — inserted Phase 2 "Adoption-First Cycle (V8)"; renumbered Phases 2–5 to Phases 3–6 (§32.4–§32.7). §50.1 — added delivery-status checkboxes. §51 — added measurement-vehicle note.
+- 0.1 (2026-05-02): Initial draft.
 
 ---
 
@@ -3536,7 +3541,36 @@ MVP Success Criteria:
 - Compiler catches stale or missing metadata.
 - Users prefer AgentDoc for agent-facing docs over Markdown.
 
-# 32.3 Phase 2: Team Product
+# 32.3 Phase 2: Adoption-First Cycle (V8)
+
+Goal:
+
+Convert the shipped MVP surface into adoption evidence before walking the team-product scope wholesale. Discovery over engineering; measured gates over felt friction.
+
+Included:
+
+- `adoc migrate` (Section 28): lossless Markdown import to prose-mode pages with a migration report; typed blocks are only ever SUGGESTED, never auto-typed; reversible via export back to Markdown. Closes MVP acceptance item 12 (Section 50.1) and MVP Must-Have 18 (Section 33.1).
+- External design-partner pilots: 2–3 teams matching the AI platform engineer persona (Section 8.3), run with the pilot-report discipline (append-only friction logs, gates fixed before the pilot runs). The friction log seeds the next cycle's backlog.
+- CI surface (Section 24): `adoc check` and `adoc impacted-by` posted as PR comments — the smallest Phase 3 slice that creates a weekly team touchpoint. Explicitly not the language server and not the web app.
+- Contract stability: a written stability policy; the agent-integration envelopes (`adoc.patch`, `adoc.patch.check`, `adoc.patch.apply`, `adoc.graph.traversal`) promoted to v1; report envelopes declared stable-at-v0.
+- Knowledge-health report: the Section 14.5 health score emitted as a CLI/CI artifact — not a dashboard — so pilots mechanically produce North Star evidence (Section 51).
+
+Not Included (explicitly refused this phase):
+
+- Phase 5 governance: SSO, RBAC, permission engine
+- composition, includes, custom schemas (Section 29)
+- web surfaces
+- sandboxed example execution
+
+Success Criteria:
+
+- A Markdown corpus imports losslessly and exports back to Markdown without loss.
+- 2–3 external pilot teams produce append-only friction logs measured against pre-committed gates.
+- PR comments from `adoc check` and `adoc impacted-by` run weekly in at least one pilot repository.
+- Every published envelope is covered by the written stability policy.
+- Pilot reports attach the knowledge-health artifact as North Star evidence.
+
+# 32.4 Phase 3: Team Product
 
 Goal:
 
@@ -3545,7 +3579,7 @@ Support team-scale docs maintenance and review.
 Included:
 
 - VS Code language server
-- GitHub/GitLab CI integration
+- GitHub/GitLab CI integration *(moved to Phase 2)*
 - semantic diff
 - source path impact analysis
 - executable example checks
@@ -3556,8 +3590,8 @@ Included:
 - team ownership
 - review workflows
 - schema registry v1
-- Markdown migration tool
-- PR comments
+- Markdown migration tool *(moved to Phase 2)*
+- PR comments *(moved to Phase 2)*
 
 Success Criteria:
 
@@ -3567,7 +3601,7 @@ Success Criteria:
 - Semantic diffs reduce review effort.
 - Stale object count decreases over time.
 
-# 32.4 Phase 3: Agent-Native Platform
+# 32.5 Phase 4: Agent-Native Platform
 
 Goal:
 
@@ -3597,7 +3631,7 @@ Success Criteria:
 - Prompt-injection incidents from docs are reduced.
 - Agent-generated changes are traceable and auditable.
 
-# 32.5 Phase 4: Enterprise Governance
+# 32.6 Phase 5: Enterprise Governance
 
 Goal:
 
@@ -3627,7 +3661,7 @@ Success Criteria:
 - Sensitive knowledge is permissioned.
 - Knowledge health dashboards are adopted by leadership.
 
-# 32.6 Phase 5: Ecosystem and Marketplace
+# 32.7 Phase 6: Ecosystem and Marketplace
 
 Goal:
 
@@ -4686,21 +4720,23 @@ Semantic contradiction detection may annoy users.
 
 The MVP is acceptable when:
 
-1. A user can initialize a project.
-2. A user can write AgentDoc source files.
-3. A user can create typed blocks with IDs.
-4. The CLI can validate syntax and schemas.
-5. The CLI can compile to HTML and JSON.
-6. The compiler reports useful diagnostics.
-7. A verified claim requires evidence.
-8. Raw HTML is rejected in strict mode.
-9. Broken references are detected.
-10. Agents can retrieve structured objects through API or JSON output.
-11. Rendered docs show status and warnings.
-12. Markdown files can be imported with a useful migration report.
-13. At least one pilot project can use AgentDoc for real docs.
-14. At least one internal agent can cite AgentDoc object IDs.
-15. Users can understand and fix validation errors without reading internal compiler details.
+1. [x] A user can initialize a project.
+2. [x] A user can write AgentDoc source files.
+3. [x] A user can create typed blocks with IDs.
+4. [x] The CLI can validate syntax and schemas.
+5. [x] The CLI can compile to HTML and JSON.
+6. [x] The compiler reports useful diagnostics.
+7. [x] A verified claim requires evidence.
+8. [x] Raw HTML is rejected in strict mode.
+9. [x] Broken references are detected.
+10. [x] Agents can retrieve structured objects through API or JSON output.
+11. [x] Rendered docs show status and warnings.
+12. [ ] Markdown files can be imported with a useful migration report. *(Remaining engineering item — Phase 2 / V8.1 `adoc migrate`, Section 28.)*
+13. [ ] At least one pilot project can use AgentDoc for real docs.
+14. [ ] At least one internal agent can cite AgentDoc object IDs.
+15. [ ] Users can understand and fix validation errors without reading internal compiler details.
+
+Status (0.2, 2026-07-06): items 1–11 are shipped. Item 12 is the last engineering item, closed by Phase 2 (V8.1). Items 13–15 are checked only by the pilot-readiness report (`docs/pilot-report.md`), with links, when the pilot runs.
 
 ## 50.2 Full Product Acceptance Criteria
 
@@ -4740,6 +4776,8 @@ Supporting metrics:
 - reduction in unresolved contradictions
 - number of accepted agent patches
 - number of code changes with successful doc impact analysis
+
+Measurement: the knowledge-health report (Section 14.5), emitted as a CLI/CI artifact in Phase 2 (V8.4), is the measurement vehicle for the North Star and its supporting metrics. Pilot evidence must cite this artifact, not ad-hoc counts.
 
 ---
 
