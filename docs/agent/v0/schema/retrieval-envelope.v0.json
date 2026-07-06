@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "adoc://agent/v0/schema/retrieval-envelope.json",
+  "$id": "adoc://agent/v0/schema/retrieval-envelope.v0.json",
   "title": "AgentDoc Retrieval Envelope",
   "type": "object",
   "required": ["schema_version", "records", "diagnostics"],
@@ -25,7 +25,8 @@
           "evidence": { "type": "object", "additionalProperties": { "type": "string" } },
           "fields": { "type": "object", "additionalProperties": { "type": "string" } },
           "relations": { "type": "object" },
-          "match": { "type": "object" }
+          "match": { "type": "object" },
+          "resolved_questions": { "type": "array", "items": { "type": "string" } }
         },
         "additionalProperties": false
       }
