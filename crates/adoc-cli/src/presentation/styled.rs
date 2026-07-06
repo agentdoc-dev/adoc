@@ -4,7 +4,9 @@ use std::io;
 use owo_colors::OwoColorize as _;
 
 use super::plain::{has_evidence, has_fields, has_relations};
-use super::port::{ExpiresInfo, PresentationRecord, RetrievalPresenter, RetrievalView};
+use super::port::{
+    ExpiresInfo, PresentationEntry, PresentationRecord, RetrievalPresenter, RetrievalView,
+};
 use super::style::chip::status_chip;
 use super::style::footer::render_footer;
 use super::style::humanise;
@@ -36,11 +38,16 @@ pub(crate) struct StyledPresenter;
 impl RetrievalPresenter for StyledPresenter {
     fn present(&self, view: &RetrievalView, out: &mut dyn io::Write) -> io::Result<()> {
         let mut buf = String::new();
-        for (index, presentation_record) in view.records.iter().enumerate() {
+        for (index, entry) in view.records.iter().enumerate() {
             if index > 0 {
                 buf.push('\n');
             }
-            render_styled_record(&mut buf, presentation_record);
+            match entry {
+                PresentationEntry::KnowledgeObject(presentation_record) => {
+                    render_styled_record(&mut buf, presentation_record);
+                }
+                PresentationEntry::Prose(record) => render_styled_prose_record(&mut buf, record),
+            }
         }
         if let Some(footer) = &view.footer {
             // Footer: one blank line, then the provenance line (styled=true).
@@ -49,6 +56,43 @@ impl RetrievalPresenter for StyledPresenter {
         }
         out.write_all(buf.as_bytes())
     }
+}
+
+/// V1.7.1 (ADR-0040): the styled twin of `plain::render_prose_record` — same
+/// line layout, faint labels, indented body, no wikilink highlight pass
+/// (prose is not Knowledge Object body).
+fn render_styled_prose_record(output: &mut String, record: &adoc_core::ProseRecord) {
+    writeln!(output, "{} {}", faint_label("Prose:"), record.id)
+        .expect("writing to String cannot fail");
+    writeln!(
+        output,
+        "{} {}",
+        faint_label("Kind:"),
+        record.block_kind.as_str()
+    )
+    .expect("writing to String cannot fail");
+    if let Some(context) = &record.heading_context {
+        writeln!(output, "{} {context}", faint_label("Context:"))
+            .expect("writing to String cannot fail");
+    }
+
+    output.push('\n');
+    writeln!(output, "{}", faint_label("Text:")).expect("writing to String cannot fail");
+    output.push_str(&indent_body(&record.text, "  "));
+    if !record.text.ends_with('\n') {
+        output.push('\n');
+    }
+
+    output.push('\n');
+    writeln!(
+        output,
+        "{} {}:{}:{}",
+        faint_label("Source:"),
+        record.source.path,
+        record.source.line,
+        record.source.column
+    )
+    .expect("writing to String cannot fail");
 }
 
 fn render_styled_record(output: &mut String, presentation_record: &PresentationRecord) {
@@ -284,18 +328,58 @@ mod tests {
 
     fn view_for(record: RetrievalRecord) -> RetrievalView {
         RetrievalView {
-            records: vec![PresentationRecord {
+            records: vec![PresentationEntry::KnowledgeObject(PresentationRecord {
                 record,
                 related_statuses: BTreeMap::new(),
                 expires: None,
-            }],
+            })],
             diagnostics: Vec::new(),
             footer: Some(default_meta()),
         }
     }
 
+    #[test]
+    fn styled_presenter_renders_prose_record_with_faint_labels() {
+        let view = RetrievalView {
+            records: vec![PresentationEntry::Prose(prose_record())],
+            diagnostics: Vec::new(),
+            footer: None,
+        };
+        let mut buf = Vec::new();
+        StyledPresenter.present(&view, &mut buf).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+
+        assert!(text.contains("Prose:"), "prose label present: {text}");
+        assert!(text.contains("guides.page#block-0001"));
+        assert!(text.contains("Billing basics"));
+        assert!(
+            text.contains("  Credits burn on completion."),
+            "body is indented: {text}"
+        );
+        assert!(text.contains("docs/guide.md:7:1"));
+    }
+
+    fn prose_record() -> adoc_core::ProseRecord {
+        adoc_core::ProseRecord {
+            id: "guides.page#block-0001".to_string(),
+            page_id: "guides.page".to_string(),
+            block_kind: adoc_core::ProseBlockKind::Paragraph,
+            text: "Credits burn on completion.".to_string(),
+            heading_context: Some("Billing basics".to_string()),
+            source: RetrievalSource {
+                path: "docs/guide.md".to_string(),
+                line: 7,
+                column: 1,
+            },
+            search_match: None,
+        }
+    }
+
     fn primary_mut(view: &mut RetrievalView) -> &mut PresentationRecord {
-        view.records.first_mut().expect("test view has a record")
+        match view.records.first_mut().expect("test view has a record") {
+            PresentationEntry::KnowledgeObject(record) => record,
+            PresentationEntry::Prose(_) => panic!("test view holds a knowledge object"),
+        }
     }
 
     fn render(view: &RetrievalView) -> String {

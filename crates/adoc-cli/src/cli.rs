@@ -79,11 +79,19 @@ Examples:
   adoc review HEAD~1
 ";
 const SEARCH_LONG_HELP: &str = "\
+Search returns one blended, RRF-ranked list of Knowledge Object and prose
+records (adoc.retrieval.v1). Object ID pins stay on top; prose records are
+orientation context, never citable knowledge. Setting any Knowledge Object
+metadata filter (--kind, --status, --owner, --source-path, --related-to)
+implies object intent and suppresses prose records.
+
 Examples:
   adoc search \"refund policy\"
   adoc search \"refund policy\" --kind claim --top 5
   adoc search \"refund policy\" --related-to billing.refunds.issue-credit --relation depends_on
   adoc search billing.refunds --lexical
+  adoc search \"getting started\" --prose-only
+  adoc search \"refund policy\" --objects-only --format json
 ";
 const STALE_LONG_HELP: &str = "\
 Staleness and review-overdue-ness are re-derived from authored fields at the
@@ -441,6 +449,20 @@ pub(crate) enum Commands {
         /// when neither --semantic nor --lexical is set, so the flag is a no-op.
         #[arg(long, conflicts_with = "semantic")]
         lexical: bool,
+        /// Return only Knowledge Object records (the pre-V1.7 result set).
+        #[arg(long, conflicts_with = "prose_only")]
+        objects_only: bool,
+        /// Return only prose records. Prose has no Knowledge Object metadata
+        /// or vectors, so this conflicts with the metadata filters and
+        /// --semantic.
+        #[arg(
+            long,
+            conflicts_with_all = [
+                "objects_only", "semantic", "kind", "status", "owner",
+                "source_path", "related_to",
+            ]
+        )]
+        prose_only: bool,
         #[arg(long)]
         kind: Option<String>,
         #[arg(long)]

@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
-use adoc_core::{GraphDirection, GraphRelationKind};
+use adoc_core::{GraphDirection, GraphRelationKind, SearchRecordScope};
 use adoc_local::{
     BuildInput, BuildUseCase, CheckInput, CheckUseCase, GraphInput, GraphUseCase, InitInput,
     InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase, ProjectStatusInput,
@@ -56,6 +56,7 @@ fn local_public_surface_is_use_case_oriented() {
         relation: None,
         direction: None,
         top: NonZeroUsize::new(5).expect("nonzero"),
+        scope: SearchRecordScope::Blended,
     };
     let _: PatchCheckInput = PatchCheckInput {
         patch_path: PathBuf::from("patch.json"),

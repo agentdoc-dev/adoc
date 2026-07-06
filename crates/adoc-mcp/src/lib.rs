@@ -181,6 +181,10 @@ impl AgentDocMcpServer {
             relation: parse_relation(params.relation.as_deref())?,
             direction: parse_direction(params.direction.as_deref())?,
             top,
+            // V1.7.1: pinned until the scope params land with the tool
+            // description update in the next commit — MCP result sets stay
+            // Knowledge-Object-only while the CLI goes blended.
+            scope: adoc_core::SearchRecordScope::ObjectsOnly,
         })?;
         serde_json::to_value(outcome.envelope).map_err(Into::into)
     }

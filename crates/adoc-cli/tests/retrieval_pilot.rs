@@ -347,6 +347,9 @@ fn run_search_case(
         search_artifact_path.to_string_lossy().into_owned(),
         "--top".to_string(),
         case.must_appear_in_top.max(1).to_string(),
+        // V1.7.1 roadmap acceptance: --objects-only reproduces the pre-V1.7
+        // Knowledge-Object expected_ids sequences under blended defaults.
+        "--objects-only".to_string(),
     ];
 
     match case.mode {
@@ -390,6 +393,7 @@ fn run_lexical_json(
         "json".to_string(),
         "--top".to_string(),
         top.max(1).to_string(),
+        "--objects-only".to_string(),
     ];
     for (flag, value) in filters {
         args.push((*flag).to_string());

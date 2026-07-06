@@ -508,3 +508,88 @@ fn run_git(workspace: &TestWorkspace, args: &[&str]) {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+/// V1.7.1 (ADR-0040) acceptance: a `.md`-only project finally gets working
+/// search — a query matching prose returns `record_type: "prose"` records,
+/// no migration hint, exit 0. The hint-path twin above keeps firing for
+/// queries that match nothing.
+#[test]
+fn markdown_pilot_search_returns_prose_records_for_md_only_project() {
+    let workspace = TestWorkspace::new("markdown-pilot-md-only-prose-search");
+    workspace.write(
+        "pages/intro.md",
+        "# Intro\n\nA short prose introduction with no Knowledge Objects.\n",
+    );
+    workspace.write(
+        "pages/usage.md",
+        "# Usage\n\nFollow the standard onboarding steps; no KOs here either.\n",
+    );
+
+    let output_directory = workspace.root.join("dist");
+    let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+        .args([
+            "build",
+            ".",
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+    assert!(
+        build_output.status.success(),
+        "prose-search test prerequisite (build) must succeed\nstderr:\n{}",
+        String::from_utf8_lossy(&build_output.stderr)
+    );
+
+    let graph_artifact = output_directory.join("docs.graph.json");
+    let search_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "search",
+            "onboarding steps",
+            "--artifact",
+            graph_artifact
+                .to_str()
+                .expect("graph artifact path is utf-8"),
+            "--lexical",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc search runs");
+
+    assert!(
+        search_output.status.success(),
+        "prose search over a .md-only project must exit 0\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&search_output.stdout),
+        String::from_utf8_lossy(&search_output.stderr)
+    );
+
+    let envelope: Value =
+        serde_json::from_slice(&search_output.stdout).expect("search stdout is JSON");
+    assert_eq!(envelope["schema_version"], "adoc.retrieval.v1");
+    let records = envelope["records"].as_array().expect("records is an array");
+    assert!(
+        !records.is_empty(),
+        ".md prose must be findable, got empty records"
+    );
+    assert!(
+        records.iter().all(|r| r["record_type"] == "prose"),
+        "a KO-free project returns prose records only, got {records:?}"
+    );
+    assert_eq!(records[0]["page_id"], "pages.usage");
+    assert_eq!(records[0]["heading_context"], "Usage");
+
+    let diagnostics = envelope["diagnostics"]
+        .as_array()
+        .expect("diagnostics is an array");
+    assert!(
+        diagnostics
+            .iter()
+            .all(|d| d["code"] != "retrieval.no_knowledge_objects_consider_migration"),
+        "a matching prose search must not carry the migration hint, got {diagnostics:?}"
+    );
+}

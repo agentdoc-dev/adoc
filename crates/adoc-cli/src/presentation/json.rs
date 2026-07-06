@@ -28,8 +28,13 @@ impl RetrievalPresenter for JsonPresenter {
         let records = view
             .records
             .iter()
-            .map(|presentation_record| {
-                adoc_core::RetrievalEntry::KnowledgeObject(presentation_record.record.clone())
+            .map(|entry| match entry {
+                super::port::PresentationEntry::KnowledgeObject(presentation_record) => {
+                    adoc_core::RetrievalEntry::KnowledgeObject(presentation_record.record.clone())
+                }
+                super::port::PresentationEntry::Prose(record) => {
+                    adoc_core::RetrievalEntry::Prose(record.clone())
+                }
             })
             .collect();
         let diagnostics =
@@ -77,15 +82,15 @@ mod tests {
     };
 
     use super::*;
-    use crate::presentation::PresentationRecord;
+    use crate::presentation::{PresentationEntry, PresentationRecord};
 
     fn make_view(record: RetrievalRecord) -> RetrievalView {
         RetrievalView {
-            records: vec![PresentationRecord {
+            records: vec![PresentationEntry::KnowledgeObject(PresentationRecord {
                 record,
                 related_statuses: BTreeMap::new(),
                 expires: None,
-            }],
+            })],
             diagnostics: Vec::new(),
             footer: None,
         }
@@ -99,12 +104,12 @@ mod tests {
         }
     }
 
-    fn make_record(record: RetrievalRecord) -> PresentationRecord {
-        PresentationRecord {
+    fn make_record(record: RetrievalRecord) -> PresentationEntry {
+        PresentationEntry::KnowledgeObject(PresentationRecord {
             record,
             related_statuses: BTreeMap::new(),
             expires: None,
-        }
+        })
     }
 
     fn minimal_record(id: &str) -> RetrievalRecord {
@@ -249,6 +254,38 @@ mod tests {
         assert_eq!(value["records"], serde_json::json!([]));
         assert_eq!(value["diagnostics"][0]["code"], "id.invalid");
         assert_eq!(value["diagnostics"][0]["object_id"], "bad");
+    }
+
+    #[test]
+    fn json_presenter_serializes_prose_entries_with_record_type() {
+        let view = RetrievalView {
+            records: vec![PresentationEntry::Prose(adoc_core::ProseRecord {
+                id: "guides.page#block-0001".to_string(),
+                page_id: "guides.page".to_string(),
+                block_kind: adoc_core::ProseBlockKind::Paragraph,
+                text: "Credits burn on completion.".to_string(),
+                heading_context: Some("Billing basics".to_string()),
+                source: RetrievalSource {
+                    path: "docs/guide.md".to_string(),
+                    line: 7,
+                    column: 1,
+                },
+                search_match: None,
+            })],
+            diagnostics: Vec::new(),
+            footer: None,
+        };
+        let mut buf = Vec::new();
+        JsonPresenter::new(Vec::new())
+            .present(&view, &mut buf)
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&buf).expect("rendered JSON parses");
+
+        assert_eq!(value["schema_version"], "adoc.retrieval.v1");
+        assert_eq!(value["records"][0]["record_type"], "prose");
+        assert_eq!(value["records"][0]["block_kind"], "paragraph");
+        assert_eq!(value["records"][0]["heading_context"], "Billing basics");
+        assert!(value["records"][0].get("content_hash").is_none());
     }
 
     #[test]

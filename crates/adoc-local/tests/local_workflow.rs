@@ -2,11 +2,12 @@ use std::fs;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
+use adoc_core::SearchRecordScope;
 use adoc_local::{
     BuildInput, BuildUseCase, CheckInput, CheckUseCase, GraphInput, GraphUseCase, InitInput,
     InitUseCase, LocalContext, PatchCheckInput, PatchCheckUseCase, ProjectConfig,
-    ProjectStatusInput, ProjectStatusRefresh, ProjectStatusUseCase, SearchInput, SearchUseCase,
-    UnrestrictedPathPolicy, WhyInput, WhyUseCase,
+    ProjectStatusInput, ProjectStatusRefresh, ProjectStatusUseCase, ResolvedSearchEntry,
+    SearchInput, SearchUseCase, UnrestrictedPathPolicy, WhyInput, WhyUseCase,
 };
 
 fn write(path: &Path, contents: &str) {
@@ -173,12 +174,28 @@ fn lexical_search_returns_retrieval_records_and_exit_code() {
             relation: None,
             direction: None,
             top: NonZeroUsize::new(5).expect("nonzero"),
+            scope: SearchRecordScope::Blended,
         })
         .expect("search should run");
 
     assert_eq!(outcome.exit_code, 0);
-    assert_eq!(outcome.records.len(), 1);
-    assert_eq!(outcome.records[0].record.id, "billing.ready");
+    // V1.7.1 blended default: the claim ranks first, the page's `# Billing`
+    // heading follows as a prose record.
+    assert_eq!(outcome.records.len(), 2);
+    let ResolvedSearchEntry::KnowledgeObject(resolved) = &outcome.records[0] else {
+        panic!(
+            "expected a knowledge object entry first, got {:?}",
+            outcome.records[0]
+        );
+    };
+    assert_eq!(resolved.record.id, "billing.ready");
+    let ResolvedSearchEntry::Prose(prose) = &outcome.records[1] else {
+        panic!(
+            "expected a prose entry second, got {:?}",
+            outcome.records[1]
+        );
+    };
+    assert_eq!(prose.text, "Billing");
 }
 
 #[test]
@@ -278,12 +295,19 @@ fn semantic_search_uses_deterministic_provider_from_config() {
             relation: None,
             direction: None,
             top: NonZeroUsize::new(5).expect("nonzero"),
+            scope: SearchRecordScope::Blended,
         })
         .expect("search should run");
 
     assert_eq!(outcome.exit_code, 0, "{:?}", outcome.diagnostics);
     assert_eq!(outcome.records.len(), 1);
-    assert_eq!(outcome.records[0].record.id, "billing.ready");
+    let ResolvedSearchEntry::KnowledgeObject(resolved) = &outcome.records[0] else {
+        panic!(
+            "expected a knowledge object entry, got {:?}",
+            outcome.records[0]
+        );
+    };
+    assert_eq!(resolved.record.id, "billing.ready");
 }
 
 #[test]
@@ -330,6 +354,7 @@ fn retrieval_graph_search_and_patch_exit_codes_are_mapped_locally() {
             relation: None,
             direction: None,
             top: NonZeroUsize::new(5).expect("nonzero"),
+            scope: SearchRecordScope::Blended,
         })
         .expect("search should run");
     assert_eq!(search.exit_code, 1);

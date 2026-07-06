@@ -1,13 +1,14 @@
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 
-use adoc_core::{GraphDirection, GraphRelationKind};
+use adoc_core::{GraphDirection, GraphRelationKind, SearchRecordScope};
 use adoc_local::{
-    LocalContext, SearchInput as LocalSearchInput, SearchUseCase, UnrestrictedPathPolicy,
+    LocalContext, ResolvedSearchEntry, SearchInput as LocalSearchInput, SearchUseCase,
+    UnrestrictedPathPolicy,
 };
 
 use crate::error::CliError;
-use crate::presentation::{ResolvedFormat, RetrievalView, make_presenter};
+use crate::presentation::{PresentationEntry, ResolvedFormat, RetrievalView, make_presenter};
 
 use super::{
     current_dir, emit_retrieval_error, eprint_diagnostics, presentation_record_from_resolved,
@@ -20,6 +21,8 @@ pub(crate) struct SearchCommandInput {
     pub(crate) search_artifact: Option<PathBuf>,
     pub(crate) semantic: bool,
     pub(crate) lexical: bool,
+    pub(crate) objects_only: bool,
+    pub(crate) prose_only: bool,
     pub(crate) kind: Option<String>,
     pub(crate) status: Option<String>,
     pub(crate) owner: Option<String>,
@@ -28,6 +31,27 @@ pub(crate) struct SearchCommandInput {
     pub(crate) relation: Option<GraphRelationKind>,
     pub(crate) direction: Option<GraphDirection>,
     pub(crate) top: NonZeroUsize,
+}
+
+/// Maps the mutually exclusive CLI flags (clap `conflicts_with` enforces the
+/// exclusivity) onto the structural scope enum.
+fn record_scope(objects_only: bool, prose_only: bool) -> SearchRecordScope {
+    if objects_only {
+        SearchRecordScope::ObjectsOnly
+    } else if prose_only {
+        SearchRecordScope::ProseOnly
+    } else {
+        SearchRecordScope::Blended
+    }
+}
+
+fn presentation_entry_from_resolved(entry: ResolvedSearchEntry) -> PresentationEntry {
+    match entry {
+        ResolvedSearchEntry::KnowledgeObject(resolved) => {
+            PresentationEntry::KnowledgeObject(presentation_record_from_resolved(resolved, false))
+        }
+        ResolvedSearchEntry::Prose(record) => PresentationEntry::Prose(record),
+    }
 }
 
 pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat) -> i32 {
@@ -50,6 +74,7 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
         relation: input.relation,
         direction: input.direction,
         top: input.top,
+        scope: record_scope(input.objects_only, input.prose_only),
     }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),
@@ -61,7 +86,7 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
             records: outcome
                 .records
                 .into_iter()
-                .map(|record| presentation_record_from_resolved(record, false))
+                .map(presentation_entry_from_resolved)
                 .collect(),
             diagnostics: outcome.diagnostics,
             footer: None,
@@ -90,7 +115,7 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
         records: outcome
             .records
             .into_iter()
-            .map(|record| presentation_record_from_resolved(record, false))
+            .map(presentation_entry_from_resolved)
             .collect(),
         diagnostics: outcome.diagnostics,
         footer: None,

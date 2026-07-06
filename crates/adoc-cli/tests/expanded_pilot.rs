@@ -476,11 +476,15 @@ fn expanded_pilot_retrieval_why_graph_search() {
         "graph traversal from the policy must reach its related claim\n{graph_env:#}"
     );
 
-    // --- search: "policy" returns the policy first ---
+    // --- search: "policy" returns the policy first among Knowledge Objects.
+    // V1.7.1 blends prose into the default list (a policies-page prose block
+    // legitimately competes for this query), so the KO-ranking assertion
+    // scopes with --objects-only per the ADR-0040 filters-and-fixtures rule.
     let search = Command::new(env!("CARGO_BIN_EXE_adoc"))
         .args([
             "search",
             "policy",
+            "--objects-only",
             "--artifact",
             graph_arg,
             "--format",
