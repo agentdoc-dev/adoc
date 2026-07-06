@@ -1,13 +1,14 @@
-//! V5.10 end-to-end test for the V5 Expanded Pilot.
+//! V5.10 + V6.5.5 end-to-end test for the Expanded Pilot.
 //!
 //! Validates `examples/expanded-pilot/` against the full V5 + V5.10 acceptance
-//! contract from `docs/V5-DESIGN.md`. The pilot exercises every new V5 kind
-//! (constraint, procedure, example, policy, agent_instruction, contradiction,
-//! source) plus the V5.8 typed evidence model and all four V5.10 lifecycle
-//! signals, across auth / billing / security domains.
+//! contract from `docs/V5-DESIGN.md`, extended by V6.5.5 to the fifteen-kind
+//! vocabulary: the V5 kinds (constraint, procedure, example, policy,
+//! agent_instruction, contradiction, source) plus the V6.5 kinds (api,
+//! observation, question, task), the V5.8 typed evidence model, and all four
+//! V5.10 lifecycle signals, across auth / billing / security / team domains.
 //!
 //! Diagnostic budget (documented in `docs/expanded-pilot.md`): 0 errors,
-//! 5 warnings:
+//! 6 warnings:
 //!
 //! | Code                                  | Count | Object                                     |
 //! | :------------------------------------ | :---: | :----------------------------------------- |
@@ -15,6 +16,7 @@
 //! | `schema.policy_review_overdue`        |   1   | `security.production-db-access`            |
 //! | `claim.evidence_quality_low`          |   1   | `security.csrf-advisory`                   |
 //! | `schema.claim_contradicted_by_unresolved` | 1 | `auth.session.csrf-protection`             |
+//! | `task.overdue`                        |   1   | `billing.update-support-runbook`           |
 //!
 //! All warnings are driven by fixed past dates / wide-margin fixtures so the
 //! budget is clock-stable on any realistic future run date.
@@ -39,10 +41,11 @@ fn repo_root() -> PathBuf {
 
 const PILOT_PATH: &str = "examples/expanded-pilot/";
 
-/// V5.10 acceptance: `adoc check` over the full pilot exits 0 with the exact
-/// diagnostic budget published in `docs/expanded-pilot.md` — 0 errors and
-/// exactly 5 warnings (2 `lifecycle.expired`, 1 `schema.policy_review_overdue`,
-/// 1 `claim.evidence_quality_low`, 1 `schema.claim_contradicted_by_unresolved`).
+/// V5.10 + V6.5.5 acceptance: `adoc check` over the full pilot exits 0 with
+/// the exact diagnostic budget published in `docs/expanded-pilot.md` — 0
+/// errors and exactly 6 warnings (2 `lifecycle.expired`,
+/// 1 `schema.policy_review_overdue`, 1 `claim.evidence_quality_low`,
+/// 1 `schema.claim_contradicted_by_unresolved`, 1 `task.overdue`).
 #[test]
 fn expanded_pilot_check_emits_documented_diagnostic_budget() {
     let repo_root = repo_root();
@@ -70,6 +73,7 @@ fn expanded_pilot_check_emits_documented_diagnostic_budget() {
     let claim_contradicted_count = stdout
         .matches("warning[schema.claim_contradicted_by_unresolved]")
         .count();
+    let task_overdue_count = stdout.matches("warning[task.overdue]").count();
     let error_count = stdout.matches("error[").count();
 
     assert_eq!(
@@ -89,12 +93,16 @@ fn expanded_pilot_check_emits_documented_diagnostic_budget() {
         "expected one schema.claim_contradicted_by_unresolved warning (auth.session.csrf-protection)\nstdout:\n{stdout}"
     );
     assert_eq!(
+        task_overdue_count, 1,
+        "expected one task.overdue warning (billing.update-support-runbook, wide-margin past due)\nstdout:\n{stdout}"
+    );
+    assert_eq!(
         error_count, 0,
         "pilot must produce zero errors (every kind is strict-valid)\nstdout:\n{stdout}"
     );
     assert!(
-        stdout.contains("0 errors, 5 warnings"),
-        "expected aggregate summary `0 errors, 5 warnings`\nstdout:\n{stdout}"
+        stdout.contains("0 errors, 6 warnings"),
+        "expected aggregate summary `0 errors, 6 warnings`\nstdout:\n{stdout}"
     );
 }
 
@@ -140,8 +148,8 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
 
     let page_count = nodes.iter().filter(|node| node["type"] == "page").count();
     assert_eq!(
-        page_count, 12,
-        "expected twelve page nodes (11 .adoc strict pages + the markdown meta/REVIEW-CHECKLIST.md)"
+        page_count, 16,
+        "expected sixteen page nodes (15 .adoc strict pages + the markdown meta/REVIEW-CHECKLIST.md)"
     );
 
     let knowledge_objects: Vec<&Value> = nodes
@@ -150,8 +158,8 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
         .collect();
     assert_eq!(
         knowledge_objects.len(),
-        20,
-        "expected twenty Knowledge Object nodes across all V5 + V5.10 kinds"
+        27,
+        "expected twenty-seven Knowledge Object nodes across the fifteen-kind vocabulary"
     );
 
     let count_kind = |kind: &str| {
@@ -177,7 +185,11 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
         1,
         "expected one contradiction KO"
     );
-    assert_eq!(count_kind("source"), 2, "expected two source KOs");
+    assert_eq!(count_kind("source"), 3, "expected three source KOs");
+    assert_eq!(count_kind("api"), 1, "expected one api KO");
+    assert_eq!(count_kind("observation"), 1, "expected one observation KO");
+    assert_eq!(count_kind("question"), 2, "expected two question KOs");
+    assert_eq!(count_kind("task"), 2, "expected two task KOs");
 
     // --- V5.10: derived lifecycle fields on graph nodes ---
     // stale: security.audit.retention is verified + past expires_at.
@@ -240,7 +252,7 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
         );
     }
 
-    // --- V5.8 evidence edges: claim + decision -> source ---
+    // --- V5.8 evidence edges: claim + decision -> source, api -> api_schema source ---
     let edges = graph["edges"]
         .as_array()
         .expect("graph JSON edges is an array");
@@ -250,15 +262,38 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
         .collect();
     assert_eq!(
         evidence_edges.len(),
-        2,
-        "expected two evidence edges (claim + decision -> billing.consume-use-case)"
+        3,
+        "expected three evidence edges (claim + decision -> billing.consume-use-case, api -> billing.openapi-schema)"
     );
-    for edge in &evidence_edges {
-        assert_eq!(
-            edge["target"], "billing.consume-use-case",
-            "evidence edges must target the source object"
-        );
-    }
+    let mut evidence_targets: Vec<&str> = evidence_edges
+        .iter()
+        .map(|edge| edge["target"].as_str().expect("evidence edge target"))
+        .collect();
+    evidence_targets.sort_unstable();
+    assert_eq!(
+        evidence_targets,
+        [
+            "billing.consume-use-case",
+            "billing.consume-use-case",
+            "billing.openapi-schema"
+        ],
+        "evidence edges must target the source objects"
+    );
+
+    // --- V6.5.3/V6.5.4 relation edges: question resolved_by + task depends_on ---
+    assert!(
+        edges.iter().any(|edge| edge["kind"] == "resolved_by"
+            && edge["source"] == "billing.ledger-architecture"
+            && edge["target"] == "billing.credits.use-ledger"),
+        "answered question must emit a derived resolved_by edge to the resolving decision"
+    );
+    assert!(
+        edges.iter().any(|edge| edge["kind"] == "relation"
+            && edge["relation"] == "depends_on"
+            && edge["source"] == "billing.update-support-runbook"
+            && edge["target"] == "billing.credits.consume"),
+        "open task must emit its depends_on relation edge"
+    );
 
     // --- HTML: every V5 kind renders distinctly ---
     let html =
@@ -288,6 +323,38 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
     assert!(
         html.contains("<ol"),
         "procedure body must render as an ordered list"
+    );
+
+    // --- V6.5.5: the four V6.5 kinds render distinctly ---
+    assert!(
+        html.contains(r#"<span class="api__method">POST</span>"#)
+            && html.contains(r#"<code class="api__path">/api/billing/credits/consume</code>"#),
+        "api must render its endpoint signature (method badge + code path)"
+    );
+    assert!(
+        html.contains("source--api_schema"),
+        "the api_schema source kind must render its distinct metadata block"
+    );
+    assert!(
+        html.contains("37") && html.contains("2024-04-30"),
+        "observation must render sample size and observed date"
+    );
+    assert!(
+        html.contains(r#"class="question__open-badge""#),
+        "open question must render the Open badge"
+    );
+    assert!(
+        html.contains(r#"class="question__resolved-by""#)
+            && html.contains(r##"href="#billing.credits.use-ledger""##),
+        "answered question must link the resolving decision"
+    );
+    assert!(
+        html.contains("task task--open task--overdue"),
+        "the overdue open task must render the task--overdue modifier"
+    );
+    assert!(
+        html.contains("task task--done"),
+        "the done task must render its done state"
     );
 }
 
@@ -427,6 +494,99 @@ fn expanded_pilot_retrieval_why_graph_search() {
     assert_eq!(
         search_env["records"][0]["id"], "security.production-db-access",
         "the active policy must be the top search result for \"policy\""
+    );
+
+    // --- V6.5.5: the V6.5 kinds are retrievable ---
+    // why: the verified api record carries kind and lifecycle status.
+    let why_api = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "why",
+            "billing.consume-credit",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc why runs");
+    assert!(
+        why_api.status.success(),
+        "adoc why must succeed for the api"
+    );
+    let why_api_env: Value = serde_json::from_slice(&why_api.stdout).expect("why stdout is JSON");
+    assert_eq!(why_api_env["records"][0]["kind"], "api");
+    assert_eq!(why_api_env["records"][0]["status"], "verified");
+
+    // why: the answering decision lists the answered question (V6.5.3).
+    let why_decision = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "why",
+            "billing.credits.use-ledger",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc why runs");
+    assert!(
+        why_decision.status.success(),
+        "adoc why must succeed for the decision"
+    );
+    let why_decision_env: Value =
+        serde_json::from_slice(&why_decision.stdout).expect("why stdout is JSON");
+    assert_eq!(
+        why_decision_env["records"][0]["resolved_questions"],
+        serde_json::json!(["billing.ledger-architecture"]),
+        "the answering decision must list the question it resolved"
+    );
+
+    // why: the overdue task record carries kind and lifecycle status.
+    let why_task = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "why",
+            "billing.update-support-runbook",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc why runs");
+    assert!(
+        why_task.status.success(),
+        "adoc why must succeed for the task"
+    );
+    let why_task_env: Value = serde_json::from_slice(&why_task.stdout).expect("why stdout is JSON");
+    assert_eq!(why_task_env["records"][0]["kind"], "task");
+    assert_eq!(why_task_env["records"][0]["status"], "open");
+
+    // search: the observation body is BM25-findable (V6.5.2 acceptance shape).
+    let search_observation = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "search",
+            "misunderstand credit usage",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc search runs");
+    assert!(
+        search_observation.status.success(),
+        "adoc search must succeed for the observation query"
+    );
+    let search_observation_env: Value =
+        serde_json::from_slice(&search_observation.stdout).expect("search stdout is JSON");
+    let observation_found = search_observation_env["records"]
+        .as_array()
+        .expect("search records array")
+        .iter()
+        .any(|record| record["id"] == "onboarding.credit-confusion");
+    assert!(
+        observation_found,
+        "the observation body must be findable via search: {search_observation_env:#}"
     );
 }
 
@@ -1038,14 +1198,16 @@ fn expanded_pilot_contradictions_query() {
     );
 }
 
-/// V6.3 `adoc impacted-by` over the Expanded Pilot: evidence-path matching.
+/// V6.3 + V6.5.5 `adoc impacted-by` over the Expanded Pilot.
 ///
 /// `billing.credits.consume` (verified claim) and `billing.credits.use-ledger`
 /// (accepted decision) both carry `evidence_ref: billing.consume-use-case`, a
 /// `source` object whose `path` is the changed file — both must surface with
-/// one `evidence_path` reason resolved `via_source_object`. The pilot's only
-/// `impacts:` declarations sit on a constraint and a procedure, which are
-/// outside the verified-subject scope: querying their paths is empty, exit 0.
+/// one `evidence_path` reason resolved `via_source_object`. The verified api
+/// `billing.consume-credit` (a verified subject since V6.5.1) surfaces for its
+/// schema path `openapi/billing.yaml`. The constraint and procedure `impacts:`
+/// declarations remain outside the verified-subject scope: querying their
+/// paths is empty, exit 0.
 #[test]
 fn expanded_pilot_impacted_by_query() {
     let repo_root = repo_root();
@@ -1122,6 +1284,35 @@ fn expanded_pilot_impacted_by_query() {
     assert_eq!(obligations.len(), 2, "one obligation per impacted record");
     assert_eq!(obligations[0]["object_id"], "billing.credits.consume");
     assert_eq!(obligations[1]["object_id"], "billing.credits.use-ledger");
+
+    // --- V6.5.5: the verified api surfaces for its schema path ---
+    let api_impacted = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .args([
+            "impacted-by",
+            "openapi/billing.yaml",
+            "--artifact",
+            graph_arg,
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc impacted-by runs");
+    assert!(
+        api_impacted.status.success(),
+        "impacted-by must exit 0 for the api schema path\nstderr:\n{}",
+        String::from_utf8_lossy(&api_impacted.stderr)
+    );
+    let api_envelope: Value =
+        serde_json::from_slice(&api_impacted.stdout).expect("impacted-by stdout is JSON");
+    let api_records = api_envelope["impacted"].as_array().expect("impacted array");
+    assert_eq!(
+        api_records.len(),
+        1,
+        "expected exactly the verified api impacted: {api_records:#?}"
+    );
+    assert_eq!(api_records[0]["id"], "billing.consume-credit");
+    assert_eq!(api_records[0]["kind"], "api");
+    assert_eq!(api_records[0]["status"], "verified");
 
     // --- scope negative: the constraint declaring this path is not a
     // verified subject, so the impacted set is empty and the exit stays 0 ---

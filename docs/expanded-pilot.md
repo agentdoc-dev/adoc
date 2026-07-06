@@ -1,17 +1,19 @@
 # Expanded Pilot
 
 The Expanded Pilot at `examples/expanded-pilot/` is the end-to-end
-evaluation fixture for the **V5 Expanded Knowledge Model** and the
-**V5.10 Lifecycle Automation** signals. It mirrors the role the Billing
+evaluation fixture for the **V5 Expanded Knowledge Model**, the
+**V5.10 Lifecycle Automation** signals, and (since V6.5.5) the full
+**fifteen-kind V6.5 vocabulary**. It mirrors the role the Billing
 Pilot plays for V0–V3 and the Markdown Pilot plays for V4: a realistic,
 hand-curated tree exercised by
 `cargo test -p adoc-cli --test expanded_pilot` on every workspace build.
 
 The pilot is pure native AgentDoc Source (`.adoc`, Strict Mode) and
-exercises every new V5 kind — `constraint`, `procedure`, `example`,
-`policy`, `agent_instruction`, `contradiction`, `source` — plus the V5.8
+exercises every V5 kind — `constraint`, `procedure`, `example`,
+`policy`, `agent_instruction`, `contradiction`, `source` — and every V6.5
+kind — `api`, `observation`, `question`, `task` — plus the V5.8
 typed evidence model and all four V5.10 lifecycle signals, across the auth,
-billing, and security domains.
+billing, security, and team domains.
 
 ## Build
 
@@ -38,17 +40,22 @@ examples/expanded-pilot/
     claims.adoc                # verified evidence_ref claim + decision + expired claim
     examples.adoc              # verified-executable + non-executable example
     sources.adoc               # source_code source
+    api.adoc                   # verified api w/ evidence_ref + api_schema source
+    questions.adoc             # open question + answered question (resolved_by)
+    tasks.adoc                 # open overdue task (task.overdue) + done task
   security/
     constraints.adoc           # constraint w/ impacts:
     policies.adoc              # active policy (overdue review) + stale verified claim + low-evidence claim
     contradictions.adoc        # contradiction over auth claims including nudge claim
     sources.adoc               # external_url source
+  team/
+    observations.adoc          # observation w/ sample_size + observed_at
   meta/
     REVIEW-CHECKLIST.md        # hand-review checklist (markdown)
 ```
 
-Totals: 11 `.adoc` files. The graph artifact carries **12 `page` nodes**
-(11 `.adoc` + the markdown `meta/REVIEW-CHECKLIST.md`) and **20
+Totals: 15 `.adoc` files. The graph artifact carries **16 `page` nodes**
+(15 `.adoc` + the markdown `meta/REVIEW-CHECKLIST.md`) and **27
 `knowledge_object` nodes**:
 
 | Kind                | Count |
@@ -62,14 +69,22 @@ Totals: 11 `.adoc` files. The graph artifact carries **12 `page` nodes**
 | `policy`            |   1   |
 | `agent_instruction` |   1   |
 | `contradiction`     |   1   |
-| `source`            |   2   |
+| `source`            |   3   |
+| `api`               |   1   |
+| `observation`       |   1   |
+| `question`          |   2   |
+| `task`              |   2   |
 
-Two `evidence` edges (V5.8) link `billing.credits.consume` and
-`billing.credits.use-ledger` to the `billing.consume-use-case` source.
+Three `evidence` edges (V5.8): `billing.credits.consume` and
+`billing.credits.use-ledger` link to the `billing.consume-use-case` source,
+and `billing.consume-credit` (api) links to the `billing.openapi-schema`
+`api_schema` source. The answered question additionally emits a derived
+`resolved_by` edge to `billing.credits.use-ledger`, and the open task a
+`depends_on` relation edge to `billing.credits.consume`.
 
 ## Diagnostic Budget
 
-`adoc check examples/expanded-pilot/` produces **0 errors, 5 warnings**.
+`adoc check examples/expanded-pilot/` produces **0 errors, 6 warnings**.
 The integration test asserts each count exact-match; changing any count
 requires updating both the fixture and the test in the same commit.
 
@@ -79,6 +94,7 @@ requires updating both the fixture and the test in the same commit.
 | `schema.policy_review_overdue`        |   1   | `security.production-db-access` (`security/policies.adoc`) |
 | `claim.evidence_quality_low`          |   1   | `security.csrf-advisory` (`security/policies.adoc`) |
 | `schema.claim_contradicted_by_unresolved` | 1 | `auth.session.csrf-protection` (`auth/claims.adoc`) |
+| `task.overdue`                        |   1   | `billing.update-support-runbook` (`billing/tasks.adoc`) |
 
 All warnings are driven by **fixed past dates** (2020–2024). A past date
 stays in the past, so the budget is stable across runs regardless of the
@@ -155,15 +171,24 @@ impact-review proof obligation:
 | 1 | `billing.credits.consume` | claim, `verified` | `evidence_path` via `billing.consume-use-case` |
 | 2 | `billing.credits.use-ledger` | decision, `accepted` | `evidence_path` via `billing.consume-use-case` |
 
+Since V6.5.5, `adoc impacted-by openapi/billing.yaml` additionally returns
+exactly the verified api `billing.consume-credit` (a verified subject since
+V6.5.1) via its `billing.openapi-schema` evidence path.
+
 The scope negative: `adoc impacted-by crates/auth/src/session.rs` returns an
 empty impacted set, exit 0 — the only object declaring that path is the
 `auth.session.no-local-storage` constraint, which is outside the
-verified-subject (claim/decision) scope.
+verified-subject (claim/decision/api) scope.
 
 ## What This Pilot Exercises
 
 - **Every V5 kind** with a complete authoring → validation → rendering →
   graph emission → retrieval story.
+- **Every V6.5 kind** (V6.5.5): a verified `api` with `api_schema`
+  evidence and `impacts:`; an `observation` with `sample_size` and
+  `observed_at` whose body is search-findable; an open and an answered
+  `question` (the latter resolved by the ledger decision, surfaced in
+  `adoc why` as `resolved_questions`); an open overdue and a done `task`.
 - **The V5.8 evidence model**: inline typed evidence (`test:`) combined
   with `evidence_ref:` to a `source` object, on both a `claim` and a
   `decision`, producing typed `evidence[]` projections and
@@ -227,3 +252,11 @@ non-target file remains byte-identical to its original. The rewritten
 editing the pilot's `billing.credits.consume` block requires regenerating
 that golden in the same commit. The diagnostic budget above is
 body-edit-invariant and re-asserted by the loop test's post-check.
+
+V6.5.5 extends the loop with a second apply against a new-kind object: an
+`update_fields` patch marks `billing.update-support-runbook` `done`, pinned
+byte-for-byte by
+`crates/adoc-cli/tests/fixtures/v6_4_apply_loop/billing-tasks.after.adoc`.
+The budget is *not* status-apply-invariant: the apply flips `task.overdue`
+off, and the loop test pins the exact **6 → 5** post-check warning-count
+transition. The pristine in-repo tree keeps the 6-warning budget above.

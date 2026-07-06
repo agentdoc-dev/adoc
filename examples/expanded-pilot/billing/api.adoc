@@ -1,0 +1,24 @@
+# Billing API @doc(billing.api)
+
+Typed API contracts for the billing surface. The verified endpoint is backed by
+the [[billing.openapi-schema]] schema source.
+
+::source billing.openapi-schema
+kind: api_schema
+path: openapi/billing.yaml
+owner: backend-platform
+--
+OpenAPI schema for the billing API surface, the evidence behind verified billing endpoints.
+::
+
+::api billing.consume-credit
+method: POST
+path: /api/billing/credits/consume
+status: verified
+evidence_ref: billing.openapi-schema
+owner: backend-platform
+verified_at: 2024-05-30
+impacts: [openapi/billing.yaml]
+--
+Consumes one or more credits for a completed generation job.
+::
