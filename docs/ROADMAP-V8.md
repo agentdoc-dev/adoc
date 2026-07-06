@@ -45,7 +45,7 @@ V8.1 ships `adoc migrate` per PRD §28: lossless `.md` → prose-mode `.adoc` im
 
 The seams exist: `.md` ingestion via pulldown-cmark has been in the compiler since the V4 compat mode (ADR-0021/0022/0023), prose nodes are retained in `GraphIndex` since V1.7.1, and `application/retrieval.rs` has pointed users at a future `adoc migrate` since V4 — this milestone makes that hint true.
 
-**ADR-0043 — Markdown migration contract** is recorded at V8.1.1 slice start: the losslessness invariant, the `adoc.migrate.report.v0` envelope, the closed round-trip normalization set for export, the never-auto-typed rule, and the `--write` semantics.
+**ADR-0043 — Markdown migration contract** is recorded at V8.1.1 slice start: the losslessness invariant, the `adoc.migrate.report.v0` envelope, the closed round-trip normalization set for export, the never-auto-typed rule, and the `--write` semantics (including the committed-clean-source refusal).
 
 ### V8.1.1: Import Core Slice
 
@@ -55,13 +55,13 @@ Scope:
 
 - Domain first: a new `.adoc` prose serializer `crates/adoc-core/src/infrastructure/render/adoc_source.rs` (prose blocks → canonical `.adoc` text; a different concern from the ADR-0036 span-splice patch writer, which edits existing sources) and migration orchestration in `crates/adoc-core/src/application/migrate.rs`, reusing the existing pulldown-cmark `.md` read path. Raw HTML is quarantined per §28.2; unrecognized Markdown extensions become diagnostics, not silent drops.
 - **The losslessness invariant (the TDD anchor):** compiling the migrated `.adoc` tree yields prose graph nodes equal — kind, text payload, order, heading structure — to compiling the original `.md` tree. The graph is the semantic ground truth, so equality is asserted there, not on bytes.
-- Adapters after: `MigrateOutcome { report, exit_code }` in `crates/adoc-local/src/use_cases.rs` (the `CheckOutcome` pattern), `Commands::Migrate` in `crates/adoc-cli/src/cli.rs`. Default is dry-run — prints the report, writes nothing. `--write` writes `<name>.adoc` and removes the source `.md` (leaving both would compile duplicate pages; git makes the removal reversible, and V8.1.4 makes it doubly so).
+- Adapters after: `MigrateOutcome { report, exit_code }` in `crates/adoc-local/src/use_cases.rs` (the `CheckOutcome` pattern), `Commands::Migrate` in `crates/adoc-cli/src/cli.rs`. Default is dry-run — prints the report, writes nothing. `--write` writes `<name>.adoc` and removes the source `.md` — leaving both would compile duplicate pages. `--write` refuses to remove a source `.md` that is not committed-and-clean (uncommitted edits, untracked, or outside a repository) with `migrate.source_not_committed` (ERROR), overridable via `--force`: a committed source is what makes the removal reversible, and V8.1.4 makes it doubly so.
 - True up the stale hint in `crates/adoc-core/src/application/retrieval.rs` ("wait for `adoc migrate` (V4.5+)") to name the shipped command.
 - Diagnostics (WARNING — warnings never fail the build): `migrate.raw_html_quarantined`, `migrate.broken_link`, `migrate.unrecognized_extension`.
 
 Commit shape: `docs(v8): ADR-0043 migration contract` → `feat(core): md-to-adoc prose migration + adoc_source serializer (V8.1.1)` → `feat(cli): adoc migrate command, dry-run default (V8.1.1)` → `test(cli): migrate_cli.rs losslessness and quarantine fixtures (V8.1.1)`.
 
-Acceptance: dry-run over `examples/markdown-pilot/` exits 0 and lists every `.md` file; `--write` in a tempdir copy produces `.adoc` files over which `adoc build` exits 0; the losslessness equality holds over the whole pilot in a new `crates/adoc-core/tests/migrate.rs`; pre-existing `.adoc` files are byte-untouched. All asserted in a new `crates/adoc-cli/tests/migrate_cli.rs`; `cargo test --workspace --locked` green.
+Acceptance: dry-run over `examples/markdown-pilot/` exits 0 and lists every `.md` file; `--write` in a git-initialized, committed tempdir copy produces `.adoc` files over which `adoc build` exits 0; `--write` against a dirty source refuses with `migrate.source_not_committed` and removes nothing; the losslessness equality holds over the whole pilot in a new `crates/adoc-core/tests/migrate.rs`; pre-existing `.adoc` files are byte-untouched. All asserted in a new `crates/adoc-cli/tests/migrate_cli.rs`; `cargo test --workspace --locked` green.
 
 Deferred: front-matter mapping, table restructuring beyond passthrough, an MCP `adoc_migrate` tool (migration is a human onboarding act, not an agent loop step).
 
