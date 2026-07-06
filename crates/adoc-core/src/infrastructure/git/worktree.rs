@@ -138,10 +138,12 @@ fn run_git(repo_root: &Path, args: &[&str]) -> Result<Output, SnapshotError> {
 
 fn generate_worktree_path() -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
+    // The nonce only disambiguates paths across pid reuse; pid + counter
+    // already guarantee uniqueness within a process, so a clock set before
+    // the epoch degrades to a fixed nonce instead of crashing the command.
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system clock is after unix epoch")
-        .as_nanos();
+        .map_or(0, |elapsed| elapsed.as_nanos());
     let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!(
         "adoc-worktree-{}-{counter}-{nonce}",
