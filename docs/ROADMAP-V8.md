@@ -54,7 +54,7 @@ Goal: `adoc migrate` converts `.md` files to prose-mode `.adoc` pages losslessly
 Scope:
 
 - Domain first: a new `.adoc` prose serializer `crates/adoc-core/src/infrastructure/render/adoc_source.rs` (prose blocks → canonical `.adoc` text; a different concern from the ADR-0036 span-splice patch writer, which edits existing sources) and migration orchestration in `crates/adoc-core/src/application/migrate.rs`, reusing the existing pulldown-cmark `.md` read path. Raw HTML is quarantined per §28.2; unrecognized Markdown extensions become diagnostics, not silent drops.
-- **The losslessness invariant (the TDD anchor):** compiling the migrated `.adoc` tree yields prose graph nodes equal — kind, text payload, order, heading structure — to compiling the original `.md` tree. The graph is the semantic ground truth, so equality is asserted there, not on bytes.
+- **The losslessness invariant (the TDD anchor):** compiling the migrated `.adoc` tree yields prose graph nodes equal — graph-node kind, text payload, order, heading structure — to compiling the original `.md` tree. The graph is the semantic ground truth, so equality is asserted there, not on bytes.
 - Adapters after: `MigrateOutcome { report, exit_code }` in `crates/adoc-local/src/use_cases.rs` (the `CheckOutcome` pattern), `Commands::Migrate` in `crates/adoc-cli/src/cli.rs`. Default is dry-run — prints the report, writes nothing. `--write` writes `<name>.adoc` and removes the source `.md` — leaving both would compile duplicate pages. `--write` refuses to remove a source `.md` that is not committed-and-clean (uncommitted edits, untracked, or outside a repository) with `migrate.source_not_committed` (ERROR), overridable via `--force`: a committed source is what makes the removal reversible, and V8.1.4 makes it doubly so.
 - True up the stale "wait for `adoc migrate` (V4.5+)" hints in code to name the shipped command: `crates/adoc-core/src/application/retrieval.rs:329` and the `RetrievalNoKnowledgeObjectsConsiderMigration` hint in `crates/adoc-core/src/domain/diagnostic.rs:760` (agent-visible — it ships in every retrieval payload). The remaining doc-side references are gated at V8.1.4's closing commit.
 - Diagnostics (WARNING — warnings never fail the build): `migrate.raw_html_quarantined`, `migrate.broken_link`, `migrate.unrecognized_extension`.
@@ -234,7 +234,7 @@ Scope:
 | `adoc.patch.check.v0` | `crates/adoc-core/src/application/patch.rs` | → **v1** |
 | `adoc.patch.apply.v0` | `crates/adoc-core/src/application/apply.rs` | → **v1** |
 | `adoc.graph.traversal.v0` | `crates/adoc-core/src/application/graph.rs` | → **v1** |
-| `adoc.retrieval.v1`, `adoc.search.v1`, `adoc.graph.v4` | (post-V1.7 / V6.5) | reaffirmed frozen as-is |
+| `adoc.retrieval.v1`, `adoc.search.v1`, `adoc.graph.v4` | (post-V1.7 / V6.5) | reaffirmed frozen at the shapes V1.7 / V6.5 deliver — no further bump this cycle |
 | `adoc.diff.v0`, `adoc.review.v0`, `adoc.stale.v0`, `adoc.contradictions.v0`, `adoc.impacted.v0`, `adoc.mcp.command.v0` | per-module constants | declared **stable-at-v0** by policy — no renumber |
 | `adoc.migrate.report.v0`, `adoc.health.v0` | new this cycle | **experimental** — too young to freeze |
 

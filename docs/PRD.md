@@ -3551,7 +3551,7 @@ Included:
 
 - `adoc migrate` (Section 28): lossless Markdown import to prose-mode pages with a migration report; typed blocks are only ever SUGGESTED, never auto-typed; reversible via export back to Markdown. Closes MVP acceptance item 12 (Section 50.1) and MVP Must-Have 18 (Section 33.1).
 - External design-partner pilots: 2–3 teams matching the AI platform engineer persona (Section 8.3), run with the pilot-report discipline (append-only friction logs, gates fixed before the pilot runs). The friction log seeds the next cycle's backlog.
-- CI surface (Section 24): `adoc check` and `adoc impacted-by` posted as PR comments — the smallest Phase 3 slice that creates a weekly team touchpoint. Explicitly not the language server and not the web app.
+- CI surface (Section 24): `adoc check` and `adoc impacted-by` posted as PR comments — the smallest slice of Phase 3 (Team Product) pulled forward, creating a weekly team touchpoint. Explicitly not the language server and not the web app.
 - Contract stability: a written stability policy; the agent-integration envelopes (`adoc.patch`, `adoc.patch.check`, `adoc.patch.apply`, `adoc.graph.traversal`) promoted to v1; report envelopes declared stable-at-v0.
 - Knowledge-health report: the Section 14.5 health score emitted as a CLI/CI artifact — not a dashboard — so pilots mechanically produce North Star evidence (Section 51).
 
