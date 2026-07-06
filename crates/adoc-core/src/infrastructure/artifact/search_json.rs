@@ -9,7 +9,7 @@ use crate::domain::ports::artifact_reader::ArtifactReader;
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct SearchJsonArtifact;
 
-pub(crate) const SUPPORTED_SEARCH_SCHEMA_VERSION: &str = "adoc.search.v0";
+pub(crate) const SUPPORTED_SEARCH_SCHEMA_VERSION: &str = "adoc.search.v1";
 
 pub(crate) fn read_search_artifact_document(
     path: &Path,
@@ -75,7 +75,9 @@ impl ArtifactReader for SearchJsonArtifact {
 mod tests {
     use std::fs;
 
-    use crate::domain::artifact::{SearchArtifactDocument, SearchEmbedding, SearchModelHeader};
+    use crate::domain::artifact::{
+        SearchArtifactDocument, SearchEmbedding, SearchEntryKind, SearchModelHeader,
+    };
     use crate::domain::diagnostic::DiagnosticCode;
     use crate::domain::ports::artifact_reader::ArtifactReader;
     use crate::infrastructure::artifact::search_json::{
@@ -122,6 +124,7 @@ mod tests {
             graph_artifact_hash: "sha256:graph".to_string(),
             embeddings: vec![SearchEmbedding {
                 id: "billing.credits".to_string(),
+                entry_kind: SearchEntryKind::KnowledgeObject,
                 content_hash: "sha256:content".to_string(),
                 vector: vec![1.0, 0.0],
             }],

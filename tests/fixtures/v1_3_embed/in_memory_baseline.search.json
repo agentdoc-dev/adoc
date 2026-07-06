@@ -1,5 +1,5 @@
 {
-  "schema_version": "adoc.search.v0",
+  "schema_version": "adoc.search.v1",
   "model": {
     "id": "hash-v1",
     "provider": "deterministic",
@@ -9,6 +9,7 @@
   "embeddings": [
     {
       "id": "billing.credits",
+      "entry_kind": "knowledge_object",
       "content_hash": "sha256:b92ead57472b302fc075ecf7ef404c8e9f0cc1f7a94176b19748ee9fa3f061b1",
       "vector": [
         0.419,
@@ -19,6 +20,7 @@
     },
     {
       "id": "billing.ledger",
+      "entry_kind": "knowledge_object",
       "content_hash": "sha256:a0cc177269a2bb29028b7cc37db4c8bf88dcd0baf97d29ba3c4c1e165f38e9c6",
       "vector": [
         -0.229,

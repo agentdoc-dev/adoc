@@ -149,17 +149,26 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
         .expect("billing pilot search JSON is written");
     let search_json: Value =
         serde_json::from_str(&search_json_text).expect("search JSON is valid JSON");
-    assert_eq!(search_json["schema_version"], "adoc.search.v0");
+    assert_eq!(search_json["schema_version"], "adoc.search.v1");
     assert_eq!(search_json["model"]["id"], "hash-v1");
     assert_eq!(search_json["model"]["provider"], "deterministic");
     assert_eq!(search_json["model"]["dim"], 384);
+    let embeddings = search_json["embeddings"]
+        .as_array()
+        .expect("search embeddings is an array");
     assert_eq!(
-        search_json["embeddings"]
-            .as_array()
-            .expect("search embeddings is an array")
-            .len(),
+        embeddings
+            .iter()
+            .filter(|entry| entry["entry_kind"] == "knowledge_object")
+            .count(),
         objects.len(),
         "search artifact should carry one embedding per Knowledge Object"
+    );
+    assert!(
+        embeddings
+            .iter()
+            .any(|entry| entry["entry_kind"] == "prose"),
+        "adoc.search.v1 should carry prose entries for the pilot's prose blocks"
     );
 
     let artifact_path = output_directory.join("docs.graph.json");

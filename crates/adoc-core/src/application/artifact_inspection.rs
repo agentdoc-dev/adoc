@@ -291,6 +291,6 @@ mod tests {
     #[test]
     fn graph_schema_constants_match_readers() {
         assert_eq!(SUPPORTED_GRAPH_SCHEMA_VERSION, "adoc.graph.v4");
-        assert_eq!(SUPPORTED_SEARCH_SCHEMA_VERSION, "adoc.search.v0");
+        assert_eq!(SUPPORTED_SEARCH_SCHEMA_VERSION, "adoc.search.v1");
     }
 }

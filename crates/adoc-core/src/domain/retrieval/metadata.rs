@@ -76,6 +76,15 @@ pub(crate) fn embedding_input(object: &GraphKnowledgeObjectNode) -> String {
     )
 }
 
+/// V1.7.2 (ADR-0040): the prose Embedding Composition — `prose: {text}` plus
+/// a page-id marker line, the analogue of the Knowledge Object composition
+/// above. Part of the `adoc.search.v1` contract; prose `content_hash` is
+/// derived from this exact string.
+pub(crate) fn prose_embedding_input(content_text: &str, page_id: &str) -> String {
+    let body = normalized_embedding_body(content_text);
+    format!("prose: {body}\n[page: {page_id}]")
+}
+
 fn normalized_embedding_body(body: &str) -> String {
     body.replace("\r\n", "\n")
         .replace('\r', "\n")
@@ -177,6 +186,25 @@ mod tests {
         assert_eq!(
             embedding_input(&object),
             "claim: First line\nSecond line\n[id: billing.newline] [status: plain] [owner: unknown]"
+        );
+    }
+
+    #[test]
+    fn prose_embedding_input_prefixes_prose_kind_and_appends_page_marker() {
+        assert_eq!(
+            prose_embedding_input(
+                "Credits are consumed when a generation job completes.",
+                "guides.getting-started"
+            ),
+            "prose: Credits are consumed when a generation job completes.\n[page: guides.getting-started]"
+        );
+    }
+
+    #[test]
+    fn prose_embedding_input_normalizes_line_endings_and_trims_edges() {
+        assert_eq!(
+            prose_embedding_input(" First line\r\nSecond line\r ", "guides.page"),
+            "prose: First line\nSecond line\n[page: guides.page]"
         );
     }
 

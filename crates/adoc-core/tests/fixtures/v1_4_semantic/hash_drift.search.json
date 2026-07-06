@@ -1,5 +1,5 @@
 {
-  "schema_version": "adoc.search.v0",
+  "schema_version": "adoc.search.v1",
   "model": {
     "id": "hash-v1",
     "provider": "deterministic",
@@ -8,6 +8,7 @@
   "embeddings": [
     {
       "id": "billing.first",
+      "entry_kind": "knowledge_object",
       "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
       "vector": [
         0.0,
