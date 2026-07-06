@@ -87,7 +87,10 @@ vectors arrive with `adoc.search.v1` (§4).
   `--objects-only`; `--prose-only` suppresses Knowledge Objects. This finally
   gives `.md`-only projects working search. The two flags conflict;
   `--prose-only` also conflicts with `--semantic` (no prose vectors yet) and
-  with every Knowledge Object metadata filter.
+  with every Knowledge Object metadata filter. The invariant is enforced in
+  the domain, not just the adapters: a prose-only query that reaches
+  `adoc-core` with semantic mode or an object metadata filter returns a
+  `search.invalid_scope` diagnostic instead of a silent empty result.
 - **Knowledge Object metadata filters suppress prose.** Setting any of
   `--kind`, `--status`, `--owner`, `--source-path`, or `--related-to` implies
   object intent and behaves as an implicit `--objects-only`. The roadmap's

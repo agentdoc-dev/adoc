@@ -62,6 +62,7 @@ pub enum DiagnosticCode {
     IdDuplicateInArtifact,
     RetrievalObjectNotFound,
     SearchInvalidFilter,
+    SearchInvalidScope,
     EmbedModelLoadFailed,
     EmbedComputeFailed,
     EmbedUnexpectedDimension,
@@ -232,6 +233,7 @@ impl DiagnosticCode {
             DiagnosticCode::IdDuplicateInArtifact,
             DiagnosticCode::RetrievalObjectNotFound,
             DiagnosticCode::SearchInvalidFilter,
+            DiagnosticCode::SearchInvalidScope,
             DiagnosticCode::EmbedModelLoadFailed,
             DiagnosticCode::EmbedComputeFailed,
             DiagnosticCode::EmbedUnexpectedDimension,
@@ -370,6 +372,7 @@ impl DiagnosticCode {
             DiagnosticCode::IdDuplicateInArtifact => "id.duplicate_in_artifact",
             DiagnosticCode::RetrievalObjectNotFound => "retrieval.object_not_found",
             DiagnosticCode::SearchInvalidFilter => "search.invalid_filter",
+            DiagnosticCode::SearchInvalidScope => "search.invalid_scope",
             DiagnosticCode::EmbedModelLoadFailed => "embed.model_load_failed",
             DiagnosticCode::EmbedComputeFailed => "embed.compute_failed",
             DiagnosticCode::EmbedUnexpectedDimension => "embed.unexpected_dim",
@@ -629,6 +632,9 @@ impl DiagnosticCode {
             }
             DiagnosticCode::SearchInvalidFilter => {
                 "Change or remove the filter so it matches at least one object field in the artifact."
+            }
+            DiagnosticCode::SearchInvalidScope => {
+                "Use lexical or blended search for prose records, and drop Knowledge Object metadata filters from a prose-only query."
             }
             DiagnosticCode::EmbedModelLoadFailed => {
                 "Check network access for the first model download, verify the local model cache is readable, ensure the binary was built with the `embeddings` feature, or rerun `adoc build --no-embeddings`."
@@ -955,6 +961,7 @@ const DIAGNOSTIC_CODE_VARIANTS: &[&str] = &[
     "id.duplicate_in_artifact",
     "retrieval.object_not_found",
     "search.invalid_filter",
+    "search.invalid_scope",
     "embed.model_load_failed",
     "embed.compute_failed",
     "embed.unexpected_dim",
@@ -1308,6 +1315,23 @@ mod tests {
             DiagnosticCode::SearchInvalidFilter
                 .default_help()
                 .contains("filter")
+        );
+    }
+
+    #[test]
+    fn search_invalid_scope_code_roundtrips_through_wire_string() {
+        let value = serde_json::to_value(DiagnosticCode::SearchInvalidScope)
+            .expect("diagnostic code serializes");
+
+        assert_eq!(value, "search.invalid_scope");
+        assert_eq!(
+            serde_json::from_value::<DiagnosticCode>(value).expect("diagnostic code deserializes"),
+            DiagnosticCode::SearchInvalidScope
+        );
+        assert!(
+            DiagnosticCode::SearchInvalidScope
+                .default_help()
+                .contains("prose-only")
         );
     }
 
