@@ -1,5 +1,4 @@
 use std::fmt::Write as FmtWrite;
-use std::io;
 use std::path::PathBuf;
 
 use adoc_core::{ContradictedClaimRecord, ContradictionRecord, ContradictionsEnvelope};
@@ -7,12 +6,11 @@ use adoc_local::{
     ContradictionsInput as LocalContradictionsInput, LocalContext, UnrestrictedPathPolicy,
 };
 
-use crate::error::CliError;
+use crate::presentation::ResolvedFormat;
 use crate::presentation::style::key::cyan_key;
 use crate::presentation::style::kv::faint_label;
-use crate::presentation::{ResolvedFormat, json as json_presentation};
 
-use super::{current_dir, eprint_diagnostics, report};
+use super::{current_dir, emit_envelope_error, eprint_diagnostics, report, write_json_or_report};
 
 pub(crate) struct ContradictionsCommandInput {
     pub(crate) artifact: Option<PathBuf>,
@@ -34,13 +32,14 @@ pub(crate) fn contradictions(input: ContradictionsCommandInput, resolved: Resolv
     };
     let exit_code = outcome.exit_code;
     if exit_code != 0 {
-        return emit_contradictions_error(outcome.envelope, resolved, exit_code);
+        let envelope = outcome.envelope;
+        return emit_envelope_error(&envelope, &envelope.diagnostics, resolved, exit_code);
     }
     if resolved != ResolvedFormat::Json && !outcome.envelope.diagnostics.is_empty() {
         eprint_diagnostics(&outcome.envelope.diagnostics);
     }
     match resolved {
-        ResolvedFormat::Json => write_contradictions_json(&outcome.envelope, exit_code),
+        ResolvedFormat::Json => write_json_or_report(&outcome.envelope, exit_code),
         ResolvedFormat::Plain => write_contradictions_text(&outcome.envelope, false),
         ResolvedFormat::Styled => write_contradictions_text(&outcome.envelope, true),
         ResolvedFormat::Markdown => {
@@ -49,25 +48,6 @@ pub(crate) fn contradictions(input: ContradictionsCommandInput, resolved: Resolv
             )
         }
     }
-}
-
-fn emit_contradictions_error(
-    envelope: ContradictionsEnvelope,
-    resolved: ResolvedFormat,
-    exit_code: i32,
-) -> i32 {
-    if resolved == ResolvedFormat::Json {
-        return write_contradictions_json(&envelope, exit_code);
-    }
-    eprint_diagnostics(&envelope.diagnostics);
-    exit_code
-}
-
-fn write_contradictions_json(envelope: &ContradictionsEnvelope, exit_code: i32) -> i32 {
-    json_presentation::write_json(envelope, &mut io::stdout()).map_or_else(
-        |source| report(CliError::RetrievalIo { source }),
-        |()| exit_code,
-    )
 }
 
 fn write_contradictions_text(envelope: &ContradictionsEnvelope, styled: bool) -> i32 {
