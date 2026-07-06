@@ -1314,6 +1314,7 @@ mod tests {
         assert_eq!(BlockKind::Source.as_str(), "source");
         assert_eq!(BlockKind::Api.as_str(), "api");
         assert_eq!(BlockKind::Observation.as_str(), "observation");
+        assert_eq!(BlockKind::Question.as_str(), "question");
         assert_eq!(BlockKind::Task.as_str(), "task");
     }
 
