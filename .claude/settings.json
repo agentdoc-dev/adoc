@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r \".tool_input.command // \\\"\\\"\"); case \"$cmd\" in *\"git commit\"*) printf \"%s\" \"$cmd\" | grep -qE -e \"(^|[[:space:]])--no-verify\\b\" -e \"(^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$)\" && echo \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PreToolUse\\\",\\\"permissionDecision\\\":\\\"deny\\\",\\\"permissionDecisionReason\\\":\\\"Commit gate: --no-verify/-n is not allowed. Commits must pass the prek pre-commit hooks (fmt, clippy, test).\\\"}}\";; esac; exit 0",
+            "statusMessage": "Checking commit gate"
+          }
+        ]
+      }
+    ]
+  }
+}
