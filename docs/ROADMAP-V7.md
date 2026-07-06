@@ -63,7 +63,7 @@ Commit shape per kind slice, matching the V6 log: `feat(core): <kind> Knowledge 
 
 ### V6.5.1: API Slice
 
-Goal: introduce the `api` Knowledge Object as a typed API contract (PRD §13.7), landing the `adoc.graph.v4` bump first.
+Goal: introduce the `api` Knowledge Object as a typed API contract (PRD §13.7), landing the `adoc.graph.v4` bump first. Implemented (ADR-0039).
 
 Structured as two tracer bullets — TB1 is the milestone's only serialization point:
 
@@ -121,7 +121,7 @@ Deferred: OpenAPI/proto schema parsing or drift detection, request/response shap
 
 ### V6.5.2: Observation Slice
 
-Goal: introduce the `observation` Knowledge Object for support, analytics, research, and ops findings (PRD §13.9).
+Goal: introduce the `observation` Knowledge Object for support, analytics, research, and ops findings (PRD §13.9). Implemented.
 
 Scope:
 
@@ -152,7 +152,7 @@ Deferred: observation-to-claim promotion workflow, aggregation of repeated obser
 
 ### V6.5.3: Question Slice
 
-Goal: introduce the `question` Knowledge Object for tracked open questions (PRD §13.10).
+Goal: introduce the `question` Knowledge Object for tracked open questions (PRD §13.10). Implemented.
 
 Scope:
 
@@ -179,7 +179,7 @@ Deferred: question aging/staleness warnings, question inbox surfaces, auto-sugge
 
 ### V6.5.4: Task Slice
 
-Goal: introduce the `task` Knowledge Object for documentation action items (PRD §13.11).
+Goal: introduce the `task` Knowledge Object for documentation action items (PRD §13.11). Implemented.
 
 Scope:
 
@@ -208,7 +208,7 @@ Deferred: surfacing overdue tasks in `adoc.stale.v0` (an additive `category: "ta
 
 ### V6.5.5: Full-Vocabulary Pilot Slice
 
-Goal: prove the fifteen-kind vocabulary end-to-end, mirroring V5.9.
+Goal: prove the fifteen-kind vocabulary end-to-end, mirroring V5.9. Implemented ([expanded-pilot.md](expanded-pilot.md)).
 
 Scope:
 
@@ -349,7 +349,7 @@ The debt, enumerated (this list is the slice's checklist, not an illustration):
 
 ### V7.1.1: Docs-Truth Slice
 
-Goal: true up README, ROADMAP, and the gateway doc to the shipped surface, and land the guard tests that keep them true.
+Goal: true up README, ROADMAP, and the gateway doc to the shipped surface, and land the guard tests that keep them true. Implemented (ADR-0041).
 
 Scope:
 
