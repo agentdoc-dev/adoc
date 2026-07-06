@@ -1132,3 +1132,47 @@ fn validates_retrieval_v1_envelopes_against_discriminated_schema() {
         "the legacy v0 schema must reject a v1 envelope"
     );
 }
+
+/// V1.7.1 (ADR-0040): the v0 and v1 retrieval schemas are published side by
+/// side, so each `$id` must match the URI the MCP resource serves it at — a
+/// client that indexes schemas by `$id` must never see a collision.
+#[test]
+fn retrieval_schema_ids_match_their_published_uris() {
+    for (name, expected_id) in [
+        (
+            "retrieval-envelope.json",
+            "adoc://agent/v0/schema/retrieval-envelope.json",
+        ),
+        (
+            "retrieval-envelope.v0.json",
+            "adoc://agent/v0/schema/retrieval-envelope.v0.json",
+        ),
+    ] {
+        assert_eq!(
+            schema(name)["$id"],
+            expected_id,
+            "$id of {name} must match the URI it is published at"
+        );
+    }
+}
+
+/// The frozen v0 schema must accept every envelope real v0 emitters produced,
+/// including the additive V6.5.3 `resolved_questions` field on `adoc why`
+/// records — otherwise the "v0 stays published forever" guarantee is hollow.
+#[test]
+fn legacy_v0_schema_accepts_resolved_questions() {
+    let legacy_instance = json!({
+        "schema_version": "adoc.retrieval.v0",
+        "records": [{
+            "id": "billing.ready",
+            "kind": "claim",
+            "content_hash": "sha256:legacy",
+            "body": "Billing docs are ready.",
+            "source": { "path": "docs/index.adoc", "line": 3, "column": 1 },
+            "relations": { "depends_on": [], "supersedes": [], "related_to": [] },
+            "resolved_questions": ["q.billing.launch"]
+        }],
+        "diagnostics": []
+    });
+    assert_valid("retrieval-envelope.v0.json", &legacy_instance);
+}
