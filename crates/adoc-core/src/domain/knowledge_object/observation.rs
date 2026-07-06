@@ -272,8 +272,13 @@ fn parse_sample_size(
 ) -> Result<Option<SampleSize>, ObservationError> {
     match super::take_optional_scalar(parsed, SAMPLE_SIZE_FIELD, SampleSize::try_new) {
         Ok(sample_size) => Ok(sample_size),
-        Err(SampleSizeError::Missing) => Ok(None),
-        Err(SampleSizeError::Invalid(value)) => Err(ObservationError::InvalidSampleSize(value)),
+        // `Missing` is unreachable: `take_optional_scalar` filters blank input
+        // before the ctor runs. If that invariant ever breaks, surface a
+        // diagnostic instead of silently dropping the field.
+        Err(error) => Err(ObservationError::InvalidSampleSize(match error {
+            SampleSizeError::Invalid(value) => value,
+            SampleSizeError::Missing => String::new(),
+        })),
     }
 }
 
@@ -283,8 +288,13 @@ fn parse_observed_at(
 ) -> Result<Option<EffectiveDate>, ObservationError> {
     match super::take_optional_scalar(parsed, OBSERVED_AT_FIELD, EffectiveDate::try_new) {
         Ok(observed_at) => Ok(observed_at),
-        Err(EffectiveDateError::Missing) => Ok(None),
-        Err(EffectiveDateError::Invalid(value)) => Err(ObservationError::InvalidObservedAt(value)),
+        // `Missing` is unreachable: `take_optional_scalar` filters blank input
+        // before the ctor runs. If that invariant ever breaks, surface a
+        // diagnostic instead of silently dropping the field.
+        Err(error) => Err(ObservationError::InvalidObservedAt(match error {
+            EffectiveDateError::Invalid(value) => value,
+            EffectiveDateError::Missing => String::new(),
+        })),
     }
 }
 
@@ -602,6 +612,23 @@ mod tests {
             diagnostics[0].code,
             DiagnosticCode::SchemaObservationInvalidObservedAt
         );
+    }
+
+    #[test]
+    fn build_from_parsed_treats_blank_sample_size_and_observed_at_as_absent() {
+        let parsed = parsed_observation(BTreeMap::from([
+            ("status".to_string(), "observed".to_string()),
+            ("sample_size".to_string(), "   ".to_string()),
+            ("observed_at".to_string(), String::new()),
+        ]));
+        let mut diagnostics = Vec::new();
+
+        let observation = Observation::build_from_parsed(parsed, &mut diagnostics)
+            .expect("blank optional fields build like absent fields");
+
+        assert!(diagnostics.is_empty(), "diagnostics: {diagnostics:?}");
+        assert!(observation.sample_size().is_none());
+        assert!(observation.observed_at().is_none());
     }
 
     #[test]
