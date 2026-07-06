@@ -224,8 +224,13 @@ impl AgentDocMcpServer {
             .map(|config| config.mcp_patch_apply_enabled)
             .unwrap_or(false);
         if !enabled {
+            tracing::info!(
+                target: "adoc_mcp",
+                "adoc_patch_apply refused: project has not opted in via `mcp: {{ patch_apply: enabled }}`"
+            );
             return serde_json::to_value(mcp_patch_apply_disabled_refusal()).map_err(Into::into);
         }
+        tracing::info!(target: "adoc_mcp", "adoc_patch_apply gate passed: project opt-in enabled");
 
         let patch = match params.input {
             PatchInput::Path { patch_path } => PatchApplySource::Path(patch_path),

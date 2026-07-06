@@ -98,6 +98,7 @@ pub fn embed_query(query: &str) -> Result<Vec<f32>, EmbedQueryError> {
     embed_query_with_embedding_provider(query, EmbeddingProviderSelection::Local)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn embed_query_with_embedding_provider(
     query: &str,
     provider: EmbeddingProviderSelection,
@@ -119,6 +120,7 @@ pub(crate) fn map_provider_error(
     }
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn compile_workspace(input: CompileInput) -> CompileResult {
     let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
     application::compile::compile_with_provider(&provider)
@@ -128,6 +130,7 @@ pub fn build_workspace(input: BuildInput) -> CompileResult {
     build_workspace_with_embedding_provider(input, EmbeddingProviderSelection::Local)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn build_workspace_with_embedding_provider(
     input: BuildInput,
     provider: EmbeddingProviderSelection,
@@ -135,6 +138,7 @@ pub fn build_workspace_with_embedding_provider(
     build_workspace_with_embedding_provider_factory(input, || embedding_provider(provider))
 }
 
+#[tracing::instrument(level = "debug", skip_all, fields(artifact = %input.graph_artifact_path.display()))]
 pub fn load_graph_session(input: GraphInput) -> GraphLoadResult {
     application::graph::load_graph_session_with_readers(
         input,
@@ -144,6 +148,7 @@ pub fn load_graph_session(input: GraphInput) -> GraphLoadResult {
 
 /// Evaluate the V6.1 `adoc stale` query against today's date, re-deriving
 /// staleness and review-overdue-ness from authored fields at read time.
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn evaluate_stale(
     session: &GraphSession,
     within_days: Option<u32>,
@@ -156,6 +161,7 @@ pub fn evaluate_stale(
 /// (all statuses with `include_all`) plus contradicted claims with their
 /// implicating contradiction ids, re-derived at read time with no clock
 /// dependence — a pure function of the artifact.
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn evaluate_contradictions(
     session: &GraphSession,
     include_all: bool,
@@ -179,6 +185,7 @@ pub fn empty_stale_envelope(diagnostics: Vec<Diagnostic>) -> StaleEnvelope {
 /// decisions implicated by the changed-path set, each carrying its
 /// impact-review proof obligation. No clock dependence — a pure function of
 /// the artifact and the changed set.
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn evaluate_impacted(
     session: &GraphSession,
     changed_files: &[RelPath],
@@ -208,6 +215,7 @@ pub fn changed_paths_strings(changed_files: &[RelPath]) -> Vec<String> {
 /// no snapshot worktree. Failure is returned as ready-to-embed envelope
 /// diagnostics (`impacted.ref_unresolvable` or `impacted.git_unavailable`),
 /// symmetric with [`validate_changed_paths`].
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn changed_files_from_git(
     repo_root: std::path::PathBuf,
     base_ref: &str,
@@ -298,6 +306,7 @@ pub fn parse_patch_from_value(value: serde_json::Value) -> Result<PatchDocument,
         .map_err(|diagnostics| PatchParseError::Inline { diagnostics })
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn check_patch_json(input: PatchJsonInput) -> PatchCheckResult {
     use domain::ports::artifact_reader::ArtifactReader;
 
@@ -334,6 +343,7 @@ pub struct PatchApplyInput {
 /// V6.4 — apply a parsed patch document to AgentDoc source (ADR-0036).
 /// Refusals come back as the same `adoc.patch.apply.v0` envelope with
 /// `applied: false`; this function never panics on user input.
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn apply_patch(input: PatchApplyInput, patch: PatchDocument) -> PatchApplyResult {
     let provider = infrastructure::source::fs::FsSourceProvider::new(input.docs_root);
     let writer = infrastructure::source::fs_writer::FsWorkspaceWriter::new(input.project_root);
@@ -463,6 +473,7 @@ pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {
     load_retrieval_session_with_embedding_provider(input, EmbeddingProviderSelection::Local)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn load_retrieval_session_with_embedding_provider(
     input: RetrievalInput,
     provider: EmbeddingProviderSelection,

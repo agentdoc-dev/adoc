@@ -372,30 +372,37 @@ impl<P> LocalContext<P>
 where
     P: PathPolicy,
 {
+    #[tracing::instrument(name = "adoc.init", level = "info", skip_all)]
     pub fn init(&self) -> Result<InitOutcome, LocalError> {
         init_with_context(self)
     }
 
+    #[tracing::instrument(name = "adoc.check", level = "info", skip_all)]
     pub fn check(&self, input: CheckInput) -> Result<CheckOutcome, LocalError> {
         check_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.build", level = "info", skip_all)]
     pub fn build(&self, input: BuildInput) -> Result<BuildOutcome, LocalError> {
         build_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.why", level = "info", skip_all)]
     pub fn why(&self, input: WhyInput) -> Result<WhyOutcome, LocalError> {
         why_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.graph", level = "info", skip_all)]
     pub fn graph(&self, input: GraphInput) -> Result<GraphOutcome, LocalError> {
         graph_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.stale", level = "info", skip_all)]
     pub fn stale(&self, input: StaleInput) -> Result<StaleOutcome, LocalError> {
         stale_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.contradictions", level = "info", skip_all)]
     pub fn contradictions(
         &self,
         input: ContradictionsInput,
@@ -403,30 +410,37 @@ where
         contradictions_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.impacted", level = "info", skip_all)]
     pub fn impacted(&self, input: ImpactedInput) -> Result<ImpactedOutcome, LocalError> {
         impacted_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.search", level = "info", skip_all)]
     pub fn search(&self, input: SearchInput) -> Result<SearchOutcome, LocalError> {
         search_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.patch_check", level = "info", skip_all)]
     pub fn patch_check(&self, input: PatchCheckInput) -> Result<PatchCheckOutcome, LocalError> {
         patch_check_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.patch_apply", level = "info", skip_all)]
     pub fn patch_apply(&self, input: PatchApplyInput) -> Result<PatchApplyOutcome, LocalError> {
         patch_apply_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.diff", level = "info", skip_all)]
     pub fn diff(&self, input: DiffInput) -> Result<DiffOutcome, LocalError> {
         diff_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.review", level = "info", skip_all)]
     pub fn review(&self, input: ReviewInput) -> Result<ReviewOutcome, LocalError> {
         review_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.project_status", level = "info", skip_all)]
     pub fn project_status(
         &self,
         input: ProjectStatusInput,
