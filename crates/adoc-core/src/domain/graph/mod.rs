@@ -130,6 +130,53 @@ pub(crate) struct GraphBlockNode {
     pub(crate) source_span: GraphSourceSpan,
 }
 
+/// V1.7.1 (ADR-0040): the closed prose block kind set, mirroring the four
+/// prose `GraphNode` variants. Serialized into `adoc.retrieval.v1` prose
+/// records as `block_kind`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProseBlockKind {
+    Heading,
+    Paragraph,
+    List,
+    CodeBlock,
+}
+
+impl ProseBlockKind {
+    // V1.7.1: consumed by the prose retrieval corpus in the next commit.
+    #[allow(dead_code)]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Heading => "heading",
+            Self::Paragraph => "paragraph",
+            Self::List => "list",
+            Self::CodeBlock => "code_block",
+        }
+    }
+}
+
+/// V1.7.1 (ADR-0040): a prose block retained by `GraphIndex` for retrieval.
+///
+/// Carries the artifact-authored `GraphBlockNode` payload plus two derived
+/// fields: the variant discriminant (`kind`) and the nearest-ancestor-heading
+/// breadcrumb (`heading_context`), both computed at artifact-load time and
+/// never serialized back — `adoc.graph.v4` node shapes are untouched.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct GraphProseBlock {
+    pub(crate) id: String,
+    pub(crate) page_id: String,
+    pub(crate) kind: ProseBlockKind,
+    pub(crate) order: u32,
+    pub(crate) text: Option<String>,
+    pub(crate) code: Option<String>,
+    pub(crate) items: Vec<String>,
+    /// Ancestor headings joined with `" > "`, e.g.
+    /// `"Billing basics > How credits are spent"`. `None` for blocks that
+    /// precede any heading on their page.
+    pub(crate) heading_context: Option<String>,
+    pub(crate) source_span: GraphSourceSpan,
+}
+
 /// V5.8 inline evidence entry in the graph node's `evidence` array.
 ///
 /// Serialized as `{ "kind": "<snake_case>", "value": "<inline text>" }`.
@@ -326,10 +373,13 @@ pub(crate) struct GraphIndex {
     edges: Vec<GraphEdge>,
     outgoing: BTreeMap<ObjectId, Vec<usize>>,
     incoming: BTreeMap<ObjectId, Vec<usize>>,
-    /// Count of prose-block nodes (Heading, Paragraph, List, CodeBlock) in the
-    /// loaded artifact. Used by V4.3 retrieval to detect prose-only projects
-    /// and emit the migration hint diagnostic. Not serialized.
-    prose_block_count: usize,
+    /// V1.7.1: prose-block nodes (Heading, Paragraph, List, CodeBlock)
+    /// retained for retrieval, keyed by block id (`<page-id>#block-NNNN`).
+    /// `prose_block_count()` derives from this map, so the V4.3
+    /// prose-only-project detection is unchanged. Not serialized.
+    prose: BTreeMap<String, GraphProseBlock>,
+    /// Per-page prose block ids in `order`-sorted document order.
+    prose_by_page: BTreeMap<String, Vec<String>>,
     /// `true` when at least one `Page` node in the loaded artifact has a
     /// `source_path` ending in `.md`. Gates the migration hint: an
     /// `.adoc`-only project (prose, no typed Knowledge Objects) must NOT
@@ -342,7 +392,7 @@ impl GraphIndex {
         let mut nodes = BTreeMap::new();
         let mut page_ids = BTreeSet::new();
         let mut diagnostics = Vec::new();
-        let mut prose_block_count: usize = 0;
+        let mut prose_nodes: Vec<(ProseBlockKind, GraphBlockNode)> = Vec::new();
         let mut has_markdown_pages = false;
 
         for node in document.nodes {
@@ -352,14 +402,20 @@ impl GraphIndex {
                     has_markdown_pages = true;
                 }
             }
-            if matches!(
-                node,
-                GraphNode::Heading(_)
-                    | GraphNode::Paragraph(_)
-                    | GraphNode::List(_)
-                    | GraphNode::CodeBlock(_)
-            ) {
-                prose_block_count += 1;
+            match &node {
+                GraphNode::Heading(block) => {
+                    prose_nodes.push((ProseBlockKind::Heading, block.clone()));
+                }
+                GraphNode::Paragraph(block) => {
+                    prose_nodes.push((ProseBlockKind::Paragraph, block.clone()));
+                }
+                GraphNode::List(block) => {
+                    prose_nodes.push((ProseBlockKind::List, block.clone()));
+                }
+                GraphNode::CodeBlock(block) => {
+                    prose_nodes.push((ProseBlockKind::CodeBlock, block.clone()));
+                }
+                GraphNode::Page(_) | GraphNode::KnowledgeObject(_) => {}
             }
             let Some(knowledge_object) = node.as_knowledge_object().cloned() else {
                 continue;
@@ -443,13 +499,15 @@ impl GraphIndex {
         }
 
         if diagnostics.is_empty() {
+            let (prose, prose_by_page) = index_prose_blocks(prose_nodes);
             Ok(Self {
                 nodes,
                 page_ids,
                 edges,
                 outgoing,
                 incoming,
-                prose_block_count,
+                prose,
+                prose_by_page,
                 has_markdown_pages,
             })
         } else {
@@ -458,7 +516,21 @@ impl GraphIndex {
     }
 
     pub(crate) fn prose_block_count(&self) -> usize {
-        self.prose_block_count
+        self.prose.len()
+    }
+
+    // V1.7.1: consumed by the prose retrieval corpus in the next commit.
+    #[allow(dead_code)]
+    pub(crate) fn prose_block(&self, id: &str) -> Option<&GraphProseBlock> {
+        self.prose.get(id)
+    }
+
+    /// Prose blocks in per-page document order (pages sorted by id).
+    pub(crate) fn prose_blocks(&self) -> impl Iterator<Item = &GraphProseBlock> {
+        self.prose_by_page
+            .values()
+            .flatten()
+            .filter_map(|id| self.prose.get(id))
     }
 
     pub(crate) fn has_markdown_pages(&self) -> bool {
@@ -641,6 +713,80 @@ impl GraphIndex {
     }
 }
 
+/// V1.7.1: build the retained prose maps and derive each block's
+/// nearest-ancestor-heading context.
+///
+/// Blocks are grouped per page and walked in `order`. A heading stack of
+/// `(level, text)` pairs tracks the open ancestors: a heading of level L pops
+/// entries at level >= L, takes the remaining stack as its own context, then
+/// pushes itself; every other block takes the full current stack. The
+/// breadcrumb joins with `" > "`; blocks before the first heading get `None`.
+fn index_prose_blocks(
+    prose_nodes: Vec<(ProseBlockKind, GraphBlockNode)>,
+) -> (
+    BTreeMap<String, GraphProseBlock>,
+    BTreeMap<String, Vec<String>>,
+) {
+    let mut by_page: BTreeMap<String, Vec<(ProseBlockKind, GraphBlockNode)>> = BTreeMap::new();
+    for (kind, block) in prose_nodes {
+        by_page.entry(block.page_id.clone()).or_default().push((kind, block));
+    }
+
+    let mut prose = BTreeMap::new();
+    let mut prose_by_page = BTreeMap::new();
+
+    for (page_id, mut blocks) in by_page {
+        blocks.sort_by_key(|(_, block)| block.order);
+        let mut heading_stack: Vec<(u8, String)> = Vec::new();
+        let mut page_block_ids = Vec::with_capacity(blocks.len());
+
+        for (kind, block) in blocks {
+            if kind == ProseBlockKind::Heading {
+                let level = block.level.unwrap_or(1);
+                while heading_stack
+                    .last()
+                    .is_some_and(|(open_level, _)| *open_level >= level)
+                {
+                    heading_stack.pop();
+                }
+            }
+            let heading_context = (!heading_stack.is_empty()).then(|| {
+                heading_stack
+                    .iter()
+                    .map(|(_, text)| text.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" > ")
+            });
+            if kind == ProseBlockKind::Heading {
+                heading_stack.push((
+                    block.level.unwrap_or(1),
+                    block.text.clone().unwrap_or_default(),
+                ));
+            }
+
+            page_block_ids.push(block.id.clone());
+            prose.insert(
+                block.id.clone(),
+                GraphProseBlock {
+                    id: block.id,
+                    page_id: block.page_id,
+                    kind,
+                    order: block.order,
+                    text: block.text,
+                    code: block.code,
+                    items: block.items,
+                    heading_context,
+                    source_span: block.source_span,
+                },
+            );
+        }
+
+        prose_by_page.insert(page_id, page_block_ids);
+    }
+
+    (prose, prose_by_page)
+}
+
 fn relation_set(relations: &[GraphRelationKind]) -> BTreeSet<GraphRelationKind> {
     if relations.is_empty() {
         GraphRelationKind::ALL.into_iter().collect()
@@ -821,6 +967,135 @@ mod tests {
             edges: Vec::new(),
             diagnostics: Vec::new(),
         }
+    }
+
+    fn block(id: &str, page_id: &str, order: u32, level: Option<u8>, text: &str) -> GraphBlockNode {
+        GraphBlockNode {
+            id: id.to_string(),
+            page_id: page_id.to_string(),
+            order,
+            level,
+            text: Some(text.to_string()),
+            language: None,
+            code: None,
+            items: Vec::new(),
+            source_span: GraphSourceSpan {
+                path: "docs/guide.md".to_string(),
+                line: order + 1,
+                column: 1,
+            },
+        }
+    }
+
+    fn prose_document(nodes: Vec<GraphNode>) -> GraphArtifactDocument {
+        let mut all_nodes = vec![GraphNode::Page(GraphPageNode {
+            id: "guides.page".to_string(),
+            order: 0,
+            title: None,
+            source_path: "docs/guide.md".to_string(),
+        })];
+        all_nodes.extend(nodes);
+        GraphArtifactDocument {
+            schema_version: "adoc.graph.v4".to_string(),
+            nodes: all_nodes,
+            edges: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn from_document_retains_prose_blocks_and_derives_count() {
+        let graph = GraphIndex::from_document(prose_document(vec![
+            GraphNode::Heading(block("guides.page#block-0000", "guides.page", 0, Some(1), "Intro")),
+            GraphNode::Paragraph(block("guides.page#block-0001", "guides.page", 1, None, "Body.")),
+        ]))
+        .expect("indexes without errors");
+
+        assert_eq!(graph.prose_block_count(), 2);
+        let paragraph = graph
+            .prose_block("guides.page#block-0001")
+            .expect("paragraph retained");
+        assert_eq!(paragraph.kind, ProseBlockKind::Paragraph);
+        assert_eq!(paragraph.text.as_deref(), Some("Body."));
+        assert_eq!(paragraph.source_span.line, 2);
+    }
+
+    #[test]
+    fn heading_context_tracks_ancestor_stack_and_pops_on_level_decrease() {
+        let graph = GraphIndex::from_document(prose_document(vec![
+            GraphNode::Paragraph(block("guides.page#block-0000", "guides.page", 0, None, "Preamble.")),
+            GraphNode::Heading(block("guides.page#block-0001", "guides.page", 1, Some(1), "Billing basics")),
+            GraphNode::Heading(block("guides.page#block-0002", "guides.page", 2, Some(2), "How credits are spent")),
+            GraphNode::Paragraph(block("guides.page#block-0003", "guides.page", 3, None, "Credits burn on completion.")),
+            GraphNode::Heading(block("guides.page#block-0004", "guides.page", 4, Some(2), "Refunds")),
+            GraphNode::Paragraph(block("guides.page#block-0005", "guides.page", 5, None, "Refunds are manual.")),
+            GraphNode::Heading(block("guides.page#block-0006", "guides.page", 6, Some(1), "Appendix")),
+            GraphNode::Paragraph(block("guides.page#block-0007", "guides.page", 7, None, "Fin.")),
+        ]))
+        .expect("indexes without errors");
+
+        let context = |id: &str| {
+            graph
+                .prose_block(id)
+                .expect("block retained")
+                .heading_context
+                .clone()
+        };
+        // Before any heading: no context.
+        assert_eq!(context("guides.page#block-0000"), None);
+        // A heading's own context is its ancestors, not itself.
+        assert_eq!(context("guides.page#block-0001"), None);
+        assert_eq!(
+            context("guides.page#block-0002"),
+            Some("Billing basics".to_string())
+        );
+        // A block under a nested heading gets the full breadcrumb.
+        assert_eq!(
+            context("guides.page#block-0003"),
+            Some("Billing basics > How credits are spent".to_string())
+        );
+        // A sibling H2 pops the previous H2 before taking its context.
+        assert_eq!(
+            context("guides.page#block-0004"),
+            Some("Billing basics".to_string())
+        );
+        assert_eq!(
+            context("guides.page#block-0005"),
+            Some("Billing basics > Refunds".to_string())
+        );
+        // A new H1 pops everything.
+        assert_eq!(context("guides.page#block-0006"), None);
+        assert_eq!(context("guides.page#block-0007"), Some("Appendix".to_string()));
+    }
+
+    #[test]
+    fn prose_blocks_iterate_in_page_order_regardless_of_artifact_node_order() {
+        // Nodes deliberately out of document order in the artifact.
+        let graph = GraphIndex::from_document(prose_document(vec![
+            GraphNode::Paragraph(block("guides.page#block-0002", "guides.page", 2, None, "Second.")),
+            GraphNode::Heading(block("guides.page#block-0000", "guides.page", 0, Some(1), "Title")),
+            GraphNode::Paragraph(block("guides.page#block-0001", "guides.page", 1, None, "First.")),
+        ]))
+        .expect("indexes without errors");
+
+        let ids: Vec<&str> = graph.prose_blocks().map(|b| b.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "guides.page#block-0000",
+                "guides.page#block-0001",
+                "guides.page#block-0002"
+            ]
+        );
+        // Order-derived context holds even with shuffled artifact nodes.
+        assert_eq!(
+            graph
+                .prose_block("guides.page#block-0002")
+                .expect("block retained")
+                .heading_context
+                .as_deref(),
+            Some("Title")
+        );
     }
 
     #[test]
