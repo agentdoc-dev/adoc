@@ -159,12 +159,15 @@ fn build_emits_task_node_and_depends_on_edge_into_graph() {
         "expected the task depends_on edge in graph JSON:\n{graph_text}"
     );
 
-    // HTML: the task card carries owner, due date, and open/done state.
+    // HTML: the task card carries owner, due date, and open/done state. The
+    // PRD example's fixed due is already past (the same clock assumption as
+    // the task.overdue warning asserted above), so the card also carries the
+    // overdue modifier.
     let html = fs::read_to_string(workspace.root.join("dist").join("docs.html"))
         .expect("html artifact is written");
     assert!(
-        html.contains("<section class=\"task task--open\""),
-        "html must carry the open state on the task card\n{html}"
+        html.contains("<section class=\"task task--open task--overdue\""),
+        "html must carry the open + overdue state on the task card\n{html}"
     );
     assert!(
         html.contains("<div class=\"task__field-item\"><dt>owner</dt><dd>support-ops</dd></div>"),

@@ -26,7 +26,7 @@ Missing or invalid values emit `schema.task_missing_status` / `schema.task_inval
 
 ## The overdue warning
 
-An `open` task whose `due` date is strictly before today emits the `task.overdue` WARNING at check/build time. Warnings never fail the build — the task stays valid; the warning is a nudge to complete the work and set `status: done`, or move the `due` date. `done` tasks and tasks without `due` are exempt. The check is clock-dependent: it runs against the local calendar date.
+An `open` task whose `due` date is strictly before today emits the `task.overdue` WARNING at check/build time. Warnings never fail the build — the task stays valid; the warning is a nudge to complete the work and set `status: done`, or move the `due` date. `done` tasks and tasks without `due` are exempt. The check is clock-dependent: it runs against the local calendar date. The rendered HTML mirrors the same rule: an open past-due task's card carries a `task--overdue` class alongside `task--open`.
 
 ## Authoring syntax
 

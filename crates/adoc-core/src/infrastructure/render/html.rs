@@ -360,7 +360,7 @@ fn render_knowledge_object(
             render_question(knowledge_object, &metadata, html);
         }
         KnowledgeObject::Task(_) => {
-            render_task(knowledge_object, &metadata, html);
+            render_task(knowledge_object, &metadata, today, html);
         }
     }
 
@@ -607,6 +607,7 @@ fn render_question(
 fn render_task(
     knowledge_object: &KnowledgeObject,
     metadata: &KnowledgeObjectMetadata<'_>,
+    today: Option<NaiveDate>,
     html: &mut String,
 ) {
     let KnowledgeObject::Task(task) = knowledge_object else {
@@ -615,8 +616,19 @@ fn render_task(
 
     // Task card: open/done state on the section class and the status badge,
     // owner and due date as a definition list above the body (PRD §13.11).
+    // The overdue modifier mirrors the `task.overdue` rule (task_overdue.rs):
+    // open + due strictly before the injected date; undated renders unchanged.
     let status_str = task.status().as_str();
-    let class = format!("task task--{status_str}");
+    let overdue = task.status().is_open()
+        && task
+            .due()
+            .zip(today)
+            .is_some_and(|(due, today)| due.date() < today);
+    let class = if overdue {
+        format!("task task--{status_str} task--overdue")
+    } else {
+        format!("task task--{status_str}")
+    };
 
     render_object_section_open(knowledge_object, &class, html);
     render_object_header(knowledge_object, status_badge(metadata), html);
@@ -2303,6 +2315,63 @@ mod tests {
                 "<span class=\"ko__effective-status ko__effective-status--stale\">stale</span>"
             ),
             "verified expired claim must render stale badge; html: {html}"
+        );
+    }
+
+    /// An `open` task whose `due` is strictly before the injected date renders
+    /// the `task--overdue` section modifier, mirroring the `task.overdue`
+    /// lifecycle rule; `done` tasks, future dues, and undated renders do not.
+    #[test]
+    fn open_past_due_task_renders_overdue_modifier() {
+        use crate::domain::ast::PageAst;
+        use crate::domain::identity::PageId;
+        use crate::domain::knowledge_object::{KnowledgeObject, task::Task};
+
+        let span = dummy_span();
+        // Wide-margin fixed dates, per the task_cli.rs discipline.
+        let make_page = |id: &str, status: &str, due: &str| PageAst {
+            id: PageId::from_string(format!("docs.{id}")).expect("page id"),
+            title: None,
+            source_path: std::path::PathBuf::from(format!("docs/{id}.adoc")),
+            blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Task(
+                Task::try_new(
+                    &format!("billing.{id}"),
+                    status,
+                    "support-ops",
+                    Some(due),
+                    "Update the support runbook.",
+                    std::collections::BTreeMap::new(),
+                    span.clone(),
+                )
+                .expect("valid task"),
+            )))],
+        };
+
+        let workspace = crate::domain::ast::WorkspaceAst {
+            pages: vec![
+                make_page("past-open", "open", "2021-05-20"),
+                make_page("future-open", "open", "2126-01-01"),
+                make_page("past-done", "done", "2021-05-20"),
+            ],
+        };
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 6, 1).expect("valid date");
+
+        let html = HtmlRenderer.render_workspace_for_date(&workspace, Some(today));
+        assert!(
+            html.contains("task task--open task--overdue"),
+            "open past-due task must carry the overdue modifier; html: {html}"
+        );
+        assert_eq!(
+            html.matches("task--overdue").count(),
+            1,
+            "future-due and done tasks must not carry the modifier; html: {html}"
+        );
+
+        // Undated renders stay modifier-free.
+        let undated = HtmlRenderer.render_workspace_for_date(&workspace, None);
+        assert!(
+            !undated.contains("task--overdue"),
+            "renders without an injected date must not derive overdue; html: {undated}"
         );
     }
 
