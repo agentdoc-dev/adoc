@@ -446,8 +446,9 @@ pub(crate) enum Commands {
         search_artifact: Option<PathBuf>,
         #[arg(long, conflicts_with = "lexical")]
         semantic: bool,
-        /// Reserved for the V1.5/V1.6 hybrid slice; today this is the default
-        /// when neither --semantic nor --lexical is set, so the flag is a no-op.
+        /// Force deterministic BM25 + Object ID ranking, skipping vectors.
+        /// Hybrid fusion is the default when neither --semantic nor
+        /// --lexical is set.
         #[arg(long, conflicts_with = "semantic")]
         lexical: bool,
         /// Return only Knowledge Object records (the pre-V1.7 result set).

@@ -235,23 +235,48 @@ ANN indexes remain the named next steps if real corpora push these numbers up
 
 ## Retrieval Set Updates
 
-The billing pilot golden set lives at
-`examples/billing-pilot/retrieval-set.yaml`.
+Two golden sets exist (V1.7.3): the Knowledge-Object-heavy billing set at
+`examples/billing-pilot/retrieval-set.yaml` and the mixed prose-plus-KO set at
+`examples/markdown-pilot/retrieval-set.yaml`.
 
 Add or change entries when ranking behavior, embedding composition, corpus
 content, or model selection changes. Each entry should include:
 
 - `query`
 - `mode`: `hybrid`, `lexical`, or `semantic`
+- `scope`: `objects_only` (default — reproduces the pre-V1.7 Knowledge-Object
+  sequences), `blended`, or `prose_only` (V1.7.3)
+- `top`: the requested result budget, when it must exceed
+  `must_appear_in_top` — hybrid RRF fuses the per-mode top-k lists, so rank
+  assertions against a one-element pool prove nothing; blended cases use
+  `top: 10`
 - `expected_ids`
 - `must_appear_in_top`
 - filters when the case exists to cover a filter path
+- `expected_diagnostics` when the corpus compiles with warnings — the
+  harness asserts the envelope's distinct code set equals the declared set
+  exactly (the markdown pilot's compat budget rides every envelope)
 
-Keep the set at 15-20 high-signal queries. Cover paraphrase behavior, exact ID
-pins, ID prefixes, owner filters, kind filters, evidence-field queries, status
-filters, empty results, and broken filters. When changing expected IDs because
-the intended behavior changed, add a short YAML comment next to that case with
-the rationale.
+Keep the billing set at 15-25 and the markdown set at 8-20 high-signal
+queries. Cover paraphrase behavior, exact ID pins, ID prefixes, owner filters,
+kind filters, evidence-field queries, status filters, empty results, broken
+filters, and (V1.7.3) blend honesty: KO-first queries where a citable object
+must beat prose competition, and legitimately prose-first queries. When
+changing expected IDs because the intended behavior changed, add a short YAML
+comment next to that case with the rationale.
+
+Two conventions keep blended cases honest and hermetic:
+
+- Rank-1 blend assertions use `mode: lexical` — BM25 rank is deterministic
+  and identical across embedding backends. Hybrid cases pin only what fusion
+  guarantees regardless of the model: exact Object ID pins rank first, and
+  strong matches stay inside a `must_appear_in_top: 5` window of a `top: 10`
+  pool.
+- The `.adoc`/`.md` symmetry property (identical prose ranks identically;
+  only `source.path` differs) is pinned twice: at the session level in
+  `crates/adoc-core/tests/retrieval.rs` across all four prose block kinds,
+  and end-to-end (compile → build → search) in
+  `crates/adoc-cli/tests/retrieval_pilot.rs`.
 
 Run the hermetic suite before committing:
 
@@ -264,3 +289,14 @@ The gated production-model suite runs with:
 ```bash
 cargo test -p adoc-cli --test retrieval_pilot --features fastembed-it --locked
 ```
+
+## Migration Hint (downgraded at V1.7.3)
+
+`retrieval.no_knowledge_objects_consider_migration` still fires when a search
+returns zero records against a project that has Markdown prose but no
+Knowledge Objects. V1.7.3 downgraded its framing, not its trigger: prose
+retrieval works for `.md`-only projects since V1.7.1, so the hint no longer
+describes a dead end ("wait for `adoc migrate`") — it now says prose is
+searchable as-is and migration is what makes findings citable. The code,
+WARNING severity, and trigger are unchanged; V8.1.1 renames the "future
+`adoc migrate`" phrasing to the shipped command.

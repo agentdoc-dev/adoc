@@ -226,7 +226,7 @@ diagnostic_codes! {
     ParseMalformedMarkdown = "parse.malformed_markdown" =>
         "Check that Markdown blocks (tables, lists, fenced code) are well-formed; the parser tolerated the imbalance and rendered best-effort output.";
     RetrievalNoKnowledgeObjectsConsiderMigration = "retrieval.no_knowledge_objects_consider_migration" =>
-        "Migrate .md files to .adoc with typed Knowledge Objects, or wait for `adoc migrate` (V4.5+); Markdown source contributes prose blocks but no citable Knowledge Objects.";
+        "Markdown prose is searchable as-is; migrate .md files to .adoc with typed Knowledge Objects to make findings citable (a future `adoc migrate` will automate this).";
     SchemaContradictionMissingSeverity = "schema.contradiction_missing_severity" =>
         "Add a `severity` field to the contradiction: one of low, medium, high, critical.";
     SchemaContradictionInvalidSeverity = "schema.contradiction_invalid_severity" =>

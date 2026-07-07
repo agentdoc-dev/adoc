@@ -372,6 +372,10 @@ fn finalize_search_result(session: &RetrievalSession, mut result: SearchResult) 
     result
 }
 
+/// V1.7.3 downgraded this hint: prose retrieval works for `.md`-only
+/// projects, so an empty result no longer signals a dead end — the hint now
+/// points at what migration adds (citable Knowledge Objects), not at a
+/// missing search capability.
 fn maybe_migration_hint(
     session: &RetrievalSession,
     records: &[RetrievalEntry],
@@ -384,7 +388,7 @@ fn maybe_migration_hint(
     {
         Some(Diagnostic::warning(
             DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration,
-            "no Knowledge Objects found; consider migrating .md files to .adoc or wait for `adoc migrate` (V4.5+)",
+            "no matches; Markdown prose is searchable, but this project has no citable Knowledge Objects — migrate .md files to .adoc to add them (a future `adoc migrate` will automate this)",
         ))
     } else {
         None
