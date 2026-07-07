@@ -2389,6 +2389,18 @@ fn prose_symmetry_graph_json(extension: &str) -> String {
                 "language": "shell",
                 "code": "adoc build --provider fastembed",
                 "source_span": { "path": path, "line": 7, "column": 1 }
+            },
+            {
+                "type": "list",
+                "id": "guides.page#block-0004",
+                "page_id": "guides.page",
+                "order": 4,
+                "text": "ordered",
+                "items": [
+                    "Rotate the signing key quarterly.",
+                    "Revoke the previous key after rotation."
+                ],
+                "source_span": { "path": path, "line": 11, "column": 1 }
             }
         ],
         "edges": [],
@@ -2416,13 +2428,20 @@ fn load_prose_session(extension: &str) -> RetrievalSession {
 
 /// V1.7.1 roadmap acceptance — the symmetry rule: identical prose in a
 /// `.adoc` file and a `.md` file ranks identically; only `source.path`
-/// differs.
+/// differs. V1.7.3 extends the property across every prose block kind the
+/// graph carries: heading, paragraph, list, and code block.
 #[test]
 fn identical_prose_ranks_identically_across_adoc_and_md_sources() {
     let adoc_session = load_prose_session("adoc");
     let md_session = load_prose_session("md");
 
-    for query in ["credits consumed", "refunds", "billing basics"] {
+    for query in [
+        "credits consumed",
+        "refunds",
+        "billing basics",
+        "rotate the signing key",
+        "provider fastembed",
+    ] {
         let adoc_result = search(
             &adoc_session,
             lexical_query(query, 10, SearchFilters::default()),
@@ -2748,5 +2767,82 @@ fn code_block_prose_ranks_lexically_in_hybrid_but_never_semantically() {
     assert!(
         !search_ids(&semantic).contains(&"guides.page#block-0003"),
         "semantic search must never surface a code block: it has no vector (ADR-0040)"
+    );
+}
+
+/// V1.7.3 (ADR-0040 §Consequences): the blend is honest by rank alone. In a
+/// mixed corpus, a query answered by a Knowledge Object ranks the object
+/// first, and a query answered only by prose ranks the prose first — same
+/// session, no weights, no scope flags.
+#[test]
+fn blended_lexical_search_ranks_knowledge_objects_and_prose_by_honest_rank() {
+    let ko = retrieval_search_object(
+        "mixed.claims.settlement-once",
+        "claim",
+        Some("verified"),
+        Some("team-billing"),
+        "docs/mixed.adoc",
+        "Each captured payment settlement writes exactly one ledger movement.",
+    );
+    let graph_json = graph_json_from_objects(
+        vec![
+            json!({
+                "type": "page",
+                "id": "mixed.page",
+                "order": 0,
+                "source_path": "docs/mixed.md"
+            }),
+            json!({
+                "type": "heading",
+                "id": "mixed.page#block-0000",
+                "page_id": "mixed.page",
+                "order": 0,
+                "level": 1,
+                "text": "Failover operations",
+                "source_span": { "path": "docs/mixed.md", "line": 1, "column": 1 }
+            }),
+            json!({
+                "type": "paragraph",
+                "id": "mixed.page#block-0001",
+                "page_id": "mixed.page",
+                "order": 1,
+                "text": "The standby health dashboard is the source of truth before failover.",
+                "source_span": { "path": "docs/mixed.md", "line": 3, "column": 1 }
+            }),
+            ko,
+        ],
+        Vec::new(),
+    );
+    let artifact = write_temp_artifact("mixed-blend", &graph_json);
+    let result = load_retrieval_session(RetrievalInput {
+        artifact_path: artifact.path().to_path_buf(),
+        search_artifact_path: None,
+    });
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    let session = result.session.expect("mixed fixture session loads");
+
+    let ko_first = search(
+        &session,
+        lexical_query("settlement ledger movement", 10, SearchFilters::default()),
+    );
+    assert_eq!(
+        search_ids(&ko_first).first().copied(),
+        Some("mixed.claims.settlement-once"),
+        "a query answered by a Knowledge Object must rank it first in the blend"
+    );
+
+    let prose_first = search(
+        &session,
+        lexical_query("standby health dashboard", 10, SearchFilters::default()),
+    );
+    assert_eq!(
+        search_ids(&prose_first).first().copied(),
+        Some("mixed.page#block-0001"),
+        "a query answered only by prose must rank the prose block first in the blend"
+    );
+    assert!(
+        prose_first.diagnostics.is_empty(),
+        "a mixed corpus never fires the migration hint: {:?}",
+        prose_first.diagnostics
     );
 }
