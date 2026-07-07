@@ -17,6 +17,7 @@ pub use application::graph::{
     GRAPH_TRAVERSAL_SCHEMA_VERSION, GraphInput, GraphLoadResult, GraphSession,
     GraphTraversalEnvelope, traverse_graph,
 };
+pub use application::migrate::{MigrateMode, MigrateResult, MigratedFile};
 pub use application::patch::{
     PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput, PatchJsonInput, PatchParseError,
 };
@@ -124,6 +125,16 @@ pub(crate) fn map_provider_error(
 pub fn compile_workspace(input: CompileInput) -> CompileResult {
     let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
     application::compile::compile_with_provider(&provider)
+}
+
+/// V8.1.1: convert every Compatibility Mode (`.md`) source under `root` to
+/// canonical prose-mode `.adoc` text (ADR-0043). Performs no writes — the
+/// result carries the rendered text per file; the local adapter executes
+/// `--write` all-or-nothing.
+#[tracing::instrument(level = "debug", skip_all)]
+pub fn migrate_workspace(root: std::path::PathBuf, mode: MigrateMode) -> MigrateResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::new(root);
+    application::migrate::migrate_with_provider(&provider, mode)
 }
 
 pub fn build_workspace(input: BuildInput) -> CompileResult {

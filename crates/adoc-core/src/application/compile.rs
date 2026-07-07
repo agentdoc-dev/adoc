@@ -194,7 +194,7 @@ fn load_pages<P: SourceProvider>(provider: &P) -> (Vec<(SourceFile, PageAst)>, V
     (parsed, diagnostics)
 }
 
-fn load_error_diagnostic(load_error: SourceLoadError) -> Diagnostic {
+pub(crate) fn load_error_diagnostic(load_error: SourceLoadError) -> Diagnostic {
     match load_error.kind {
         SourceLoadErrorKind::Unreadable => Diagnostic::error(
             DiagnosticCode::IoUnreadableFile,

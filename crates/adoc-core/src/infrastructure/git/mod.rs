@@ -5,9 +5,11 @@
 //! composition root in `lib.rs` is the only wiring site.
 
 pub(crate) mod changed_files;
+pub(crate) mod clean_source;
 pub(crate) mod error;
 pub(crate) mod readiness;
 pub(crate) mod util;
 pub(crate) mod worktree;
 
+pub(crate) use clean_source::is_committed_and_clean;
 pub(crate) use readiness::is_review_available;

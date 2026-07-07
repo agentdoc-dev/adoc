@@ -226,7 +226,7 @@ diagnostic_codes! {
     ParseMalformedMarkdown = "parse.malformed_markdown" =>
         "Check that Markdown blocks (tables, lists, fenced code) are well-formed; the parser tolerated the imbalance and rendered best-effort output.";
     RetrievalNoKnowledgeObjectsConsiderMigration = "retrieval.no_knowledge_objects_consider_migration" =>
-        "Markdown prose is searchable as-is; migrate .md files to .adoc with typed Knowledge Objects to make findings citable (a future `adoc migrate` will automate this).";
+        "Markdown prose is searchable as-is; migrate .md files to .adoc with typed Knowledge Objects to make findings citable (run `adoc migrate` to automate the conversion).";
     SchemaContradictionMissingSeverity = "schema.contradiction_missing_severity" =>
         "Add a `severity` field to the contradiction: one of low, medium, high, critical.";
     SchemaContradictionInvalidSeverity = "schema.contradiction_invalid_severity" =>
@@ -351,6 +351,33 @@ diagnostic_codes! {
     /// changed-file set for `--ref`.
     ImpactedGitUnavailable = "impacted.git_unavailable" =>
         "Install git and run inside a git repository, or pass explicit changed paths instead of `--ref`.";
+    /// V8.1.1: `adoc migrate` preserved a raw HTML block (or a prose block
+    /// strict mode rejects as raw HTML) verbatim inside a fenced code block,
+    /// because strict `.adoc` forbids raw HTML (ADR-0043).
+    MigrateRawHtmlQuarantined = "migrate.raw_html_quarantined" =>
+        "Raw HTML has no strict .adoc form; the content was preserved verbatim in a fenced code block. Rewrite it as Markdown/ADoc syntax or keep the fence.";
+    /// V8.1.1: a relative link points at a missing source file or at a `.md`
+    /// file this migration converts to `.adoc`, or an unsafe link scheme
+    /// forced its block into a quarantine fence (ADR-0043).
+    MigrateBrokenLink = "migrate.broken_link" =>
+        "Update the link target: the referenced file is missing, was migrated from .md to .adoc, or uses an unsafe scheme strict mode rejects.";
+    /// V8.1.1: a Markdown construct outside the strict `.adoc` grammar
+    /// (table, footnote definition, math/MDX/Pandoc extension, loose or
+    /// nested list, hard line break) was preserved verbatim inside a fenced
+    /// code block — or dropped where the message says so (front matter, task
+    /// checkboxes), per the ADR-0043 closed set.
+    MigrateUnrecognizedExtension = "migrate.unrecognized_extension" =>
+        "This Markdown construct has no strict .adoc form; it was preserved verbatim in a fenced code block (or dropped where the message says so).";
+    /// V8.1.1: `adoc migrate --write` refused because a source `.md` is not
+    /// committed-and-clean in git — a committed source is what makes the
+    /// removal reversible (ADR-0043).
+    MigrateSourceNotCommitted = "migrate.source_not_committed" =>
+        "Commit the source .md (or run inside a git repository) before `adoc migrate --write`, or pass --force to override.";
+    /// V8.1.1: the migration target `<name>.adoc` already exists; the run is
+    /// refused before any write — overwriting or leaving both would compile
+    /// duplicate page IDs (ADR-0043).
+    MigrateTargetExists = "migrate.target_exists" =>
+        "Remove or rename the existing .adoc file (or the source .md) so the migration target is free.";
 }
 
 impl DiagnosticCode {

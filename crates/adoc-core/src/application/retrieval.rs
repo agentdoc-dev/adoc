@@ -388,7 +388,7 @@ fn maybe_migration_hint(
     {
         Some(Diagnostic::warning(
             DiagnosticCode::RetrievalNoKnowledgeObjectsConsiderMigration,
-            "no matches; Markdown prose is searchable, but this project has no citable Knowledge Objects — migrate .md files to .adoc to add them (a future `adoc migrate` will automate this)",
+            "no matches; Markdown prose is searchable, but this project has no citable Knowledge Objects — migrate .md files to .adoc to add them (run `adoc migrate` to automate the conversion)",
         ))
     } else {
         None
