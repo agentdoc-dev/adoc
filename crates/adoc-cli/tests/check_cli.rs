@@ -590,6 +590,10 @@ fn build_missing_out_without_config_exits_1_with_config_error() {
     );
 
     let output = adoc_command()
+        // Pin the cwd outside the repository: config discovery walks up from
+        // the cwd, and the repository root now carries the dogfood-pilot
+        // agentdoc.config.yaml (ADR-0042).
+        .current_dir(&workspace.root)
         .args(["build", source.to_str().expect("source path is utf-8")])
         .output()
         .expect("adoc build runs");
