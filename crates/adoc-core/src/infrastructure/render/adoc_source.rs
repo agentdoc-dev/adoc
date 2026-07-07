@@ -221,6 +221,14 @@ impl Serializer<'_> {
     /// Returns the first strict ERROR code, or `None` when the fragment is
     /// legal strict prose.
     ///
+    /// Only ERROR severity is consulted. The strict parse/validate path
+    /// emits no other severity today, so nothing is discarded; the moment a
+    /// strict rule first emits a WARNING/INFO, capture it here and surface
+    /// it through the `adoc.migrate.report.v0` envelope (V8.1.2),
+    /// re-attributed from the synthetic `migrate/recheck.adoc` path to the
+    /// real source path — until that envelope exists there is nowhere for
+    /// such a diagnostic to land.
+    ///
     /// ponytail: one throwaway parse per prose block is O(blocks); switch to
     /// a single whole-page validation with span mapping only if migrating
     /// large trees measures slow.
