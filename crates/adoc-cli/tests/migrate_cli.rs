@@ -523,6 +523,84 @@ fn plain_output_prints_the_section_28_3_report_block() {
     }
 }
 
+/// The V8.1.3 acceptance fixture: one TODO line and one numbered step list
+/// yield exactly one `task` and one `procedure` suggestion with correct spans.
+#[test]
+fn suggestion_fixture_pins_one_task_and_one_procedure_record() {
+    let workspace = TestWorkspace::new("migrate-cli-suggestion-fixture");
+    workspace.write(
+        "guides/notes.md",
+        "# Notes\n\nTODO: rotate the signing key.\n\n1. Stop the writer.\n2. Promote the standby.\n",
+    );
+
+    let (code, value) = migrate_json(&workspace, &[]);
+
+    assert_eq!(code, Some(0), "{value}");
+    assert_eq!(value["counts"]["suggested_typed_blocks"], 2, "{value}");
+    let suggestions = value["suggestions"].as_array().expect("suggestions array");
+    assert_eq!(suggestions.len(), 2, "{value}");
+
+    let task = &suggestions[0];
+    assert_eq!(task["suggested_kind"], "task");
+    assert_eq!(task["matched_rule"], "todo_line");
+    assert_eq!(task["excerpt"], "TODO: rotate the signing key.");
+    assert_eq!(task["span"]["start"]["line"], 3);
+    assert_eq!(task["span"]["start"]["column"], 1);
+
+    let procedure = &suggestions[1];
+    assert_eq!(procedure["suggested_kind"], "procedure");
+    assert_eq!(procedure["matched_rule"], "numbered_step_list");
+    assert_eq!(procedure["excerpt"], "Stop the writer.");
+    assert_eq!(procedure["span"]["start"]["line"], 5);
+    assert_eq!(procedure["span"]["start"]["column"], 1);
+
+    for suggestion in suggestions {
+        let file = suggestion["span"]["file"].as_str().expect("span file");
+        assert!(file.ends_with("notes.md"), "{suggestion}");
+    }
+}
+
+/// The never-auto-typed property (§28.4, a V8 roadmap invariant): however
+/// many suggestions the run emits, the migrated output contains zero typed
+/// blocks — the human types the block. Asserted over the entire Markdown
+/// Pilot, per-kind fence prefixes so the quarantined `:::warning` Pandoc
+/// directive in tutorials/troubleshooting.md can never false-positive.
+#[test]
+fn migrated_pilot_output_never_contains_typed_blocks() {
+    let workspace = committed_pilot_copy("migrate-cli-never-auto-typed");
+
+    let (code, value) = migrate_json(&workspace, &["--write"]);
+
+    assert_eq!(code, Some(0), "{value}");
+    let suggested = value["counts"]["suggested_typed_blocks"]
+        .as_u64()
+        .expect("count");
+    assert!(
+        suggested > 0,
+        "the property must not hold vacuously: {value}"
+    );
+    let migrated: Vec<PathBuf> = collect_files(&workspace.root, "adoc")
+        .into_iter()
+        .filter(|path| {
+            !PILOT_PRE_EXISTING_ADOC
+                .iter()
+                .any(|pre| path.ends_with(pre))
+        })
+        .collect();
+    assert_eq!(migrated.len(), PILOT_MD_COUNT);
+    for path in migrated {
+        let text = fs::read_to_string(&path).expect("migrated .adoc is readable");
+        for kind in adoc_core::block_kind_names() {
+            let fence = format!("::{kind} ");
+            assert!(
+                !text.lines().any(|line| line.starts_with(&fence)),
+                "{} must contain zero typed blocks; found a `{fence}` fence",
+                path.display()
+            );
+        }
+    }
+}
+
 #[test]
 fn markdown_format_is_rejected_like_other_non_pr_commands() {
     let workspace = pilot_copy("migrate-cli-markdown");
