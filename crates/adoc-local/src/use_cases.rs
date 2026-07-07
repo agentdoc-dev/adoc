@@ -596,11 +596,16 @@ fn execute_migration_writes_with(
         }
         created.push(&file.target_path);
     }
+    let mut removed: Vec<PathBuf> = Vec::with_capacity(files.len());
     for file in files {
-        remove(&file.source_path).map_err(|source| LocalError::RemoveFailed {
-            path: file.source_path.clone(),
-            source,
-        })?;
+        if let Err(source) = remove(&file.source_path) {
+            return Err(LocalError::RemoveFailed {
+                path: file.source_path.clone(),
+                removed,
+                source,
+            });
+        }
+        removed.push(file.source_path.clone());
     }
     Ok(())
 }
@@ -1914,6 +1919,47 @@ mod tests {
             vec![files[0].target_path.clone()],
             "only the already-created target is cleaned up; no source is removed"
         );
+    }
+
+    #[test]
+    fn failed_source_removal_reports_already_removed_sources() {
+        let files = [
+            migrated_file("one"),
+            migrated_file("two"),
+            migrated_file("three"),
+        ];
+
+        let result = execute_migration_writes_with(
+            &files,
+            |_, _| Ok(()),
+            |path| {
+                if path == files[1].source_path {
+                    Err(io::Error::other("locked"))
+                } else {
+                    Ok(())
+                }
+            },
+        );
+
+        match result {
+            Err(error @ LocalError::RemoveFailed { .. }) => {
+                let LocalError::RemoveFailed { path, removed, .. } = &error else {
+                    unreachable!();
+                };
+                assert_eq!(*path, files[1].source_path);
+                assert_eq!(*removed, vec![files[0].source_path.clone()]);
+                let message = error.to_string();
+                assert!(
+                    message.contains("every .adoc target was written"),
+                    "message must state on-disk state: {message}"
+                );
+                assert!(
+                    message.contains("/docs/one.md"),
+                    "message must list already-removed sources: {message}"
+                );
+            }
+            other => panic!("expected RemoveFailed, got {other:?}"),
+        }
     }
 
     #[test]
