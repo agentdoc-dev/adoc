@@ -5,6 +5,7 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use adoc_core::MigrateMode;
 use adoc_core::{
     ArtifactInspection, ArtifactLoadStatus, BuildArtifacts, BuildEmbeddingMode,
     BuildInput as CoreBuildInput, CompileInput, CompileResult, ContradictionsEnvelope, Diagnostic,
@@ -23,9 +24,9 @@ use adoc_core::{
     evaluate_contradictions, evaluate_impacted, evaluate_stale, git_review_available,
     inspect_graph_artifact, inspect_search_artifact, load_graph_session,
     load_retrieval_session_with_embedding_provider, load_review_from_git,
-    load_review_with_changed_files_from_git, parse_patch_from_path, parse_patch_from_value,
-    patch_apply_refusal, review_with_patch, search as core_search, traverse_graph,
-    validate_changed_paths, why_object,
+    load_review_with_changed_files_from_git, migrate_workspace, parse_patch_from_path,
+    parse_patch_from_value, patch_apply_refusal, review_with_patch, search as core_search,
+    traverse_graph, validate_changed_paths, why_object,
 };
 use serde::Serialize;
 
@@ -61,6 +62,34 @@ pub struct CheckInput {
 #[derive(Debug, Clone, Serialize)]
 pub struct CheckOutcome {
     pub diagnostics: Vec<Diagnostic>,
+    pub exit_code: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct MigrateInput {
+    pub path: Option<PathBuf>,
+    pub write: bool,
+    pub force: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MigrateReportFile {
+    pub source: PathBuf,
+    pub target: PathBuf,
+    pub written: bool,
+}
+
+/// V8.1.1 plain migration report — file list plus diagnostics. The
+/// `adoc.migrate.report.v0` envelope with §28.3 counts lands in V8.1.2.
+#[derive(Debug, Clone, Serialize)]
+pub struct MigrateReport {
+    pub files: Vec<MigrateReportFile>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MigrateOutcome {
+    pub report: MigrateReport,
     pub exit_code: i32,
 }
 
@@ -382,6 +411,11 @@ where
         check_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.migrate", level = "info", skip_all)]
+    pub fn migrate(&self, input: MigrateInput) -> Result<MigrateOutcome, LocalError> {
+        migrate_with_context(self, input)
+    }
+
     #[tracing::instrument(name = "adoc.build", level = "info", skip_all)]
     pub fn build(&self, input: BuildInput) -> Result<BuildOutcome, LocalError> {
         build_with_context(self, input)
@@ -488,6 +522,82 @@ where
         diagnostics: result.diagnostics,
         exit_code,
     })
+}
+
+fn migrate_with_context<P>(
+    context: &LocalContext<P>,
+    input: MigrateInput,
+) -> Result<MigrateOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    let path = input
+        .path
+        .as_deref()
+        .map(|path| context.path_policy().resolve_read_path(path))
+        .transpose()?;
+    let config = discover_project_config_if(path.is_none(), context.config_start())?;
+    let path = resolve_docs_path_with_config(path, config.as_ref())?;
+    let path = context.path_policy().resolve_read_path(&path)?;
+
+    let mode = if input.write {
+        MigrateMode::Write { force: input.force }
+    } else {
+        MigrateMode::DryRun
+    };
+    let result = migrate_workspace(path, mode);
+    let written = input.write && !result.has_errors();
+    if written {
+        execute_migration_writes(&result.files)?;
+    }
+
+    let exit_code = if result.has_errors() { 1 } else { 0 };
+    Ok(MigrateOutcome {
+        report: MigrateReport {
+            files: result
+                .files
+                .into_iter()
+                .map(|file| MigrateReportFile {
+                    source: file.source_path,
+                    target: file.target_path,
+                    written,
+                })
+                .collect(),
+            diagnostics: result.diagnostics,
+        },
+        exit_code,
+    })
+}
+
+/// Two-phase `--write` execution (ADR-0043 §3): create every target first
+/// (create-new; a failure removes the targets already created and aborts),
+/// and only after all targets exist remove the sources. There is no
+/// half-written success state; the committed sources make phase 2 failures
+/// recoverable from git.
+fn execute_migration_writes(files: &[adoc_core::MigratedFile]) -> Result<(), LocalError> {
+    let mut created: Vec<&Path> = Vec::with_capacity(files.len());
+    for file in files {
+        let open = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&file.target_path)
+            .and_then(|mut target| target.write_all(file.adoc_text.as_bytes()));
+        if let Err(source) = open {
+            cleanup_init_paths(created);
+            return Err(LocalError::WriteFailed {
+                path: file.target_path.clone(),
+                source,
+            });
+        }
+        created.push(&file.target_path);
+    }
+    for file in files {
+        fs::remove_file(&file.source_path).map_err(|source| LocalError::RemoveFailed {
+            path: file.source_path.clone(),
+            source,
+        })?;
+    }
+    Ok(())
 }
 
 fn build_with_context<P>(
