@@ -304,7 +304,7 @@ pub(crate) enum Commands {
         /// Markdown file or directory to migrate.
         #[arg(value_name = "PATH")]
         path: Option<PathBuf>,
-        /// Write <name>.adoc files and remove the source .md files.
+        /// Write each source's .adoc target and remove the source .md files.
         #[arg(long)]
         write: bool,
         /// Skip the committed-and-clean git refusal for --write.
