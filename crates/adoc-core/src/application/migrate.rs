@@ -238,14 +238,26 @@ fn walk_inline_links(
     }
 }
 
-/// CommonMark-ish scheme detection: a `:` before any path separator marks an
-/// absolute URL (`https:`, `mailto:`, `javascript:`, `data:`); everything
-/// else is treated as a relative path.
+/// RFC 3986 §3.1 scheme detection: `ALPHA *( ALPHA / DIGIT / "+" / "-" /
+/// "." ) ":"` marks an absolute URL (`https:`, `mailto:`, `data:`);
+/// everything else — including digit-leading segments like
+/// `2026:Q3-plan.md` — is treated as a relative path and judged.
 fn has_url_scheme(url: &str) -> bool {
-    url.split(['/', '?', '#'])
-        .next()
-        .unwrap_or_default()
-        .contains(':')
+    let mut bytes = url.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphabetic() {
+        return false;
+    }
+    for byte in bytes {
+        match byte {
+            b':' => return true,
+            byte if byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'.' | b'-') => {}
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// Lexically fold `.` and `..` components so provider paths and link-resolved
@@ -359,6 +371,22 @@ mod tests {
             "{:?}",
             result.diagnostics
         );
+    }
+
+    #[test]
+    fn url_scheme_detection_follows_rfc_3986_scheme_grammar() {
+        assert!(has_url_scheme("https://example.test/x.md"));
+        assert!(has_url_scheme("mailto:team@example.test"));
+        // An all-alphabetic first segment before `:` satisfies the scheme
+        // grammar, so it stays skipped — links styled `Class:method.md`
+        // are indistinguishable from a scheme without touching the fs.
+        assert!(has_url_scheme("Class:method.md"));
+        // A digit-leading segment can never be a scheme (RFC 3986 §3.1);
+        // it is a relative path and must be judged.
+        assert!(!has_url_scheme("2026:Q3-plan.md"));
+        assert!(!has_url_scheme("notes/2026:Q3-plan.md"));
+        assert!(!has_url_scheme("./missing.md"));
+        assert!(!has_url_scheme(""));
     }
 
     #[test]
