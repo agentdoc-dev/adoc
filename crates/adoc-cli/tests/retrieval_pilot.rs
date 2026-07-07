@@ -35,6 +35,18 @@ enum CaseFormat {
     Plain,
 }
 
+/// V1.7.3: which record scope a case searches. `ObjectsOnly` keeps the
+/// pre-V1.7 Knowledge-Object sequences reproducible; `Blended` exercises the
+/// honest KO/prose blend; `ProseOnly` pins prose-scoped retrieval.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum CaseScope {
+    #[default]
+    ObjectsOnly,
+    Blended,
+    ProseOnly,
+}
+
 #[derive(Debug, Clone, Copy)]
 enum EmbeddingBackend {
     InMemory,
@@ -74,6 +86,8 @@ struct RetrievalCase {
     #[serde(default)]
     mode: RetrievalMode,
     #[serde(default)]
+    scope: CaseScope,
+    #[serde(default)]
     format: CaseFormat,
     #[serde(default)]
     filters: CaseFilters,
@@ -89,6 +103,12 @@ struct RetrievalCase {
     expected_exit: i32,
     #[serde(default = "default_must_appear_in_top")]
     must_appear_in_top: usize,
+    /// V1.7.3: the `--top` requested from the CLI. Defaults to
+    /// `must_appear_in_top`; blended cases widen it (hybrid RRF fuses the
+    /// per-mode top-k lists, so `--top 1` would fuse two singletons instead
+    /// of ranking a realistic pool) while still pinning the expected rank.
+    #[serde(default)]
+    top: Option<usize>,
 }
 
 struct PilotBuild {
@@ -102,37 +122,80 @@ fn default_must_appear_in_top() -> usize {
     5
 }
 
+/// V1.7.3: the per-pilot retrieval-set parameters — the pilot to build, its
+/// golden query set, and the benchmark-size window the set must stay inside.
+struct PilotRetrievalSet {
+    pilot_dir: &'static str,
+    case_count: std::ops::RangeInclusive<usize>,
+}
+
+const BILLING_PILOT_SET: PilotRetrievalSet = PilotRetrievalSet {
+    pilot_dir: "billing-pilot",
+    case_count: 15..=25,
+};
+
+const MARKDOWN_PILOT_SET: PilotRetrievalSet = PilotRetrievalSet {
+    pilot_dir: "markdown-pilot",
+    case_count: 8..=20,
+};
+
 #[test]
 fn retrieval_set_queries_pass_against_billing_pilot() {
-    run_retrieval_set(EmbeddingBackend::InMemory, "billing-pilot-retrieval-set");
+    run_retrieval_set(
+        &BILLING_PILOT_SET,
+        EmbeddingBackend::InMemory,
+        "billing-pilot-retrieval-set",
+    );
+}
+
+#[test]
+fn retrieval_set_queries_pass_against_markdown_pilot() {
+    run_retrieval_set(
+        &MARKDOWN_PILOT_SET,
+        EmbeddingBackend::InMemory,
+        "markdown-pilot-retrieval-set",
+    );
 }
 
 #[cfg(feature = "fastembed-it")]
 #[test]
 fn retrieval_set_queries_pass_against_fastembed_provider() {
     run_retrieval_set(
+        &BILLING_PILOT_SET,
         EmbeddingBackend::FastEmbed,
         "billing-pilot-fastembed-retrieval-set",
     );
 }
 
-fn run_retrieval_set(backend: EmbeddingBackend, workspace_name: &str) {
+#[cfg(feature = "fastembed-it")]
+#[test]
+fn markdown_retrieval_set_queries_pass_against_fastembed_provider() {
+    run_retrieval_set(
+        &MARKDOWN_PILOT_SET,
+        EmbeddingBackend::FastEmbed,
+        "markdown-pilot-fastembed-retrieval-set",
+    );
+}
+
+fn run_retrieval_set(set: &PilotRetrievalSet, backend: EmbeddingBackend, workspace_name: &str) {
     let repo_root = repo_root();
     let retrieval_set_path = repo_root
         .join("examples")
-        .join("billing-pilot")
+        .join(set.pilot_dir)
         .join("retrieval-set.yaml");
-    let retrieval_set =
-        fs::read_to_string(&retrieval_set_path).expect("billing pilot retrieval-set.yaml exists");
+    let retrieval_set = fs::read_to_string(&retrieval_set_path)
+        .unwrap_or_else(|_| panic!("{} retrieval-set.yaml exists", set.pilot_dir));
     let cases = parse_retrieval_set(&retrieval_set).expect("retrieval-set.yaml parses");
 
     assert!(
-        (15..=20).contains(&cases.len()),
-        "retrieval set should carry 15-20 benchmark cases, got {}",
+        set.case_count.contains(&cases.len()),
+        "{} retrieval set should carry {:?} benchmark cases, got {}",
+        set.pilot_dir,
+        set.case_count,
         cases.len()
     );
 
-    let pilot = build_billing_pilot(&repo_root, workspace_name, backend);
+    let pilot = build_pilot(&repo_root, set.pilot_dir, workspace_name, backend);
     let mut expected_id_assertions = 0usize;
 
     for case in &cases {
@@ -168,7 +231,7 @@ fn run_retrieval_set(backend: EmbeddingBackend, workspace_name: &str) {
                     &envelope,
                     case.mode,
                     &case.query,
-                    case.must_appear_in_top,
+                    case.top.unwrap_or(case.must_appear_in_top).max(1),
                 );
                 assert_expected_diagnostics(case, &envelope);
                 expected_id_assertions += assert_expected_ids(case, &envelope);
@@ -219,7 +282,7 @@ fn retrieval_pilot_property_invariants_hold_against_fastembed_provider() {
 
 fn assert_property_invariants(backend: EmbeddingBackend, workspace_name: &str) {
     let repo_root = repo_root();
-    let pilot = build_billing_pilot(&repo_root, workspace_name, backend);
+    let pilot = build_pilot(&repo_root, "billing-pilot", workspace_name, backend);
     let objects = pilot.graph_json["nodes"]
         .as_array()
         .expect("graph JSON nodes is an array")
@@ -302,8 +365,148 @@ fn assert_property_invariants(backend: EmbeddingBackend, workspace_name: &str) {
     }
 }
 
-fn build_billing_pilot(
+/// V1.7.3 roadmap acceptance — the symmetry property as a CLI-level
+/// invariant: identical prose compiled from a `.adoc` source and a `.md`
+/// source ranks identically in blended hybrid and lexical search; only the
+/// source path differs.
+#[test]
+fn prose_symmetry_property_holds_across_source_modes() {
+    assert_prose_symmetry(EmbeddingBackend::InMemory, "prose-symmetry");
+}
+
+#[cfg(feature = "fastembed-it")]
+#[test]
+fn prose_symmetry_property_holds_against_fastembed_provider() {
+    assert_prose_symmetry(EmbeddingBackend::FastEmbed, "prose-symmetry-fastembed");
+}
+
+const SYMMETRY_PROSE: &str = "# Billing basics\n\n\
+Credits are consumed when a generation job completes, not when it starts.\n\n\
+Refunds are handled manually by support.\n\n\
+1. Rotate the signing key quarterly.\n\
+2. Revoke the previous key after rotation.\n\n\
+```shell\nadoc build --provider fastembed\n```\n";
+
+const SYMMETRY_QUERIES: [&str; 4] = [
+    "credits consumed",
+    "refunds handled by support",
+    "rotate the signing key",
+    "billing basics",
+];
+
+/// The source-mode-independent projection of a search hit: everything a
+/// symmetric pair must agree on (the source path is asserted separately —
+/// it is the one field allowed to differ).
+#[derive(Debug, PartialEq)]
+struct SymmetryRecord {
+    id: String,
+    text: Value,
+    search_match: Value,
+}
+
+fn assert_prose_symmetry(backend: EmbeddingBackend, workspace_prefix: &str) {
+    let adoc_results = symmetry_search_results(backend, "adoc", workspace_prefix);
+    let md_results = symmetry_search_results(backend, "md", workspace_prefix);
+
+    for (query, (adoc, md)) in SYMMETRY_QUERIES
+        .iter()
+        .zip(adoc_results.iter().zip(&md_results))
+    {
+        assert_eq!(
+            adoc, md,
+            "ids, text, and match metadata must be source-mode-independent for `{query}`"
+        );
+    }
+}
+
+fn symmetry_search_results(
+    backend: EmbeddingBackend,
+    extension: &str,
+    workspace_prefix: &str,
+) -> Vec<Vec<SymmetryRecord>> {
+    let repo_root = repo_root();
+    let workspace = TestWorkspace::new(&format!("{workspace_prefix}-{extension}"));
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: .\noutputs:\n  dir: dist\nembeddings:\n  provider: local\n",
+    );
+    workspace.write(&format!("guides/basics.{extension}"), SYMMETRY_PROSE);
+
+    let output_directory = workspace.root.join("dist");
+    let mut build = Command::new(env!("CARGO_BIN_EXE_adoc"));
+    backend.configure(&mut build);
+    let build_output = build
+        .current_dir(&workspace.root)
+        .args([
+            "build",
+            ".",
+            "--out",
+            output_directory
+                .to_str()
+                .expect("output directory path is utf-8"),
+        ])
+        .output()
+        .expect("adoc build runs");
+    assert_success(&format!("symmetry {extension} build"), &build_output);
+
+    let artifact = output_directory.join("docs.graph.json");
+    let search_artifact = output_directory.join("docs.search.json");
+    let mut query_results = Vec::new();
+    for query in SYMMETRY_QUERIES {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
+        backend.configure(&mut command);
+        let output = command
+            .current_dir(&repo_root)
+            .args([
+                "search",
+                query,
+                "--artifact",
+                artifact.to_str().expect("artifact path is utf-8"),
+                "--search-artifact",
+                search_artifact
+                    .to_str()
+                    .expect("search artifact path is utf-8"),
+                "--top",
+                "10",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("adoc search runs");
+        assert_success(&format!("symmetry {extension} search `{query}`"), &output);
+        let envelope: Value =
+            serde_json::from_slice(&output.stdout).expect("search stdout is JSON");
+        let records = envelope["records"]
+            .as_array()
+            .expect("records is an array")
+            .iter()
+            .map(|record| {
+                let source_path = record["source"]["path"]
+                    .as_str()
+                    .expect("prose record has a source path");
+                assert!(
+                    source_path.ends_with(&format!(".{extension}")),
+                    "symmetry fixture is single-source: expected .{extension}, got {source_path}"
+                );
+                SymmetryRecord {
+                    id: record["id"].as_str().expect("record id").to_string(),
+                    text: record["text"].clone(),
+                    search_match: record["match"].clone(),
+                }
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            !records.is_empty(),
+            "symmetry query `{query}` must match the {extension} fixture"
+        );
+        query_results.push(records);
+    }
+    query_results
+}
+
+fn build_pilot(
     repo_root: &Path,
+    pilot_dir: &str,
     workspace_name: &str,
     backend: EmbeddingBackend,
 ) -> PilotBuild {
@@ -315,7 +518,7 @@ fn build_billing_pilot(
         .current_dir(repo_root)
         .args([
             "build",
-            "examples/billing-pilot",
+            &format!("examples/{pilot_dir}"),
             "--out",
             output_directory
                 .to_str()
@@ -323,12 +526,11 @@ fn build_billing_pilot(
         ])
         .output()
         .expect("adoc build runs");
-    assert_success("billing pilot build", &build_output);
+    assert_success(&format!("{pilot_dir} build"), &build_output);
 
     let artifact_path = output_directory.join("docs.graph.json");
     let search_artifact_path = output_directory.join("docs.search.json");
-    let graph_json_text =
-        fs::read_to_string(&artifact_path).expect("billing pilot graph JSON is written");
+    let graph_json_text = fs::read_to_string(&artifact_path).expect("pilot graph JSON is written");
     let graph_json: Value =
         serde_json::from_str(&graph_json_text).expect("graph JSON is valid JSON");
 
@@ -355,12 +557,20 @@ fn run_search_case(
         "--search-artifact".to_string(),
         search_artifact_path.to_string_lossy().into_owned(),
         "--top".to_string(),
-        case.must_appear_in_top.max(1).to_string(),
-        // V1.7.1 roadmap acceptance: --objects-only reproduces the pre-V1.7
-        // Knowledge-Object expected_ids sequences under blended defaults.
-        "--objects-only".to_string(),
+        case.top
+            .unwrap_or(case.must_appear_in_top)
+            .max(1)
+            .to_string(),
     ];
 
+    match case.scope {
+        // V1.7.1 roadmap acceptance: --objects-only reproduces the pre-V1.7
+        // Knowledge-Object expected_ids sequences under blended defaults.
+        CaseScope::ObjectsOnly => args.push("--objects-only".to_string()),
+        // V1.7.3: blended is the shipped default — no scope flag.
+        CaseScope::Blended => {}
+        CaseScope::ProseOnly => args.push("--prose-only".to_string()),
+    }
     match case.mode {
         RetrievalMode::Hybrid => {}
         RetrievalMode::Lexical => args.push("--lexical".to_string()),
@@ -536,12 +746,22 @@ fn assert_expected_diagnostics(case: &RetrievalCase, envelope: &Value) {
     let diagnostics = envelope["diagnostics"]
         .as_array()
         .expect("diagnostics is an array");
-    for code in &case.expected_diagnostics {
-        assert!(
-            diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic["code"] == *code),
-            "case `{}` expected diagnostic `{code}` in {diagnostics:?}",
+    // V1.7.3: exact-match diagnostic budgets — when a case declares expected
+    // codes, the envelope's distinct code set must equal them exactly, so an
+    // extra or vanished diagnostic is a red test, not drift.
+    if !case.expected_diagnostics.is_empty() {
+        let actual_codes: BTreeSet<&str> = diagnostics
+            .iter()
+            .filter_map(|diagnostic| diagnostic["code"].as_str())
+            .collect();
+        let expected_codes: BTreeSet<&str> = case
+            .expected_diagnostics
+            .iter()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            actual_codes, expected_codes,
+            "case `{}` diagnostic code set mismatch",
             case.name
         );
     }

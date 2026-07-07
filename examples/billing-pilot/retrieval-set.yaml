@@ -129,3 +129,38 @@
   expected_diagnostics: [search.invalid_filter]
   filters:
     kind: runbook
+
+# V1.7.3 blended cases: the KO/prose blend stays honest on a KO-heavy corpus.
+# Rank-1 blend assertions run in lexical mode (deterministic across embedding
+# backends); the hybrid cases pin backend-independent guarantees (pins, and a
+# strong KO staying first in the fused pool).
+
+- name: hybrid blended KO-first adjustment paraphrase
+  query: "manual adjustment requires reason code"
+  scope: blended
+  top: 10
+  expected_ids: [billing.adjustments.require-reason]
+  must_appear_in_top: 1
+
+- name: hybrid blended id prefix pins KOs above prose
+  query: "billing.credits"
+  scope: blended
+  top: 10
+  expected_ids: [billing.credits, billing.credits.ledger-source]
+  must_appear_in_top: 3
+
+- name: lexical blended prose-first review checklist
+  query: "review checklist for generated artifacts"
+  mode: lexical
+  scope: blended
+  top: 10
+  expected_ids: ["meta.review-checklist#block-0001"]
+  must_appear_in_top: 1
+
+- name: lexical blended prose-first warnings preamble
+  query: "known risks to watch while reviewing"
+  mode: lexical
+  scope: blended
+  top: 10
+  expected_ids: ["billing.warnings#block-0001"]
+  must_appear_in_top: 1

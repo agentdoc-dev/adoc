@@ -1,0 +1,156 @@
+# V1.7.3 hybrid evaluation set for the Markdown Pilot: a mixed corpus of 15
+# Markdown prose pages plus the native Knowledge Objects in `knowledge/`.
+# Blended cases prove the honest KO/prose blend (ADR-0040): Knowledge Objects
+# win when a citable contract answers the query; prose wins when only
+# tutorial/runbook text does. Ranking stays parameter-free — these fixtures
+# pin behavior, they never tune it.
+#
+# Rank-1 assertions run in lexical mode: BM25 rank is deterministic and
+# embedding-backend-independent, so it isolates the "blend is honest by rank"
+# property. Hybrid cases pin what hybrid fusion guarantees regardless of the
+# embedding model: exact Object ID pins rank first, and strong matches stay
+# inside a top-5 window of the fused top-10 pool.
+#
+# Every case lists the pilot's full compat diagnostic budget: the retrieval
+# envelope carries the graph artifact's load diagnostics, and this corpus
+# compiles with exactly these four warning codes.
+
+- name: lexical blended KO-first settlement paraphrase
+  query: "settlement posts once"
+  mode: lexical
+  scope: blended
+  top: 10
+  expected_ids: [billing.settlement.posts-once]
+  must_appear_in_top: 1
+  expected_diagnostics:
+    - compat.unknown_extension
+    - compat.raw_html_quarantined
+    - compat.unsafe_link_dropped
+    - compat.unsafe_image_src_dropped
+
+- name: lexical blended KO-first webhook signature beats tutorial prose
+  query: "webhook signature required"
+  mode: lexical
+  scope: blended
+  top: 10
+  expected_ids: [billing.webhooks.signature-required]
+  must_appear_in_top: 1
+  expected_diagnostics:
+    - compat.unknown_extension
+    - compat.raw_html_quarantined
+    - compat.unsafe_link_dropped
+    - compat.unsafe_image_src_dropped
+
+- name: hybrid blended exact object id pins above prose
+  query: "billing.refunds.issue-credit"
+  scope: blended
+  top: 10
+  expected_ids: [billing.refunds.issue-credit]
+  must_appear_in_top: 1
+  expected_diagnostics:
+    - compat.unknown_extension
+    - compat.raw_html_quarantined
+    - compat.unsafe_link_dropped
+    - compat.unsafe_image_src_dropped
+
+- name: hybrid blended KO stays in the fused window
+  query: "settlement posts once"
+  scope: blended
+  top: 10
+  expected_ids: [billing.settlement.posts-once]
+  must_appear_in_top: 5
+  expected_diagnostics:
+    - compat.unknown_extension
+    - compat.raw_html_quarantined
+    - compat.unsafe_link_dropped
+    - compat.unsafe_image_src_dropped
+
+- name: hybrid blended prose stays in the fused window
+  query: "standby health dashboard"
+  scope: blended
+  top: 10
+  expected_ids: ["runbooks.db-failover#block-0003"]
+  must_appear_in_top: 5
+  expected_diagnostics:
+    - compat.unknown_extension
+    - compat.raw_html_quarantined
+    - compat.unsafe_link_dropped
+    - compat.unsafe_image_src_dropped
+
+- name: lexical blended prose-first ordered procedure list
+  query: "quiesce write traffic"
+  mode: lexical
+  scope: blended
+  top: 10
+  expected_ids: ["runbooks.db-failover#block-0007"]
+  must_appear_in_top: 1
+  expected_diagnostics:
+    - compat.unknown_extension
+    - compat.raw_html_quarantined
+    - compat.unsafe_link_dropped
+    - compat.unsafe_image_src_dropped
+
+- name: lexical blended prose-first tutorial paragraph
+  query: "sandbox workspace test cards"
+  mode: lexical
+  scope: blended
+  top: 10
+  expected_ids: ["tutorials.getting-started#block-0003"]
+  must_appear_in_top: 1
+  expected_diagnostics:
+    - compat.unknown_extension
+    - compat.raw_html_quarantined
+    - compat.unsafe_link_dropped
+    - compat.unsafe_image_src_dropped
+
+- name: lexical blended prose-first post-incident follow-up
+  query: "post-incident review within twenty-four hours"
+  mode: lexical
+  scope: blended
+  top: 10
+  expected_ids: ["runbooks.db-failover#block-0009"]
+  must_appear_in_top: 1
+  expected_diagnostics:
+    - compat.unknown_extension
+    - compat.raw_html_quarantined
+    - compat.unsafe_link_dropped
+    - compat.unsafe_image_src_dropped
+
+- name: lexical blended prose-first rate-limit header list
+  query: "X-RateLimit-Remaining"
+  mode: lexical
+  scope: blended
+  top: 10
+  expected_ids: ["api.rate-limits#block-0004"]
+  must_appear_in_top: 1
+  expected_diagnostics:
+    - compat.unknown_extension
+    - compat.raw_html_quarantined
+    - compat.unsafe_link_dropped
+    - compat.unsafe_image_src_dropped
+
+- name: lexical prose-only scope stays prose
+  query: "refund audit"
+  mode: lexical
+  scope: prose_only
+  top: 10
+  expected_ids: ["api.refunds#block-0004", "api.refunds#block-0001"]
+  must_appear_in_top: 3
+  expected_diagnostics:
+    - compat.unknown_extension
+    - compat.raw_html_quarantined
+    - compat.unsafe_link_dropped
+    - compat.unsafe_image_src_dropped
+
+- name: lexical objects-only kind filter on mixed corpus
+  query: "ledger"
+  mode: lexical
+  expected_ids: [billing.decision.ledger-first]
+  must_appear_in_top: 1
+  filters:
+    kind: decision
+  expected_diagnostics:
+    - compat.unknown_extension
+    - compat.raw_html_quarantined
+    - compat.unsafe_link_dropped
+    - compat.unsafe_image_src_dropped
