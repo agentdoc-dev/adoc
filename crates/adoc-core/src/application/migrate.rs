@@ -101,7 +101,12 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
         diagnostics.extend(parse_diagnostics);
         let (adoc_text, serialize_diagnostics) = page_to_adoc_source(&page, source);
         diagnostics.extend(serialize_diagnostics);
-        diagnostics.extend(broken_link_diagnostics(&page, source, &migration_set));
+        diagnostics.extend(broken_link_diagnostics(
+            &page,
+            source,
+            &migration_set,
+            provider,
+        ));
 
         let target_path = source.path.with_extension("adoc");
         if strict_paths.contains(&normalize_path(&target_path)) {
@@ -141,14 +146,17 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
     MigrateResult { files, diagnostics }
 }
 
-/// Warn on relative links whose target is missing from the loaded source set
+/// Warn on relative links whose target the provider does not know
 /// or is a `.md` this run migrates away (ADR-0043). Only links to source
 /// extensions are judged — the provider does not see other assets, and a
-/// guess would be a silent false positive.
-fn broken_link_diagnostics(
+/// guess would be a silent false positive. Existence is answered by
+/// [`SourceProvider::contains`], never by direct filesystem probes:
+/// application code stays I/O-free and the check is testable in-memory.
+fn broken_link_diagnostics<P: SourceProvider>(
     page: &PageAst,
     source: &SourceFile,
     migration_set: &BTreeSet<PathBuf>,
+    provider: &P,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let source_dir = source.path.parent().unwrap_or(Path::new(""));
@@ -178,7 +186,7 @@ fn broken_link_diagnostics(
                     )
                     .with_span(span.clone()),
                 );
-            } else if !resolved.exists() {
+            } else if !provider.contains(&resolved) {
                 diagnostics.push(
                     Diagnostic::warning(
                         DiagnosticCode::MigrateBrokenLink,
@@ -369,6 +377,30 @@ mod tests {
                 .iter()
                 .all(|diagnostic| diagnostic.code != DiagnosticCode::MigrateBrokenLink),
             "{:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn link_to_a_loaded_strict_adoc_is_not_broken() {
+        let provider = InMemorySourceProvider::new()
+            .with_source(markdown_source(
+                "guides/setup.md",
+                "# Setup\n\nSee [claims](../knowledge/claims.adoc).\n",
+            ))
+            .with_source(markdown_source(
+                "knowledge/claims.adoc",
+                "# Claims @doc(knowledge.claims)\n\nNative.\n",
+            ));
+
+        let result = migrate_with_provider(&provider, MigrateMode::DryRun);
+
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code != DiagnosticCode::MigrateBrokenLink),
+            "a link to a source the provider loaded is not broken: {:?}",
             result.diagnostics
         );
     }

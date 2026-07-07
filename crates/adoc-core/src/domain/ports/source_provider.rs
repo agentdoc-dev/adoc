@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::domain::source::SourceFile;
 
@@ -10,6 +10,15 @@ use crate::domain::source::SourceFile;
 /// without touching disk.
 pub(crate) trait SourceProvider {
     fn load_sources(&self) -> Vec<Result<SourceFile, SourceLoadError>>;
+
+    /// Whether a source exists at `path`, in the same coordinate space as
+    /// the paths this provider yields. The migrate broken-link check
+    /// consults this instead of touching the filesystem from application
+    /// code; links may legally point outside the walked root, which only
+    /// the fs adapter can answer. Deliberately not defaulted: a silent
+    /// `false` would turn every future provider's links into false-positive
+    /// broken-link warnings.
+    fn contains(&self, path: &Path) -> bool;
 
     /// Wrap this provider so every yielded `SourceFile` has its `path` and
     /// `identity_path` rebased onto `prefix`. Default impl wraps the
@@ -49,6 +58,17 @@ impl<P: SourceProvider> SourceProvider for IdentityRebaseDecorator<P> {
             .into_iter()
             .map(|result| result.map(|file| file.rebased_to_prefix(&self.prefix)))
             .collect()
+    }
+
+    fn contains(&self, path: &Path) -> bool {
+        // Paths in this decorator's space carry the rebase prefix; strip it
+        // and ask the inner provider. ponytail: the stripped path is
+        // root-relative, which a wrapped `FsSourceProvider` would resolve
+        // against the cwd — root-join it there if a rebased pipeline (only
+        // review today, which never checks links) ever consults this.
+        path.strip_prefix(&self.prefix)
+            .map(|stripped| self.inner.contains(stripped))
+            .unwrap_or(false)
     }
 }
 
@@ -125,6 +145,10 @@ mod tests {
                 .map(|file| vec![Ok(file)])
                 .unwrap_or_default()
         }
+
+        fn contains(&self, _path: &Path) -> bool {
+            false
+        }
     }
 
     fn make_file(identity: &str) -> SourceFile {
@@ -162,6 +186,10 @@ mod tests {
                     PathBuf::from("blocked.adoc"),
                     "permission denied",
                 ))]
+            }
+
+            fn contains(&self, _path: &Path) -> bool {
+                false
             }
         }
 

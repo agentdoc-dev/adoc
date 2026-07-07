@@ -705,6 +705,10 @@ Original body line.
                 })
                 .collect()
         }
+
+        fn contains(&self, path: &Path) -> bool {
+            self.files.borrow().contains_key(path)
+        }
     }
 
     impl WorkspaceWriter for SharedFs {
