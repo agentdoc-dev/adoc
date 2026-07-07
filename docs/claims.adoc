@@ -1,0 +1,65 @@
+# AgentDoc Behavior Claims @doc(docs.claims)
+
+Verifiable claims about the shipped tooling's behavior, each backed by the
+code that enforces it. If one of these stops being true, the cited code is
+where the change happened.
+
+::source docs.diagnostic-module
+kind: source_code
+path: crates/adoc-core/src/domain/diagnostic.rs
+owner: maintainer
+--
+Diagnostic code registry, severity constructors, and the warnings-only CompatDiagnostic type.
+::
+
+::source docs.local-use-cases
+kind: source_code
+path: crates/adoc-local/src/use_cases.rs
+owner: maintainer
+--
+Local adapter use cases: exit-code derivation for check, build, and why.
+::
+
+::source docs.local-config
+kind: source_code
+path: crates/adoc-local/src/config.rs
+owner: maintainer
+--
+agentdoc.config.yaml discovery and strict parsing.
+::
+
+::claim docs.compat-diagnostics-warnings-only
+status: verified
+owner: maintainer
+verified_at: 2026-07-07
+evidence_ref: docs.diagnostic-module
+--
+Compatibility-mode Markdown diagnostics are warnings by type invariant: CompatDiagnostic's only constructor produces warning severity, so a compat rule emitting an error is a compile failure, not a review catch.
+::
+
+::claim docs.why-unknown-id-exits-3
+status: verified
+owner: maintainer
+verified_at: 2026-07-07
+evidence_ref: docs.local-use-cases
+--
+adoc why exits with code 3 when the requested object ID does not exist in the graph artifact, distinguishing not-found from invalid-ID (exit 1) and other errors (exit 2).
+::
+
+::claim docs.config-rejects-unknown-fields
+status: verified
+owner: maintainer
+verified_at: 2026-07-07
+evidence_ref: docs.local-config
+--
+agentdoc.config.yaml parsing denies unknown fields at every level, so a typo in a config key is a loud load error rather than a silently ignored setting.
+::
+
+::claim docs.warnings-never-fail-builds
+status: verified
+owner: maintainer
+verified_at: 2026-07-07
+evidence_ref: docs.local-use-cases
+--
+adoc check and adoc build derive their exit codes from error-severity diagnostics only; any number of warnings still exits 0.
+::
