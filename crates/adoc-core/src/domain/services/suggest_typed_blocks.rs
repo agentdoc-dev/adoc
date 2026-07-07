@@ -183,9 +183,12 @@ fn is_warning_text(text: &str) -> bool {
             .any(|pair| (pair[0] == "do" || pair[0] == "must") && pair[1] == "not")
 }
 
-/// Opening sentence `<Term> is a/an/the …`: "is" at word index 1 (one-word
-/// term) or 2 (article + term), capitalized first word, demonstrative openers
-/// excluded — high precision over recall.
+/// Opening sentence `<Term> is a/an/the …`: "is" followed by an article at
+/// word index 1 or 2, so the opening term is one word ("Settlement is the…")
+/// or any capitalized two-word opener, article-led or not ("A workspace is
+/// the…", "USB adapter is a…"). Precision is held by the capitalized
+/// non-demonstrative first word and the early-`is` position cap, not by
+/// requiring an article.
 fn is_definitional(text: &str) -> bool {
     let sentence = text.split('.').next().unwrap_or_default();
     let words: Vec<&str> = sentence.split_whitespace().collect();
@@ -260,6 +263,9 @@ mod tests {
     fn definitional_text_requires_a_capitalized_term_and_an_early_is_article() {
         assert!(is_definitional("Settlement is the point of no return."));
         assert!(is_definitional("A workspace is the root of a project."));
+        // A capitalized two-word opener needs no article — multi-word terms
+        // ("USB adapter") are common in technical glossaries.
+        assert!(is_definitional("USB adapter is a device."));
         assert!(!is_definitional("this pilot is a hand-curated corpus."));
         assert!(!is_definitional("This pilot is a hand-curated corpus."));
         assert!(!is_definitional(
