@@ -779,6 +779,10 @@ fn mcp_serves_v3_schema_resources_byte_equal_to_on_disk_files() {
             "adoc.patch.apply.v0.schema.json",
         ),
         (
+            "adoc://agent/v0/schema/adoc.migrate.report.v0.schema.json",
+            "adoc.migrate.report.v0.schema.json",
+        ),
+        (
             "adoc://agent/v0/schema/search-artifact.json",
             "search-artifact.json",
         ),
@@ -801,6 +805,44 @@ fn mcp_serves_v3_schema_resources_byte_equal_to_on_disk_files() {
             "MCP-served schema {uri} drifted from docs/agent/v0/schema/{file}"
         );
     }
+}
+
+/// V8.1.2: the `adoc migrate` report envelope — built at the same
+/// `adoc-local` seam the CLI serializes (there is no MCP migrate tool) over
+/// a fixture with a raw HTML block, a broken link, and front matter —
+/// validates against `adoc.migrate.report.v0.schema.json`.
+#[test]
+fn validates_adoc_migrate_report_v0_envelope_against_schema() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(
+        &root.join("docs/html.md"),
+        "# Html\n\n<div class=\"alert\">raw</div>\n",
+    );
+    write(
+        &root.join("docs/links.md"),
+        "# Links\n\nSee [gone](./missing.md).\n",
+    );
+    write(
+        &root.join("docs/front.md"),
+        "---\ntitle: front\n---\n\n# Front\n\nProse.\n",
+    );
+
+    let context =
+        adoc_local::LocalContext::new(root.to_path_buf(), adoc_local::UnrestrictedPathPolicy);
+    let outcome = context
+        .migrate(adoc_local::MigrateInput {
+            path: Some(root.join("docs")),
+            write: false,
+            force: false,
+        })
+        .expect("migrate succeeds");
+    let report = serde_json::to_value(&outcome.report).expect("report serializes");
+
+    assert_valid("adoc.migrate.report.v0.schema.json", &report);
+    assert_eq!(report["schema_version"], "adoc.migrate.report.v0");
+    assert_eq!(report["counts"]["files_imported"], 3);
+    assert_eq!(report["counts"]["suggested_typed_blocks"], 0);
 }
 
 /// V6.3: `adoc_impacted_by` envelopes — a populated paths-shape query hitting
