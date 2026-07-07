@@ -17,7 +17,10 @@ pub use application::graph::{
     GRAPH_TRAVERSAL_SCHEMA_VERSION, GraphInput, GraphLoadResult, GraphSession,
     GraphTraversalEnvelope, traverse_graph,
 };
-pub use application::migrate::{MigrateMode, MigrateResult, MigratedFile};
+pub use application::migrate::{
+    MIGRATE_REPORT_SCHEMA_VERSION, MigrateCounts, MigrateMode, MigrateReportEnvelope,
+    MigrateReportFile, MigrateResult, MigratedFile,
+};
 pub use application::patch::{
     PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput, PatchJsonInput, PatchParseError,
 };

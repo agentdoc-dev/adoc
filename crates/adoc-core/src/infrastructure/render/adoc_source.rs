@@ -30,14 +30,16 @@ pub(crate) const QUARANTINE_PHRASE: &str = "preserved verbatim in a fenced code 
 
 /// Serialize a Markdown-parsed page to strict `.adoc` source text.
 ///
-/// Returns the canonical text plus the `migrate.*` diagnostics the
-/// serialization produced (quarantines, drops, and unrepresentable-content
-/// errors). An ERROR diagnostic means the output is not safe to write; the
-/// orchestrator refuses the run.
+/// Returns the canonical text, the number of prose blocks it carries (the
+/// serialized fragment count — quarantine fence bodies may contain blank
+/// lines, so the text itself cannot be re-split to count blocks), and the
+/// `migrate.*` diagnostics the serialization produced (quarantines, drops,
+/// and unrepresentable-content errors). An ERROR diagnostic means the output
+/// is not safe to write; the orchestrator refuses the run.
 pub(crate) fn page_to_adoc_source(
     page: &PageAst,
     source: &SourceFile,
-) -> (String, Vec<Diagnostic>) {
+) -> (String, usize, Vec<Diagnostic>) {
     let mut serializer = Serializer {
         source,
         fragments: Vec::new(),
@@ -46,9 +48,10 @@ pub(crate) fn page_to_adoc_source(
     for block in &page.blocks {
         serializer.push_block(block);
     }
+    let prose_blocks = serializer.fragments.len();
     let mut text = serializer.fragments.join("\n\n");
     text.push('\n');
-    (text, serializer.diagnostics)
+    (text, prose_blocks, serializer.diagnostics)
 }
 
 struct Serializer<'a> {
@@ -365,7 +368,8 @@ mod tests {
                 .all(|diagnostic| diagnostic.severity != Severity::Error),
             "test markdown must parse cleanly: {parse_diagnostics:?}"
         );
-        page_to_adoc_source(&page, &source)
+        let (adoc_text, _prose_blocks, diagnostics) = page_to_adoc_source(&page, &source);
+        (adoc_text, diagnostics)
     }
 
     #[test]

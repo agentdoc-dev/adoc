@@ -6,10 +6,13 @@
 //! pulldown-cmark read path, and the `adoc_source` serializer renders each
 //! page. This module performs no writes — the outcome carries the rendered
 //! text and target paths; the adapter executes `--write` (all-or-nothing,
-//! ADR-0043 §3). The `adoc.migrate.report.v0` envelope lands in V8.1.2.
+//! ADR-0043 §3). [`MigrateReportEnvelope::new`] builds the
+//! `adoc.migrate.report.v0` report (PRD §28.3) from the result.
 
 use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
+
+use serde::Serialize;
 
 use crate::application::compile::load_error_diagnostic;
 use crate::domain::ast::{BlockAst, PageAst};
@@ -39,6 +42,8 @@ pub struct MigratedFile {
     pub source_path: PathBuf,
     pub target_path: PathBuf,
     pub adoc_text: String,
+    /// Serialized prose-block count — the report's `prose_blocks` source.
+    pub prose_blocks: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +60,112 @@ impl MigrateResult {
             .iter()
             .any(|diagnostic| diagnostic.severity == Severity::Error)
     }
+}
+
+pub const MIGRATE_REPORT_SCHEMA_VERSION: &str = "adoc.migrate.report.v0";
+
+/// PRD §28.3 counts. The diagnostic-backed counts are tallied from the
+/// envelope's own `diagnostics` by code, so each reconciles 1:1 with an
+/// emitted diagnostic by construction (ADR-0043 §4). `compat.*` diagnostics
+/// travel in `diagnostics` but belong to no bucket.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct MigrateCounts {
+    pub files_imported: usize,
+    /// Equal to `files_imported` — one prose-mode page per source (§28.3
+    /// names both; they diverge only if a future slice splits pages).
+    pub pages_created: usize,
+    pub prose_blocks: usize,
+    pub raw_html_quarantined: usize,
+    pub broken_links: usize,
+    pub unrecognized_extensions: usize,
+    /// Zero until the V8.1.3 suggestion rules land.
+    pub suggested_typed_blocks: usize,
+}
+
+/// One per-file report entry. Spans live on the envelope's `diagnostics`,
+/// keyed by `span.file` — a single reconciliation truth, not a per-file copy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MigrateReportFile {
+    pub source: PathBuf,
+    pub target: PathBuf,
+    pub written: bool,
+    pub prose_blocks: usize,
+}
+
+/// The `adoc.migrate.report.v0` wire envelope (PRD §28.3, ADR-0043 §4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MigrateReportEnvelope {
+    pub schema_version: &'static str,
+    pub counts: MigrateCounts,
+    pub files: Vec<MigrateReportFile>,
+    pub suggested_next_steps: Vec<String>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl MigrateReportEnvelope {
+    pub fn new(result: MigrateResult, written: bool) -> Self {
+        let tally = |code: DiagnosticCode| {
+            result
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == code)
+                .count()
+        };
+        let counts = MigrateCounts {
+            files_imported: result.files.len(),
+            pages_created: result.files.len(),
+            prose_blocks: result.files.iter().map(|file| file.prose_blocks).sum(),
+            raw_html_quarantined: tally(DiagnosticCode::MigrateRawHtmlQuarantined),
+            broken_links: tally(DiagnosticCode::MigrateBrokenLink),
+            unrecognized_extensions: tally(DiagnosticCode::MigrateUnrecognizedExtension),
+            suggested_typed_blocks: 0,
+        };
+        let has_errors = result.has_errors();
+        Self {
+            schema_version: MIGRATE_REPORT_SCHEMA_VERSION,
+            suggested_next_steps: suggested_next_steps(&counts, has_errors),
+            files: result
+                .files
+                .into_iter()
+                .map(|file| MigrateReportFile {
+                    source: file.source_path,
+                    target: file.target_path,
+                    written,
+                    prose_blocks: file.prose_blocks,
+                })
+                .collect(),
+            counts,
+            diagnostics: result.diagnostics,
+        }
+    }
+}
+
+/// §28.3 "suggested next steps": one deterministic rule per nonzero count, in
+/// a fixed order — rules, not weights (the V1 parameter-free rule).
+fn suggested_next_steps(counts: &MigrateCounts, has_errors: bool) -> Vec<String> {
+    let mut steps = Vec::new();
+    if has_errors {
+        steps.push("Resolve the ERROR diagnostics and re-run `adoc migrate`.".to_string());
+    }
+    if counts.raw_html_quarantined > 0 {
+        steps.push(format!(
+            "Replace the {} quarantined raw HTML block(s) with strict prose or typed blocks.",
+            counts.raw_html_quarantined
+        ));
+    }
+    if counts.broken_links > 0 {
+        steps.push(format!(
+            "Update the {} broken link target(s); links to migrated .md pages become .adoc.",
+            counts.broken_links
+        ));
+    }
+    if counts.unrecognized_extensions > 0 {
+        steps.push(format!(
+            "Review the {} construct(s) preserved verbatim in fenced code blocks.",
+            counts.unrecognized_extensions
+        ));
+    }
+    steps
 }
 
 pub(crate) fn migrate_with_provider<P: SourceProvider>(
@@ -99,7 +210,7 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
         }
         let (page, parse_diagnostics) = parse_markdown_page(source);
         diagnostics.extend(parse_diagnostics);
-        let (adoc_text, serialize_diagnostics) = page_to_adoc_source(&page, source);
+        let (adoc_text, prose_blocks, serialize_diagnostics) = page_to_adoc_source(&page, source);
         diagnostics.extend(serialize_diagnostics);
         diagnostics.extend(broken_link_diagnostics(
             &page,
@@ -124,6 +235,7 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
             source_path: source.path.clone(),
             target_path,
             adoc_text,
+            prose_blocks,
         });
     }
 
@@ -468,5 +580,113 @@ mod tests {
         let result = migrate_with_provider(&provider, MigrateMode::Write { force: true });
 
         assert!(!result.has_errors(), "{:?}", result.diagnostics);
+    }
+
+    fn report_fixture_result() -> MigrateResult {
+        let provider = InMemorySourceProvider::new()
+            .with_source(markdown_source(
+                "a/html.md",
+                "# Html\n\n<div class=\"alert\">raw</div>\n",
+            ))
+            .with_source(markdown_source(
+                "a/links.md",
+                "# Links\n\nSee [gone](./missing.md).\n",
+            ))
+            .with_source(markdown_source(
+                "a/front.md",
+                "---\ntitle: front\n---\n\n# Front\n\nProse.\n",
+            ));
+        migrate_with_provider(&provider, MigrateMode::DryRun)
+    }
+
+    #[test]
+    fn report_envelope_stamps_schema_version_and_zero_suggestions() {
+        let envelope = MigrateReportEnvelope::new(report_fixture_result(), false);
+
+        assert_eq!(envelope.schema_version, MIGRATE_REPORT_SCHEMA_VERSION);
+        assert_eq!(envelope.counts.suggested_typed_blocks, 0);
+        let value = serde_json::to_value(&envelope).expect("envelope serializes");
+        assert_eq!(value["schema_version"], "adoc.migrate.report.v0");
+    }
+
+    #[test]
+    fn report_counts_reconcile_one_to_one_with_diagnostics() {
+        let envelope = MigrateReportEnvelope::new(report_fixture_result(), false);
+
+        let tally = |code: DiagnosticCode| {
+            envelope
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == code)
+                .count()
+        };
+        assert_eq!(
+            envelope.counts.raw_html_quarantined,
+            tally(DiagnosticCode::MigrateRawHtmlQuarantined)
+        );
+        assert_eq!(
+            envelope.counts.broken_links,
+            tally(DiagnosticCode::MigrateBrokenLink)
+        );
+        assert_eq!(
+            envelope.counts.unrecognized_extensions,
+            tally(DiagnosticCode::MigrateUnrecognizedExtension)
+        );
+        assert!(envelope.counts.raw_html_quarantined > 0);
+        assert!(envelope.counts.broken_links > 0);
+        assert!(envelope.counts.unrecognized_extensions > 0);
+        assert_eq!(envelope.counts.files_imported, envelope.files.len());
+        assert_eq!(envelope.counts.files_imported, 3);
+        assert_eq!(
+            envelope.counts.pages_created,
+            envelope.counts.files_imported
+        );
+    }
+
+    #[test]
+    fn prose_blocks_counts_serialized_fragments_not_text_gaps() {
+        // The loose list is quarantined with its source slice — a payload
+        // containing a blank line — so a naive `split("\n\n")` over the
+        // rendered text would over-count.
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "a/loose.md",
+            "# Title\n\nProse.\n\n- alpha\n\n- beta\n",
+        ));
+        let result = migrate_with_provider(&provider, MigrateMode::DryRun);
+
+        let envelope = MigrateReportEnvelope::new(result, false);
+
+        assert_eq!(envelope.files.len(), 1);
+        // heading + paragraph + one quarantine fence
+        assert_eq!(envelope.files[0].prose_blocks, 3);
+        assert_eq!(envelope.counts.prose_blocks, 3);
+    }
+
+    #[test]
+    fn suggested_next_steps_fire_only_on_nonzero_counts() {
+        let clean_provider = InMemorySourceProvider::new()
+            .with_source(markdown_source("a/clean.md", "# Clean\n\nProse.\n"));
+        let clean = MigrateReportEnvelope::new(
+            migrate_with_provider(&clean_provider, MigrateMode::DryRun),
+            false,
+        );
+        assert!(clean.suggested_next_steps.is_empty(), "{clean:?}");
+
+        let mixed = MigrateReportEnvelope::new(report_fixture_result(), false);
+        let raw_html_step = mixed
+            .suggested_next_steps
+            .iter()
+            .position(|step| step.contains("raw HTML"))
+            .expect("raw HTML step fires");
+        let broken_link_step = mixed
+            .suggested_next_steps
+            .iter()
+            .position(|step| step.contains("broken link"))
+            .expect("broken link step fires");
+        assert!(
+            raw_html_step < broken_link_step,
+            "steps keep a fixed order: {:?}",
+            mixed.suggested_next_steps
+        );
     }
 }
