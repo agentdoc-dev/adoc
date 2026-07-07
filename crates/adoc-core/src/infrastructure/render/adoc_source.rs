@@ -17,7 +17,7 @@
 use std::path::PathBuf;
 
 use crate::domain::ast::{BlockAst, HeadingAst, ListAst, ListKind, PageAst, UnknownExtensionKind};
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
 use crate::domain::inline::to_source;
 use crate::domain::source::SourceFile;
 use crate::infrastructure::parser::parse_page;
@@ -160,7 +160,7 @@ impl Serializer<'_> {
         // The quarantine payload is the heading *text*, not the marked-up
         // fragment: the graph projects heading content without its marker, and
         // the payload must stay content-equal to the Markdown graph node.
-        match self.strict_rejection(&fragment) {
+        match self.strict_rejection(&fragment, &heading.span) {
             None => self.fragments.push(fragment),
             Some(code) => {
                 self.quarantine_for_strict_rejection(&text, "heading", code, &heading.span)
@@ -205,14 +205,14 @@ impl Serializer<'_> {
             lines.push(format!("{marker}{}", to_source(&item.inlines)));
         }
         let fragment = lines.join("\n");
-        match self.strict_rejection(&fragment) {
+        match self.strict_rejection(&fragment, &list.span) {
             None => self.fragments.push(fragment),
             Some(code) => self.quarantine_for_strict_rejection(&fragment, "list", code, &list.span),
         }
     }
 
     fn push_prose(&mut self, text: String, span: &SourceSpan, construct: &str) {
-        match self.strict_rejection(&text) {
+        match self.strict_rejection(&text, span) {
             None => self.fragments.push(text),
             Some(code) => self.quarantine_for_strict_rejection(&text, construct, code, span),
         }
@@ -224,18 +224,17 @@ impl Serializer<'_> {
     /// Returns the first strict ERROR code, or `None` when the fragment is
     /// legal strict prose.
     ///
-    /// Only ERROR severity is consulted. The strict parse/validate path
-    /// emits no other severity today, so nothing is discarded; the moment a
-    /// strict rule first emits a WARNING/INFO, capture it here and surface
-    /// it through the `adoc.migrate.report.v0` envelope (V8.1.2),
-    /// re-attributed from the synthetic `migrate/recheck.adoc` path to the
-    /// real source path — until that envelope exists there is nowhere for
-    /// such a diagnostic to land.
+    /// Non-error (WARNING/INFO) strict diagnostics are forwarded into the
+    /// serializer's diagnostics — and so into the `adoc.migrate.report.v0`
+    /// envelope — re-attributed from the synthetic `migrate/recheck.adoc`
+    /// path to the real source block span.
     ///
-    /// ponytail: one throwaway parse per prose block is O(blocks); switch to
+    /// ponytail: no strict rule emits a non-error severity today, so the
+    /// forwarding path is exercised only at its unit-test seam until one
+    /// does. And one throwaway parse per prose block is O(blocks); switch to
     /// a single whole-page validation with span mapping only if migrating
     /// large trees measures slow.
-    fn strict_rejection(&self, fragment: &str) -> Option<DiagnosticCode> {
+    fn strict_rejection(&mut self, fragment: &str, span: &SourceSpan) -> Option<DiagnosticCode> {
         let mut text = fragment.to_string();
         text.push('\n');
         let fragment_source = SourceFile::new_with_identity_path(
@@ -244,11 +243,19 @@ impl Serializer<'_> {
             PathBuf::from("migrate/recheck.adoc"),
         );
         let (page, parse_diagnostics) = parse_page(&fragment_source);
-        parse_diagnostics
+        let mut rejection = None;
+        for diagnostic in parse_diagnostics
             .into_iter()
             .chain(validate_source_page(&page, &fragment_source))
-            .find(|diagnostic| diagnostic.severity == crate::domain::diagnostic::Severity::Error)
-            .map(|diagnostic| diagnostic.code)
+        {
+            if diagnostic.severity == Severity::Error {
+                rejection.get_or_insert(diagnostic.code);
+            } else {
+                self.diagnostics
+                    .push(reattribute_to_source(diagnostic, span));
+            }
+        }
+        rejection
     }
 
     fn quarantine_for_strict_rejection(
@@ -336,6 +343,14 @@ impl Serializer<'_> {
     }
 }
 
+/// Re-attribute a strict re-check diagnostic from the synthetic
+/// `migrate/recheck.adoc` fragment to the real source block: the span is
+/// replaced wholesale — fragment line numbers are meaningless against the
+/// real file (the same move `quarantine` makes).
+fn reattribute_to_source(diagnostic: Diagnostic, span: &SourceSpan) -> Diagnostic {
+    diagnostic.with_span(span.clone())
+}
+
 fn extension_construct_name(kind: UnknownExtensionKind) -> &'static str {
     match kind {
         UnknownExtensionKind::MdxComponent => "MDX component",
@@ -357,6 +372,65 @@ mod tests {
             text.to_string(),
             PathBuf::from("guides/page.md"),
         )
+    }
+
+    fn span_in(file: &str) -> SourceSpan {
+        use crate::domain::diagnostic::SourcePosition;
+        SourceSpan {
+            file: PathBuf::from(file),
+            start: SourcePosition {
+                line: 3,
+                column: 1,
+                offset: 10,
+            },
+            end: SourcePosition {
+                line: 3,
+                column: 12,
+                offset: 21,
+            },
+        }
+    }
+
+    #[test]
+    fn reattributes_recheck_diagnostics_to_the_real_source_span() {
+        let advisory = Diagnostic::warning(
+            DiagnosticCode::MigrateUnrecognizedExtension,
+            "synthetic strict advisory",
+        )
+        .with_span(span_in("migrate/recheck.adoc"));
+        let block_span = span_in("guides/page.md");
+
+        let reattributed = reattribute_to_source(advisory, &block_span);
+
+        assert_eq!(reattributed.span, Some(block_span));
+        assert_eq!(reattributed.severity, Severity::Warning);
+        assert_eq!(
+            reattributed.code,
+            DiagnosticCode::MigrateUnrecognizedExtension
+        );
+        assert_eq!(reattributed.message, "synthetic strict advisory");
+    }
+
+    #[test]
+    fn strict_recheck_forwards_non_error_diagnostics() {
+        // No strict rule emits a WARNING/INFO today, so the only end-to-end
+        // assertion possible is that a clean fragment forwards nothing; the
+        // re-attribution seam itself is covered by the test above.
+        let source = markdown_source("# Title\n\nProse.\n");
+        let mut serializer = Serializer {
+            source: &source,
+            fragments: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+
+        let rejection = serializer.strict_rejection("Plain prose.", &span_in("guides/page.md"));
+
+        assert_eq!(rejection, None);
+        assert!(
+            serializer.diagnostics.is_empty(),
+            "{:?}",
+            serializer.diagnostics
+        );
     }
 
     fn serialize(text: &str) -> (String, Vec<Diagnostic>) {
