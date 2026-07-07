@@ -1,0 +1,107 @@
+# AgentDoc Load-Bearing Decisions @doc(docs.decisions)
+
+Accepted decisions that govern how this repository's tooling behaves, distilled
+from the ADRs under `docs/adr/`. Each decision cites its ADR as evidence; the
+ADR remains the full record, this page is the citable summary agents retrieve.
+
+::source docs.adr-0023
+kind: design_doc
+path: docs/adr/0023-markdown-source-is-prose-only-ingestion.md
+owner: maintainer
+--
+ADR-0023: Markdown source is prose-only ingestion — scope and rationale for V4 Compatibility Mode.
+::
+
+::source docs.adr-0037
+kind: design_doc
+path: docs/adr/0037-mcp-patch-apply-opt-in.md
+owner: maintainer
+--
+ADR-0037: MCP patch apply is gated behind an explicit per-project configuration opt-in.
+::
+
+::source docs.adr-0039
+kind: design_doc
+path: docs/adr/0039-adoc-graph-v4.md
+owner: maintainer
+--
+ADR-0039: the adoc.graph.v4 bump — kind expansion and the status-slot cleanup.
+::
+
+::source docs.adr-0040
+kind: design_doc
+path: docs/adr/0040-prose-retrieval-contracts.md
+owner: maintainer
+--
+ADR-0040: prose retrieval contracts — adoc.search.v1, adoc.retrieval.v1, prose block identity.
+::
+
+::source docs.adr-0041
+kind: design_doc
+path: docs/adr/0041-docs-truth-guards.md
+owner: maintainer
+--
+ADR-0041: guard tests bind published tool and kind lists to the code registry.
+::
+
+::source docs.adr-0042
+kind: design_doc
+path: docs/adr/0042-pilot-readiness-thresholds.md
+owner: maintainer
+--
+ADR-0042: pilot readiness evidence definition and Later un-gating thresholds.
+::
+
+::decision docs.markdown-prose-only-ingestion
+status: accepted
+decided_by: maintainer
+owner: maintainer
+evidence_ref: docs.adr-0023
+--
+Markdown sources are ingested as prose only: headings, paragraphs, lists, and code blocks become searchable prose, but no Knowledge Object is ever inferred from Markdown. Typing knowledge is a human act; a future migration tool may suggest candidates but never auto-type them.
+::
+
+::decision docs.mcp-patch-apply-opt-in
+status: accepted
+decided_by: maintainer
+owner: maintainer
+evidence_ref: docs.adr-0037
+--
+The MCP gateway registers adoc_patch_apply unconditionally, but the tool refuses to write unless the project's agentdoc.config.yaml sets mcp.patch_apply to enabled. Enabling agent writes is a deliberate, per-project human edit, never a default.
+::
+
+::decision docs.graph-status-slot-lifecycle-only
+status: accepted
+decided_by: maintainer
+owner: maintainer
+evidence_ref: docs.adr-0039
+--
+In adoc.graph.v4 the status slot carries lifecycle only; severity and trust travel as authored carrier fields and participate in the content hash. The additive-bump invariant is scoped explicitly: shapes untouched by the cleanup stay byte-identical, proven by goldens.
+::
+
+::decision docs.prose-ids-order-derived
+status: accepted
+decided_by: maintainer
+owner: maintainer
+evidence_ref: docs.adr-0040
+--
+Prose block identifiers are derived from document order, so insertions renumber downstream blocks and citation drift is accepted and documented. Only Knowledge Object IDs are stable citation targets; adoc why resolves Knowledge Objects, not prose blocks.
+::
+
+::decision docs.published-lists-guard-tested
+status: accepted
+decided_by: maintainer
+owner: maintainer
+evidence_ref: docs.adr-0041
+--
+Published MCP tool and kind lists are asserted against the code registry by guard tests using anchored lists and set-equality on names. Hand-maintained surface lists are retired; drift is a red test naming the file to fix.
+::
+
+::decision docs.pilot-thresholds-before-evidence
+status: accepted
+decided_by: maintainer
+owner: maintainer
+evidence_ref: docs.adr-0042
+--
+The dogfood pilot's un-gating thresholds for Markdown migration, composition, and governance were fixed in ADR-0042 before any pilot session ran, so gate decisions cite recorded evidence against pre-committed numbers rather than recollection.
+::
