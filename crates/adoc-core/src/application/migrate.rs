@@ -19,6 +19,7 @@ use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::inline::InlineSegment;
 use crate::domain::ports::source_provider::SourceProvider;
+use crate::domain::services::suggest_typed_blocks::{SuggestedTypedBlock, suggest_typed_blocks};
 use crate::domain::source::{SourceFile, SourceMode};
 use crate::infrastructure::git::is_committed_and_clean;
 use crate::infrastructure::parser::{parse_markdown_page, skip_front_matter};
@@ -54,6 +55,9 @@ pub struct MigrateResult {
     /// deterministic (lexicographic) order.
     pub files: Vec<MigratedFile>,
     pub diagnostics: Vec<Diagnostic>,
+    /// §28.4 typed-block candidates in file order × document order — report
+    /// records only, never applied to the rendered text.
+    pub suggestions: Vec<SuggestedTypedBlock>,
 }
 
 impl MigrateResult {
@@ -82,7 +86,8 @@ pub struct MigrateCounts {
     pub raw_html_quarantined: usize,
     pub broken_links: usize,
     pub unrecognized_extensions: usize,
-    /// Zero until the V8.1.3 suggestion rules land.
+    /// Length of the envelope's `suggestions` array (V8.1.3) — the same
+    /// reconcile-by-construction discipline as the diagnostic tallies.
     pub suggested_typed_blocks: usize,
 }
 
@@ -103,6 +108,10 @@ pub struct MigrateReportEnvelope {
     pub counts: MigrateCounts,
     pub files: Vec<MigrateReportFile>,
     pub suggested_next_steps: Vec<String>,
+    /// §28.4 typed-block candidates (V8.1.3) — spans keyed by `span.file`,
+    /// like `diagnostics`. Never auto-typed: these records name the block a
+    /// human could write; the migrated output stays pure prose.
+    pub suggestions: Vec<SuggestedTypedBlock>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -122,7 +131,7 @@ impl MigrateReportEnvelope {
             raw_html_quarantined: tally(DiagnosticCode::MigrateRawHtmlQuarantined),
             broken_links: tally(DiagnosticCode::MigrateBrokenLink),
             unrecognized_extensions: tally(DiagnosticCode::MigrateUnrecognizedExtension),
-            suggested_typed_blocks: 0,
+            suggested_typed_blocks: result.suggestions.len(),
         };
         let has_errors = result.has_errors();
         Self {
@@ -139,6 +148,7 @@ impl MigrateReportEnvelope {
                 })
                 .collect(),
             counts,
+            suggestions: result.suggestions,
             diagnostics: result.diagnostics,
         }
     }
@@ -169,6 +179,13 @@ fn suggested_next_steps(counts: &MigrateCounts, has_errors: bool) -> Vec<String>
             counts.unrecognized_extensions
         ));
     }
+    if counts.suggested_typed_blocks > 0 {
+        steps.push(format!(
+            "Review the {} typed-block suggestion(s); migration never auto-types — \
+             apply each by hand.",
+            counts.suggested_typed_blocks
+        ));
+    }
     steps
 }
 
@@ -197,6 +214,7 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
         .collect();
 
     let mut files = Vec::with_capacity(compat_sources.len());
+    let mut suggestions = Vec::new();
     for source in &compat_sources {
         if skip_front_matter(&source.text) > 0 {
             let first_line = source.text.lines().next().unwrap_or_default();
@@ -214,6 +232,7 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
         }
         let (page, parse_diagnostics) = parse_markdown_page(source);
         diagnostics.extend(parse_diagnostics);
+        suggestions.extend(suggest_typed_blocks(&page));
         let (adoc_text, prose_blocks, serialize_diagnostics) = page_to_adoc_source(&page, source);
         diagnostics.extend(serialize_diagnostics);
         diagnostics.extend(broken_link_diagnostics(
@@ -259,7 +278,11 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
         }
     }
 
-    MigrateResult { files, diagnostics }
+    MigrateResult {
+        files,
+        diagnostics,
+        suggestions,
+    }
 }
 
 /// Warn on relative links whose target the provider does not know
@@ -609,8 +632,184 @@ mod tests {
 
         assert_eq!(envelope.schema_version, MIGRATE_REPORT_SCHEMA_VERSION);
         assert_eq!(envelope.counts.suggested_typed_blocks, 0);
+        assert!(
+            envelope.suggestions.is_empty(),
+            "{:?}",
+            envelope.suggestions
+        );
         let value = serde_json::to_value(&envelope).expect("envelope serializes");
         assert_eq!(value["schema_version"], "adoc.migrate.report.v0");
+    }
+
+    #[test]
+    fn todo_paragraph_suggests_a_task_with_the_todo_line_as_excerpt() {
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "a/tasks.md",
+            "# Tasks\n\nContext first.\n\nTODO: rotate the signing key.\n",
+        ));
+
+        let result = migrate_with_provider(&provider, MigrateMode::DryRun);
+
+        assert_eq!(result.suggestions.len(), 1, "{:?}", result.suggestions);
+        let suggestion = &result.suggestions[0];
+        assert_eq!(suggestion.suggested_kind, "task");
+        assert_eq!(suggestion.matched_rule, "todo_line");
+        assert_eq!(suggestion.excerpt, "TODO: rotate the signing key.");
+        assert_eq!(suggestion.span.file, PathBuf::from("/work/a/tasks.md"));
+        assert_eq!(suggestion.span.start.line, 5);
+    }
+
+    #[test]
+    fn a_soft_wrapped_mid_paragraph_todo_stays_unsuggested() {
+        // The parser folds soft breaks to spaces, so a TODO continuing a
+        // paragraph is mid-sentence text — precision over recall (§28.4).
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "a/tasks.md",
+            "# Tasks\n\nContext first.\nTODO: rotate the signing key.\n",
+        ));
+
+        let result = migrate_with_provider(&provider, MigrateMode::DryRun);
+
+        assert!(result.suggestions.is_empty(), "{:?}", result.suggestions);
+    }
+
+    #[test]
+    fn todo_list_item_suggests_a_task_with_the_item_span() {
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "a/list.md",
+            "# List\n\n- done already\n- TODO: file the report\n",
+        ));
+
+        let result = migrate_with_provider(&provider, MigrateMode::DryRun);
+
+        assert_eq!(result.suggestions.len(), 1, "{:?}", result.suggestions);
+        let suggestion = &result.suggestions[0];
+        assert_eq!(suggestion.suggested_kind, "task");
+        assert_eq!(
+            suggestion.span.start.line, 4,
+            "the item's span, not the list's"
+        );
+    }
+
+    #[test]
+    fn ordered_list_suggests_a_procedure() {
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "a/steps.md",
+            "# Steps\n\n1. Stop the writer.\n2. Promote the standby.\n",
+        ));
+
+        let result = migrate_with_provider(&provider, MigrateMode::DryRun);
+
+        assert_eq!(result.suggestions.len(), 1, "{:?}", result.suggestions);
+        let suggestion = &result.suggestions[0];
+        assert_eq!(suggestion.suggested_kind, "procedure");
+        assert_eq!(suggestion.matched_rule, "numbered_step_list");
+        assert_eq!(suggestion.excerpt, "Stop the writer.");
+        assert_eq!(suggestion.span.start.line, 3);
+    }
+
+    #[test]
+    fn an_ordered_list_with_a_todo_item_suggests_the_task_only() {
+        // First-match-wins per block: one suggestion max, todo_line before
+        // numbered_step_list in the fixed rule order.
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "a/mixed.md",
+            "# Mixed\n\n1. TODO: write the runbook.\n2. Publish it.\n",
+        ));
+
+        let result = migrate_with_provider(&provider, MigrateMode::DryRun);
+
+        assert_eq!(result.suggestions.len(), 1, "{:?}", result.suggestions);
+        assert_eq!(result.suggestions[0].suggested_kind, "task");
+    }
+
+    #[test]
+    fn prohibition_prose_suggests_a_warning_never_a_claim() {
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "a/guard.md",
+            "# Guard\n\nOperators must not re-run the backfill.\n",
+        ));
+
+        let result = migrate_with_provider(&provider, MigrateMode::DryRun);
+
+        assert_eq!(result.suggestions.len(), 1, "{:?}", result.suggestions);
+        let suggestion = &result.suggestions[0];
+        assert_eq!(suggestion.suggested_kind, "warning");
+        assert_eq!(suggestion.matched_rule, "warning_phrase");
+    }
+
+    #[test]
+    fn definitional_and_modal_paragraphs_suggest_glossary_and_claim() {
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "a/prose.md",
+            "# Prose\n\nSettlement is the point of no return.\n\n\
+             Every request must include a token.\n",
+        ));
+
+        let result = migrate_with_provider(&provider, MigrateMode::DryRun);
+
+        let kinds: Vec<(&str, &str)> = result
+            .suggestions
+            .iter()
+            .map(|suggestion| (suggestion.suggested_kind, suggestion.matched_rule))
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ("glossary", "definitional_paragraph"),
+                ("claim", "assertive_modal"),
+            ],
+            "{:?}",
+            result.suggestions
+        );
+    }
+
+    #[test]
+    fn quarantined_content_is_never_suggested() {
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "a/html.md",
+            "# Html\n\n<div class=\"alert\">Do not touch this.</div>\n",
+        ));
+
+        let result = migrate_with_provider(&provider, MigrateMode::DryRun);
+
+        assert!(result.suggestions.is_empty(), "{:?}", result.suggestions);
+    }
+
+    #[test]
+    fn suggestion_count_reconciles_with_the_report_array_and_fires_a_next_step() {
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "a/steps.md",
+            "# Steps\n\n1. Stop the writer.\n\nTODO: verify the failover.\n",
+        ));
+        let envelope = MigrateReportEnvelope::new(
+            migrate_with_provider(&provider, MigrateMode::DryRun),
+            false,
+        );
+
+        assert_eq!(
+            envelope.counts.suggested_typed_blocks,
+            envelope.suggestions.len()
+        );
+        assert_eq!(envelope.counts.suggested_typed_blocks, 2);
+        assert!(
+            envelope
+                .suggested_next_steps
+                .iter()
+                .any(|step| step.contains("never auto-types")),
+            "{:?}",
+            envelope.suggested_next_steps
+        );
+
+        // Document order: the ordered list precedes the TODO paragraph.
+        let value = serde_json::to_value(&envelope).expect("envelope serializes");
+        assert_eq!(value["suggestions"][0]["suggested_kind"], "procedure");
+        let second = &value["suggestions"][1];
+        assert_eq!(second["suggested_kind"], "task");
+        assert_eq!(second["matched_rule"], "todo_line");
+        assert_eq!(second["excerpt"], "TODO: verify the failover.");
+        assert!(second["span"]["file"].is_string(), "{second}");
+        assert!(second["span"]["start"]["line"].is_u64(), "{second}");
     }
 
     #[test]

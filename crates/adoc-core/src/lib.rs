@@ -57,6 +57,7 @@ pub use domain::review::impact::{ImpactReasonKind, ImpactedObject, compute_impac
 pub use domain::review::object_change::ChangedObject;
 pub use domain::review::object_diff::ObjectDiff;
 pub use domain::review::reviewer::{RequiredReviewer, required_reviewers};
+pub use domain::services::suggest_typed_blocks::SuggestedTypedBlock;
 pub use domain::value_objects::rel_path::{RelPath, RelPathError};
 pub use infrastructure::git::error::GitError;
 
