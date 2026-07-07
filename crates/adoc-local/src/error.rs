@@ -51,9 +51,17 @@ pub enum LocalError {
         source: std::io::Error,
     },
 
-    #[error("error[io.remove_failed] could not remove {}: {source}", path.display())]
+    #[error(
+        "error[io.remove_failed] could not remove {}: {source}; every .adoc target was \
+         written{}; committed sources remain recoverable from git",
+        path.display(),
+        format_removed_sources(removed)
+    )]
     RemoveFailed {
         path: PathBuf,
+        /// Sources already removed before the failure — with the written
+        /// targets, the full on-disk state of the aborted run.
+        removed: Vec<PathBuf>,
         #[source]
         source: std::io::Error,
     },
@@ -72,6 +80,18 @@ pub enum LocalError {
         #[source]
         source: adoc_core::ReviewError,
     },
+}
+
+fn format_removed_sources(removed: &[PathBuf]) -> String {
+    if removed.is_empty() {
+        return String::new();
+    }
+    let list = removed
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("; sources already removed: {list}")
 }
 
 fn format_config_path(config_path: &Option<PathBuf>) -> String {
