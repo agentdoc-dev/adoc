@@ -223,6 +223,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/impacted.md"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/migrate-report",
+        name: "schema-migrate-report",
+        title: "Migration Report Schema Reference",
+        description: "Markdown reference for adoc.migrate.report.v0.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/schema/migrate-report.md"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/retrieval-envelope.json",
         name: "schema-retrieval-envelope-json",
         title: "Retrieval Envelope JSON Schema",
@@ -325,6 +333,14 @@ const RESOURCES: &[AgentResource] = &[
         description: "JSON Schema for adoc.patch.apply.v0.",
         mime_type: JSON_SCHEMA,
         contents: include_str!("../../../docs/agent/v0/schema/adoc.patch.apply.v0.schema.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.migrate.report.v0.schema.json",
+        name: "schema-adoc-migrate-report-v0-json",
+        title: "Migration Report JSON Schema",
+        description: "JSON Schema for adoc.migrate.report.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.migrate.report.v0.schema.json"),
     },
     AgentResource {
         uri: "adoc://agent/v0/schema/search-artifact.json",
