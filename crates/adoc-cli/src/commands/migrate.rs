@@ -61,8 +61,9 @@ fn write_migrate_text(report: &MigrateReportEnvelope, exit_code: i32, styled: bo
     exit_code
 }
 
-/// The §28.3 human summary: the seven counts plus the numbered
-/// suggested-next-steps list, mirroring the JSON envelope field for field.
+/// The §28.3 human summary: the seven counts, the numbered
+/// suggested-next-steps list, and the §28.4 typed-block suggestions,
+/// mirroring the JSON envelope field for field.
 fn render_report_block(report: &MigrateReportEnvelope, styled: bool) -> String {
     let mut output = String::new();
     if styled {
@@ -92,6 +93,27 @@ fn render_report_block(report: &MigrateReportEnvelope, styled: bool) -> String {
         }
         for (index, step) in report.suggested_next_steps.iter().enumerate() {
             writeln!(output, "  {}. {step}", index + 1).expect("writing to String cannot fail");
+        }
+    }
+    if !report.suggestions.is_empty() {
+        if styled {
+            writeln!(output, "{}", faint_label("Typed-block suggestions:"))
+                .expect("writing to String cannot fail");
+        } else {
+            writeln!(output, "Typed-block suggestions:").expect("writing to String cannot fail");
+        }
+        for suggestion in &report.suggestions {
+            writeln!(
+                output,
+                "  {}:{}:{} {} ({}): {}",
+                suggestion.span.file.display(),
+                suggestion.span.start.line,
+                suggestion.span.start.column,
+                suggestion.suggested_kind,
+                suggestion.matched_rule,
+                suggestion.excerpt
+            )
+            .expect("writing to String cannot fail");
         }
     }
     output

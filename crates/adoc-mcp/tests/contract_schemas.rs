@@ -807,9 +807,10 @@ fn mcp_serves_v3_schema_resources_byte_equal_to_on_disk_files() {
     }
 }
 
-/// V8.1.2: the `adoc migrate` report envelope — built at the same
+/// V8.1.2/V8.1.3: the `adoc migrate` report envelope — built at the same
 /// `adoc-local` seam the CLI serializes (there is no MCP migrate tool) over
-/// a fixture with a raw HTML block, a broken link, and front matter —
+/// a fixture with a raw HTML block, a broken link, front matter, and a TODO
+/// paragraph (so the schema validates a populated `suggestions` array) —
 /// validates against `adoc.migrate.report.v0.schema.json`.
 #[test]
 fn validates_adoc_migrate_report_v0_envelope_against_schema() {
@@ -825,7 +826,7 @@ fn validates_adoc_migrate_report_v0_envelope_against_schema() {
     );
     write(
         &root.join("docs/front.md"),
-        "---\ntitle: front\n---\n\n# Front\n\nProse.\n",
+        "---\ntitle: front\n---\n\n# Front\n\nProse.\n\nTODO: type this later.\n",
     );
 
     let context =
@@ -842,7 +843,9 @@ fn validates_adoc_migrate_report_v0_envelope_against_schema() {
     assert_valid("adoc.migrate.report.v0.schema.json", &report);
     assert_eq!(report["schema_version"], "adoc.migrate.report.v0");
     assert_eq!(report["counts"]["files_imported"], 3);
-    assert_eq!(report["counts"]["suggested_typed_blocks"], 0);
+    assert_eq!(report["counts"]["suggested_typed_blocks"], 1);
+    assert_eq!(report["suggestions"][0]["suggested_kind"], "task");
+    assert_eq!(report["suggestions"][0]["matched_rule"], "todo_line");
 }
 
 /// V6.3: `adoc_impacted_by` envelopes — a populated paths-shape query hitting

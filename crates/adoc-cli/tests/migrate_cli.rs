@@ -354,7 +354,7 @@ fn json_report_pins_exact_pilot_counts() {
             "raw_html_quarantined": 3,
             "broken_links": 5,
             "unrecognized_extensions": 18,
-            "suggested_typed_blocks": 0,
+            "suggested_typed_blocks": 12,
         })
     );
     let files = value["files"].as_array().expect("files is an array");
@@ -407,7 +407,13 @@ fn every_report_count_reconciles_with_an_emitted_diagnostic() {
         .map(|file| file["prose_blocks"].as_u64().expect("prose_blocks"))
         .sum();
     assert_eq!(counts["prose_blocks"].as_u64(), Some(prose_sum));
-    assert_eq!(counts["suggested_typed_blocks"].as_u64(), Some(0));
+    // Suggestions are report records, not diagnostics; the count reconciles
+    // against the envelope's own `suggestions` array (V8.1.3).
+    let suggestions = value["suggestions"].as_array().expect("suggestions array");
+    assert_eq!(
+        counts["suggested_typed_blocks"].as_u64(),
+        Some(suggestions.len() as u64)
+    );
     assert_eq!(
         tally("compat.unknown_extension"),
         2,
@@ -480,6 +486,7 @@ fn empty_workspace_reports_zero_counts() {
     );
     assert_eq!(value["files"], serde_json::json!([]));
     assert_eq!(value["suggested_next_steps"], serde_json::json!([]));
+    assert_eq!(value["suggestions"], serde_json::json!([]));
 }
 
 #[test]
@@ -502,8 +509,11 @@ fn plain_output_prints_the_section_28_3_report_block() {
         "Raw HTML blocks quarantined: 3",
         "Broken links: 5",
         "Unrecognized extensions: 18",
-        "Suggested typed blocks: 0",
+        "Suggested typed blocks: 12",
         "Suggested next steps:",
+        "Review the 12 typed-block suggestion(s); migration never auto-types",
+        "Typed-block suggestions:",
+        "runbooks/db-failover.md:23:1 procedure (numbered_step_list): Quiesce write traffic at the load balancer.",
         "would migrate",
     ] {
         assert!(

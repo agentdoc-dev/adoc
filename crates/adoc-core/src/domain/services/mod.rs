@@ -4,3 +4,4 @@
 //! operate on domain inputs and return domain values.
 
 pub(crate) mod resolve_pending_block;
+pub(crate) mod suggest_typed_blocks;
