@@ -6,17 +6,17 @@
 
 Recorded out of numeric order deliberately: ADR-0039 (`adoc.graph.v4`) and
 ADR-0040 (prose retrieval contracts) are reserved for V6.5.1 and V1.7.1 per
-the [ROADMAP-V6.md](../ROADMAP-V6.md) ADR inventory, restated in
-[ROADMAP-V7.md](../ROADMAP-V7.md) — the ADR-0038 out-of-order precedent.
+the [ROADMAP-V6.md](../roadmap/ROADMAP-V6.md) ADR inventory, restated in
+[ROADMAP-V7.md](../roadmap/ROADMAP-V7.md) — the ADR-0038 out-of-order precedent.
 
 ## Context
 
 The published docs drifted from the shipped surface. `README.md` advertises
 8 of the 14 MCP tools the registry in `crates/adoc-mcp/src/lib.rs` declares,
 and lists the V0 four object kinds when eleven ship;
-`docs/mcp-agent-gateway.md` omits `adoc_stale`, `adoc_contradictions`,
+`docs/guides/mcp-agent-gateway.md` omits `adoc_stale`, `adoc_contradictions`,
 `adoc_impacted_by`, `adoc_diff`, and `adoc_review` — the last two missing
-since V3; `docs/ROADMAP.md` "Current Status" stopped at V5.10. Every one of
+since V3; `docs/roadmap/ROADMAP.md` "Current Status" stopped at V5.10. Every one of
 these lists was hand-maintained, and a published number that no test can
 fail is a future lie: the same drift will recur when V6.5 adds four kinds
 and any future slice adds a tool.
@@ -46,7 +46,7 @@ binding the published prose to them.
    tables, and code-block examples stay free-form and never drift the
    parse.
 4. **The guarded surfaces are the ones that demonstrably drifted**: the
-   `adoc:mcp-tools` list in `README.md` and `docs/mcp-agent-gateway.md`
+   `adoc:mcp-tools` list in `README.md` and `docs/guides/mcp-agent-gateway.md`
    (against the `#[tool]` registry) and the `adoc:kinds` list in
    `README.md` (against `BlockKind::ALL`, exposed to the test crate via a
    public `block_kind_names()` accessor in `adoc-core` rather than by

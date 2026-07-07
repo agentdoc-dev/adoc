@@ -62,7 +62,7 @@ V1 local retrieval supports:
 - search filters for kind, status, owner, and source path
 - graph relation filters for opt-in candidate narrowing with `--related-to`
 
-Includes, custom schemas, migrations, semantic diff, CI/PR integrations, agent patching, a web app, hosted embedding adapters, and permissioned governance are deferred beyond the current local CLI workflow. See [docs/ROADMAP.md](docs/ROADMAP.md).
+Includes, custom schemas, migrations, semantic diff, CI/PR integrations, agent patching, a web app, hosted embedding adapters, and permissioned governance are deferred beyond the current local CLI workflow. See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md).
 
 ## Quick Start
 
@@ -200,7 +200,7 @@ Prompts:
 
 Agents should begin by reading `adoc://agent/v0/usage-contract`, getting the
 `adoc_answer_with_citations` prompt, and calling `adoc_project_status` before
-retrieval or patch validation. See [docs/mcp-agent-gateway.md](docs/mcp-agent-gateway.md)
+retrieval or patch validation. See [docs/guides/mcp-agent-gateway.md](docs/guides/mcp-agent-gateway.md)
 for setup, JSON-RPC examples, and the safety boundary.
 
 ### Install Locally
@@ -348,7 +348,7 @@ as global config.
 - limits results with `--top`, defaulting to `10`
 - supports `--format auto|plain|styled|json`
 
-See [docs/v1-retrieval.md](docs/v1-retrieval.md) for retrieval workflow, citation guidance, model-swap behavior, and retrieval-set maintenance.
+See [docs/design/v1-retrieval.md](docs/design/v1-retrieval.md) for retrieval workflow, citation guidance, model-swap behavior, and retrieval-set maintenance.
 
 ## AgentDoc Source
 
@@ -549,7 +549,7 @@ crates/
   adoc-core/  # compile API, parser, diagnostics, renderers, artifacts
 ```
 
-The architectural contract is documented in [docs/V0-DESIGN.md](docs/V0-DESIGN.md).
+The architectural contract is documented in [docs/design/V0-DESIGN.md](docs/design/V0-DESIGN.md).
 
 ### Quality Gates
 
@@ -621,9 +621,9 @@ Dependabot is configured in [.github/dependabot.yml](.github/dependabot.yml) for
 ## Project Documents
 
 - [CONTEXT.md](CONTEXT.md): project language and domain decisions
-- [docs/PRD.md](docs/PRD.md): product requirements
-- [docs/ROADMAP.md](docs/ROADMAP.md): product roadmap from completed V0 through planned retrieval, review, patching, schema, graph, and team surfaces
-- [docs/V0-DESIGN.md](docs/V0-DESIGN.md): Rust implementation contract
+- [docs/product/PRD.md](docs/product/PRD.md): product requirements
+- [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md): product roadmap from completed V0 through planned retrieval, review, patching, schema, graph, and team surfaces
+- [docs/design/V0-DESIGN.md](docs/design/V0-DESIGN.md): Rust implementation contract
 - [docs/adr/](docs/adr): architecture decision records
 
 ## Architecture
@@ -677,7 +677,7 @@ Current local retrieval focuses on the graph artifact:
 
 Later milestones cover migration, review workflows, patch safety, expanded schema, composition, hosted embedding adapters, and team surfaces.
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the full sequence.
+See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) for the full sequence.
 
 ## License
 

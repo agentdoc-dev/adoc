@@ -31,4 +31,4 @@ vocabulary by V6.5.5).
 ## Diagnostics
 
 - `adoc check` reports exactly `0 errors, 6 warnings`. See the budget table
-  in `docs/expanded-pilot.md`.
+  in `docs/guides/expanded-pilot.md`.

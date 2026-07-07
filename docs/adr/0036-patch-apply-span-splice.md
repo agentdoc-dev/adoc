@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-06-12
-**Slice:** V6.4 (TB1–TB3; recorded at slice start per the [ROADMAP-V6.md](../ROADMAP-V6.md) ADR inventory)
+**Slice:** V6.4 (TB1–TB3; recorded at slice start per the [ROADMAP-V6.md](../roadmap/ROADMAP-V6.md) ADR inventory)
 
 ## Context
 

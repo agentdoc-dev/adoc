@@ -8,7 +8,7 @@
 //! carries `evaluated_at`; the contradictions and impacted queries are pure
 //! functions of the artifact bytes (plus, for impacted, the changed-path set)
 //! and deliberately carry no evaluation date. See ADR-0038 and
-//! docs/V6-DESIGN.md.
+//! docs/design/V6-DESIGN.md.
 
 use std::collections::BTreeSet;
 

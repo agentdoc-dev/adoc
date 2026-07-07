@@ -459,9 +459,9 @@ Scope:
   - Two `source` objects: one `source_code`, one `external_url`.
   - One `claim` using V5.8 evidence references to a `source` object plus an inline `test:` field.
 - New `crates/adoc-cli/tests/expanded_pilot.rs` end-to-end test asserting `adoc check`, `adoc build`, `adoc why`, `adoc graph`, `adoc search`, `adoc diff`, `adoc review`, and `adoc patch --check` all behave per V5.1–V5.8 design over the pilot input. Diagnostic counts and graph node counts are exact-match assertions.
-- New `docs/expanded-pilot.md` documenting the pilot's maintenance contract — analogous to `docs/v1-retrieval.md` for the Billing Pilot and `docs/markdown-pilot.md` for the Markdown Pilot.
+- New `docs/guides/expanded-pilot.md` documenting the pilot's maintenance contract — analogous to `docs/design/v1-retrieval.md` for the Billing Pilot and `docs/guides/markdown-pilot.md` for the Markdown Pilot.
 - MCP dogfood test extension exercising the new guidance resources against the pilot.
-- Update to `docs/ROADMAP.md` "Implemented" section: V5 Expanded Knowledge Model shipped, V6 composition deferred and motivated.
+- Update to `docs/roadmap/ROADMAP.md` "Implemented" section: V5 Expanded Knowledge Model shipped, V6 composition deferred and motivated.
 
 Acceptance: `cargo test -p adoc-cli --test expanded_pilot` exits 0 with the documented diagnostic counts. `dist/docs.html` for the pilot is hand-reviewed and visually correct (every kind renders distinctly; agent_instruction shows the runtime-not-enforced banner; contradiction shows side-by-side conflicting claim links). `adoc search "policy"` returns the policy first. `adoc graph security.production-db-access` traverses to its approvers and back.
 

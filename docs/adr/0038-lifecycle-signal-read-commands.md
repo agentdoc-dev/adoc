@@ -6,7 +6,7 @@
 
 Recorded out of numeric order deliberately: ADR-0036 (patch application as
 formatting-preserving span splice) and ADR-0037 (MCP `adoc_patch_apply`
-opt-in) are reserved for V6.4 per the [ROADMAP-V6.md](../ROADMAP-V6.md) ADR
+opt-in) are reserved for V6.4 per the [ROADMAP-V6.md](../roadmap/ROADMAP-V6.md) ADR
 inventory.
 
 ## Context
@@ -71,7 +71,7 @@ For `adoc stale` specifically (V6.1, implemented): the `stale` category lists
 re-derives `"stale"` only for verified objects (the ADR-0033 rule) and
 otherwise echoes the authored status. Records sort most-overdue first, then
 Object ID, then a fixed category ordinal. The full rule table, edge cases, and
-surfaces are pinned in [V6-DESIGN.md](../V6-DESIGN.md).
+surfaces are pinned in [V6-DESIGN.md](../design/V6-DESIGN.md).
 
 For `adoc contradictions` specifically (V6.2, implemented): membership in
 `contradicted_claims` is implication by ≥ 1 unresolved contradiction **or**
@@ -81,7 +81,7 @@ axis only — a claim both expired and contradicted reads `stale` from
 `adoc stale` and `contradicted` here, while the build artifact's single
 `effective_status` slot keeps its stale-wins precedence. Sorting is severity
 descending then Object ID; `--all` widens only the contradictions listing,
-never `contradicted_claims`. Pinned in [V6-DESIGN.md](../V6-DESIGN.md) §V6.2.
+never `contradicted_claims`. Pinned in [V6-DESIGN.md](../design/V6-DESIGN.md) §V6.2.
 
 For `adoc impacted-by` specifically (V6.3, implemented): scope is verified
 subjects only (claim `verified` / decision `accepted`, the V3.3
@@ -97,7 +97,7 @@ record carries one impact-review obligation via the shared
 errors (`impacted.git_unavailable`, artifact-load failure → 2) — a deliberate
 divergence from `adoc review`'s hard `review.failed` error path: a query
 emits its envelope even when the question could not be derived. Pinned in
-[V6-DESIGN.md](../V6-DESIGN.md) §V6.3.
+[V6-DESIGN.md](../design/V6-DESIGN.md) §V6.3.
 
 ## Consequences
 

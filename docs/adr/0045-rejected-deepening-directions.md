@@ -6,7 +6,7 @@
 
 Recorded out of numeric order deliberately: ADR-0042 (pilot-report gate),
 ADR-0043 (Markdown migration contract), and ADR-0044 (partner-report
-thresholds) are reserved by [ROADMAP-V8.md](../ROADMAP-V8.md) — the
+thresholds) are reserved by [ROADMAP-V8.md](../roadmap/ROADMAP-V8.md) — the
 ADR-0038/ADR-0041 out-of-order precedent.
 
 ## Context

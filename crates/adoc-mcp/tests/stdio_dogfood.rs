@@ -82,7 +82,7 @@ fn structured_content(response: &serde_json::Value) -> &serde_json::Value {
 
 #[test]
 fn stdio_server_runs_documented_mcp_agent_gateway_quickstart() {
-    let docs = fs::read_to_string(repo_root().join("docs/mcp-agent-gateway.md"))
+    let docs = fs::read_to_string(repo_root().join("docs/guides/mcp-agent-gateway.md"))
         .expect("MCP Agent Gateway docs should exist");
     assert!(docs.contains("adoc://agent/v0/usage-contract"));
     assert!(docs.contains("tools/call"));

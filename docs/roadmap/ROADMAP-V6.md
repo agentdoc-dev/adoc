@@ -40,7 +40,7 @@ V6 closes the loop opened by V2. Three new read commands expose the V5.10 derive
 
 ### V6.1: `adoc stale` Slice
 
-Goal: give the V5.10 stale and review-overdue signals a first-class query surface. Implemented (ADR-0038, [V6-DESIGN.md](V6-DESIGN.md) §V6.1).
+Goal: give the V5.10 stale and review-overdue signals a first-class query surface. Implemented (ADR-0038, [V6-DESIGN.md](../design/V6-DESIGN.md) §V6.1).
 
 Scope:
 
@@ -58,7 +58,7 @@ Deferred: `--fail-on-stale` CI gating, health scores (PRD §14.5), staleness fro
 
 ### V6.2: `adoc contradictions` Slice
 
-Goal: give unresolved contradictions and contradicted claims a query surface. Implemented (ADR-0038, [V6-DESIGN.md](V6-DESIGN.md) §V6.2).
+Goal: give unresolved contradictions and contradicted claims a query surface. Implemented (ADR-0038, [V6-DESIGN.md](../design/V6-DESIGN.md) §V6.2).
 
 Scope:
 
@@ -74,7 +74,7 @@ Deferred: automated contradiction detection (Later), resolution workflow command
 
 ### V6.3: `adoc impacted-by` Slice
 
-Goal: answer "this code changed — which knowledge is now suspect?" per PRD §21.6. Implemented (ADR-0038, [V6-DESIGN.md](V6-DESIGN.md) §V6.3).
+Goal: answer "this code changed — which knowledge is now suspect?" per PRD §21.6. Implemented (ADR-0038, [V6-DESIGN.md](../design/V6-DESIGN.md) §V6.3).
 
 Scope:
 
@@ -92,7 +92,7 @@ Deferred: relation-cascade impact (`depends_on` propagation), glob `impacts:` pa
 
 ### V6.4: Patch Apply Slice
 
-Goal: apply validated patches to `.adoc` source via formatting-preserving span splices — atomic, re-checked, never auto-reverted. Closes PRD §7.7 and §21.7 and resolves V2's create-placement open question. Implemented (ADR-0036, ADR-0037, [V6-DESIGN.md](V6-DESIGN.md) §V6.4).
+Goal: apply validated patches to `.adoc` source via formatting-preserving span splices — atomic, re-checked, never auto-reverted. Closes PRD §7.7 and §21.7 and resolves V2's create-placement open question. Implemented (ADR-0036, ADR-0037, [V6-DESIGN.md](../design/V6-DESIGN.md) §V6.4).
 
 A ground truth that shapes this slice: typed-block close-fence spans are not retained today (`ParsedTypedBlock.span` is the open-fence line only; graph spans are start-only with no byte length). The graph artifact therefore **cannot drive splicing and must not be asked to**. Apply always re-parses current source and splices against fresh parser spans, using byte offsets (`SourcePosition.offset`) exclusively — parser columns are char-based and must never be used to reconstruct positions.
 
@@ -101,7 +101,7 @@ Structured as tracer bullets, mirroring V5.10:
 - **TB1 — span foundation + splice engine + `update_fields`/`replace_body`.** Parser extension: retain the close-fence span on `ParsedTypedBlock` so a block's full byte range is recoverable (behavior-preserving for everything existing). New pure domain module `domain/source_edit/` with `SpanEdit { byte_range, replacement }`, `SourceEditPlan` (sorted, non-overlapping; factory rejects overlap), and `splice()` — every byte outside the edited ranges preserved identically, by construction. New `application/apply.rs` orchestration: load graph → existing V2 patch validation, unchanged → recompile the working tree in memory → **source-drift gate** (below) → plan edits → write through a new `pub(crate)` `WorkspaceWriter` port → post-apply re-check → envelope. CLI: `adoc patch --apply <path-or-@-stdin>`; bare `adoc patch` keeps `--check` behavior. `update_fields` rewrites only the targeted field-value spans (new keys insert one `key: value` line after the last field line); `replace_body` replaces only the region between `--` and the closing `::`.
 - **TB2 — relation ops.** `supersede` and `revoke` apply as field-line edits (status value, `supersedes:` value) with the same splice discipline.
 - **TB3 — `create_object` placement semantics.** The validated `PlacementHint { page_id, after }` already exists on `adoc.patch.v0` — no wire change. V6 defines its apply semantics: `page_id` resolves to a file via the page node's `source_path`; `after: <id>` inserts immediately after that block's close fence; `after` absent appends at end of file. Created objects are inserted as a complete typed block with deterministic (sorted) field order and a separating blank line. New rules: `patch.create_missing_placement` (WARNING on `--check`, ERROR on `--apply`) and `patch.placement_not_adoc` (placement page must be an `.adoc` source — `.md` pages cannot host typed blocks). New-file creation is deferred.
-- **TB4 — gated MCP `adoc_patch_apply`.** New optional config block in `agentdoc.config.yaml`: `mcp: { patch_apply: enabled }` — default when absent is disabled, and `adoc init` does not write the key. The tool is **registered always**; when disabled it returns a normal `applied: false` envelope with one fix-oriented diagnostic naming the config key and noting that `adoc_patch_check` remains available. Project-root sandbox (`resolve_write_path`) and `base_hash` preconditions apply identically over MCP. New guidance resource `adoc://agent/v0/patch-apply-guide` (propose → check → apply → re-check → cite the post-check) plus JSON Schema resource. `adoc.project.status.v0` gains an additive readiness boolean `patch_apply_enabled` so agents can check the gate before constructing a patch. Every doc that promises "MCP does not apply patches" is updated in this TB: `docs/agent/v0/usage-contract.md`, `docs/agent/v0/review-workflow.md`, `docs/agent/v0/schema/patch.md`, `docs/agent/v0/schema/review.md` (reworded to scope the promise to review), `docs/mcp-agent-gateway.md`, and the two `CONTEXT.md` entries. The pinned v0 propose-patch prompt stays byte-stable per ADR-0014; an apply-aware v1 prompt is added alongside it.
+- **TB4 — gated MCP `adoc_patch_apply`.** New optional config block in `agentdoc.config.yaml`: `mcp: { patch_apply: enabled }` — default when absent is disabled, and `adoc init` does not write the key. The tool is **registered always**; when disabled it returns a normal `applied: false` envelope with one fix-oriented diagnostic naming the config key and noting that `adoc_patch_check` remains available. Project-root sandbox (`resolve_write_path`) and `base_hash` preconditions apply identically over MCP. New guidance resource `adoc://agent/v0/patch-apply-guide` (propose → check → apply → re-check → cite the post-check) plus JSON Schema resource. `adoc.project.status.v0` gains an additive readiness boolean `patch_apply_enabled` so agents can check the gate before constructing a patch. Every doc that promises "MCP does not apply patches" is updated in this TB: `docs/agent/v0/usage-contract.md`, `docs/agent/v0/review-workflow.md`, `docs/agent/v0/schema/patch.md`, `docs/agent/v0/schema/review.md` (reworded to scope the promise to review), `docs/guides/mcp-agent-gateway.md`, and the two `CONTEXT.md` entries. The pinned v0 propose-patch prompt stays byte-stable per ADR-0014; an apply-aware v1 prompt is added alongside it.
 - **TB5 — Expanded Pilot full-loop proof.** End-to-end test driving the loop: `adoc impacted-by` flags a claim → a patch proposes a body update → `adoc patch --apply` rewrites exactly the body span (asserted byte-exact against a golden file) → post-check clean → `adoc stale` / `adoc contradictions` outputs unchanged → a second apply of the same patch fails with the existing stale-`base_hash` diagnostic and writes nothing.
 
 Freshness is a two-layer precondition — the load-bearing invariant of this slice:
@@ -229,12 +229,12 @@ Deferred: surfacing overdue tasks in `adoc.stale.v0` (an additive `category: "ta
 
 ### V6.5.5: Full-Vocabulary Pilot Slice
 
-Goal: prove the fifteen-kind vocabulary end-to-end, mirroring V5.9. Implemented ([expanded-pilot.md](expanded-pilot.md)).
+Goal: prove the fifteen-kind vocabulary end-to-end, mirroring V5.9. Implemented ([expanded-pilot.md](../guides/expanded-pilot.md)).
 
 Scope:
 
 - Extend `examples/expanded-pilot/` with at minimum: one verified `api` with `api_schema` evidence and `impacts:`; one `observation` with `sample_size` and `observed_at`; one `open` and one `answered` question (the latter with `resolved_by`); one `open` task with a wide-margin past `due` (firing `task.overdue`) and one `done` task.
-- Update the exact-match diagnostic budget (expected: 0 errors, 6 warnings — the V5.10 five plus `task.overdue`; confirm at slice start) and the per-kind count table in [expanded-pilot.md](expanded-pilot.md).
+- Update the exact-match diagnostic budget (expected: 0 errors, 6 warnings — the V5.10 five plus `task.overdue`; confirm at slice start) and the per-kind count table in [expanded-pilot.md](../guides/expanded-pilot.md).
 - Extend `expanded_pilot.rs` graph and retrieval assertions for the four new kinds; extend the V6.4 TB5 loop test with one apply against a new-kind object (e.g. marking the task `done` via `update_fields`).
 - Update the "Implemented" sections in [ROADMAP.md](ROADMAP.md) and this file.
 
@@ -307,7 +307,7 @@ Scope:
 
 - RRF fusion across both record types in hybrid mode, parameter-free.
 - Retrieval-set fixtures extended in the billing and Markdown pilots: queries that must return Knowledge Objects first, queries that legitimately return prose first, and `.adoc`/`.md` symmetry as property-style invariants.
-- [v1-retrieval.md](v1-retrieval.md) maintenance docs updated; the V4 retrieval migration hint retired or downgraded now that prose is searchable.
+- [v1-retrieval.md](../design/v1-retrieval.md) maintenance docs updated; the V4 retrieval migration hint retired or downgraded now that prose is searchable.
 
 Acceptance: the extended retrieval-set suite passes; the documented symmetry property holds across all pilot pairs; no existing Knowledge Object retrieval fixture regresses.
 

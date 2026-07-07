@@ -2185,7 +2185,7 @@ Patch validation:
 
 # 19. Search, Retrieval, and RAG
 
-> **V1 commitments.** Section 19 describes the full retrieval surface AgentDoc aims at. The V1 milestone delivers a deliberate subset: object-based retrieval (§19.1), the retrieval record shape (§19.2) shipped as the `adoc.retrieval.v0` envelope, a parameter-free hybrid of BM25 and vector ranks (a small subset of §19.3), four metadata filters - kind, status, owner, source-path (a small subset of §19.4), and explicit graph candidate filtering through `--related-to`. Multi-factor scoring, default graph proximity boosts, the wider filter set, and the retrieval modes in §19.5 are deferred. See [V1-DESIGN.md](V1-DESIGN.md), [adr/0010-v1-retrieval-architecture.md](adr/0010-v1-retrieval-architecture.md), and [adr/0011-json-graph-artifact.md](adr/0011-json-graph-artifact.md) for the implementation contract.
+> **V1 commitments.** Section 19 describes the full retrieval surface AgentDoc aims at. The V1 milestone delivers a deliberate subset: object-based retrieval (§19.1), the retrieval record shape (§19.2) shipped as the `adoc.retrieval.v0` envelope, a parameter-free hybrid of BM25 and vector ranks (a small subset of §19.3), four metadata filters - kind, status, owner, source-path (a small subset of §19.4), and explicit graph candidate filtering through `--related-to`. Multi-factor scoring, default graph proximity boosts, the wider filter set, and the retrieval modes in §19.5 are deferred. See [V1-DESIGN.md](../design/V1-DESIGN.md), [adr/0010-v1-retrieval-architecture.md](../adr/0010-v1-retrieval-architecture.md), and [adr/0011-json-graph-artifact.md](../adr/0011-json-graph-artifact.md) for the implementation contract.
 
 ## 19.1 Retrieval Philosophy
 
@@ -2385,7 +2385,7 @@ The review lens shows:
 
 # 21. CLI Product Surface
 
-> **V1 commitments.** Section 21 lists the full target CLI. V1 ships `adoc check`, `adoc build`, `adoc init`, `adoc why` (§21.5), `adoc graph`, and `adoc search` reading the V1 retrieval surface. `adoc impacted-by`, `adoc patch`, `adoc render`, `adoc migrate`, `adoc schema`, `adoc verify`, and `adoc doctor` are deferred to later milestones. `adoc build` in V1 emits `dist/docs.graph.json` and, when embeddings are enabled, `dist/docs.search.json`, alongside the V0 outputs. See [V1-DESIGN.md](V1-DESIGN.md).
+> **V1 commitments.** Section 21 lists the full target CLI. V1 ships `adoc check`, `adoc build`, `adoc init`, `adoc why` (§21.5), `adoc graph`, and `adoc search` reading the V1 retrieval surface. `adoc impacted-by`, `adoc patch`, `adoc render`, `adoc migrate`, `adoc schema`, `adoc verify`, and `adoc doctor` are deferred to later milestones. `adoc build` in V1 emits `dist/docs.graph.json` and, when embeddings are enabled, `dist/docs.search.json`, alongside the V0 outputs. See [V1-DESIGN.md](../design/V1-DESIGN.md).
 
 ## 21.1 CLI Overview
 
@@ -3455,7 +3455,7 @@ Cloud-dependent features may be unavailable offline:
 
 # 32. Product Roadmap
 
-This section describes broad product phases. The smaller tracer-bullet implementation roadmap lives in [ROADMAP.md](ROADMAP.md).
+This section describes broad product phases. The smaller tracer-bullet implementation roadmap lives in [ROADMAP.md](../roadmap/ROADMAP.md).
 
 # 32.1 Phase 0: Prototype
 

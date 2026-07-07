@@ -212,8 +212,8 @@ Scope:
 
 - Growth of `examples/markdown-pilot/` to 15-20 `.md` files modeled on real product docs: a mix of API reference pages, runbooks, README-style overviews, and tutorial walkthroughs. Includes representative coverage of front-matter (YAML and TOML), raw HTML, GFM tables and task lists, image embeds with safe and unsafe schemes, broken and safe links, and at least one file with an MDX-style construct that should trip `compat.unknown_extension`.
 - New `crates/adoc-cli/tests/markdown_pilot.rs` end-to-end test asserting `adoc check`, `adoc build`, `adoc search`, `adoc diff`, and `adoc review` all behave per V4.1-V4.3 design over the pilot input. Diagnostic counts and graph node counts are exact-match assertions.
-- New `docs/markdown-pilot.md` documenting the pilot's maintenance contract — analogous to `docs/v1-retrieval.md` for the Billing Pilot.
-- Update to `docs/ROADMAP.md` "Implemented" section: V4 compatibility mode shipped, V4.5+ (`adoc migrate`) deferred and motivated.
+- New `docs/guides/markdown-pilot.md` documenting the pilot's maintenance contract — analogous to `docs/design/v1-retrieval.md` for the Billing Pilot.
+- Update to `docs/roadmap/ROADMAP.md` "Implemented" section: V4 compatibility mode shipped, V4.5+ (`adoc migrate`) deferred and motivated.
 
 Acceptance: `cargo test -p adoc-cli --test markdown_pilot` exits 0 with the documented diagnostic counts. `dist/docs.html` for the pilot is hand-reviewed and visually correct (no XSS surface, all GFM features render). `adoc search "refund"` over the pilot emits the migration hint.
 
@@ -318,4 +318,4 @@ V4 closes PRD MVP must-have #14 (compatibility mode). PRD MVP must-have #18 (bas
 
 A related milestone — **V1.7: Prose Retrieval** — is also factored out of V4. Prose retrieval makes both `.adoc` and `.md` prose blocks searchable via extension to the BM25 and embedding pipelines. It is a V1-line milestone because it changes V1 retrieval semantics globally; bundling it into V4 would create asymmetric retrieval behavior (Markdown prose searchable, AgentDoc prose not). V1.7 is sequenced independently and can ship before, during, or after V4 without conflict.
 
-Both V4.5 and V1.7 are framed in this document's Sequencing Context as deferred milestones. `docs/ROADMAP.md` is updated alongside V4-DESIGN to reference them in the "Next" section; the V4.5 and V1.7 design contracts themselves are drafted only when their slice work begins.
+Both V4.5 and V1.7 are framed in this document's Sequencing Context as deferred milestones. `docs/roadmap/ROADMAP.md` is updated alongside V4-DESIGN to reference them in the "Next" section; the V4.5 and V1.7 design contracts themselves are drafted only when their slice work begins.
