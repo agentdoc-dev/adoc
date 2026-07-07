@@ -51,6 +51,13 @@ pub enum LocalError {
         source: std::io::Error,
     },
 
+    #[error("error[io.remove_failed] could not remove {}: {source}", path.display())]
+    RemoveFailed {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
     #[error("error[io.path_outside_project] path {} is outside project root {}", path.display(), project_root.display())]
     PathOutsideProject {
         path: PathBuf,

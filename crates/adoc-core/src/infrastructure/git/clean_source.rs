@@ -14,11 +14,16 @@ use super::util::clear_git_env;
 
 /// Returns `true` only when `file` is inside a git work tree, tracked, and
 /// has no uncommitted changes (staged or unstaged).
+///
+/// Every git call runs with `-C <parent>` and the bare file name as the
+/// pathspec: `-C` changes git's working directory, so a caller-relative path
+/// (`./api/auth.md`) would silently stop matching anything.
 pub(crate) fn is_committed_and_clean(file: &Path) -> bool {
-    let Some(parent) = file.parent() else {
+    let (Some(parent), Some(name)) = (file.parent(), file.file_name()) else {
         return false;
     };
-    is_inside_work_tree(parent) && is_tracked(parent, file) && has_clean_status(parent, file)
+    let name = Path::new(name);
+    is_inside_work_tree(parent) && is_tracked(parent, name) && has_clean_status(parent, name)
 }
 
 fn is_inside_work_tree(directory: &Path) -> bool {

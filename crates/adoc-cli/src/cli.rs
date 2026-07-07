@@ -29,6 +29,23 @@ Examples:
   adoc check docs
   adoc check docs/refunds.adoc
 ";
+const MIGRATE_LONG_HELP: &str = "\
+Default is a dry run: prints what would be migrated plus the migrate.*
+diagnostics, and writes nothing. --write creates <name>.adoc beside each
+source and removes the source .md — leaving both would compile duplicate
+page IDs. --write refuses (all-or-nothing, nothing written or removed) when
+any source .md is not committed-and-clean in git; --force overrides. A
+committed source plus `git` is what makes the removal reversible.
+
+Exit codes: 0 migrated (or dry-run clean); 1 refused or migration errors;
+2 usage errors. Warnings never fail the run.
+
+Examples:
+  adoc migrate
+  adoc migrate docs
+  adoc migrate docs --write
+  adoc migrate docs --write --force
+";
 const BUILD_LONG_HELP: &str = "\
 Examples:
   adoc build
@@ -278,6 +295,21 @@ pub(crate) enum Commands {
         /// AgentDoc Source file or directory to check.
         #[arg(value_name = "PATH")]
         path: Option<PathBuf>,
+    },
+    #[command(
+        about = "Convert Markdown sources to prose-mode .adoc (dry-run by default).",
+        after_long_help = MIGRATE_LONG_HELP
+    )]
+    Migrate {
+        /// Markdown file or directory to migrate.
+        #[arg(value_name = "PATH")]
+        path: Option<PathBuf>,
+        /// Write <name>.adoc files and remove the source .md files.
+        #[arg(long)]
+        write: bool,
+        /// Skip the committed-and-clean git refusal for --write.
+        #[arg(long)]
+        force: bool,
     },
     #[command(
         about = "Build HTML, graph, and search artifacts.",
