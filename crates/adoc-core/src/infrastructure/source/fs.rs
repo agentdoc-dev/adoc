@@ -26,6 +26,13 @@ impl FsSourceProvider {
 }
 
 impl SourceProvider for FsSourceProvider {
+    fn contains(&self, path: &Path) -> bool {
+        // Yielded paths share the coordinate space of `root` as given
+        // (absolute or cwd-relative), so the resolved link path probes
+        // the filesystem directly.
+        path.exists()
+    }
+
     fn load_sources(&self) -> Vec<Result<SourceFile, SourceLoadError>> {
         if self.root.is_file() && !is_source_path(&self.root) {
             return vec![Err(SourceLoadError::unsupported_source_extension(

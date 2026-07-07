@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::domain::ports::source_provider::{SourceLoadError, SourceProvider};
 use crate::domain::source::SourceFile;
@@ -29,5 +29,11 @@ impl InMemorySourceProvider {
 impl SourceProvider for InMemorySourceProvider {
     fn load_sources(&self) -> Vec<Result<SourceFile, SourceLoadError>> {
         self.results.clone()
+    }
+
+    fn contains(&self, path: &Path) -> bool {
+        self.results
+            .iter()
+            .any(|result| matches!(result, Ok(source) if source.path == path))
     }
 }
