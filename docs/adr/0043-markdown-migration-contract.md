@@ -95,6 +95,15 @@ mode, so dropping preserves the invariant by construction), each backed by a
   (ROADMAP-V8 open question).
 - **GFM task-list checkbox markers** (`[ ]`/`[x]`): the marker is not part
   of graph item text in either mode; the item text itself is preserved.
+- **Empty prose blocks** (zero-content paragraph nodes the Markdown parser
+  emits as artifacts around extension blocks, e.g. the trailing line of a
+  math fence): they carry no content, and blank source cannot produce a
+  graph node in strict mode.
+
+One construct is unrepresentable outright: content containing a line that
+trims to exactly ` ``` ` cannot be carried by any fence (the strict grammar
+has no longer fence markers). Migration refuses it with an ERROR naming the
+file, rather than writing output that would re-parse differently.
 
 The set above is closed. A migration difference outside it is a bug, not a
 tolerance, and the losslessness test is written to fail on it.
@@ -109,11 +118,12 @@ tolerance, and the losslessness test is written to fail on it.
   is not committed-and-clean — uncommitted edits, untracked, or outside a
   git repository. A committed source is what makes the removal reversible;
   V8.1.4's export makes it doubly so. `--force` overrides.
-- **All-or-nothing**: any refusal — a dirty source or an already-existing
-  target `.adoc` — aborts the entire run before any file is written or
-  removed. Half-migrated trees compile duplicate pages; there is no partial
-  success. Writes are two-phase: create every target (create-new, cleaning
-  up on failure), and only after all targets exist remove the sources.
+- **All-or-nothing**: any refusal — a dirty source (`migrate.source_not_committed`)
+  or an already-existing target `.adoc` (`migrate.target_exists`, ERROR) —
+  aborts the entire run before any file is written or removed. Half-migrated
+  trees compile duplicate pages; there is no partial success. Writes are
+  two-phase: create every target (create-new, cleaning up on failure), and
+  only after all targets exist remove the sources.
 - Pre-existing `.adoc` files are never touched, byte-for-byte.
 
 ### 4. Report envelope

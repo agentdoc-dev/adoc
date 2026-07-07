@@ -35,6 +35,30 @@ impl TestWorkspace {
         fs::write(&path, contents).expect("test source can be written");
         path
     }
+
+    /// Used by `tests/migrate.rs`; other test binaries including this shared
+    /// module drive the workspace through `write` alone.
+    #[allow(dead_code)]
+    pub(crate) fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+}
+
+/// Recursively copy a fixture tree into a workspace, so mutating tests never
+/// touch the checked-in fixture (the adoc-cli support pattern). Used by
+/// `tests/migrate.rs`; dead code from the other test binaries' view.
+#[allow(dead_code)]
+pub(crate) fn copy_tree(source: &std::path::Path, destination: &std::path::Path) {
+    fs::create_dir_all(destination).expect("destination directory can be created");
+    for entry in fs::read_dir(source).expect("fixture directory is readable") {
+        let entry = entry.expect("fixture entry is readable");
+        let target = destination.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), &target).expect("fixture file can be copied");
+        }
+    }
 }
 
 impl Drop for TestWorkspace {
