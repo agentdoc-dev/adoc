@@ -1,7 +1,7 @@
 //! V4.4 end-to-end test for the Markdown Pilot.
 //!
 //! Validates `examples/markdown-pilot/` against the full V4 acceptance
-//! contract from `docs/V4-DESIGN.md`:
+//! contract from `docs/design/V4-DESIGN.md`:
 //!
 //! - V4.1: raw HTML quarantined, unsafe link/image schemes dropped, safe
 //!   HTML rendered, prose-only graph nodes for `.md` source.
@@ -40,7 +40,7 @@ const PILOT_PATH: &str = "examples/markdown-pilot/";
 
 /// V4.1 + V4.2 + V4.4 acceptance: `adoc check` over the full pilot exits
 /// 0 with the exact compat-warning budget published in
-/// `docs/markdown-pilot.md`.
+/// `docs/guides/markdown-pilot.md`.
 ///
 /// Diagnostic budget:
 /// - 2 × `compat.raw_html_quarantined` (one `<div>` + one `<script>` in

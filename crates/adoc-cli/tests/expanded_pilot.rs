@@ -1,13 +1,13 @@
 //! V5.10 + V6.5.5 end-to-end test for the Expanded Pilot.
 //!
 //! Validates `examples/expanded-pilot/` against the full V5 + V5.10 acceptance
-//! contract from `docs/V5-DESIGN.md`, extended by V6.5.5 to the fifteen-kind
+//! contract from `docs/design/V5-DESIGN.md`, extended by V6.5.5 to the fifteen-kind
 //! vocabulary: the V5 kinds (constraint, procedure, example, policy,
 //! agent_instruction, contradiction, source) plus the V6.5 kinds (api,
 //! observation, question, task), the V5.8 typed evidence model, and all four
 //! V5.10 lifecycle signals, across auth / billing / security / team domains.
 //!
-//! Diagnostic budget (documented in `docs/expanded-pilot.md`): 0 errors,
+//! Diagnostic budget (documented in `docs/guides/expanded-pilot.md`): 0 errors,
 //! 6 warnings:
 //!
 //! | Code                                  | Count | Object                                     |
@@ -42,7 +42,7 @@ fn repo_root() -> PathBuf {
 const PILOT_PATH: &str = "examples/expanded-pilot/";
 
 /// V5.10 + V6.5.5 acceptance: `adoc check` over the full pilot exits 0 with
-/// the exact diagnostic budget published in `docs/expanded-pilot.md` — 0
+/// the exact diagnostic budget published in `docs/guides/expanded-pilot.md` — 0
 /// errors and exactly 6 warnings (2 `lifecycle.expired`,
 /// 1 `schema.policy_review_overdue`, 1 `claim.evidence_quality_low`,
 /// 1 `schema.claim_contradicted_by_unresolved`, 1 `task.overdue`).
@@ -361,7 +361,7 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
 /// V5.10 acceptance: the V5 kinds are retrievable. `adoc why` cites the
 /// verified procedure, `adoc graph` traverses the active policy to a related
 /// object (now stale) and back, and `adoc search "policy"` returns the policy
-/// first (docs/V5-DESIGN.md §V5.9/§V5.10).
+/// first (docs/design/V5-DESIGN.md §V5.9/§V5.10).
 #[test]
 fn expanded_pilot_retrieval_why_graph_search() {
     let repo_root = repo_root();
@@ -727,7 +727,7 @@ fn expanded_pilot_diff_review_patch() {
     assert_eq!(rp_env["patch_check"]["target"], "pilot.credits.consume");
 }
 
-/// V5.9 acceptance (docs/V5-DESIGN.md:539): a reader pinned to the old
+/// V5.9 acceptance (docs/design/V5-DESIGN.md:539): a reader pinned to the old
 /// `adoc.graph.v2` model fails gracefully. Feeding a stale v2 artifact to a
 /// read command exits 2 with the `schema.unsupported_version` diagnostic
 /// rather than silently dropping the new V5 kinds.
@@ -799,7 +799,7 @@ fn run_git(workspace: &TestWorkspace, args: &[&str]) {
 }
 
 /// V6.1 acceptance: `adoc stale` re-derives lifecycle signals at read time
-/// from the built graph artifact (docs/ROADMAP-V6.md §V6.1).
+/// from the built graph artifact (docs/roadmap/ROADMAP-V6.md §V6.1).
 ///
 /// The default listing must contain exactly 3 records sorted most-overdue
 /// first (fixed due dates 2020-03-31 / 2024-01-01 / 2026-01-15 keep the order

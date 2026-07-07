@@ -1,5 +1,5 @@
 //! Docs-truth guard (ADR-0041): the tool and kind lists published in
-//! `README.md` and `docs/mcp-agent-gateway.md` are asserted against the code
+//! `README.md` and `docs/guides/mcp-agent-gateway.md` are asserted against the code
 //! registry — set-equality on names, so a failure says which name drifted.
 //! The parse targets pinned HTML comment anchors, never free prose.
 
@@ -94,12 +94,12 @@ fn readme_mcp_tool_list_matches_registry() {
 #[test]
 fn gateway_doc_mcp_tool_list_matches_registry() {
     let published = anchored_list(
-        &read_repo_doc("docs/mcp-agent-gateway.md"),
-        "docs/mcp-agent-gateway.md",
+        &read_repo_doc("docs/guides/mcp-agent-gateway.md"),
+        "docs/guides/mcp-agent-gateway.md",
         "adoc:mcp-tools",
     );
     assert_matches_registry(
-        "docs/mcp-agent-gateway.md",
+        "docs/guides/mcp-agent-gateway.md",
         "MCP tool",
         &published,
         &registered_tool_names(),

@@ -464,7 +464,7 @@ Scope:
   - Coverage: paraphrase, exact ID, owner, kind filter, evidence path, broken filter, empty.
 - Add a property-based test suite over the artifact: every object's verbatim body must appear in `--lexical` top 1; every Object ID must appear in `--lexical` top 1 for that ID; every owner query surfaces every claim with that owner.
 - Both suites run in CI on the pilot.
-- Document the workflow in `docs/v1-retrieval.md`: build, why, search, citation pattern, hybrid versus lexical versus semantic, model swap consequences.
+- Document the workflow in `docs/design/v1-retrieval.md`: build, why, search, citation pattern, hybrid versus lexical versus semantic, model swap consequences.
 - Document the embedding cache semantics and the fastembed integration path for power users.
 
 Acceptance:

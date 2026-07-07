@@ -14,7 +14,7 @@ landed during the V1.7 cycle — the ADR-0038/0041 out-of-order precedent.
 
 PRD §50.1 keeps two MVP items open: #13 (at least one pilot project uses
 AgentDoc for real docs) and #14 (at least one agent cites AgentDoc object
-IDs). [ROADMAP-V7.md](../ROADMAP-V7.md) V7.2 requires discharging them with
+IDs). [ROADMAP-V7.md](../roadmap/ROADMAP-V7.md) V7.2 requires discharging them with
 evidence a skeptic can audit, and requires converting the Later-item gates
 ("when we feel friction") into recorded numeric thresholds. The alternative —
 declaring the MVP done because the features exist — is the docs-truth failure

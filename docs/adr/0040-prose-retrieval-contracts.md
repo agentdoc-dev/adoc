@@ -4,7 +4,7 @@
 **Date:** 2026-07-06
 **Slice:** V1.7.1 (contracts cover V1.7.2's search-artifact half as well)
 
-Fills the number reserved by [ROADMAP-V6.md](../ROADMAP-V6.md) and noted in
+Fills the number reserved by [ROADMAP-V6.md](../roadmap/ROADMAP-V6.md) and noted in
 ADR-0041; recorded after ADR-0041 by design — V7.1 landed before V1.7 started.
 
 ## Context

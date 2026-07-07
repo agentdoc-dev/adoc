@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-06-12
-**Slice:** V6.4 (TB4; recorded at slice start per the [ROADMAP-V6.md](../ROADMAP-V6.md) ADR inventory)
+**Slice:** V6.4 (TB4; recorded at slice start per the [ROADMAP-V6.md](../roadmap/ROADMAP-V6.md) ADR inventory)
 
 ## Context
 
@@ -52,7 +52,7 @@ without either silently breaking them or hiding the capability from agents.
    V6.4 TB4 doc inventory: `docs/agent/v0/usage-contract.md`,
    `docs/agent/v0/review-workflow.md`, `docs/agent/v0/schema/patch.md`,
    `docs/agent/v0/schema/review.md` (promise re-scoped to review),
-   `docs/mcp-agent-gateway.md`, and the root `CONTEXT.md` entries for
+   `docs/guides/mcp-agent-gateway.md`, and the root `CONTEXT.md` entries for
    MCP Agent Gateway and Agent Patch.
 8. **Config back-compat, documented not versioned.** `agentdoc.config.yaml`
    parsing uses `deny_unknown_fields`, so a project that opts into
