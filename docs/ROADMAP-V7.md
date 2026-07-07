@@ -272,7 +272,7 @@ Result-shape decision: `adoc search` returns one blended, RRF-ranked list. Knowl
 
 ### V1.7.1: Prose Lexical Slice
 
-Goal: BM25 over prose blocks, blended with Knowledge Object results.
+Goal: BM25 over prose blocks, blended with Knowledge Object results. Implemented (ADR-0040).
 
 Scope:
 
@@ -292,7 +292,7 @@ Deferred: embeddings (V1.7.2), `adoc why` on prose node IDs, prose snippets in `
 
 ### V1.7.2: Prose Embedding Slice
 
-Goal: prose vectors in the search artifact.
+Goal: prose vectors in the search artifact. Implemented (ADR-0040).
 
 Scope:
 
@@ -308,7 +308,7 @@ Deferred: chunking long blocks into multiple vectors, ANN indexes, hosted embedd
 
 ### V1.7.3: Hybrid Evaluation Slice
 
-Goal: prove blended hybrid quality and pin it with fixtures.
+Goal: prove blended hybrid quality and pin it with fixtures. Implemented (ADR-0040; the migration hint was downgraded rather than removed — see [v1-retrieval.md](v1-retrieval.md)).
 
 Scope:
 
