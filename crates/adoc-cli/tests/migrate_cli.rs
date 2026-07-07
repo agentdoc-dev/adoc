@@ -299,7 +299,7 @@ fn write_force_bypasses_the_committed_clean_refusal() {
 }
 
 #[test]
-fn json_format_is_rejected_until_the_report_slice() {
+fn json_format_emits_the_versioned_report_envelope() {
     let workspace = pilot_copy("migrate-cli-json");
 
     let output = adoc_command()
@@ -308,12 +308,16 @@ fn json_format_is_rejected_until_the_report_slice() {
         .output()
         .expect("adoc migrate should run");
 
-    assert_eq!(output.status.code(), Some(2));
-    assert!(
-        stderr(&output).contains("error[cli.format]"),
-        "{}",
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        stdout(&output),
         stderr(&output)
     );
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout(&output)).expect("stdout is a JSON envelope");
+    assert_eq!(value["schema_version"], "adoc.migrate.report.v0");
 }
 
 #[test]

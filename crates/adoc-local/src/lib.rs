@@ -13,11 +13,11 @@ pub use path_policy::{PathPolicy, ProjectRootPathPolicy, UnrestrictedPathPolicy}
 pub use use_cases::{
     BuildInput, BuildOutcome, BuildOutputs, CheckInput, CheckOutcome, ContradictionsInput,
     ContradictionsOutcome, DiffInput, DiffOutcome, GraphInput, GraphOutcome, ImpactedChangedSet,
-    ImpactedInput, ImpactedOutcome, InitOutcome, MigrateInput, MigrateOutcome, MigrateReport,
-    MigrateReportFile, PatchApplyInput, PatchApplyOutcome, PatchApplySource, PatchCheckInput,
-    PatchCheckOutcome, ProjectArtifactLoadStatus, ProjectArtifactStatus, ProjectStatusArtifacts,
-    ProjectStatusConfig, ProjectStatusInput, ProjectStatusOutcome, ProjectStatusPaths,
-    ProjectStatusReadiness, ProjectStatusRefresh, ProjectStatusRefreshReport,
-    ResolvedRetrievalRecord, ResolvedSearchEntry, ReviewInput, ReviewOutcome, ReviewPatchSource,
-    SearchInput, SearchOutcome, StaleInput, StaleOutcome, WhyInput, WhyOutcome,
+    ImpactedInput, ImpactedOutcome, InitOutcome, MigrateInput, MigrateOutcome, PatchApplyInput,
+    PatchApplyOutcome, PatchApplySource, PatchCheckInput, PatchCheckOutcome,
+    ProjectArtifactLoadStatus, ProjectArtifactStatus, ProjectStatusArtifacts, ProjectStatusConfig,
+    ProjectStatusInput, ProjectStatusOutcome, ProjectStatusPaths, ProjectStatusReadiness,
+    ProjectStatusRefresh, ProjectStatusRefreshReport, ResolvedRetrievalRecord, ResolvedSearchEntry,
+    ReviewInput, ReviewOutcome, ReviewPatchSource, SearchInput, SearchOutcome, StaleInput,
+    StaleOutcome, WhyInput, WhyOutcome,
 };

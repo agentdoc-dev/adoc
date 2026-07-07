@@ -5,7 +5,6 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use adoc_core::MigrateMode;
 use adoc_core::{
     ArtifactInspection, ArtifactLoadStatus, BuildArtifacts, BuildEmbeddingMode,
     BuildInput as CoreBuildInput, CompileInput, CompileResult, ContradictionsEnvelope, Diagnostic,
@@ -28,6 +27,7 @@ use adoc_core::{
     parse_patch_from_value, patch_apply_refusal, review_with_patch, search as core_search,
     traverse_graph, validate_changed_paths, why_object,
 };
+use adoc_core::{MigrateMode, MigrateReportEnvelope};
 use serde::Serialize;
 
 use crate::{EmbeddingsProvider, LocalContext, LocalError, PathPolicy, ProjectConfig};
@@ -73,23 +73,8 @@ pub struct MigrateInput {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct MigrateReportFile {
-    pub source: PathBuf,
-    pub target: PathBuf,
-    pub written: bool,
-}
-
-/// V8.1.1 plain migration report — file list plus diagnostics. The
-/// `adoc.migrate.report.v0` envelope with §28.3 counts lands in V8.1.2.
-#[derive(Debug, Clone, Serialize)]
-pub struct MigrateReport {
-    pub files: Vec<MigrateReportFile>,
-    pub diagnostics: Vec<Diagnostic>,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub struct MigrateOutcome {
-    pub report: MigrateReport,
+    pub report: MigrateReportEnvelope,
     pub exit_code: i32,
 }
 
@@ -553,18 +538,7 @@ where
 
     let exit_code = if result.has_errors() { 1 } else { 0 };
     Ok(MigrateOutcome {
-        report: MigrateReport {
-            files: result
-                .files
-                .into_iter()
-                .map(|file| MigrateReportFile {
-                    source: file.source_path,
-                    target: file.target_path,
-                    written,
-                })
-                .collect(),
-            diagnostics: result.diagnostics,
-        },
+        report: MigrateReportEnvelope::new(result, written),
         exit_code,
     })
 }
