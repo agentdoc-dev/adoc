@@ -575,15 +575,20 @@ where
 /// half-written success state; the committed sources make phase 2 failures
 /// recoverable from git.
 fn execute_migration_writes(files: &[adoc_core::MigratedFile]) -> Result<(), LocalError> {
+    execute_migration_writes_with(files, write_new_target, |path| fs::remove_file(path))
+}
+
+fn execute_migration_writes_with(
+    files: &[adoc_core::MigratedFile],
+    mut create: impl FnMut(&Path, &[u8]) -> io::Result<()>,
+    mut remove: impl FnMut(&Path) -> io::Result<()>,
+) -> Result<(), LocalError> {
     let mut created: Vec<&Path> = Vec::with_capacity(files.len());
     for file in files {
-        let open = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&file.target_path)
-            .and_then(|mut target| target.write_all(file.adoc_text.as_bytes()));
-        if let Err(source) = open {
-            cleanup_init_paths(created);
+        if let Err(source) = create(&file.target_path, file.adoc_text.as_bytes()) {
+            for path in created {
+                let _ = remove(path);
+            }
             return Err(LocalError::WriteFailed {
                 path: file.target_path.clone(),
                 source,
@@ -592,7 +597,7 @@ fn execute_migration_writes(files: &[adoc_core::MigratedFile]) -> Result<(), Loc
         created.push(&file.target_path);
     }
     for file in files {
-        fs::remove_file(&file.source_path).map_err(|source| LocalError::RemoveFailed {
+        remove(&file.source_path).map_err(|source| LocalError::RemoveFailed {
             path: file.source_path.clone(),
             source,
         })?;
@@ -1364,32 +1369,32 @@ The project has an initialized AgentDoc source tree.
 }
 
 fn write_new_file(path: &Path, contents: &[u8]) -> Result<(), LocalError> {
+    write_new_target(path, contents).map_err(|source| {
+        if source.kind() == io::ErrorKind::AlreadyExists {
+            LocalError::InitTargetExists {
+                path: path.to_path_buf(),
+            }
+        } else {
+            LocalError::WriteFailed {
+                path: path.to_path_buf(),
+                source,
+            }
+        }
+    })
+}
+
+/// Create-new + write with self-cleanup: a file is only removed when this
+/// call created it and the write then failed. A pre-existing file surfaces
+/// as `AlreadyExists` and is never touched — the caller cannot tell a
+/// partial write from a user's file, so the distinction must live here.
+fn write_new_target(path: &Path, contents: &[u8]) -> io::Result<()> {
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(path)
-        .map_err(|source| {
-            if source.kind() == io::ErrorKind::AlreadyExists {
-                LocalError::InitTargetExists {
-                    path: path.to_path_buf(),
-                }
-            } else {
-                LocalError::WriteFailed {
-                    path: path.to_path_buf(),
-                    source,
-                }
-            }
-        })?;
-
-    if let Err(source) = file.write_all(contents) {
-        cleanup_init_paths([path]);
-        return Err(LocalError::WriteFailed {
-            path: path.to_path_buf(),
-            source,
-        });
-    }
-
-    Ok(())
+        .open(path)?;
+    file.write_all(contents).inspect_err(|_| {
+        let _ = fs::remove_file(path);
+    })
 }
 
 fn cleanup_init_paths<P: AsRef<Path>>(paths: impl IntoIterator<Item = P>) {
@@ -1854,5 +1859,75 @@ fn patch_diagnostic_exit_code(diagnostic: &Diagnostic) -> Option<i32> {
         ) => Some(1),
         (_, Severity::Error) => Some(1),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+    use std::io;
+
+    use super::*;
+
+    fn migrated_file(name: &str) -> adoc_core::MigratedFile {
+        adoc_core::MigratedFile {
+            source_path: PathBuf::from(format!("/docs/{name}.md")),
+            target_path: PathBuf::from(format!("/docs/{name}.adoc")),
+            adoc_text: format!("# {name}\n"),
+        }
+    }
+
+    #[test]
+    fn failed_target_write_removes_already_created_targets_and_keeps_sources() {
+        let files = [
+            migrated_file("one"),
+            migrated_file("two"),
+            migrated_file("three"),
+        ];
+        let removed = RefCell::new(Vec::new());
+        let mut creations = 0;
+
+        let result = execute_migration_writes_with(
+            &files,
+            |_, _| {
+                creations += 1;
+                if creations == 2 {
+                    Err(io::Error::other("disk full"))
+                } else {
+                    Ok(())
+                }
+            },
+            |path| {
+                removed.borrow_mut().push(path.to_path_buf());
+                Ok(())
+            },
+        );
+
+        match result {
+            Err(LocalError::WriteFailed { path, .. }) => {
+                assert_eq!(path, files[1].target_path);
+            }
+            other => panic!("expected WriteFailed, got {other:?}"),
+        }
+        assert_eq!(
+            *removed.borrow(),
+            vec![files[0].target_path.clone()],
+            "only the already-created target is cleaned up; no source is removed"
+        );
+    }
+
+    #[test]
+    fn write_new_target_refuses_existing_file_and_leaves_it_intact() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("page.adoc");
+        fs::write(&path, "user content").expect("seed existing target");
+
+        let error = write_new_target(&path, b"migrated").expect_err("create_new must refuse");
+
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            fs::read_to_string(&path).expect("pre-existing target must survive"),
+            "user content"
+        );
     }
 }
