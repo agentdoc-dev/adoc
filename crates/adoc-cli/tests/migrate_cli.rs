@@ -1,6 +1,8 @@
 //! V8.1.1 acceptance for `adoc migrate` (ADR-0043): dry-run default over the
 //! Markdown Pilot, `--write` in a git-committed tempdir copy, the
 //! committed-clean refusal, `--force`, and quarantine-code visibility.
+//! V8.1.2 pins the `adoc.migrate.report.v0` envelope: exact pilot counts and
+//! the counts-reconcile-with-diagnostics invariant (ADR-0043 §4).
 //!
 //! Every test operates on a tempdir copy of `examples/markdown-pilot/` —
 //! never the checked-in example, which retrieval fixtures pin.
@@ -318,6 +320,194 @@ fn json_format_emits_the_versioned_report_envelope() {
     let value: serde_json::Value =
         serde_json::from_str(&stdout(&output)).expect("stdout is a JSON envelope");
     assert_eq!(value["schema_version"], "adoc.migrate.report.v0");
+}
+
+fn migrate_json(workspace: &TestWorkspace, args: &[&str]) -> (Option<i32>, serde_json::Value) {
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["migrate", "."])
+        .args(args)
+        .args(["--format", "json"])
+        .output()
+        .expect("adoc migrate should run");
+    let value: serde_json::Value = serde_json::from_str(&stdout(&output)).unwrap_or_else(|error| {
+        panic!("stdout is a JSON envelope ({error}):\n{}", stdout(&output))
+    });
+    (output.status.code(), value)
+}
+
+/// The exact §28.3 counts for the Markdown Pilot, pinned. A drift here means
+/// the corpus or the migration rules changed — both must be deliberate.
+#[test]
+fn json_report_pins_exact_pilot_counts() {
+    let workspace = pilot_copy("migrate-cli-pin-counts");
+
+    let (code, value) = migrate_json(&workspace, &[]);
+
+    assert_eq!(code, Some(0), "{value}");
+    assert_eq!(
+        value["counts"],
+        serde_json::json!({
+            "files_imported": PILOT_MD_COUNT,
+            "pages_created": PILOT_MD_COUNT,
+            "prose_blocks": 128,
+            "raw_html_quarantined": 3,
+            "broken_links": 5,
+            "unrecognized_extensions": 18,
+            "suggested_typed_blocks": 0,
+        })
+    );
+    let files = value["files"].as_array().expect("files is an array");
+    assert_eq!(files.len(), PILOT_MD_COUNT);
+    assert!(
+        files.iter().all(|file| file["written"] == false),
+        "dry-run writes nothing: {value}"
+    );
+}
+
+/// The ADR-0043 §4 acceptance invariant: every report count reconciles
+/// one-to-one with an emitted diagnostic — the report never claims what the
+/// diagnostics don't show, and never hides what they do (the `compat.*`
+/// diagnostics belong to no bucket but still travel).
+#[test]
+fn every_report_count_reconciles_with_an_emitted_diagnostic() {
+    let workspace = pilot_copy("migrate-cli-reconcile");
+
+    let (code, value) = migrate_json(&workspace, &[]);
+
+    assert_eq!(code, Some(0), "{value}");
+    let diagnostics = value["diagnostics"].as_array().expect("diagnostics array");
+    let tally = |wire_code: &str| {
+        diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic["code"] == wire_code)
+            .count() as u64
+    };
+    let counts = &value["counts"];
+    assert_eq!(
+        counts["raw_html_quarantined"].as_u64(),
+        Some(tally("migrate.raw_html_quarantined"))
+    );
+    assert_eq!(
+        counts["broken_links"].as_u64(),
+        Some(tally("migrate.broken_link"))
+    );
+    assert_eq!(
+        counts["unrecognized_extensions"].as_u64(),
+        Some(tally("migrate.unrecognized_extension"))
+    );
+    let files = value["files"].as_array().expect("files array");
+    assert_eq!(counts["files_imported"].as_u64(), Some(files.len() as u64));
+    assert_eq!(counts["pages_created"], counts["files_imported"]);
+    let prose_sum: u64 = files
+        .iter()
+        .map(|file| file["prose_blocks"].as_u64().expect("prose_blocks"))
+        .sum();
+    assert_eq!(counts["prose_blocks"].as_u64(), Some(prose_sum));
+    assert_eq!(counts["suggested_typed_blocks"].as_u64(), Some(0));
+    assert_eq!(
+        tally("compat.unknown_extension"),
+        2,
+        "unbucketed diagnostics still travel in the envelope: {value}"
+    );
+}
+
+#[test]
+fn write_report_marks_every_file_written() {
+    let workspace = committed_pilot_copy("migrate-cli-write-json");
+
+    let (code, value) = migrate_json(&workspace, &["--write"]);
+
+    assert_eq!(code, Some(0), "{value}");
+    let files = value["files"].as_array().expect("files array");
+    assert_eq!(files.len(), PILOT_MD_COUNT);
+    assert!(
+        files.iter().all(|file| file["written"] == true),
+        "--write marks every file written: {value}"
+    );
+    assert_eq!(value["counts"]["files_imported"], PILOT_MD_COUNT);
+}
+
+#[test]
+fn refused_write_still_emits_the_envelope_under_json() {
+    let workspace = committed_pilot_copy("migrate-cli-refusal-json");
+    let dirty = workspace.root.join("api/errors.md");
+    let mut text = fs::read_to_string(&dirty).expect("dirty source is readable");
+    text.push_str("\nUncommitted trailing note.\n");
+    fs::write(&dirty, text).expect("dirty edit can be written");
+    let before = tree_contents(&workspace.root);
+
+    let (code, value) = migrate_json(&workspace, &["--write"]);
+
+    assert_eq!(code, Some(1), "{value}");
+    assert_eq!(value["schema_version"], "adoc.migrate.report.v0");
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|diagnostic| diagnostic["code"] == "migrate.source_not_committed"),
+        "{value}"
+    );
+    assert_eq!(
+        tree_contents(&workspace.root),
+        before,
+        "a refused run must write and remove nothing"
+    );
+}
+
+#[test]
+fn empty_workspace_reports_zero_counts() {
+    let workspace = TestWorkspace::new("migrate-cli-empty");
+
+    let (code, value) = migrate_json(&workspace, &[]);
+
+    assert_eq!(code, Some(0), "{value}");
+    assert_eq!(
+        value["counts"],
+        serde_json::json!({
+            "files_imported": 0,
+            "pages_created": 0,
+            "prose_blocks": 0,
+            "raw_html_quarantined": 0,
+            "broken_links": 0,
+            "unrecognized_extensions": 0,
+            "suggested_typed_blocks": 0,
+        })
+    );
+    assert_eq!(value["files"], serde_json::json!([]));
+    assert_eq!(value["suggested_next_steps"], serde_json::json!([]));
+}
+
+#[test]
+fn plain_output_prints_the_section_28_3_report_block() {
+    let workspace = pilot_copy("migrate-cli-plain-report");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["migrate", "."])
+        .output()
+        .expect("adoc migrate should run");
+
+    assert_eq!(output.status.code(), Some(0));
+    let text = stdout(&output);
+    for line in [
+        "Migration report",
+        "Files imported: 15",
+        "Pages created: 15",
+        "Prose blocks: 128",
+        "Raw HTML blocks quarantined: 3",
+        "Broken links: 5",
+        "Unrecognized extensions: 18",
+        "Suggested typed blocks: 0",
+        "Suggested next steps:",
+        "would migrate",
+    ] {
+        assert!(
+            text.contains(line),
+            "plain output must contain {line:?}:\n{text}"
+        );
+    }
 }
 
 #[test]
