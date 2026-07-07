@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "agentdoc": {
+      "command": "./target/release/adoc-mcp"
+    }
+  }
+}
