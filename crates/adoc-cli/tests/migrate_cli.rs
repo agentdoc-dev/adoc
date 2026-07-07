@@ -368,7 +368,10 @@ fn json_report_pins_exact_pilot_counts() {
 /// The ADR-0043 §4 acceptance invariant: every report count reconciles
 /// one-to-one with an emitted diagnostic — the report never claims what the
 /// diagnostics don't show, and never hides what they do (the `compat.*`
-/// diagnostics belong to no bucket but still travel).
+/// diagnostics belong to no bucket but still travel). The tally-by-code
+/// semantic deliberately folds quarantines and drops into one bucket:
+/// `unrecognized_extensions` counts fenced-verbatim constructs and diagnosed
+/// drops (front matter, task-list checkboxes, empty parser artifacts) alike.
 #[test]
 fn every_report_count_reconciles_with_an_emitted_diagnostic() {
     let workspace = pilot_copy("migrate-cli-reconcile");
