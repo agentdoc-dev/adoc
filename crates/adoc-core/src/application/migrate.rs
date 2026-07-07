@@ -42,7 +42,9 @@ pub struct MigratedFile {
     pub source_path: PathBuf,
     pub target_path: PathBuf,
     pub adoc_text: String,
-    /// Serialized prose-block count — the report's `prose_blocks` source.
+    /// Serialized fragment count — every rendered block (headings, prose
+    /// paragraphs, tight lists, code and quarantine fences), not only
+    /// paragraphs; the report's `prose_blocks` source.
     pub prose_blocks: usize,
 }
 
@@ -74,6 +76,8 @@ pub struct MigrateCounts {
     /// Equal to `files_imported` — one prose-mode page per source (§28.3
     /// names both; they diverge only if a future slice splits pages).
     pub pages_created: usize,
+    /// Sum of the per-file serialized fragment counts — every rendered block
+    /// (headings, lists, fences included), not only prose paragraphs.
     pub prose_blocks: usize,
     pub raw_html_quarantined: usize,
     pub broken_links: usize,
