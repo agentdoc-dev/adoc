@@ -91,7 +91,10 @@ window opens.
    pilot without an import path). If this report measures below threshold on
    all three migration counters, that structural justification is revisited
    before any V8 slice starts.
-6. **Report discipline.** The `docs/pilot-report.md` skeleton — Project /
+6. **Report discipline.** The `docs/pilots/dogfood/report.md` skeleton
+   (top-level `docs/pilot-report.md` is impossible — single-segment page
+   IDs do not compile; the chosen path matches the ROADMAP-V8 V8.2
+   per-partner convention) — Project /
    Corpus / Citations / The loop, run for real / Retrieval quality notes /
    Friction log / Gate measurements — is committed before the window opens
    so the report cannot quietly omit a section that comes back unflattering.
