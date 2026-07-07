@@ -1879,6 +1879,7 @@ mod tests {
             source_path: PathBuf::from(format!("/docs/{name}.md")),
             target_path: PathBuf::from(format!("/docs/{name}.adoc")),
             adoc_text: format!("# {name}\n"),
+            prose_blocks: 1,
         }
     }
 
