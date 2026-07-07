@@ -229,6 +229,14 @@ impl Serializer<'_> {
     /// envelope — re-attributed from the synthetic `migrate/recheck.adoc`
     /// path to the real source block span.
     ///
+    /// Single-code by design: when a fragment triggers several strict ERROR
+    /// rules, the first code wins (parse diagnostics drain before source-rule
+    /// diagnostics) and the quarantine is attributed to that one `migrate.*`
+    /// bucket. The report's reconciliation invariant is unaffected — each
+    /// count equals the tally of its emitted code — but a mixed-cause
+    /// fragment reports as a single-cause quarantine; this is intent, not a
+    /// counting bug.
+    ///
     /// ponytail: no strict rule emits a non-error severity today, so the
     /// forwarding path is exercised only at its unit-test seam until one
     /// does. And one throwaway parse per prose block is O(blocks); switch to
