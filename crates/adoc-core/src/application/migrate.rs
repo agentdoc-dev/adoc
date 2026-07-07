@@ -692,6 +692,29 @@ mod tests {
     }
 
     #[test]
+    fn a_list_with_multiple_todo_items_yields_one_suggestion() {
+        // One suggestion max per top-level block — the first matching item
+        // wins. Emitting one record per TODO item is the deferred upgrade
+        // path, gated on partner friction logs (§28.4 rules land rule-by-rule).
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "a/todos.md",
+            "# Todos\n\n\
+             - TODO: rotate the signing key\n\
+             - TODO: update the runbook\n\
+             - TODO: notify the team\n",
+        ));
+
+        let result = migrate_with_provider(&provider, MigrateMode::DryRun);
+
+        assert_eq!(result.suggestions.len(), 1, "{:?}", result.suggestions);
+        let suggestion = &result.suggestions[0];
+        assert_eq!(suggestion.suggested_kind, "task");
+        assert_eq!(suggestion.matched_rule, "todo_line");
+        assert_eq!(suggestion.excerpt, "TODO: rotate the signing key");
+        assert_eq!(suggestion.span.start.line, 3, "the first item's span");
+    }
+
+    #[test]
     fn ordered_list_suggests_a_procedure() {
         let provider = InMemorySourceProvider::new().with_source(markdown_source(
             "a/steps.md",
