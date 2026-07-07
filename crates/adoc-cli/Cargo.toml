@@ -30,5 +30,5 @@ adoc-core = { path = "../adoc-core", features = ["test-embedding-provider"] }
 assert_cmd = "2"
 insta = { version = "1", features = ["filters"] }
 predicates = "3"
-serde-saphyr = "0.0.21"
+serde-saphyr = "0.0.29"
 strip-ansi-escapes = "0.2"
