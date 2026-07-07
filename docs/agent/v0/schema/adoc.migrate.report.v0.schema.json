@@ -51,7 +51,7 @@
           "minimum": 0
         },
         "prose_blocks": {
-          "description": "Sum of the per-file serialized prose-block counts.",
+          "description": "Sum of the per-file serialized fragment counts — every rendered block (headings, lists, code and quarantine fences included), not only prose paragraphs.",
           "type": "integer",
           "minimum": 0
         },
