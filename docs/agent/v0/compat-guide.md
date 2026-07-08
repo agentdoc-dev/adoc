@@ -33,12 +33,12 @@ All five V4 diagnostics are `Severity::Warning` and never fail `adoc check` or `
 
 ## Migration
 
-`adoc migrate` (V4.5+) is the future workflow that turns `.md` source into `.adoc` with suggested Knowledge Objects, definition lists mapped to glossary terms, and an explicit import report. It is **not** part of V4. When users ask "how do I make these Markdown docs citable?", point them at:
+`adoc migrate` (shipped in V8.1) turns `.md` source into prose-mode `.adoc` losslessly, with suggested typed-block candidates in its report (never auto-typed — the human types the block), an explicit `adoc.migrate.report.v0` import report, and a reversible `adoc migrate --export` back to Markdown. When users ask "how do I make these Markdown docs citable?", point them at:
 
 1. Hand-authoring `.adoc` Knowledge Objects in the same repo (incremental migration).
-2. Waiting for `adoc migrate` (V4.5+) for bulk import with suggested-claim extraction.
+2. Running `adoc migrate` for bulk import — dry-run by default; `--write` converts the tree; the report's suggestions name the typed blocks a human could add.
 
-Do not invent migration commands; the surface does not exist yet.
+Migration is a human onboarding act run through the CLI; there is no MCP migrate tool.
 
 ## Boundary
 

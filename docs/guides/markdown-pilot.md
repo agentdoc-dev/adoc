@@ -78,9 +78,11 @@ the canonical guidance for this lives in the
   invisible to BM25 and semantic search by design. Prose retrieval is
   scheduled as **V1.7**, which extends both pipelines symmetrically
   across `.adoc` and `.md` prose.
-- **`adoc migrate`.** Migrating Markdown into native AgentDoc Source is
-  scheduled as **V4.5+** once measured compatibility-mode usage informs
-  the migration design.
+- **A migrated corpus.** The checked-in corpus stays `.md` — retrieval
+  fixtures pin it. `adoc migrate` (V8.1) is exercised over tempdir
+  copies instead: `migrate_cli.rs` pins its exact report counts and
+  `adoc-core/tests/migrate.rs` holds the losslessness and round-trip
+  properties against this corpus.
 - **`<MyComponent prop="x">…</MyComponent>` (paired MDX).** V4 detects
   self-closing PascalCase tags as MDX. Paired open/close MDX tags are
   classified as raw HTML and quarantined; this is intentional and

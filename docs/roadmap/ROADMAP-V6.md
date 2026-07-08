@@ -374,7 +374,7 @@ Invariants that must hold across all three milestones:
 ## Later / Explicitly Not Now
 
 - **Composition (formerly "V6")**: `@include` with circular detection, nested typed blocks, custom schema registry (PRD §29), automated contradiction detection (PRD §27), SQLite or embedded graph stores. Postponed until the editing loop and full vocabulary are proven in real use; the design guidance and open questions recorded in [ROADMAP.md](ROADMAP.md) under the old V6 section remain valid.
-- **V4.5 Markdown migration** (`adoc migrate`, suggested-claim extraction, `adoc.migrate.report.v0`): still waiting on measured compat-mode friction. PRD MVP must-have #18 — the last unfinished MVP item.
+- **V4.5 Markdown migration** — *discharged: shipped as V8.1 ([ROADMAP-V8.md](ROADMAP-V8.md))*, which retired the "V4.5" placeholder number. PRD MVP must-have #18 is closed.
 - **V7 web and governance**: object explorer, review dashboard, agent activity log, SSO/RBAC/audit. Unchanged.
 - **Example sandbox execution**: `checks`/`sandbox` remain declaration-only per V5.3.
 - **Permission engine**: PRD §17 agent permissions stay unenforced. V6 records proposer metadata and gates agent writes behind a single config switch; per-agent, per-scope authorization is a V7-class problem.

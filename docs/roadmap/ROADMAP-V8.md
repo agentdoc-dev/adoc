@@ -49,7 +49,7 @@ The seams exist: `.md` ingestion via pulldown-cmark has been in the compiler sin
 
 ### V8.1.1: Import Core Slice
 
-Goal: `adoc migrate` converts `.md` files to prose-mode `.adoc` pages losslessly (§28.1–§28.2).
+Goal: `adoc migrate` converts `.md` files to prose-mode `.adoc` pages losslessly (§28.1–§28.2). Implemented (ADR-0043).
 
 Scope:
 
@@ -67,7 +67,7 @@ Deferred: front-matter mapping, table restructuring beyond passthrough, an MCP `
 
 ### V8.1.2: Migration Report Slice
 
-Goal: the §28.3 migration report as a versioned artifact plus a human summary.
+Goal: the §28.3 migration report as a versioned artifact plus a human summary. Implemented.
 
 Scope:
 
@@ -81,7 +81,7 @@ Acceptance: `adoc migrate --format json` on the Markdown Pilot emits `schema_ver
 
 ### V8.1.3: Suggestion Slice
 
-Goal: §28.4 suggested typed-block candidates in the report — never auto-typed.
+Goal: §28.4 suggested typed-block candidates in the report — never auto-typed. Implemented.
 
 Scope:
 
@@ -97,7 +97,7 @@ Deferred: decision-language detection and the remaining §28.4 mappings (added r
 
 ### V8.1.4: Export / Reversibility Slice
 
-Goal: export prose-mode `.adoc` back to `.md` — migration is reversible (§28.1); closes PRD §50.1 #12 and MVP Must-Have #18.
+Goal: export prose-mode `.adoc` back to `.md` — migration is reversible (§28.1); closes PRD §50.1 #12 and MVP Must-Have #18. Implemented.
 
 Scope:
 

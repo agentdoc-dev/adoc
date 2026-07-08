@@ -16,4 +16,4 @@ Per-file entries are `{source, target, written, prose_blocks}` — `written` is 
 
 Exit codes: 0 for a clean or warning-only run (dry-run and `--write` alike), 1 when any ERROR diagnostic is present (`migrate.source_not_committed`, `migrate.target_exists`, unrepresentable content) — the envelope is still emitted, carrying the refusal diagnostics. An I/O failure while executing `--write` surfaces as a CLI error without an envelope.
 
-The envelope is experimental until the V8.1 milestone closes at V8.1.4 (V8.1.3 added suggestion records additively).
+The envelope shape is final as of V8.1.4 (V8.1.3 added suggestion records, V8.1.4 the `direction` field — both additive). Its stability class under the V8.4.1 contract policy is *experimental* until that slice records CONTRACTS.md.

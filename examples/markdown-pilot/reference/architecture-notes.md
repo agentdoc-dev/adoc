@@ -15,8 +15,8 @@ Important note about request limits {.callout}
 
 The team's previous tooling rendered the line above as a styled callout
 via a Markdown attribute block. V4 Compatibility Mode does not
-interpret attribute blocks; the source is preserved so the migration
-tool can suggest a native `warning` object during V4.5+.
+interpret attribute blocks; the source is preserved so a later
+`adoc migrate` run can suggest a native `warning` object.
 
 ## Capacity planning
 
