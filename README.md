@@ -681,4 +681,7 @@ See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) for the full sequence.
 
 ## License
 
-This project declares the MIT license in Cargo package metadata.
+This project is licensed under the [MIT License](LICENSE). The license applies
+to the entire history of this repository, including all revisions prior to the
+commit that introduced the LICENSE file; Cargo package metadata has declared
+`license = "MIT"` since early in the project's history.
