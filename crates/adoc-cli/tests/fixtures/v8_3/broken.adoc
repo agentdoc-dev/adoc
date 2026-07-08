@@ -1,0 +1,10 @@
+# Broken Relation @doc(ci.broken-relation)
+
+One error-severity diagnostic: the claim depends on an undeclared object.
+
+::claim billing.refunds
+status: draft
+depends_on: missing.object
+--
+Refund workflows depend on knowledge that has not been declared.
+::

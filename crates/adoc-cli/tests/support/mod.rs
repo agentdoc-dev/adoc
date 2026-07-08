@@ -60,6 +60,33 @@ pub(crate) fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
+/// Read or refresh a golden Markdown file under `tests/fixtures/`. Set
+/// `ADOC_UPDATE_GOLDEN=1` in the env to rewrite the golden from the current
+/// run; otherwise compare for byte equality.
+#[allow(dead_code)]
+pub(crate) fn assert_markdown_matches_golden(relative: &str, actual: &str) {
+    let golden = fixture_path(relative);
+    if std::env::var_os("ADOC_UPDATE_GOLDEN").is_some() {
+        if let Some(parent) = golden.parent() {
+            fs::create_dir_all(parent).expect("create golden parent dir");
+        }
+        fs::write(&golden, actual).expect("write golden file");
+        return;
+    }
+    let expected = fs::read_to_string(&golden).unwrap_or_else(|error| {
+        panic!(
+            "missing golden file at {}: {error}\nTo bootstrap, re-run with ADOC_UPDATE_GOLDEN=1",
+            golden.display()
+        )
+    });
+    assert_eq!(
+        actual,
+        expected,
+        "markdown output diverged from golden at {}\n--- expected ---\n{expected}\n--- actual ---\n{actual}",
+        golden.display()
+    );
+}
+
 pub(crate) struct TestWorkspace {
     pub(crate) root: PathBuf,
 }
