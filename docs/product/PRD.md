@@ -4731,12 +4731,12 @@ The MVP is acceptable when:
 9. [x] Broken references are detected.
 10. [x] Agents can retrieve structured objects through API or JSON output.
 11. [x] Rendered docs show status and warnings.
-12. [ ] Markdown files can be imported with a useful migration report. *(Remaining engineering item — Phase 2 / V8.1 `adoc migrate`, Section 28.)*
+12. [x] Markdown files can be imported with a useful migration report. *(Shipped by V8.1 `adoc migrate` — lossless import, `adoc.migrate.report.v0`, suggested typed blocks, reversible `--export`; see [ROADMAP-V8.md](../roadmap/ROADMAP-V8.md) §V8.1 and ADR-0043.)*
 13. [ ] At least one pilot project can use AgentDoc for real docs.
 14. [ ] At least one internal agent can cite AgentDoc object IDs.
 15. [ ] Users can understand and fix validation errors without reading internal compiler details.
 
-Status (0.2, 2026-07-06): items 1–11 are shipped. Item 12 is the last engineering item, closed by Phase 2 (V8.1). Items 13–15 are checked only by the pilot-readiness report (`docs/pilot-report.md`), with links, when the pilot runs.
+Status (0.2, 2026-07-06; item 12 checked at V8.1.4): items 1–12 are shipped — every engineering item. Items 13–15 are checked only by the pilot-readiness report (`docs/pilot-report.md`), with links, when the pilot runs.
 
 ## 50.2 Full Product Acceptance Criteria
 

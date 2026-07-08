@@ -441,7 +441,7 @@ _Avoid_: reusing `compute_impact`'s diff projection, glob `impacts:` matching, l
 - The **V4 Markdown Subset** is fixed at V4; new Markdown features land only with new ADRs and new diagnostic codes.
 - The **Markdown Pilot** gates V4 acceptance the way the **Pilot Retrieval Set** gates V1 ranking changes.
 - A **Markdown Source** page never participates in `adoc.diff.v0`, `adoc.review.v0`, **Patch Validation**, or as a citation in retrieval — those surfaces remain Knowledge-Object-scoped.
-- `adoc search` over a project containing only **Markdown Source** emits `retrieval.no_knowledge_objects_consider_migration` and points users at the future `adoc migrate` workflow (V4.5+).
+- `adoc search` over a project containing only **Markdown Source** emits `retrieval.no_knowledge_objects_consider_migration` and points users at the `adoc migrate` workflow (shipped in V8.1).
 - The **Expanded Object Set** extends the **Core Object Set** with `constraint`, `procedure`, `example`, `policy`, `agent_instruction`, `contradiction`, `source` — all of which are **Knowledge Objects** and inherit the existing **Object ID**, lifecycle, **Patch Validation**, and **Review Report** contracts.
 - A **Severity** value object is shared by `constraint`, `warning`, and `contradiction`; no per-kind severity grammar.
 - A **Constraint Object** may declare `impacts:` per V3.3; **Source-Path Impact** analysis treats verified constraints symmetrically with verified claims when computing **Required Reviewer** sets.
@@ -501,7 +501,7 @@ _Avoid_: reusing `compute_impact`'s diff projection, glob `impacts:` matching, l
 - "MCP guidance" could mean only prose in repository docs - resolved: V2.2 exposes **Agent Guidance Resources** and **Agent Workflow Prompts** directly through the **MCP Agent Gateway**.
 - "Project readiness" could mean agents should infer state from artifact files - resolved: agents use the **Project Status Report** before retrieval, semantic search, or patch validation.
 - "Compatibility mode could relax `.adoc` validation when a project enables it" - resolved: **Compatibility Mode** applies only to `.md` files; `.adoc` files stay under **Strict Mode** regardless of project configuration (ADR-0022).
-- "Markdown ingestion could auto-create suggested Knowledge Objects from prose" - resolved: **Markdown Source** is prose-only; auto-typing violates the evidence-first principle (ADR-0023). Suggested-claim extraction is deferred to `adoc migrate` (V4.5+).
+- "Markdown ingestion could auto-create suggested Knowledge Objects from prose" - resolved: **Markdown Source** is prose-only; auto-typing violates the evidence-first principle (ADR-0023). `adoc migrate` (V8.1) keeps the rule: suggested typed blocks are report records, never applied to output.
 - "Markdown parser could be hand-written to match V0 Parser Architecture" - resolved: V4 uses `pulldown-cmark` (ADR-0021); CommonMark spec is too large to hand-roll for ingestion-only use.
 - "Compatibility mode could be selected by CLI flag, config block, or file extension" - resolved: file extension only; no flag, no config (ADR-0022).
 - "Prose blocks could become retrievable in V4 to make Markdown-only projects searchable" - resolved: V4 keeps the Knowledge-Object-only retrieval invariant; prose retrieval is its own milestone (**V1.7 Prose Retrieval**), applied symmetrically to `.md` and `.adoc` prose.
