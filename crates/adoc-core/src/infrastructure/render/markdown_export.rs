@@ -79,6 +79,9 @@ impl Exporter<'_> {
                     // be silent data loss — refuse instead, mirroring the
                     // quarantine guard in `adoc_source::push_list`. Export
                     // has no quarantine carrier, so refusal is the safe arm.
+                    // Mint a dedicated code before making this arm reachable:
+                    // this one's count is labeled "Markdown fences unwrapped"
+                    // on export (ADR-0043 §5).
                     self.diagnostics.push(
                         Diagnostic::error(
                             DiagnosticCode::MigrateUnrecognizedExtension,

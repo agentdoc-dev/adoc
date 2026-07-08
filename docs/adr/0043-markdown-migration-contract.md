@@ -181,6 +181,15 @@ normalize, the second must reproduce it byte-identically, held by the
 Markdown Pilot round-trip test — and any byte difference outside these
 members is a bug, not a tolerance.
 
+The closure assumes the strict grammar's flat, tight lists. The exporter
+refuses a list carrying continuation content (`migrate.unrecognized_extension`,
+ERROR) rather than dropping it; the arm is unreachable while the grammar
+holds. If strict lists ever widen to loose or nested forms, that refusal
+must mint a dedicated diagnostic code and count bucket instead of folding
+into `migrate.unrecognized_extension` — whose export report label
+("Markdown fences unwrapped") would otherwise misattribute the refusal as
+an unwrap.
+
 ### 6. Suggestions never auto-type
 
 Continuity of ADR-0023: migration output contains zero typed blocks,
