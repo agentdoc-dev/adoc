@@ -4,15 +4,23 @@
 //! asserted there, not on source bytes. Quarantined blocks may change kind
 //! `Paragraph`/`Heading`/`List` → `CodeBlock`, each backed 1:1 by a
 //! `migrate.*` diagnostic that names the fenced-code-block carrier.
+//!
+//! V8.1.4 adds the reversibility invariant (ADR-0043 §5): `.md` → migrate →
+//! export → `.md′` byte-identical modulo the closed normalization set —
+//! held as import∘export byte-idempotence (the first pass may normalize,
+//! the second must be identical) plus graph-content equality between the
+//! original and round-tripped trees. The two invariants stay in separate
+//! tests, per the ADR.
 
 mod support;
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use adoc_core::{
-    CompileInput, DiagnosticCode, MigrateMode, MigrateResult, Severity, compile_workspace,
-    migrate_workspace,
+    CompileInput, DiagnosticCode, MigrateDirection, MigrateMode, MigrateResult, Severity,
+    compile_workspace, export_workspace, migrate_workspace,
 };
 use support::TestWorkspace;
 
@@ -127,9 +135,42 @@ fn compile_graph_json(root: &Path) -> String {
 
 fn apply_migration(result: &MigrateResult) {
     for file in &result.files {
-        fs::write(&file.target_path, &file.adoc_text).expect("migrated .adoc can be written");
-        fs::remove_file(&file.source_path).expect("source .md can be removed");
+        fs::write(&file.target_path, &file.target_text).expect("target text can be written");
+        fs::remove_file(&file.source_path).expect("source file can be removed");
     }
+}
+
+/// The two pre-existing typed pilot pages. Export refuses any run whose root
+/// contains typed blocks (ADR-0043 §3), so round-trip tests operate on the
+/// prose-only pilot; the pages only cross-reference each other, so the
+/// remaining corpus compiles clean.
+fn remove_typed_pages(root: &Path) {
+    for page in [
+        "knowledge/billing-claims.adoc",
+        "knowledge/billing-decisions.adoc",
+    ] {
+        fs::remove_file(root.join(page)).expect("typed pilot page can be removed");
+    }
+}
+
+fn tree_bytes(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+    fn walk(dir: &Path, root: &Path, tree: &mut BTreeMap<PathBuf, Vec<u8>>) {
+        for entry in fs::read_dir(dir).expect("directory is readable") {
+            let path = entry.expect("entry is readable").path();
+            if path.is_dir() {
+                walk(&path, root, tree);
+            } else {
+                let relative = path
+                    .strip_prefix(root)
+                    .expect("entry is under the root")
+                    .to_path_buf();
+                tree.insert(relative, fs::read(&path).expect("file is readable"));
+            }
+        }
+    }
+    let mut tree = BTreeMap::new();
+    walk(root, root, &mut tree);
+    tree
 }
 
 #[test]
@@ -296,7 +337,7 @@ fn front_matter_is_dropped_with_a_diagnostic() {
         .expect("front matter drop must be diagnosed");
     assert_eq!(front_matter.severity, Severity::Warning);
     assert_eq!(
-        result.files[0].adoc_text, "# Setup\n\nInstall the binary.\n",
+        result.files[0].target_text, "# Setup\n\nInstall the binary.\n",
         "front matter must not appear in the migrated output"
     );
 }
@@ -334,6 +375,100 @@ fn write_mode_force_bypasses_the_committed_clean_probe() {
         !result.has_errors(),
         "--force must bypass the probe: {:?}",
         result.diagnostics
+    );
+}
+
+#[test]
+fn markdown_pilot_round_trip_is_byte_stable_and_graph_lossless() {
+    let original = copy_pilot("round-trip-original");
+    let working = copy_pilot("round-trip-working");
+    remove_typed_pages(original.root());
+    remove_typed_pages(working.root());
+
+    // First pass: import, then export — each may normalize (ADR-0043 §5).
+    let import = migrate_workspace(working.root().to_path_buf(), MigrateMode::DryRun);
+    assert!(!import.has_errors(), "{:?}", import.diagnostics);
+    assert_eq!(import.files.len(), 15, "every pilot .md must be imported");
+    apply_migration(&import);
+    let adoc_tree = tree_bytes(working.root());
+
+    let export = export_workspace(working.root().to_path_buf(), MigrateMode::DryRun);
+    assert!(!export.has_errors(), "{:?}", export.diagnostics);
+    assert_eq!(export.direction, MigrateDirection::Export);
+    assert_eq!(export.files.len(), 15, "every migrated page must export");
+    assert!(
+        export.suggestions.is_empty(),
+        "suggestions are an import concern: {:?}",
+        export.suggestions
+    );
+    assert!(
+        export
+            .files
+            .iter()
+            .all(|file| file.target_path.extension().and_then(|ext| ext.to_str()) == Some("md")),
+        "export targets are .md"
+    );
+    apply_migration(&export);
+    let md_tree = tree_bytes(working.root());
+
+    // Graph-content equality: nothing outside the enumerated drops was lost.
+    assert_eq!(
+        graph_nodes_by_page(&compile_graph_json(original.root())),
+        graph_nodes_by_page(&compile_graph_json(working.root())),
+        "round-tripped .md tree must be graph-content-equal to the original"
+    );
+
+    // Second pass: byte fixpoint — the closed set normalizes once, then
+    // import∘export is byte-idempotent. A difference here is a bug, not a
+    // tolerance (ADR-0043 §5).
+    let import_again = migrate_workspace(working.root().to_path_buf(), MigrateMode::DryRun);
+    assert!(!import_again.has_errors(), "{:?}", import_again.diagnostics);
+    apply_migration(&import_again);
+    assert_eq!(
+        tree_bytes(working.root()),
+        adoc_tree,
+        "re-import of the exported tree must reproduce the .adoc tree byte-identically"
+    );
+
+    let export_again = export_workspace(working.root().to_path_buf(), MigrateMode::DryRun);
+    assert!(!export_again.has_errors(), "{:?}", export_again.diagnostics);
+    apply_migration(&export_again);
+    assert_eq!(
+        tree_bytes(working.root()),
+        md_tree,
+        "re-export must reproduce the .md tree byte-identically"
+    );
+}
+
+#[test]
+fn export_refuses_the_pilot_while_typed_pages_are_present() {
+    let workspace = copy_pilot("export-typed-refusal");
+    let import = migrate_workspace(workspace.root().to_path_buf(), MigrateMode::DryRun);
+    assert!(!import.has_errors(), "{:?}", import.diagnostics);
+    apply_migration(&import);
+
+    let export = export_workspace(workspace.root().to_path_buf(), MigrateMode::DryRun);
+
+    assert!(export.has_errors(), "typed pages must refuse the run");
+    let refusal = export
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.code == DiagnosticCode::MigrateExportTypedBlocksPresent)
+        .expect("refusal must carry migrate.export_typed_blocks_present");
+    assert_eq!(refusal.severity, Severity::Error);
+    assert!(
+        refusal.message.contains("billing-"),
+        "the refusal names the typed page: {}",
+        refusal.message
+    );
+    assert!(
+        export.files.iter().all(|file| {
+            !file
+                .source_path
+                .to_string_lossy()
+                .contains("knowledge/billing-")
+        }),
+        "a refused page gets no would-export row"
     );
 }
 

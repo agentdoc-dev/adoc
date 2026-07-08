@@ -378,6 +378,12 @@ diagnostic_codes! {
     /// duplicate page IDs (ADR-0043).
     MigrateTargetExists = "migrate.target_exists" =>
         "Remove or rename the existing .adoc file (or the source .md) so the migration target is free.";
+    /// V8.1.4: `adoc migrate --export` refused because a page contains typed
+    /// Knowledge Object blocks — exporting typed knowledge to Markdown is
+    /// lossy by definition; export is the undo path for a not-yet-typed
+    /// corpus (ADR-0043 §3). Run-level: one typed page refuses the run.
+    MigrateExportTypedBlocksPresent = "migrate.export_typed_blocks_present" =>
+        "Exclude pages containing typed blocks from the export root, or hand-convert them; `--export` never writes a lossy Markdown projection of typed knowledge.";
 }
 
 impl DiagnosticCode {

@@ -836,6 +836,7 @@ fn validates_adoc_migrate_report_v0_envelope_against_schema() {
             path: Some(root.join("docs")),
             write: false,
             force: false,
+            export: false,
         })
         .expect("migrate succeeds");
     let report = serde_json::to_value(&outcome.report).expect("report serializes");

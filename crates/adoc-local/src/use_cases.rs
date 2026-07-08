@@ -20,8 +20,8 @@ use adoc_core::{
     changed_files_from_git, changed_paths_strings, check_patch as core_check_patch,
     compile_workspace, diff_objects, embed_query_with_embedding_provider,
     empty_contradictions_envelope, empty_impacted_envelope, empty_stale_envelope,
-    evaluate_contradictions, evaluate_impacted, evaluate_stale, git_review_available,
-    inspect_graph_artifact, inspect_search_artifact, load_graph_session,
+    evaluate_contradictions, evaluate_impacted, evaluate_stale, export_workspace,
+    git_review_available, inspect_graph_artifact, inspect_search_artifact, load_graph_session,
     load_retrieval_session_with_embedding_provider, load_review_from_git,
     load_review_with_changed_files_from_git, migrate_workspace, parse_patch_from_path,
     parse_patch_from_value, patch_apply_refusal, review_with_patch, search as core_search,
@@ -70,6 +70,9 @@ pub struct MigrateInput {
     pub path: Option<PathBuf>,
     pub write: bool,
     pub force: bool,
+    /// V8.1.4: export strict prose-mode `.adoc` back to `.md` instead of
+    /// importing (ADR-0043 §5).
+    pub export: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -530,7 +533,11 @@ where
     } else {
         MigrateMode::DryRun
     };
-    let result = migrate_workspace(path, mode);
+    let result = if input.export {
+        export_workspace(path, mode)
+    } else {
+        migrate_workspace(path, mode)
+    };
     let written = input.write && !result.has_errors();
     if written {
         execute_migration_writes(&result.files)?;
@@ -559,7 +566,7 @@ fn execute_migration_writes_with(
 ) -> Result<(), LocalError> {
     let mut created: Vec<&Path> = Vec::with_capacity(files.len());
     for file in files {
-        if let Err(source) = create(&file.target_path, file.adoc_text.as_bytes()) {
+        if let Err(source) = create(&file.target_path, file.target_text.as_bytes()) {
             for path in created {
                 let _ = remove(path);
             }
@@ -1852,7 +1859,7 @@ mod tests {
         adoc_core::MigratedFile {
             source_path: PathBuf::from(format!("/docs/{name}.md")),
             target_path: PathBuf::from(format!("/docs/{name}.adoc")),
-            adoc_text: format!("# {name}\n"),
+            target_text: format!("# {name}\n"),
             prose_blocks: 1,
         }
     }
