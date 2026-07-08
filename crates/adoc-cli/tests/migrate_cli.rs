@@ -3,6 +3,8 @@
 //! committed-clean refusal, `--force`, and quarantine-code visibility.
 //! V8.1.2 pins the `adoc.migrate.report.v0` envelope: exact pilot counts and
 //! the counts-reconcile-with-diagnostics invariant (ADR-0043 §4).
+//! V8.1.4 adds `--export` (the reverse run, symmetric write semantics), the
+//! run-level typed-block refusal, and the additive `direction` field.
 //!
 //! Every test operates on a tempdir copy of `examples/markdown-pilot/` —
 //! never the checked-in example, which retrieval fixtures pin.
@@ -69,6 +71,44 @@ fn committed_pilot_copy(name: &str) -> TestWorkspace {
     run_git(&workspace, &["config", "commit.gpgsign", "false"]);
     run_git(&workspace, &["add", "-A"]);
     run_git(&workspace, &["commit", "-m", "pilot corpus"]);
+    workspace
+}
+
+/// The pilot without its two typed pages: export refuses any run whose root
+/// contains typed blocks, so export fixtures start prose-only. The typed
+/// pages only cross-reference each other; the rest of the corpus stands.
+fn prose_pilot_copy(name: &str) -> TestWorkspace {
+    let workspace = pilot_copy(name);
+    for page in PILOT_PRE_EXISTING_ADOC {
+        fs::remove_file(workspace.root.join(page)).expect("typed pilot page can be removed");
+    }
+    workspace
+}
+
+/// A committed prose-only pilot, migrated with `--write` and re-committed —
+/// the state a partner backing out of a migration would export from.
+fn migrated_committed_prose_pilot(name: &str) -> TestWorkspace {
+    let workspace = prose_pilot_copy(name);
+    run_git(&workspace, &["init", "--initial-branch=main"]);
+    run_git(&workspace, &["config", "user.email", "test@adoc.dev"]);
+    run_git(&workspace, &["config", "user.name", "adoc tests"]);
+    run_git(&workspace, &["config", "commit.gpgsign", "false"]);
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "pilot corpus"]);
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["migrate", ".", "--write"])
+        .output()
+        .expect("adoc migrate --write should run");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "fixture migration must succeed\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "migrated corpus"]);
     workspace
 }
 
@@ -320,6 +360,7 @@ fn json_format_emits_the_versioned_report_envelope() {
     let value: serde_json::Value =
         serde_json::from_str(&stdout(&output)).expect("stdout is a JSON envelope");
     assert_eq!(value["schema_version"], "adoc.migrate.report.v0");
+    assert_eq!(value["direction"], "import");
 }
 
 fn migrate_json(workspace: &TestWorkspace, args: &[&str]) -> (Option<i32>, serde_json::Value) {
@@ -487,6 +528,7 @@ fn empty_workspace_reports_zero_counts() {
     assert_eq!(value["files"], serde_json::json!([]));
     assert_eq!(value["suggested_next_steps"], serde_json::json!([]));
     assert_eq!(value["suggestions"], serde_json::json!([]));
+    assert_eq!(value["direction"], "import");
 }
 
 #[test]
@@ -599,6 +641,235 @@ fn migrated_pilot_output_never_contains_typed_blocks() {
             );
         }
     }
+}
+
+#[test]
+fn export_dry_run_lists_every_adoc_source_and_writes_nothing() {
+    let workspace = migrated_committed_prose_pilot("migrate-cli-export-dry-run");
+    let before = tree_contents(&workspace.root);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["migrate", ".", "--export"])
+        .output()
+        .expect("adoc migrate --export should run");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let text = stdout(&output);
+    let sources = collect_files(&workspace.root, "adoc");
+    assert_eq!(sources.len(), PILOT_MD_COUNT);
+    for source in sources {
+        let relative = source
+            .strip_prefix(&workspace.root)
+            .expect("source is under the workspace");
+        assert!(
+            text.contains(&relative.display().to_string()),
+            "export dry-run must list {}:\n{text}",
+            relative.display()
+        );
+    }
+    assert!(
+        text.contains("would export"),
+        "export dry-run must speak in the conditional:\n{text}"
+    );
+    assert_eq!(
+        tree_contents(&workspace.root),
+        before,
+        "dry-run must be byte-neutral on the tree"
+    );
+}
+
+#[test]
+fn export_dry_run_surfaces_unwrap_warning_codes() {
+    let workspace = migrated_committed_prose_pilot("migrate-cli-export-codes");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["migrate", ".", "--export"])
+        .output()
+        .expect("adoc migrate --export should run");
+
+    assert_eq!(output.status.code(), Some(0));
+    let text = stdout(&output);
+    for code in [
+        "migrate.raw_html_quarantined",
+        "migrate.unrecognized_extension",
+    ] {
+        assert!(
+            text.contains(code),
+            "pilot export must surface {code} for fence unwraps:\n{text}"
+        );
+    }
+}
+
+#[test]
+fn export_write_restores_markdown_and_removes_adoc_sources() {
+    let workspace = migrated_committed_prose_pilot("migrate-cli-export-write");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["migrate", ".", "--export", "--write"])
+        .output()
+        .expect("adoc migrate --export --write should run");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(stdout(&output).contains("exported"), "{}", stdout(&output));
+    assert!(
+        collect_files(&workspace.root, "adoc").is_empty(),
+        "--export --write must remove every source .adoc"
+    );
+    assert_eq!(collect_files(&workspace.root, "md").len(), PILOT_MD_COUNT);
+
+    let build = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["build", ".", "--no-embeddings", "--out", "dist"])
+        .output()
+        .expect("adoc build should run");
+    assert_eq!(
+        build.status.code(),
+        Some(0),
+        "exported tree must build clean (Compatibility Mode)\nstdout:\n{}\nstderr:\n{}",
+        stdout(&build),
+        stderr(&build)
+    );
+}
+
+#[test]
+fn export_refuses_typed_block_pages_and_writes_nothing() {
+    // The full pilot: its two typed knowledge pages survive migration
+    // byte-untouched, so the migrated corpus still contains typed blocks.
+    let workspace = committed_pilot_copy("migrate-cli-export-typed");
+    let migrate = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["migrate", ".", "--write"])
+        .output()
+        .expect("adoc migrate --write should run");
+    assert_eq!(migrate.status.code(), Some(0), "{}", stdout(&migrate));
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "migrated corpus"]);
+    let before = tree_contents(&workspace.root);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["migrate", ".", "--export", "--write"])
+        .output()
+        .expect("adoc migrate --export --write should run");
+
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert!(
+        stdout(&output).contains("migrate.export_typed_blocks_present"),
+        "{}",
+        stdout(&output)
+    );
+    assert_eq!(
+        tree_contents(&workspace.root),
+        before,
+        "a refused export must write and remove nothing (all-or-nothing)"
+    );
+}
+
+#[test]
+fn export_write_refuses_a_dirty_adoc_source() {
+    let workspace = migrated_committed_prose_pilot("migrate-cli-export-dirty");
+    let dirty = workspace.root.join("api/errors.adoc");
+    let mut text = fs::read_to_string(&dirty).expect("dirty source is readable");
+    text.push_str("\nUncommitted trailing note.\n");
+    fs::write(&dirty, text).expect("dirty edit can be written");
+    let before = tree_contents(&workspace.root);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["migrate", ".", "--export", "--write"])
+        .output()
+        .expect("adoc migrate --export --write should run");
+
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    assert!(
+        stdout(&output).contains("migrate.source_not_committed"),
+        "{}",
+        stdout(&output)
+    );
+    assert_eq!(tree_contents(&workspace.root), before);
+}
+
+#[test]
+fn export_write_force_bypasses_the_committed_clean_refusal() {
+    let workspace = migrated_committed_prose_pilot("migrate-cli-export-force");
+    let dirty = workspace.root.join("api/errors.adoc");
+    let mut text = fs::read_to_string(&dirty).expect("dirty source is readable");
+    text.push_str("\nUncommitted trailing note.\n");
+    fs::write(&dirty, text).expect("dirty edit can be written");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["migrate", ".", "--export", "--write", "--force"])
+        .output()
+        .expect("adoc migrate --export --write --force should run");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(collect_files(&workspace.root, "adoc").is_empty());
+}
+
+#[test]
+fn export_json_envelope_carries_direction_and_zero_suggestions() {
+    let workspace = migrated_committed_prose_pilot("migrate-cli-export-json");
+
+    let (code, value) = migrate_json(&workspace, &["--export"]);
+
+    assert_eq!(code, Some(0), "{value}");
+    assert_eq!(value["schema_version"], "adoc.migrate.report.v0");
+    assert_eq!(value["direction"], "export");
+    assert_eq!(value["counts"]["suggested_typed_blocks"], 0);
+    assert_eq!(value["suggestions"], serde_json::json!([]));
+    let files = value["files"].as_array().expect("files array");
+    assert_eq!(files.len(), PILOT_MD_COUNT);
+    assert!(
+        files.iter().all(|file| {
+            file["written"] == false
+                && file["target"]
+                    .as_str()
+                    .expect("target is a string")
+                    .ends_with(".md")
+        }),
+        "dry-run export targets are unwritten .md files: {value}"
+    );
+}
+
+#[test]
+fn export_refuses_an_existing_md_target() {
+    let workspace = TestWorkspace::new("migrate-cli-export-target");
+    workspace.write("guides/guide.adoc", "# Guide\n\nProse.\n");
+    workspace.write("guides/guide.md", "# Guide\n\nStill Markdown.\n");
+
+    let (code, value) = migrate_json(&workspace, &["--export"]);
+
+    assert_eq!(code, Some(1), "{value}");
+    assert!(
+        value["diagnostics"]
+            .as_array()
+            .expect("diagnostics array")
+            .iter()
+            .any(|diagnostic| diagnostic["code"] == "migrate.target_exists"),
+        "{value}"
+    );
 }
 
 #[test]
