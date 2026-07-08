@@ -65,23 +65,40 @@ fn write_migrate_text(report: &MigrateReportEnvelope, exit_code: i32, styled: bo
 
 /// The §28.3 human summary: the seven counts, the numbered
 /// suggested-next-steps list, and the §28.4 typed-block suggestions,
-/// mirroring the JSON envelope field for field.
+/// mirroring the JSON envelope field for field. The JSON wire names stay
+/// fixed across directions (ADR-0043 §4); these human labels follow the
+/// direction for the same reason `suggested_next_steps` does — on export
+/// the quarantine-named counts tally fence unwraps, and the labels would
+/// lie otherwise.
 fn render_report_block(report: &MigrateReportEnvelope, styled: bool) -> String {
+    let (header, files_label, raw_html_label, extensions_label) = match report.direction {
+        MigrateDirection::Import => (
+            "Migration report",
+            "Files imported",
+            "Raw HTML blocks quarantined",
+            "Unrecognized extensions",
+        ),
+        MigrateDirection::Export => (
+            "Export report",
+            "Files exported",
+            "Raw HTML fences unwrapped",
+            "Markdown fences unwrapped",
+        ),
+    };
     let mut output = String::new();
     if styled {
-        writeln!(output, "{}", faint_label("Migration report"))
-            .expect("writing to String cannot fail");
+        writeln!(output, "{}", faint_label(header)).expect("writing to String cannot fail");
     } else {
-        writeln!(output, "Migration report").expect("writing to String cannot fail");
+        writeln!(output, "{header}").expect("writing to String cannot fail");
     }
     let counts = &report.counts;
     for (label, value) in [
-        ("Files imported", counts.files_imported),
+        (files_label, counts.files_imported),
         ("Pages created", counts.pages_created),
         ("Prose blocks", counts.prose_blocks),
-        ("Raw HTML blocks quarantined", counts.raw_html_quarantined),
+        (raw_html_label, counts.raw_html_quarantined),
         ("Broken links", counts.broken_links),
-        ("Unrecognized extensions", counts.unrecognized_extensions),
+        (extensions_label, counts.unrecognized_extensions),
         ("Suggested typed blocks", counts.suggested_typed_blocks),
     ] {
         writeln!(output, "  {label}: {value}").expect("writing to String cannot fail");
