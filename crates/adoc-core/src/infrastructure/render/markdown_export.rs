@@ -153,3 +153,146 @@ impl Exporter<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::domain::diagnostic::Severity;
+    use crate::infrastructure::parser::{parse_markdown_page, parse_page};
+    use crate::infrastructure::render::page_to_adoc_source;
+
+    /// The full chain a pilot file travels: `.md` → import serializer →
+    /// strict parse → export serializer. One fixture per ADR-0043 §5
+    /// closed-set member, each asserting exact output bytes.
+    fn round_trip(markdown: &str) -> (String, Vec<Diagnostic>) {
+        let md_source = SourceFile::new_with_identity_path(
+            PathBuf::from("guides/page.md"),
+            markdown.to_string(),
+            PathBuf::from("guides/page.md"),
+        );
+        let (md_page, _) = parse_markdown_page(&md_source);
+        let (adoc_text, _, import_diagnostics) = page_to_adoc_source(&md_page, &md_source);
+        assert!(
+            import_diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.severity != Severity::Error),
+            "import must not error: {import_diagnostics:?}"
+        );
+        let adoc_source = SourceFile::new_with_identity_path(
+            PathBuf::from("guides/page.adoc"),
+            adoc_text,
+            PathBuf::from("guides/page.adoc"),
+        );
+        let (adoc_page, parse_diagnostics) = parse_page(&adoc_source);
+        assert!(
+            parse_diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.severity != Severity::Error),
+            "migrated output must parse strict-clean: {parse_diagnostics:?}"
+        );
+        let (text, _, export_diagnostics) = page_to_markdown(&adoc_page, &adoc_source);
+        (text, export_diagnostics)
+    }
+
+    #[test]
+    fn star_and_plus_list_markers_normalize_to_dash() {
+        assert_eq!(round_trip("* alpha\n* beta\n").0, "- alpha\n- beta\n");
+        assert_eq!(round_trip("+ alpha\n+ beta\n").0, "- alpha\n- beta\n");
+    }
+
+    #[test]
+    fn ordered_list_markers_renumber_sequentially() {
+        assert_eq!(
+            round_trip("1. first\n1. second\n1. third\n").0,
+            "1. first\n2. second\n3. third\n"
+        );
+    }
+
+    #[test]
+    fn soft_wrapped_paragraph_rejoins_to_one_line() {
+        // Soft breaks only — a two-trailing-space hard break quarantines at
+        // import and round-trips verbatim inside its fence carrier instead.
+        assert_eq!(
+            round_trip("A sentence wrapped\nacross two lines.\n").0,
+            "A sentence wrapped across two lines.\n"
+        );
+    }
+
+    #[test]
+    fn trailing_whitespace_is_stripped() {
+        assert_eq!(round_trip("# Title \n\nProse. \n").0, "# Title\n\nProse.\n");
+    }
+
+    #[test]
+    fn underscore_emphasis_canonicalizes_to_star() {
+        assert_eq!(
+            round_trip("_emphasis_ and __strong__ words.\n").0,
+            "*emphasis* and **strong** words.\n"
+        );
+    }
+
+    #[test]
+    fn tilde_fence_normalizes_to_backticks_with_info_string_preserved() {
+        assert_eq!(
+            round_trip("~~~rust\nlet x = 1;\n~~~\n").0,
+            "```rust\nlet x = 1;\n```\n"
+        );
+    }
+
+    #[test]
+    fn hand_written_markdown_fence_unwraps_with_a_warning() {
+        // The quarantine ceiling (ADR-0043 §5): the info string is the only
+        // signal, so a genuine ```markdown fence does not survive export.
+        let (text, diagnostics) = round_trip("```markdown\n# Example\n```\n");
+
+        assert_eq!(text, "# Example\n");
+        let unwrap = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.message.contains(UNWRAP_PHRASE))
+            .expect("unwrap must be diagnosed");
+        assert_eq!(unwrap.severity, Severity::Warning);
+        assert_eq!(unwrap.code, DiagnosticCode::MigrateUnrecognizedExtension);
+    }
+
+    #[test]
+    fn html_quarantine_round_trips_byte_identically_with_a_warning() {
+        let original = "# Alerts\n\n<div class=\"alert\">Do not restart.</div>\n";
+
+        let (text, diagnostics) = round_trip(original);
+
+        assert_eq!(text, original);
+        let unwrap = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.message.contains(UNWRAP_PHRASE))
+            .expect("unwrap must be diagnosed");
+        assert_eq!(unwrap.code, DiagnosticCode::MigrateRawHtmlQuarantined);
+    }
+
+    #[test]
+    fn table_quarantine_round_trips_byte_identically() {
+        let original = "# Limits\n\n| Tier | Limit |\n| --- | --- |\n| Free | 100 |\n";
+
+        let (text, diagnostics) = round_trip(original);
+
+        assert_eq!(text, original);
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::MigrateUnrecognizedExtension
+                    && diagnostic.message.contains(UNWRAP_PHRASE)
+            }),
+            "{diagnostics:?}"
+        );
+    }
+
+    #[test]
+    fn dropped_constructs_do_not_round_trip() {
+        // §5 member 7: front matter and checkbox markers are diagnosed drops
+        // at import; export cannot resurrect them.
+        assert_eq!(
+            round_trip("---\ntitle: Setup\n---\n\n# Setup\n\n- [x] done thing\n").0,
+            "# Setup\n\n- done thing\n"
+        );
+    }
+}
