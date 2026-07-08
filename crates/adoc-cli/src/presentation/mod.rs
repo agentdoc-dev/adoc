@@ -29,7 +29,8 @@ pub(crate) enum FormatChoice {
     /// Machine-readable JSON.
     Json,
     /// GitHub-flavored Markdown for PR review comments. Only supported by
-    /// `adoc diff` and `adoc review`; rejected at dispatch for other commands.
+    /// `adoc check`, `adoc diff`, `adoc review`, and `adoc impacted-by`;
+    /// rejected at dispatch for other commands.
     Markdown,
 }
 
@@ -51,8 +52,9 @@ pub(crate) enum ResolvedFormat {
     Styled,
     Json,
     /// Markdown is structural like Json — colour flags never alter it.
-    /// Only `adoc diff` and `adoc review` accept this resolved variant; other
-    /// commands reject it in `main.rs` before dispatching.
+    /// Only `adoc check`, `adoc diff`, `adoc review`, and `adoc impacted-by`
+    /// accept this resolved variant; other commands reject it in `main.rs`
+    /// before dispatching.
     Markdown,
 }
 

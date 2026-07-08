@@ -42,23 +42,26 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
         Ok(cli) => {
             let resolved = terminal::detect(cli.format.into(), cli.color.into());
             // Markdown is PR-comment output; reject it before any command
-            // that does not implement a markdown presenter. Diff, review,
-            // and impacted-by pass through; every other command exits
-            // non-zero with a fix-oriented stderr line.
+            // that does not implement a markdown presenter. Check, diff,
+            // review, and impacted-by pass through; every other command
+            // exits non-zero with a fix-oriented stderr line.
             if resolved == ResolvedFormat::Markdown
                 && !matches!(
                     cli.command,
-                    Commands::Diff { .. } | Commands::Review { .. } | Commands::ImpactedBy { .. }
+                    Commands::Check { .. }
+                        | Commands::Diff { .. }
+                        | Commands::Review { .. }
+                        | Commands::ImpactedBy { .. }
                 )
             {
                 eprintln!(
-                    "error[cli.format] --format markdown is only supported by `adoc diff`, `adoc review`, and `adoc impacted-by`"
+                    "error[cli.format] --format markdown is only supported by `adoc check`, `adoc diff`, `adoc review`, and `adoc impacted-by`"
                 );
                 return 2;
             }
             match cli.command {
                 Commands::Init => init(),
-                Commands::Check { path } => check(path),
+                Commands::Check { path } => check(path, resolved),
                 Commands::Migrate {
                     path,
                     write,

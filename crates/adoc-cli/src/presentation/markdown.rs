@@ -1,7 +1,8 @@
-//! V3.5 Markdown presenter for `adoc diff` and `adoc review`.
+//! Markdown presenter for `adoc diff`, `adoc review`, `adoc impacted-by`
+//! (V6.3), and `adoc check` (V8.3.1).
 //!
 //! Produces GitHub-flavored Markdown that pastes cleanly into a PR review
-//! comment. The shape is frozen at slice time:
+//! comment. The V3.5 diff/review shape is frozen at slice time:
 //!
 //! 1. **Required reviewers** header line (review only, non-empty).
 //! 2. `## Diff: N created, M deleted, K changed` summary heading.
@@ -30,7 +31,7 @@ use std::io;
 
 use adoc_core::{
     ChangedObject, Diagnostic, FieldChange, ImpactReasonKind, ImpactedEnvelope, ImpactedObject,
-    ObjectDiffEnvelope, ProofObligation, RequiredReviewer, ReviewEnvelope,
+    ObjectDiffEnvelope, ProofObligation, RequiredReviewer, ReviewEnvelope, Severity,
 };
 
 pub(crate) struct MarkdownReviewPresenter;
@@ -73,6 +74,20 @@ impl MarkdownReviewPresenter {
         out.write_all(body.as_bytes())
     }
 
+    /// V8.3.1 `adoc check --format markdown`: the §24.4 PR-comment shape —
+    /// error/warning counts in the header, diagnostics grouped by source
+    /// file, `object_id`/`help` as sub-bullets, and a suggested next command.
+    /// A clean project still renders a body: a PR bot pasting stdout must
+    /// never post an empty comment.
+    pub(crate) fn write_check(
+        diagnostics: &[Diagnostic],
+        out: &mut dyn io::Write,
+    ) -> io::Result<()> {
+        let mut body = String::new();
+        render_check(&mut body, diagnostics);
+        out.write_all(body.as_bytes())
+    }
+
     /// V6.3 `adoc impacted-by --format markdown` refusal path: one blockquote
     /// per diagnostic, so a PR-comment consumer pasting stdout never posts an
     /// empty comment (JSON gets the envelope; plain/styled use stderr only).
@@ -94,6 +109,86 @@ impl MarkdownReviewPresenter {
         }
         out.write_all(body.as_bytes())
     }
+}
+
+fn render_check(output: &mut String, diagnostics: &[Diagnostic]) {
+    let errors = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == Severity::Error)
+        .count();
+    let warnings = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.severity == Severity::Warning)
+        .count();
+    // Always-plural counts — the exact convention of the plain summary line
+    // (`commands::format_summary`), so the two surfaces never disagree.
+    writeln!(
+        output,
+        "## adoc check: {errors} errors, {warnings} warnings"
+    )
+    .expect("writing to String cannot fail");
+
+    if diagnostics.is_empty() {
+        writeln!(output).expect("writing to String cannot fail");
+        writeln!(output, "No diagnostics.").expect("writing to String cannot fail");
+    }
+
+    // Group by source file in first-seen order (the compile walk is already
+    // deterministic); spanless diagnostics get an explicit marker group so
+    // they cannot silently vanish from the comment.
+    let mut groups: Vec<(Option<&std::path::Path>, Vec<&Diagnostic>)> = Vec::new();
+    for diagnostic in diagnostics {
+        let file = diagnostic.span.as_ref().map(|span| span.file.as_path());
+        match groups.iter_mut().find(|(key, _)| *key == file) {
+            Some((_, entries)) => entries.push(diagnostic),
+            None => groups.push((file, vec![diagnostic])),
+        }
+    }
+    for (file, entries) in groups {
+        writeln!(output).expect("writing to String cannot fail");
+        match file {
+            Some(path) => writeln!(output, "### `{}`", path.display()),
+            None => writeln!(output, "### _(no source span)_"),
+        }
+        .expect("writing to String cannot fail");
+        writeln!(output).expect("writing to String cannot fail");
+        for diagnostic in entries {
+            let icon = match diagnostic.severity {
+                Severity::Error => "❌",
+                Severity::Warning => "⚠️",
+                Severity::Info => "ℹ️",
+            };
+            // Multi-line messages stay indented inside the list item.
+            let message = diagnostic.message.replace('\n', "\n  ");
+            match diagnostic.span.as_ref() {
+                Some(span) => writeln!(
+                    output,
+                    "- {icon} `{}` (line {}) — {message}",
+                    diagnostic.code, span.start.line
+                ),
+                None => writeln!(output, "- {icon} `{}` — {message}", diagnostic.code),
+            }
+            .expect("writing to String cannot fail");
+            if let Some(object_id) = &diagnostic.object_id {
+                writeln!(output, "  - object_id: `{object_id}`")
+                    .expect("writing to String cannot fail");
+            }
+            if let Some(help) = &diagnostic.help {
+                let help = help.replace('\n', "\n    ");
+                writeln!(output, "  - help: {help}").expect("writing to String cannot fail");
+            }
+        }
+    }
+
+    writeln!(output).expect("writing to String cannot fail");
+    let action = if errors > 0 {
+        "fix the errors above, then re-run `adoc check`."
+    } else if warnings > 0 {
+        "review the warnings above, then re-run `adoc check`."
+    } else {
+        "run `adoc build` to refresh the graph artifact."
+    };
+    writeln!(output, "Suggested action: {action}").expect("writing to String cannot fail");
 }
 
 fn render_impacted_by(output: &mut String, envelope: &ImpactedEnvelope) {
