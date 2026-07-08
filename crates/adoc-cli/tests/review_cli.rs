@@ -2,7 +2,7 @@ mod support;
 
 use std::process::Command;
 
-use support::{TestWorkspace, adoc_command, fixture_path, stderr, stdout};
+use support::{TestWorkspace, adoc_command, assert_markdown_matches_golden, stderr, stdout};
 
 // V3.3 / V3.4 base fixture plus a second verified claim `billing.holds-policy`
 // whose head delta exercises every other `FieldChange` variant — status,
@@ -433,33 +433,6 @@ fn review_main_plain_lists_proof_obligations_section() {
     assert!(
         stdout.contains("billing.refunds: review impacted claim"),
         "expected impact-review obligation line\n{stdout}"
-    );
-}
-
-/// Read or refresh a V3.5 golden Markdown file under
-/// `tests/fixtures/review_markdown/`. Set `ADOC_UPDATE_GOLDEN=1` in the env
-/// to rewrite the golden from the current run; otherwise compare for byte
-/// equality.
-fn assert_markdown_matches_golden(relative: &str, actual: &str) {
-    let golden = fixture_path(relative);
-    if std::env::var_os("ADOC_UPDATE_GOLDEN").is_some() {
-        if let Some(parent) = golden.parent() {
-            std::fs::create_dir_all(parent).expect("create golden parent dir");
-        }
-        std::fs::write(&golden, actual).expect("write golden file");
-        return;
-    }
-    let expected = std::fs::read_to_string(&golden).unwrap_or_else(|error| {
-        panic!(
-            "missing golden file at {}: {error}\nTo bootstrap, re-run with ADOC_UPDATE_GOLDEN=1",
-            golden.display()
-        )
-    });
-    assert_eq!(
-        actual,
-        expected,
-        "markdown output diverged from golden at {}\n--- expected ---\n{expected}\n--- actual ---\n{actual}",
-        golden.display()
     );
 }
 
