@@ -125,6 +125,14 @@ tolerance, and the losslessness test is written to fail on it.
   two-phase: create every target (create-new, cleaning up on failure), and
   only after all targets exist remove the sources.
 - Pre-existing `.adoc` files are never touched, byte-for-byte.
+- **Export mirrors these semantics symmetrically** (V8.1.4):
+  `--export` alone is dry-run; `--export --write` writes `<name>.md` and
+  removes the source `.adoc` (leaving both would compile duplicate pages),
+  with the same committed-clean refusal, `--force` override, and two-phase
+  all-or-nothing writes. A page containing typed blocks refuses the whole
+  export run with `migrate.export_typed_blocks_present` (ERROR, exit
+  non-zero): exporting typed knowledge to Markdown is lossy by definition —
+  export is the undo path for a not-yet-typed corpus.
 
 ### 4. Report envelope
 
@@ -133,17 +141,45 @@ tolerance, and the losslessness test is written to fail on it.
 report only; the versioned envelope, its counts (each reconciling 1:1 with
 an emitted diagnostic), and the JSON presenter land in V8.1.2, where the
 constant lives inline in `application/migrate.rs` per the per-module
-convention.
+convention. V8.1.4 adds the additive `direction: "import" | "export"`
+field — export runs report through the same envelope — and declares the
+envelope final.
 
-### 5. Round-trip normalization set (placeholder — closed at V8.1.4)
+### 5. Round-trip normalization set (closed at V8.1.4)
 
-Export (`adoc migrate --export`, V8.1.4) must reproduce the original `.md`
-byte-identically **modulo** this set, enumerated now so V8.1.1's serializer
-does not casually widen it: list-marker style (`*`/`+` → `-`), ordered-list
-renumbering (`1.` sequential), soft-break rejoining (wrapped prose lines
-join to one line), trailing whitespace, fence info strings, emphasis-marker
-canonicalization (`_` → `*`). V8.1.4 closes the list in this ADR; anything
-outside it is a bug.
+Export (`adoc migrate --export`) must reproduce the original `.md`
+byte-identically **modulo** this set, now closed:
+
+1. **List-marker style**: `*` / `+` → `-`.
+2. **Ordered-list numbering**: any numbering → sequential `1.`, `2.`, …
+   with the `.` delimiter.
+3. **Soft-break rejoining**: soft-wrapped prose lines join to one line with
+   single spaces. (Hard-break paragraphs are quarantined at import — §2 —
+   and round-trip byte-verbatim inside their fence carrier.)
+4. **Trailing whitespace**: stripped from serialized lines; a quarantined
+   payload's trailing newlines collapse to one.
+5. **Fence canonicalization and the quarantine ceiling**: `~~~` and
+   longer-marker fences become three-backtick fences, info strings preserved
+   verbatim — and, because quarantine carriers (§2) are indistinguishable
+   from hand-written fences, a fenced block whose info string is exactly
+   `markdown` or `html` unwraps to its verbatim content on export, each
+   unwrap backed by one WARNING (`migrate.unrecognized_extension` /
+   `migrate.raw_html_quarantined` respectively — the same code the import
+   quarantine used for that carrier, so counts reconcile across a round
+   trip). A genuine hand-written ` ```markdown ` / ` ```html ` fence
+   therefore does not survive export as a fence; the fence info string is
+   the only signal available, and this ceiling is a member of the closed
+   set, not a bug.
+6. **Emphasis-marker canonicalization**: `_` → `*`, `__` → `**`.
+7. **Dropped constructs do not round-trip** (folded in from §2 "Dropped,
+   not quarantined"): front matter, GFM task-list checkbox markers, and
+   empty prose blocks are diagnosed at import and cannot be resurrected by
+   export; git history is their recovery path.
+
+The set is closed: export∘import is byte-idempotent — the first pass may
+normalize, the second must reproduce it byte-identically, held by the
+Markdown Pilot round-trip test — and any byte difference outside these
+members is a bug, not a tolerance.
 
 ### 6. Suggestions never auto-type
 
