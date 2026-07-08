@@ -192,7 +192,7 @@ pub(crate) enum CliFormat {
     /// Machine-readable JSON.
     Json,
     /// PR-comment-ready GitHub-flavored Markdown (only supported by
-    /// `adoc diff`, `adoc review`, and `adoc impacted-by`).
+    /// `adoc check`, `adoc diff`, `adoc review`, and `adoc impacted-by`).
     Markdown,
 }
 
