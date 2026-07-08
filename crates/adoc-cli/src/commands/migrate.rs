@@ -1,7 +1,7 @@
 use std::fmt::Write as FmtWrite;
 use std::path::PathBuf;
 
-use adoc_core::MigrateReportEnvelope;
+use adoc_core::{MigrateDirection, MigrateReportEnvelope};
 use adoc_local::{LocalContext, MigrateInput, UnrestrictedPathPolicy};
 
 use super::{current_dir, print_diagnostics, print_summary, report, write_json_or_report};
@@ -12,6 +12,7 @@ pub(crate) struct MigrateCommandInput {
     pub(crate) path: Option<PathBuf>,
     pub(crate) write: bool,
     pub(crate) force: bool,
+    pub(crate) export: bool,
 }
 
 pub(crate) fn migrate(input: MigrateCommandInput, resolved: ResolvedFormat) -> i32 {
@@ -25,6 +26,7 @@ pub(crate) fn migrate(input: MigrateCommandInput, resolved: ResolvedFormat) -> i
         path: input.path,
         write: input.write,
         force: input.force,
+        export: input.export,
     }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),
@@ -43,12 +45,12 @@ pub(crate) fn migrate(input: MigrateCommandInput, resolved: ResolvedFormat) -> i
 }
 
 fn write_migrate_text(report: &MigrateReportEnvelope, exit_code: i32, styled: bool) -> i32 {
+    let (done, would) = match report.direction {
+        MigrateDirection::Import => ("migrated", "would migrate"),
+        MigrateDirection::Export => ("exported", "would export"),
+    };
     for file in &report.files {
-        let verb = if file.written {
-            "migrated"
-        } else {
-            "would migrate"
-        };
+        let verb = if file.written { done } else { would };
         println!(
             "{verb} {} -> {}",
             file.source.display(),

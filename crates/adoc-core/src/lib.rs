@@ -18,8 +18,8 @@ pub use application::graph::{
     GraphTraversalEnvelope, traverse_graph,
 };
 pub use application::migrate::{
-    MIGRATE_REPORT_SCHEMA_VERSION, MigrateCounts, MigrateMode, MigrateReportEnvelope,
-    MigrateReportFile, MigrateResult, MigratedFile,
+    MIGRATE_REPORT_SCHEMA_VERSION, MigrateCounts, MigrateDirection, MigrateMode,
+    MigrateReportEnvelope, MigrateReportFile, MigrateResult, MigratedFile,
 };
 pub use application::patch::{
     PATCH_CHECK_SCHEMA_VERSION, PatchCheckResult, PatchInput, PatchJsonInput, PatchParseError,
@@ -139,6 +139,16 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
 pub fn migrate_workspace(root: std::path::PathBuf, mode: MigrateMode) -> MigrateResult {
     let provider = infrastructure::source::fs::FsSourceProvider::new(root);
     application::migrate::migrate_with_provider(&provider, mode)
+}
+
+/// V8.1.4: convert every strict prose-mode `.adoc` source under `root` back
+/// to Markdown (`adoc migrate --export`, ADR-0043 §5). Performs no writes;
+/// a page containing typed blocks refuses the run with
+/// `migrate.export_typed_blocks_present`.
+#[tracing::instrument(level = "debug", skip_all)]
+pub fn export_workspace(root: std::path::PathBuf, mode: MigrateMode) -> MigrateResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::new(root);
+    application::migrate::export_with_provider(&provider, mode)
 }
 
 pub fn build_workspace(input: BuildInput) -> CompileResult {

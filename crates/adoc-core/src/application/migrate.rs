@@ -1,12 +1,14 @@
 //! V8.1.1 migration orchestration: lossless `.md` → prose-mode `.adoc`
-//! import (PRD §28.1–§28.2, ADR-0043).
+//! import (PRD §28.1–§28.2, ADR-0043), and its V8.1.4 reverse — export back
+//! to Markdown (`adoc migrate --export`, ADR-0043 §5).
 //!
 //! Mirrors `application/compile.rs`: sources arrive through a
 //! [`SourceProvider`], Compatibility Mode files are parsed with the existing
 //! pulldown-cmark read path, and the `adoc_source` serializer renders each
-//! page. This module performs no writes — the outcome carries the rendered
-//! text and target paths; the adapter executes `--write` (all-or-nothing,
-//! ADR-0043 §3). [`MigrateReportEnvelope::new`] builds the
+//! page; export inverts the bucketing and renders strict pages through
+//! `markdown_export`. This module performs no writes — the outcome carries
+//! the rendered text and target paths; the adapter executes `--write`
+//! (all-or-nothing, ADR-0043 §3). [`MigrateReportEnvelope::new`] builds the
 //! `adoc.migrate.report.v0` report (PRD §28.3) from the result.
 
 use std::collections::BTreeSet;
@@ -22,8 +24,8 @@ use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::services::suggest_typed_blocks::{SuggestedTypedBlock, suggest_typed_blocks};
 use crate::domain::source::{SourceFile, SourceMode};
 use crate::infrastructure::git::is_committed_and_clean;
-use crate::infrastructure::parser::{parse_markdown_page, skip_front_matter};
-use crate::infrastructure::render::page_to_adoc_source;
+use crate::infrastructure::parser::{parse_markdown_page, parse_page, skip_front_matter};
+use crate::infrastructure::render::{page_to_adoc_source, page_to_markdown};
 
 /// How a migration run treats the filesystem (ADR-0043 §3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,13 +38,22 @@ pub enum MigrateMode {
     Write { force: bool },
 }
 
-/// One migrated source: where it came from, where it goes, and the rendered
-/// canonical `.adoc` text.
+/// Which way a run converts (V8.1.4): import reads `.md` and renders
+/// `.adoc`; export reads strict prose-mode `.adoc` and renders `.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MigrateDirection {
+    Import,
+    Export,
+}
+
+/// One converted source: where it came from, where it goes, and the rendered
+/// target text (`.adoc` on import, `.md` on export).
 #[derive(Debug, Clone)]
 pub struct MigratedFile {
     pub source_path: PathBuf,
     pub target_path: PathBuf,
-    pub adoc_text: String,
+    pub target_text: String,
     /// Serialized fragment count — every rendered block (headings, prose
     /// paragraphs, tight lists, code and quarantine fences), not only
     /// paragraphs; the report's `prose_blocks` source.
@@ -51,13 +62,16 @@ pub struct MigratedFile {
 
 #[derive(Debug, Clone)]
 pub struct MigrateResult {
-    /// Every Compatibility Mode source under the root, in the provider's
-    /// deterministic (lexicographic) order.
+    /// Every convertible source under the root (Compatibility Mode on
+    /// import, strict on export), in the provider's deterministic
+    /// (lexicographic) order.
     pub files: Vec<MigratedFile>,
     pub diagnostics: Vec<Diagnostic>,
     /// §28.4 typed-block candidates in file order × document order — report
-    /// records only, never applied to the rendered text.
+    /// records only, never applied to the rendered text. Always empty on
+    /// export: suggestions are an import concern.
     pub suggestions: Vec<SuggestedTypedBlock>,
+    pub direction: MigrateDirection,
 }
 
 impl MigrateResult {
@@ -105,6 +119,9 @@ pub struct MigrateReportFile {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct MigrateReportEnvelope {
     pub schema_version: &'static str,
+    /// V8.1.4, additive: which way this run converted. Import counts keep
+    /// their wire names on export (`files_imported` counts files exported).
+    pub direction: MigrateDirection,
     pub counts: MigrateCounts,
     pub files: Vec<MigrateReportFile>,
     pub suggested_next_steps: Vec<String>,
@@ -136,7 +153,8 @@ impl MigrateReportEnvelope {
         let has_errors = result.has_errors();
         Self {
             schema_version: MIGRATE_REPORT_SCHEMA_VERSION,
-            suggested_next_steps: suggested_next_steps(&counts, has_errors),
+            direction: result.direction,
+            suggested_next_steps: suggested_next_steps(&counts, has_errors, result.direction),
             files: result
                 .files
                 .into_iter()
@@ -155,29 +173,59 @@ impl MigrateReportEnvelope {
 }
 
 /// §28.3 "suggested next steps": one deterministic rule per nonzero count, in
-/// a fixed order — rules, not weights (the V1 parameter-free rule).
-fn suggested_next_steps(counts: &MigrateCounts, has_errors: bool) -> Vec<String> {
+/// a fixed order — rules, not weights (the V1 parameter-free rule). On
+/// export the quarantine-named buckets count fence *unwraps* (ADR-0043 §5),
+/// so the wording follows the direction or the report would lie.
+fn suggested_next_steps(
+    counts: &MigrateCounts,
+    has_errors: bool,
+    direction: MigrateDirection,
+) -> Vec<String> {
     let mut steps = Vec::new();
     if has_errors {
-        steps.push("Resolve the ERROR diagnostics and re-run `adoc migrate`.".to_string());
+        let command = match direction {
+            MigrateDirection::Import => "`adoc migrate`",
+            MigrateDirection::Export => "`adoc migrate --export`",
+        };
+        steps.push(format!(
+            "Resolve the ERROR diagnostics and re-run {command}."
+        ));
     }
     if counts.raw_html_quarantined > 0 {
-        steps.push(format!(
-            "Replace the {} quarantined raw HTML block(s) with strict prose or typed blocks.",
-            counts.raw_html_quarantined
-        ));
+        steps.push(match direction {
+            MigrateDirection::Import => format!(
+                "Replace the {} quarantined raw HTML block(s) with strict prose or typed blocks.",
+                counts.raw_html_quarantined
+            ),
+            MigrateDirection::Export => format!(
+                "Review the {} raw HTML block(s) unwrapped from ```html quarantine fences.",
+                counts.raw_html_quarantined
+            ),
+        });
     }
     if counts.broken_links > 0 {
-        steps.push(format!(
-            "Update the {} broken link target(s); links to migrated .md pages become .adoc.",
-            counts.broken_links
-        ));
+        steps.push(match direction {
+            MigrateDirection::Import => format!(
+                "Update the {} broken link target(s); links to migrated .md pages become .adoc.",
+                counts.broken_links
+            ),
+            MigrateDirection::Export => format!(
+                "Update the {} broken link target(s); links to exported .adoc pages become .md.",
+                counts.broken_links
+            ),
+        });
     }
     if counts.unrecognized_extensions > 0 {
-        steps.push(format!(
-            "Review the {} construct(s) preserved verbatim in fenced code blocks.",
-            counts.unrecognized_extensions
-        ));
+        steps.push(match direction {
+            MigrateDirection::Import => format!(
+                "Review the {} construct(s) preserved verbatim in fenced code blocks.",
+                counts.unrecognized_extensions
+            ),
+            MigrateDirection::Export => format!(
+                "Review the {} block(s) unwrapped from ```markdown fences to verbatim Markdown.",
+                counts.unrecognized_extensions
+            ),
+        });
     }
     if counts.suggested_typed_blocks > 0 {
         steps.push(format!(
@@ -240,6 +288,7 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
             source,
             &migration_set,
             provider,
+            MigrateDirection::Import,
         ));
 
         let target_path = source.path.with_extension("adoc");
@@ -257,46 +306,154 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
         files.push(MigratedFile {
             source_path: source.path.clone(),
             target_path,
-            adoc_text,
+            target_text: adoc_text,
             prose_blocks,
         });
     }
 
-    if let MigrateMode::Write { force: false } = mode {
-        for file in &files {
-            if !is_committed_and_clean(&file.source_path) {
-                diagnostics.push(Diagnostic::error(
-                    DiagnosticCode::MigrateSourceNotCommitted,
-                    format!(
-                        "{} is not committed-and-clean (uncommitted edits, untracked, or \
-                         outside a git repository); `--write` removes the source, and a \
-                         committed source is what makes that reversible",
-                        file.source_path.display()
-                    ),
-                ));
-            }
-        }
-    }
+    diagnostics.extend(committed_clean_refusals(&files, mode));
 
     MigrateResult {
         files,
         diagnostics,
         suggestions,
+        direction: MigrateDirection::Import,
     }
 }
 
+/// The V8.1.4 reverse run: strict prose-mode `.adoc` → `.md` (ADR-0043 §5).
+/// A separate function, not a direction flag — the per-file pipeline differs
+/// at every step (parser, serializer, no front-matter or suggestion pass,
+/// inverted bucketing, opposite target extension).
+pub(crate) fn export_with_provider<P: SourceProvider>(
+    provider: &P,
+    mode: MigrateMode,
+) -> MigrateResult {
+    let mut diagnostics = Vec::new();
+    let mut strict_sources = Vec::new();
+    let mut compat_paths = BTreeSet::new();
+    for result in provider.load_sources() {
+        match result {
+            Ok(source) => match source.mode() {
+                SourceMode::Strict => strict_sources.push(source),
+                SourceMode::Compat => {
+                    compat_paths.insert(normalize_path(&source.path));
+                }
+            },
+            Err(load_error) => diagnostics.push(load_error_diagnostic(load_error)),
+        }
+    }
+
+    let export_set: BTreeSet<PathBuf> = strict_sources
+        .iter()
+        .map(|source| normalize_path(&source.path))
+        .collect();
+
+    let mut files = Vec::with_capacity(strict_sources.len());
+    for source in &strict_sources {
+        let (page, parse_diagnostics) = parse_page(source);
+        diagnostics.extend(parse_diagnostics);
+        if page.blocks.iter().any(|block| {
+            matches!(
+                block,
+                BlockAst::KnowledgeObject(_) | BlockAst::KnowledgeObjectPending(_)
+            )
+        }) {
+            // Run-level all-or-nothing (ADR-0043 §3): the ERROR refuses the
+            // whole run, and a refused page gets no would-export row — that
+            // row would be a lie.
+            diagnostics.push(Diagnostic::error(
+                DiagnosticCode::MigrateExportTypedBlocksPresent,
+                format!(
+                    "{} contains typed Knowledge Object blocks; exporting typed knowledge \
+                     to Markdown is lossy by definition — the run is refused",
+                    source.path.display()
+                ),
+            ));
+            continue;
+        }
+        let (markdown_text, prose_blocks, serialize_diagnostics) = page_to_markdown(&page, source);
+        diagnostics.extend(serialize_diagnostics);
+        diagnostics.extend(broken_link_diagnostics(
+            &page,
+            source,
+            &export_set,
+            provider,
+            MigrateDirection::Export,
+        ));
+
+        let target_path = source.path.with_extension("md");
+        if compat_paths.contains(&normalize_path(&target_path)) {
+            diagnostics.push(Diagnostic::error(
+                DiagnosticCode::MigrateTargetExists,
+                format!(
+                    "export target {} already exists; refusing the run — leaving \
+                     {} beside it would compile duplicate page IDs",
+                    target_path.display(),
+                    source.path.display()
+                ),
+            ));
+        }
+        files.push(MigratedFile {
+            source_path: source.path.clone(),
+            target_path,
+            target_text: markdown_text,
+            prose_blocks,
+        });
+    }
+
+    diagnostics.extend(committed_clean_refusals(&files, mode));
+
+    MigrateResult {
+        files,
+        diagnostics,
+        suggestions: Vec::new(),
+        direction: MigrateDirection::Export,
+    }
+}
+
+/// ADR-0043 §3 committed-clean refusal, shared by both directions: `--write`
+/// removes each source, and a committed source is what makes that
+/// reversible. Dry-run never probes git.
+fn committed_clean_refusals(files: &[MigratedFile], mode: MigrateMode) -> Vec<Diagnostic> {
+    let MigrateMode::Write { force: false } = mode else {
+        return Vec::new();
+    };
+    files
+        .iter()
+        .filter(|file| !is_committed_and_clean(&file.source_path))
+        .map(|file| {
+            Diagnostic::error(
+                DiagnosticCode::MigrateSourceNotCommitted,
+                format!(
+                    "{} is not committed-and-clean (uncommitted edits, untracked, or \
+                     outside a git repository); `--write` removes the source, and a \
+                     committed source is what makes that reversible",
+                    file.source_path.display()
+                ),
+            )
+        })
+        .collect()
+}
+
 /// Warn on relative links whose target the provider does not know
-/// or is a `.md` this run migrates away (ADR-0043). Only links to source
-/// extensions are judged — the provider does not see other assets, and a
-/// guess would be a silent false positive. Existence is answered by
-/// [`SourceProvider::contains`], never by direct filesystem probes:
-/// application code stays I/O-free and the check is testable in-memory.
+/// or is a source this run converts away (`.md` on import, `.adoc` on
+/// export — ADR-0043). Only links to source extensions are judged — the
+/// provider does not see other assets, and a guess would be a silent false
+/// positive. Existence is answered by [`SourceProvider::contains`], never by
+/// direct filesystem probes: application code stays I/O-free and the check
+/// is testable in-memory.
 fn broken_link_diagnostics<P: SourceProvider>(
     page: &PageAst,
     source: &SourceFile,
-    migration_set: &BTreeSet<PathBuf>,
+    conversion_set: &BTreeSet<PathBuf>,
     provider: &P,
+    direction: MigrateDirection,
 ) -> Vec<Diagnostic> {
+    let converted_away = match direction {
+        MigrateDirection::Import => "migrated to .adoc",
+        MigrateDirection::Export => "exported to .md",
+    };
     let mut diagnostics = Vec::new();
     let source_dir = source.path.parent().unwrap_or(Path::new(""));
     for block in &page.blocks {
@@ -313,12 +470,12 @@ fn broken_link_diagnostics<P: SourceProvider>(
                 return;
             }
             let resolved = normalize_path(&source_dir.join(target));
-            if migration_set.contains(&resolved) {
+            if conversion_set.contains(&resolved) {
                 diagnostics.push(
                     Diagnostic::warning(
                         DiagnosticCode::MigrateBrokenLink,
                         format!(
-                            "link target {target} is migrated to .adoc by this run; \
+                            "link target {target} is {converted_away} by this run; \
                              update the link in {}",
                             source.path.display()
                         ),
@@ -455,7 +612,7 @@ mod tests {
             result.files[0].target_path,
             PathBuf::from("/work/guides/setup.adoc")
         );
-        assert_eq!(result.files[0].adoc_text, "# Setup\n\nProse.\n");
+        assert_eq!(result.files[0].target_text, "# Setup\n\nProse.\n");
     }
 
     #[test]
@@ -639,6 +796,142 @@ mod tests {
         );
         let value = serde_json::to_value(&envelope).expect("envelope serializes");
         assert_eq!(value["schema_version"], "adoc.migrate.report.v0");
+        assert_eq!(value["direction"], "import");
+    }
+
+    #[test]
+    fn export_dry_run_exports_only_strict_sources() {
+        let provider = InMemorySourceProvider::new()
+            .with_source(markdown_source("guides/setup.adoc", "# Setup\n\nProse.\n"))
+            .with_source(markdown_source("guides/notes.md", "# Notes\n\nStill md.\n"));
+
+        let result = export_with_provider(&provider, MigrateMode::DryRun);
+
+        assert!(!result.has_errors(), "{:?}", result.diagnostics);
+        assert_eq!(result.direction, MigrateDirection::Export);
+        assert_eq!(result.files.len(), 1);
+        assert_eq!(
+            result.files[0].target_path,
+            PathBuf::from("/work/guides/setup.md")
+        );
+        assert_eq!(result.files[0].target_text, "# Setup\n\nProse.\n");
+        assert!(result.suggestions.is_empty());
+    }
+
+    #[test]
+    fn typed_block_page_refuses_the_export_run_and_is_not_listed() {
+        let provider = InMemorySourceProvider::new()
+            .with_source(markdown_source("guides/prose.adoc", "# Prose\n\nPlain.\n"))
+            .with_source(markdown_source(
+                "knowledge/claims.adoc",
+                "# Claims @doc(knowledge.claims)\n\n::claim billing.x\nstatus: draft\n--\nBody.\n::\n",
+            ));
+
+        let result = export_with_provider(&provider, MigrateMode::DryRun);
+
+        assert!(result.has_errors());
+        let refusal = result
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.code == DiagnosticCode::MigrateExportTypedBlocksPresent)
+            .expect("refusal must carry migrate.export_typed_blocks_present");
+        assert!(refusal.message.contains("knowledge/claims.adoc"));
+        assert_eq!(
+            result.files.len(),
+            1,
+            "the refused page gets no would-export row: {:?}",
+            result.files
+        );
+        assert_eq!(
+            result.files[0].source_path,
+            PathBuf::from("/work/guides/prose.adoc")
+        );
+    }
+
+    #[test]
+    fn existing_md_target_is_an_export_error() {
+        let provider = InMemorySourceProvider::new()
+            .with_source(markdown_source("guides/setup.adoc", "# Setup\n\nProse.\n"))
+            .with_source(markdown_source("guides/setup.md", "# Setup\n\nStill md.\n"));
+
+        let result = export_with_provider(&provider, MigrateMode::DryRun);
+
+        assert!(result.has_errors());
+        assert!(
+            result
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == DiagnosticCode::MigrateTargetExists),
+            "{:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn export_write_without_a_repository_refuses_every_source() {
+        let provider = InMemorySourceProvider::new()
+            .with_source(markdown_source("a/one.adoc", "# One\n\nProse.\n"))
+            .with_source(markdown_source("a/two.adoc", "# Two\n\nProse.\n"));
+
+        let result = export_with_provider(&provider, MigrateMode::Write { force: false });
+
+        let refusals = result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::MigrateSourceNotCommitted)
+            .count();
+        assert_eq!(refusals, 2, "{:?}", result.diagnostics);
+
+        let force = export_with_provider(&provider, MigrateMode::Write { force: true });
+        assert!(!force.has_errors(), "{:?}", force.diagnostics);
+    }
+
+    #[test]
+    fn link_to_an_exported_adoc_warns_broken_link() {
+        let provider = InMemorySourceProvider::new()
+            .with_source(markdown_source(
+                "guides/setup.adoc",
+                "# Setup\n\nSee [claims](../knowledge/claims.adoc).\n",
+            ))
+            .with_source(markdown_source(
+                "knowledge/claims.adoc",
+                "# Claims\n\nProse only.\n",
+            ));
+
+        let result = export_with_provider(&provider, MigrateMode::DryRun);
+
+        assert!(
+            result.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::MigrateBrokenLink
+                    && diagnostic.message.contains("exported to .md")
+            }),
+            "{:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn export_envelope_stamps_direction_and_export_wordings() {
+        let provider = InMemorySourceProvider::new().with_source(markdown_source(
+            "guides/setup.adoc",
+            "# Setup\n\n```html\n<div class=\"alert\">raw</div>\n```\n",
+        ));
+        let envelope =
+            MigrateReportEnvelope::new(export_with_provider(&provider, MigrateMode::DryRun), false);
+
+        assert_eq!(envelope.direction, MigrateDirection::Export);
+        assert_eq!(envelope.counts.suggested_typed_blocks, 0);
+        assert_eq!(envelope.counts.raw_html_quarantined, 1, "one unwrap");
+        assert!(
+            envelope
+                .suggested_next_steps
+                .iter()
+                .any(|step| step.contains("unwrapped from ```html")),
+            "export wording, not import wording: {:?}",
+            envelope.suggested_next_steps
+        );
+        let value = serde_json::to_value(&envelope).expect("envelope serializes");
+        assert_eq!(value["direction"], "export");
     }
 
     #[test]

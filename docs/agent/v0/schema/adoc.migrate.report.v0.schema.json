@@ -2,10 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.migrate.report.v0.schema.json",
   "title": "AgentDoc Migration Report",
-  "description": "The `adoc migrate` report envelope: PRD §28.3 counts (each diagnostic-backed count reconciles 1:1 with an emitted migrate.* diagnostic), per-file entries, suggested next steps, and every diagnostic the run emitted. Emitted by `adoc migrate --format json`; there is no MCP migrate tool. See ROADMAP-V8.md §V8.1.2 and ADR-0043 §4.",
+  "description": "The `adoc migrate` report envelope: PRD §28.3 counts (each diagnostic-backed count reconciles 1:1 with an emitted migrate.* diagnostic), per-file entries, suggested next steps, and every diagnostic the run emitted. Emitted by `adoc migrate --format json` for both directions — import and `--export` (V8.1.4); there is no MCP migrate tool. See ROADMAP-V8.md §V8.1.2 and ADR-0043 §4.",
   "type": "object",
   "required": [
     "schema_version",
+    "direction",
     "counts",
     "files",
     "suggested_next_steps",
@@ -15,6 +16,10 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": { "const": "adoc.migrate.report.v0" },
+    "direction": {
+      "description": "Which way the run converted (V8.1.4, additive): import reads .md and renders .adoc; export reads strict prose-mode .adoc and renders .md. Count wire names are fixed — on export, files_imported counts files exported and the quarantine-named tallies count fence unwraps.",
+      "enum": ["import", "export"]
+    },
     "counts": { "$ref": "#/$defs/counts" },
     "files": {
       "type": "array",

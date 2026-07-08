@@ -37,7 +37,13 @@ page IDs. --write refuses (all-or-nothing, nothing written or removed) when
 any source .md is not committed-and-clean in git; --force overrides. A
 committed source plus `git` is what makes the removal reversible.
 
-Exit codes: 0 migrated (or dry-run clean); 1 refused or migration errors;
+--export runs the reverse: strict prose-mode .adoc back to Markdown, with
+the same dry-run default and --write/--force semantics (writes <name>.md,
+removes the source .adoc). A page containing typed blocks refuses the whole
+run with migrate.export_typed_blocks_present — exporting typed knowledge to
+Markdown is lossy by definition.
+
+Exit codes: 0 converted (or dry-run clean); 1 refused or migration errors;
 2 usage errors. Warnings never fail the run.
 
 Examples:
@@ -45,6 +51,8 @@ Examples:
   adoc migrate docs
   adoc migrate docs --write
   adoc migrate docs --write --force
+  adoc migrate docs --export
+  adoc migrate docs --export --write
 ";
 const BUILD_LONG_HELP: &str = "\
 Examples:
@@ -297,19 +305,22 @@ pub(crate) enum Commands {
         path: Option<PathBuf>,
     },
     #[command(
-        about = "Convert Markdown sources to prose-mode .adoc (dry-run by default).",
+        about = "Convert Markdown sources to prose-mode .adoc, or back with --export (dry-run by default).",
         after_long_help = MIGRATE_LONG_HELP
     )]
     Migrate {
-        /// Markdown file or directory to migrate.
+        /// Source file or directory to convert.
         #[arg(value_name = "PATH")]
         path: Option<PathBuf>,
-        /// Write each source's .adoc target and remove the source .md files.
+        /// Write each source's target file and remove the source files.
         #[arg(long)]
         write: bool,
         /// Skip the committed-and-clean git refusal for --write.
         #[arg(long)]
         force: bool,
+        /// Export prose-mode .adoc sources back to Markdown instead of importing.
+        #[arg(long)]
+        export: bool,
     },
     #[command(
         about = "Build HTML, graph, and search artifacts.",
