@@ -565,6 +565,40 @@ fn plain_output_prints_the_section_28_3_report_block() {
     }
 }
 
+/// The export twin of the §28.3 report-block pin: the human labels follow
+/// the direction (the JSON wire names stay fixed), so an export run says
+/// "fences unwrapped", not "extensions".
+#[test]
+fn plain_output_export_report_block() {
+    let workspace = migrated_committed_prose_pilot("migrate-cli-plain-export-report");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["migrate", ".", "--export"])
+        .output()
+        .expect("adoc migrate --export should run");
+
+    assert_eq!(output.status.code(), Some(0));
+    let text = stdout(&output);
+    for line in [
+        "Export report",
+        "Files exported: 15",
+        "Pages created: 15",
+        "Prose blocks: 128",
+        "Raw HTML fences unwrapped: 2",
+        "Broken links: 4",
+        "Markdown fences unwrapped: 10",
+        "Suggested typed blocks: 0",
+        "Suggested next steps:",
+        "would export",
+    ] {
+        assert!(
+            text.contains(line),
+            "plain export output must contain {line:?}:\n{text}"
+        );
+    }
+}
+
 /// The V8.1.3 acceptance fixture: one TODO line and one numbered step list
 /// yield exactly one `task` and one `procedure` suggestion with correct spans.
 #[test]
