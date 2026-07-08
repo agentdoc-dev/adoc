@@ -72,6 +72,26 @@ impl Exporter<'_> {
                 self.fragments.push(to_source(&paragraph.inlines));
             }
             BlockAst::List(list) => {
+                if list.items.iter().any(|item| !item.content.is_empty()) {
+                    // Unreachable from `parse_page` today (the `.adoc`
+                    // grammar has flat, tight lists only), but if the strict
+                    // grammar ever widens, dropping continuation blocks would
+                    // be silent data loss — refuse instead, mirroring the
+                    // quarantine guard in `adoc_source::push_list`. Export
+                    // has no quarantine carrier, so refusal is the safe arm.
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::MigrateUnrecognizedExtension,
+                            format!(
+                                "list with continuation content in {} cannot be exported; \
+                                 the strict grammar has flat lists only",
+                                self.source.path.display()
+                            ),
+                        )
+                        .with_span(list.span.clone()),
+                    );
+                    return;
+                }
                 let mut lines = Vec::with_capacity(list.items.len());
                 for (index, item) in list.items.iter().enumerate() {
                     let marker = match list.kind {
@@ -284,6 +304,34 @@ mod tests {
             }),
             "{diagnostics:?}"
         );
+    }
+
+    #[test]
+    fn list_with_continuation_content_refuses_instead_of_dropping_it() {
+        // Unreachable from `parse_page` today (the `.adoc` grammar has flat,
+        // tight lists only, so `ListItem.content` stays empty), but if the
+        // strict grammar ever widens, silently dropping continuation blocks
+        // would be data loss — the exporter must refuse, mirroring the
+        // quarantine guard in `adoc_source::push_list`.
+        let md_source = SourceFile::new_with_identity_path(
+            PathBuf::from("guides/page.md"),
+            "- alpha\n\n  continuation paragraph\n".to_string(),
+            PathBuf::from("guides/page.md"),
+        );
+        let (loose_list_page, _) = parse_markdown_page(&md_source);
+
+        let (text, _, diagnostics) = page_to_markdown(&loose_list_page, &md_source);
+
+        assert!(
+            !text.contains("alpha"),
+            "no partial list may be emitted: {text:?}"
+        );
+        let refusal = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.message.contains("continuation content"))
+            .expect("the refusal must be diagnosed");
+        assert_eq!(refusal.severity, Severity::Error);
+        assert_eq!(refusal.code, DiagnosticCode::MigrateUnrecognizedExtension);
     }
 
     #[test]
