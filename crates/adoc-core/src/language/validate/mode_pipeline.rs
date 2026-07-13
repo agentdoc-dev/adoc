@@ -16,9 +16,9 @@ use chrono::NaiveDate;
 use crate::domain::ast::PageAst;
 use crate::domain::diagnostic::Diagnostic;
 use crate::domain::source::{SourceFile, SourceMode};
-use crate::infrastructure::parser::{parse_markdown_page, parse_page};
-use crate::infrastructure::validate::compat::validate_compat_source_page;
-use crate::infrastructure::validate::{validate_resolved_page, validate_source_page};
+use crate::language::parser::{parse_markdown_page, parse_page};
+use crate::language::validate::compat::validate_compat_source_page;
+use crate::language::validate::{validate_resolved_page, validate_source_page};
 
 /// Bundle of per-mode validation entry points selected by [`pipeline_for`].
 pub(crate) struct ModePipeline {

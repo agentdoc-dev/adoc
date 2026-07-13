@@ -1,7 +1,7 @@
 //! Op-specific edit planners over a [`TypedBlockLayout`] (V6.4, ADR-0036).
 //!
 //! Pure byte math: layouts are built from fresh parser spans by
-//! `infrastructure::parser::layout`; planners turn a patch intent into a
+//! `language::parser::layout`; planners turn a patch intent into a
 //! [`SourceEditPlan`] without touching the filesystem or the parser. Refusals
 //! come back as fix-oriented diagnostics, never panics.
 
@@ -301,7 +301,7 @@ fn guard_body_lines(body: &str) -> Vec<Diagnostic> {
 }
 
 /// Pure mirror of the parser's open-fence detector
-/// (`infrastructure::parser::typed_block::looks_like_open_fence`): a spliced
+/// (`language::parser::typed_block::looks_like_open_fence`): a spliced
 /// file must reparse to exactly the intended block, so the planner refuses
 /// body text the parser would treat as an opener.
 fn looks_like_open_fence(line: &str) -> bool {

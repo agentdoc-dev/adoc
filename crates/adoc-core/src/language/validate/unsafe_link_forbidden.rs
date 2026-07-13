@@ -4,7 +4,7 @@ use crate::domain::inline::InlineSegment;
 use crate::domain::rules::ValidationRule;
 use crate::domain::source::SourceFile;
 use crate::domain::url_safety::{allowed_schemes_summary, verdict};
-use crate::infrastructure::validate::url_walker::{UrlVisitor, walk_inlines, walk_page};
+use crate::language::validate::url_walker::{UrlVisitor, walk_inlines, walk_page};
 
 /// Rejects link URLs whose scheme isn't on the strict-mode allowlist. Walks
 /// every link in the page's AST (including nested labels and links inside
@@ -56,8 +56,8 @@ mod tests {
 
     use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
     use crate::domain::source::SourceFile;
-    use crate::infrastructure::parser::parse_page;
-    use crate::infrastructure::validate::validate_source_page;
+    use crate::language::parser::parse_page;
+    use crate::language::validate::validate_source_page;
 
     fn validate_text(text: &str) -> Vec<Diagnostic> {
         let source = SourceFile::new_with_identity_path(

@@ -1,8 +1,8 @@
 //! Port for loading the AgentDoc sources from a project snapshot.
 //!
 //! `SnapshotSourceProvider` is an internal seam introduced in V3.1. The
-//! adapter implementation (`GitWorktreeProvider`) lives in
-//! `crate::infrastructure::git`. The composition root in `lib.rs` is the
+//! Git worktree adapter implementation lives in the infrastructure layer.
+//! The composition root in `lib.rs` is the
 //! only wiring site. Temporary paths and cleanup handles stay inside that
 //! adapter; application code receives an in-memory source set.
 //!

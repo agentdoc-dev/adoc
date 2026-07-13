@@ -24,8 +24,8 @@ use crate::domain::ports::committed_source::CommittedSourceProbe;
 use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::services::suggest_typed_blocks::{SuggestedTypedBlock, suggest_typed_blocks};
 use crate::domain::source::{SourceFile, SourceMode};
-use crate::infrastructure::parser::{parse_markdown_page, parse_page, skip_front_matter};
-use crate::infrastructure::render::{page_to_adoc_source, page_to_markdown};
+use crate::language::parser::{parse_markdown_page, parse_page, skip_front_matter};
+use crate::language::render::{page_to_adoc_source, page_to_markdown};
 
 /// How a migration run treats the filesystem (ADR-0043 §3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

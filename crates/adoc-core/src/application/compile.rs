@@ -7,16 +7,18 @@ use crate::application::resolve_knowledge_objects::{
     resolve_knowledge_objects, suppress_unknown_kind_shape_diagnostics,
 };
 use crate::application::resolve_object_references::resolve_object_references;
+use crate::domain::artifact::SearchArtifactDocument;
 use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::GraphArtifactDocument;
+use crate::domain::ports::artifact_reader::ArtifactReader;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
 use crate::domain::source::SourceFile;
-use crate::infrastructure::artifact::{GraphJsonArtifact, SearchJsonArtifact};
-use crate::infrastructure::render::HtmlRenderer;
-use crate::infrastructure::validate::mode_pipeline::pipeline_for;
-use crate::infrastructure::validate::validate_workspace;
+use crate::language::graph_projection::GraphProjection;
+use crate::language::render::HtmlRenderer;
+use crate::language::validate::mode_pipeline::pipeline_for;
+use crate::language::validate::validate_workspace;
 
 use super::local_today;
 use super::search_artifact::{
@@ -134,6 +136,7 @@ pub(crate) fn build_with_provider_for_date<P: SourceProvider>(
 pub(crate) struct BuildOptions<'a> {
     pub(crate) embeddings: BuildEmbeddingBehavior<'a>,
     pub(crate) prior_search_artifact_path: Option<PathBuf>,
+    pub(crate) search_reader: &'a dyn ArtifactReader<Output = SearchArtifactDocument>,
 }
 
 pub(crate) enum BuildEmbeddingBehavior<'a> {
@@ -358,7 +361,7 @@ fn emit_artifacts(
         .cloned()
         .collect::<Vec<_>>();
     let projection = WorkspaceProjection {
-        graph: GraphJsonArtifact.build_for_date(workspace, &graph_diagnostics, today),
+        graph: GraphProjection.build_for_date(workspace, &graph_diagnostics, today),
     };
     let graph_json = match projection.graph.to_pretty_json() {
         Ok(graph_json) => graph_json,
@@ -374,6 +377,7 @@ fn emit_artifacts(
     let prior_search_artifact_path = build_options
         .as_ref()
         .and_then(|options| options.prior_search_artifact_path.clone());
+    let search_reader = build_options.as_ref().map(|options| options.search_reader);
     let mut artifact_diagnostics = Vec::new();
     let search_json = match build_options
         .as_mut()
@@ -386,7 +390,7 @@ fn emit_artifacts(
                 &graph_json,
                 *provider,
                 prior_search_artifact_path.as_ref(),
-                &SearchJsonArtifact,
+                search_reader.expect("embedding options are present"),
             ) {
                 Ok(search_build) => {
                     artifact_diagnostics.extend(search_build.diagnostics);
@@ -431,7 +435,7 @@ fn emit_artifacts(
                 &graph_json,
                 provider.as_ref(),
                 prior_search_artifact_path.as_ref(),
-                &SearchJsonArtifact,
+                search_reader.expect("embedding options are present"),
             ) {
                 Ok(search_build) => {
                     artifact_diagnostics.extend(search_build.diagnostics);
@@ -482,7 +486,7 @@ fn project_workspace(
         return None;
     }
     Some(WorkspaceProjection {
-        graph: GraphJsonArtifact.build_for_date(workspace, diagnostics, today),
+        graph: GraphProjection.build_for_date(workspace, diagnostics, today),
     })
 }
 
@@ -509,11 +513,11 @@ fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::artifact::SearchArtifactDocument;
+    use crate::domain::artifact::{SEARCH_ARTIFACT_SCHEMA_VERSION, SearchArtifactDocument};
     use crate::domain::ast::BlockAst;
     use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider, ModelId};
     use crate::domain::source::SourceFile;
-    use crate::infrastructure::artifact::search_json::SUPPORTED_SEARCH_SCHEMA_VERSION;
+    use crate::infrastructure::artifact::SearchJsonArtifact;
     use crate::infrastructure::embedding::deterministic::DeterministicProvider;
     use crate::infrastructure::source::in_memory::InMemorySourceProvider;
     use chrono::NaiveDate;
@@ -938,6 +942,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -958,7 +963,7 @@ mod tests {
             .expect("test embedding succeeds")
             .remove(0);
 
-        assert_eq!(search.schema_version, SUPPORTED_SEARCH_SCHEMA_VERSION);
+        assert_eq!(search.schema_version, SEARCH_ARTIFACT_SCHEMA_VERSION);
         assert_eq!(search.model.id, "hash-v1");
         assert_eq!(search.model.provider, "deterministic");
         assert_eq!(search.model.dim, 4);
@@ -984,6 +989,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1029,6 +1035,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1070,6 +1077,7 @@ mod tests {
                     provider: &first_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
         let first_search = first_result
@@ -1101,6 +1109,7 @@ mod tests {
                     provider: &second_provider,
                 },
                 prior_search_artifact_path: Some(prior.path().to_path_buf()),
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1157,6 +1166,7 @@ mod tests {
                     provider: &first_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
         let first_search = first_result
@@ -1187,6 +1197,7 @@ mod tests {
                     provider: &second_provider,
                 },
                 prior_search_artifact_path: Some(prior.path().to_path_buf()),
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1226,6 +1237,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: Some(prior.path().to_path_buf()),
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1281,6 +1293,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: Some(prior.path().to_path_buf()),
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1319,6 +1332,7 @@ mod tests {
                     provider: &first_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
         let mut prior_search = first_result
@@ -1349,6 +1363,7 @@ mod tests {
                     provider: &second_provider,
                 },
                 prior_search_artifact_path: Some(prior.path().to_path_buf()),
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1386,6 +1401,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1410,6 +1426,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1442,6 +1459,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1461,6 +1479,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 

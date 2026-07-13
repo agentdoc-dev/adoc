@@ -292,13 +292,12 @@ pub(crate) enum SourceMode {
 
 /// Classify the [`SourceMode`] of a file from its extension.
 ///
-/// Only `.adoc` and `.md` reach the parser because [`FsSourceProvider`]
+/// Only `.adoc` and `.md` reach the parser because the filesystem source adapter
 /// rejects every other extension at the IO boundary using
 /// [`SOURCE_EXTENSIONS`], so a missing or unknown extension defaults to
 /// `Strict` for safety. The result is stored on [`SourceFile::mode`] at
 /// construction; downstream callers must not re-derive.
 ///
-/// [`FsSourceProvider`]: crate::infrastructure::source::FsSourceProvider
 fn mode_for_path(path: &Path) -> SourceMode {
     match path.extension().and_then(|extension| extension.to_str()) {
         Some("md") => SourceMode::Compat,

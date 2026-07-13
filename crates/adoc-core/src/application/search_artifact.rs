@@ -1,18 +1,18 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use crate::application::hashing::sha256_prefixed;
 use crate::domain::artifact::{
-    SearchArtifactDocument, SearchEmbedding, SearchEntryKind, SearchModelHeader,
+    SEARCH_ARTIFACT_SCHEMA_VERSION, SearchArtifactDocument, SearchEmbedding, SearchEntryKind,
+    SearchModelHeader,
 };
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{
     GraphArtifactDocument, GraphBlockNode, GraphKnowledgeObjectNode, GraphNode, ProseBlockKind,
 };
+use crate::domain::hashing::sha256_prefixed;
 use crate::domain::ports::artifact_reader::{ArtifactReadErrorKind, ArtifactReader};
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::retrieval::metadata;
-use crate::infrastructure::artifact::search_json::SUPPORTED_SEARCH_SCHEMA_VERSION;
 
 pub(crate) struct SearchArtifactBuild {
     pub(crate) json: String,
@@ -43,7 +43,7 @@ pub(crate) fn build_search_artifact<S>(
     search_reader: &S,
 ) -> Result<SearchArtifactBuild, Vec<Diagnostic>>
 where
-    S: ArtifactReader<Output = SearchArtifactDocument>,
+    S: ArtifactReader<Output = SearchArtifactDocument> + ?Sized,
 {
     let model = search_model_header(provider);
     let cache_load = load_matching_search_cache(prior_search_artifact_path, &model, search_reader);
@@ -131,7 +131,7 @@ where
     }
 
     let document = SearchArtifactDocument {
-        schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
+        schema_version: SEARCH_ARTIFACT_SCHEMA_VERSION.to_string(),
         model,
         graph_artifact_hash,
         embeddings,
@@ -215,7 +215,7 @@ fn load_matching_search_cache<S>(
     search_reader: &S,
 ) -> SearchCacheLoad
 where
-    S: ArtifactReader<Output = SearchArtifactDocument>,
+    S: ArtifactReader<Output = SearchArtifactDocument> + ?Sized,
 {
     let Some(path) = path else {
         return SearchCacheLoad::empty();

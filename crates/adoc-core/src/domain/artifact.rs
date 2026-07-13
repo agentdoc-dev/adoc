@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub(crate) const SEARCH_ARTIFACT_SCHEMA_VERSION: &str = "adoc.search.v1";
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct SearchArtifactDocument {
     pub(crate) schema_version: String,

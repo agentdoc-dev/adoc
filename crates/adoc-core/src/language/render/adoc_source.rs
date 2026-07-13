@@ -20,8 +20,8 @@ use crate::domain::ast::{BlockAst, HeadingAst, ListAst, ListKind, PageAst, Unkno
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity, SourceSpan};
 use crate::domain::inline::to_source;
 use crate::domain::source::SourceFile;
-use crate::infrastructure::parser::parse_page;
-use crate::infrastructure::validate::validate_source_page;
+use crate::language::parser::parse_page;
+use crate::language::validate::validate_source_page;
 
 /// The reconciliation anchor: every quarantine diagnostic message contains
 /// this phrase, so a report (or the losslessness test) can count kind
@@ -372,7 +372,7 @@ fn extension_construct_name(kind: UnknownExtensionKind) -> &'static str {
 mod tests {
     use super::*;
     use crate::domain::diagnostic::Severity;
-    use crate::infrastructure::parser::parse_markdown_page;
+    use crate::language::parser::parse_markdown_page;
 
     fn markdown_source(text: &str) -> SourceFile {
         SourceFile::new_with_identity_path(

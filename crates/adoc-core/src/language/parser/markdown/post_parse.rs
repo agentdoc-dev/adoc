@@ -6,13 +6,13 @@
 //! renderer can quarantine them — the same recognition that the
 //! `UnknownExtension` compat validator uses to emit diagnostics. Both
 //! callers route through
-//! [`crate::infrastructure::parser::extension_classifier::classify_line`] so
+//! [`crate::language::parser::extension_classifier::classify_line`] so
 //! their behavior cannot drift apart.
 
 use crate::domain::ast::{BlockAst, UnknownExtensionAst, UnknownExtensionKind};
 use crate::domain::source::SourceFile;
 
-use crate::infrastructure::parser::extension_classifier::{LineExtension, classify_line};
+use crate::language::parser::extension_classifier::{LineExtension, classify_line};
 
 pub(super) fn rewrite_pandoc_and_attribute_paragraphs(
     blocks: &mut [BlockAst],
@@ -98,7 +98,7 @@ mod tests {
     };
     use crate::domain::diagnostic::{SourcePosition, SourceSpan};
     use crate::domain::inline::InlineSegment;
-    use crate::infrastructure::parser::markdown::parse_markdown_page;
+    use crate::language::parser::markdown::parse_markdown_page;
 
     fn span_at(line: u32) -> SourceSpan {
         SourceSpan {

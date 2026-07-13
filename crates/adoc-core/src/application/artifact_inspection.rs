@@ -2,14 +2,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::application::hashing::sha256_prefixed;
 use crate::domain::artifact::{SearchArtifactDocument, SearchModelHeader};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphArtifactDocument, GraphIndex, GraphNode};
+use crate::domain::hashing::sha256_prefixed;
 use crate::domain::ports::artifact_reader::{
     ArtifactReadError, ArtifactReadErrorKind, ArtifactReader,
 };
-use crate::infrastructure::artifact::{GraphJsonArtifact, SearchJsonArtifact};
 use crate::{EmbeddingProviderSelection, active_search_model_header_for};
 
 #[derive(Debug, Clone)]
@@ -45,24 +44,14 @@ pub struct ArtifactInspection {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-pub(crate) fn inspect_graph_artifact(input: GraphArtifactInspectionInput) -> ArtifactInspection {
-    inspect_graph_artifact_with_reader(&input.graph_artifact_path, &GraphJsonArtifact)
-}
-
-pub(crate) fn inspect_search_artifact(input: SearchArtifactInspectionInput) -> ArtifactInspection {
-    inspect_search_artifact_with_readers(
-        input.search_artifact_path,
-        &input.graph_artifact_path,
-        input.embedding_provider,
-        &SearchJsonArtifact,
-        &GraphJsonArtifact,
-    )
-}
-
-fn inspect_graph_artifact_with_reader<G>(path: &Path, graph_reader: &G) -> ArtifactInspection
+pub(crate) fn inspect_graph_artifact_with_reader<G>(
+    input: GraphArtifactInspectionInput,
+    graph_reader: &G,
+) -> ArtifactInspection
 where
     G: ArtifactReader<Output = GraphArtifactDocument>,
 {
+    let path = &input.graph_artifact_path;
     match graph_reader.read(path) {
         Err(error) => ArtifactInspection {
             path: Some(path.to_path_buf()),
@@ -105,10 +94,8 @@ fn graph_document_inspection(
     }
 }
 
-fn inspect_search_artifact_with_readers<S, G>(
-    search_path: Option<PathBuf>,
-    graph_path: &Path,
-    embedding_provider: Option<EmbeddingProviderSelection>,
+pub(crate) fn inspect_search_artifact_with_readers<S, G>(
+    input: SearchArtifactInspectionInput,
     search_reader: &S,
     graph_reader: &G,
 ) -> ArtifactInspection
@@ -116,6 +103,12 @@ where
     S: ArtifactReader<Output = SearchArtifactDocument>,
     G: ArtifactReader<Output = GraphArtifactDocument>,
 {
+    let SearchArtifactInspectionInput {
+        graph_artifact_path,
+        search_artifact_path: search_path,
+        embedding_provider,
+    } = input;
+    let graph_path = graph_artifact_path.as_path();
     let Some(search_path) = search_path else {
         return ArtifactInspection {
             path: None,
@@ -266,13 +259,12 @@ fn deterministic_quality_diagnostic(path: &Path) -> Diagnostic {
 
 #[cfg(test)]
 mod tests {
-    use crate::infrastructure::artifact::{
-        graph_json::SUPPORTED_GRAPH_SCHEMA_VERSION, search_json::SUPPORTED_SEARCH_SCHEMA_VERSION,
-    };
+    use crate::domain::artifact::SEARCH_ARTIFACT_SCHEMA_VERSION;
+    use crate::domain::graph::GRAPH_ARTIFACT_SCHEMA_VERSION;
 
     #[test]
     fn graph_schema_constants_match_readers() {
-        assert_eq!(SUPPORTED_GRAPH_SCHEMA_VERSION, "adoc.graph.v4");
-        assert_eq!(SUPPORTED_SEARCH_SCHEMA_VERSION, "adoc.search.v1");
+        assert_eq!(GRAPH_ARTIFACT_SCHEMA_VERSION, "adoc.graph.v4");
+        assert_eq!(SEARCH_ARTIFACT_SCHEMA_VERSION, "adoc.search.v1");
     }
 }

@@ -2,8 +2,8 @@ use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::{CompatDiagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::rules::CompatRule;
 use crate::domain::source::SourceFile;
-use crate::infrastructure::parser::extension_classifier::{LineExtension, classify_line};
-use crate::infrastructure::parser::skip_front_matter;
+use crate::language::parser::extension_classifier::{LineExtension, classify_line};
+use crate::language::parser::skip_front_matter;
 
 /// Reports `compat.unknown_extension` for Markdown constructs outside the V4
 /// supported set. Two complementary signals:
@@ -15,7 +15,7 @@ use crate::infrastructure::parser::skip_front_matter;
 /// 2. **Source-text scan** — `pulldown-cmark` cannot distinguish Pandoc
 ///    directives (`:::warning`) and custom attribute blocks (`{.class}` /
 ///    `{#id}`) from plain paragraph text. The shared
-///    [`crate::infrastructure::parser::extension_classifier`] classifies each
+///    [`crate::language::parser::extension_classifier`] classifies each
 ///    source line; lines inside a fenced code block are skipped via the
 ///    block-level span exclusion list.
 ///
@@ -373,7 +373,7 @@ mod tests {
 
     use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
     use crate::domain::source::SourceFile;
-    use crate::infrastructure::parser::parse_markdown_page;
+    use crate::language::parser::parse_markdown_page;
 
     fn validate(text: &str) -> Vec<Diagnostic> {
         let source = SourceFile::new_with_identity_path(

@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 
+pub(crate) const GRAPH_ARTIFACT_SCHEMA_VERSION: &str = "adoc.graph.v4";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphRelationKind {

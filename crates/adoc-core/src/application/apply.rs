@@ -14,12 +14,12 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::application::compile::project_with_provider;
-use crate::application::hashing::sha256_prefixed;
 use crate::application::patch::{PatchCheckResult, check_patch_documents};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{
     GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode, GraphPageNode,
 };
+use crate::domain::hashing::sha256_prefixed;
 use crate::domain::obligation::ProofObligation;
 use crate::domain::patch::{PatchDocument, PatchIntent, PlacementHint};
 use crate::domain::ports::artifact_reader::ArtifactReader;
@@ -30,7 +30,7 @@ use crate::domain::source_edit::SourceEditPlan;
 use crate::domain::source_edit::planner::{
     CreateInsertion, plan_create_object, plan_replace_body, plan_update_fields,
 };
-use crate::infrastructure::parser::layout::typed_block_layout;
+use crate::language::parser::layout::typed_block_layout;
 
 pub const PATCH_APPLY_SCHEMA_VERSION: &str = "adoc.patch.apply.v0";
 

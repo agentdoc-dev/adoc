@@ -1,6 +1,7 @@
 mod application;
 mod domain;
 mod infrastructure;
+mod language;
 
 pub use application::apply::{
     ApplyProposer, ApplyTrace, ObjectHashes, PATCH_APPLY_SCHEMA_VERSION, PatchApplyResult,
@@ -492,6 +493,7 @@ where
                     provider_factory: &mut provider_factory,
                 },
                 prior_search_artifact_path: input.prior_search_artifact_path,
+                search_reader: &infrastructure::artifact::SearchJsonArtifact,
             },
         ),
         BuildEmbeddingMode::Skipped => application::compile::build_with_provider(
@@ -499,6 +501,7 @@ where
             application::compile::BuildOptions {
                 embeddings: application::compile::BuildEmbeddingBehavior::Skipped,
                 prior_search_artifact_path: input.prior_search_artifact_path,
+                search_reader: &infrastructure::artifact::SearchJsonArtifact,
             },
         ),
     }
@@ -530,11 +533,18 @@ pub fn load_retrieval_session_with_embedding_provider(
 }
 
 pub fn inspect_graph_artifact(input: GraphArtifactInspectionInput) -> ArtifactInspection {
-    application::artifact_inspection::inspect_graph_artifact(input)
+    application::artifact_inspection::inspect_graph_artifact_with_reader(
+        input,
+        &infrastructure::artifact::GraphJsonArtifact,
+    )
 }
 
 pub fn inspect_search_artifact(input: SearchArtifactInspectionInput) -> ArtifactInspection {
-    application::artifact_inspection::inspect_search_artifact(input)
+    application::artifact_inspection::inspect_search_artifact_with_readers(
+        input,
+        &infrastructure::artifact::SearchJsonArtifact,
+        &infrastructure::artifact::GraphJsonArtifact,
+    )
 }
 
 /// Resolves the active embedding provider's `SearchModelHeader` without
