@@ -282,7 +282,7 @@ pub struct ReviewInput {
 }
 
 /// V3.7 — orchestration-layer patch source for `adoc review --patch` and the
-/// equivalent MCP parameter. Mirrors V2.1's [`PatchInput`] shape (path vs
+/// equivalent MCP parameter. Mirrors the MCP `PatchInput` shape (path vs
 /// inline JSON) so the same driving adapters can populate either variant.
 #[derive(Debug, Clone)]
 pub enum ReviewPatchSource {
