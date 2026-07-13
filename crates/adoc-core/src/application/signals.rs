@@ -24,7 +24,7 @@ use crate::domain::review::obligation_rules::obligation_for_impacted_id;
 use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::value_objects::review_interval::ReviewInterval;
 use crate::domain::value_objects::severity::Severity;
-use crate::infrastructure::artifact::graph_json::{
+use crate::language::graph_projection::{
     derive_effective_status_from_fields, unresolved_contradiction_claim_index,
 };
 

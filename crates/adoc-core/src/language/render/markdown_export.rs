@@ -183,8 +183,8 @@ mod tests {
 
     use super::*;
     use crate::domain::diagnostic::Severity;
-    use crate::infrastructure::parser::{parse_markdown_page, parse_page};
-    use crate::infrastructure::render::page_to_adoc_source;
+    use crate::language::parser::{parse_markdown_page, parse_page};
+    use crate::language::render::page_to_adoc_source;
 
     /// The full chain a pilot file travels: `.md` → import serializer →
     /// strict parse → export serializer. One fixture per ADR-0043 §5

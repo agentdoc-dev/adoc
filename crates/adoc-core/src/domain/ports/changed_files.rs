@@ -2,7 +2,7 @@
 //! the current working tree.
 //!
 //! Introduced in V3.3. The adapter implementation (`GitChangedFilesProvider`)
-//! lives in `crate::infrastructure::git::changed_files`. The composition root
+//! lives in the Git infrastructure adapter. The composition root
 //! in `lib.rs` is the only wiring site; domain and application layers depend
 //! only on the port.
 //!

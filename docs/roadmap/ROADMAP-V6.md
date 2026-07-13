@@ -1,5 +1,9 @@
 # AgentDoc Roadmap — V6 Cycle: The Agent Editing Loop
 
+> Historical roadmap. Current module paths follow
+> [docs/architecture.md](../architecture.md); paths under
+> `infrastructure/parser|validate|render` moved to `language/`.
+
 This roadmap continues [ROADMAP.md](ROADMAP.md) past V5.10. It covers three milestones: **V6 — Agent Editing Loop**, **V6.5 — Vocabulary Completion**, and **V1.7 — Prose Retrieval**.
 
 The previously sketched "V6: Composition and Advanced Graphs" (`@include`, nested typed blocks, custom schema registry, automated contradiction detection) is postponed to Later status; this file takes over the V6 name for the editing loop. The old V6 section's design guidance and open questions in [ROADMAP.md](ROADMAP.md) remain valid for whenever composition earns its slot.

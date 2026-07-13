@@ -624,19 +624,20 @@ Dependabot is configured in [.github/dependabot.yml](.github/dependabot.yml) for
 - [docs/product/PRD.md](docs/product/PRD.md): product requirements
 - [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md): product roadmap from completed V0 through planned retrieval, review, patching, schema, graph, and team surfaces
 - [docs/design/V0-DESIGN.md](docs/design/V0-DESIGN.md): Rust implementation contract
+- [docs/architecture.md](docs/architecture.md): current module boundaries and dependency rules
 - [docs/adr/](docs/adr): architecture decision records
 
 ## Architecture
 
-AgentDoc V0 is intentionally shaped as a compiler pipeline:
+AgentDoc is shaped as a compiler core behind a protocol-free local workflow
+facade:
 
 ```text
-AgentDoc Source
-  -> adoc-core compile_workspace()
-  -> parser and diagnostics
-  -> HTML renderer
-  -> graph JSON artifact
-  -> adoc-cli exit codes and file output
+adoc-cli / adoc-mcp
+  -> adoc-local LocalContext
+  -> adoc-core typed workspace analysis
+  -> HTML, graph JSON, and optional search JSON
+  -> transactional artifact-set publication
 ```
 
 The public Rust API is deliberately small:
@@ -646,7 +647,13 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult;
 pub fn build_workspace(input: BuildInput) -> CompileResult;
 ```
 
-Parser, validation, renderer, and artifact internals stay private until another real consumer needs lower-level APIs.
+Within `adoc-core`, dependencies point inward: `domain` owns policy and ports,
+`language` owns pure parsing/validation/rendering, `application` coordinates
+typed workflows, `infrastructure` owns I/O adapters, and `lib.rs` is the
+composition root. Parser, validation, renderer, and artifact internals stay
+private until another real consumer needs lower-level APIs. See
+[docs/architecture.md](docs/architecture.md) and
+[ADR-0046](docs/adr/0046-typed-workspace-and-inward-dependencies.md).
 
 ## Roadmap
 

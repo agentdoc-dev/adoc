@@ -13,13 +13,13 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::application::compile::compile_with_provider;
-use crate::application::hashing::sha256_prefixed;
+use crate::application::compile::project_with_provider;
 use crate::application::patch::{PatchCheckResult, check_patch_documents};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{
     GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode, GraphPageNode,
 };
+use crate::domain::hashing::sha256_prefixed;
 use crate::domain::obligation::ProofObligation;
 use crate::domain::patch::{PatchDocument, PatchIntent, PlacementHint};
 use crate::domain::ports::artifact_reader::ArtifactReader;
@@ -30,7 +30,7 @@ use crate::domain::source_edit::SourceEditPlan;
 use crate::domain::source_edit::planner::{
     CreateInsertion, plan_create_object, plan_replace_body, plan_update_fields,
 };
-use crate::infrastructure::parser::layout::typed_block_layout;
+use crate::language::parser::layout::typed_block_layout;
 
 pub const PATCH_APPLY_SCHEMA_VERSION: &str = "adoc.patch.apply.v0";
 
@@ -202,7 +202,7 @@ where
     // 1. Load the artifact and run the unchanged V2 validation.
     let graph_document = match graph_reader.read(graph_artifact_path) {
         Ok(document) => document,
-        Err(diagnostics) => return PatchApplyResult::refused(diagnostics, trace),
+        Err(error) => return PatchApplyResult::refused(error.into_diagnostics(), trace),
     };
     let target_node = find_object(&graph_document, &patch.target).cloned();
     // TB3: a create with an `after` anchor splices against that anchor's
@@ -227,8 +227,8 @@ where
 
     // 2. Recompile the working tree in memory. A dirty tree cannot prove
     //    graph-vs-source freshness, and the recompile supplies fresh spans.
-    let recompiled = compile_with_provider(source_provider);
-    if recompiled.has_errors() || recompiled.artifacts.is_none() {
+    let recompiled = project_with_provider(source_provider);
+    if recompiled.has_errors() {
         let mut diagnostics = vec![Diagnostic::error(
             DiagnosticCode::PatchSourceDrift,
             "working tree does not compile cleanly; run adoc build and re-propose",
@@ -236,12 +236,15 @@ where
         diagnostics.extend(recompiled.diagnostics);
         return PatchApplyResult::refused_with_check(check, trace, diagnostics);
     }
-    let recompiled_artifacts = recompiled
-        .artifacts
-        .expect("checked is_none above; compile artifacts present");
-    let recompiled_document: GraphArtifactDocument =
-        serde_json::from_str(&recompiled_artifacts.graph_json)
-            .expect("compile output graph_json is well-formed (compile pipeline invariant)");
+    let Some(recompiled_projection) = recompiled.projection else {
+        let mut diagnostics = vec![Diagnostic::error(
+            DiagnosticCode::PatchSourceDrift,
+            "working tree did not produce a graph projection; run adoc build and re-propose",
+        )];
+        diagnostics.extend(recompiled.diagnostics);
+        return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+    };
+    let recompiled_document = recompiled_projection.graph;
 
     // TB3: create_object has its own drift-gate variant and placement
     // resolution; everything below this dispatch targets an existing object.
@@ -573,14 +576,14 @@ fn run_post_check<P: SourceProvider>(
     source_provider: &P,
     target: &str,
 ) -> (PostCheckReport, Option<String>) {
-    let post_compile = compile_with_provider(source_provider);
+    let post_compile = project_with_provider(source_provider);
     let error_count = count_severity(&post_compile.diagnostics, Severity::Error);
     let warning_count = count_severity(&post_compile.diagnostics, Severity::Warning);
-    let after_content_hash = post_compile.artifacts.as_ref().and_then(|artifacts| {
-        let document: GraphArtifactDocument = serde_json::from_str(&artifacts.graph_json)
-            .expect("compile output graph_json is well-formed (compile pipeline invariant)");
-        find_object(&document, target).map(|node| node.content_hash.clone())
-    });
+    let after_content_hash = post_compile
+        .projection
+        .as_ref()
+        .and_then(|projection| find_object(&projection.graph, target))
+        .map(|node| node.content_hash.clone());
     (
         PostCheckReport {
             ran: true,
@@ -749,23 +752,25 @@ Original body line.
     impl ArtifactReader for StubGraphReader {
         type Output = GraphArtifactDocument;
 
-        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+        fn read(
+            &self,
+            _path: &Path,
+        ) -> Result<Self::Output, crate::domain::ports::artifact_reader::ArtifactReadError>
+        {
             Ok(self.document.clone())
         }
     }
 
-    /// Compile the shared fs and parse the resulting graph artifact — the
-    /// in-memory analogue of `adoc build`, so artifact hashes always match a
-    /// clean recompile.
+    /// Project the shared fs into the graph used as the persisted-artifact
+    /// test double, so hashes always match a clean recompile.
     fn built_artifact(fs: &SharedFs) -> GraphArtifactDocument {
-        let result = compile_with_provider(fs);
+        let result = project_with_provider(fs);
         assert!(
             !result.has_errors(),
             "fixture must compile cleanly: {:?}",
             result.diagnostics
         );
-        serde_json::from_str(&result.artifacts.expect("artifacts").graph_json)
-            .expect("graph json parses")
+        result.projection.expect("graph projection").graph
     }
 
     fn content_hash(document: &GraphArtifactDocument, id: &str) -> String {
@@ -1019,11 +1024,19 @@ Original body line.
         struct FailingReader;
         impl ArtifactReader for FailingReader {
             type Output = GraphArtifactDocument;
-            fn read(&self, path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
-                Err(vec![Diagnostic::error(
-                    DiagnosticCode::IoArtifactMissing,
-                    format!("missing artifact at {}", path.display()),
-                )])
+            fn read(
+                &self,
+                path: &Path,
+            ) -> Result<Self::Output, crate::domain::ports::artifact_reader::ArtifactReadError>
+            {
+                Err(
+                    crate::domain::ports::artifact_reader::ArtifactReadError::from_diagnostics(
+                        vec![Diagnostic::error(
+                            DiagnosticCode::IoArtifactMissing,
+                            format!("missing artifact at {}", path.display()),
+                        )],
+                    ),
+                )
             }
         }
 

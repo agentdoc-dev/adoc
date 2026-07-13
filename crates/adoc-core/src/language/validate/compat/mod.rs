@@ -1,7 +1,7 @@
 //! Compatibility-mode validation pass for Markdown sources.
 //!
 //! Runs in parallel to the strict-mode pipeline in
-//! [`crate::infrastructure::validate`]. Each rule implements
+//! [`crate::language::validate`]. Each rule implements
 //! [`CompatRule`] whose sink type is [`CompatDiagnostic`] — a newtype around
 //! `Diagnostic` whose only constructor is `warning(...)`. ADR-0023's
 //! warning-only invariant is therefore enforced at compile time: a future
@@ -35,7 +35,7 @@ const COMPAT_SOURCE_PAGE_RULES: &[&dyn CompatRule] = &[
 ];
 
 /// Run every compat source-page rule against `page`. The runner mirrors
-/// [`crate::infrastructure::validate::validate_source_page`] for the strict
+/// [`crate::language::validate::validate_source_page`] for the strict
 /// pipeline so the orchestrator can pick one or the other by `source.mode()`.
 /// Diagnostics are unwrapped from [`CompatDiagnostic`] here so callers see
 /// the same `Vec<Diagnostic>` shape they get from the strict pipeline.

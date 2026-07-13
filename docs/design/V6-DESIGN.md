@@ -1,5 +1,10 @@
 # V6 Design
 
+> Historical implementation contract. Current handler and language-module
+> paths follow [docs/architecture.md](../architecture.md); `LocalContext`
+> delegates through `adoc-local/src/use_cases/`, and pure parser/validator/
+> renderer code lives under `adoc-core/src/language/`.
+
 This document is the implementation contract for V6: the Agent Editing Loop. It is the V5-DESIGN equivalent for the [ROADMAP-V6.md](../roadmap/ROADMAP-V6.md) cycle. Per the roadmap, contract sections are recorded **at slice start** — this file grows one section per slice rather than being written all at once. Sections for slices that have not started are stubs.
 
 V6 closes the loop opened by V2: three new read commands expose the V5.10 derived lifecycle signals and source-path impact (V6.1–V6.3), then patch application makes every already-validated op family actually rewrite `.adoc` source via formatting-preserving span splices (V6.4). The architectural choices live in ADR-0038 (lifecycle-signal read commands as graph-artifact readers), ADR-0036 (patch application as formatting-preserving span splice), and ADR-0037 (MCP `adoc_patch_apply` opt-in).
@@ -86,7 +91,7 @@ Records sort most-overdue first, then Object ID ascending, then a fixed category
 
 - `crates/adoc-core/src/application/signals.rs` — categories, records, envelope, pure `evaluate_stale_for_date` (also hosts V6.2 `adoc contradictions`).
 - `crates/adoc-core/src/infrastructure/artifact/graph_json.rs` — `derive_effective_status_from_fields`, the field-string core extracted from the V5.10 `derive_effective_status` so build-time and read-time derivation share one implementation.
-- `crates/adoc-local/src/use_cases.rs` — `StaleUseCase` mirroring the graph use case (artifact resolution via config, path policy, exit codes).
+- `crates/adoc-local/src/use_cases/queries.rs` — stale-query handling over shared artifact resolution, path policy, and exit-code helpers.
 - `crates/adoc-cli/src/commands/stale.rs` — thin subcommand with plain/styled/json presenters.
 - `crates/adoc-mcp/src/lib.rs` — `adoc_stale` tool; resources registered in `resources.rs`.
 
@@ -162,7 +167,7 @@ Two record classes from one artifact pass, joined for the consumer:
 
 - `crates/adoc-core/src/application/signals.rs` — records, envelope, pure `evaluate_contradictions`, `body_summary` (shared module with V6.1 per ADR-0038).
 - `crates/adoc-core/src/infrastructure/artifact/graph_json.rs` — `unresolved_contradiction_claim_index`, the reverse index shared by the build-time `apply_contradiction_effective_status` pass and the read-time query.
-- `crates/adoc-local/src/use_cases.rs` — `ContradictionsUseCase`; the stale exit-code helper is generalized to `signal_query_exit_code`.
+- `crates/adoc-local/src/use_cases/queries.rs` — contradictions handling; the stale exit-code helper is generalized to `signal_query_exit_code`.
 - `crates/adoc-cli/src/commands/contradictions.rs` — thin subcommand with plain/styled/json presenters.
 - `crates/adoc-mcp/src/lib.rs` — `adoc_contradictions` tool; resources registered in `resources.rs`.
 
@@ -253,7 +258,7 @@ The same path matched via `impacts:` and via evidence yields **two reasons on on
 - `crates/adoc-core/src/domain/review/impact.rs` — `ImpactReasonKind`, `ImpactReasonHit`, pure `impacted_objects` beside `compute_impact`/`impact_entry_for`.
 - `crates/adoc-core/src/application/signals.rs` — `ImpactReason`/`ImpactedRecord`/`ImpactedEnvelope`, `evaluate_impacted`, path validation and `ChangedFilesError`-to-diagnostic mapping (shared module with V6.1/V6.2 per ADR-0038).
 - `crates/adoc-core/src/lib.rs` — `changed_files_from_git` (git changed set without a review compile), `validate_changed_paths`, `evaluate_impacted`, `empty_impacted_envelope`.
-- `crates/adoc-local/src/use_cases.rs` — `ImpactedChangedSet`, `ImpactedUseCase`, `impacted_exit_code` (the 1-vs-2 split beside `signal_query_exit_code`).
+- `crates/adoc-local/src/use_cases/mod.rs` owns `ImpactedChangedSet`; `use_cases/queries.rs` owns impacted handling and `impacted_exit_code` (the 1-vs-2 split beside `signal_query_exit_code`).
 - `crates/adoc-cli/src/commands/impacted_by.rs` — thin subcommand; `crates/adoc-cli/src/presentation/markdown.rs` — `write_impacted`.
 - `crates/adoc-mcp/src/lib.rs` — `adoc_impacted_by` tool; resources registered in `resources.rs`.
 
@@ -323,10 +328,10 @@ JSON Schema: `docs/agent/v0/schema/adoc.patch.apply.v0.schema.json` (resource `a
 ### Module layout
 
 - `crates/adoc-core/src/domain/source_edit/` — `SpanEdit`, `SourceEditPlan`, `splice`, `LineEnding`, `TypedBlockLayout`, op planners, `render_typed_block` (pure byte math, no I/O).
-- `crates/adoc-core/src/infrastructure/parser/` — close-fence and `--` separator span retention on `ParsedTypedBlock` (behavior-preserving); `layout.rs` extracting `TypedBlockLayout` from a fresh single-file parse.
+- `crates/adoc-core/src/language/parser/` — close-fence and `--` separator span retention on `ParsedTypedBlock` (behavior-preserving); `layout.rs` extracting `TypedBlockLayout` from a fresh single-file parse.
 - `crates/adoc-core/src/domain/ports/workspace_writer.rs` — `WorkspaceWriter` port; `infrastructure/source/fs_writer.rs` — sandboxed temp+fsync+rename implementation.
 - `crates/adoc-core/src/application/apply.rs` — orchestration, `PatchApplyResult`, refusal constructor.
-- `crates/adoc-local/src/use_cases.rs` — `PatchApplyUseCase` (docs-root resolution identical to `check`); `config.rs` — `mcp.patch_apply` gate.
+- `crates/adoc-local/src/use_cases/changes.rs` — patch-apply handling (docs-root resolution identical to `check`); `config.rs` — `mcp.patch_apply` gate.
 - `crates/adoc-cli/src/commands/patch.rs` — `--apply` dispatch and presenters.
 - `crates/adoc-mcp/src/lib.rs` — `adoc_patch_apply`; resources and `adoc_propose_patch_v1` prompt (v0 prompt byte-stable per ADR-0014).
 

@@ -149,11 +149,11 @@ where
 {
     let graph_document = match graph_reader.read(&input.graph_artifact_path) {
         Ok(document) => document,
-        Err(diagnostics) => return PatchCheckResult::failure(diagnostics),
+        Err(error) => return PatchCheckResult::failure(error.into_diagnostics()),
     };
     let patch_document = match patch_reader.read(&input.patch_path) {
         Ok(document) => document,
-        Err(diagnostics) => return PatchCheckResult::failure(diagnostics),
+        Err(error) => return PatchCheckResult::failure(error.into_diagnostics()),
     };
 
     check_patch_documents(graph_document, patch_document)
@@ -209,8 +209,14 @@ mod tests {
     impl ArtifactReader for StubGraphReader {
         type Output = GraphArtifactDocument;
 
-        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
-            self.result.clone()
+        fn read(
+            &self,
+            _path: &Path,
+        ) -> Result<Self::Output, crate::domain::ports::artifact_reader::ArtifactReadError>
+        {
+            self.result
+                .clone()
+                .map_err(crate::domain::ports::artifact_reader::ArtifactReadError::from_diagnostics)
         }
     }
 
@@ -222,8 +228,14 @@ mod tests {
     impl ArtifactReader for StubPatchReader {
         type Output = PatchDocument;
 
-        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
-            self.result.clone()
+        fn read(
+            &self,
+            _path: &Path,
+        ) -> Result<Self::Output, crate::domain::ports::artifact_reader::ArtifactReadError>
+        {
+            self.result
+                .clone()
+                .map_err(crate::domain::ports::artifact_reader::ArtifactReadError::from_diagnostics)
         }
     }
 

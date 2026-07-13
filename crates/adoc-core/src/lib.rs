@@ -1,6 +1,7 @@
 mod application;
 mod domain;
 mod infrastructure;
+mod language;
 
 pub use application::apply::{
     ApplyProposer, ApplyTrace, ObjectHashes, PATCH_APPLY_SCHEMA_VERSION, PatchApplyResult,
@@ -138,7 +139,11 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
 #[tracing::instrument(level = "debug", skip_all)]
 pub fn migrate_workspace(root: std::path::PathBuf, mode: MigrateMode) -> MigrateResult {
     let provider = infrastructure::source::fs::FsSourceProvider::new(root);
-    application::migrate::migrate_with_provider(&provider, mode)
+    application::migrate::migrate_with_ports(
+        &provider,
+        &infrastructure::git::GitCommittedSourceProbe,
+        mode,
+    )
 }
 
 /// V8.1.4: convert every strict prose-mode `.adoc` source under `root` back
@@ -148,7 +153,11 @@ pub fn migrate_workspace(root: std::path::PathBuf, mode: MigrateMode) -> Migrate
 #[tracing::instrument(level = "debug", skip_all)]
 pub fn export_workspace(root: std::path::PathBuf, mode: MigrateMode) -> MigrateResult {
     let provider = infrastructure::source::fs::FsSourceProvider::new(root);
-    application::migrate::export_with_provider(&provider, mode)
+    application::migrate::export_with_ports(
+        &provider,
+        &infrastructure::git::GitCommittedSourceProbe,
+        mode,
+    )
 }
 
 pub fn build_workspace(input: BuildInput) -> CompileResult {
@@ -338,7 +347,9 @@ pub fn check_patch_json(input: PatchJsonInput) -> PatchCheckResult {
     let graph_document =
         match infrastructure::artifact::GraphJsonArtifact.read(&input.graph_artifact_path) {
             Ok(document) => document,
-            Err(diagnostics) => return application::patch::PatchCheckResult::failure(diagnostics),
+            Err(error) => {
+                return application::patch::PatchCheckResult::failure(error.into_diagnostics());
+            }
         };
     let patch_document = match infrastructure::artifact::read_patch_document_value(
         input.patch,
@@ -482,6 +493,7 @@ where
                     provider_factory: &mut provider_factory,
                 },
                 prior_search_artifact_path: input.prior_search_artifact_path,
+                search_reader: &infrastructure::artifact::SearchJsonArtifact,
             },
         ),
         BuildEmbeddingMode::Skipped => application::compile::build_with_provider(
@@ -489,6 +501,7 @@ where
             application::compile::BuildOptions {
                 embeddings: application::compile::BuildEmbeddingBehavior::Skipped,
                 prior_search_artifact_path: input.prior_search_artifact_path,
+                search_reader: &infrastructure::artifact::SearchJsonArtifact,
             },
         ),
     }
@@ -520,11 +533,18 @@ pub fn load_retrieval_session_with_embedding_provider(
 }
 
 pub fn inspect_graph_artifact(input: GraphArtifactInspectionInput) -> ArtifactInspection {
-    application::artifact_inspection::inspect_graph_artifact(input)
+    application::artifact_inspection::inspect_graph_artifact_with_reader(
+        input,
+        &infrastructure::artifact::GraphJsonArtifact,
+    )
 }
 
 pub fn inspect_search_artifact(input: SearchArtifactInspectionInput) -> ArtifactInspection {
-    application::artifact_inspection::inspect_search_artifact(input)
+    application::artifact_inspection::inspect_search_artifact_with_readers(
+        input,
+        &infrastructure::artifact::SearchJsonArtifact,
+        &infrastructure::artifact::GraphJsonArtifact,
+    )
 }
 
 /// Resolves the active embedding provider's `SearchModelHeader` without

@@ -5,7 +5,7 @@
 //! `answered` question requires `resolved_by: <object-id>` naming the `claim`
 //! or `decision` that answered it — the aggregate owns the presence invariant,
 //! while the cross-aggregate half (target exists and has claim/decision kind)
-//! lives in `infrastructure/validate/question_resolved_by.rs` because it
+//! lives in `language/validate/question_resolved_by.rs` because it
 //! resolves the reference across the workspace.
 
 #[cfg(test)]

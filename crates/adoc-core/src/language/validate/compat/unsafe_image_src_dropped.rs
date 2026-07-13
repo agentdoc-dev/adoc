@@ -4,7 +4,7 @@ use crate::domain::inline::InlineSegment;
 use crate::domain::rules::CompatRule;
 use crate::domain::source::SourceFile;
 use crate::domain::url_safety::verdict;
-use crate::infrastructure::validate::url_walker::{UrlVisitor, walk_page};
+use crate::language::validate::url_walker::{UrlVisitor, walk_page};
 
 /// Compat-mode rule that warns when a Markdown image embed uses an unsafe
 /// URL scheme. The renderer drops the `src` attribute and keeps the alt text
@@ -45,7 +45,7 @@ mod tests {
 
     use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
     use crate::domain::source::SourceFile;
-    use crate::infrastructure::parser::parse_markdown_page;
+    use crate::language::parser::parse_markdown_page;
 
     fn validate(text: &str) -> Vec<Diagnostic> {
         let source = SourceFile::new_with_identity_path(

@@ -1,5 +1,9 @@
 # AgentDoc Roadmap
 
+> Historical milestone details retain some proposed module paths. Current
+> implementation boundaries and paths are documented in
+> [docs/architecture.md](../architecture.md) and ADR-0046.
+
 This roadmap converts the broad PRD into small tracer-bullet milestones. A milestone is not complete just because one subsystem exists; it is complete when a user can start with `.adoc` source, run the `adoc` CLI, receive useful diagnostics, and get both human HTML and graph JSON outputs.
 
 The initial product is a local CLI for native AgentDoc authoring in Git repositories. The compiler, graph artifact, local retrieval loop, hybrid search, graph traversal, retrieval evaluation harness, local workflow, agent patch validation, local MCP gateway, team CI diff/review, Markdown compatibility mode, the V5 Expanded Knowledge Model, lifecycle automation, the V6 agent editing loop (lifecycle read commands plus gated patch apply), V1.7 prose retrieval, and V8.1 Markdown migration (`adoc migrate`, reversible via `--export`) are now implemented. The V7 cycle ([ROADMAP-V7.md](ROADMAP-V7.md)) has one open milestone: the V7.2 pilot readiness gate that discharges the MVP acceptance bar; the V8 adoption cycle ([ROADMAP-V8.md](ROADMAP-V8.md)) is underway.

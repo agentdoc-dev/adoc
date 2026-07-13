@@ -93,7 +93,7 @@ A Cargo workspace with `crates/adoc-cli` for command-line concerns and `crates/a
 _Avoid_: single CLI-only crate, over-split compiler crates
 
 **Local Workflow Layer**:
-The protocol-free local application adapter in `crates/adoc-local`. It owns AgentDoc project config discovery, default path resolution, local command orchestration, filesystem writes for `init`/`build`, and command outcome shapes shared by CLI and MCP.
+The protocol-free local application adapter in `crates/adoc-local`. It owns AgentDoc project config discovery, default path resolution, local command orchestration, transactional build-artifact publication, and command outcome shapes shared by CLI and MCP. `LocalContext` is the stable facade; private handlers are grouped under `src/use_cases/` by project, query, and change workflows.
 _Avoid_: duplicating config/build/check orchestration in each driving adapter, putting terminal presentation in the core
 
 **V0 Parser Architecture**:
@@ -145,11 +145,11 @@ One strict-mode check that produces diagnostics from a parsed page (e.g. `RawHtm
 _Avoid_: parser-side check, schema linter
 
 **Internal Port**:
-A `pub(crate)` trait in `adoc-core` that decouples application orchestration from a specific adapter — today `SourceProvider`, `ArtifactReader`, `ArtifactWriter`, and `EmbeddingProvider`. Internal-only per ADR-0005; promoted to `pub` only when a concrete external consumer needs it. See ADR-0006.
+A `pub(crate)` trait in `adoc-core` that decouples application orchestration from observable I/O or runtime selection — today source loading, artifact reads, embeddings, Git changed-file/snapshot access, committed-source checks, and workspace writes. `ArtifactWriter` was removed because format construction had one implementation and no behavioral leverage. Internal-only per ADR-0005; promoted to `pub` only when a concrete external consumer needs it. See ADR-0006 and ADR-0046.
 _Avoid_: public plug-in API, dynamic adapter registry
 
 **Build Output Directory**:
-The directory passed to `adoc build --out`; the CLI creates it when missing and fails if the path exists as a file.
+The directory passed to `adoc build --out`; the Local Workflow Layer creates it when missing and fails if the path exists as a file.
 _Avoid_: manual pre-created output directory
 
 **V1 Local Retrieval**:
@@ -157,8 +157,12 @@ The first post-compiler milestone. Adds `adoc why`, `adoc graph`, and `adoc sear
 _Avoid_: V1 hosted RAG service, V1 agent server, V1 graph database
 
 **V1 Build Artifacts**:
-The V1 compiler outputs: `dist/docs.html`, `dist/docs.graph.json`, and optionally `dist/docs.search.json`. `adoc-core` returns these as ready-to-write strings (`html`, `graph_json`, optional `search_json`); the CLI owns the file-write boundary. The graph artifact is the canonical read model for retrieval.
+The V1 compiler outputs: `dist/docs.html`, `dist/docs.graph.json`, and optionally `dist/docs.search.json`. `adoc-core` returns these as ready-to-write strings (`html`, `graph_json`, optional `search_json`); `adoc-local` owns the filesystem boundary and publishes each build as one staged, rollback-capable artifact set for both CLI and MCP. The graph artifact is the canonical read model for retrieval.
 _Avoid_: SQLite graph artifact, RAG ndjson, separate diagnostics artifact
+
+**Artifact Set Publication**:
+The `adoc-local` build-output transaction: serialize the complete output set, stage and fsync every file beside its destination, promote files while retaining backups, and roll back earlier promotions on a handled failure. It prevents mixed-generation HTML/graph/search sets after ordinary I/O failures. Cross-process locking and crash-consistent multi-file atomicity are explicit non-goals.
+_Avoid_: sequential direct writes to final paths, deleting the prior complete set before every new output is staged, claiming multi-file filesystem atomicity
 
 **Search Artifact**:
 The V1 build output, `dist/docs.search.json`, with schema version `adoc.search.v1` since V1.7.2 (ADR-0040). Carries one `{ id, entry_kind, content_hash, vector }` entry per Knowledge Object and per indexed prose block (`entry_kind: "knowledge_object" | "prose"`), a `model: { id, provider, dim }` header, and a `graph_artifact_hash` for drift detection. Code blocks and prose under a minimum token threshold are not embedded; prose cache reuse is keyed by content hash and model, never by order-derived block id. The serialized JSON shape is public; the Rust DTO used to build or read it is internal to `adoc-core`.
@@ -277,7 +281,7 @@ A property of a `SourceFile` set at the `SourceProvider` boundary from the file 
 _Avoid_: re-deriving mode from the path in application stages, threading mode through tuples alongside the source, classifying mode in adapter code
 
 **Mode Pipeline**:
-The per-mode bundle of validation entry points (`parse`, `validate_source_page`, `validate_resolved_page`) returned by `pipeline_for(SourceMode)` in `crates/adoc-core/src/infrastructure/validate/mode_pipeline.rs`. The orchestrator iterates pages and calls into the pipeline instead of `match mode { Strict => …, Compat => … }`; mode dispatch is data, not code. Compat's `validate_resolved_page` is `ResolvedPagePolicy::Empty` rather than an `if mode == Strict` branch — the "Compat skips resolved-page rules" invariant lives in the table row. Extends ADR-0007's "rule registries are data" to mode selection.
+The per-mode bundle of validation entry points (`parse`, `validate_source_page`, `validate_resolved_page`) returned by `pipeline_for(SourceMode)` in `crates/adoc-core/src/language/validate/mode_pipeline.rs`. The orchestrator iterates pages and calls into the pipeline instead of `match mode { Strict => …, Compat => … }`; mode dispatch is data, not code. Compat's `validate_resolved_page` is `ResolvedPagePolicy::Empty` rather than an `if mode == Strict` branch — the "Compat skips resolved-page rules" invariant lives in the table row. Extends ADR-0007's "rule registries are data" to mode selection.
 _Avoid_: per-mode match arms in the orchestrator, parser/validator imports outside `mode_pipeline.rs`, skipping a phase by `if` rather than by `ResolvedPagePolicy` shape
 
 **Markdown Source**:
@@ -285,7 +289,7 @@ The `.md` files AgentDoc ingests in V4 **Compatibility Mode**. Parsed by the **M
 _Avoid_: auto-typed claims from Markdown, inferred glossary terms from definition lists, Markdown as authoring source of truth
 
 **Markdown Parser**:
-The V4 parser for **Markdown Source**, wrapping `pulldown-cmark` with CommonMark and GFM feature flags. Lives at `crates/adoc-core/src/infrastructure/parser/markdown.rs` per ADR-0009's `domain <- application <- infrastructure` layout. Produces the same `Page` AST the `.adoc` parser produces, populated only with `ProseBlock` children. Spans are byte-offsets from `pulldown-cmark`, mapped to `LineIndex` for diagnostics. See ADR-0021.
+The V4 parser for **Markdown Source**, wrapping `pulldown-cmark` with CommonMark and GFM feature flags. Lives at `crates/adoc-core/src/language/parser/markdown/mod.rs` as pure source-language mechanics per ADR-0046. Produces the same `Page` AST the `.adoc` parser produces, populated only with `ProseBlock` children. Spans are byte-offsets from `pulldown-cmark`, mapped to `LineIndex` for diagnostics. See ADR-0021.
 _Avoid_: hand-written CommonMark parser, comrak/markdown-rs alternates, port-based abstraction over a pure-computation parser
 
 **V4 Markdown Subset**:
@@ -293,11 +297,11 @@ The Markdown feature set V4 supports end-to-end: CommonMark core (headings, para
 _Avoid_: Markdown extensions out of scope in V4 (math, definition lists, embedded MDX components), partial GFM support, ad-hoc extension whitelisting
 
 **Quarantined HTML**:
-Raw HTML found inside **Markdown Source**, rendered as escaped text inside `<pre class="quarantined-html">…</pre>` (or `<code class="quarantined-html">…</code>` for inline). The CSS class string is authored once as `QUARANTINED_HTML_CLASS` in `crates/adoc-core/src/infrastructure/render/html.rs`. Visible to the reader as code, never interpreted as markup. The **Graph Artifact** stores the original source text on the wrapping `prose_block` node; quarantine is a renderer-side transform driven by the `compat.raw_html_quarantined` diagnostic.
+Raw HTML found inside **Markdown Source**, rendered as escaped text inside `<pre class="quarantined-html">…</pre>` (or `<code class="quarantined-html">…</code>` for inline). The CSS class string is authored once as `QUARANTINED_HTML_CLASS` in `crates/adoc-core/src/language/render/html.rs`. Visible to the reader as code, never interpreted as markup. The **Graph Artifact** stores the original source text on the wrapping `prose_block` node; quarantine is a renderer-side transform driven by the `compat.raw_html_quarantined` diagnostic.
 _Avoid_: passing raw HTML through to the rendered output, dropping raw HTML silently, allowlisting iframe/script/style elements, hard-coding the class string outside `QUARANTINED_HTML_CLASS`
 
 **Compat Validation Rule**:
-A validation rule run after **Markdown Parser** parsing, against pages whose source is **Markdown Source**. Lives under `crates/adoc-core/src/infrastructure/validate/compat/` per ADR-0007 and ADR-0009. Emits `Severity::Warning` only — never `Severity::Error`. Examples: `RawHtmlQuarantine`, `UnsafeLinkDropped`, `UnsafeImageSrcDropped`, `UnknownExtension`. Runs in a parallel pipeline to the strict registry; the orchestrator in `compile_with_provider` dispatches by `source.mode()`.
+A validation rule run after **Markdown Parser** parsing, against pages whose source is **Markdown Source**. Lives under `crates/adoc-core/src/language/validate/compat/` per ADR-0007 and ADR-0046. Emits `Severity::Warning` only — never `Severity::Error`. Examples: `RawHtmlQuarantine`, `UnsafeLinkDropped`, `UnsafeImageSrcDropped`, `UnknownExtension`. Runs in a parallel pipeline to the strict registry; the compile workflow dispatches by `source.mode()`.
 _Avoid_: shared validator pipeline with a mode flag, raising compat rules to `Error` severity, applying compat rules to `.adoc` pages
 
 **Markdown Pilot**:
@@ -333,7 +337,7 @@ A **Knowledge Object** carrying a code, API, workflow, or usage example (PRD §1
 _Avoid_: example without `lang`, verified example without `checks` + `sandbox`, running `checks` from `adoc check` (deferred runtime concern)
 
 **Policy Object**:
-A **Knowledge Object** representing an authoritative organizational rule (PRD §13.12). Required fields: `id`, `status`, `owner`, `approved_by` (`NonEmpty<ApprovedBy>`, authored as scalar `approved_by: name` or list `approved_by: [a, b]`), `effective_at` (`YYYY-MM-DD`), `body`. Optional: `review_interval` (`[0-9]+d`). Supported statuses: `proposed | active | archived | revoked`. Policy does NOT support `verified` status — policy authority comes from approvers, not verification (ADR-0031). Required-field checks are aggregate-owned (`schema.policy_missing_*`); an `active` policy additionally must have `effective_at <= today`, enforced by the clock-dependent `PolicyActiveApproval` rule under `infrastructure/validate/` (`schema.policy_future_effective_at`). The renderer emits an approval block listing approvers and effective date; the graph node carries a dedicated `approved_by` slot. Lives at `domain/knowledge_object/policy.rs`.
+A **Knowledge Object** representing an authoritative organizational rule (PRD §13.12). Required fields: `id`, `status`, `owner`, `approved_by` (`NonEmpty<ApprovedBy>`, authored as scalar `approved_by: name` or list `approved_by: [a, b]`), `effective_at` (`YYYY-MM-DD`), `body`. Optional: `review_interval` (`[0-9]+d`). Supported statuses: `proposed | active | archived | revoked`. Policy does NOT support `verified` status — policy authority comes from approvers, not verification (ADR-0031). Required-field checks are aggregate-owned (`schema.policy_missing_*`); an `active` policy additionally must have `effective_at <= today`, enforced by the clock-dependent `PolicyActiveApproval` rule under `language/validate/` (`schema.policy_future_effective_at`). The renderer emits an approval block listing approvers and effective date; the graph node carries a dedicated `approved_by` slot. Lives at `domain/knowledge_object/policy.rs`.
 _Avoid_: policy without approver, future `effective_at` on an active policy, `verified` status on policy, prose treated as policy
 
 **Agent Instruction Object**:

@@ -20,6 +20,23 @@ use adoc_core::{
     load_retrieval_session, search, traverse_graph, why_object,
 };
 
+fn rust_sources_under(root: &std::path::Path) -> Vec<PathBuf> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut sources = Vec::new();
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().and_then(|extension| extension.to_str()) == Some("rs") {
+                sources.push(path);
+            }
+        }
+    }
+    sources.sort();
+    sources
+}
+
 #[test]
 fn patch_application_layer_does_not_reference_infrastructure() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -30,6 +47,122 @@ fn patch_application_layer_does_not_reference_infrastructure() {
         !patch_source.contains("crate::infrastructure"),
         "application/patch.rs must stay independent from infrastructure adapters"
     );
+}
+
+#[test]
+fn review_and_apply_do_not_round_trip_compiler_graph_json() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for relative in ["src/application/review.rs", "src/application/apply.rs"] {
+        let source = std::fs::read_to_string(manifest_dir.join(relative)).unwrap();
+        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+        assert!(
+            !production.contains("serde_json::from_str"),
+            "{relative} must consume the compiler's typed projection instead of reparsing graph JSON"
+        );
+    }
+}
+
+#[test]
+fn git_backed_application_workflows_depend_only_on_ports() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for relative in ["src/application/review.rs", "src/application/migrate.rs"] {
+        let source = std::fs::read_to_string(manifest_dir.join(relative)).unwrap();
+        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+        for forbidden in [
+            "crate::infrastructure::git",
+            "crate::infrastructure::source",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} must receive Git and source I/O through domain ports"
+            );
+        }
+    }
+}
+
+#[test]
+fn artifact_consumers_do_not_probe_the_filesystem() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for relative in [
+        "src/application/artifact_inspection.rs",
+        "src/application/search_artifact.rs",
+    ] {
+        let source = std::fs::read_to_string(manifest_dir.join(relative)).unwrap();
+        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+        for forbidden in ["std::fs", ".exists()", "read_search_artifact_document"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} must obtain artifact state and contents through ArtifactReader; found `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
+fn production_application_modules_do_not_depend_on_infrastructure() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for module in [
+        "apply.rs",
+        "artifact_inspection.rs",
+        "compile.rs",
+        "graph.rs",
+        "migrate.rs",
+        "mod.rs",
+        "patch.rs",
+        "resolve_knowledge_objects.rs",
+        "resolve_object_references.rs",
+        "retrieval.rs",
+        "review.rs",
+        "review_envelope.rs",
+        "search_artifact.rs",
+        "signals.rs",
+    ] {
+        let relative = format!("src/application/{module}");
+        let source = std::fs::read_to_string(manifest_dir.join(&relative)).unwrap();
+        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+        assert!(
+            !production.contains("crate::infrastructure"),
+            "{relative} must depend on domain ports or pure language modules"
+        );
+    }
+}
+
+#[test]
+fn domain_and_language_dependencies_point_inward() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for path in rust_sources_under(&manifest_dir.join("src/domain")) {
+        let source = std::fs::read_to_string(&path).unwrap();
+        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+        for forbidden in [
+            "crate::application",
+            "crate::infrastructure",
+            "crate::language",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{} must not depend outward through `{forbidden}`",
+                path.display()
+            );
+        }
+    }
+
+    for path in rust_sources_under(&manifest_dir.join("src/language")) {
+        let source = std::fs::read_to_string(&path).unwrap();
+        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+        for forbidden in [
+            "crate::application",
+            "crate::infrastructure",
+            "std::fs",
+            "std::process",
+            "std::env",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{} must remain pure and inward-facing; found `{forbidden}`",
+                path.display()
+            );
+        }
+    }
 }
 
 #[test]
@@ -86,6 +219,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::RetrievalObjectNotFound;
     let _ = DiagnosticCode::SearchInvalidFilter;
     let _ = DiagnosticCode::BuildEmbeddingsCacheIgnored;
+    let _ = DiagnosticCode::BuildArtifactSerializationFailed;
     let _ = DiagnosticCode::GraphObjectNotFound;
     let _ = DiagnosticCode::PatchInvalidDocument;
     let _ = DiagnosticCode::PatchValidationFailed;
@@ -184,6 +318,10 @@ fn public_surface_compiles_with_only_documented_imports() {
     assert_eq!(
         DiagnosticCode::BuildEmbeddingsCacheIgnored.as_str(),
         "build.embeddings_cache_ignored"
+    );
+    assert_eq!(
+        DiagnosticCode::BuildArtifactSerializationFailed.as_str(),
+        "build.artifact_serialization_failed"
     );
     assert_eq!(
         DiagnosticCode::GraphObjectNotFound.as_str(),

@@ -35,7 +35,7 @@ pub(crate) enum ObjectChange {
 /// `super::object_diff::ObjectDiff::compute` via the `pub(super)` factory.
 ///
 /// `field_changes` is the V3.2 typed projection over the base/head pair; it is
-/// populated by [`crate::application::review::diff_objects`] after the
+/// populated by the review diff application service after the
 /// mechanical diff is computed. The field is `#[serde(skip_serializing_if =
 /// "Vec::is_empty")]` so V3.1 envelopes (and any code path that builds a
 /// `ChangedObject` without running the projection) stay byte-identical.
@@ -51,7 +51,7 @@ pub struct ChangedObject {
 impl ChangedObject {
     /// Factory used by [`super::object_diff::ObjectDiff::compute`] (the sole
     /// production constructor) and by application-layer unit tests that need
-    /// to drive [`crate::application::review::project_changed`] against
+    /// to drive review projection against
     /// hand-built records.
     pub(crate) fn new(
         id: String,
@@ -67,7 +67,7 @@ impl ChangedObject {
     }
 
     /// Read-only access to the typed projection. Empty until
-    /// [`crate::application::review::diff_objects`] decorates the diff.
+    /// The review diff application service decorates the diff.
     pub fn field_changes(&self) -> &[FieldChange] {
         &self.field_changes
     }

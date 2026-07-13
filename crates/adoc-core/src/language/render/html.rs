@@ -15,7 +15,7 @@ use crate::domain::knowledge_object::{
     projection::{KnowledgeObjectMetadata, MetadataField},
 };
 use crate::domain::url_safety::verdict;
-use crate::infrastructure::artifact::graph_json::derive_effective_status;
+use crate::language::graph_projection::derive_effective_status;
 
 /// CSS class used to wrap **Quarantined HTML** content (block and inline) in
 /// the rendered output. ADR-0023's renderer-as-security-boundary rule means

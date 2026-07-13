@@ -5,7 +5,7 @@
 //! unconditionally (a task without an owner is a wish). Statuses are the
 //! closed `open | done` set. Optional: `due` (a `YYYY-MM-DD` date reusing the
 //! [`EffectiveDate`] value object). The clock-dependent `task.overdue`
-//! lifecycle warning lives in `infrastructure/validate/task_overdue.rs`.
+//! lifecycle warning lives in `language/validate/task_overdue.rs`.
 
 #[cfg(test)]
 use std::collections::BTreeMap;

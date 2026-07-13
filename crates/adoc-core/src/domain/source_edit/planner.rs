@@ -1,7 +1,7 @@
 //! Op-specific edit planners over a [`TypedBlockLayout`] (V6.4, ADR-0036).
 //!
 //! Pure byte math: layouts are built from fresh parser spans by
-//! `infrastructure::parser::layout`; planners turn a patch intent into a
+//! `language::parser::layout`; planners turn a patch intent into a
 //! [`SourceEditPlan`] without touching the filesystem or the parser. Refusals
 //! come back as fix-oriented diagnostics, never panics.
 
@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::knowledge_object::BlockKind;
 
 use super::{LineEnding, SourceEditPlan, SpanEdit};
 
@@ -190,7 +191,10 @@ pub(crate) fn render_typed_block(
         .map(|(key, value)| (key.as_str(), value.as_str()))
         .collect();
     if let Some(status) = status {
-        merged.insert("status", status);
+        let discriminant_field = BlockKind::from_fence_word(kind)
+            .and_then(BlockKind::patch_discriminant_field)
+            .unwrap_or("status");
+        merged.insert(discriminant_field, status);
     }
 
     let mut output = format!("::{kind} {id}{eol}");
@@ -301,7 +305,7 @@ fn guard_body_lines(body: &str) -> Vec<Diagnostic> {
 }
 
 /// Pure mirror of the parser's open-fence detector
-/// (`infrastructure::parser::typed_block::looks_like_open_fence`): a spliced
+/// (`language::parser::typed_block::looks_like_open_fence`): a spliced
 /// file must reparse to exactly the intended block, so the planner refuses
 /// body text the parser would treat as an opener.
 fn looks_like_open_fence(line: &str) -> bool {
@@ -683,6 +687,32 @@ After text.
             LineEnding::Lf,
         );
         assert_eq!(with_terminator, without);
+    }
+
+    #[test]
+    fn render_typed_block_uses_the_kind_discriminant_field() {
+        assert!(
+            render_typed_block(
+                "warning",
+                "billing.warning",
+                Some("high"),
+                &BTreeMap::new(),
+                "Take care.",
+                LineEnding::Lf,
+            )
+            .contains("severity: high\n")
+        );
+        assert!(
+            render_typed_block(
+                "constraint",
+                "billing.limit",
+                Some("critical"),
+                &BTreeMap::new(),
+                "Stay bounded.",
+                LineEnding::Lf,
+            )
+            .contains("severity: critical\n")
+        );
     }
 
     #[test]

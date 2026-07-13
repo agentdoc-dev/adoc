@@ -98,7 +98,7 @@ mod tests {
 
     use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
     use crate::domain::source::SourceFile;
-    use crate::infrastructure::parser::parse_markdown_page;
+    use crate::language::parser::parse_markdown_page;
 
     fn validate(text: &str) -> Vec<Diagnostic> {
         let source = SourceFile::new_with_identity_path(

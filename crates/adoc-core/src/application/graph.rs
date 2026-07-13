@@ -115,10 +115,10 @@ where
 {
     let graph_document = match graph_reader.read(&input.graph_artifact_path) {
         Ok(document) => document,
-        Err(diagnostics) => {
+        Err(error) => {
             return GraphLoadResult {
                 session: None,
-                diagnostics,
+                diagnostics: error.into_diagnostics(),
             };
         }
     };

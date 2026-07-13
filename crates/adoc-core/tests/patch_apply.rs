@@ -235,3 +235,39 @@ fn recompiling_unchanged_source_reproduces_artifact_content_hashes() {
     let second_hash = workspace.content_hash(&second, "billing.credits");
     assert_eq!(first_hash, second_hash);
 }
+
+#[test]
+fn create_warning_maps_patch_status_to_severity_and_recompiles() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.credit-warning",
+            "changes": {
+                "kind": "warning",
+                "status": "high",
+                "body": "Credit balance is close to exhaustion.",
+                "placement": { "page_id": "billing.claims" }
+            },
+            "reason": "exercise severity-discriminated construction"
+        }),
+    );
+
+    assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+    assert_eq!(result.post_check.error_count, 0);
+    let written = fs::read_to_string(workspace.page_path()).expect("read page");
+    assert!(written.contains("::warning billing.credit-warning\nseverity: high\n"));
+
+    let rebuilt = compile_workspace(CompileInput {
+        root: workspace.docs_root(),
+    });
+    assert!(
+        !rebuilt.has_errors(),
+        "diagnostics: {:?}",
+        rebuilt.diagnostics
+    );
+}

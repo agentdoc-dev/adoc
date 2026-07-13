@@ -7,15 +7,18 @@ use crate::application::resolve_knowledge_objects::{
     resolve_knowledge_objects, suppress_unknown_kind_shape_diagnostics,
 };
 use crate::application::resolve_object_references::resolve_object_references;
+use crate::domain::artifact::SearchArtifactDocument;
 use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
+use crate::domain::graph::GraphArtifactDocument;
+use crate::domain::ports::artifact_reader::ArtifactReader;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
 use crate::domain::source::SourceFile;
-use crate::infrastructure::artifact::GraphJsonArtifact;
-use crate::infrastructure::render::HtmlRenderer;
-use crate::infrastructure::validate::mode_pipeline::pipeline_for;
-use crate::infrastructure::validate::validate_workspace;
+use crate::language::graph_projection::GraphProjection;
+use crate::language::render::HtmlRenderer;
+use crate::language::validate::mode_pipeline::pipeline_for;
+use crate::language::validate::validate_workspace;
 
 use super::local_today;
 use super::search_artifact::{
@@ -68,15 +71,51 @@ pub struct BuildArtifacts {
     pub search_json: Option<String>,
 }
 
-pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
-    compile_with_provider_for_date(provider, local_today())
+/// Validated, typed compiler state before any output adapter runs.
+pub(crate) struct WorkspaceAnalysis {
+    pub(crate) workspace: WorkspaceAst,
+    pub(crate) diagnostics: Vec<Diagnostic>,
 }
 
+#[derive(Debug)]
+pub(crate) struct WorkspaceProjection {
+    pub(crate) graph: GraphArtifactDocument,
+}
+
+pub(crate) struct CompiledWorkspace {
+    pub(crate) result: CompileResult,
+    pub(crate) projection: Option<WorkspaceProjection>,
+}
+
+pub(crate) struct ProjectedWorkspace {
+    pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) projection: Option<WorkspaceProjection>,
+}
+
+impl ProjectedWorkspace {
+    pub(crate) fn has_errors(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == Severity::Error)
+    }
+}
+
+pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
+    compile_with_provider_and_projection(provider).result
+}
+
+pub(crate) fn compile_with_provider_and_projection<P: SourceProvider>(
+    provider: &P,
+) -> CompiledWorkspace {
+    run_compile_pipeline(provider, None, local_today())
+}
+
+#[cfg(test)]
 pub(crate) fn compile_with_provider_for_date<P: SourceProvider>(
     provider: &P,
     today: NaiveDate,
 ) -> CompileResult {
-    run_compile_pipeline(provider, None, today)
+    run_compile_pipeline(provider, None, today).result
 }
 
 pub(crate) fn build_with_provider<P: SourceProvider>(
@@ -91,12 +130,13 @@ pub(crate) fn build_with_provider_for_date<P: SourceProvider>(
     options: BuildOptions<'_>,
     today: NaiveDate,
 ) -> CompileResult {
-    run_compile_pipeline(provider, Some(options), today)
+    run_compile_pipeline(provider, Some(options), today).result
 }
 
 pub(crate) struct BuildOptions<'a> {
     pub(crate) embeddings: BuildEmbeddingBehavior<'a>,
     pub(crate) prior_search_artifact_path: Option<PathBuf>,
+    pub(crate) search_reader: &'a dyn ArtifactReader<Output = SearchArtifactDocument>,
 }
 
 pub(crate) enum BuildEmbeddingBehavior<'a> {
@@ -114,10 +154,51 @@ fn run_compile_pipeline<P: SourceProvider>(
     provider: &P,
     mut build_options: Option<BuildOptions<'_>>,
     today: NaiveDate,
-) -> CompileResult {
+) -> CompiledWorkspace {
+    let analysis = analyze_with_provider_for_date(provider, today);
+    let WorkspaceAnalysis {
+        workspace,
+        mut diagnostics,
+    } = analysis;
+    if let Some(options) = &build_options {
+        diagnostics.extend(build_embedding_diagnostics(options));
+    }
+    let artifact_result = emit_artifacts(
+        &workspace,
+        &diagnostics,
+        build_options.as_mut(),
+        Some(today),
+    );
+    let artifacts = artifact_result.artifacts;
+    let projection = artifact_result.projection;
+    diagnostics.extend(artifact_result.diagnostics);
+    sort_diagnostics_by_source(&mut diagnostics);
+    CompiledWorkspace {
+        result: CompileResult {
+            diagnostics,
+            artifacts,
+        },
+        projection,
+    }
+}
+
+pub(crate) fn project_with_provider<P: SourceProvider>(provider: &P) -> ProjectedWorkspace {
+    let today = local_today();
+    let analysis = analyze_with_provider_for_date(provider, today);
+    let projection = project_workspace(&analysis.workspace, &analysis.diagnostics, Some(today));
+    ProjectedWorkspace {
+        diagnostics: analysis.diagnostics,
+        projection,
+    }
+}
+
+pub(crate) fn analyze_with_provider_for_date<P: SourceProvider>(
+    provider: &P,
+    today: NaiveDate,
+) -> WorkspaceAnalysis {
     // Pipeline stages: load → validate-source-pages → resolve-KOs →
     // resolve-object-references → validate-resolved-pages → assemble →
-    // validate-workspace → build. Each stage is a separate function below so
+    // validate-workspace. Each stage is a separate function below so
     // it can be unit-tested in isolation and the orchestrator reads as a
     // sequence of named domain operations rather than one walls-of-text loop.
     // Pages move through the pipeline without cloning. See ADR-0006 addendum.
@@ -139,21 +220,10 @@ fn run_compile_pipeline<P: SourceProvider>(
     diagnostics.extend(validate_resolved_pages(&parsed, today));
     let workspace = assemble_workspace(parsed);
     diagnostics.extend(validate_workspace(&workspace));
-    if let Some(options) = &build_options {
-        diagnostics.extend(build_embedding_diagnostics(options));
-    }
-    let artifact_result = build_artifacts_for_build(
-        &workspace,
-        &diagnostics,
-        build_options.as_mut(),
-        Some(today),
-    );
-    let artifacts = artifact_result.artifacts;
-    diagnostics.extend(artifact_result.diagnostics);
     sort_diagnostics_by_source(&mut diagnostics);
-    CompileResult {
+    WorkspaceAnalysis {
+        workspace,
         diagnostics,
-        artifacts,
     }
 }
 
@@ -255,20 +325,20 @@ fn assemble_workspace(parsed: Vec<(SourceFile, PageAst)>) -> WorkspaceAst {
     }
 }
 
-/// Gate artifacts on diagnostic severity: produce derived read artifacts only
-/// when no diagnostic has `Severity::Error`. ArtifactWriter ports are
-/// statically dispatched per ADR-0006.
+/// Gate output adapters on diagnostic severity: produce derived read artifacts
+/// only when no diagnostic has `Severity::Error`.
 #[cfg(test)]
 fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Option<BuildArtifacts> {
-    build_artifacts_for_build(workspace, diagnostics, None, None).artifacts
+    emit_artifacts(workspace, diagnostics, None, None).artifacts
 }
 
 struct ArtifactBuildResult {
     artifacts: Option<BuildArtifacts>,
     diagnostics: Vec<Diagnostic>,
+    projection: Option<WorkspaceProjection>,
 }
 
-fn build_artifacts_for_build(
+fn emit_artifacts(
     workspace: &WorkspaceAst,
     diagnostics: &[Diagnostic],
     mut build_options: Option<&mut BuildOptions<'_>>,
@@ -281,6 +351,7 @@ fn build_artifacts_for_build(
         return ArtifactBuildResult {
             artifacts: None,
             diagnostics: Vec::new(),
+            projection: None,
         };
     }
 
@@ -289,14 +360,24 @@ fn build_artifacts_for_build(
         .filter(|diagnostic| diagnostic.code != DiagnosticCode::BuildEmbeddingsSkipped)
         .cloned()
         .collect::<Vec<_>>();
-    let graph_document = GraphJsonArtifact.build_for_date(workspace, &graph_diagnostics, today);
-    let graph_json = graph_document
-        .to_pretty_json()
-        .expect("graph artifact serialization should not fail");
+    let projection = WorkspaceProjection {
+        graph: GraphProjection.build_for_date(workspace, &graph_diagnostics, today),
+    };
+    let graph_json = match projection.graph.to_pretty_json() {
+        Ok(graph_json) => graph_json,
+        Err(error) => {
+            return ArtifactBuildResult {
+                artifacts: None,
+                diagnostics: vec![artifact_serialization_diagnostic("graph", error)],
+                projection: None,
+            };
+        }
+    };
     let html = HtmlRenderer.render_workspace_for_date(workspace, today);
     let prior_search_artifact_path = build_options
         .as_ref()
         .and_then(|options| options.prior_search_artifact_path.clone());
+    let search_reader = build_options.as_ref().map(|options| options.search_reader);
     let mut artifact_diagnostics = Vec::new();
     let search_json = match build_options
         .as_mut()
@@ -305,10 +386,11 @@ fn build_artifacts_for_build(
         #[cfg(test)]
         Some(BuildEmbeddingBehavior::Enabled { provider }) => {
             match build_search_artifact(
-                &graph_document,
+                &projection.graph,
                 &graph_json,
                 *provider,
                 prior_search_artifact_path.as_ref(),
+                search_reader.expect("embedding options are present"),
             ) {
                 Ok(search_build) => {
                     artifact_diagnostics.extend(search_build.diagnostics);
@@ -328,6 +410,7 @@ fn build_artifacts_for_build(
                             search_json: None,
                         }),
                         diagnostics,
+                        projection: Some(projection),
                     };
                 }
             }
@@ -343,14 +426,16 @@ fn build_artifacts_for_build(
                             search_json: None,
                         }),
                         diagnostics: vec![embedding_error_diagnostic(error)],
+                        projection: Some(projection),
                     };
                 }
             };
             match build_search_artifact(
-                &graph_document,
+                &projection.graph,
                 &graph_json,
                 provider.as_ref(),
                 prior_search_artifact_path.as_ref(),
+                search_reader.expect("embedding options are present"),
             ) {
                 Ok(search_build) => {
                     artifact_diagnostics.extend(search_build.diagnostics);
@@ -370,6 +455,7 @@ fn build_artifacts_for_build(
                             search_json: None,
                         }),
                         diagnostics,
+                        projection: Some(projection),
                     };
                 }
             }
@@ -384,7 +470,31 @@ fn build_artifacts_for_build(
             search_json,
         }),
         diagnostics: artifact_diagnostics,
+        projection: Some(projection),
     }
+}
+
+fn project_workspace(
+    workspace: &WorkspaceAst,
+    diagnostics: &[Diagnostic],
+    today: Option<NaiveDate>,
+) -> Option<WorkspaceProjection> {
+    if diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == Severity::Error)
+    {
+        return None;
+    }
+    Some(WorkspaceProjection {
+        graph: GraphProjection.build_for_date(workspace, diagnostics, today),
+    })
+}
+
+fn artifact_serialization_diagnostic(artifact: &str, error: impl std::fmt::Display) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::BuildArtifactSerializationFailed,
+        format!("could not serialize {artifact} artifact: {error}"),
+    )
 }
 
 fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
@@ -403,11 +513,11 @@ fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::artifact::SearchArtifactDocument;
+    use crate::domain::artifact::{SEARCH_ARTIFACT_SCHEMA_VERSION, SearchArtifactDocument};
     use crate::domain::ast::BlockAst;
     use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider, ModelId};
     use crate::domain::source::SourceFile;
-    use crate::infrastructure::artifact::search_json::SUPPORTED_SEARCH_SCHEMA_VERSION;
+    use crate::infrastructure::artifact::SearchJsonArtifact;
     use crate::infrastructure::embedding::deterministic::DeterministicProvider;
     use crate::infrastructure::source::in_memory::InMemorySourceProvider;
     use chrono::NaiveDate;
@@ -441,6 +551,19 @@ mod tests {
 
         assert!(!result.has_errors());
         assert!(result.artifacts.is_some(), "expected artifacts to be built");
+    }
+
+    #[test]
+    fn analysis_returns_validated_workspace_before_artifact_emission() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\nHello.\n",
+        ));
+
+        let analysis = analyze_with_provider_for_date(&provider, fixed_today());
+
+        assert_eq!(analysis.workspace.pages.len(), 1);
+        assert!(analysis.diagnostics.is_empty());
     }
 
     #[test]
@@ -819,6 +942,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -839,7 +963,7 @@ mod tests {
             .expect("test embedding succeeds")
             .remove(0);
 
-        assert_eq!(search.schema_version, SUPPORTED_SEARCH_SCHEMA_VERSION);
+        assert_eq!(search.schema_version, SEARCH_ARTIFACT_SCHEMA_VERSION);
         assert_eq!(search.model.id, "hash-v1");
         assert_eq!(search.model.provider, "deterministic");
         assert_eq!(search.model.dim, 4);
@@ -865,6 +989,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -910,6 +1035,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -951,6 +1077,7 @@ mod tests {
                     provider: &first_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
         let first_search = first_result
@@ -982,6 +1109,7 @@ mod tests {
                     provider: &second_provider,
                 },
                 prior_search_artifact_path: Some(prior.path().to_path_buf()),
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1038,6 +1166,7 @@ mod tests {
                     provider: &first_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
         let first_search = first_result
@@ -1068,6 +1197,7 @@ mod tests {
                     provider: &second_provider,
                 },
                 prior_search_artifact_path: Some(prior.path().to_path_buf()),
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1107,6 +1237,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: Some(prior.path().to_path_buf()),
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1162,6 +1293,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: Some(prior.path().to_path_buf()),
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1200,6 +1332,7 @@ mod tests {
                     provider: &first_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
         let mut prior_search = first_result
@@ -1230,6 +1363,7 @@ mod tests {
                     provider: &second_provider,
                 },
                 prior_search_artifact_path: Some(prior.path().to_path_buf()),
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1267,6 +1401,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1291,6 +1426,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1323,6 +1459,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 
@@ -1342,6 +1479,7 @@ mod tests {
                     provider: &embedding_provider,
                 },
                 prior_search_artifact_path: None,
+                search_reader: &SearchJsonArtifact,
             },
         );
 

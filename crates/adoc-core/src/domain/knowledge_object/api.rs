@@ -8,7 +8,7 @@
 //! `draft | verified | deprecated` set (the procedure pattern) and optional;
 //! a `verified` api requires `owner`, `verified_at`, and evidence — the
 //! schema-quality evidence rule (`api.verified_missing_schema_evidence`)
-//! lives in `infrastructure/validate/api_verified_evidence.rs` because it
+//! lives in `language/validate/api_verified_evidence.rs` because it
 //! resolves `evidence_ref` targets across the workspace.
 
 use std::collections::BTreeMap;

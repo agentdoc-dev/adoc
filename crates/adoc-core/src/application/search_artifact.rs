@@ -1,19 +1,18 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use crate::application::hashing::sha256_prefixed;
 use crate::domain::artifact::{
-    SearchArtifactDocument, SearchEmbedding, SearchEntryKind, SearchModelHeader,
+    SEARCH_ARTIFACT_SCHEMA_VERSION, SearchArtifactDocument, SearchEmbedding, SearchEntryKind,
+    SearchModelHeader,
 };
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{
     GraphArtifactDocument, GraphBlockNode, GraphKnowledgeObjectNode, GraphNode, ProseBlockKind,
 };
+use crate::domain::hashing::sha256_prefixed;
+use crate::domain::ports::artifact_reader::{ArtifactReadErrorKind, ArtifactReader};
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::retrieval::metadata;
-use crate::infrastructure::artifact::search_json::{
-    SUPPORTED_SEARCH_SCHEMA_VERSION, read_search_artifact_document,
-};
 
 pub(crate) struct SearchArtifactBuild {
     pub(crate) json: String,
@@ -36,14 +35,18 @@ impl SearchCacheLoad {
     }
 }
 
-pub(crate) fn build_search_artifact(
+pub(crate) fn build_search_artifact<S>(
     graph_document: &GraphArtifactDocument,
     graph_json: &str,
     provider: &dyn EmbeddingProvider,
     prior_search_artifact_path: Option<&PathBuf>,
-) -> Result<SearchArtifactBuild, Vec<Diagnostic>> {
+    search_reader: &S,
+) -> Result<SearchArtifactBuild, Vec<Diagnostic>>
+where
+    S: ArtifactReader<Output = SearchArtifactDocument> + ?Sized,
+{
     let model = search_model_header(provider);
-    let cache_load = load_matching_search_cache(prior_search_artifact_path, &model);
+    let cache_load = load_matching_search_cache(prior_search_artifact_path, &model, search_reader);
     let cached_embeddings = cache_load.embeddings;
     let graph_artifact_hash = sha256_prefixed(graph_json.as_bytes());
     let mut embeddings = Vec::new();
@@ -128,7 +131,7 @@ pub(crate) fn build_search_artifact(
     }
 
     let document = SearchArtifactDocument {
-        schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
+        schema_version: SEARCH_ARTIFACT_SCHEMA_VERSION.to_string(),
         model,
         graph_artifact_hash,
         embeddings,
@@ -206,22 +209,27 @@ fn search_model_header(provider: &dyn EmbeddingProvider) -> SearchModelHeader {
     }
 }
 
-fn load_matching_search_cache(
+fn load_matching_search_cache<S>(
     path: Option<&PathBuf>,
     model: &SearchModelHeader,
-) -> SearchCacheLoad {
+    search_reader: &S,
+) -> SearchCacheLoad
+where
+    S: ArtifactReader<Output = SearchArtifactDocument> + ?Sized,
+{
     let Some(path) = path else {
         return SearchCacheLoad::empty();
     };
-    if !path.exists() {
-        return SearchCacheLoad::empty();
-    }
-    let document = match read_search_artifact_document(path) {
+    let document = match search_reader.read(path) {
         Ok(document) => document,
-        Err(diagnostics) => {
+        Err(error) if error.kind() == ArtifactReadErrorKind::Missing => {
+            return SearchCacheLoad::empty();
+        }
+        Err(error) => {
             return SearchCacheLoad {
                 embeddings: BTreeMap::new(),
-                diagnostics: diagnostics
+                diagnostics: error
+                    .into_diagnostics()
                     .into_iter()
                     .map(ignored_search_cache_read_diagnostic)
                     .collect(),
@@ -396,8 +404,14 @@ mod tests {
         provider: &DeterministicProvider,
         prior: Option<&PathBuf>,
     ) -> SearchArtifactBuild {
-        build_search_artifact(document, "{}", provider, prior)
-            .expect("search artifact build succeeds")
+        build_search_artifact(
+            document,
+            "{}",
+            provider,
+            prior,
+            &crate::infrastructure::artifact::SearchJsonArtifact,
+        )
+        .expect("search artifact build succeeds")
     }
 
     #[test]

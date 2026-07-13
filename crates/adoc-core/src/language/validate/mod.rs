@@ -124,7 +124,7 @@ mod tests {
 
     use super::*;
     use crate::domain::diagnostic::DiagnosticCode;
-    use crate::infrastructure::parser::parse_page;
+    use crate::language::parser::parse_page;
 
     // --- workspace-rule port ---
 

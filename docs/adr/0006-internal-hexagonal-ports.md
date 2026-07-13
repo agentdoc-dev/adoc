@@ -1,5 +1,18 @@
 # Use internal hexagonal ports for sources, artifacts, and embeddings
 
+**Status:** Superseded in part by ADR-0046
+
+> Current state: keep ports only where they isolate I/O, runtime selection, or
+> multiple real adapters. `SourceProvider`, `ArtifactReader`,
+> `EmbeddingProvider`, changed-file/snapshot ports, committed-source checks,
+> and workspace writes remain. `ArtifactWriter` was removed because it had one
+> production implementation and no behavioral leverage. Graph/search
+> construction and pure language renderers are concrete. See
+> [ADR-0046](0046-typed-workspace-and-inward-dependencies.md) and the
+> [current architecture map](../architecture.md).
+
+## Historical Decision
+
 AgentDoc keeps its public compiler surface small (per ADR-0005) but factors application collaborators into `pub(crate)` ports inside `adoc-core`: `SourceProvider` for input discovery, `ArtifactWriter` and `ArtifactReader` for structured build/read artifacts, and `EmbeddingProvider` for local vector generation. `HtmlRenderer` remains an infrastructure adapter selected by the compile application service; it renders from `WorkspaceAst` or private render projections, not from serialized graph JSON. This keeps orchestration testable without touching the filesystem and leaves the door open for future LSP, web-preview, or semantic-diff consumers to reuse adapters without reopening this ADR. Adapters are dispatched statically where possible; the embedding provider uses a trait object at the factory boundary because provider selection is runtime configuration.
 
 `ArtifactWriter` exposes its return shape as an associated `type Output` (not a hard-coded public graph document) so a future `MarkdownIndexArtifact` or binary sidecar slots in by declaring its own `Output` - proving the open-closed claim. The trait method is named `build` rather than `write`: it constructs the adapter-local in-memory output; the application layer serializes supported artifacts into `BuildArtifacts`, and the CLI owns the file-write boundary. A test stub (`CountingArtifact` with `type Output = String`) pins the format-agnostic contract so a future regression that re-locks the return type is caught by `cargo test` rather than by a downstream review.

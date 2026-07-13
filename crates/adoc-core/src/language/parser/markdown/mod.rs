@@ -9,7 +9,7 @@
 //! Byte-offset ranges returned by `pulldown-cmark` are translated to absolute
 //! [`crate::domain::diagnostic::SourceSpan`] values via the [`SourceFile`]'s
 //! line index. Front-matter is skipped textually (see
-//! [`crate::infrastructure::parser::front_matter`]) before the events are
+//! [`crate::language::parser::front_matter`]) before the events are
 //! produced, and the skipped byte count is added back to every event range
 //! so spans stay anchored to the original source.
 //!
@@ -18,7 +18,7 @@
 //! - [`frame`] — `Frame` stack and lifecycle for the event-driven driver.
 //! - [`post_parse`] — paragraph-to-`UnknownExtension` rewrite (Pandoc /
 //!   attribute-block detection). Shares the
-//!   [`crate::infrastructure::parser::extension_classifier`] with the
+//!   [`crate::language::parser::extension_classifier`] with the
 //!   `UnknownExtension` compat validator.
 //! - this file — the `State` event-stream driver and the public
 //!   [`parse_markdown_page`] entry point.
@@ -42,7 +42,7 @@ use crate::domain::identity::PageId;
 use crate::domain::inline::InlineSegment;
 use crate::domain::source::{DerivedPageIdError, SourceFile, derive_page_id};
 
-use crate::infrastructure::parser::front_matter::skip_front_matter;
+use crate::language::parser::front_matter::skip_front_matter;
 
 use frame::{Frame, find_enclosing_table};
 use post_parse::rewrite_pandoc_and_attribute_paragraphs;

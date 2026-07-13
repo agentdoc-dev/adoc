@@ -78,8 +78,8 @@ mod tests {
 
     use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
     use crate::domain::source::SourceFile;
-    use crate::infrastructure::parser::parse_page;
-    use crate::infrastructure::validate::validate_source_page;
+    use crate::language::parser::parse_page;
+    use crate::language::validate::validate_source_page;
 
     fn validate_text(text: &str) -> Vec<Diagnostic> {
         let source = SourceFile::new_with_identity_path(

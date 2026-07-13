@@ -177,10 +177,10 @@ where
 {
     let document = match graph_reader.read(&input.artifact_path) {
         Ok(document) => document,
-        Err(diagnostics) => {
+        Err(error) => {
             return RetrievalLoadResult {
                 session: None,
-                diagnostics,
+                diagnostics: error.into_diagnostics(),
             };
         }
     };
@@ -211,10 +211,10 @@ where
 
     if let Some(search_path) = input.search_artifact_path.as_ref() {
         match search_reader.read(search_path) {
-            Err(diags) => {
-                let was_missing = diags
-                    .iter()
-                    .any(|d| d.code == DiagnosticCode::IoArtifactMissing);
+            Err(error) => {
+                let was_missing = error.kind()
+                    == crate::domain::ports::artifact_reader::ArtifactReadErrorKind::Missing;
+                let diags = error.into_diagnostics();
                 if was_missing {
                     diagnostics.push(Diagnostic::warning(
                         DiagnosticCode::SearchArtifactMissing,
@@ -249,8 +249,7 @@ where
                 }
 
                 if !artifact_unloadable {
-                    let actual_hash =
-                        crate::application::hashing::sha256_prefixed(&canonical_bytes);
+                    let actual_hash = crate::domain::hashing::sha256_prefixed(&canonical_bytes);
                     if actual_hash != doc.graph_artifact_hash {
                         diagnostics.push(Diagnostic::warning(
                             DiagnosticCode::SearchHashDrift,
@@ -835,7 +834,6 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::application::hashing::sha256_prefixed;
     use crate::domain::artifact::{
         SearchArtifactDocument, SearchEmbedding, SearchEntryKind, SearchModelHeader,
     };
@@ -843,6 +841,7 @@ mod tests {
         GraphArtifactDocument, GraphBlockNode, GraphEdge, GraphEdgeKind, GraphKnowledgeObjectNode,
         GraphNode, GraphPageNode, GraphRelationKind, GraphRelations, GraphSourceSpan,
     };
+    use crate::domain::hashing::sha256_prefixed;
     use crate::domain::ports::artifact_reader::ArtifactReader;
 
     struct StubSearchArtifactReader {
@@ -852,7 +851,11 @@ mod tests {
     impl ArtifactReader for StubSearchArtifactReader {
         type Output = SearchArtifactDocument;
 
-        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+        fn read(
+            &self,
+            _path: &Path,
+        ) -> Result<Self::Output, crate::domain::ports::artifact_reader::ArtifactReadError>
+        {
             Ok(self.document.clone())
         }
     }
@@ -864,7 +867,11 @@ mod tests {
     impl ArtifactReader for StubGraphArtifactReader {
         type Output = GraphArtifactDocument;
 
-        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+        fn read(
+            &self,
+            _path: &Path,
+        ) -> Result<Self::Output, crate::domain::ports::artifact_reader::ArtifactReadError>
+        {
             Ok(self.document.clone())
         }
     }

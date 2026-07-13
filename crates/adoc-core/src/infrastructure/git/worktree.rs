@@ -1,9 +1,9 @@
-//! `SnapshotWorkspaceProvider` adapter backed by the system `git` binary.
+//! `SnapshotSourceProvider` adapter backed by the system `git` binary.
 //!
 //! Uses `git worktree add --detach` to materialize the target ref into a
 //! temporary directory under `std::env::temp_dir()`, and `git worktree
-//! remove --force` on drop. The application layer never sees the
-//! intermediate worktree — it only receives a `SnapshotWorkspace` handle.
+//! remove --force` after loading every source. The application layer never
+//! sees the intermediate worktree or its cleanup handle.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,13 +12,60 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::domain::ports::snapshot_workspace::{
-    SnapshotError, SnapshotSelector, SnapshotWorkspace, SnapshotWorkspaceProvider,
+    SnapshotError, SnapshotSelector, SnapshotSourceProvider, SnapshotSources,
 };
+use crate::domain::ports::source_provider::SourceProvider;
+use crate::infrastructure::source::fs::FsSourceProvider;
 
 use super::error::GitError;
 use super::util::clear_git_env;
 
-/// V3.1 git-CLI adapter for [`SnapshotWorkspaceProvider`].
+type Cleanup = Box<dyn FnOnce() + Send + 'static>;
+
+struct SnapshotWorkspace {
+    path: PathBuf,
+    cleanup: Option<Cleanup>,
+}
+
+impl SnapshotWorkspace {
+    fn workdir(path: PathBuf) -> Self {
+        Self {
+            path,
+            cleanup: None,
+        }
+    }
+
+    fn with_cleanup(path: PathBuf, cleanup: Cleanup) -> Self {
+        Self {
+            path,
+            cleanup: Some(cleanup),
+        }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl std::fmt::Debug for SnapshotWorkspace {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SnapshotWorkspace")
+            .field("path", &self.path)
+            .field("cleanup", &self.cleanup.as_ref().map(|_| "<closure>"))
+            .finish()
+    }
+}
+
+impl Drop for SnapshotWorkspace {
+    fn drop(&mut self) {
+        if let Some(cleanup) = self.cleanup.take() {
+            cleanup();
+        }
+    }
+}
+
+/// V3.1 git-CLI adapter for [`SnapshotSourceProvider`].
 pub(crate) struct GitWorktreeProvider {
     repo_root: PathBuf,
 }
@@ -29,18 +76,14 @@ impl GitWorktreeProvider {
             repo_root: repo_root.into(),
         }
     }
-}
 
-impl SnapshotWorkspaceProvider for GitWorktreeProvider {
     fn checkout(&self, selector: &SnapshotSelector) -> Result<SnapshotWorkspace, SnapshotError> {
         match selector {
             SnapshotSelector::Workdir => Ok(SnapshotWorkspace::workdir(self.repo_root.clone())),
             SnapshotSelector::GitRef(spec) => self.checkout_ref(spec.as_str()),
         }
     }
-}
 
-impl GitWorktreeProvider {
     fn checkout_ref(&self, spec: &str) -> Result<SnapshotWorkspace, SnapshotError> {
         verify_ref(&self.repo_root, spec)?;
 
@@ -57,6 +100,14 @@ impl GitWorktreeProvider {
         });
 
         Ok(SnapshotWorkspace::with_cleanup(tmp, cleanup))
+    }
+}
+
+impl SnapshotSourceProvider for GitWorktreeProvider {
+    fn load_snapshot(&self, selector: &SnapshotSelector) -> Result<SnapshotSources, SnapshotError> {
+        let workspace = self.checkout(selector)?;
+        let sources = FsSourceProvider::new(workspace.path().to_path_buf()).load_sources();
+        Ok(SnapshotSources::new(sources))
     }
 }
 
@@ -187,6 +238,8 @@ mod tests {
             run(&root, &["config", "user.name", "adoc tests"]);
             run(&root, &["config", "commit.gpgsign", "false"]);
             fs::write(root.join("hello.txt"), "hello world\n").expect("write hello.txt");
+            fs::create_dir(root.join("docs")).expect("create docs");
+            fs::write(root.join("docs/guide.adoc"), "# Guide\n").expect("write guide");
             run(&root, &["add", "-A"]);
             run(&root, &["commit", "-m", "initial"]);
             Self {
@@ -260,6 +313,35 @@ mod tests {
         assert!(
             !listing.contains(tmp_path.to_str().expect("path is utf-8")),
             "git worktree list still mentions cleaned-up worktree: {listing}"
+        );
+    }
+
+    #[test]
+    fn snapshot_source_loading_finishes_before_worktree_cleanup() {
+        use crate::domain::ports::snapshot_workspace::GitRef;
+        let repo = Repo::new();
+        let provider = GitWorktreeProvider::new(repo.root.clone());
+
+        let sources = provider
+            .load_snapshot(&SnapshotSelector::GitRef(GitRef::new("HEAD")))
+            .expect("HEAD sources load");
+
+        let loaded = sources.load_sources();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].as_ref().expect("source").text, "# Guide\n");
+
+        let mut listing_command = Command::new("git");
+        listing_command
+            .arg("-C")
+            .arg(&repo.root)
+            .args(["worktree", "list", "--porcelain"]);
+        clear_git_env(&mut listing_command);
+        let listing = listing_command.output().expect("git worktree list runs");
+        let listing = String::from_utf8_lossy(&listing.stdout);
+        assert_eq!(
+            listing.matches("worktree ").count(),
+            1,
+            "temporary worktree must be gone before sources are returned: {listing}"
         );
     }
 

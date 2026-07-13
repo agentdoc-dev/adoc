@@ -2,14 +2,13 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::domain::artifact::SearchArtifactDocument;
+use crate::domain::artifact::{SEARCH_ARTIFACT_SCHEMA_VERSION, SearchArtifactDocument};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::domain::ports::artifact_reader::ArtifactReader;
+use crate::domain::ports::artifact_reader::{ArtifactReadError, ArtifactReader};
+use crate::infrastructure::artifact::artifact_schema_version;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct SearchJsonArtifact;
-
-pub(crate) const SUPPORTED_SEARCH_SCHEMA_VERSION: &str = "adoc.search.v1";
 
 pub(crate) fn read_search_artifact_document(
     path: &Path,
@@ -31,7 +30,7 @@ pub(crate) fn read_search_artifact_document(
         }
     };
 
-    if document.schema_version != SUPPORTED_SEARCH_SCHEMA_VERSION {
+    if document.schema_version != SEARCH_ARTIFACT_SCHEMA_VERSION {
         return Err(vec![
             Diagnostic::error(
                 DiagnosticCode::SchemaUnsupportedVersion,
@@ -43,7 +42,7 @@ pub(crate) fn read_search_artifact_document(
             )
             .with_help(format!(
                 "Expected schema_version '{}'. Rebuild the artifact with `adoc build`.",
-                SUPPORTED_SEARCH_SCHEMA_VERSION
+                SEARCH_ARTIFACT_SCHEMA_VERSION
             )),
         ]);
     }
@@ -66,8 +65,11 @@ fn read_error_diagnostic(path: &Path, error: io::Error) -> Diagnostic {
 impl ArtifactReader for SearchJsonArtifact {
     type Output = SearchArtifactDocument;
 
-    fn read(&self, path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
-        read_search_artifact_document(path)
+    fn read(&self, path: &Path) -> Result<Self::Output, ArtifactReadError> {
+        read_search_artifact_document(path).map_err(|diagnostics| {
+            ArtifactReadError::from_diagnostics(diagnostics)
+                .with_schema_version(artifact_schema_version(path))
+        })
     }
 }
 
@@ -76,12 +78,13 @@ mod tests {
     use std::fs;
 
     use crate::domain::artifact::{
-        SearchArtifactDocument, SearchEmbedding, SearchEntryKind, SearchModelHeader,
+        SEARCH_ARTIFACT_SCHEMA_VERSION, SearchArtifactDocument, SearchEmbedding, SearchEntryKind,
+        SearchModelHeader,
     };
     use crate::domain::diagnostic::DiagnosticCode;
     use crate::domain::ports::artifact_reader::ArtifactReader;
     use crate::infrastructure::artifact::search_json::{
-        SUPPORTED_SEARCH_SCHEMA_VERSION, SearchJsonArtifact, read_search_artifact_document,
+        SearchJsonArtifact, read_search_artifact_document,
     };
 
     #[test]
@@ -120,7 +123,7 @@ mod tests {
     #[test]
     fn search_artifact_pretty_json_round_trips() {
         let artifact = SearchArtifactDocument {
-            schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
+            schema_version: SEARCH_ARTIFACT_SCHEMA_VERSION.to_string(),
             model: SearchModelHeader {
                 id: "hash-v1".to_string(),
                 provider: "deterministic".to_string(),
@@ -154,7 +157,7 @@ mod tests {
     #[test]
     fn search_json_artifact_reads_through_artifact_reader_port() {
         let artifact = SearchArtifactDocument {
-            schema_version: SUPPORTED_SEARCH_SCHEMA_VERSION.to_string(),
+            schema_version: SEARCH_ARTIFACT_SCHEMA_VERSION.to_string(),
             model: SearchModelHeader {
                 id: "hash-v1".to_string(),
                 provider: "deterministic".to_string(),

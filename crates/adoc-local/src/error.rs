@@ -52,6 +52,20 @@ pub enum LocalError {
     },
 
     #[error(
+        "error[io.artifact_commit_failed] artifact set commit failed during {phase} for {}: \
+         {source}{}",
+        path.display(),
+        format_rollback_failures(rollback_failed)
+    )]
+    ArtifactCommitFailed {
+        phase: &'static str,
+        path: PathBuf,
+        rollback_failed: Vec<PathBuf>,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error(
         "error[io.remove_failed] could not remove {}: {source}; every .adoc target was \
          written{}; committed sources remain recoverable from git",
         path.display(),
@@ -92,6 +106,18 @@ fn format_removed_sources(removed: &[PathBuf]) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!("; sources already removed: {list}")
+}
+
+fn format_rollback_failures(paths: &[PathBuf]) -> String {
+    if paths.is_empty() {
+        return String::new();
+    }
+    let list = paths
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("; rollback also failed for: {list}")
 }
 
 fn format_config_path(config_path: &Option<PathBuf>) -> String {

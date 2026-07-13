@@ -10,7 +10,7 @@
 //!
 //! See V3-DESIGN.md §V3.4 for the trigger table and the verified-claim gate.
 //! Deduplication by `(object_id, reason)` happens at the application layer
-//! in [`crate::application::review::proof_obligations`].
+//! in the review application service.
 
 use crate::domain::graph::GraphKnowledgeObjectNode;
 use crate::domain::knowledge_object::claim::{OWNER_FIELD, VERIFIED_AT_FIELD};

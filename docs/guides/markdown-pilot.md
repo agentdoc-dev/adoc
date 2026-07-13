@@ -86,7 +86,7 @@ the canonical guidance for this lives in the
 - **`<MyComponent prop="x">…</MyComponent>` (paired MDX).** V4 detects
   self-closing PascalCase tags as MDX. Paired open/close MDX tags are
   classified as raw HTML and quarantined; this is intentional and
-  documented in `crates/adoc-core/src/infrastructure/parser/markdown.rs`.
+  documented in `crates/adoc-core/src/language/parser/markdown/mod.rs`.
 - **Markdown at the docs root with a single-segment basename.**
   `README.md` at the top level of a scanned directory produces the
   path-derived ID `readme`, which fails the Object ID grammar. Place

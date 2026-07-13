@@ -20,12 +20,12 @@ use crate::application::compile::load_error_diagnostic;
 use crate::domain::ast::{BlockAst, PageAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::inline::InlineSegment;
+use crate::domain::ports::committed_source::CommittedSourceProbe;
 use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::services::suggest_typed_blocks::{SuggestedTypedBlock, suggest_typed_blocks};
 use crate::domain::source::{SourceFile, SourceMode};
-use crate::infrastructure::git::is_committed_and_clean;
-use crate::infrastructure::parser::{parse_markdown_page, parse_page, skip_front_matter};
-use crate::infrastructure::render::{page_to_adoc_source, page_to_markdown};
+use crate::language::parser::{parse_markdown_page, parse_page, skip_front_matter};
+use crate::language::render::{page_to_adoc_source, page_to_markdown};
 
 /// How a migration run treats the filesystem (ADR-0043 §3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -237,10 +237,23 @@ fn suggested_next_steps(
     steps
 }
 
+#[cfg(test)]
 pub(crate) fn migrate_with_provider<P: SourceProvider>(
     provider: &P,
     mode: MigrateMode,
 ) -> MigrateResult {
+    migrate_with_ports(provider, &NeverCommittedSource, mode)
+}
+
+pub(crate) fn migrate_with_ports<P, C>(
+    provider: &P,
+    committed_source: &C,
+    mode: MigrateMode,
+) -> MigrateResult
+where
+    P: SourceProvider,
+    C: CommittedSourceProbe,
+{
     let mut diagnostics = Vec::new();
     let mut compat_sources = Vec::new();
     let mut strict_paths = BTreeSet::new();
@@ -311,7 +324,7 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
         });
     }
 
-    diagnostics.extend(committed_clean_refusals(&files, mode));
+    diagnostics.extend(committed_clean_refusals(&files, committed_source, mode));
 
     MigrateResult {
         files,
@@ -325,10 +338,23 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
 /// A separate function, not a direction flag — the per-file pipeline differs
 /// at every step (parser, serializer, no front-matter or suggestion pass,
 /// inverted bucketing, opposite target extension).
+#[cfg(test)]
 pub(crate) fn export_with_provider<P: SourceProvider>(
     provider: &P,
     mode: MigrateMode,
 ) -> MigrateResult {
+    export_with_ports(provider, &NeverCommittedSource, mode)
+}
+
+pub(crate) fn export_with_ports<P, C>(
+    provider: &P,
+    committed_source: &C,
+    mode: MigrateMode,
+) -> MigrateResult
+where
+    P: SourceProvider,
+    C: CommittedSourceProbe,
+{
     let mut diagnostics = Vec::new();
     let mut strict_sources = Vec::new();
     let mut compat_paths = BTreeSet::new();
@@ -402,7 +428,7 @@ pub(crate) fn export_with_provider<P: SourceProvider>(
         });
     }
 
-    diagnostics.extend(committed_clean_refusals(&files, mode));
+    diagnostics.extend(committed_clean_refusals(&files, committed_source, mode));
 
     MigrateResult {
         files,
@@ -415,13 +441,17 @@ pub(crate) fn export_with_provider<P: SourceProvider>(
 /// ADR-0043 §3 committed-clean refusal, shared by both directions: `--write`
 /// removes each source, and a committed source is what makes that
 /// reversible. Dry-run never probes git.
-fn committed_clean_refusals(files: &[MigratedFile], mode: MigrateMode) -> Vec<Diagnostic> {
+fn committed_clean_refusals<C: CommittedSourceProbe>(
+    files: &[MigratedFile],
+    committed_source: &C,
+    mode: MigrateMode,
+) -> Vec<Diagnostic> {
     let MigrateMode::Write { force: false } = mode else {
         return Vec::new();
     };
     files
         .iter()
-        .filter(|file| !is_committed_and_clean(&file.source_path))
+        .filter(|file| !committed_source.is_committed_and_clean(&file.source_path))
         .map(|file| {
             Diagnostic::error(
                 DiagnosticCode::MigrateSourceNotCommitted,
@@ -434,6 +464,16 @@ fn committed_clean_refusals(files: &[MigratedFile], mode: MigrateMode) -> Vec<Di
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+struct NeverCommittedSource;
+
+#[cfg(test)]
+impl CommittedSourceProbe for NeverCommittedSource {
+    fn is_committed_and_clean(&self, _source: &Path) -> bool {
+        false
+    }
 }
 
 /// Warn on relative links whose target the provider does not know
@@ -758,10 +798,16 @@ mod tests {
 
     #[test]
     fn write_mode_with_force_skips_the_probe() {
+        struct PanicProbe;
+        impl CommittedSourceProbe for PanicProbe {
+            fn is_committed_and_clean(&self, _source: &Path) -> bool {
+                panic!("force mode must not call committed-source probe")
+            }
+        }
         let provider = InMemorySourceProvider::new()
             .with_source(markdown_source("a/one.md", "# One\n\nProse.\n"));
 
-        let result = migrate_with_provider(&provider, MigrateMode::Write { force: true });
+        let result = migrate_with_ports(&provider, &PanicProbe, MigrateMode::Write { force: true });
 
         assert!(!result.has_errors(), "{:?}", result.diagnostics);
     }

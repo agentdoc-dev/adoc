@@ -151,6 +151,8 @@ diagnostic_codes! {
         "No action is required; the search cache will be recomputed for the current embedding model.";
     BuildEmbeddingsSkipped = "build.embeddings_skipped" =>
         "Run `adoc build` without `--no-embeddings` to emit docs.search.json.";
+    BuildArtifactSerializationFailed = "build.artifact_serialization_failed" =>
+        "Retry the build and report the failure if the installed adoc version cannot encode its own artifact model.";
     SearchArtifactMissing = "search.artifact_missing" =>
         "Run `adoc build` to generate dist/docs.search.json for hybrid or semantic search.";
     SearchModelMismatch = "search.model_mismatch" =>
