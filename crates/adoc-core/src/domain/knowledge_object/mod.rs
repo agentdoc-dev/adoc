@@ -3,13 +3,13 @@
 use std::collections::BTreeSet;
 
 use crate::domain::ast::ParsedTypedBlock;
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourcePosition, SourceSpan};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::value_objects::approved_by::ApprovedBy;
 use crate::domain::value_objects::evidence::Evidence;
 use crate::domain::value_objects::rel_path::RelPath;
-use crate::domain::values::{Body, NonEmpty, trim_ascii_edges};
+use crate::domain::values::{Body, NonEmpty};
 
 pub(super) const IMPACTS_FIELD: &str = "impacts";
 pub(crate) const APPROVED_BY_FIELD: &str = "approved_by";
@@ -22,6 +22,7 @@ pub(crate) mod contradiction;
 pub(crate) mod decision;
 pub(crate) mod draft;
 pub(crate) mod example;
+mod field_decoder;
 pub(crate) mod glossary;
 pub(crate) mod metadata;
 pub(crate) mod observation;
@@ -48,6 +49,9 @@ use question::Question;
 use source::Source;
 use task::Task;
 use warning::Warning;
+
+use field_decoder::{DecodedListField, DecodedListSegment};
+pub(super) use field_decoder::{take_optional_scalar, take_required_scalar, take_scalar_text};
 
 pub(super) fn reject_duplicate_fields(
     parsed: &ParsedTypedBlock,
@@ -78,6 +82,20 @@ pub(super) fn reject_duplicate_fields(
 
 pub(super) fn body_from_parsed(parsed: &ParsedTypedBlock) -> Option<Body> {
     Body::try_new(parsed.body_inlines.clone())
+}
+
+fn take_decoded_list(
+    parsed: &mut ParsedTypedBlock,
+    field_name: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<DecodedListField> {
+    match field_decoder::take_list_field(parsed, field_name)? {
+        Ok(field) => Some(field),
+        Err(error) => {
+            diagnostics.push(error.into_diagnostic(parsed, field_name));
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -141,31 +159,14 @@ pub(super) fn extract_relations(
 
     for relation in GraphRelationKind::ALL {
         let key = relation.as_str();
-        let Some(value) = parsed.raw_fields.remove(key) else {
+        let Some(field) = take_decoded_list(parsed, key, diagnostics) else {
             continue;
         };
-        let value_span = parsed
-            .raw_field_spans
-            .get(key)
-            .cloned()
-            .unwrap_or_else(|| parsed.span.clone());
-        let targets = parse_relation_targets(parsed, key, &value, &value_span, diagnostics);
+        let targets = parse_relation_targets(parsed, key, field.segments, diagnostics);
         relations.set_targets(relation, targets);
     }
 
     relations
-}
-
-/// Public-within-crate-module access to `relation_content_range` for
-/// sibling modules that need to unwrap bracket/scalar list syntax.
-pub(super) fn content_range_for_list_field(
-    parsed: &ParsedTypedBlock,
-    key: &str,
-    value: &str,
-    value_span: &SourceSpan,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Option<(usize, usize)> {
-    relation_content_range(parsed, key, value, value_span, diagnostics)
 }
 
 /// V5.8 TB2/TB3: the `evidence_ref:` field name, shared by `claim` and
@@ -185,275 +186,94 @@ pub(crate) fn parse_evidence_refs(
     parsed: &mut ParsedTypedBlock,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Vec<Evidence> {
-    let Some(value) = parsed.raw_fields.remove(EVIDENCE_REF_FIELD) else {
+    let Some(field) = take_decoded_list(parsed, EVIDENCE_REF_FIELD, diagnostics) else {
         return Vec::new();
     };
-
-    let value_span = parsed
-        .raw_field_spans
-        .get(EVIDENCE_REF_FIELD)
-        .cloned()
-        .unwrap_or_else(|| parsed.span.clone());
-
-    let Some((content_start, content_end)) =
-        content_range_for_list_field(parsed, EVIDENCE_REF_FIELD, &value, &value_span, diagnostics)
-    else {
-        return Vec::new();
-    };
-
-    if value[content_start..content_end]
-        .trim_matches(|c: char| c.is_ascii_whitespace())
-        .is_empty()
-    {
-        return Vec::new();
-    }
-
-    let mut refs: Vec<Evidence> = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    let mut segment_start = content_start;
-    for (rel, _) in value[content_start..content_end].match_indices(',') {
-        let comma = content_start + rel;
-        push_evidence_ref_segment(
-            parsed,
-            &value,
-            segment_start,
-            comma,
-            &value_span,
-            &mut seen,
-            &mut refs,
-            diagnostics,
-            false,
-        );
-        segment_start = comma + 1;
-    }
-    push_evidence_ref_segment(
-        parsed,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut seen,
-        &mut refs,
-        diagnostics,
-        true,
-    );
-    refs
-}
-
-#[allow(clippy::too_many_arguments)]
-fn push_evidence_ref_segment(
-    parsed: &ParsedTypedBlock,
-    value: &str,
-    start: usize,
-    end: usize,
-    value_span: &SourceSpan,
-    seen: &mut std::collections::BTreeSet<ObjectId>,
-    refs: &mut Vec<Evidence>,
-    diagnostics: &mut Vec<Diagnostic>,
-    is_last: bool,
-) {
-    let raw = &value[start..end];
-    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(raw) else {
-        if is_last {
-            return;
-        }
-        diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::IdInvalid,
-                format!(
-                    "empty `evidence_ref` segment in `{}`; remove the extra comma or fill in the id",
-                    parsed.id_text
-                ),
-            )
-            .with_span(relation_segment_span(value_span, value, start, end))
-            .with_object_id(&parsed.id_text)
-            .with_help(OBJECT_ID_GRAMMAR_HELP),
-        );
-        return;
-    };
-
-    let span = relation_segment_span(
-        value_span,
-        value,
-        start + trimmed_start,
-        start + trimmed_end,
-    );
-    match ObjectId::new(trimmed) {
-        Ok(id) => {
-            if seen.insert(id.clone()) {
-                refs.push(Evidence::object_ref(id));
+    let mut seen = BTreeSet::new();
+    field
+        .segments
+        .into_iter()
+        .filter_map(|segment| match segment.value {
+            None => {
+                diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::IdInvalid,
+                        format!(
+                            "empty `evidence_ref` segment in `{}`; remove the extra comma or fill in the id",
+                            parsed.id_text
+                        ),
+                    )
+                    .with_span(segment.span)
+                    .with_object_id(&parsed.id_text)
+                    .with_help(OBJECT_ID_GRAMMAR_HELP),
+                );
+                None
             }
-        }
-        Err(error) => diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::IdInvalid,
-                format!(
-                    "invalid `evidence_ref` id `{trimmed}` for `{}`: {error}",
-                    parsed.id_text
-                ),
-            )
-            .with_span(span)
-            .with_object_id(trimmed)
-            .with_help(OBJECT_ID_GRAMMAR_HELP),
-        ),
-    }
+            Some(value) => match ObjectId::new(&value) {
+                Ok(id) if seen.insert(id.clone()) => Some(Evidence::object_ref(id)),
+                Ok(_) => None,
+                Err(error) => {
+                    diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::IdInvalid,
+                            format!(
+                                "invalid `evidence_ref` id `{value}` for `{}`: {error}",
+                                parsed.id_text
+                            ),
+                        )
+                        .with_span(segment.span)
+                        .with_object_id(&value)
+                        .with_help(OBJECT_ID_GRAMMAR_HELP),
+                    );
+                    None
+                }
+            },
+        })
+        .collect()
 }
 
 fn parse_relation_targets(
     parsed: &ParsedTypedBlock,
     key: &str,
-    value: &str,
-    value_span: &SourceSpan,
+    segments: Vec<DecodedListSegment>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Vec<RelationTarget> {
-    if value.is_empty() {
-        return Vec::new();
-    }
-
-    let Some((content_start, content_end)) =
-        relation_content_range(parsed, key, value, value_span, diagnostics)
-    else {
-        return Vec::new();
-    };
-
     let mut targets = Vec::new();
     let mut seen = BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in value[content_start..content_end].match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
-        push_relation_segment(
-            parsed,
-            key,
-            value,
-            segment_start,
-            comma_index,
-            value_span,
-            &mut seen,
-            &mut targets,
-            diagnostics,
-            false,
-        );
-        segment_start = comma_index + 1;
-    }
-    push_relation_segment(
-        parsed,
-        key,
-        value,
-        segment_start,
-        content_end,
-        value_span,
-        &mut seen,
-        &mut targets,
-        diagnostics,
-        true,
-    );
-
-    targets
-}
-
-fn relation_content_range(
-    parsed: &ParsedTypedBlock,
-    key: &str,
-    value: &str,
-    value_span: &SourceSpan,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Option<(usize, usize)> {
-    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(value) else {
-        return Some((0, 0));
-    };
-
-    match (trimmed.strip_prefix('['), trimmed.strip_suffix(']')) {
-        (Some(_), Some(_)) => Some((trimmed_start + 1, trimmed_end - 1)),
-        (Some(_), None) | (None, Some(_)) => {
+    for segment in segments {
+        let Some(value) = segment.value else {
             diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode::IdInvalid,
-                    format!("malformed relation array in `{key}` for `{}`", parsed.id_text),
+                    format!("empty relation segment in `{key}` for `{}`", parsed.id_text),
                 )
-                .with_span(relation_segment_span(
-                    value_span,
-                    value,
-                    trimmed_start,
-                    trimmed_end,
-                ))
+                .with_span(segment.span)
                 .with_object_id(&parsed.id_text)
-                .with_help("Relation arrays must use `[object.id, other.id]`; each target must also be a valid Object ID."),
+                .with_help(OBJECT_ID_GRAMMAR_HELP),
             );
-            None
-        }
-        (None, None) => Some((0, value.len())),
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn push_relation_segment(
-    parsed: &ParsedTypedBlock,
-    key: &str,
-    value: &str,
-    start: usize,
-    end: usize,
-    value_span: &SourceSpan,
-    seen: &mut BTreeSet<ObjectId>,
-    targets: &mut Vec<RelationTarget>,
-    diagnostics: &mut Vec<Diagnostic>,
-    is_last: bool,
-) {
-    let raw = &value[start..end];
-    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(raw) else {
-        if is_last {
-            return;
-        }
-        diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::IdInvalid,
-                format!("empty relation segment in `{key}` for `{}`", parsed.id_text),
-            )
-            .with_span(relation_segment_span(value_span, value, start, end))
-            .with_object_id(&parsed.id_text)
-            .with_help(OBJECT_ID_GRAMMAR_HELP),
-        );
-        return;
-    };
-
-    let span = relation_segment_span(
-        value_span,
-        value,
-        start + trimmed_start,
-        start + trimmed_end,
-    );
-    match ObjectId::new(trimmed) {
-        Ok(id) => {
-            if seen.insert(id.clone()) {
-                targets.push(RelationTarget::new(id, span));
+            continue;
+        };
+        match ObjectId::new(&value) {
+            Ok(id) => {
+                if seen.insert(id.clone()) {
+                    targets.push(RelationTarget::new(id, segment.span));
+                }
             }
+            Err(error) => diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::IdInvalid,
+                    format!(
+                        "invalid relation id `{value}` in `{key}` for `{}`: {error}",
+                        parsed.id_text
+                    ),
+                )
+                .with_span(segment.span)
+                .with_object_id(&value)
+                .with_help(OBJECT_ID_GRAMMAR_HELP),
+            ),
         }
-        Err(error) => diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::IdInvalid,
-                format!(
-                    "invalid relation id `{trimmed}` in `{key}` for `{}`: {error}",
-                    parsed.id_text
-                ),
-            )
-            .with_span(span)
-            .with_object_id(trimmed)
-            .with_help(OBJECT_ID_GRAMMAR_HELP),
-        ),
     }
-}
-
-fn trim_segment(value: &str) -> Option<(&str, usize, usize)> {
-    let start = value
-        .char_indices()
-        .find(|(_, character)| !character.is_ascii_whitespace())
-        .map(|(index, _)| index)?;
-    let end = value
-        .char_indices()
-        .rev()
-        .find(|(_, character)| !character.is_ascii_whitespace())
-        .map(|(index, character)| index + character.len_utf8())
-        .expect("start proves a non-whitespace character exists");
-    Some((&value[start..end], start, end))
+    targets
 }
 
 /// Parse the opt-in `impacts:` field into a sorted, deduplicated, non-empty
@@ -466,156 +286,46 @@ pub(super) fn extract_impacts(
     parsed: &mut ParsedTypedBlock,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<NonEmpty<RelPath>> {
-    let value = parsed.raw_fields.remove(IMPACTS_FIELD)?;
-    let value_span = parsed
-        .raw_field_spans
-        .get(IMPACTS_FIELD)
-        .cloned()
-        .unwrap_or_else(|| parsed.span.clone());
-
-    let Some((content_start, content_end)) =
-        relation_content_range(parsed, IMPACTS_FIELD, &value, &value_span, diagnostics)
-    else {
-        // Malformed `[...]` already reported by relation_content_range.
-        return None;
-    };
-
-    let content = &value[content_start..content_end];
-    if content
-        .trim_matches(|character: char| character.is_ascii_whitespace())
-        .is_empty()
-    {
-        diagnostics.push(empty_impacts_diagnostic(parsed, &value_span));
+    let field = take_decoded_list(parsed, IMPACTS_FIELD, diagnostics)?;
+    if field.segments.is_empty() {
+        diagnostics.push(empty_impacts_diagnostic(parsed, &field.value_span));
         return None;
     }
 
-    let mut paths: std::collections::BTreeSet<RelPath> = std::collections::BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in content.match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
-        push_impact_segment(
-            parsed,
-            &value,
-            segment_start,
-            comma_index,
-            &value_span,
-            &mut paths,
-            diagnostics,
-            false,
-        );
-        segment_start = comma_index + 1;
+    let mut paths = BTreeSet::new();
+    for segment in field.segments {
+        let Some(value) = segment.value else {
+            diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::SchemaImpactsInvalidPath,
+                    format!(
+                        "empty `impacts` segment in `{}`; remove the extra comma or fill in the path",
+                        parsed.id_text
+                    ),
+                )
+                .with_span(segment.span)
+                .with_object_id(&parsed.id_text),
+            );
+            continue;
+        };
+        match RelPath::try_new(&value) {
+            Ok(path) => {
+                paths.insert(path);
+            }
+            Err(error) => diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::SchemaImpactsInvalidPath,
+                    format!(
+                        "invalid `impacts` path `{value}` for `{}`: {error}",
+                        parsed.id_text
+                    ),
+                )
+                .with_span(segment.span)
+                .with_object_id(&parsed.id_text),
+            ),
+        }
     }
-    push_impact_segment(
-        parsed,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut paths,
-        diagnostics,
-        true,
-    );
-
     NonEmpty::from_vec(paths.into_iter().collect())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn push_impact_segment(
-    parsed: &ParsedTypedBlock,
-    value: &str,
-    start: usize,
-    end: usize,
-    value_span: &SourceSpan,
-    paths: &mut std::collections::BTreeSet<RelPath>,
-    diagnostics: &mut Vec<Diagnostic>,
-    is_last: bool,
-) {
-    let raw = &value[start..end];
-    let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(raw) else {
-        if is_last {
-            // Trailing comma is tolerated, matching relation parsing.
-            return;
-        }
-        diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::SchemaImpactsInvalidPath,
-                format!(
-                    "empty `impacts` segment in `{}`; remove the extra comma or fill in the path",
-                    parsed.id_text
-                ),
-            )
-            .with_span(relation_segment_span(value_span, value, start, end))
-            .with_object_id(&parsed.id_text),
-        );
-        return;
-    };
-
-    let span = relation_segment_span(
-        value_span,
-        value,
-        start + trimmed_start,
-        start + trimmed_end,
-    );
-    match RelPath::try_new(trimmed) {
-        Ok(path) => {
-            paths.insert(path);
-        }
-        Err(error) => diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::SchemaImpactsInvalidPath,
-                format!(
-                    "invalid `impacts` path `{trimmed}` for `{}`: {error}",
-                    parsed.id_text
-                ),
-            )
-            .with_span(span)
-            .with_object_id(&parsed.id_text),
-        ),
-    }
-}
-
-/// Remove a scalar field and apply the shared scalar invariant every kind
-/// follows: edge-trim, then treat a blank value exactly like an absent field.
-/// The trimmed non-empty value goes through `ctor`; the calling aggregate maps
-/// the error into its own variant so per-kind diagnostic codes stay put.
-///
-/// The scalar sibling of [`extract_action_list`] — list-shaped fields got a
-/// shared reader in V5.5, this closes the same gap for scalars.
-pub(super) fn take_optional_scalar<T, E>(
-    parsed: &mut ParsedTypedBlock,
-    field_name: &str,
-    ctor: impl FnOnce(&str) -> Result<T, E>,
-) -> Result<Option<T>, E> {
-    let Some(raw) = parsed.raw_fields.remove(field_name) else {
-        return Ok(None);
-    };
-    let trimmed = trim_ascii_edges(&raw);
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    ctor(trimmed).map(Some)
-}
-
-/// [`take_optional_scalar`] for required fields: absent or blank becomes the
-/// caller-supplied `missing` error instead of `None`.
-pub(super) fn take_required_scalar<T, E>(
-    parsed: &mut ParsedTypedBlock,
-    field_name: &str,
-    ctor: impl FnOnce(&str) -> Result<T, E>,
-    missing: impl FnOnce() -> E,
-) -> Result<T, E> {
-    take_optional_scalar(parsed, field_name, ctor)?.ok_or_else(missing)
-}
-
-/// [`take_optional_scalar`] for plain text fields with no domain constructor:
-/// the trimmed value verbatim, blank-as-absent.
-pub(super) fn take_scalar_text(parsed: &mut ParsedTypedBlock, field_name: &str) -> Option<String> {
-    let raw = parsed.raw_fields.remove(field_name)?;
-    let trimmed = trim_ascii_edges(&raw);
-    if trimmed.is_empty() {
-        return None;
-    }
-    Some(trimmed.to_string())
 }
 
 /// Parse a comma-separated or scalar list field into a sorted, deduplicated
@@ -636,93 +346,13 @@ where
     T: Ord,
     F: Fn(&str) -> Option<T>,
 {
-    let value = parsed.raw_fields.remove(field_name)?;
-    let value_span = parsed
-        .raw_field_spans
-        .get(field_name)
-        .cloned()
-        .unwrap_or_else(|| parsed.span.clone());
-
-    let (content_start, content_end) =
-        relation_content_range(parsed, field_name, &value, &value_span, diagnostics)?;
-
-    let content = &value[content_start..content_end];
-    if content
-        .trim_matches(|c: char| c.is_ascii_whitespace())
-        .is_empty()
-    {
-        return None;
-    }
-
-    let mut items: BTreeSet<String> = BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in content.match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
-        push_action_list_segment(
-            parsed,
-            field_name,
-            &value,
-            segment_start,
-            comma_index,
-            &value_span,
-            &mut items,
-            diagnostics,
-            false,
-        );
-        segment_start = comma_index + 1;
-    }
-    push_action_list_segment(
-        parsed,
-        field_name,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut items,
-        diagnostics,
-        true,
-    );
-
-    let result: Vec<T> = items.into_iter().filter_map(|s| ctor(&s)).collect();
+    let items = take_sorted_text_list(parsed, field_name, "action", diagnostics)?;
+    let result: Vec<T> = items.into_iter().filter_map(|item| ctor(&item)).collect();
     if result.is_empty() {
         None
     } else {
         Some(result)
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn push_action_list_segment(
-    parsed: &ParsedTypedBlock,
-    field_name: &str,
-    value: &str,
-    start: usize,
-    end: usize,
-    value_span: &SourceSpan,
-    items: &mut BTreeSet<String>,
-    diagnostics: &mut Vec<Diagnostic>,
-    is_last: bool,
-) {
-    let raw = &value[start..end];
-    let Some((trimmed, _trimmed_start, _trimmed_end)) = trim_segment(raw) else {
-        if is_last {
-            return;
-        }
-        diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::SchemaMissingField,
-                format!(
-                    "empty `{field_name}` segment in `{}`; remove the extra comma or fill in the action",
-                    parsed.id_text
-                ),
-            )
-            .with_span(relation_segment_span(value_span, value, start, end))
-            .with_object_id(&parsed.id_text),
-        );
-        return;
-    };
-
-    items.insert(trimmed.to_string());
 }
 
 /// Parse the `approved_by:` field into a sorted, deduplicated, non-empty list
@@ -735,90 +365,41 @@ pub(super) fn extract_approved_by(
     parsed: &mut ParsedTypedBlock,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<NonEmpty<ApprovedBy>> {
-    let value = parsed.raw_fields.remove(APPROVED_BY_FIELD)?;
-    let value_span = parsed
-        .raw_field_spans
-        .get(APPROVED_BY_FIELD)
-        .cloned()
-        .unwrap_or_else(|| parsed.span.clone());
-
-    let (content_start, content_end) =
-        relation_content_range(parsed, APPROVED_BY_FIELD, &value, &value_span, diagnostics)?;
-
-    let content = &value[content_start..content_end];
-    if content
-        .trim_matches(|c: char| c.is_ascii_whitespace())
-        .is_empty()
-    {
-        return None;
-    }
-
-    let mut approvers: BTreeSet<String> = BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in content.match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
-        push_approved_by_segment(
-            parsed,
-            &value,
-            segment_start,
-            comma_index,
-            &value_span,
-            &mut approvers,
-            diagnostics,
-            false,
-        );
-        segment_start = comma_index + 1;
-    }
-    push_approved_by_segment(
-        parsed,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut approvers,
-        diagnostics,
-        true,
-    );
-
+    let approvers = take_sorted_text_list(parsed, APPROVED_BY_FIELD, "approver", diagnostics)?;
     NonEmpty::from_vec(
         approvers
             .into_iter()
-            .filter_map(|s| ApprovedBy::try_new(&s))
+            .filter_map(|approver| ApprovedBy::try_new(&approver))
             .collect(),
     )
 }
 
-#[allow(clippy::too_many_arguments)]
-fn push_approved_by_segment(
-    parsed: &ParsedTypedBlock,
-    value: &str,
-    start: usize,
-    end: usize,
-    value_span: &SourceSpan,
-    approvers: &mut BTreeSet<String>,
+fn take_sorted_text_list(
+    parsed: &mut ParsedTypedBlock,
+    field_name: &str,
+    item_name: &str,
     diagnostics: &mut Vec<Diagnostic>,
-    is_last: bool,
-) {
-    let raw = &value[start..end];
-    let Some((trimmed, _trimmed_start, _trimmed_end)) = trim_segment(raw) else {
-        if is_last {
-            return;
+) -> Option<Vec<String>> {
+    let field = take_decoded_list(parsed, field_name, diagnostics)?;
+    let mut items = BTreeSet::new();
+    for segment in field.segments {
+        if let Some(value) = segment.value {
+            items.insert(value);
+        } else {
+            diagnostics.push(
+                Diagnostic::error(
+                    DiagnosticCode::SchemaMissingField,
+                    format!(
+                        "empty `{field_name}` segment in `{}`; remove the extra comma or fill in the {item_name}",
+                        parsed.id_text
+                    ),
+                )
+                .with_span(segment.span)
+                .with_object_id(&parsed.id_text),
+            );
         }
-        diagnostics.push(
-            Diagnostic::error(
-                DiagnosticCode::SchemaMissingField,
-                format!(
-                    "empty `approved_by` segment in `{}`; remove the extra comma or fill in the approver",
-                    parsed.id_text
-                ),
-            )
-            .with_span(relation_segment_span(value_span, value, start, end))
-            .with_object_id(&parsed.id_text),
-        );
-        return;
-    };
-
-    approvers.insert(trimmed.to_string());
+    }
+    (!items.is_empty()).then(|| items.into_iter().collect())
 }
 
 fn empty_impacts_diagnostic(parsed: &ParsedTypedBlock, value_span: &SourceSpan) -> Diagnostic {
@@ -831,27 +412,6 @@ fn empty_impacts_diagnostic(parsed: &ParsedTypedBlock, value_span: &SourceSpan) 
     )
     .with_span(value_span.clone())
     .with_object_id(&parsed.id_text)
-}
-
-fn relation_segment_span(
-    value_span: &SourceSpan,
-    value: &str,
-    start: usize,
-    end: usize,
-) -> SourceSpan {
-    SourceSpan {
-        file: value_span.file.clone(),
-        start: SourcePosition {
-            line: value_span.start.line,
-            column: value_span.start.column + value[..start].chars().count() as u32,
-            offset: value_span.start.offset + start as u32,
-        },
-        end: SourcePosition {
-            line: value_span.start.line,
-            column: value_span.start.column + value[..end].chars().count() as u32,
-            offset: value_span.start.offset + end as u32,
-        },
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
