@@ -134,6 +134,9 @@ fn build_workspace_skips_embeddings_without_affecting_check_path() {
             .any(|diagnostic| diagnostic.code == DiagnosticCode::BuildEmbeddingsSkipped),
         "check must not emit build-only embedding diagnostics"
     );
+    let check_artifacts = check_result
+        .artifacts
+        .expect("check produces the non-search artifacts");
 
     let build_result = build_workspace(BuildInput {
         root: source,
@@ -159,6 +162,14 @@ fn build_workspace_skips_embeddings_without_affecting_check_path() {
     let artifacts = build_result
         .artifacts
         .expect("build artifacts are produced");
+    assert_eq!(
+        artifacts.html, check_artifacts.html,
+        "check and a no-embedding build must render identical HTML"
+    );
+    assert_eq!(
+        artifacts.graph_json, check_artifacts.graph_json,
+        "check and a no-embedding build must emit identical graph artifacts"
+    );
     assert!(
         artifacts.search_json.is_none(),
         "skipping embeddings must omit the search artifact"
