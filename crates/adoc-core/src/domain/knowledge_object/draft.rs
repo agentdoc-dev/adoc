@@ -1,30 +1,19 @@
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
-use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::ast::ParsedTypedBlock;
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourcePosition, SourceSpan};
 use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::ObjectId;
-use crate::domain::knowledge_object::EVIDENCE_REF_FIELD;
-use crate::domain::knowledge_object::api::{
-    INTERFACE_TYPE_FIELD, METHOD_FIELD, PATH_FIELD as API_PATH_FIELD, SYMBOL_FIELD,
-};
+use crate::domain::inline::InlineSegment;
 use crate::domain::knowledge_object::claim::{
-    ClaimStatus, Evidence, OWNER_FIELD, Owner, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD,
-    VERIFIED_AT_FIELD, VERIFIED_STATUS, VerifiedAt,
+    Evidence, OWNER_FIELD, Owner, REVIEWED_BY_FIELD, SOURCE_FIELD, TEST_FIELD, VERIFIED_AT_FIELD,
+    VERIFIED_STATUS, VerifiedAt,
 };
-use crate::domain::knowledge_object::decision::{
-    ACCEPTED_STATUS, DECIDED_BY_FIELD, DecidedBy, DecisionStatus,
-};
-use crate::domain::knowledge_object::observation::{
-    OBSERVED_AT_FIELD, ObservationStatus, SAMPLE_SIZE_FIELD,
-};
-use crate::domain::knowledge_object::question::{
-    ANSWERED_STATUS, QuestionStatus, RESOLVED_BY_FIELD,
-};
-use crate::domain::knowledge_object::task::{DUE_FIELD, TaskStatus};
-use crate::domain::value_objects::effective_date::EffectiveDate;
-use crate::domain::value_objects::http_method::HttpMethod;
-use crate::domain::value_objects::sample_size::SampleSize;
-use crate::domain::value_objects::severity::Severity;
+use crate::domain::knowledge_object::decision::{ACCEPTED_STATUS, DECIDED_BY_FIELD};
+use crate::domain::knowledge_object::question::{ANSWERED_STATUS, RESOLVED_BY_FIELD};
+use crate::domain::knowledge_object::{BlockKind, EVIDENCE_REF_FIELD};
+use crate::domain::services::resolve_pending_block::resolve_pending_block;
 use crate::domain::values::NonEmptyText;
 
 #[derive(Debug, Clone, Copy)]
@@ -48,320 +37,253 @@ pub(crate) struct DraftValidation {
     pub(crate) proof_obligations: Vec<DraftProofObligation>,
 }
 
+/// Validate patch-authored object data through the same aggregate constructors
+/// used by source compilation. Patch-only proof requirements are filtered into
+/// obligations after construction so they remain reviewable instead of hard
+/// failures.
 pub(crate) fn validate_draft(draft: KnowledgeObjectDraft<'_>) -> DraftValidation {
-    let mut validator = DraftValidator {
-        draft,
-        validation: DraftValidation::default(),
+    let mut validation = DraftValidation::default();
+    validate_wire_shape(draft, &mut validation.diagnostics);
+
+    let Some(kind) = BlockKind::from_fence_word(draft.kind) else {
+        validation.diagnostics.push(validation_error(
+            draft.id.as_str(),
+            format!("unknown Knowledge Object kind `{}`", draft.kind),
+        ));
+        return validation;
     };
-    validator.validate();
-    validator.validation
+
+    validate_patch_policy(draft, kind, &mut validation.diagnostics);
+    if !validation.diagnostics.is_empty() {
+        return validation;
+    }
+
+    let mut construction_diagnostics = Vec::new();
+    let _ = resolve_pending_block(
+        parsed_from_draft(draft, kind),
+        &mut construction_diagnostics,
+    );
+
+    if requires_deferred_proof(draft, kind) {
+        validation
+            .proof_obligations
+            .push(proof_obligation(draft, kind));
+    }
+
+    validation.diagnostics.extend(
+        construction_diagnostics
+            .into_iter()
+            .filter(|diagnostic| !is_deferred_proof_diagnostic(draft, kind, diagnostic))
+            .map(|diagnostic| validation_error(draft.id.as_str(), diagnostic.message)),
+    );
+    validation
 }
 
-struct DraftValidator<'a> {
-    draft: KnowledgeObjectDraft<'a>,
-    validation: DraftValidation,
-}
-
-impl DraftValidator<'_> {
-    fn validate(&mut self) {
-        if NonEmptyText::try_new(self.draft.body).is_none() {
-            self.error("create_object requires a non-empty body");
-        }
-        self.validate_fields();
-
-        match self.draft.kind {
-            "claim" => self.validate_claim(),
-            "decision" => self.validate_decision(),
-            "glossary" => self.validate_glossary(),
-            "warning" => self.validate_warning(),
-            "api" => self.validate_api(),
-            "observation" => self.validate_observation(),
-            "question" => self.validate_question(),
-            "task" => self.validate_task(),
-            kind => self.error(format!("unknown Knowledge Object kind `{kind}`")),
-        }
+fn validate_wire_shape(draft: KnowledgeObjectDraft<'_>, diagnostics: &mut Vec<Diagnostic>) {
+    if NonEmptyText::try_new(draft.body).is_none() {
+        diagnostics.push(validation_error(
+            draft.id.as_str(),
+            "create_object requires a non-empty body",
+        ));
     }
 
-    fn validate_claim(&mut self) {
-        if ClaimStatus::try_new(self.draft.status.unwrap_or("")).is_err() {
-            self.error("claim requires status");
-            return;
-        }
-
-        if self.draft.status == Some(VERIFIED_STATUS) {
-            self.validate_verified_claim_obligation();
-        }
-    }
-
-    fn validate_decision(&mut self) {
-        if DecisionStatus::try_new(self.draft.status.unwrap_or("")).is_err() {
-            match self.draft.status {
-                Some(status) => self.error(format!("decision has invalid status `{status}`")),
-                None => self.error("decision requires status"),
-            }
-            return;
-        }
-
-        if self.draft.status == Some(ACCEPTED_STATUS)
-            && !self.draft.fields.contains_key(DECIDED_BY_FIELD)
-        {
-            self.error("accepted decision requires non-empty fields.decided_by");
-        }
-
-        if let Some(value) = self.draft.fields.get(DECIDED_BY_FIELD) {
-            let _ = DecidedBy::try_new(value);
-        }
-    }
-
-    fn validate_glossary(&mut self) {
-        if self.draft.status.is_some() {
-            self.error("glossary objects must not set changes.status");
-        }
-    }
-
-    fn validate_warning(&mut self) {
-        if Severity::try_new(self.draft.status.unwrap_or("")).is_err() {
-            match self.draft.status {
-                Some(severity) => self.error(format!("warning has invalid severity `{severity}`")),
-                None => self.error("warning requires severity"),
-            }
-        }
-    }
-
-    fn validate_api(&mut self) {
-        // Status is optional; when present it must be the closed set.
-        if let Some(status) = self.draft.status
-            && super::api::status_from_text(status).is_err()
-        {
-            self.error(format!("api has invalid status `{status}`"));
-            return;
-        }
-
-        let has_method = self.draft.fields.contains_key(METHOD_FIELD);
-        let has_interface_type = self.draft.fields.contains_key(INTERFACE_TYPE_FIELD);
-        match (has_method, has_interface_type) {
-            (true, true) => self.error("api provides both `method` and `interface_type`"),
-            (false, false) => self.error("api requires one of `method` or `interface_type`"),
-            _ => {}
-        }
-        if let Some(method) = self.draft.fields.get(METHOD_FIELD)
-            && HttpMethod::try_new(method).is_err()
-        {
-            self.error(format!("api has invalid method `{method}`"));
-        }
-
-        let has_path = self.draft.fields.contains_key(API_PATH_FIELD);
-        let has_symbol = self.draft.fields.contains_key(SYMBOL_FIELD);
-        match (has_path, has_symbol) {
-            (true, true) => self.error("api provides both `path` and `symbol`"),
-            (false, false) => self.error("api requires one of `path` or `symbol`"),
-            _ => {}
-        }
-        if let Some(path) = self.draft.fields.get(API_PATH_FIELD)
-            && !path.trim().starts_with('/')
-        {
-            self.error(format!("api has invalid path `{path}`"));
-        }
-
-        if self.draft.status == Some(VERIFIED_STATUS) {
-            self.validate_verified_api_obligation();
-        }
-    }
-
-    fn validate_observation(&mut self) {
-        match self.draft.status {
-            Some(status) => {
-                if ObservationStatus::try_new(status).is_err() {
-                    self.error(format!("observation has invalid status `{status}`"));
-                }
-            }
-            None => self.error("observation requires status"),
-        }
-
-        if let Some(sample_size) = self.draft.fields.get(SAMPLE_SIZE_FIELD)
-            && SampleSize::try_new(sample_size).is_err()
-        {
-            self.error(format!(
-                "observation has invalid sample_size `{sample_size}`"
+    for (key, value) in draft.fields {
+        if !is_valid_field_key(key) {
+            diagnostics.push(validation_error(
+                draft.id.as_str(),
+                format!("field key `{key}` is invalid"),
             ));
-        }
-        if let Some(observed_at) = self.draft.fields.get(OBSERVED_AT_FIELD)
-            && EffectiveDate::try_new(observed_at).is_err()
-        {
-            self.error(format!(
-                "observation has invalid observed_at `{observed_at}`"
+        } else if is_relation_field(key) {
+            diagnostics.push(validation_error(
+                draft.id.as_str(),
+                format!("field `{key}` is a relation field; use a relation operation"),
+            ));
+        } else if NonEmptyText::try_new(value).is_none() {
+            diagnostics.push(validation_error(
+                draft.id.as_str(),
+                format!("field `{key}` requires a non-empty value"),
             ));
         }
     }
+}
 
-    fn validate_question(&mut self) {
-        if QuestionStatus::try_new(self.draft.status.unwrap_or("")).is_err() {
-            match self.draft.status {
-                Some(status) => self.error(format!("question has invalid status `{status}`")),
-                None => self.error("question requires status"),
-            }
-            return;
-        }
-
-        if self.draft.status == Some(ANSWERED_STATUS)
-            && !self.draft.fields.contains_key(RESOLVED_BY_FIELD)
-        {
-            self.error("answered question requires non-empty fields.resolved_by");
-        }
-
-        // V6.5.3 parity with `schema.question_unexpected_resolved_by`: only
-        // answered questions name the object that answered them.
-        if self.draft.status != Some(ANSWERED_STATUS)
-            && self.draft.fields.contains_key(RESOLVED_BY_FIELD)
-        {
-            self.error("question with fields.resolved_by requires `status: answered`");
-        }
+fn validate_patch_policy(
+    draft: KnowledgeObjectDraft<'_>,
+    kind: BlockKind,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    if draft.status.is_some() && kind.patch_discriminant_field().is_none() {
+        diagnostics.push(validation_error(
+            draft.id.as_str(),
+            format!("{} objects must not set changes.status", kind.as_str()),
+        ));
     }
 
-    fn validate_task(&mut self) {
-        if TaskStatus::try_new(self.draft.status.unwrap_or("")).is_err() {
-            match self.draft.status {
-                Some(status) => self.error(format!("task has invalid status `{status}`")),
-                None => self.error("task requires status"),
-            }
-        }
-
-        if self
-            .draft
-            .fields
-            .get(OWNER_FIELD)
-            .and_then(|value| Owner::try_new(value))
-            .is_none()
-        {
-            self.error("task requires non-empty fields.owner");
-        }
-
-        if let Some(due) = self.draft.fields.get(DUE_FIELD)
-            && EffectiveDate::try_new(due).is_err()
-        {
-            self.error(format!("task has invalid due `{due}`"));
-        }
+    if kind == BlockKind::Decision
+        && draft.status == Some(ACCEPTED_STATUS)
+        && !draft.fields.contains_key(DECIDED_BY_FIELD)
+    {
+        diagnostics.push(validation_error(
+            draft.id.as_str(),
+            "accepted decision requires non-empty fields.decided_by",
+        ));
     }
 
-    fn validate_verified_api_obligation(&mut self) {
-        let owner = self
-            .draft
-            .fields
-            .get(OWNER_FIELD)
-            .and_then(|value| Owner::try_new(value));
-        let verified_at = self
-            .draft
-            .fields
-            .get(VERIFIED_AT_FIELD)
-            .and_then(|value| VerifiedAt::try_new(value));
-        let has_schema_evidence = self
-            .draft
-            .fields
-            .get(SOURCE_FIELD)
-            .and_then(|value| Evidence::from_field(SOURCE_FIELD, value))
-            .is_some()
-            || self
-                .draft
+    if kind == BlockKind::Question {
+        let has_resolved_by = draft.fields.contains_key(RESOLVED_BY_FIELD);
+        if draft.status == Some(ANSWERED_STATUS) && !has_resolved_by {
+            diagnostics.push(validation_error(
+                draft.id.as_str(),
+                "answered question requires non-empty fields.resolved_by",
+            ));
+        } else if draft.status != Some(ANSWERED_STATUS) && has_resolved_by {
+            diagnostics.push(validation_error(
+                draft.id.as_str(),
+                "question with fields.resolved_by requires `status: answered`",
+            ));
+        }
+    }
+}
+
+fn parsed_from_draft(draft: KnowledgeObjectDraft<'_>, kind: BlockKind) -> ParsedTypedBlock {
+    let span = synthetic_span();
+    let mut raw_fields = draft.fields.clone();
+    if let (Some(status), Some(field)) = (draft.status, kind.patch_discriminant_field()) {
+        raw_fields.insert(field.to_string(), status.to_string());
+    }
+    let raw_field_spans = raw_fields
+        .keys()
+        .map(|key| (key.clone(), span.clone()))
+        .collect();
+
+    ParsedTypedBlock {
+        kind_word: kind.as_str().to_string(),
+        kind_word_span: span.clone(),
+        id_text: draft.id.as_str().to_string(),
+        raw_fields,
+        raw_field_spans,
+        duplicate_keys: Vec::new(),
+        body_text: draft.body.to_string(),
+        body_inlines: body_inlines_from_text(draft.body),
+        body_spans: Vec::new(),
+        content_spans: Vec::new(),
+        span: span.clone(),
+        close_fence_span: span.clone(),
+        body_separator_span: Some(span),
+    }
+}
+
+fn body_inlines_from_text(text: &str) -> Vec<InlineSegment> {
+    let mut inlines = Vec::new();
+    for (index, line) in text.split('\n').enumerate() {
+        if index > 0 {
+            inlines.push(InlineSegment::Text("\n".to_string()));
+        }
+        if !line.is_empty() {
+            inlines.push(InlineSegment::Text(line.to_string()));
+        }
+    }
+    inlines
+}
+
+fn synthetic_span() -> SourceSpan {
+    SourceSpan {
+        file: PathBuf::from("<patch>"),
+        start: SourcePosition {
+            line: 1,
+            column: 1,
+            offset: 0,
+        },
+        end: SourcePosition {
+            line: 1,
+            column: 1,
+            offset: 0,
+        },
+    }
+}
+
+fn requires_deferred_proof(draft: KnowledgeObjectDraft<'_>, kind: BlockKind) -> bool {
+    matches!(kind, BlockKind::Claim | BlockKind::Api) && draft.status == Some(VERIFIED_STATUS)
+}
+
+fn is_deferred_proof_diagnostic(
+    draft: KnowledgeObjectDraft<'_>,
+    kind: BlockKind,
+    diagnostic: &Diagnostic,
+) -> bool {
+    if !requires_deferred_proof(draft, kind) {
+        return false;
+    }
+    match kind {
+        BlockKind::Claim => {
+            diagnostic.code == DiagnosticCode::ClaimVerifiedMissingEvidence
+                || (diagnostic.code == DiagnosticCode::SchemaMissingField
+                    && diagnostic.message.starts_with("verified claim"))
+        }
+        BlockKind::Api => {
+            diagnostic.code == DiagnosticCode::ApiVerifiedMissingSchemaEvidence
+                || (diagnostic.code == DiagnosticCode::SchemaMissingField
+                    && diagnostic.message.starts_with("verified api"))
+        }
+        _ => false,
+    }
+}
+
+fn proof_obligation(draft: KnowledgeObjectDraft<'_>, kind: BlockKind) -> DraftProofObligation {
+    let owner = draft
+        .fields
+        .get(OWNER_FIELD)
+        .and_then(|value| Owner::try_new(value));
+    let verified_at = draft
+        .fields
+        .get(VERIFIED_AT_FIELD)
+        .and_then(|value| VerifiedAt::try_new(value));
+    let has_ref_evidence = draft
+        .fields
+        .get(EVIDENCE_REF_FIELD)
+        .is_some_and(|value| !value.trim().is_empty());
+
+    let (has_evidence, complete_reason, incomplete_reason) = match kind {
+        BlockKind::Claim => {
+            let has_inline = [SOURCE_FIELD, TEST_FIELD, REVIEWED_BY_FIELD]
+                .iter()
+                .any(|field| {
+                    draft
+                        .fields
+                        .get(*field)
+                        .and_then(|value| Evidence::from_field(field, value))
+                        .is_some()
+                });
+            (
+                has_inline || has_ref_evidence,
+                "Verified claim creation requires review evidence before approval.",
+                "Verified claim creation is missing complete verification evidence.",
+            )
+        }
+        BlockKind::Api => {
+            let has_schema_evidence = draft
                 .fields
-                .get(EVIDENCE_REF_FIELD)
-                .map(|v| !v.trim().is_empty())
-                .unwrap_or(false);
-
-        let reason = if owner.is_some() && verified_at.is_some() && has_schema_evidence {
-            "Verified api creation requires schema-evidence review before approval."
-        } else {
-            "Verified api creation is missing complete schema evidence."
-        };
-
-        self.validation
-            .proof_obligations
-            .push(DraftProofObligation {
-                object_id: self.draft.id.as_str().to_string(),
-                reason: reason.to_string(),
-            });
-    }
-
-    fn validate_fields(&mut self) {
-        for (key, value) in self.draft.fields {
-            if !is_valid_field_key(key) {
-                self.error(format!("field key `{key}` is invalid"));
-                continue;
-            }
-            if is_relation_field(key) {
-                self.error(format!(
-                    "field `{key}` is a relation field; use a relation operation"
-                ));
-                continue;
-            }
-            if NonEmptyText::try_new(value).is_none() {
-                self.error(format!("field `{key}` requires a non-empty value"));
-            }
+                .get(SOURCE_FIELD)
+                .and_then(|value| Evidence::from_field(SOURCE_FIELD, value))
+                .is_some()
+                || has_ref_evidence;
+            (
+                has_schema_evidence,
+                "Verified api creation requires schema-evidence review before approval.",
+                "Verified api creation is missing complete schema evidence.",
+            )
         }
-    }
+        _ => unreachable!("proof obligations are limited to verified claims and apis"),
+    };
 
-    fn validate_verified_claim_obligation(&mut self) {
-        let owner = self
-            .draft
-            .fields
-            .get(OWNER_FIELD)
-            .and_then(|value| Owner::try_new(value));
-        let verified_at = self
-            .draft
-            .fields
-            .get(VERIFIED_AT_FIELD)
-            .and_then(|value| VerifiedAt::try_new(value));
-
-        // Inline evidence: any non-empty source/test/reviewed_by field.
-        let has_inline_evidence = self
-            .draft
-            .fields
-            .get(SOURCE_FIELD)
-            .and_then(|value| Evidence::from_field(SOURCE_FIELD, value))
-            .or_else(|| {
-                self.draft
-                    .fields
-                    .get(TEST_FIELD)
-                    .and_then(|value| Evidence::from_field(TEST_FIELD, value))
-            })
-            .or_else(|| {
-                self.draft
-                    .fields
-                    .get(REVIEWED_BY_FIELD)
-                    .and_then(|value| Evidence::from_field(REVIEWED_BY_FIELD, value))
-            })
-            .is_some();
-
-        // V5.8 TB4: an evidence_ref field with a non-empty value also satisfies
-        // the evidence requirement (the field value is a comma-separated list
-        // of object IDs; we only check presence here — ID validity is checked
-        // at build time by parse_evidence_refs).
-        let has_ref_evidence = self
-            .draft
-            .fields
-            .get(EVIDENCE_REF_FIELD)
-            .map(|v| !v.trim().is_empty())
-            .unwrap_or(false);
-
-        let has_evidence = has_inline_evidence || has_ref_evidence;
-
-        let reason = if owner.is_some() && verified_at.is_some() && has_evidence {
-            "Verified claim creation requires review evidence before approval."
+    DraftProofObligation {
+        object_id: draft.id.as_str().to_string(),
+        reason: if owner.is_some() && verified_at.is_some() && has_evidence {
+            complete_reason
         } else {
-            "Verified claim creation is missing complete verification evidence."
-        };
-
-        self.validation
-            .proof_obligations
-            .push(DraftProofObligation {
-                object_id: self.draft.id.as_str().to_string(),
-                reason: reason.to_string(),
-            });
-    }
-
-    fn error(&mut self, message: impl Into<String>) {
-        self.validation
-            .diagnostics
-            .push(validation_error(self.draft.id.as_str(), message));
+            incomplete_reason
+        }
+        .to_string(),
     }
 }
 
@@ -391,6 +313,7 @@ fn validation_error(object_id: &str, message: impl Into<String>) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::knowledge_object::api::METHOD_FIELD;
 
     fn object_id() -> ObjectId {
         ObjectId::new("billing.credits").expect("valid object id")
@@ -413,141 +336,40 @@ mod tests {
     }
 
     #[test]
-    fn accepted_decision_without_decided_by_is_invalid() {
-        let validation = validate(
+    fn accepted_decision_uses_patch_policy_and_canonical_constructor() {
+        let invalid = validate(
             "decision",
             Some("accepted"),
             "Use the new policy.",
             BTreeMap::new(),
         );
+        assert!(invalid.diagnostics[0].message.contains("fields.decided_by"));
 
-        assert_eq!(validation.diagnostics.len(), 1);
-        assert_eq!(
-            validation.diagnostics[0].code,
-            DiagnosticCode::PatchValidationFailed
-        );
-        assert!(
-            validation.diagnostics[0]
-                .message
-                .contains("fields.decided_by")
-        );
-    }
-
-    #[test]
-    fn accepted_decision_with_decided_by_is_valid() {
-        let validation = validate(
+        let valid = validate(
             "decision",
             Some("accepted"),
             "Use the new policy.",
             BTreeMap::from([(DECIDED_BY_FIELD.to_string(), "architecture".to_string())]),
         );
-
-        assert!(validation.diagnostics.is_empty());
-        assert!(validation.proof_obligations.is_empty());
+        assert!(valid.diagnostics.is_empty());
     }
 
     #[test]
-    fn verified_claim_missing_proof_data_is_valid_with_proof_obligation() {
-        let validation = validate(
+    fn verified_claim_proof_requirements_are_deferred() {
+        let missing = validate(
             "claim",
             Some("verified"),
             "Credits are verified.",
             BTreeMap::new(),
         );
-
-        assert!(validation.diagnostics.is_empty());
-        assert_eq!(validation.proof_obligations.len(), 1);
+        assert!(missing.diagnostics.is_empty());
         assert!(
-            validation.proof_obligations[0]
+            missing.proof_obligations[0]
                 .reason
                 .contains("missing complete verification evidence")
         );
-    }
 
-    #[test]
-    fn glossary_permits_status_field_but_rejects_discriminant_status() {
-        let with_field = validate(
-            "glossary",
-            None,
-            "Credits adjust a balance.",
-            BTreeMap::from([("status".to_string(), "draft".to_string())]),
-        );
-        assert!(with_field.diagnostics.is_empty());
-
-        let with_status = validate(
-            "glossary",
-            Some("draft"),
-            "Credits adjust a balance.",
-            BTreeMap::new(),
-        );
-        assert_eq!(with_status.diagnostics.len(), 1);
-        assert!(
-            with_status.diagnostics[0]
-                .message
-                .contains("changes.status")
-        );
-    }
-
-    // ── V6.5.3: question drafts ───────────────────────────────────────────
-
-    #[test]
-    fn answered_question_without_resolved_by_is_invalid() {
-        let validation = validate(
-            "question",
-            Some("answered"),
-            "Should unused trial credits expire?",
-            BTreeMap::new(),
-        );
-
-        assert_eq!(validation.diagnostics.len(), 1);
-        assert!(
-            validation.diagnostics[0]
-                .message
-                .contains("fields.resolved_by")
-        );
-    }
-
-    #[test]
-    fn open_question_with_resolved_by_is_invalid() {
-        let validation = validate(
-            "question",
-            Some("open"),
-            "Should unused trial credits expire?",
-            BTreeMap::from([(
-                RESOLVED_BY_FIELD.to_string(),
-                "billing.credits-expire".to_string(),
-            )]),
-        );
-
-        assert_eq!(validation.diagnostics.len(), 1);
-        assert!(
-            validation.diagnostics[0]
-                .message
-                .contains("status: answered")
-        );
-    }
-
-    #[test]
-    fn open_question_is_valid_without_resolved_by() {
-        let validation = validate(
-            "question",
-            Some("open"),
-            "Should unused trial credits expire?",
-            BTreeMap::new(),
-        );
-
-        assert!(validation.diagnostics.is_empty());
-        assert!(validation.proof_obligations.is_empty());
-    }
-
-    // ── V5.8 TB4: evidence_ref counts as evidence in draft path ──────────────
-
-    #[test]
-    fn verified_claim_with_only_evidence_ref_emits_review_obligation_not_missing_evidence() {
-        // A verified claim draft that has owner + verified_at + evidence_ref
-        // must produce the "requires review evidence before approval" obligation
-        // (not the "missing complete verification evidence" one).
-        let validation = validate(
+        let complete = validate(
             "claim",
             Some("verified"),
             "Credits are verified.",
@@ -560,98 +382,199 @@ mod tests {
                 ),
             ]),
         );
-
-        assert!(validation.diagnostics.is_empty());
-        assert_eq!(validation.proof_obligations.len(), 1);
+        assert!(complete.diagnostics.is_empty());
         assert!(
-            validation.proof_obligations[0]
+            complete.proof_obligations[0]
                 .reason
-                .contains("requires review evidence before approval"),
-            "unexpected obligation reason: {}",
-            validation.proof_obligations[0].reason
+                .contains("requires review evidence")
         );
     }
 
-    // ── V6.5.4: task drafts ──────────────────────────────────────────────────
-
     #[test]
-    fn open_task_with_owner_is_valid() {
-        let validation = validate(
-            "task",
-            Some("open"),
-            "Update the support runbook.",
-            BTreeMap::from([(OWNER_FIELD.to_string(), "support-ops".to_string())]),
+    fn statusless_kinds_reject_changes_status_but_keep_status_as_an_optional_field() {
+        let optional_field = validate(
+            "glossary",
+            None,
+            "Credits adjust a balance.",
+            BTreeMap::from([("status".to_string(), "draft".to_string())]),
         );
+        assert!(optional_field.diagnostics.is_empty());
 
-        assert!(validation.diagnostics.is_empty());
-        assert!(validation.proof_obligations.is_empty());
-    }
-
-    #[test]
-    fn task_without_owner_is_invalid() {
-        let validation = validate(
-            "task",
-            Some("open"),
-            "Update the support runbook.",
+        let discriminant = validate(
+            "glossary",
+            Some("draft"),
+            "Credits adjust a balance.",
             BTreeMap::new(),
         );
-
-        assert_eq!(validation.diagnostics.len(), 1);
-        assert!(validation.diagnostics[0].message.contains("fields.owner"));
+        assert!(
+            discriminant.diagnostics[0]
+                .message
+                .contains("changes.status")
+        );
     }
 
     #[test]
-    fn task_with_invalid_status_or_due_is_invalid() {
-        let bad_status = validate(
-            "task",
-            Some("blocked"),
-            "Update the support runbook.",
-            BTreeMap::from([(OWNER_FIELD.to_string(), "support-ops".to_string())]),
+    fn question_patch_policy_preserves_resolved_by_rules() {
+        let answered = validate(
+            "question",
+            Some("answered"),
+            "Should unused trial credits expire?",
+            BTreeMap::new(),
         );
         assert!(
-            bad_status.diagnostics[0]
+            answered.diagnostics[0]
                 .message
-                .contains("invalid status `blocked`")
+                .contains("fields.resolved_by")
         );
 
-        let bad_due = validate(
+        let open = validate(
+            "question",
+            Some("open"),
+            "Should unused trial credits expire?",
+            BTreeMap::from([(RESOLVED_BY_FIELD.to_string(), "billing.answer".to_string())]),
+        );
+        assert!(open.diagnostics[0].message.contains("status: answered"));
+    }
+
+    #[test]
+    fn every_supported_kind_is_validated_by_the_canonical_constructor() {
+        let cases = [
+            (
+                "constraint",
+                Some("high"),
+                "Requests must stay within quota.",
+                BTreeMap::new(),
+            ),
+            (
+                "policy",
+                Some("proposed"),
+                "Credits expire after the retention window.",
+                BTreeMap::from([
+                    ("owner".to_string(), "team-billing".to_string()),
+                    ("approved_by".to_string(), "architecture".to_string()),
+                    ("effective_at".to_string(), "2026-07-13".to_string()),
+                ]),
+            ),
+            (
+                "procedure",
+                Some("draft"),
+                "1. Verify the account.\n2. Apply the credit.",
+                BTreeMap::new(),
+            ),
+            (
+                "example",
+                Some("draft"),
+                "curl /v1/credits",
+                BTreeMap::from([("lang".to_string(), "bash".to_string())]),
+            ),
+            (
+                "agent_instruction",
+                None,
+                "Inspect billing state before changing credits.",
+                BTreeMap::from([
+                    ("scope".to_string(), "billing".to_string()),
+                    ("trust".to_string(), "team".to_string()),
+                    ("allowed_actions".to_string(), "[read]".to_string()),
+                    ("forbidden_actions".to_string(), "[delete]".to_string()),
+                ]),
+            ),
+            (
+                "contradiction",
+                Some("unresolved"),
+                "The claims cannot both hold.",
+                BTreeMap::from([
+                    ("severity".to_string(), "high".to_string()),
+                    (
+                        "claims".to_string(),
+                        "[billing.one, billing.two]".to_string(),
+                    ),
+                ]),
+            ),
+            (
+                "source",
+                None,
+                "Billing implementation source.",
+                BTreeMap::from([
+                    ("kind".to_string(), "source_code".to_string()),
+                    ("path".to_string(), "src/billing.rs".to_string()),
+                ]),
+            ),
+        ];
+
+        for (kind, status, body, fields) in cases {
+            let validation = validate(kind, status, body, fields);
+            assert!(
+                validation.diagnostics.is_empty(),
+                "{kind} should use its canonical constructor: {:?}",
+                validation.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn omitted_kind_invariants_are_not_accepted_as_generic_fields() {
+        let validation = validate("policy", Some("proposed"), "Policy body.", BTreeMap::new());
+        assert!(
+            validation
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("owner"))
+        );
+    }
+
+    #[test]
+    fn task_requires_owner_and_valid_due_date() {
+        let missing = validate(
             "task",
             Some("open"),
-            "Update the support runbook.",
-            BTreeMap::from([
-                (OWNER_FIELD.to_string(), "support-ops".to_string()),
-                (DUE_FIELD.to_string(), "someday".to_string()),
-            ]),
+            "Complete the billing migration.",
+            BTreeMap::new(),
         );
         assert!(
-            bad_due.diagnostics[0]
-                .message
-                .contains("invalid due `someday`")
+            missing
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("owner"))
         );
+
+        let valid = validate(
+            "task",
+            Some("open"),
+            "Complete the billing migration.",
+            BTreeMap::from([
+                (OWNER_FIELD.to_string(), "team-billing".to_string()),
+                ("due".to_string(), "2026-08-01".to_string()),
+            ]),
+        );
+        assert!(valid.diagnostics.is_empty());
     }
 
     #[test]
-    fn verified_claim_missing_evidence_and_refs_emits_missing_evidence_obligation() {
-        // Without either inline evidence or evidence_ref, the obligation reason
-        // should still say "missing complete verification evidence".
-        let validation = validate(
-            "claim",
+    fn api_constructor_still_enforces_endpoint_shape_while_deferring_proof() {
+        let invalid = validate(
+            "api",
             Some("verified"),
-            "Credits are verified.",
-            BTreeMap::from([
-                (OWNER_FIELD.to_string(), "team-billing".to_string()),
-                (VERIFIED_AT_FIELD.to_string(), "2026-05-05".to_string()),
-            ]),
+            "Consumes credits.",
+            BTreeMap::new(),
+        );
+        assert!(
+            invalid
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("method")
+                    || diagnostic.message.contains("interface_type"))
         );
 
-        assert!(validation.diagnostics.is_empty());
-        assert_eq!(validation.proof_obligations.len(), 1);
-        assert!(
-            validation.proof_obligations[0]
-                .reason
-                .contains("missing complete verification evidence"),
-            "unexpected obligation reason: {}",
-            validation.proof_obligations[0].reason
+        let valid = validate(
+            "api",
+            Some("verified"),
+            "Consumes credits.",
+            BTreeMap::from([
+                (METHOD_FIELD.to_string(), "POST".to_string()),
+                ("path".to_string(), "/v1/credits".to_string()),
+            ]),
         );
+        assert!(valid.diagnostics.is_empty());
+        assert_eq!(valid.proof_obligations.len(), 1);
     }
 }

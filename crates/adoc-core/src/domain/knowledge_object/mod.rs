@@ -915,6 +915,25 @@ impl BlockKind {
     pub(crate) fn from_fence_word(word: &str) -> Option<Self> {
         Self::ALL.iter().copied().find(|kind| kind.as_str() == word)
     }
+
+    /// Field populated by the patch wire's generic `changes.status` value.
+    /// Kinds without a lifecycle/severity discriminant reject that wire field.
+    pub(crate) const fn patch_discriminant_field(self) -> Option<&'static str> {
+        match self {
+            Self::Warning | Self::Constraint => Some("severity"),
+            Self::Claim
+            | Self::Decision
+            | Self::Policy
+            | Self::Procedure
+            | Self::Example
+            | Self::Contradiction
+            | Self::Api
+            | Self::Observation
+            | Self::Question
+            | Self::Task => Some("status"),
+            Self::Glossary | Self::AgentInstruction | Self::Source => None,
+        }
+    }
 }
 
 /// Kind name strings for every supported typed block, in `BlockKind::ALL`

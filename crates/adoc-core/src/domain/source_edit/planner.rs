@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::knowledge_object::BlockKind;
 
 use super::{LineEnding, SourceEditPlan, SpanEdit};
 
@@ -190,7 +191,10 @@ pub(crate) fn render_typed_block(
         .map(|(key, value)| (key.as_str(), value.as_str()))
         .collect();
     if let Some(status) = status {
-        merged.insert("status", status);
+        let discriminant_field = BlockKind::from_fence_word(kind)
+            .and_then(BlockKind::patch_discriminant_field)
+            .unwrap_or("status");
+        merged.insert(discriminant_field, status);
     }
 
     let mut output = format!("::{kind} {id}{eol}");
@@ -683,6 +687,32 @@ After text.
             LineEnding::Lf,
         );
         assert_eq!(with_terminator, without);
+    }
+
+    #[test]
+    fn render_typed_block_uses_the_kind_discriminant_field() {
+        assert!(
+            render_typed_block(
+                "warning",
+                "billing.warning",
+                Some("high"),
+                &BTreeMap::new(),
+                "Take care.",
+                LineEnding::Lf,
+            )
+            .contains("severity: high\n")
+        );
+        assert!(
+            render_typed_block(
+                "constraint",
+                "billing.limit",
+                Some("critical"),
+                &BTreeMap::new(),
+                "Stay bounded.",
+                LineEnding::Lf,
+            )
+            .contains("severity: critical\n")
+        );
     }
 
     #[test]
