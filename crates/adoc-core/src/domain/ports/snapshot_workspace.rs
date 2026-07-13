@@ -1,11 +1,10 @@
-//! Port for materializing a project snapshot on disk so the existing
-//! [`crate::infrastructure::source::fs::FsSourceProvider`] can read it.
+//! Port for loading the AgentDoc sources from a project snapshot.
 //!
-//! `SnapshotWorkspaceProvider` is an internal seam introduced in V3.1. The
+//! `SnapshotSourceProvider` is an internal seam introduced in V3.1. The
 //! adapter implementation (`GitWorktreeProvider`) lives in
 //! `crate::infrastructure::git`. The composition root in `lib.rs` is the
-//! only wiring site; domain and application layers depend on the port and
-//! never reach into the adapter.
+//! only wiring site. Temporary paths and cleanup handles stay inside that
+//! adapter; application code receives an in-memory source set.
 //!
 //! `SnapshotError` is a domain vocabulary — it talks about snapshot
 //! concepts (an unresolvable ref, an unavailable workspace, an unavailable
@@ -19,6 +18,9 @@ use std::error::Error;
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
+
+use crate::domain::ports::source_provider::{SourceLoadError, SourceProvider};
+use crate::domain::source::SourceFile;
 
 /// Identifier of the snapshot the diff is run against.
 #[derive(Debug, Clone)]
@@ -60,64 +62,37 @@ impl fmt::Display for GitRef {
     }
 }
 
-/// RAII handle exposing the filesystem location of a checked-out snapshot.
-///
-/// When the snapshot is a temporary linked worktree, the cleanup closure
-/// runs `git worktree remove --force` on drop. When the snapshot is the
-/// project workdir, the cleanup closure is `None` and drop is a no-op.
-pub(crate) struct SnapshotWorkspace {
-    path: PathBuf,
-    cleanup: Option<Cleanup>,
+/// In-memory source set loaded from one snapshot. Temporary checkout paths no
+/// longer escape the adapter that owns their cleanup.
+pub(crate) struct SnapshotSources {
+    results: Vec<Result<SourceFile, SourceLoadError>>,
 }
 
-type Cleanup = Box<dyn FnOnce() + Send + 'static>;
-
-impl SnapshotWorkspace {
-    /// Construct a snapshot handle whose drop is a no-op (the project workdir
-    /// case). Test doubles also use this constructor.
-    pub(crate) fn workdir(path: PathBuf) -> Self {
-        Self {
-            path,
-            cleanup: None,
-        }
-    }
-
-    /// Construct a snapshot handle whose drop runs `cleanup` exactly once.
-    pub(crate) fn with_cleanup(path: PathBuf, cleanup: Cleanup) -> Self {
-        Self {
-            path,
-            cleanup: Some(cleanup),
-        }
-    }
-
-    pub(crate) fn path(&self) -> &Path {
-        &self.path
+impl SnapshotSources {
+    pub(crate) fn new(results: Vec<Result<SourceFile, SourceLoadError>>) -> Self {
+        Self { results }
     }
 }
 
-impl fmt::Debug for SnapshotWorkspace {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SnapshotWorkspace")
-            .field("path", &self.path)
-            .field("cleanup", &self.cleanup.as_ref().map(|_| "<closure>"))
-            .finish()
+impl SourceProvider for SnapshotSources {
+    fn load_sources(&self) -> Vec<Result<SourceFile, SourceLoadError>> {
+        self.results.clone()
+    }
+
+    fn contains(&self, path: &Path) -> bool {
+        self.results
+            .iter()
+            .any(|result| matches!(result, Ok(source) if source.path == path))
     }
 }
 
-impl Drop for SnapshotWorkspace {
-    fn drop(&mut self) {
-        if let Some(cleanup) = self.cleanup.take() {
-            cleanup();
-        }
-    }
+/// Loads all source files for a snapshot before returning. The adapter owns
+/// materialization, filesystem reads, and temporary-workspace cleanup.
+pub(crate) trait SnapshotSourceProvider {
+    fn load_snapshot(&self, selector: &SnapshotSelector) -> Result<SnapshotSources, SnapshotError>;
 }
 
-/// Port for materializing snapshots.
-pub(crate) trait SnapshotWorkspaceProvider {
-    fn checkout(&self, selector: &SnapshotSelector) -> Result<SnapshotWorkspace, SnapshotError>;
-}
-
-/// Errors surfacing from a `SnapshotWorkspaceProvider` implementation. The
+/// Errors surfacing from a `SnapshotSourceProvider` implementation. The
 /// variants describe snapshot concepts, not adapter mechanics. Concrete
 /// adapters (the git-CLI adapter today) classify their own failures into
 /// these variants via `From` impls; the application layer pattern-matches
@@ -180,42 +155,8 @@ impl Error for SnapshotError {
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
-    use std::sync::{Arc, Mutex};
 
     use super::*;
-
-    #[test]
-    fn workdir_handle_drop_does_not_run_cleanup() {
-        let dropped = Arc::new(Mutex::new(false));
-        {
-            let _workspace = SnapshotWorkspace::workdir(PathBuf::from("/work"));
-            *dropped.lock().expect("mutex") = true; // sanity ordering
-        }
-        assert!(*dropped.lock().expect("mutex"));
-    }
-
-    #[test]
-    fn cleanup_handle_runs_cleanup_closure_exactly_once_on_drop() {
-        let invocations = Arc::new(Mutex::new(0u32));
-        let invocations_in = Arc::clone(&invocations);
-
-        {
-            let _workspace = SnapshotWorkspace::with_cleanup(
-                PathBuf::from("/tmp/worktree"),
-                Box::new(move || {
-                    *invocations_in.lock().expect("mutex") += 1;
-                }),
-            );
-        }
-
-        assert_eq!(*invocations.lock().expect("mutex"), 1);
-    }
-
-    #[test]
-    fn path_accessor_returns_borrowed_path() {
-        let workspace = SnapshotWorkspace::workdir(PathBuf::from("/work"));
-        assert_eq!(workspace.path(), Path::new("/work"));
-    }
 
     #[test]
     fn snapshot_error_io_variant_exposes_source() {

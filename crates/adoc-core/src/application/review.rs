@@ -1,7 +1,7 @@
 //! V3.1 review orchestration.
 //!
 //! Compiles two snapshots of the project (via the
-//! [`crate::domain::ports::snapshot_workspace::SnapshotWorkspaceProvider`]
+//! [`crate::domain::ports::snapshot_workspace::SnapshotSourceProvider`]
 //! port) and projects their graphs into an [`ObjectDiff`]. The application
 //! layer never touches `git`; the composition root in `lib.rs` is the only
 //! site that constructs the `GitWorktreeProvider` adapter.
@@ -23,14 +23,13 @@ use crate::domain::obligation::ProofObligation;
 use crate::domain::patch::PatchDocument;
 use crate::domain::ports::changed_files::{ChangedFilesError, ChangedFilesProvider};
 use crate::domain::ports::snapshot_workspace::{
-    SnapshotError, SnapshotSelector, SnapshotWorkspaceProvider,
+    SnapshotError, SnapshotSelector, SnapshotSourceProvider,
 };
 use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::review::impact::{ImpactedObject, compute_impact};
 use crate::domain::review::object_diff::ObjectDiff;
 use crate::domain::review::obligation_rules::{obligations_for_change, obligations_for_impact};
 use crate::domain::review::reviewer::{RequiredReviewer, required_reviewers};
-use crate::infrastructure::source::fs::FsSourceProvider;
 
 pub const DIFF_SCHEMA_VERSION: &str = "adoc.diff.v0";
 pub const REVIEW_SCHEMA_VERSION: &str = "adoc.review.v0";
@@ -164,12 +163,12 @@ impl Error for ReviewError {
 }
 
 /// Load both base and head snapshots via the provided
-/// [`SnapshotWorkspaceProvider`], compile each into a graph, and return the
+/// [`SnapshotSourceProvider`], compile each into a graph, and return the
 /// resulting session. Errors short-circuit; partial results are not returned.
 ///
 /// The snapshot handles drop at the end of this function (after compile
 /// runs), which triggers the RAII cleanup of any temporary git worktrees.
-pub(crate) fn load_review_with_providers<S: SnapshotWorkspaceProvider>(
+pub(crate) fn load_review_with_providers<S: SnapshotSourceProvider>(
     input: ReviewInput,
     snapshot_provider: &S,
 ) -> Result<ReviewLoadResult, ReviewError> {
@@ -230,10 +229,7 @@ pub(crate) fn load_review_with_providers<S: SnapshotWorkspaceProvider>(
 /// V3.3 loader. Layers on top of [`load_review_with_providers`] by resolving
 /// the changed-file set through the supplied [`ChangedFilesProvider`] and
 /// populating the session's `impact` and `required_reviewers` projections.
-pub(crate) fn load_review_with_changed_files<
-    S: SnapshotWorkspaceProvider,
-    C: ChangedFilesProvider,
->(
+pub(crate) fn load_review_with_changed_files<S: SnapshotSourceProvider, C: ChangedFilesProvider>(
     input: ReviewInput,
     snapshot_provider: &S,
     changed_files_provider: &C,
@@ -288,13 +284,12 @@ pub fn proof_obligations(diff: &ObjectDiff, impact: &[ImpactedObject]) -> Vec<Pr
 /// would appear in the diff's `changed[]` array.
 const REVIEW_IDENTITY_PREFIX: &str = "<review>";
 
-fn compile_snapshot<S: SnapshotWorkspaceProvider>(
+fn compile_snapshot<S: SnapshotSourceProvider>(
     snapshot_provider: &S,
     selector: &SnapshotSelector,
 ) -> Result<CompiledWorkspace, SnapshotError> {
-    let workspace = snapshot_provider.checkout(selector)?;
-    let source_provider = FsSourceProvider::new(workspace.path().to_path_buf())
-        .with_identity_prefix(PathBuf::from(REVIEW_IDENTITY_PREFIX));
+    let sources = snapshot_provider.load_snapshot(selector)?;
+    let source_provider = sources.with_identity_prefix(PathBuf::from(REVIEW_IDENTITY_PREFIX));
     let result = compile_with_provider_and_projection(&source_provider);
     Ok(result)
 }
@@ -362,18 +357,19 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::domain::ports::snapshot_workspace::{
-        GitRef, SnapshotError, SnapshotSelector, SnapshotWorkspace, SnapshotWorkspaceProvider,
+        GitRef, SnapshotError, SnapshotSelector, SnapshotSourceProvider, SnapshotSources,
     };
+    use crate::infrastructure::source::fs::FsSourceProvider;
 
     use super::*;
 
-    struct InMemorySnapshotWorkspaceProvider {
+    struct InMemorySnapshotSourceProvider {
         workdir: PathBuf,
         refs: HashMap<String, PathBuf>,
         record: RefCell<Vec<SnapshotSelector>>,
     }
 
-    impl InMemorySnapshotWorkspaceProvider {
+    impl InMemorySnapshotSourceProvider {
         fn new(workdir: PathBuf) -> Self {
             Self {
                 workdir,
@@ -392,23 +388,26 @@ mod tests {
         }
     }
 
-    impl SnapshotWorkspaceProvider for InMemorySnapshotWorkspaceProvider {
-        fn checkout(
+    impl SnapshotSourceProvider for InMemorySnapshotSourceProvider {
+        fn load_snapshot(
             &self,
             selector: &SnapshotSelector,
-        ) -> Result<SnapshotWorkspace, SnapshotError> {
+        ) -> Result<SnapshotSources, SnapshotError> {
             self.record.borrow_mut().push(selector.clone());
-            match selector {
-                SnapshotSelector::Workdir => Ok(SnapshotWorkspace::workdir(self.workdir.clone())),
-                SnapshotSelector::GitRef(spec) => self
-                    .refs
-                    .get(spec.as_str())
-                    .map(|path| SnapshotWorkspace::workdir(path.clone()))
-                    .ok_or_else(|| SnapshotError::UnresolvableRef {
-                        spec: spec.as_str().to_string(),
-                        reason: "ref not seeded in test double".to_string(),
-                    }),
-            }
+            let root = match selector {
+                SnapshotSelector::Workdir => self.workdir.clone(),
+                SnapshotSelector::GitRef(spec) => {
+                    self.refs.get(spec.as_str()).cloned().ok_or_else(|| {
+                        SnapshotError::UnresolvableRef {
+                            spec: spec.as_str().to_string(),
+                            reason: "ref not seeded in test double".to_string(),
+                        }
+                    })?
+                }
+            };
+            Ok(SnapshotSources::new(
+                FsSourceProvider::new(root).load_sources(),
+            ))
         }
     }
 
@@ -444,7 +443,7 @@ mod tests {
         let head_root = fresh_workspace("head");
         write_billing_source(head_root.path(), "Credits apply after ledger commit.");
 
-        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf())
+        let provider = InMemorySnapshotSourceProvider::new(head_root.path().to_path_buf())
             .with_ref("main", base_root.path().to_path_buf());
 
         let result = load_review_with_providers(
@@ -478,7 +477,7 @@ mod tests {
         let head_root = fresh_workspace("head-blocked-fine");
         write_billing_source(head_root.path(), "Clean head.");
 
-        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf())
+        let provider = InMemorySnapshotSourceProvider::new(head_root.path().to_path_buf())
             .with_ref("main", base_root.path().to_path_buf());
 
         let error = load_review_with_providers(
@@ -507,7 +506,7 @@ mod tests {
         let head_root = fresh_workspace("head-snap-error");
         write_billing_source(head_root.path(), "Clean head.");
 
-        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf());
+        let provider = InMemorySnapshotSourceProvider::new(head_root.path().to_path_buf());
 
         let error = load_review_with_providers(
             ReviewInput {
@@ -577,7 +576,7 @@ mod tests {
         )
         .expect("write head source");
 
-        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf())
+        let provider = InMemorySnapshotSourceProvider::new(head_root.path().to_path_buf())
             .with_ref("main", base_root.path().to_path_buf());
 
         let load = load_review_with_providers(
@@ -802,7 +801,7 @@ mod tests {
         use crate::domain::ports::snapshot_workspace::{GitRef, SnapshotSelector};
         use crate::parse_patch_from_value;
 
-        use super::{InMemorySnapshotWorkspaceProvider, fresh_workspace};
+        use super::{InMemorySnapshotSourceProvider, fresh_workspace};
 
         fn write_verified_claim(root: &std::path::Path, body: &str) {
             let docs = root.join("docs");
@@ -834,7 +833,7 @@ mod tests {
             let head_root = fresh_workspace("patch-comp-head");
             write_verified_claim(head_root.path(), "New verified body.");
 
-            let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf())
+            let provider = InMemorySnapshotSourceProvider::new(head_root.path().to_path_buf())
                 .with_ref("main", base_root.path().to_path_buf());
 
             let load = load_review_with_providers(

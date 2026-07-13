@@ -8,6 +8,17 @@
 //! `migrate.source_not_committed` refusal.
 
 use std::path::Path;
+
+use crate::domain::ports::committed_source::CommittedSourceProbe;
+
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct GitCommittedSourceProbe;
+
+impl CommittedSourceProbe for GitCommittedSourceProbe {
+    fn is_committed_and_clean(&self, source: &Path) -> bool {
+        is_committed_and_clean(source)
+    }
+}
 use std::process::Command;
 
 use super::util::clear_git_env;

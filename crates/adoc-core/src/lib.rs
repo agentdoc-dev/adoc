@@ -138,7 +138,11 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
 #[tracing::instrument(level = "debug", skip_all)]
 pub fn migrate_workspace(root: std::path::PathBuf, mode: MigrateMode) -> MigrateResult {
     let provider = infrastructure::source::fs::FsSourceProvider::new(root);
-    application::migrate::migrate_with_provider(&provider, mode)
+    application::migrate::migrate_with_ports(
+        &provider,
+        &infrastructure::git::GitCommittedSourceProbe,
+        mode,
+    )
 }
 
 /// V8.1.4: convert every strict prose-mode `.adoc` source under `root` back
@@ -148,7 +152,11 @@ pub fn migrate_workspace(root: std::path::PathBuf, mode: MigrateMode) -> Migrate
 #[tracing::instrument(level = "debug", skip_all)]
 pub fn export_workspace(root: std::path::PathBuf, mode: MigrateMode) -> MigrateResult {
     let provider = infrastructure::source::fs::FsSourceProvider::new(root);
-    application::migrate::export_with_provider(&provider, mode)
+    application::migrate::export_with_ports(
+        &provider,
+        &infrastructure::git::GitCommittedSourceProbe,
+        mode,
+    )
 }
 
 pub fn build_workspace(input: BuildInput) -> CompileResult {

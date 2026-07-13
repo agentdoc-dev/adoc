@@ -11,5 +11,5 @@ pub(crate) mod readiness;
 pub(crate) mod util;
 pub(crate) mod worktree;
 
-pub(crate) use clean_source::is_committed_and_clean;
+pub(crate) use clean_source::GitCommittedSourceProbe;
 pub(crate) use readiness::is_review_available;

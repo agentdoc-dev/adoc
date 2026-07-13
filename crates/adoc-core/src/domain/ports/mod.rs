@@ -2,6 +2,7 @@
 pub(crate) mod artifact_reader;
 pub(crate) mod artifact_writer;
 pub(crate) mod changed_files;
+pub(crate) mod committed_source;
 pub(crate) mod embedding_provider;
 pub(crate) mod snapshot_workspace;
 pub(crate) mod source_provider;

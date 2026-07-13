@@ -46,6 +46,24 @@ fn review_and_apply_do_not_round_trip_compiler_graph_json() {
 }
 
 #[test]
+fn git_backed_application_workflows_depend_only_on_ports() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for relative in ["src/application/review.rs", "src/application/migrate.rs"] {
+        let source = std::fs::read_to_string(manifest_dir.join(relative)).unwrap();
+        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+        for forbidden in [
+            "crate::infrastructure::git",
+            "crate::infrastructure::source",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} must receive Git and source I/O through domain ports"
+            );
+        }
+    }
+}
+
+#[test]
 fn public_surface_compiles_with_only_documented_imports() {
     // Construct a CompileInput so the type is exercised, not just imported.
     let input = CompileInput {
