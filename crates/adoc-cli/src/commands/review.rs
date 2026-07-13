@@ -49,7 +49,7 @@ fn write_review_markdown(envelope: &ReviewEnvelope, exit_code: i32) -> i32 {
         eprint_diagnostics(&envelope.diagnostics);
     }
     MarkdownReviewPresenter::write_review(envelope, &mut io::stdout()).map_or_else(
-        |source| report(CliError::RetrievalIo { source }),
+        |source| report(CliError::StdoutIo { source }),
         |()| exit_code,
     )
 }

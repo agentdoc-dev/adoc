@@ -1,4 +1,4 @@
-use rmcp::model::{AnnotateAble, RawResource, ReadResourceResult, Resource, ResourceContents};
+use rmcp::model::{ReadResourceResult, Resource, ResourceContents};
 
 #[derive(Debug, Clone, Copy)]
 struct AgentResource {
@@ -356,12 +356,11 @@ pub fn list() -> Vec<Resource> {
     RESOURCES
         .iter()
         .map(|resource| {
-            RawResource::new(resource.uri, resource.name)
+            Resource::new(resource.uri, resource.name)
                 .with_title(resource.title)
                 .with_description(resource.description)
                 .with_mime_type(resource.mime_type)
-                .with_size(resource.contents.len() as u32)
-                .no_annotation()
+                .with_size(resource.contents.len() as u64)
         })
         .collect()
 }

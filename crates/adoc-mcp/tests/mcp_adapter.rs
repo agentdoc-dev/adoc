@@ -306,14 +306,14 @@ fn lists_and_reads_all_stable_agent_resources() {
     let resources = server.list_agent_resources();
     let listed = resources
         .iter()
-        .map(|resource| resource.raw.uri.as_str())
+        .map(|resource| resource.uri.as_str())
         .collect::<Vec<_>>();
     assert_eq!(listed, expected);
 
     for uri in expected {
         let resource = resources
             .iter()
-            .find(|resource| resource.raw.uri == uri)
+            .find(|resource| resource.uri == uri)
             .expect("resource listed");
         let result = server.read_agent_resource(uri).expect("resource reads");
         assert_eq!(result.contents.len(), 1);
@@ -325,7 +325,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         };
         if uri.ends_with(".json") {
             assert_eq!(
-                resource.raw.mime_type.as_deref(),
+                resource.mime_type.as_deref(),
                 Some("application/schema+json")
             );
             assert_eq!(mime_type.as_deref(), Some("application/schema+json"));
@@ -336,7 +336,7 @@ fn lists_and_reads_all_stable_agent_resources() {
                 "https://json-schema.org/draft/2020-12/schema"
             );
         } else {
-            assert_eq!(resource.raw.mime_type.as_deref(), Some("text/markdown"));
+            assert_eq!(resource.mime_type.as_deref(), Some("text/markdown"));
             assert_eq!(mime_type.as_deref(), Some("text/markdown"));
             assert!(text.starts_with("# "));
             assert!(text.contains("V2.2") || text.contains("adoc."));

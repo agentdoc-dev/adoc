@@ -1,6 +1,5 @@
 use rmcp::model::{
-    GetPromptResult, JsonObject, ListPromptsResult, Prompt, PromptArgument, PromptMessage,
-    PromptMessageRole,
+    GetPromptResult, JsonObject, ListPromptsResult, Prompt, PromptArgument, PromptMessage, Role,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -204,7 +203,7 @@ pub fn get(name: &str, arguments: Option<JsonObject>) -> Option<GetPromptResult>
     }
 
     Some(
-        GetPromptResult::new(vec![PromptMessage::new_text(PromptMessageRole::User, text)])
+        GetPromptResult::new(vec![PromptMessage::new_text(Role::User, text)])
             .with_description(canonical.description),
     )
 }

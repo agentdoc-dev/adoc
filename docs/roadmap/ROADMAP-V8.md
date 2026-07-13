@@ -177,7 +177,7 @@ Most of the plumbing exists: `adoc impacted-by --format markdown` already emits 
 
 ### V8.3.1: Check Markdown Presenter Slice
 
-Goal: `adoc check --format markdown` emits a §24.4-style PR comment body.
+Goal: `adoc check --format markdown` emits a §24.4-style PR comment body. Implemented.
 
 Scope (adapter-only — no domain change, no new envelope, no new codes):
 

@@ -2585,3 +2585,134 @@ fn check_reports_unreadable_source_path() {
     assert!(stdout.contains(source.to_str().expect("source path is utf-8")));
     assert!(stdout.contains("1 errors"));
 }
+
+/// V8.3.1: `adoc check --format markdown` — the PR-comment body. Diagnostics
+/// grouped by file, error/warning counts in the header, object_id/help as
+/// sub-bullets, a suggested next command. Pinned as a golden so the §24.4
+/// shape drifts loudly, not silently.
+#[test]
+fn check_markdown_matches_golden_for_error_and_warning_fixture() {
+    let workspace = TestWorkspace::new("check-markdown-golden");
+    write_fixture_to_workspace(&workspace, "v8_3/broken.adoc", "broken.adoc");
+    write_fixture_to_workspace(&workspace, "v8_3/overdue.adoc", "overdue.adoc");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", ".", "--format", "markdown"])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "errors must exit 1 in markdown format too\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    support::assert_markdown_matches_golden(
+        "v8_3/check.md",
+        &String::from_utf8_lossy(&output.stdout),
+    );
+    // Terminal users keep the fix-oriented diagnostics on stderr — stdout is
+    // reserved for the comment body a PR bot pastes verbatim.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("error[ref.broken]") && stderr.contains("warning[task.overdue]"),
+        "expected plain diagnostics on stderr, got:\n{stderr}"
+    );
+}
+
+/// A clean project still renders a non-empty body — a PR bot pasting stdout
+/// must never post an empty comment.
+#[test]
+fn check_markdown_clean_project_matches_golden() {
+    let workspace = TestWorkspace::new("check-markdown-clean");
+    workspace.write(
+        "guide.adoc",
+        "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", ".", "--format", "markdown"])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(output.status.code(), Some(0));
+    support::assert_markdown_matches_golden(
+        "v8_3/check_clean.md",
+        &String::from_utf8_lossy(&output.stdout),
+    );
+}
+
+/// The V8.3.1 acceptance criterion: exit code identical across formats —
+/// §24.3 advisory-vs-strict stays a workflow decision, not a format one.
+#[test]
+fn check_markdown_exit_code_matches_plain_format() {
+    let workspace = TestWorkspace::new("check-markdown-exit-parity");
+    write_fixture_to_workspace(&workspace, "v8_3/broken.adoc", "broken.adoc");
+    write_fixture_to_workspace(&workspace, "v8_3/overdue.adoc", "overdue.adoc");
+
+    let plain = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", "."])
+        .output()
+        .expect("adoc check runs");
+    let markdown = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", ".", "--format", "markdown"])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(plain.status.code(), Some(1));
+    assert_eq!(markdown.status.code(), plain.status.code());
+}
+
+/// Warnings never fail the build (exit 0), and the suggested action names
+/// the re-run rather than pretending there is something to fix.
+#[test]
+fn check_markdown_warnings_only_exits_zero_with_suggestion() {
+    let workspace = TestWorkspace::new("check-markdown-warnings-only");
+    write_fixture_to_workspace(&workspace, "v8_3/overdue.adoc", "overdue.adoc");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", ".", "--format", "markdown"])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("## adoc check: 0 errors, 1 warnings"),
+        "expected warning-only header, got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("Suggested action: review the warnings above, then re-run `adoc check`."),
+        "expected warnings-only suggested action, got:\n{stdout}"
+    );
+}
+
+/// Lifting the rejection for `check` must not lift it for anything else:
+/// commands without a markdown presenter still exit 2.
+#[test]
+fn build_markdown_rejection_still_exits_two() {
+    let workspace = TestWorkspace::new("build-markdown-rejected");
+    workspace.write(
+        "guide.adoc",
+        "# Getting Started @doc(docs.getting-started)\n\nAgentDoc keeps knowledge readable.\n",
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["build", ".", "--format", "markdown"])
+        .output()
+        .expect("adoc build runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("error[cli.format]") && stderr.contains("`adoc check`"),
+        "expected rejection naming the supported commands, got:\n{stderr}"
+    );
+}

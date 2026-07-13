@@ -806,7 +806,7 @@ fn run_git(workspace: &TestWorkspace, args: &[&str]) {
 /// clock-stable); `--within 36500d` additionally lists the two far-future
 /// verified objects as `expiring_soon`. The command is a query: exit 0 with
 /// records, exit 2 only on artifact-load failure, and `--format markdown`
-/// stays diff/review-only.
+/// is still rejected here (no markdown presenter for this command).
 #[test]
 fn expanded_pilot_stale_query() {
     let repo_root = repo_root();
@@ -984,7 +984,8 @@ fn expanded_pilot_stale_query() {
 /// contradicted claims, each carrying the implicating contradiction ids so
 /// consumers never join the two lists themselves. The envelope is a pure
 /// function of the artifact: no `evaluated_at`. Exit 0 with findings, exit 2
-/// only on artifact-load failure; `--format markdown` stays diff/review-only.
+/// only on artifact-load failure; `--format markdown` is still rejected
+/// here (no markdown presenter for this command).
 #[test]
 fn expanded_pilot_contradictions_query() {
     let repo_root = repo_root();

@@ -93,7 +93,7 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
         return presenter
             .present(&view, &mut std::io::stdout())
             .map_or_else(
-                |source| report(CliError::RetrievalIo { source }),
+                |source| report(CliError::StdoutIo { source }),
                 |()| outcome.exit_code,
             );
     }
@@ -122,5 +122,5 @@ pub(crate) fn search_command(input: SearchCommandInput, resolved: ResolvedFormat
     let presenter = make_presenter(resolved, Vec::new());
     presenter
         .present(&view, &mut std::io::stdout())
-        .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
+        .map_or_else(|source| report(CliError::StdoutIo { source }), |()| 0)
 }
