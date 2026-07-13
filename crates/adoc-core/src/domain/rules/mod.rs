@@ -12,7 +12,7 @@ pub(crate) trait ValidationRule {
 /// warning-only invariant from ADR-0023 is enforced by the type system:
 /// `CompatDiagnostic` has no `error`/`info` constructor, so a future commit
 /// that tries to raise a compat code to `Severity::Error` is a type error.
-/// The registry boundary in `infrastructure/validate/compat/mod.rs` unwraps
+/// The registry boundary in `language/validate/compat/mod.rs` unwraps
 /// every diagnostic via [`CompatDiagnostic::into_diagnostic`] once, after
 /// the rules have run.
 pub(crate) trait CompatRule {

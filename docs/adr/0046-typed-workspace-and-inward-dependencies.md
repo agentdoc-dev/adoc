@@ -110,3 +110,17 @@ lifecycle signal queries, and no generic envelope presenter is introduced.
   wiring. A shared port is introduced only after common behavior is proven.
 - The refactor lands as independently green vertical commits. Each commit
   includes the behavior tests and documentation needed to explain its change.
+
+## Implementation Status
+
+Implemented on 2026-07-13. The core now analyzes into a typed workspace before
+emission; review and apply consume typed projections; Git and artifact reads
+use typed ports; pure parser/validator/renderer code lives under `language/`;
+and recursive architecture tests enforce inward dependencies.
+
+`adoc-local` keeps `LocalContext` as its public facade while delegating to
+focused project, query, change, and shared modules. Build outputs use the
+separate artifact-set commit seam anticipated by this ADR: all files are
+staged and fsynced before promotion, backups support rollback, and injected
+staging/promotion failures prove that no handled failure leaves a partial new
+set. See the [current architecture map](../architecture.md).

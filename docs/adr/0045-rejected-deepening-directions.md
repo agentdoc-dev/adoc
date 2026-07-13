@@ -55,7 +55,8 @@ owners; impacted's changed-set failure precedes the artifact read), and it
 would split the signal commands from the why/graph adapter mold that
 ADR-0038 §1 deliberately pins. The salvage that shipped instead:
 adapter-local `resolve_graph_artifact_for_read` and
-`load_graph_session_for_query` in `crates/adoc-local/src/use_cases.rs`,
+`load_graph_session_for_query` in
+`crates/adoc-local/src/use_cases/shared.rs`,
 with zero new core surface. `application/signals.rs` stays pure evaluation
 per ADR-0038 §4.
 

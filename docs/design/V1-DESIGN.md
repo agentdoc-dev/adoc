@@ -1,5 +1,10 @@
 # V1 Design
 
+> Historical implementation contract. Current module placement is governed
+> by ADR-0046 and [docs/architecture.md](../architecture.md): pure parsing,
+> validation, rendering, and graph projection live under `language/`, and the
+> single-implementation `ArtifactWriter` port has been removed.
+
 This document is the implementation contract for V1: local retrieval with embeddings. It is the V0-DESIGN equivalent for the next milestone — small enough to start coding, large enough that the embedding artifact, retrieval indexes, and CLI surface are decided before any new module lands.
 
 V1 builds directly on the V0 compiler. It does not change the parser, validator, or rendering pipeline. It adds:
@@ -42,7 +47,7 @@ crates/adoc-core/src/
     graph/                           # graph artifact DTOs + traversal domain
     knowledge_object/                # unchanged
     ports/
-      artifact_writer.rs             # generic structured artifact writer
+      artifact_reader.rs             # typed artifact read boundary
       embedding_provider.rs          # NEW: EmbeddingProvider port
       source_provider.rs             # unchanged
     retrieval/                       # NEW: pure retrieval domain types

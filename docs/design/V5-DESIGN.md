@@ -1,5 +1,11 @@
 # V5 Design
 
+> Historical implementation contract. Several proposed
+> `infrastructure/validate/objects/` files never landed; aggregate-local
+> invariants remained in constructors and cross-object rules stayed flat.
+> Current pure parser, validator, and renderer modules live under `language/`
+> per ADR-0046 and [docs/architecture.md](../architecture.md).
+
 This document is the implementation contract for V5: the Expanded Knowledge Model. It is the V0-DESIGN / V1-DESIGN / V3-DESIGN / V4-DESIGN equivalent for the next milestone — small enough to start coding, large enough that the **Knowledge Object** vocabulary expansion, schema-version bump, value-object decomposition, slice ordering, and error model are decided before any new module lands.
 
 V5 builds directly on the V0 compiler, the V1 graph and search artifacts, the V2 patch validation surface, the V2.1/V2.2 MCP gateway, the V3 diff and review envelopes, and the V4 Markdown Compatibility Mode. It does not change the parser for `.adoc` structural grammar, the Markdown Parser, the validator dispatch by file extension, any retrieval ranking, any patch operation set, or any MCP tool surface. It adds:

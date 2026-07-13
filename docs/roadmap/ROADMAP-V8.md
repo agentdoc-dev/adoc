@@ -53,9 +53,9 @@ Goal: `adoc migrate` converts `.md` files to prose-mode `.adoc` pages losslessly
 
 Scope:
 
-- Domain first: a new `.adoc` prose serializer `crates/adoc-core/src/infrastructure/render/adoc_source.rs` (prose blocks → canonical `.adoc` text; a different concern from the ADR-0036 span-splice patch writer, which edits existing sources) and migration orchestration in `crates/adoc-core/src/application/migrate.rs`, reusing the existing pulldown-cmark `.md` read path. Raw HTML is quarantined per §28.2; unrecognized Markdown extensions become diagnostics, not silent drops.
+- Domain first: a new `.adoc` prose serializer `crates/adoc-core/src/language/render/adoc_source.rs` (prose blocks → canonical `.adoc` text; a different concern from the ADR-0036 span-splice patch writer, which edits existing sources) and migration orchestration in `crates/adoc-core/src/application/migrate.rs`, reusing the existing pulldown-cmark `.md` read path. Raw HTML is quarantined per §28.2; unrecognized Markdown extensions become diagnostics, not silent drops.
 - **The losslessness invariant (the TDD anchor):** compiling the migrated `.adoc` tree yields prose graph nodes equal — graph-node kind, text payload, order, heading structure — to compiling the original `.md` tree. The graph is the semantic ground truth, so equality is asserted there, not on bytes.
-- Adapters after: `MigrateOutcome { report, exit_code }` in `crates/adoc-local/src/use_cases.rs` (the `CheckOutcome` pattern), `Commands::Migrate` in `crates/adoc-cli/src/cli.rs`. Default is dry-run — prints the report, writes nothing. `--write` writes `<name>.adoc` and removes the source `.md` — leaving both would compile duplicate pages. `--write` refuses to remove a source `.md` that is not committed-and-clean (uncommitted edits, untracked, or outside a repository) with `migrate.source_not_committed` (ERROR), overridable via `--force`: a committed source is what makes the removal reversible, and V8.1.4 makes it doubly so.
+- Adapters after: `MigrateOutcome { report, exit_code }` in `crates/adoc-local/src/use_cases/mod.rs` and migration handling in `use_cases/project.rs`, plus `Commands::Migrate` in `crates/adoc-cli/src/cli.rs`. Default is dry-run — prints the report, writes nothing. `--write` writes `<name>.adoc` and removes the source `.md` — leaving both would compile duplicate pages. `--write` refuses to remove a source `.md` that is not committed-and-clean (uncommitted edits, untracked, or outside a repository) with `migrate.source_not_committed` (ERROR), overridable via `--force`: a committed source is what makes the removal reversible, and V8.1.4 makes it doubly so.
 - True up the migration hints in code to name the shipped command: the `maybe_migration_hint` message in `crates/adoc-core/src/application/retrieval.rs` and the `RetrievalNoKnowledgeObjectsConsiderMigration` help in `crates/adoc-core/src/domain/diagnostic.rs` (agent-visible — it ships in every retrieval payload). V1.7.3 already downgraded both from the "wait for `adoc migrate` (V4.5+)" dead-end framing to "a future `adoc migrate` will automate this"; this slice replaces "future" with the shipped command. The remaining doc-side references are gated at V8.1.4's closing commit.
 - Diagnostics (WARNING — warnings never fail the build): `migrate.raw_html_quarantined`, `migrate.broken_link`, `migrate.unrecognized_extension`.
 
@@ -101,7 +101,7 @@ Goal: export prose-mode `.adoc` back to `.md` — migration is reversible (§28.
 
 Scope:
 
-- `adoc migrate --export`; serializer `crates/adoc-core/src/infrastructure/render/markdown_export.rs` (distinct from the PR-comment presenter in `adoc-cli/src/presentation/markdown.rs` — one renders reports, the other renders sources).
+- `adoc migrate --export`; serializer `crates/adoc-core/src/language/render/markdown_export.rs` (distinct from the PR-comment presenter in `adoc-cli/src/presentation/markdown.rs` — one renders reports, the other renders sources).
 - **The round-trip property:** `.md` → migrate → export → `.md′` byte-identical modulo the normalization set recorded in ADR-0043 (list-marker style, trailing whitespace, fence info strings — enumerated and closed; anything outside the set is a bug, not a tolerance).
 - Pages containing typed blocks are refused with `migrate.export_typed_blocks_present` (ERROR, exit non-zero): exporting typed knowledge to Markdown is lossy by definition, and a lossy export dressed as reversibility would be the exact trust failure this milestone exists to prevent.
 
@@ -248,17 +248,17 @@ Acceptance: the guard test fails naming the envelope when a table row is removed
 
 ### V8.4.2: Knowledge Health Slice
 
-Goal: `adoc health` — the PRD §14.5 knowledge-health score as a CLI/CI artifact, explicitly not a dashboard, so pilots mechanically produce §51 North-Star evidence. **ADR-0046 — Knowledge health composition** at slice start.
+Goal: `adoc health` — the PRD §14.5 knowledge-health score as a CLI/CI artifact, explicitly not a dashboard, so pilots mechanically produce §51 North-Star evidence. **ADR-0047 — Knowledge health composition** at slice start (ADR-0046 now records the typed-workspace architecture).
 
 Scope:
 
 - Domain first: `crates/adoc-core/src/application/health.rs` beside `signals.rs` — health is a pure aggregation over the `adoc.graph.v4` artifact, exactly like `stale` and `contradictions`. Per-object block with the §14.5 field names verbatim: `health.{score, freshness, evidence, ownership, contradictions, warnings}`. Every input already exists: effective lifecycle (ADR-0033), evidence-quality tiers (ADR-0034), owner presence, contradiction and staleness signals.
-- The composite formula is fixed in ADR-0046 and is weight-free — components are counts and tiers, never tunable coefficients. The parameter-free rule, extended: a health score someone can tune is a health score someone will tune.
+- The composite formula is fixed in ADR-0047 and is weight-free — components are counts and tiers, never tunable coefficients. The parameter-free rule, extended: a health score someone can tune is a health score someone will tune.
 - Project aggregate: counts by lifecycle and kind, **the §51 North-Star numerator — verified-and-retrievable object count** (verified Knowledge Objects present in the retrieval corpus), percent of claims with evidence, unresolved contradictions, stale/expired counts.
-- Envelope `adoc.health.v0`, inline constant in `application/health.rs`. Adapters: `HealthOutcome { report, exit_code }` in `adoc-local/src/use_cases.rs` — exit 0 always; health is a report, not a check — `Commands::Health`, presenters plain/json/markdown (markdown so the V8.3.2 workflow can post the weekly North-Star artifact).
+- Envelope `adoc.health.v0`, inline constant in `application/health.rs`. Adapters: `HealthOutcome { report, exit_code }` in `adoc-local/src/use_cases/mod.rs` with project-workflow handling in `use_cases/project.rs` — exit 0 always; health is a report, not a check — `Commands::Health`, presenters plain/json/markdown (markdown so the V8.3.2 workflow can post the weekly North-Star artifact).
 - Clock discipline: freshness components follow the stale-rule seam — unit tests inject `today`; CLI fixtures use wide-margin fixed dates (2020–2024 past, 2120+ future) so the pinned pilot health JSON is stable on any system clock.
 
-Commit shape: `docs(v8): ADR-0046 knowledge health composition` → `feat(core): adoc.health.v0 aggregation over graph signals (V8.4.2)` → `feat(cli): adoc health command + presenters (V8.4.2)` → `test(cli): health_cli.rs pinned pilot scores (V8.4.2)`.
+Commit shape: `docs(v8): ADR-0047 knowledge health composition` → `feat(core): adoc.health.v0 aggregation over graph signals (V8.4.2)` → `feat(cli): adoc health command + presenters (V8.4.2)` → `test(cli): health_cli.rs pinned pilot scores (V8.4.2)`.
 
 Acceptance: `crates/adoc-cli/tests/health_cli.rs` pins the exact health JSON for `examples/expanded-pilot/`, and the aggregate verified-and-retrievable count equals a hand count of the pilot's verified objects; §14.5 field names appear verbatim; the markdown output is posted on a dogfood PR via the V8.3 workflow (link recorded); each V8.2 partner report gains a dated health artifact — the North-Star number, written down.
 
@@ -281,7 +281,7 @@ ADRs to record at slice start (continuing from ADR-0042, reserved by ROADMAP-V7;
 - **ADR-0043** — Markdown migration contract: the graph-semantic losslessness invariant, the `adoc.migrate.report.v0` envelope, the closed round-trip normalization set, the never-auto-typed rule, and `--write` semantics (write `.adoc`, remove `.md`; git plus export = reversibility).
 - **ADR-0044** — External pilot thresholds: the §8.3 partner profile, per-Later-item numeric un-gating gates fixed before the first partner session, redaction rules for external corpora, and the composite-Action packaging threshold for the V8.3 snippet. Extends the ADR-0042 mechanism from dogfood to external evidence.
 - **ADR-0045** — Contract stability policy: the frozen / stable-at-v0 / experimental taxonomy, the four v0→v1 promotions, the one-cycle schema-publication window, and the deliberate decision not to renumber shape-unchanged envelopes. CONTRACTS.md plus the guard test become the registry.
-- **ADR-0046** — Knowledge health composition: the §14.5 component set, the weight-free composite formula, and the §51 North-Star numerator definition (verified-and-retrievable). Health is an artifact, not a check: exit 0 always; thresholds deferred.
+- **ADR-0047** — Knowledge health composition: the §14.5 component set, the weight-free composite formula, and the §51 North-Star numerator definition (verified-and-retrievable). Health is an artifact, not a check: exit 0 always; thresholds deferred.
 
 ## Risks and Invariants
 
@@ -291,7 +291,7 @@ Top risks:
 2. **Partner recruitment slippage.** V8.2 is calendar-bound on people who don't work here. It must never block V8.1/V8.3/V8.4, which are internally gated; if recruiting stalls, the engineering tracks finish and the cycle holds open for the pilots rather than shipping without them.
 3. **Suggestion over-eagerness eroding trust.** One wrong auto-typed block would cost more than a hundred missed suggestions. Held by the never-auto-typed property test and rules-not-weights heuristics.
 4. **Freeze-then-regret.** Freezing contracts the week before a partner integration forces a shape change would be self-inflicted. Mitigated by sequencing: V8.4.1 lands after the pilots start.
-5. **The health score becoming a vanity metric.** ADR-0046 fixes the weight-free formula before any pilot reports against it; a metric fixed after the evidence is a narrative.
+5. **The health score becoming a vanity metric.** ADR-0047 fixes the weight-free formula before any pilot reports against it; a metric fixed after the evidence is a narrative.
 6. **PR-comment fatigue.** One comment per PR, updated in place, advisory-first. If partners mute it anyway, that is a friction-log finding, not a reason to post harder.
 
 Invariants that must hold across all four milestones:
