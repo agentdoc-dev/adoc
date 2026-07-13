@@ -128,6 +128,8 @@ fn render_check(output: &mut String, diagnostics: &[Diagnostic]) {
     )
     .expect("writing to String cannot fail");
 
+    // Empty → deliberate fall-through: the group loop below is a no-op and
+    // only the unconditional suggested-action block follows.
     if diagnostics.is_empty() {
         writeln!(output).expect("writing to String cannot fail");
         writeln!(output, "No diagnostics.").expect("writing to String cannot fail");
