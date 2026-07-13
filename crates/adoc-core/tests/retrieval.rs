@@ -119,9 +119,14 @@ fn load_session_from_objects_with_graph(
 }
 
 fn sha256_prefixed(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    format!("sha256:{:x}", hasher.finalize())
+    use std::fmt::Write;
+
+    let digest = Sha256::digest(bytes);
+    let mut output = String::from("sha256:");
+    for byte in digest {
+        let _ = write!(output, "{byte:02x}");
+    }
+    output
 }
 
 fn graph_json_from_objects(objects: Vec<Value>, edges: Vec<Value>) -> String {
