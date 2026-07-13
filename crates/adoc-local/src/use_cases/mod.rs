@@ -13,6 +13,7 @@ use serde::Serialize;
 
 use crate::{LocalContext, LocalError, PathPolicy};
 
+mod artifact_commit;
 mod changes;
 mod project;
 mod queries;

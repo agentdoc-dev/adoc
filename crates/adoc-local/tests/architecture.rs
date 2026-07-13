@@ -13,7 +13,7 @@ fn source(relative: &str) -> String {
 fn use_case_facade_delegates_to_focused_command_modules() {
     let facade = source("use_cases/mod.rs");
 
-    for module in ["project", "queries", "changes", "shared"] {
+    for module in ["project", "queries", "changes", "shared", "artifact_commit"] {
         assert!(
             facade.contains(&format!("mod {module};")),
             "use-case facade must declare the `{module}` command module"

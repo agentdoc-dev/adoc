@@ -10,6 +10,7 @@ use adoc_core::{
     git_review_available, inspect_graph_artifact, inspect_search_artifact, migrate_workspace,
 };
 
+use super::artifact_commit::{ArtifactWrite, commit_artifact_set};
 use super::shared::{
     discover_project_config_if, resolve_docs_path_with_config,
     resolve_embedding_provider_selection, resolve_graph_artifact_path_with_config,
@@ -509,32 +510,20 @@ fn output_paths_for_dir(out: &Path, include_search: bool) -> Result<BuildOutputs
     })
 }
 
-struct ArtifactWriteEntry {
-    path: PathBuf,
-    contents: Vec<u8>,
-}
-
 fn write_artifacts_to_paths(
     paths: &BuildOutputs,
     artifacts: &BuildArtifacts,
 ) -> Result<(), LocalError> {
-    for entry in serialize_artifacts(paths, artifacts) {
-        write_file_with_parents(&entry.path, &entry.contents)?;
-    }
-
-    Ok(())
+    commit_artifact_set(serialize_artifacts(paths, artifacts))
 }
 
-fn serialize_artifacts(
-    paths: &BuildOutputs,
-    artifacts: &BuildArtifacts,
-) -> Vec<ArtifactWriteEntry> {
-    let mut entries = vec![ArtifactWriteEntry {
+fn serialize_artifacts(paths: &BuildOutputs, artifacts: &BuildArtifacts) -> Vec<ArtifactWrite> {
+    let mut entries = vec![ArtifactWrite {
         path: paths.html.clone(),
         contents: artifacts.html.as_bytes().to_vec(),
     }];
 
-    entries.push(ArtifactWriteEntry {
+    entries.push(ArtifactWrite {
         path: paths.graph.clone(),
         contents: artifacts.graph_json.as_bytes().to_vec(),
     });
@@ -542,7 +531,7 @@ fn serialize_artifacts(
     if let (Some(search_json), Some(search_path)) =
         (artifacts.search_json.as_ref(), paths.search.as_ref())
     {
-        entries.push(ArtifactWriteEntry {
+        entries.push(ArtifactWrite {
             path: search_path.clone(),
             contents: search_json.as_bytes().to_vec(),
         });
@@ -550,24 +539,6 @@ fn serialize_artifacts(
 
     entries
 }
-
-fn write_file_with_parents(path: &Path, contents: &[u8]) -> Result<(), LocalError> {
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent).map_err(|source| LocalError::CreateOutputDirectory {
-            path: parent.to_path_buf(),
-            source,
-        })?;
-    }
-
-    fs::write(path, contents).map_err(|source| LocalError::WriteFailed {
-        path: path.to_path_buf(),
-        source,
-    })
-}
-
 fn resolve_embedding_mode(
     config: Option<&ProjectConfig>,
     no_embeddings: bool,
