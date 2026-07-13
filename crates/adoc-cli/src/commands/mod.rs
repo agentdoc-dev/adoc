@@ -41,7 +41,7 @@ pub(crate) use why::why;
 /// failure through the standard report path.
 fn write_json_or_report<T: serde::Serialize>(envelope: &T, exit_code: i32) -> i32 {
     json_presentation::write_json(envelope, &mut std::io::stdout()).map_or_else(
-        |source| report(CliError::RetrievalIo { source }),
+        |source| report(CliError::StdoutIo { source }),
         |()| exit_code,
     )
 }
@@ -74,7 +74,7 @@ fn emit_retrieval_error(
             &mut std::io::stdout(),
         )
         .map_or_else(
-            |source| report(CliError::RetrievalIo { source }),
+            |source| report(CliError::StdoutIo { source }),
             |()| exit_code,
         );
     }

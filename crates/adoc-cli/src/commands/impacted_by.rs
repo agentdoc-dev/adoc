@@ -73,7 +73,7 @@ fn emit_impacted_error(
             eprint_diagnostics(&envelope.diagnostics);
             MarkdownReviewPresenter::write_impacted_error(&envelope.diagnostics, &mut io::stdout())
                 .map_or_else(
-                    |source| report(CliError::RetrievalIo { source }),
+                    |source| report(CliError::StdoutIo { source }),
                     |()| exit_code,
                 )
         }
@@ -86,7 +86,7 @@ fn emit_impacted_error(
 
 fn write_impacted_markdown(envelope: &ImpactedEnvelope, exit_code: i32) -> i32 {
     MarkdownReviewPresenter::write_impacted(envelope, &mut io::stdout()).map_or_else(
-        |source| report(CliError::RetrievalIo { source }),
+        |source| report(CliError::StdoutIo { source }),
         |()| exit_code,
     )
 }

@@ -62,5 +62,5 @@ pub(crate) fn why(object_id: String, artifact: Option<PathBuf>, resolved: Resolv
     let presenter = make_presenter(resolved, Vec::new());
     presenter
         .present(&view, &mut std::io::stdout())
-        .map_or_else(|source| report(CliError::RetrievalIo { source }), |()| 0)
+        .map_or_else(|source| report(CliError::StdoutIo { source }), |()| 0)
 }
