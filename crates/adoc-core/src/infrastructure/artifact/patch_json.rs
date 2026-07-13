@@ -9,8 +9,11 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::patch::{
     PatchDocument, PatchIntent, PatchOperation, PatchProposer, PlacementHint,
 };
-use crate::domain::ports::artifact_reader::ArtifactReader;
+use crate::domain::ports::artifact_reader::{
+    ArtifactReadError, ArtifactReadErrorKind, ArtifactReader,
+};
 use crate::domain::values::trim_ascii_edges;
+use crate::infrastructure::artifact::artifact_schema_version;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct PatchJsonArtifact;
@@ -78,8 +81,20 @@ pub(crate) fn read_patch_document_value(
 impl ArtifactReader for PatchJsonArtifact {
     type Output = PatchDocument;
 
-    fn read(&self, path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
-        read_patch_document(path)
+    fn read(&self, path: &Path) -> Result<Self::Output, ArtifactReadError> {
+        read_patch_document(path).map_err(|diagnostics| {
+            let schema_version = artifact_schema_version(path);
+            let error = ArtifactReadError::from_diagnostics(diagnostics)
+                .with_schema_version(schema_version.clone());
+            if schema_version
+                .as_deref()
+                .is_some_and(|version| version != SUPPORTED_PATCH_SCHEMA_VERSION)
+            {
+                error.with_kind(ArtifactReadErrorKind::UnsupportedVersion)
+            } else {
+                error
+            }
+        })
     }
 }
 

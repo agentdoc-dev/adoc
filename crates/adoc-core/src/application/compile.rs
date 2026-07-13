@@ -13,7 +13,7 @@ use crate::domain::graph::GraphArtifactDocument;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
 use crate::domain::source::SourceFile;
-use crate::infrastructure::artifact::GraphJsonArtifact;
+use crate::infrastructure::artifact::{GraphJsonArtifact, SearchJsonArtifact};
 use crate::infrastructure::render::HtmlRenderer;
 use crate::infrastructure::validate::mode_pipeline::pipeline_for;
 use crate::infrastructure::validate::validate_workspace;
@@ -386,6 +386,7 @@ fn emit_artifacts(
                 &graph_json,
                 *provider,
                 prior_search_artifact_path.as_ref(),
+                &SearchJsonArtifact,
             ) {
                 Ok(search_build) => {
                     artifact_diagnostics.extend(search_build.diagnostics);
@@ -430,6 +431,7 @@ fn emit_artifacts(
                 &graph_json,
                 provider.as_ref(),
                 prior_search_artifact_path.as_ref(),
+                &SearchJsonArtifact,
             ) {
                 Ok(search_build) => {
                     artifact_diagnostics.extend(search_build.diagnostics);

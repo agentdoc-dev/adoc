@@ -4,7 +4,8 @@ use std::path::Path;
 
 use crate::domain::artifact::SearchArtifactDocument;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
-use crate::domain::ports::artifact_reader::ArtifactReader;
+use crate::domain::ports::artifact_reader::{ArtifactReadError, ArtifactReader};
+use crate::infrastructure::artifact::artifact_schema_version;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct SearchJsonArtifact;
@@ -66,8 +67,11 @@ fn read_error_diagnostic(path: &Path, error: io::Error) -> Diagnostic {
 impl ArtifactReader for SearchJsonArtifact {
     type Output = SearchArtifactDocument;
 
-    fn read(&self, path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
-        read_search_artifact_document(path)
+    fn read(&self, path: &Path) -> Result<Self::Output, ArtifactReadError> {
+        read_search_artifact_document(path).map_err(|diagnostics| {
+            ArtifactReadError::from_diagnostics(diagnostics)
+                .with_schema_version(artifact_schema_version(path))
+        })
     }
 }
 

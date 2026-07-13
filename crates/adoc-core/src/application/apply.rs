@@ -202,7 +202,7 @@ where
     // 1. Load the artifact and run the unchanged V2 validation.
     let graph_document = match graph_reader.read(graph_artifact_path) {
         Ok(document) => document,
-        Err(diagnostics) => return PatchApplyResult::refused(diagnostics, trace),
+        Err(error) => return PatchApplyResult::refused(error.into_diagnostics(), trace),
     };
     let target_node = find_object(&graph_document, &patch.target).cloned();
     // TB3: a create with an `after` anchor splices against that anchor's
@@ -752,7 +752,11 @@ Original body line.
     impl ArtifactReader for StubGraphReader {
         type Output = GraphArtifactDocument;
 
-        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+        fn read(
+            &self,
+            _path: &Path,
+        ) -> Result<Self::Output, crate::domain::ports::artifact_reader::ArtifactReadError>
+        {
             Ok(self.document.clone())
         }
     }
@@ -1020,11 +1024,19 @@ Original body line.
         struct FailingReader;
         impl ArtifactReader for FailingReader {
             type Output = GraphArtifactDocument;
-            fn read(&self, path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
-                Err(vec![Diagnostic::error(
-                    DiagnosticCode::IoArtifactMissing,
-                    format!("missing artifact at {}", path.display()),
-                )])
+            fn read(
+                &self,
+                path: &Path,
+            ) -> Result<Self::Output, crate::domain::ports::artifact_reader::ArtifactReadError>
+            {
+                Err(
+                    crate::domain::ports::artifact_reader::ArtifactReadError::from_diagnostics(
+                        vec![Diagnostic::error(
+                            DiagnosticCode::IoArtifactMissing,
+                            format!("missing artifact at {}", path.display()),
+                        )],
+                    ),
+                )
             }
         }
 

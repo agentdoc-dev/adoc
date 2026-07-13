@@ -64,6 +64,24 @@ fn git_backed_application_workflows_depend_only_on_ports() {
 }
 
 #[test]
+fn artifact_consumers_do_not_probe_the_filesystem() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for relative in [
+        "src/application/artifact_inspection.rs",
+        "src/application/search_artifact.rs",
+    ] {
+        let source = std::fs::read_to_string(manifest_dir.join(relative)).unwrap();
+        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+        for forbidden in ["std::fs", ".exists()", "read_search_artifact_document"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} must obtain artifact state and contents through ArtifactReader; found `{forbidden}`"
+            );
+        }
+    }
+}
+
+#[test]
 fn public_surface_compiles_with_only_documented_imports() {
     // Construct a CompileInput so the type is exercised, not just imported.
     let input = CompileInput {

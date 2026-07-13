@@ -19,8 +19,12 @@ use crate::domain::knowledge_object::{
     KnowledgeObject, RelationTarget, Relations, contradiction::Contradiction, policy::Policy,
     projection::MetadataField,
 };
-use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::ArtifactWriter};
+use crate::domain::ports::{
+    artifact_reader::{ArtifactReadError, ArtifactReader},
+    artifact_writer::ArtifactWriter,
+};
 use crate::domain::value_objects::evidence_kind::EvidenceKind;
+use crate::infrastructure::artifact::artifact_schema_version;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GraphJsonArtifact;
@@ -219,8 +223,11 @@ impl GraphJsonArtifact {
 impl ArtifactReader for GraphJsonArtifact {
     type Output = GraphArtifactDocument;
 
-    fn read(&self, path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
-        read_graph_artifact_document(path)
+    fn read(&self, path: &Path) -> Result<Self::Output, ArtifactReadError> {
+        read_graph_artifact_document(path).map_err(|diagnostics| {
+            ArtifactReadError::from_diagnostics(diagnostics)
+                .with_schema_version(artifact_schema_version(path))
+        })
     }
 }
 

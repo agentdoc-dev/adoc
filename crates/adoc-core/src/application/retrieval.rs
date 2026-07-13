@@ -177,10 +177,10 @@ where
 {
     let document = match graph_reader.read(&input.artifact_path) {
         Ok(document) => document,
-        Err(diagnostics) => {
+        Err(error) => {
             return RetrievalLoadResult {
                 session: None,
-                diagnostics,
+                diagnostics: error.into_diagnostics(),
             };
         }
     };
@@ -211,10 +211,10 @@ where
 
     if let Some(search_path) = input.search_artifact_path.as_ref() {
         match search_reader.read(search_path) {
-            Err(diags) => {
-                let was_missing = diags
-                    .iter()
-                    .any(|d| d.code == DiagnosticCode::IoArtifactMissing);
+            Err(error) => {
+                let was_missing = error.kind()
+                    == crate::domain::ports::artifact_reader::ArtifactReadErrorKind::Missing;
+                let diags = error.into_diagnostics();
                 if was_missing {
                     diagnostics.push(Diagnostic::warning(
                         DiagnosticCode::SearchArtifactMissing,
@@ -852,7 +852,11 @@ mod tests {
     impl ArtifactReader for StubSearchArtifactReader {
         type Output = SearchArtifactDocument;
 
-        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+        fn read(
+            &self,
+            _path: &Path,
+        ) -> Result<Self::Output, crate::domain::ports::artifact_reader::ArtifactReadError>
+        {
             Ok(self.document.clone())
         }
     }
@@ -864,7 +868,11 @@ mod tests {
     impl ArtifactReader for StubGraphArtifactReader {
         type Output = GraphArtifactDocument;
 
-        fn read(&self, _path: &Path) -> Result<Self::Output, Vec<Diagnostic>> {
+        fn read(
+            &self,
+            _path: &Path,
+        ) -> Result<Self::Output, crate::domain::ports::artifact_reader::ArtifactReadError>
+        {
             Ok(self.document.clone())
         }
     }

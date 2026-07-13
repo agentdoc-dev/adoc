@@ -6,7 +6,9 @@ use crate::application::hashing::sha256_prefixed;
 use crate::domain::artifact::{SearchArtifactDocument, SearchModelHeader};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphArtifactDocument, GraphIndex, GraphNode};
-use crate::domain::ports::artifact_reader::ArtifactReader;
+use crate::domain::ports::artifact_reader::{
+    ArtifactReadError, ArtifactReadErrorKind, ArtifactReader,
+};
 use crate::infrastructure::artifact::{GraphJsonArtifact, SearchJsonArtifact};
 use crate::{EmbeddingProviderSelection, active_search_model_header_for};
 
@@ -61,17 +63,19 @@ fn inspect_graph_artifact_with_reader<G>(path: &Path, graph_reader: &G) -> Artif
 where
     G: ArtifactReader<Output = GraphArtifactDocument>,
 {
-    let schema_version = schema_version(path);
     match graph_reader.read(path) {
-        Err(diagnostics) => ArtifactInspection {
+        Err(error) => ArtifactInspection {
             path: Some(path.to_path_buf()),
-            exists: path.exists(),
-            load_status: load_status_for_reader_diagnostics(&diagnostics),
-            schema_version,
+            exists: error.kind() != ArtifactReadErrorKind::Missing,
+            load_status: load_status_for_reader_error(&error),
+            schema_version: error.schema_version().map(ToString::to_string),
             object_count: None,
-            diagnostics,
+            diagnostics: error.into_diagnostics(),
         },
-        Ok(document) => graph_document_inspection(path, schema_version, document),
+        Ok(document) => {
+            let schema_version = Some(document.schema_version.clone());
+            graph_document_inspection(path, schema_version, document)
+        }
     }
 }
 
@@ -123,20 +127,20 @@ where
         };
     };
 
-    let schema_version = schema_version(&search_path);
     let search_document = match search_reader.read(&search_path) {
         Ok(document) => document,
-        Err(diagnostics) => {
+        Err(error) => {
             return ArtifactInspection {
                 path: Some(search_path.clone()),
-                exists: search_path.exists(),
-                load_status: load_status_for_reader_diagnostics(&diagnostics),
-                schema_version,
+                exists: error.kind() != ArtifactReadErrorKind::Missing,
+                load_status: load_status_for_reader_error(&error),
+                schema_version: error.schema_version().map(ToString::to_string),
                 object_count: None,
-                diagnostics,
+                diagnostics: error.into_diagnostics(),
             };
         }
     };
+    let schema_version = Some(search_document.schema_version.clone());
 
     let object_count = search_document.embeddings.len();
     let mut diagnostics = Vec::new();
@@ -152,7 +156,7 @@ where
     }
 
     match graph_reader.read(graph_path) {
-        Err(mut graph_diagnostics) => diagnostics.append(&mut graph_diagnostics),
+        Err(error) => diagnostics.extend(error.into_diagnostics()),
         Ok(graph_document) => {
             diagnostics.extend(graph_document.diagnostics.clone());
             if let Err(mut graph_diagnostics) = GraphIndex::from_document(graph_document.clone()) {
@@ -197,15 +201,6 @@ where
     }
 }
 
-fn schema_version(path: &Path) -> Option<String> {
-    let contents = std::fs::read_to_string(path).ok()?;
-    let value = serde_json::from_str::<serde_json::Value>(&contents).ok()?;
-    value
-        .get("schema_version")
-        .and_then(serde_json::Value::as_str)
-        .map(ToString::to_string)
-}
-
 fn graph_object_count(document: &GraphArtifactDocument) -> usize {
     document
         .nodes
@@ -214,26 +209,13 @@ fn graph_object_count(document: &GraphArtifactDocument) -> usize {
         .count()
 }
 
-fn load_status_for_reader_diagnostics(diagnostics: &[Diagnostic]) -> ArtifactLoadStatus {
-    if diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == DiagnosticCode::IoArtifactMissing)
-    {
-        return ArtifactLoadStatus::Missing;
+fn load_status_for_reader_error(error: &ArtifactReadError) -> ArtifactLoadStatus {
+    match error.kind() {
+        ArtifactReadErrorKind::Missing => ArtifactLoadStatus::Missing,
+        ArtifactReadErrorKind::Malformed => ArtifactLoadStatus::Malformed,
+        ArtifactReadErrorKind::UnsupportedVersion => ArtifactLoadStatus::UnsupportedVersion,
+        ArtifactReadErrorKind::Unreadable => ArtifactLoadStatus::Unreadable,
     }
-    if diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == DiagnosticCode::SchemaUnsupportedVersion)
-    {
-        return ArtifactLoadStatus::UnsupportedVersion;
-    }
-    if diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.code == DiagnosticCode::IoArtifactMalformed)
-    {
-        return ArtifactLoadStatus::Malformed;
-    }
-    ArtifactLoadStatus::Unreadable
 }
 
 fn diagnostics_have_errors(diagnostics: &[Diagnostic]) -> bool {
