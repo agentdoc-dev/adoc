@@ -44,7 +44,7 @@ fn write_diff_markdown(envelope: &ObjectDiffEnvelope, exit_code: i32) -> i32 {
         eprint_diagnostics(&envelope.diagnostics);
     }
     MarkdownReviewPresenter::write_diff(envelope, &mut io::stdout()).map_or_else(
-        |source| report(CliError::RetrievalIo { source }),
+        |source| report(CliError::StdoutIo { source }),
         |()| exit_code,
     )
 }

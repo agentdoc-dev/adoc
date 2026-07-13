@@ -59,7 +59,7 @@ fn patch_apply(apply: String, artifact: Option<PathBuf>, resolved: ResolvedForma
     let source = if apply == "@-" {
         let mut buffer = String::new();
         if let Err(source) = io::stdin().read_to_string(&mut buffer) {
-            return report(CliError::RetrievalIo { source });
+            return report(CliError::StdinIo { source });
         }
         match serde_json::from_str(&buffer) {
             Ok(value) => PatchApplySource::Inline(value),

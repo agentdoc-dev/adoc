@@ -27,7 +27,7 @@ pub(crate) fn check(path: Option<PathBuf>, resolved: ResolvedFormat) -> i32 {
         eprint_diagnostics(&outcome.diagnostics);
         return MarkdownReviewPresenter::write_check(&outcome.diagnostics, &mut io::stdout())
             .map_or_else(
-                |source| report(CliError::RetrievalIo { source }),
+                |source| report(CliError::StdoutIo { source }),
                 |()| outcome.exit_code,
             );
     }
