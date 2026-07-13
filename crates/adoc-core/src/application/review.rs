@@ -12,7 +12,9 @@ use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
 
-use crate::application::compile::{CompileResult, compile_with_provider};
+use crate::application::compile::{
+    CompileResult, CompiledWorkspace, WorkspaceProjection, compile_with_provider_and_projection,
+};
 use crate::application::patch::{PatchParseError, check_patch_documents};
 use crate::application::review_envelope::ReviewEnvelope;
 use crate::domain::diagnostic::Diagnostic;
@@ -52,6 +54,8 @@ pub struct ReviewLoadResult {
 pub struct ReviewSession {
     base: CompileResult,
     head: CompileResult,
+    base_projection: WorkspaceProjection,
+    head_projection: WorkspaceProjection,
     /// V3.3 impact projection. Empty for sessions loaded via
     /// [`load_review_with_providers`] (the V3.1 path that does not run
     /// changed-files analysis).
@@ -169,29 +173,41 @@ pub(crate) fn load_review_with_providers<S: SnapshotWorkspaceProvider>(
     input: ReviewInput,
     snapshot_provider: &S,
 ) -> Result<ReviewLoadResult, ReviewError> {
-    let base = compile_snapshot(snapshot_provider, &input.base).map_err(|source| {
+    let base_compiled = compile_snapshot(snapshot_provider, &input.base).map_err(|source| {
         ReviewError::BaseSnapshot {
             selector: input.base.clone(),
             source,
         }
     })?;
-    if base.has_errors() {
+    if base_compiled.result.has_errors() {
         return Err(ReviewError::BaseCompileBlocked {
-            diagnostics: base.diagnostics,
+            diagnostics: base_compiled.result.diagnostics,
         });
     }
+    let Some(base_projection) = base_compiled.projection else {
+        return Err(ReviewError::BaseCompileBlocked {
+            diagnostics: base_compiled.result.diagnostics,
+        });
+    };
+    let base = base_compiled.result;
 
-    let head = compile_snapshot(snapshot_provider, &input.head).map_err(|source| {
+    let head_compiled = compile_snapshot(snapshot_provider, &input.head).map_err(|source| {
         ReviewError::HeadSnapshot {
             selector: input.head.clone(),
             source,
         }
     })?;
-    if head.has_errors() {
+    if head_compiled.result.has_errors() {
         return Err(ReviewError::HeadCompileBlocked {
-            diagnostics: head.diagnostics,
+            diagnostics: head_compiled.result.diagnostics,
         });
     }
+    let Some(head_projection) = head_compiled.projection else {
+        return Err(ReviewError::HeadCompileBlocked {
+            diagnostics: head_compiled.result.diagnostics,
+        });
+    };
+    let head = head_compiled.result;
 
     let mut diagnostics = Vec::with_capacity(base.diagnostics.len() + head.diagnostics.len());
     diagnostics.extend(base.diagnostics.iter().cloned());
@@ -201,6 +217,8 @@ pub(crate) fn load_review_with_providers<S: SnapshotWorkspaceProvider>(
         session: ReviewSession {
             base,
             head,
+            base_projection,
+            head_projection,
             impact: Vec::new(),
             required_reviewers: Vec::new(),
             proof_obligations: Vec::new(),
@@ -273,11 +291,11 @@ const REVIEW_IDENTITY_PREFIX: &str = "<review>";
 fn compile_snapshot<S: SnapshotWorkspaceProvider>(
     snapshot_provider: &S,
     selector: &SnapshotSelector,
-) -> Result<CompileResult, SnapshotError> {
+) -> Result<CompiledWorkspace, SnapshotError> {
     let workspace = snapshot_provider.checkout(selector)?;
     let source_provider = FsSourceProvider::new(workspace.path().to_path_buf())
         .with_identity_prefix(PathBuf::from(REVIEW_IDENTITY_PREFIX));
-    let result = compile_with_provider(&source_provider);
+    let result = compile_with_provider_and_projection(&source_provider);
     Ok(result)
 }
 
@@ -289,22 +307,18 @@ fn compile_snapshot<S: SnapshotWorkspaceProvider>(
 /// `ObjectDiff::compute` self-decorates each `Changed` entry with its V3.2
 /// `FieldChange` projection, so this function is a pure compose-and-call.
 pub fn diff_objects(session: &ReviewSession) -> ObjectDiff {
-    let base = extract_knowledge_objects(&session.base);
-    let head = extract_knowledge_objects(&session.head);
+    let base = extract_knowledge_objects(&session.base_projection);
+    let head = extract_knowledge_objects(&session.head_projection);
     ObjectDiff::compute(&base, &head)
 }
 
-fn extract_knowledge_objects(result: &CompileResult) -> Vec<GraphKnowledgeObjectNode> {
-    let Some(artifacts) = &result.artifacts else {
-        return Vec::new();
-    };
-    let document: GraphArtifactDocument = serde_json::from_str(&artifacts.graph_json)
-        .expect("compile output graph_json is well-formed (compile pipeline invariant)");
-    document
+fn extract_knowledge_objects(projection: &WorkspaceProjection) -> Vec<GraphKnowledgeObjectNode> {
+    projection
+        .graph
         .nodes
-        .into_iter()
+        .iter()
         .filter_map(|node| match node {
-            GraphNode::KnowledgeObject(ko) => Some(ko),
+            GraphNode::KnowledgeObject(ko) => Some(ko.clone()),
             _ => None,
         })
         .collect()
@@ -337,13 +351,7 @@ pub fn review_with_patch(
 }
 
 fn head_graph_artifact_document(session: &ReviewSession) -> GraphArtifactDocument {
-    let artifacts = session
-        .head
-        .artifacts
-        .as_ref()
-        .expect("head compile produced artifacts (load_review error short-circuits otherwise)");
-    serde_json::from_str(&artifacts.graph_json)
-        .expect("compile output graph_json is well-formed (compile pipeline invariant)")
+    session.head_projection.graph.clone()
 }
 
 #[cfg(test)]

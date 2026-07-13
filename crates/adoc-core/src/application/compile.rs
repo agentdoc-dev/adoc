@@ -9,6 +9,7 @@ use crate::application::resolve_knowledge_objects::{
 use crate::application::resolve_object_references::resolve_object_references;
 use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
+use crate::domain::graph::GraphArtifactDocument;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
 use crate::domain::source::SourceFile;
@@ -74,15 +75,45 @@ pub(crate) struct WorkspaceAnalysis {
     pub(crate) diagnostics: Vec<Diagnostic>,
 }
 
-pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
-    compile_with_provider_for_date(provider, local_today())
+#[derive(Debug)]
+pub(crate) struct WorkspaceProjection {
+    pub(crate) graph: GraphArtifactDocument,
 }
 
+pub(crate) struct CompiledWorkspace {
+    pub(crate) result: CompileResult,
+    pub(crate) projection: Option<WorkspaceProjection>,
+}
+
+pub(crate) struct ProjectedWorkspace {
+    pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) projection: Option<WorkspaceProjection>,
+}
+
+impl ProjectedWorkspace {
+    pub(crate) fn has_errors(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == Severity::Error)
+    }
+}
+
+pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
+    compile_with_provider_and_projection(provider).result
+}
+
+pub(crate) fn compile_with_provider_and_projection<P: SourceProvider>(
+    provider: &P,
+) -> CompiledWorkspace {
+    run_compile_pipeline(provider, None, local_today())
+}
+
+#[cfg(test)]
 pub(crate) fn compile_with_provider_for_date<P: SourceProvider>(
     provider: &P,
     today: NaiveDate,
 ) -> CompileResult {
-    run_compile_pipeline(provider, None, today)
+    run_compile_pipeline(provider, None, today).result
 }
 
 pub(crate) fn build_with_provider<P: SourceProvider>(
@@ -97,7 +128,7 @@ pub(crate) fn build_with_provider_for_date<P: SourceProvider>(
     options: BuildOptions<'_>,
     today: NaiveDate,
 ) -> CompileResult {
-    run_compile_pipeline(provider, Some(options), today)
+    run_compile_pipeline(provider, Some(options), today).result
 }
 
 pub(crate) struct BuildOptions<'a> {
@@ -120,7 +151,7 @@ fn run_compile_pipeline<P: SourceProvider>(
     provider: &P,
     mut build_options: Option<BuildOptions<'_>>,
     today: NaiveDate,
-) -> CompileResult {
+) -> CompiledWorkspace {
     let analysis = analyze_with_provider_for_date(provider, today);
     let WorkspaceAnalysis {
         workspace,
@@ -136,11 +167,25 @@ fn run_compile_pipeline<P: SourceProvider>(
         Some(today),
     );
     let artifacts = artifact_result.artifacts;
+    let projection = artifact_result.projection;
     diagnostics.extend(artifact_result.diagnostics);
     sort_diagnostics_by_source(&mut diagnostics);
-    CompileResult {
-        diagnostics,
-        artifacts,
+    CompiledWorkspace {
+        result: CompileResult {
+            diagnostics,
+            artifacts,
+        },
+        projection,
+    }
+}
+
+pub(crate) fn project_with_provider<P: SourceProvider>(provider: &P) -> ProjectedWorkspace {
+    let today = local_today();
+    let analysis = analyze_with_provider_for_date(provider, today);
+    let projection = project_workspace(&analysis.workspace, &analysis.diagnostics, Some(today));
+    ProjectedWorkspace {
+        diagnostics: analysis.diagnostics,
+        projection,
     }
 }
 
@@ -287,6 +332,7 @@ fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Opti
 struct ArtifactBuildResult {
     artifacts: Option<BuildArtifacts>,
     diagnostics: Vec<Diagnostic>,
+    projection: Option<WorkspaceProjection>,
 }
 
 fn emit_artifacts(
@@ -302,6 +348,7 @@ fn emit_artifacts(
         return ArtifactBuildResult {
             artifacts: None,
             diagnostics: Vec::new(),
+            projection: None,
         };
     }
 
@@ -310,13 +357,16 @@ fn emit_artifacts(
         .filter(|diagnostic| diagnostic.code != DiagnosticCode::BuildEmbeddingsSkipped)
         .cloned()
         .collect::<Vec<_>>();
-    let graph_document = GraphJsonArtifact.build_for_date(workspace, &graph_diagnostics, today);
-    let graph_json = match graph_document.to_pretty_json() {
+    let projection = WorkspaceProjection {
+        graph: GraphJsonArtifact.build_for_date(workspace, &graph_diagnostics, today),
+    };
+    let graph_json = match projection.graph.to_pretty_json() {
         Ok(graph_json) => graph_json,
         Err(error) => {
             return ArtifactBuildResult {
                 artifacts: None,
                 diagnostics: vec![artifact_serialization_diagnostic("graph", error)],
+                projection: None,
             };
         }
     };
@@ -332,7 +382,7 @@ fn emit_artifacts(
         #[cfg(test)]
         Some(BuildEmbeddingBehavior::Enabled { provider }) => {
             match build_search_artifact(
-                &graph_document,
+                &projection.graph,
                 &graph_json,
                 *provider,
                 prior_search_artifact_path.as_ref(),
@@ -355,6 +405,7 @@ fn emit_artifacts(
                             search_json: None,
                         }),
                         diagnostics,
+                        projection: Some(projection),
                     };
                 }
             }
@@ -370,11 +421,12 @@ fn emit_artifacts(
                             search_json: None,
                         }),
                         diagnostics: vec![embedding_error_diagnostic(error)],
+                        projection: Some(projection),
                     };
                 }
             };
             match build_search_artifact(
-                &graph_document,
+                &projection.graph,
                 &graph_json,
                 provider.as_ref(),
                 prior_search_artifact_path.as_ref(),
@@ -397,6 +449,7 @@ fn emit_artifacts(
                             search_json: None,
                         }),
                         diagnostics,
+                        projection: Some(projection),
                     };
                 }
             }
@@ -411,7 +464,24 @@ fn emit_artifacts(
             search_json,
         }),
         diagnostics: artifact_diagnostics,
+        projection: Some(projection),
     }
+}
+
+fn project_workspace(
+    workspace: &WorkspaceAst,
+    diagnostics: &[Diagnostic],
+    today: Option<NaiveDate>,
+) -> Option<WorkspaceProjection> {
+    if diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.severity == Severity::Error)
+    {
+        return None;
+    }
+    Some(WorkspaceProjection {
+        graph: GraphJsonArtifact.build_for_date(workspace, diagnostics, today),
+    })
 }
 
 fn artifact_serialization_diagnostic(artifact: &str, error: impl std::fmt::Display) -> Diagnostic {

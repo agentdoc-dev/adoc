@@ -33,6 +33,19 @@ fn patch_application_layer_does_not_reference_infrastructure() {
 }
 
 #[test]
+fn review_and_apply_do_not_round_trip_compiler_graph_json() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for relative in ["src/application/review.rs", "src/application/apply.rs"] {
+        let source = std::fs::read_to_string(manifest_dir.join(relative)).unwrap();
+        let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+        assert!(
+            !production.contains("serde_json::from_str"),
+            "{relative} must consume the compiler's typed projection instead of reparsing graph JSON"
+        );
+    }
+}
+
+#[test]
 fn public_surface_compiles_with_only_documented_imports() {
     // Construct a CompileInput so the type is exercised, not just imported.
     let input = CompileInput {
