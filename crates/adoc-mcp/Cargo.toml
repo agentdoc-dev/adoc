@@ -14,7 +14,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 adoc-core = { path = "../adoc-core" }
 adoc-local = { path = "../adoc-local" }
-rmcp = { version = "1.5.0", features = ["server", "macros", "transport-io"] }
+rmcp = { version = "2.2.0", features = ["server", "macros", "transport-io"] }
 schemars = { version = "1.0.4", features = ["derive"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
