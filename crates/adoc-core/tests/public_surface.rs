@@ -86,6 +86,7 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::RetrievalObjectNotFound;
     let _ = DiagnosticCode::SearchInvalidFilter;
     let _ = DiagnosticCode::BuildEmbeddingsCacheIgnored;
+    let _ = DiagnosticCode::BuildArtifactSerializationFailed;
     let _ = DiagnosticCode::GraphObjectNotFound;
     let _ = DiagnosticCode::PatchInvalidDocument;
     let _ = DiagnosticCode::PatchValidationFailed;
@@ -184,6 +185,10 @@ fn public_surface_compiles_with_only_documented_imports() {
     assert_eq!(
         DiagnosticCode::BuildEmbeddingsCacheIgnored.as_str(),
         "build.embeddings_cache_ignored"
+    );
+    assert_eq!(
+        DiagnosticCode::BuildArtifactSerializationFailed.as_str(),
+        "build.artifact_serialization_failed"
     );
     assert_eq!(
         DiagnosticCode::GraphObjectNotFound.as_str(),

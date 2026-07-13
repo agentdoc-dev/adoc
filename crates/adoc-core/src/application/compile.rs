@@ -68,6 +68,12 @@ pub struct BuildArtifacts {
     pub search_json: Option<String>,
 }
 
+/// Validated, typed compiler state before any output adapter runs.
+pub(crate) struct WorkspaceAnalysis {
+    pub(crate) workspace: WorkspaceAst,
+    pub(crate) diagnostics: Vec<Diagnostic>,
+}
+
 pub(crate) fn compile_with_provider<P: SourceProvider>(provider: &P) -> CompileResult {
     compile_with_provider_for_date(provider, local_today())
 }
@@ -115,9 +121,36 @@ fn run_compile_pipeline<P: SourceProvider>(
     mut build_options: Option<BuildOptions<'_>>,
     today: NaiveDate,
 ) -> CompileResult {
+    let analysis = analyze_with_provider_for_date(provider, today);
+    let WorkspaceAnalysis {
+        workspace,
+        mut diagnostics,
+    } = analysis;
+    if let Some(options) = &build_options {
+        diagnostics.extend(build_embedding_diagnostics(options));
+    }
+    let artifact_result = emit_artifacts(
+        &workspace,
+        &diagnostics,
+        build_options.as_mut(),
+        Some(today),
+    );
+    let artifacts = artifact_result.artifacts;
+    diagnostics.extend(artifact_result.diagnostics);
+    sort_diagnostics_by_source(&mut diagnostics);
+    CompileResult {
+        diagnostics,
+        artifacts,
+    }
+}
+
+pub(crate) fn analyze_with_provider_for_date<P: SourceProvider>(
+    provider: &P,
+    today: NaiveDate,
+) -> WorkspaceAnalysis {
     // Pipeline stages: load → validate-source-pages → resolve-KOs →
     // resolve-object-references → validate-resolved-pages → assemble →
-    // validate-workspace → build. Each stage is a separate function below so
+    // validate-workspace. Each stage is a separate function below so
     // it can be unit-tested in isolation and the orchestrator reads as a
     // sequence of named domain operations rather than one walls-of-text loop.
     // Pages move through the pipeline without cloning. See ADR-0006 addendum.
@@ -139,21 +172,10 @@ fn run_compile_pipeline<P: SourceProvider>(
     diagnostics.extend(validate_resolved_pages(&parsed, today));
     let workspace = assemble_workspace(parsed);
     diagnostics.extend(validate_workspace(&workspace));
-    if let Some(options) = &build_options {
-        diagnostics.extend(build_embedding_diagnostics(options));
-    }
-    let artifact_result = build_artifacts_for_build(
-        &workspace,
-        &diagnostics,
-        build_options.as_mut(),
-        Some(today),
-    );
-    let artifacts = artifact_result.artifacts;
-    diagnostics.extend(artifact_result.diagnostics);
     sort_diagnostics_by_source(&mut diagnostics);
-    CompileResult {
+    WorkspaceAnalysis {
+        workspace,
         diagnostics,
-        artifacts,
     }
 }
 
@@ -255,12 +277,11 @@ fn assemble_workspace(parsed: Vec<(SourceFile, PageAst)>) -> WorkspaceAst {
     }
 }
 
-/// Gate artifacts on diagnostic severity: produce derived read artifacts only
-/// when no diagnostic has `Severity::Error`. ArtifactWriter ports are
-/// statically dispatched per ADR-0006.
+/// Gate output adapters on diagnostic severity: produce derived read artifacts
+/// only when no diagnostic has `Severity::Error`.
 #[cfg(test)]
 fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Option<BuildArtifacts> {
-    build_artifacts_for_build(workspace, diagnostics, None, None).artifacts
+    emit_artifacts(workspace, diagnostics, None, None).artifacts
 }
 
 struct ArtifactBuildResult {
@@ -268,7 +289,7 @@ struct ArtifactBuildResult {
     diagnostics: Vec<Diagnostic>,
 }
 
-fn build_artifacts_for_build(
+fn emit_artifacts(
     workspace: &WorkspaceAst,
     diagnostics: &[Diagnostic],
     mut build_options: Option<&mut BuildOptions<'_>>,
@@ -290,9 +311,15 @@ fn build_artifacts_for_build(
         .cloned()
         .collect::<Vec<_>>();
     let graph_document = GraphJsonArtifact.build_for_date(workspace, &graph_diagnostics, today);
-    let graph_json = graph_document
-        .to_pretty_json()
-        .expect("graph artifact serialization should not fail");
+    let graph_json = match graph_document.to_pretty_json() {
+        Ok(graph_json) => graph_json,
+        Err(error) => {
+            return ArtifactBuildResult {
+                artifacts: None,
+                diagnostics: vec![artifact_serialization_diagnostic("graph", error)],
+            };
+        }
+    };
     let html = HtmlRenderer.render_workspace_for_date(workspace, today);
     let prior_search_artifact_path = build_options
         .as_ref()
@@ -387,6 +414,13 @@ fn build_artifacts_for_build(
     }
 }
 
+fn artifact_serialization_diagnostic(artifact: &str, error: impl std::fmt::Display) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::BuildArtifactSerializationFailed,
+        format!("could not serialize {artifact} artifact: {error}"),
+    )
+}
+
 fn sort_diagnostics_by_source(diagnostics: &mut [Diagnostic]) {
     diagnostics.sort_by(|left, right| match (&left.span, &right.span) {
         (Some(left_span), Some(right_span)) => left_span
@@ -441,6 +475,19 @@ mod tests {
 
         assert!(!result.has_errors());
         assert!(result.artifacts.is_some(), "expected artifacts to be built");
+    }
+
+    #[test]
+    fn analysis_returns_validated_workspace_before_artifact_emission() {
+        let provider = InMemorySourceProvider::new().with_source(source_file(
+            "guide.adoc",
+            "# Guide @doc(team.guide)\n\nHello.\n",
+        ));
+
+        let analysis = analyze_with_provider_for_date(&provider, fixed_today());
+
+        assert_eq!(analysis.workspace.pages.len(), 1);
+        assert!(analysis.diagnostics.is_empty());
     }
 
     #[test]
