@@ -213,6 +213,31 @@ Questions to resolve later:
 
 - Should the comment include the V8.4.2 health delta once `adoc health` ships, or does that belong in a scheduled weekly job instead of per-PR? (Decide on partner feedback; the markdown presenter makes either a one-line change.)
 
+### V8.3.3: Composite Action Slice
+
+**Supersedes the V8.3.2 packaging paragraph — see ADR-0047.** The composite
+Action ships ahead of the reserved ADR-0044 adoption threshold: Marketplace
+distribution is MVP surface, and advisory-first rollout needs a pinnable
+maintained artifact rather than a drifting snippet. The V8.3.2 snippet lives
+on verbatim as the internals of `agentdoc-dev/action`.
+
+Scope:
+
+- `.github/workflows/release.yml` in this repo: tag-triggered prebuilt `adoc`
+  binaries (Linux x86_64 + arm64, sha256) — the action's install source.
+- `agentdoc-dev/action`: composite `action.yml` (inputs `enforcement`, `scope`,
+  `adoc-version`, `working-directory`, `github-token`), problem-matcher
+  annotations, marker-keyed sticky Review Report comment with a deterministic
+  "Proposed Knowledge Objects" section, fixture-based integration workflow.
+- `.github/workflows/adoc-pr.yml` consumes the released action in advisory
+  mode; `docs/guides/ci-integration.md` leads with the action, raw snippet
+  demoted to an appendix (V8.3.2's `docs/ci-integration.md` would derive a
+  one-segment page ID the Object ID grammar rejects — ADR-0047).
+
+Commit shape: `feat(ci): tagged release workflow with prebuilt adoc binaries (V8.3.3)` → `docs(v8): ADR-0047 composite action packaging (V8.3.3)` → `chore(ci): adoc-pr workflow via agentdoc-dev/action, advisory mode (V8.3.3)` → `docs(v8): ci-integration guide for partners (V8.3.3)`.
+
+Acceptance: unchanged from V8.3.2 — a real PR in this repository shows the comment; the advisory→strict decision is recorded in the workflow file's history.
+
 ---
 
 ## V8.4: Contract Freeze and Knowledge Health
