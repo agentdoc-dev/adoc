@@ -2,7 +2,9 @@
 
 Run AgentDoc on every pull request: Strict Mode validation, impacted
 knowledge, and proposed new Knowledge Objects, posted as one in-place-updated
-**Review Report** comment.
+**AgentDoc PR Report** comment. (Not to be confused with the Review Report
+aggregate `adoc.review.v0` produced by `adoc review` — the comment composes
+`adoc check` and the Impacted Query.)
 
 ## GitHub Actions (recommended)
 
@@ -19,6 +21,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # required for the Impacted Query (--ref)
+          persist-credentials: false
       - uses: agentdoc-dev/action@v1
 ```
 
@@ -43,12 +46,12 @@ sha256sum -c adoc-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 tar -xzf adoc-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
 
 # validate and query (from the directory holding agentdoc.config.yaml)
-./adoc build --no-embeddings
+./adoc build --no-embeddings || true             # build exit 1 = corpus errors; check is the gate
 ./adoc check --format markdown > check.md        # exit 1 on errors = your gate
 ./adoc impacted-by --ref origin/main --format markdown > impacted.md
 
 # post/update one PR comment keyed on the marker
-printf '<!-- adoc:pr-report -->\n## AgentDoc Review Report\n\n' > report.md
+printf '<!-- adoc:pr-report -->\n## AgentDoc PR Report\n\n' > report.md
 cat check.md impacted.md >> report.md
 # upsert report.md as a comment with your CI's API of choice,
 # matching an existing comment whose body starts with the marker

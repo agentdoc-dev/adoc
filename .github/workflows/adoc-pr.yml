@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   report:
-    name: Review Report
+    name: PR Report
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

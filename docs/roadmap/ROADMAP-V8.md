@@ -227,7 +227,7 @@ Scope:
   binaries (Linux x86_64 + arm64, sha256) — the action's install source.
 - `agentdoc-dev/action`: composite `action.yml` (inputs `enforcement`, `scope`,
   `adoc-version`, `working-directory`, `github-token`), problem-matcher
-  annotations, marker-keyed sticky Review Report comment with a deterministic
+  annotations, marker-keyed sticky PR-report comment with a deterministic
   "Proposed Knowledge Objects" section, fixture-based integration workflow.
 - `.github/workflows/adoc-pr.yml` consumes the released action in advisory
   mode; `docs/guides/ci-integration.md` leads with the action, raw snippet

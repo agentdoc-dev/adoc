@@ -43,7 +43,11 @@ evidence.
    paths any Impacted Query hit claims (`adoc.impacted.v0`). The comment's
    "Proposed Knowledge Objects" section is the reserved seam for a later
    Agent-Patch drafting tier (`create_object` ops); that tier arrives behind
-   a then-new input, so no dead inputs exist today.
+   a then-new input, so no dead inputs exist today. Accepted debt against
+   decision 1: this set-difference currently lives as jq in the action; the
+   follow-up slice moves it into the CLI (an uncovered-paths field on
+   `adoc.impacted.v0` or its markdown presenter) so MCP and non-GitHub CI
+   consumers see the same proposals.
 
 ## Consequences
 
