@@ -37,8 +37,8 @@ The action is a thin wrapper around exactly this sequence:
 
 ```sh
 # install a released binary (or: cargo install --path crates/adoc-cli --locked)
-curl -fsSLO https://github.com/alex-bako/adoc/releases/download/v0.1.0/adoc-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
-curl -fsSLO https://github.com/alex-bako/adoc/releases/download/v0.1.0/adoc-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
+curl -fsSLO https://github.com/agentdoc-dev/adoc/releases/download/v0.1.0/adoc-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
+curl -fsSLO https://github.com/agentdoc-dev/adoc/releases/download/v0.1.0/adoc-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 sha256sum -c adoc-v0.1.0-x86_64-unknown-linux-gnu.tar.gz.sha256
 tar -xzf adoc-v0.1.0-x86_64-unknown-linux-gnu.tar.gz
 
