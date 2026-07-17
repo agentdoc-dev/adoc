@@ -27,9 +27,24 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         run: rustup toolchain install --no-self-update
+
+      - name: Cache Cargo data
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-release-${{ hashFiles('rust-toolchain.toml', '**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-cargo-release-
 
       - name: Build release binary
         run: cargo build --release --locked -p adoc-cli
@@ -47,7 +62,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --generate-notes || true
+          # Both matrix legs race to create the release; a create failure is
+          # only tolerable when the release already exists — anything else
+          # (auth, policy) must fail the step, not surface later as a
+          # confusing upload error.
+          gh release create "$GITHUB_REF_NAME" --generate-notes \
+            || gh release view "$GITHUB_REF_NAME" > /dev/null
           gh release upload "$GITHUB_REF_NAME" --clobber \
             "adoc-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz" \
             "adoc-${GITHUB_REF_NAME}-${{ matrix.target }}.tar.gz.sha256"
