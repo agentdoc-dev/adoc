@@ -1,0 +1,32 @@
+name: AgentDoc PR Report
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    name: Review Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Flip enforcement to strict after one clean week (§24.3); record the
+      # flip in this file's history.
+      - uses: agentdoc-dev/action@v1
+        with:
+          enforcement: advisory
