@@ -315,6 +315,58 @@ fn check_rejects_unsafe_link_with_source_location() {
 }
 
 #[test]
+fn check_warns_on_drifted_evidence_anchor_and_exits_zero() {
+    let workspace = TestWorkspace::new("check-evidence-anchor-drift");
+    workspace.write("src/consume.ts", "export const consume = 1;\n");
+    let stale_hash = format!("sha256:{}", "a".repeat(64));
+    workspace.write(
+        "docs/index.adoc",
+        &format!(
+            "# Billing @doc(team.billing)\n\n::source billing.consume\nkind: source_code\npath: src/consume.ts\nhash: {stale_hash}\n--\nConsume implementation.\n::\n"
+        ),
+    );
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check"])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        output.status.success(),
+        "anchor drift is a warning and must not fail check\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("warning[evidence.hash_drift]"),
+        "expected evidence.hash_drift warning:\n{stdout}"
+    );
+    assert!(
+        stdout.contains(&stale_hash),
+        "help should name the expected (authored) hash:\n{stdout}"
+    );
+    assert!(stdout.contains("0 errors, 1 warnings"), "{stdout}");
+
+    let markdown = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", "--format", "markdown"])
+        .output()
+        .expect("adoc check --format markdown runs");
+    assert!(markdown.status.success());
+    let markdown_stdout = String::from_utf8_lossy(&markdown.stdout);
+    assert!(
+        markdown_stdout.contains("evidence.hash_drift"),
+        "markdown report should carry the drift code:\n{markdown_stdout}"
+    );
+}
+
+#[test]
 fn build_renders_v0_1_prose_fixture_to_graph_json() {
     let workspace = TestWorkspace::new("build-renders-prose-golden-graph");
     let fixture_contents = fs::read_to_string(fixture_path("v0_1/prose_page.adoc"))
