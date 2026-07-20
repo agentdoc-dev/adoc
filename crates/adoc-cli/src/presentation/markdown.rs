@@ -1,5 +1,7 @@
-//! Markdown presenter for `adoc diff`, `adoc review`, `adoc impacted-by`
-//! (V6.3), and `adoc check` (V8.3.1).
+//! Markdown presenter for `adoc diff`, `adoc review`, `adoc impacted-by`,
+//! and `adoc check`. The check and impacted-by bodies are embeddable
+//! (heading-free, repo-relative paths — V8.3.4); the diff/review shape below
+//! is frozen.
 //!
 //! Produces GitHub-flavored Markdown that pastes cleanly into a PR review
 //! comment. The V3.5 diff/review shape is frozen at slice time:
