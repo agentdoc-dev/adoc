@@ -7,8 +7,11 @@ use crate::domain::value_objects::rel_path::RelPath;
 
 /// Reads anchored evidence files relative to the project's anchor root
 /// (the discovered config directory, else the context start directory).
-/// `RelPath` already rejects `..` segments and absolute paths, so the join
-/// cannot escape the root.
+/// Containment is lexical only: `RelPath` rejects `..` segments and
+/// absolute paths, but `std::fs::read` follows symlinks, so a symlinked
+/// target resolves wherever the filesystem points. Accepted (ADR-0048):
+/// this is a read-only pass over an author-controlled tree, and refusing
+/// symlinks would break legitimate in-repo links.
 pub(crate) struct FsEvidenceFileReader {
     root: PathBuf,
 }

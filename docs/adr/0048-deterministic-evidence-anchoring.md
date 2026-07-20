@@ -81,6 +81,11 @@ the cited file; that noise is priced in (see Rejected).
   on every PR. The graph artifact already carries source-object fields, so
   a future artifact-side consumer needs no schema bump. Revisit on agent
   demand.
+- **Symlink containment** (canonicalize-and-verify or rejecting symlinked
+  targets) — containment under the anchor root is lexical only; the read
+  follows symlinks and hashes whatever bytes the filesystem serves at the
+  authored path. The pass is read-only over an author-controlled tree, and
+  refusing symlinks would break legitimate in-repo links.
 
 ## Relationships
 
