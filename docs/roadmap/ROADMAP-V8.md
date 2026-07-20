@@ -317,6 +317,46 @@ Deferred: an MCP `adoc_health` tool (`adoc_project_status` covers agent self-ori
 
 ---
 
+## V8.5: Evidence Anchor
+
+### V8.5.1: Deterministic Evidence Anchoring Slice
+
+Goal: consume the inert `hash` field on path-target `source` objects so
+`adoc check` deterministically detects "the cited bytes changed since
+verification" — the LLM-free ceiling of code-vs-knowledge drift detection.
+**ADR-0048 — Deterministic evidence anchoring** at slice start.
+
+Scope:
+
+- Value object `AnchorHash` (`sha256:` + 64 lowercase hex — the existing
+  `sha256_prefixed` format); internal port `EvidenceFileReader` with fs
+  adapter; I/O-bearing pass `application/evidence_anchor.rs` run only by the
+  check entry (build/review/diff/patch recompiles stay anchor-free).
+- Four warning codes: `evidence.hash_drift` (expected/actual in help),
+  `evidence.hash_target_missing`, `evidence.hash_invalid` (actual hash in
+  help — the bootstrap path), `evidence.hash_unverifiable` (hash on a url
+  source). Warnings never fail; no envelope or schema change — the feature
+  is diagnostics-only, so the V8.4.1 stable-at-v0 declarations are untouched.
+- Anchor root: discovered config directory, else the context start — the
+  impacted-by git-discovery seam.
+
+Commit shape: `docs(v8): ADR-0048 deterministic evidence anchoring` →
+`feat(core): evidence anchor hash verification in adoc check (V8.5.1)` →
+`feat(local): anchor root resolution for check (V8.5.1)` →
+`test(cli): check_cli anchor fixtures + source-guide truth-up (V8.5.1)`.
+
+Acceptance: an anchored, drifted source warns `evidence.hash_drift` with
+expected and actual hashes in help and exit code 0; a corpus without `hash`
+fields compiles byte-identically (recording-reader test proves zero reads);
+`docs/agent/v0/source-guide.md` names the enforced format (docs-truth).
+
+Deferred: `symbol` presence check (`evidence.symbol_missing`, on partner
+friction); drifted-anchor counts as an `adoc health` input (coordinate with
+ADR-0046); a machine-readable drift envelope (on agent demand — the graph
+already carries source fields, no bump needed).
+
+---
+
 ## Contract and Versioning Inventory
 
 | Envelope / artifact | Change | Milestone |
@@ -333,6 +373,7 @@ ADRs to record at slice start (continuing from ADR-0042, reserved by ROADMAP-V7;
 - **ADR-0044** — External pilot thresholds: the §8.3 partner profile, per-Later-item numeric un-gating gates fixed before the first partner session, redaction rules for external corpora, and the composite-Action packaging threshold for the V8.3 snippet. Extends the ADR-0042 mechanism from dogfood to external evidence.
 - **ADR-0045** — Contract stability policy: the frozen / stable-at-v0 / experimental taxonomy, the four v0→v1 promotions, the one-cycle schema-publication window, and the deliberate decision not to renumber shape-unchanged envelopes. CONTRACTS.md plus the guard test become the registry.
 - **ADR-0046** — Knowledge health composition: the §14.5 component set, the weight-free composite formula, and the §51 North-Star numerator definition (verified-and-retrievable). Health is an artifact, not a check: exit 0 always; thresholds deferred.
+- **ADR-0048** — Deterministic evidence anchoring: the `hash` field on path-target source objects becomes a verified whole-file sha256 anchor checked at `adoc check` time through the `EvidenceFileReader` port; four warning codes; opt-in; the deterministic ceiling of code-vs-knowledge drift detection (semantic judgment stays human).
 
 ## Risks and Invariants
 
