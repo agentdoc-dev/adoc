@@ -1053,8 +1053,9 @@ fn impacted_by_input_shapes_are_mutually_exclusive_and_one_is_required() {
     );
 }
 
-/// `--format markdown` renders the V3.5-style PR-comment shape: an
-/// `## Impacted by` header plus the proof-obligations task list.
+/// `--format markdown` renders the V8.3.4 embeddable PR-comment shape: a
+/// count-first changed-paths line with the list collapsed in `<details>`,
+/// plus the proof-obligations task list under a bold label.
 #[test]
 fn impacted_by_markdown_renders_header_and_obligation_task_list() {
     let workspace = build_billing_pilot_with_impacts("impacted-by-markdown");
@@ -1079,8 +1080,12 @@ fn impacted_by_markdown_renders_header_and_obligation_task_list() {
     );
     let stdout = stdout(&output);
     assert!(
-        stdout.contains("## Impacted by"),
-        "markdown must open with the impacted-by header; got:\n{stdout}"
+        stdout.contains("**Impacted by** 1 changed paths"),
+        "markdown must open with the count-first changed-paths line; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("<details>") && stdout.contains("<summary>Changed paths</summary>"),
+        "changed paths must collapse into a details block; got:\n{stdout}"
     );
     assert!(
         stdout.contains("`billing.refunds`"),
@@ -1089,6 +1094,10 @@ fn impacted_by_markdown_renders_header_and_obligation_task_list() {
     assert!(
         stdout.contains("`crates/billing/src/refund.rs`"),
         "matched path must be code-quoted; got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("**Proof obligations**"),
+        "obligations must sit under a bold label, not a heading; got:\n{stdout}"
     );
     assert!(
         stdout.contains("- [ ] `billing.refunds`"),
