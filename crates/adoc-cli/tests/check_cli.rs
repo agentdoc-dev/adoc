@@ -2693,6 +2693,41 @@ fn check_markdown_warnings_only_exits_zero_with_suggestion() {
     );
 }
 
+/// V8.3.4: stderr diagnostics feed a GitHub problem matcher, which needs
+/// repo-relative paths to annotate PR files — absolute runner paths never
+/// match a repo file, so the annotations silently vanish.
+#[test]
+fn check_stderr_diagnostics_are_repo_relative() {
+    let workspace = TestWorkspace::new("check-stderr-relative-paths");
+    write_fixture_to_workspace(&workspace, "v8_3/broken.adoc", "broken.adoc");
+
+    let root = workspace
+        .root
+        .canonicalize()
+        .expect("workspace root canonicalizes");
+    let output = adoc_command()
+        .current_dir(&root)
+        .args([
+            "check",
+            root.to_str().expect("root path is utf-8"),
+            "--format",
+            "markdown",
+        ])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.lines().any(|line| line.starts_with("broken.adoc:")),
+        "expected repo-relative diagnostic paths on stderr, got:\n{stderr}"
+    );
+    assert!(
+        !stderr.contains(root.to_str().expect("root path is utf-8")),
+        "expected no absolute workspace prefix on stderr, got:\n{stderr}"
+    );
+}
+
 /// Lifting the rejection for `check` must not lift it for anything else:
 /// commands without a markdown presenter still exit 2.
 #[test]
