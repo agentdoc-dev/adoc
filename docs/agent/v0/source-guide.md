@@ -25,7 +25,7 @@ Source objects appear in `adoc.graph.v4` nodes with `kind: "source"`. Evidence k
 | `symbol` | Exported symbol name within the artefact (e.g. a function or class) |
 | `commit` | Git commit SHA at which the artefact was last reviewed |
 | `last_seen_at` | Date the artefact was last verified (ISO 8601) |
-| `hash` | Content hash of the artefact at review time (e.g. `sha256:deadbeef`) |
+| `hash` | Evidence Anchor (ADR-0048): `sha256:` + 64 lowercase hex over the cited file's full bytes (`shasum -a 256 <file>`). On path-target sources `adoc check` re-hashes the file and warns `evidence.hash_drift` when the content changed, `evidence.hash_target_missing` when the path is gone, and `evidence.hash_invalid` for malformed values (the help carries the actual hash). On url-target sources a `hash` warns `evidence.hash_unverifiable`. Warnings never fail check |
 
 ## Evidence kind vocabulary
 
