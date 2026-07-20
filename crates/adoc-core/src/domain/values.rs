@@ -74,6 +74,10 @@ impl OptionalFields {
         self.0.iter()
     }
 
+    pub(crate) fn get(&self, key: &str) -> Option<&str> {
+        self.0.get(key).map(String::as_str)
+    }
+
     #[cfg(test)]
     pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()

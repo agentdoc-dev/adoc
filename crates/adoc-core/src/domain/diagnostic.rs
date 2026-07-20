@@ -340,6 +340,25 @@ diagnostic_codes! {
     /// output time without touching the authored field.
     SchemaClaimContradictedByUnresolved = "schema.claim_contradicted_by_unresolved" =>
         "This claim is referenced by an unresolved contradiction. Consider setting `status: contradicted` on the claim to make its effective state explicit. The effective_status is already projected as `contradicted` in graph and HTML output regardless of the authored status.";
+    /// V8.5.1 (ADR-0048): an anchored source's cited file bytes no longer
+    /// match the authored `hash` — changed, not necessarily wrong; the
+    /// semantic judgment stays human. Per-diagnostic help carries the
+    /// expected and actual hashes.
+    EvidenceHashDrift = "evidence.hash_drift" =>
+        "The cited file's content changed since this source was anchored. Re-verify the knowledge citing it, then update `hash:` to the actual content hash and refresh `last_seen_at`.";
+    /// V8.5.1 (ADR-0048): an anchored source's `path` does not exist or
+    /// cannot be read under the anchor root.
+    EvidenceHashTargetMissing = "evidence.hash_target_missing" =>
+        "Check that the anchored `path` exists relative to the project root and is readable, or update the source object's `path`.";
+    /// V8.5.1 (ADR-0048): a `hash` value is not `sha256:` + 64 lowercase
+    /// hex. Per-diagnostic help carries the file's actual hash when
+    /// readable — the bootstrap path for authoring anchors.
+    EvidenceHashInvalid = "evidence.hash_invalid" =>
+        "Use `sha256:` followed by 64 lowercase hex characters, e.g. from `shasum -a 256 <file>`.";
+    /// V8.5.1 (ADR-0048): a `hash` anchor on a url-target source; URLs are
+    /// not verifiable offline.
+    EvidenceHashUnverifiable = "evidence.hash_unverifiable" =>
+        "Evidence anchors apply to `path` sources only; remove `hash` from url-target sources.";
     /// V6.3: a positional `adoc impacted-by` path argument is not a valid
     /// repo-relative path (absolute, escaping, or empty).
     ImpactedInvalidPath = "impacted.invalid_path" =>

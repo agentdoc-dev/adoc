@@ -7,6 +7,7 @@
 
 pub(crate) mod action;
 pub(crate) mod action_set;
+pub(crate) mod anchor_hash;
 pub(crate) mod approved_by;
 pub(crate) mod contradiction_claims;
 pub(crate) mod contradiction_status;

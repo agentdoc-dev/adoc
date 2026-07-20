@@ -131,6 +131,25 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
     application::compile::compile_with_provider(&provider)
 }
 
+/// V8.5.1 (ADR-0048): [`compile_workspace`] plus Evidence Anchor
+/// verification — anchored `source` paths are re-hashed against
+/// `anchor_root`. `None` behaves exactly like [`compile_workspace`]; only
+/// the check entry passes `Some`.
+#[tracing::instrument(level = "debug", skip_all)]
+pub fn compile_workspace_with_anchor_root(
+    input: CompileInput,
+    anchor_root: Option<std::path::PathBuf>,
+) -> CompileResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
+    match anchor_root {
+        Some(root) => {
+            let reader = infrastructure::source::evidence_fs::FsEvidenceFileReader::new(root);
+            application::compile::compile_with_provider_anchored(&provider, &reader)
+        }
+        None => application::compile::compile_with_provider(&provider),
+    }
+}
+
 /// V8.1.1: convert every Compatibility Mode (`.md`) source under `root` to
 /// canonical prose-mode `.adoc` text (ADR-0043). Performs no writes — the
 /// result carries the rendered text per file; the local adapter executes
