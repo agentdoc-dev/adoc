@@ -124,6 +124,66 @@ fn check_uses_configured_docs_path_and_returns_diagnostics_without_printing() {
 }
 
 #[test]
+fn check_verifies_evidence_anchors_against_the_config_root() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("src/consume.ts"), "export const consume = 1;\n");
+    write(
+        &root.join("docs/index.adoc"),
+        &format!(
+            "# Billing @doc(team.billing)\n\n::source billing.consume\nkind: source_code\npath: src/consume.ts\nhash: sha256:{}\n--\nConsume implementation.\n::\n",
+            "a".repeat(64)
+        ),
+    );
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+
+    let outcome = context(root)
+        .check(CheckInput { path: None })
+        .expect("check should run");
+
+    assert_eq!(outcome.exit_code, 0, "anchor warnings never fail check");
+    assert!(
+        outcome
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == adoc_core::DiagnosticCode::EvidenceHashDrift),
+        "expected evidence.hash_drift, got: {:?}",
+        outcome.diagnostics
+    );
+}
+
+#[test]
+fn check_with_explicit_path_resolves_anchors_from_the_context_start() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(
+        &root.join("docs/index.adoc"),
+        &format!(
+            "# Billing @doc(team.billing)\n\n::source billing.consume\nkind: source_code\npath: src/absent.ts\nhash: sha256:{}\n--\nConsume implementation.\n::\n",
+            "a".repeat(64)
+        ),
+    );
+
+    let outcome = context(root)
+        .check(CheckInput {
+            path: Some(root.join("docs")),
+        })
+        .expect("check should run");
+
+    assert_eq!(outcome.exit_code, 0);
+    assert!(
+        outcome.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == adoc_core::DiagnosticCode::EvidenceHashTargetMissing
+        }),
+        "expected evidence.hash_target_missing, got: {:?}",
+        outcome.diagnostics
+    );
+}
+
+#[test]
 fn build_writes_artifacts_and_reports_written_paths() {
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();

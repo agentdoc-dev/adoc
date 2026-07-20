@@ -18,7 +18,7 @@ use adoc_core::{
     SearchQuery, SearchRecordScope, Severity, SnapshotSelector, StaleEnvelope,
     apply_patch as core_apply_patch, build_workspace_with_embedding_provider,
     changed_files_from_git, changed_paths_strings, check_patch as core_check_patch,
-    compile_workspace, diff_objects, embed_query_with_embedding_provider,
+    compile_workspace_with_anchor_root, diff_objects, embed_query_with_embedding_provider,
     empty_contradictions_envelope, empty_impacted_envelope, empty_stale_envelope,
     evaluate_contradictions, evaluate_impacted, evaluate_stale, export_workspace,
     git_review_available, inspect_graph_artifact, inspect_search_artifact, load_graph_session,
@@ -501,9 +501,17 @@ where
         .map(|path| context.path_policy().resolve_read_path(path))
         .transpose()?;
     let config = discover_project_config_if(path.is_none(), context.config_start())?;
+    // Evidence Anchors (ADR-0048) resolve against the project root: the
+    // discovered config's directory, else the context start — the same seam
+    // impacted-by uses for git discovery. Only check threads this; build,
+    // review, diff, and patch recompiles stay anchor-free.
+    let anchor_root = config
+        .as_ref()
+        .and_then(|config| config.path.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| context.config_start().to_path_buf());
     let path = resolve_docs_path_with_config(path, config.as_ref())?;
     let path = context.path_policy().resolve_read_path(&path)?;
-    let result = compile_workspace(CompileInput { root: path });
+    let result = compile_workspace_with_anchor_root(CompileInput { root: path }, Some(anchor_root));
     let exit_code = if result.has_errors() { 1 } else { 0 };
 
     Ok(CheckOutcome {
