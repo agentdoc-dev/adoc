@@ -7,7 +7,7 @@ pub(crate) mod styled;
 pub(crate) mod terminal;
 
 pub(crate) use json::JsonPresenter;
-pub(crate) use markdown::MarkdownReviewPresenter;
+pub(crate) use markdown::{CheckStyle, MarkdownReviewPresenter};
 pub(crate) use plain::PlainPresenter;
 pub(crate) use port::{
     ExpiresInfo, PresentationEntry, PresentationRecord, RenderMeta, RetrievalPresenter,

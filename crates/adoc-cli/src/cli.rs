@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::presentation::{ColorChoice, FormatChoice};
+use crate::presentation::{CheckStyle, ColorChoice, FormatChoice};
 
 const ROOT_LONG_HELP: &str = "\
 Examples:
@@ -208,6 +208,30 @@ impl From<CliFormat> for FormatChoice {
     }
 }
 
+/// The Markdown layout requested on the command line (`adoc check --style`).
+/// Named "layout" in help text to keep it apart from `--format styled` and
+/// ANSI styling.
+#[derive(Clone, Copy, Default, ValueEnum)]
+pub(crate) enum CliCheckStyle {
+    /// One bullet per diagnostic; remediation help collapsed.
+    #[default]
+    Compact,
+    /// One table row per diagnostic; remediation help collapsed.
+    Table,
+    /// Per-file grouping with object_id/help sub-bullets.
+    Detailed,
+}
+
+impl From<CliCheckStyle> for CheckStyle {
+    fn from(s: CliCheckStyle) -> Self {
+        match s {
+            CliCheckStyle::Compact => Self::Compact,
+            CliCheckStyle::Table => Self::Table,
+            CliCheckStyle::Detailed => Self::Detailed,
+        }
+    }
+}
+
 /// The colour mode requested on the command line (`--color`).
 #[derive(Clone, Copy, Default, ValueEnum)]
 pub(crate) enum CliColor {
@@ -303,6 +327,9 @@ pub(crate) enum Commands {
         /// AgentDoc Source file or directory to check.
         #[arg(value_name = "PATH")]
         path: Option<PathBuf>,
+        /// Markdown layout for `--format markdown`; ignored by other formats.
+        #[arg(long, value_enum, default_value = "compact")]
+        style: CliCheckStyle,
     },
     #[command(
         about = "Convert Markdown sources to prose-mode .adoc, or back with --export (dry-run by default).",

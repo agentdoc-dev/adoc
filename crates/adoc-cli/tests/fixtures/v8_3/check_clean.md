@@ -1,4 +1,4 @@
-## adoc check: 0 errors, 0 warnings
+**✅ 0 errors · 0 warnings**
 
 No diagnostics.
 
