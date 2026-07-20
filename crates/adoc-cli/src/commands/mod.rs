@@ -126,13 +126,16 @@ fn current_dir() -> Result<PathBuf, CliError> {
 fn format_diagnostics(diagnostics: &[Diagnostic]) -> String {
     use std::fmt::Write as _;
 
+    // Repo-relative paths: GitHub problem matchers (and humans reading CI
+    // logs) resolve paths against the checkout root = the working directory.
+    let base = std::env::current_dir().ok();
     let mut out = String::new();
     for diagnostic in diagnostics {
         if let Some(span) = &diagnostic.span {
             writeln!(
                 out,
                 "{}:{}:{}: {}[{}] {}",
-                span.file.display(),
+                crate::presentation::relativize_path(&span.file, base.as_deref()).display(),
                 span.start.line,
                 span.start.column,
                 diagnostic.severity,

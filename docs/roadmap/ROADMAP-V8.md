@@ -238,6 +238,32 @@ Commit shape: `feat(ci): tagged release workflow with prebuilt adoc binaries (V8
 
 Acceptance: unchanged from V8.3.2 — a real PR in this repository shows the comment; the advisory→strict decision is recorded in the workflow file's history.
 
+### V8.3.4: PR Report Presentation Slice
+
+The first live consumer comment (storyos) exposed three presentation defects:
+absolute runner paths in check spans (breaking problem-matcher annotations and
+dominating the layout), `##` headings inside embeddable markdown bodies
+(inverting the embedder's hierarchy), and noise (per-file headings, inline
+changed-path lists). Presentation-layer fixes only; span semantics, envelopes,
+and the frozen `adoc review` markdown shape are untouched.
+
+Scope:
+
+- Diagnostic paths (stderr/plain and markdown bodies) render relative to the
+  working directory — the checkout root in CI — falling back to the original
+  path outside it.
+- `adoc check --format markdown` gains `--style compact|table|detailed`
+  (default `compact`): heading-free body, bold summary line, one bullet or
+  table row per diagnostic, remediation help collapsed in a `<details>` block;
+  `detailed` keeps the V8.3.1 per-file grouping with bold labels.
+- `adoc impacted-by --format markdown`: count-first changed-paths line with
+  the full list in `<details>`; Proof obligations keep their task list under a
+  bold label (the `##` wrapper remains exclusive to `adoc review`/`diff`).
+
+Commit shape: `feat(cli): repo-relative diagnostic paths for problem matchers (V8.3.4)` → `feat(cli): check --style compact|table|detailed markdown layouts (V8.3.4)` → `feat(cli): impacted-by markdown count-first PR-comment shape (V8.3.4)` → `docs(v8): ci-integration guide for redesigned PR-comment shapes (V8.3.4)`.
+
+Acceptance: the sticky comment on a real PR renders repo-relative paths with correct heading hierarchy, and problem-matcher annotations appear in the Files-changed tab.
+
 ---
 
 ## V8.4: Contract Freeze and Knowledge Health

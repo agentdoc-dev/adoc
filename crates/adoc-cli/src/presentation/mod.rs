@@ -16,6 +16,20 @@ pub(crate) use port::{
 pub(crate) use styled::StyledPresenter;
 
 use adoc_core::Diagnostic;
+use std::path::Path;
+
+/// Renders a diagnostic path relative to `base` (the process working
+/// directory — the repo root in CI, which is what GitHub problem matchers
+/// and PR-comment readers expect). Paths outside `base` stay unchanged; a
+/// cosmetic leading `./` is stripped either way.
+pub(crate) fn relativize_path<'a>(path: &'a Path, base: Option<&Path>) -> &'a Path {
+    if let Some(base) = base
+        && let Ok(stripped) = path.strip_prefix(base)
+    {
+        return stripped;
+    }
+    path.strip_prefix(".").unwrap_or(path)
+}
 
 /// The output format requested by the user via `--format`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,5 +93,44 @@ pub(crate) fn make_presenter(
         ResolvedFormat::Markdown => {
             unreachable!("markdown format is not supported by retrieval commands")
         }
+    }
+}
+
+#[cfg(test)]
+mod relativize_tests {
+    use std::path::Path;
+
+    use super::relativize_path;
+
+    #[test]
+    fn strips_the_base_prefix() {
+        assert_eq!(
+            relativize_path(Path::new("/repo/docs/a.adoc"), Some(Path::new("/repo"))),
+            Path::new("docs/a.adoc")
+        );
+    }
+
+    #[test]
+    fn keeps_paths_outside_the_base() {
+        assert_eq!(
+            relativize_path(Path::new("/elsewhere/a.adoc"), Some(Path::new("/repo"))),
+            Path::new("/elsewhere/a.adoc")
+        );
+    }
+
+    #[test]
+    fn strips_a_leading_dot_slash() {
+        assert_eq!(
+            relativize_path(Path::new("./a.adoc"), Some(Path::new("/repo"))),
+            Path::new("a.adoc")
+        );
+    }
+
+    #[test]
+    fn keeps_plain_relative_paths_without_a_base() {
+        assert_eq!(
+            relativize_path(Path::new("a.adoc"), None),
+            Path::new("a.adoc")
+        );
     }
 }
