@@ -61,7 +61,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
             }
             match cli.command {
                 Commands::Init => init(),
-                Commands::Check { path } => check(path, resolved),
+                Commands::Check { path, style } => check(path, style.into(), resolved),
                 Commands::Migrate {
                     path,
                     write,

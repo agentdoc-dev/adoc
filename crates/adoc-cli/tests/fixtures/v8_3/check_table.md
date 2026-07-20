@@ -1,7 +1,9 @@
 **❌ 1 errors · ⚠️ 1 warnings**
 
-- ❌ `broken.adoc:7` `ref.broken` — depends_on target `missing.object` does not resolve to a declared Knowledge Object
-- ⚠️ `overdue.adoc:6` `task.overdue` — open task `ci.update-runbook` is overdue (due 2020-01-01)
+|    | Location | Code | Message |
+|----|----------|------|---------|
+| ❌ | `broken.adoc:7` | `ref.broken` | depends_on target `missing.object` does not resolve to a declared Knowledge Object |
+| ⚠️ | `overdue.adoc:6` | `task.overdue` | open task `ci.update-runbook` is overdue (due 2020-01-01) |
 
 <details>
 <summary>Remediation help (2)</summary>

@@ -2586,10 +2586,11 @@ fn check_reports_unreadable_source_path() {
     assert!(stdout.contains("1 errors"));
 }
 
-/// V8.3.1: `adoc check --format markdown` — the PR-comment body. Diagnostics
-/// grouped by file, error/warning counts in the header, object_id/help as
-/// sub-bullets, a suggested next command. Pinned as a golden so the §24.4
-/// shape drifts loudly, not silently.
+/// V8.3.4: `adoc check --format markdown` — the PR-comment body in the
+/// default compact layout. Bold summary line, one bullet per diagnostic with
+/// repo-relative `path:line`, remediation help collapsed in `<details>`, a
+/// suggested next command. Pinned as a golden so the shape drifts loudly,
+/// not silently.
 #[test]
 fn check_markdown_matches_golden_for_error_and_warning_fixture() {
     let workspace = TestWorkspace::new("check-markdown-golden");
@@ -2684,12 +2685,89 @@ fn check_markdown_warnings_only_exits_zero_with_suggestion() {
     assert_eq!(output.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("## adoc check: 0 errors, 1 warnings"),
-        "expected warning-only header, got:\n{stdout}"
+        stdout.contains("**✅ 0 errors · ⚠️ 1 warnings**"),
+        "expected warning-only summary line, got:\n{stdout}"
     );
     assert!(
         stdout.contains("Suggested action: review the warnings above, then re-run `adoc check`."),
         "expected warnings-only suggested action, got:\n{stdout}"
+    );
+}
+
+/// V8.3.4: `--style table` — the same diagnostics as a GFM table, pinned as
+/// a golden alongside the compact default.
+#[test]
+fn check_markdown_table_matches_golden() {
+    let workspace = TestWorkspace::new("check-markdown-table-golden");
+    write_fixture_to_workspace(&workspace, "v8_3/broken.adoc", "broken.adoc");
+    write_fixture_to_workspace(&workspace, "v8_3/overdue.adoc", "overdue.adoc");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", ".", "--format", "markdown", "--style", "table"])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(output.status.code(), Some(1));
+    support::assert_markdown_matches_golden(
+        "v8_3/check_table.md",
+        &String::from_utf8_lossy(&output.stdout),
+    );
+}
+
+/// V8.3.4: `--style detailed` keeps the V8.3.1 per-file grouping with
+/// object_id/help sub-bullets — only the `##`/`###` headings give way to
+/// embeddable bold labels.
+#[test]
+fn check_markdown_detailed_matches_golden() {
+    let workspace = TestWorkspace::new("check-markdown-detailed-golden");
+    write_fixture_to_workspace(&workspace, "v8_3/broken.adoc", "broken.adoc");
+    write_fixture_to_workspace(&workspace, "v8_3/overdue.adoc", "overdue.adoc");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["check", ".", "--format", "markdown", "--style", "detailed"])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(output.status.code(), Some(1));
+    support::assert_markdown_matches_golden(
+        "v8_3/check_detailed.md",
+        &String::from_utf8_lossy(&output.stdout),
+    );
+}
+
+/// V8.3.4: the markdown body (the PR comment) relativizes absolute source
+/// paths the same way the stderr diagnostics do.
+#[test]
+fn check_markdown_body_relativizes_absolute_source_paths() {
+    let workspace = TestWorkspace::new("check-markdown-relative-paths");
+    write_fixture_to_workspace(&workspace, "v8_3/broken.adoc", "broken.adoc");
+
+    let root = workspace
+        .root
+        .canonicalize()
+        .expect("workspace root canonicalizes");
+    let output = adoc_command()
+        .current_dir(&root)
+        .args([
+            "check",
+            root.to_str().expect("root path is utf-8"),
+            "--format",
+            "markdown",
+        ])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("`broken.adoc:7`"),
+        "expected repo-relative path in the comment body, got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains(root.to_str().expect("root path is utf-8")),
+        "expected no absolute workspace prefix in the comment body, got:\n{stdout}"
     );
 }
 

@@ -74,17 +74,20 @@ impl MarkdownReviewPresenter {
         out.write_all(body.as_bytes())
     }
 
-    /// V8.3.1 `adoc check --format markdown`: the §24.4 PR-comment shape —
-    /// error/warning counts in the header, diagnostics grouped by source
-    /// file, `object_id`/`help` as sub-bullets, and a suggested next command.
-    /// A clean project still renders a body: a PR bot pasting stdout must
-    /// never post an empty comment.
+    /// V8.3.4 `adoc check --format markdown`: the PR-comment body. Heading
+    /// free (the embedder owns the hierarchy), bold error/warning summary
+    /// line, source paths relative to `base` (the working directory — the
+    /// checkout root in CI), one of three `--style` layouts, and a suggested
+    /// next command. A clean project still renders a body: a PR bot pasting
+    /// stdout must never post an empty comment.
     pub(crate) fn write_check(
         diagnostics: &[Diagnostic],
+        base: &std::path::Path,
+        style: CheckStyle,
         out: &mut dyn io::Write,
     ) -> io::Result<()> {
         let mut body = String::new();
-        render_check(&mut body, diagnostics);
+        render_check(&mut body, diagnostics, base, style);
         out.write_all(body.as_bytes())
     }
 
@@ -111,7 +114,24 @@ impl MarkdownReviewPresenter {
     }
 }
 
-fn render_check(output: &mut String, diagnostics: &[Diagnostic]) {
+/// Markdown layout for the `adoc check` PR-comment body (`--style`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CheckStyle {
+    /// One bullet per diagnostic; remediation help collapsed in `<details>`.
+    Compact,
+    /// One table row per diagnostic; remediation help collapsed in
+    /// `<details>`.
+    Table,
+    /// The V8.3.1 per-file grouping with `object_id`/`help` sub-bullets.
+    Detailed,
+}
+
+fn render_check(
+    output: &mut String,
+    diagnostics: &[Diagnostic],
+    base: &std::path::Path,
+    style: CheckStyle,
+) {
     let errors = diagnostics
         .iter()
         .filter(|diagnostic| diagnostic.severity == Severity::Error)
@@ -121,20 +141,147 @@ fn render_check(output: &mut String, diagnostics: &[Diagnostic]) {
         .filter(|diagnostic| diagnostic.severity == Severity::Warning)
         .count();
     // Always-plural counts — the exact convention of the plain summary line
-    // (`commands::format_summary`), so the two surfaces never disagree.
-    writeln!(
-        output,
-        "## adoc check: {errors} errors, {warnings} warnings"
-    )
+    // (`commands::format_summary`), so the two surfaces never disagree. The
+    // warning icon only appears when there is something to warn about.
+    let error_icon = if errors > 0 { "❌" } else { "✅" };
+    if warnings > 0 {
+        writeln!(
+            output,
+            "**{error_icon} {errors} errors · ⚠️ {warnings} warnings**"
+        )
+    } else {
+        writeln!(
+            output,
+            "**{error_icon} {errors} errors · {warnings} warnings**"
+        )
+    }
     .expect("writing to String cannot fail");
 
-    // Empty → deliberate fall-through: the group loop below is a no-op and
-    // only the unconditional suggested-action block follows.
     if diagnostics.is_empty() {
         writeln!(output).expect("writing to String cannot fail");
         writeln!(output, "No diagnostics.").expect("writing to String cannot fail");
+    } else {
+        match style {
+            CheckStyle::Compact => render_check_compact(output, diagnostics, base),
+            CheckStyle::Table => render_check_table(output, diagnostics, base),
+            CheckStyle::Detailed => render_check_detailed(output, diagnostics, base),
+        }
+        if style != CheckStyle::Detailed {
+            render_check_help(output, diagnostics, base);
+        }
     }
 
+    writeln!(output).expect("writing to String cannot fail");
+    let action = if errors > 0 {
+        "fix the errors above, then re-run `adoc check`."
+    } else if warnings > 0 {
+        "review the warnings above, then re-run `adoc check`."
+    } else {
+        "run `adoc build` to refresh the graph artifact."
+    };
+    writeln!(output, "Suggested action: {action}").expect("writing to String cannot fail");
+}
+
+fn check_icon(severity: Severity) -> &'static str {
+    match severity {
+        Severity::Error => "❌",
+        Severity::Warning => "⚠️",
+        Severity::Info => "ℹ️",
+    }
+}
+
+/// `path:line` with the path relative to `base`, or `None` for spanless
+/// diagnostics.
+fn check_location(diagnostic: &Diagnostic, base: &std::path::Path) -> Option<String> {
+    diagnostic.span.as_ref().map(|span| {
+        format!(
+            "{}:{}",
+            super::relativize_path(&span.file, Some(base)).display(),
+            span.start.line
+        )
+    })
+}
+
+fn render_check_compact(output: &mut String, diagnostics: &[Diagnostic], base: &std::path::Path) {
+    writeln!(output).expect("writing to String cannot fail");
+    for diagnostic in diagnostics {
+        let icon = check_icon(diagnostic.severity);
+        // Multi-line messages stay indented inside the list item.
+        let message = diagnostic.message.replace('\n', "\n  ");
+        match check_location(diagnostic, base) {
+            Some(location) => writeln!(
+                output,
+                "- {icon} `{location}` `{}` — {message}",
+                diagnostic.code
+            ),
+            None => writeln!(output, "- {icon} `{}` — {message}", diagnostic.code),
+        }
+        .expect("writing to String cannot fail");
+    }
+}
+
+/// GFM table cells cannot hold raw `|` or newlines.
+fn check_table_cell(text: &str) -> String {
+    text.replace('|', "\\|").replace('\n', "<br>")
+}
+
+fn render_check_table(output: &mut String, diagnostics: &[Diagnostic], base: &std::path::Path) {
+    writeln!(output).expect("writing to String cannot fail");
+    writeln!(output, "|    | Location | Code | Message |").expect("writing to String cannot fail");
+    writeln!(output, "|----|----------|------|---------|").expect("writing to String cannot fail");
+    for diagnostic in diagnostics {
+        let icon = check_icon(diagnostic.severity);
+        let location = check_location(diagnostic, base)
+            .map_or_else(|| "—".to_string(), |location| format!("`{location}`"));
+        writeln!(
+            output,
+            "| {icon} | {location} | `{}` | {} |",
+            diagnostic.code,
+            check_table_cell(&diagnostic.message)
+        )
+        .expect("writing to String cannot fail");
+    }
+}
+
+/// The collapsed remediation block shared by the compact and table styles.
+/// Entries anchor on the diagnostic's `object_id` when it has one — help
+/// texts speak about the Knowledge Object — falling back to `path:line`,
+/// then to the code.
+fn render_check_help(output: &mut String, diagnostics: &[Diagnostic], base: &std::path::Path) {
+    let entries: Vec<(String, &str)> = diagnostics
+        .iter()
+        .filter_map(|diagnostic| {
+            diagnostic.help.as_ref().map(|help| {
+                let anchor = diagnostic
+                    .object_id
+                    .clone()
+                    .or_else(|| check_location(diagnostic, base))
+                    .unwrap_or_else(|| diagnostic.code.to_string());
+                (anchor, help.as_str())
+            })
+        })
+        .collect();
+    if entries.is_empty() {
+        return;
+    }
+    writeln!(output).expect("writing to String cannot fail");
+    writeln!(output, "<details>").expect("writing to String cannot fail");
+    writeln!(
+        output,
+        "<summary>Remediation help ({})</summary>",
+        entries.len()
+    )
+    .expect("writing to String cannot fail");
+    writeln!(output).expect("writing to String cannot fail");
+    for (anchor, help) in entries {
+        let help = help.replace('\n', "\n  ");
+        writeln!(output, "- `{anchor}` — {help}").expect("writing to String cannot fail");
+    }
+    writeln!(output).expect("writing to String cannot fail");
+    writeln!(output, "</details>").expect("writing to String cannot fail");
+}
+
+fn render_check_detailed(output: &mut String, diagnostics: &[Diagnostic], base: &std::path::Path) {
     // Group by source file in first-seen order (the compile walk is already
     // deterministic); spanless diagnostics get an explicit marker group so
     // they cannot silently vanish from the comment.
@@ -149,17 +296,17 @@ fn render_check(output: &mut String, diagnostics: &[Diagnostic]) {
     for (file, entries) in groups {
         writeln!(output).expect("writing to String cannot fail");
         match file {
-            Some(path) => writeln!(output, "### `{}`", path.display()),
-            None => writeln!(output, "### _(no source span)_"),
+            Some(path) => writeln!(
+                output,
+                "**`{}`**",
+                super::relativize_path(path, Some(base)).display()
+            ),
+            None => writeln!(output, "**_(no source span)_**"),
         }
         .expect("writing to String cannot fail");
         writeln!(output).expect("writing to String cannot fail");
         for diagnostic in entries {
-            let icon = match diagnostic.severity {
-                Severity::Error => "❌",
-                Severity::Warning => "⚠️",
-                Severity::Info => "ℹ️",
-            };
+            let icon = check_icon(diagnostic.severity);
             // Multi-line messages stay indented inside the list item.
             let message = diagnostic.message.replace('\n', "\n  ");
             match diagnostic.span.as_ref() {
@@ -181,16 +328,6 @@ fn render_check(output: &mut String, diagnostics: &[Diagnostic]) {
             }
         }
     }
-
-    writeln!(output).expect("writing to String cannot fail");
-    let action = if errors > 0 {
-        "fix the errors above, then re-run `adoc check`."
-    } else if warnings > 0 {
-        "review the warnings above, then re-run `adoc check`."
-    } else {
-        "run `adoc build` to refresh the graph artifact."
-    };
-    writeln!(output, "Suggested action: {action}").expect("writing to String cannot fail");
 }
 
 fn render_impacted_by(output: &mut String, envelope: &ImpactedEnvelope) {
