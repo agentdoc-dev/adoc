@@ -23,10 +23,18 @@ use std::path::Path;
 /// and PR-comment readers expect). Paths outside `base` stay unchanged; a
 /// cosmetic leading `./` is stripped either way.
 pub(crate) fn relativize_path<'a>(path: &'a Path, base: Option<&Path>) -> &'a Path {
-    if let Some(base) = base
-        && let Ok(stripped) = path.strip_prefix(base)
-    {
-        return stripped;
+    if let Some(base) = base {
+        if let Ok(stripped) = path.strip_prefix(base) {
+            return stripped;
+        }
+        // strip_prefix is byte-wise: a symlinked base (macOS `/tmp` →
+        // `/private/tmp`) never matches a physical span path. Retry against
+        // the physical base before giving up.
+        if let Ok(canonical) = base.canonicalize()
+            && let Ok(stripped) = path.strip_prefix(&canonical)
+        {
+            return stripped;
+        }
     }
     path.strip_prefix(".").unwrap_or(path)
 }
@@ -132,5 +140,30 @@ mod relativize_tests {
             relativize_path(Path::new("a.adoc"), None),
             Path::new("a.adoc")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn strips_a_symlinked_base_against_a_physical_path() {
+        // macOS `/tmp` → `/private/tmp`: the cwd can be a symlink while span
+        // paths are physical. A byte-wise strip alone would silently no-op.
+        let dir =
+            std::env::temp_dir().join(format!("adoc-relativize-symlink-{}", std::process::id()));
+        let physical = dir.join("physical");
+        let link = dir.join("link");
+        std::fs::create_dir_all(&physical).expect("create physical dir");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&physical, &link).expect("create symlink");
+
+        let span_path = physical
+            .canonicalize()
+            .expect("canonicalize")
+            .join("a.adoc");
+        assert_eq!(
+            relativize_path(&span_path, Some(&link)),
+            Path::new("a.adoc")
+        );
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
     }
 }
