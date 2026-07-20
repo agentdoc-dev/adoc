@@ -71,11 +71,27 @@ pub(crate) fn check_evidence_anchors(
             match AnchorHash::try_new(authored) {
                 Err(_) => {
                     let mut help = DiagnosticCode::EvidenceHashInvalid.default_help().to_string();
-                    if let CachedRead::Hash(actual) = read {
-                        help = format!(
-                            "{help} The actual content hash of `{path}` is `{actual}`.",
-                            path = path.as_str()
-                        );
+                    // Surface the read outcome too, so a missing/unreadable
+                    // target is not discovered only after the hash is fixed.
+                    match read {
+                        CachedRead::Hash(actual) => {
+                            help = format!(
+                                "{help} The actual content hash of `{path}` is `{actual}`.",
+                                path = path.as_str()
+                            );
+                        }
+                        CachedRead::Missing => {
+                            help = format!(
+                                "{help} Also: the anchored path `{path}` does not exist.",
+                                path = path.as_str()
+                            );
+                        }
+                        CachedRead::Unreadable(message) => {
+                            help = format!(
+                                "{help} Also: `{path}` could not be read: {message}.",
+                                path = path.as_str()
+                            );
+                        }
                     }
                     diagnostics.push(
                         Diagnostic::warning(
@@ -312,6 +328,23 @@ mod tests {
                 .expect("help")
                 .contains(&cited_hash()),
             "bootstrap path: help carries the actual hash"
+        );
+    }
+
+    #[test]
+    fn malformed_hash_on_missing_target_names_the_missing_path_in_help() {
+        let reader = RecordingReader::new(BTreeMap::new());
+        let text = source_page("hash: sha256:0\n");
+
+        let diagnostics = compile_anchored(&text, &reader);
+
+        assert_eq!(diagnostics.len(), 1, "diagnostics: {diagnostics:?}");
+        let diagnostic = &diagnostics[0];
+        assert_eq!(diagnostic.code, DiagnosticCode::EvidenceHashInvalid);
+        let help = diagnostic.help.as_deref().expect("help");
+        assert!(
+            help.contains("`src/consume.ts` does not exist"),
+            "help surfaces the missing target alongside the invalid hash: {help}"
         );
     }
 
