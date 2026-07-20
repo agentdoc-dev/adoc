@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use chrono::NaiveDate;
 
+use crate::application::evidence_anchor::check_evidence_anchors;
 use crate::application::resolve_knowledge_objects::{
     resolve_knowledge_objects, suppress_unknown_kind_shape_diagnostics,
 };
@@ -10,6 +11,7 @@ use crate::application::resolve_object_references::resolve_object_references;
 use crate::domain::ast::{PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
+use crate::domain::ports::evidence_file::EvidenceFileReader;
 use crate::domain::ports::source_provider::{SourceLoadError, SourceLoadErrorKind, SourceProvider};
 use crate::domain::source::SourceFile;
 use crate::infrastructure::artifact::GraphJsonArtifact;
@@ -76,7 +78,26 @@ pub(crate) fn compile_with_provider_for_date<P: SourceProvider>(
     provider: &P,
     today: NaiveDate,
 ) -> CompileResult {
-    run_compile_pipeline(provider, None, today)
+    run_compile_pipeline(provider, None, today, None)
+}
+
+/// The check entry with Evidence Anchor verification (V8.5.1, ADR-0048).
+/// Only check threads a reader — build, review, diff, and patch recompiles
+/// stay anchor-free so worktree snapshots and pinned fixtures never read
+/// evidence files.
+pub(crate) fn compile_with_provider_anchored<P: SourceProvider>(
+    provider: &P,
+    anchor: &dyn EvidenceFileReader,
+) -> CompileResult {
+    compile_with_provider_anchored_for_date(provider, anchor, local_today())
+}
+
+pub(crate) fn compile_with_provider_anchored_for_date<P: SourceProvider>(
+    provider: &P,
+    anchor: &dyn EvidenceFileReader,
+    today: NaiveDate,
+) -> CompileResult {
+    run_compile_pipeline(provider, None, today, Some(anchor))
 }
 
 pub(crate) fn build_with_provider<P: SourceProvider>(
@@ -91,7 +112,7 @@ pub(crate) fn build_with_provider_for_date<P: SourceProvider>(
     options: BuildOptions<'_>,
     today: NaiveDate,
 ) -> CompileResult {
-    run_compile_pipeline(provider, Some(options), today)
+    run_compile_pipeline(provider, Some(options), today, None)
 }
 
 pub(crate) struct BuildOptions<'a> {
@@ -114,6 +135,7 @@ fn run_compile_pipeline<P: SourceProvider>(
     provider: &P,
     mut build_options: Option<BuildOptions<'_>>,
     today: NaiveDate,
+    anchor: Option<&dyn EvidenceFileReader>,
 ) -> CompileResult {
     // Pipeline stages: load → validate-source-pages → resolve-KOs →
     // resolve-object-references → validate-resolved-pages → assemble →
@@ -139,6 +161,9 @@ fn run_compile_pipeline<P: SourceProvider>(
     diagnostics.extend(validate_resolved_pages(&parsed, today));
     let workspace = assemble_workspace(parsed);
     diagnostics.extend(validate_workspace(&workspace));
+    if let Some(reader) = anchor {
+        diagnostics.extend(check_evidence_anchors(&workspace, reader));
+    }
     if let Some(options) = &build_options {
         diagnostics.extend(build_embedding_diagnostics(options));
     }

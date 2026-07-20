@@ -3,6 +3,7 @@ pub(crate) mod artifact_reader;
 pub(crate) mod artifact_writer;
 pub(crate) mod changed_files;
 pub(crate) mod embedding_provider;
+pub(crate) mod evidence_file;
 pub(crate) mod snapshot_workspace;
 pub(crate) mod source_provider;
 pub(crate) mod workspace_writer;
