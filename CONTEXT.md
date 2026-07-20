@@ -348,6 +348,10 @@ _Avoid_: automated contradiction detection in V5, contradiction with one claim, 
 A reusable evidence **Knowledge Object** (PRD §13.15). Required fields: `id`, `kind` (**Evidence Kind**), exactly one of `path: RelPath` or `url: Url`, `body`. The `body` is the prose explanation of what this source contains. Per ADR-0027, **Source Objects** coexist with inline V0 evidence fields on `claim` and `decision`; references to source objects are an opt-in upgrade, never a forced migration. Lives at `domain/knowledge_object/source.rs`.
 _Avoid_: source object with both `path:` and `url:`, source object with neither, deprecating inline evidence in V5
 
+**Evidence Anchor**:
+The opt-in `hash` field on a path-target **Source Object**: a `sha256:` + 64-lowercase-hex hash of the cited file's full bytes taken at verification time (ADR-0048, V8.5.1). `adoc check` re-hashes the file through the `EvidenceFileReader` port and warns `evidence.hash_drift` when the cited content has changed — a deterministic changed-not-necessarily-wrong signal; the semantic judgment stays human. Absent `hash` means no reads and no diagnostics. Complements the path axis: `impacts:`/evidence paths answer "is a cited path in this diff", the anchor answers "did the cited bytes move since verification".
+_Avoid_: line-span anchor, symbol resolution, automatic hash refresh, drift as a validation error or CI gate, automated contradiction detection, confusing it with **Base Hash** (graph-node hash for patches) or `patch.source_drift` (artifact-vs-source freshness)
+
 **Evidence Kind**:
 A value object enumerating the PRD §15.1 evidence types: `source_code`, `test`, `commit`, `pull_request`, `issue`, `design_doc`, `human_review`, `external_url`, `api_schema`, `runtime_metric`, `incident`, `support_ticket`, `audit_record`, `policy_reference`, `dataset`, `experiment`. Lives at `domain/value_objects/evidence_kind.rs`; `#[non_exhaustive]`, case-sensitive `TryFrom<&str>`, unknown kinds emit `schema.evidence_unknown_kind`.
 _Avoid_: free-form evidence kind strings, deriving evidence kind from field name alone, accepting alias spellings
