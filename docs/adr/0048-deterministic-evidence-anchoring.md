@@ -47,10 +47,14 @@ re-verification — never a semantic judgment.
      feature cures.
 4. **Opt-in per source object.** No `hash` field means no diagnostics and no
    file reads — existing corpora compile byte-identically.
-5. **Anchor root**: the discovered project-config directory when config
-   discovery ran, else the context start directory — the same seam
-   `impacted-by` uses for git discovery. Cited paths are repo-relative in
-   the same sense `git diff --name-only` output is.
+5. **Anchor root**: the discovered project-config directory, else the
+   context start directory. `adoc check` runs config discovery even when an
+   explicit docs path is passed (the explicit path still wins for docs
+   resolution), so anchors resolve identically however check is invoked —
+   the same walk-up seam `impacted-by` uses for git discovery. A malformed
+   config found during the walk fails check loudly rather than being
+   ignored. Cited paths are repo-relative in the same sense
+   `git diff --name-only` output is.
 
 ## What this can and cannot claim
 

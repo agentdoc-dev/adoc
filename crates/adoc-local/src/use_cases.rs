@@ -500,11 +500,12 @@ where
         .as_deref()
         .map(|path| context.path_policy().resolve_read_path(path))
         .transpose()?;
-    let config = discover_project_config_if(path.is_none(), context.config_start())?;
+    // Check always discovers the config — even with an explicit path — so
     // Evidence Anchors (ADR-0048) resolve against the project root: the
-    // discovered config's directory, else the context start — the same seam
-    // impacted-by uses for git discovery. Only check threads this; build,
-    // review, diff, and patch recompiles stay anchor-free.
+    // discovered config's directory, else the context start. The explicit
+    // path still wins for docs resolution. Only check threads the anchor
+    // root; build, review, diff, and patch recompiles stay anchor-free.
+    let config = discover_project_config_if(true, context.config_start())?;
     let anchor_root = config
         .as_ref()
         .and_then(|config| config.path.parent().map(Path::to_path_buf))

@@ -156,7 +156,44 @@ fn check_verifies_evidence_anchors_against_the_config_root() {
 }
 
 #[test]
-fn check_with_explicit_path_resolves_anchors_from_the_context_start() {
+fn check_with_explicit_path_resolves_anchors_from_the_discovered_config_root() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("src/consume.ts"), "export const consume = 1;\n");
+    write(
+        &root.join("docs/index.adoc"),
+        &format!(
+            "# Billing @doc(team.billing)\n\n::source billing.consume\nkind: source_code\npath: src/consume.ts\nhash: sha256:{}\n--\nConsume implementation.\n::\n",
+            "a".repeat(64)
+        ),
+    );
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+    fs::create_dir_all(root.join("nested")).expect("nested dir");
+
+    // Context starts in a subdirectory; the anchor must still resolve
+    // against the config's directory, not the context start.
+    let outcome = context(&root.join("nested"))
+        .check(CheckInput {
+            path: Some(root.join("docs")),
+        })
+        .expect("check should run");
+
+    assert_eq!(outcome.exit_code, 0);
+    assert!(
+        outcome
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code == adoc_core::DiagnosticCode::EvidenceHashDrift),
+        "expected evidence.hash_drift (file found under the config root), got: {:?}",
+        outcome.diagnostics
+    );
+}
+
+#[test]
+fn check_with_explicit_path_falls_back_to_the_context_start_without_config() {
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();
     write(
@@ -181,6 +218,22 @@ fn check_with_explicit_path_resolves_anchors_from_the_context_start() {
         "expected evidence.hash_target_missing, got: {:?}",
         outcome.diagnostics
     );
+}
+
+#[test]
+fn check_with_explicit_path_fails_loudly_on_a_malformed_config() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("docs/index.adoc"), &valid_source());
+    write(&root.join("agentdoc.config.yaml"), "version: [broken\n");
+
+    let error = context(root)
+        .check(CheckInput {
+            path: Some(root.join("docs")),
+        })
+        .expect_err("a broken config must never be silently ignored");
+
+    assert_eq!(error.exit_code(), 1);
 }
 
 #[test]
