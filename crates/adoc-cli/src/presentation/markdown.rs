@@ -58,10 +58,11 @@ impl MarkdownReviewPresenter {
         out.write_all(body.as_bytes())
     }
 
-    /// V6.3 `adoc impacted-by --format markdown`: the PR-comment shape —
-    /// `## Impacted by` header with code-quoted changed paths, one bullet per
-    /// impacted object with its reasons, then the same proof-obligations
-    /// task list as `adoc review`.
+    /// V8.3.4 `adoc impacted-by --format markdown`: the embeddable PR-comment
+    /// shape — a count-first changed-paths line with the full list collapsed
+    /// in `<details>`, one bullet per impacted object with its reasons, then
+    /// the proof-obligations task list under a bold label (the `##` heading
+    /// stays exclusive to the frozen `adoc review`/`diff` shape).
     pub(crate) fn write_impacted(
         envelope: &ImpactedEnvelope,
         out: &mut dyn io::Write,
@@ -69,7 +70,9 @@ impl MarkdownReviewPresenter {
         let mut body = String::new();
         render_impacted_by(&mut body, envelope);
         if !envelope.proof_obligations.is_empty() {
-            render_obligations(&mut body, &envelope.proof_obligations);
+            writeln!(body).expect("writing to String cannot fail");
+            writeln!(body, "**Proof obligations**").expect("writing to String cannot fail");
+            render_obligation_items(&mut body, &envelope.proof_obligations);
         }
         out.write_all(body.as_bytes())
     }
@@ -333,21 +336,33 @@ fn render_check_detailed(output: &mut String, diagnostics: &[Diagnostic], base: 
 fn render_impacted_by(output: &mut String, envelope: &ImpactedEnvelope) {
     // An empty changed set (e.g. `--ref` with no diff) gets an explicit
     // marker so a PR-comment reader can tell "ref had no diff" apart from
-    // a header that simply lost its path list.
+    // a count line that simply lost its paths.
     if envelope.changed_paths.is_empty() {
-        writeln!(output, "## Impacted by: _(no changed paths)_")
+        writeln!(output, "**Impacted by** _(no changed paths)_")
             .expect("writing to String cannot fail");
     } else {
-        let paths: Vec<String> = envelope
-            .changed_paths
-            .iter()
-            .map(|path| format!("`{path}`"))
-            .collect();
-        writeln!(output, "## Impacted by: {}", paths.join(", "))
-            .expect("writing to String cannot fail");
-    }
-    if envelope.impacted.is_empty() {
+        // Count-first (always-plural, matching the summary-line convention);
+        // the full list stays available but collapsed, so a large PR cannot
+        // flood the comment with its own file list.
+        writeln!(
+            output,
+            "**Impacted by** {} changed paths",
+            envelope.changed_paths.len()
+        )
+        .expect("writing to String cannot fail");
         writeln!(output).expect("writing to String cannot fail");
+        writeln!(output, "<details>").expect("writing to String cannot fail");
+        writeln!(output, "<summary>Changed paths</summary>")
+            .expect("writing to String cannot fail");
+        writeln!(output).expect("writing to String cannot fail");
+        for path in &envelope.changed_paths {
+            writeln!(output, "- `{path}`").expect("writing to String cannot fail");
+        }
+        writeln!(output).expect("writing to String cannot fail");
+        writeln!(output, "</details>").expect("writing to String cannot fail");
+    }
+    writeln!(output).expect("writing to String cannot fail");
+    if envelope.impacted.is_empty() {
         writeln!(output, "No impacted Knowledge Objects.").expect("writing to String cannot fail");
     }
     for record in &envelope.impacted {
@@ -632,9 +647,16 @@ fn render_impact(output: &mut String, impact: &[ImpactedObject]) {
     }
 }
 
+/// The frozen `adoc review`/`diff` obligations section (V3.5 shape — see the
+/// module doc). `adoc impacted-by` renders the same items under a bold label
+/// via `render_obligation_items`.
 fn render_obligations(output: &mut String, obligations: &[ProofObligation]) {
     writeln!(output).expect("writing to String cannot fail");
     writeln!(output, "## Proof obligations").expect("writing to String cannot fail");
+    render_obligation_items(output, obligations);
+}
+
+fn render_obligation_items(output: &mut String, obligations: &[ProofObligation]) {
     for obligation in obligations {
         if obligation.required_evidence.is_empty() {
             writeln!(
@@ -772,14 +794,60 @@ mod tests {
     #[test]
     fn impacted_by_header_marks_empty_changed_paths() {
         // Reachable via `--ref <ref>` with no diff: valid envelope, empty
-        // changed_paths. The header must say so instead of rendering
-        // `## Impacted by: ` with a trailing space.
+        // changed_paths. The count line must say so instead of rendering
+        // `**Impacted by** 0 changed paths` over a pointless details block.
         let envelope = ImpactedEnvelope::new(Vec::new(), Vec::new(), Vec::new(), Vec::new());
         let mut output = String::new();
         render_impacted_by(&mut output, &envelope);
         assert_eq!(
             output,
-            "## Impacted by: _(no changed paths)_\n\nNo impacted Knowledge Objects.\n"
+            "**Impacted by** _(no changed paths)_\n\nNo impacted Knowledge Objects.\n"
+        );
+    }
+
+    #[test]
+    fn impacted_by_puts_changed_paths_in_details_block() {
+        // V8.3.4: count-first — a large PR must not flood the comment with
+        // its own file list, so the paths collapse into `<details>`.
+        let envelope = ImpactedEnvelope::new(
+            vec!["a.rs".to_string(), "b.rs".to_string()],
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        );
+        let mut output = String::new();
+        render_impacted_by(&mut output, &envelope);
+        assert_eq!(
+            output,
+            "**Impacted by** 2 changed paths\n\n<details>\n<summary>Changed paths</summary>\n\n- `a.rs`\n- `b.rs`\n\n</details>\n\nNo impacted Knowledge Objects.\n"
+        );
+    }
+
+    #[test]
+    fn impacted_obligations_render_under_a_bold_label_not_a_heading() {
+        // The `## Proof obligations` heading stays exclusive to the frozen
+        // `adoc review`/`diff` markdown shape; the embeddable impacted-by
+        // body uses a bold label.
+        let envelope = ImpactedEnvelope::new(
+            vec!["a.rs".to_string()],
+            Vec::new(),
+            vec![obligation("billing.refunds")],
+            Vec::new(),
+        );
+        let mut out = Vec::new();
+        MarkdownReviewPresenter::write_impacted(&envelope, &mut out).expect("write to Vec");
+        let body = String::from_utf8(out).expect("utf8");
+        assert!(
+            body.contains("**Proof obligations**"),
+            "expected bold obligations label; got:\n{body}"
+        );
+        assert!(
+            !body.contains("## Proof obligations"),
+            "impacted-by must not emit the review heading; got:\n{body}"
+        );
+        assert!(
+            body.contains("- [ ] `billing.refunds`"),
+            "obligations keep the task-list items; got:\n{body}"
         );
     }
 
