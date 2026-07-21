@@ -24,6 +24,8 @@ Both tools accept:
 
 AgentDoc resolves the requested refs to full commit SHAs before reading either snapshot, requires exactly one merge base, and compiles that comparison base against the resolved head. A zero- or multiple-merge-base history fails loudly; AgentDoc never chooses a merge base by output order. Temporary worktrees are created from resolved SHAs and their materialized `HEAD` is verified before source reads.
 
+When `head_ref` is omitted, the changed set is the deterministic union of comparison-base-to-`HEAD` commits, staged changes, unstaged tracked changes, and untracked non-ignored files. Git paths are read as NUL-delimited bytes with rename detection disabled, then validated as UTF-8 portable repository-relative paths. Any malformed or unsafe path fails the entire review instead of disappearing from an otherwise successful result.
+
 `adoc_review` also accepts an optional `patch` parameter (V3.7):
 
 - `patch.source: "path"`, `patch.patch_path`: filesystem path (project-root sandboxed) to an `adoc.patch.v0` JSON file.
