@@ -31,8 +31,8 @@ pub use application::retrieval::{
     search, why_object,
 };
 pub use application::review::{
-    DIFF_SCHEMA_VERSION, REVIEW_SCHEMA_VERSION, ReviewError, ReviewInput, ReviewLoadResult,
-    ReviewSession, diff_objects, proof_obligations, review_with_patch,
+    DIFF_SCHEMA_VERSION, REVIEW_SCHEMA_VERSION, ReviewConfigError, ReviewError, ReviewInput,
+    ReviewLoadResult, ReviewSession, diff_objects, proof_obligations, review_with_patch,
 };
 pub use application::review_envelope::{ObjectDiffEnvelope, ReviewEnvelope};
 pub use application::signals::{
@@ -49,6 +49,10 @@ pub use domain::knowledge_object::block_kind_names;
 pub use domain::obligation::ProofObligation;
 pub use domain::patch::{AffectedRelation, PatchDiff, PatchDocument, PatchOperation};
 pub use domain::ports::snapshot_workspace::{GitRef, SnapshotError, SnapshotSelector};
+pub use domain::project_config::{
+    EmbeddingsProvider, ParsedConfigOutputs, ParsedProjectConfig, ProjectConfigDocumentError,
+    parse_project_config,
+};
 pub use domain::retrieval::{
     ProseRecord, RetrievalEntry, RetrievalMatch, RetrievalRecord, RetrievalRelations,
     RetrievalSource, SearchMode,
@@ -352,7 +356,7 @@ pub fn load_review_from_git(input: ReviewInput) -> Result<ReviewLoadResult, Revi
     let provider =
         infrastructure::git::worktree::GitWorktreeProvider::new(input.project_root.clone())
             .with_expected_workdir_head(resolved.head_sha);
-    application::review::load_review_with_providers(
+    application::review::load_project_review_with_providers(
         ReviewInput {
             base: resolved.base,
             head: resolved.head,
@@ -381,7 +385,7 @@ pub fn load_review_with_changed_files_from_git(
     let changed_files = infrastructure::git::changed_files::GitChangedFilesProvider::new(
         input.project_root.clone(),
     );
-    application::review::load_review_with_changed_files(
+    application::review::load_project_review_with_changed_files(
         ReviewInput {
             base: resolved.base,
             head: resolved.head,

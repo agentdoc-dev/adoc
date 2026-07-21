@@ -309,6 +309,103 @@ fn review_workdir_includes_every_non_ignored_change_source() {
 }
 
 #[test]
+fn review_resolves_docs_path_from_each_snapshot_config() {
+    let workspace = TestWorkspace::new("review-config-transition");
+    run_git(&workspace, &["init", "--initial-branch=main"]);
+    run_git(&workspace, &["config", "user.email", "test@adoc.dev"]);
+    run_git(&workspace, &["config", "user.name", "adoc tests"]);
+    run_git(&workspace, &["config", "commit.gpgsign", "false"]);
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\n",
+    );
+    workspace.write(
+        "docs/guide.adoc",
+        "# Guide @doc(team.guide)\n\n::claim guide.behavior\nstatus: draft\n--\nOld behavior.\n::\n",
+    );
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "base"]);
+
+    run_git(&workspace, &["checkout", "-b", "feature"]);
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: knowledge\n",
+    );
+    workspace.write(
+        "knowledge/guide.adoc",
+        "# Guide @doc(team.guide)\n\n::claim guide.behavior\nstatus: draft\n--\nNew behavior.\n::\n",
+    );
+    run_git(&workspace, &["rm", "docs/guide.adoc"]);
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "move knowledge root"]);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+    assert!(
+        output.status.success(),
+        "expected adoc review to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("review stdout is JSON");
+    assert!(value["diff"]["created"].as_array().unwrap().is_empty());
+    assert!(value["diff"]["deleted"].as_array().unwrap().is_empty());
+    assert_eq!(value["diff"]["changed"][0]["id"], "guide.behavior");
+}
+
+#[test]
+fn review_accepts_snapshot_output_config_changes_without_changing_knowledge() {
+    let workspace = build_code_only_change_with_impacts("review-output-config-transition");
+    workspace.write(
+        "agentdoc.config.yaml",
+        concat!(
+            "version: 1\n",
+            "mode: strict\n",
+            "docs_path: docs\n",
+            "outputs:\n",
+            "  dir: generated\n",
+            "  graph: knowledge.json\n",
+        ),
+    );
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+    assert!(
+        output.status.success(),
+        "expected adoc review to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("review stdout is JSON");
+    assert!(value["diff"]["created"].as_array().unwrap().is_empty());
+    assert!(value["diff"]["deleted"].as_array().unwrap().is_empty());
+    assert!(value["diff"]["changed"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn review_reports_a_removed_head_config_as_a_head_failure() {
+    let workspace = build_code_only_change_with_impacts("review-removed-head-config");
+    std::fs::remove_file(workspace.root.join("agentdoc.config.yaml")).expect("remove config");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("head snapshot configuration failed"));
+}
+
+#[test]
 fn review_main_json_envelope_flags_billing_refunds() {
     let workspace = build_billing_pilot_with_impacts("review-json");
 

@@ -23,6 +23,7 @@ use crate::domain::ports::changed_files::{ChangedFilesError, ChangedFilesProvide
 use crate::domain::ports::snapshot_workspace::{
     SnapshotError, SnapshotSelector, SnapshotWorkspaceProvider,
 };
+use crate::domain::project_config::{ProjectConfigDocumentError, parse_project_config};
 use crate::domain::review::impact::{ImpactedObject, full_graph_impact};
 use crate::domain::review::object_diff::ObjectDiff;
 use crate::domain::review::obligation_rules::{
@@ -107,6 +108,12 @@ pub enum ReviewError {
     HeadCompileBlocked {
         diagnostics: Vec<Diagnostic>,
     },
+    BaseConfig {
+        source: Box<ReviewConfigError>,
+    },
+    HeadConfig {
+        source: Box<ReviewConfigError>,
+    },
     /// V3.3 — the `ChangedFilesProvider` adapter failed to resolve the
     /// changed-file set for `selector`.
     ChangedFiles {
@@ -145,6 +152,12 @@ impl fmt::Display for ReviewError {
                 "head snapshot failed to compile ({} diagnostics)",
                 diagnostics.len()
             ),
+            Self::BaseConfig { source } => {
+                write!(f, "base snapshot configuration failed: {source}")
+            }
+            Self::HeadConfig { source } => {
+                write!(f, "head snapshot configuration failed: {source}")
+            }
             Self::ChangedFiles { selector, .. } => {
                 write!(f, "could not resolve changed-file set against {selector}")
             }
@@ -164,10 +177,32 @@ impl Error for ReviewError {
             Self::BaseSnapshot { source, .. } | Self::HeadSnapshot { source, .. } => Some(source),
             Self::ChangedFiles { source, .. } => Some(source),
             Self::Comparison { source } => Some(source),
+            Self::BaseConfig { source } | Self::HeadConfig { source } => Some(source.as_ref()),
             Self::PatchParse { source } => Some(source),
             _ => None,
         }
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ReviewConfigError {
+    #[error("could not read {}: {source}", path.display())]
+    Read {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("invalid {}: {source}", path.display())]
+    Invalid {
+        path: PathBuf,
+        #[source]
+        source: ProjectConfigDocumentError,
+    },
+}
+
+enum SnapshotLoadError {
+    Snapshot(SnapshotError),
+    Config(Box<ReviewConfigError>),
 }
 
 /// Load both base and head snapshots via the provided
@@ -176,17 +211,37 @@ impl Error for ReviewError {
 ///
 /// The snapshot handles drop at the end of this function (after compile
 /// runs), which triggers the RAII cleanup of any temporary git worktrees.
+#[cfg(test)]
 pub(crate) fn load_review_with_providers<S: SnapshotWorkspaceProvider>(
     input: ReviewInput,
     snapshot_provider: &S,
 ) -> Result<ReviewLoadResult, ReviewError> {
+    load_review_with_providers_mode(input, snapshot_provider, false)
+}
+
+pub(crate) fn load_project_review_with_providers<S: SnapshotWorkspaceProvider>(
+    input: ReviewInput,
+    snapshot_provider: &S,
+) -> Result<ReviewLoadResult, ReviewError> {
+    load_review_with_providers_mode(input, snapshot_provider, true)
+}
+
+fn load_review_with_providers_mode<S: SnapshotWorkspaceProvider>(
+    input: ReviewInput,
+    snapshot_provider: &S,
+    project_config: bool,
+) -> Result<ReviewLoadResult, ReviewError> {
+    let docs_path = (!project_config).then_some(input.docs_path.as_path());
     let base =
-        compile_snapshot(snapshot_provider, &input.base, &input.docs_path).map_err(|source| {
-            ReviewError::BaseSnapshot {
-                selector: input.base.clone(),
-                source,
-            }
-        })?;
+        compile_snapshot(snapshot_provider, &input.base, docs_path).map_err(
+            |error| match error {
+                SnapshotLoadError::Snapshot(source) => ReviewError::BaseSnapshot {
+                    selector: input.base.clone(),
+                    source,
+                },
+                SnapshotLoadError::Config(source) => ReviewError::BaseConfig { source },
+            },
+        )?;
     if base.has_errors() {
         return Err(ReviewError::BaseCompileBlocked {
             diagnostics: base.diagnostics,
@@ -194,12 +249,15 @@ pub(crate) fn load_review_with_providers<S: SnapshotWorkspaceProvider>(
     }
 
     let head =
-        compile_snapshot(snapshot_provider, &input.head, &input.docs_path).map_err(|source| {
-            ReviewError::HeadSnapshot {
-                selector: input.head.clone(),
-                source,
-            }
-        })?;
+        compile_snapshot(snapshot_provider, &input.head, docs_path).map_err(
+            |error| match error {
+                SnapshotLoadError::Snapshot(source) => ReviewError::HeadSnapshot {
+                    selector: input.head.clone(),
+                    source,
+                },
+                SnapshotLoadError::Config(source) => ReviewError::HeadConfig { source },
+            },
+        )?;
     if head.has_errors() {
         return Err(ReviewError::HeadCompileBlocked {
             diagnostics: head.diagnostics,
@@ -222,10 +280,7 @@ pub(crate) fn load_review_with_providers<S: SnapshotWorkspaceProvider>(
     })
 }
 
-/// V3.3 loader. Layers on top of [`load_review_with_providers`] by resolving
-/// the changed-file set through the supplied [`ChangedFilesProvider`] and
-/// populating the session's `impact` and `required_reviewers` projections.
-pub(crate) fn load_review_with_changed_files<
+pub(crate) fn load_project_review_with_changed_files<
     S: SnapshotWorkspaceProvider,
     C: ChangedFilesProvider,
 >(
@@ -233,12 +288,21 @@ pub(crate) fn load_review_with_changed_files<
     snapshot_provider: &S,
     changed_files_provider: &C,
 ) -> Result<ReviewLoadResult, ReviewError> {
+    load_review_with_changed_files_mode(input, snapshot_provider, changed_files_provider, true)
+}
+
+fn load_review_with_changed_files_mode<S: SnapshotWorkspaceProvider, C: ChangedFilesProvider>(
+    input: ReviewInput,
+    snapshot_provider: &S,
+    changed_files_provider: &C,
+    project_config: bool,
+) -> Result<ReviewLoadResult, ReviewError> {
     let base_selector = input.base.clone();
     let head_selector = input.head.clone();
     let ReviewLoadResult {
         session,
         diagnostics,
-    } = load_review_with_providers(input, snapshot_provider)?;
+    } = load_review_with_providers_mode(input, snapshot_provider, project_config)?;
 
     let changed = changed_files_provider
         .changed_files(&base_selector, &head_selector)
@@ -298,9 +362,31 @@ fn proof_obligations_from_head(
 fn compile_snapshot<S: SnapshotWorkspaceProvider>(
     snapshot_provider: &S,
     selector: &SnapshotSelector,
-    docs_path: &std::path::Path,
-) -> Result<CompileResult, SnapshotError> {
-    let workspace = snapshot_provider.checkout(selector)?;
+    configured_docs_path: Option<&std::path::Path>,
+) -> Result<CompileResult, SnapshotLoadError> {
+    let workspace = snapshot_provider
+        .checkout(selector)
+        .map_err(SnapshotLoadError::Snapshot)?;
+    let docs_path = match configured_docs_path {
+        Some(path) => path.to_path_buf(),
+        None => {
+            let path = workspace.path().join("agentdoc.config.yaml");
+            let text = std::fs::read_to_string(&path).map_err(|source| {
+                SnapshotLoadError::Config(Box::new(ReviewConfigError::Read {
+                    path: path.clone(),
+                    source,
+                }))
+            })?;
+            parse_project_config(&text)
+                .map_err(|source| {
+                    SnapshotLoadError::Config(Box::new(ReviewConfigError::Invalid {
+                        path: path.clone(),
+                        source,
+                    }))
+                })?
+                .docs_path
+        }
+    };
     let docs_root = workspace.path().join(docs_path);
     let source_provider =
         FsSourceProvider::for_project(docs_root.clone(), workspace.path().to_path_buf(), docs_root);
@@ -535,6 +621,40 @@ mod tests {
         assert!(base.to_string().contains("docs/billing.adoc"));
         assert!(!base.to_string().contains("<review>"));
         assert!(diff_objects(&result.session).changed().is_empty());
+    }
+
+    #[test]
+    fn project_review_names_the_snapshot_with_invalid_config() {
+        let base_root = fresh_workspace("valid-base-config");
+        write_billing_source(base_root.path(), "Stable base.");
+        fs::write(
+            base_root.path().join("agentdoc.config.yaml"),
+            "version: 1\nmode: strict\ndocs_path: docs\n",
+        )
+        .expect("base config");
+        let head_root = fresh_workspace("invalid-head-config");
+        write_billing_source(head_root.path(), "Stable head.");
+        fs::write(
+            head_root.path().join("agentdoc.config.yaml"),
+            "version: 1\nmode: strict\ndocs_path: ../escape\n",
+        )
+        .expect("head config");
+        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf())
+            .with_ref("main", base_root.path().to_path_buf());
+
+        let error = load_project_review_with_providers(
+            ReviewInput {
+                project_root: head_root.path().to_path_buf(),
+                docs_path: std::path::PathBuf::from("ignored"),
+                base: SnapshotSelector::GitRef(GitRef::new("main")),
+                head: SnapshotSelector::Workdir,
+            },
+            &provider,
+        )
+        .expect_err("invalid head config must fail");
+
+        assert!(matches!(error, ReviewError::HeadConfig { .. }));
+        assert!(format!("{error}").contains("docs_path"));
     }
 
     #[test]

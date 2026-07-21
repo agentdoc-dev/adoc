@@ -257,7 +257,7 @@ Parallelism describes merge conflicts and dependencies, not required staffing.
 | Slice | Status | User outcome | Repositories | Depends on | Completion evidence |
 | --- | --- | --- | --- | --- | --- |
 | V9.1.1 | Implemented | Portable source coordinates and hashes | `adoc` | — | ADR-0049; core/local/CLI/MCP contract tests |
-| V9.1.2 | Planned | Code-only PRs report unchanged affected knowledge | `adoc` | V9.1.1 | — |
+| V9.1.2 | In progress | Code-only PRs report unchanged affected knowledge | `adoc` | V9.1.1 | Full-graph core, exact-revision Git adapter, worktree change-set, and snapshot-config CLI/MCP tests |
 | V9.1.3 | Planned | Failed analysis cannot appear covered | `action` | — | — |
 | V9.1.4 | Planned | Proposal execution has a defensible trust boundary | `action` | — | — |
 | V9.2.1 | Planned | One deterministic local change-assessment command | `adoc` | V9.1.1–V9.1.2 | — |
@@ -428,13 +428,13 @@ These may be commits in one PR if review remains tractable; do not split tests o
 
 ### V9.1.2: Code-Change Impact Correctness Slice
 
-**Status:** Planned
+**Status:** In progress
 **Repositories:** `adoc`
 **Depends on:** V9.1.1
 **User touchpoint:** `adoc review <base>` and MCP `adoc_review`
 **Contract impact:** Behavioral correction within `adoc.review.v0`
 **Gate posture:** Advisory
-**Completion evidence:** —
+**Completion evidence:** Full-graph impact and kind-correct obligation unit tests; exact-SHA/merge-base, immutable-worktree, complete changed-path, per-snapshot-config, CLI, MCP, and contract regressions on the implementation branch. Merge and release links remain required before `Implemented`.
 
 #### Goal
 
