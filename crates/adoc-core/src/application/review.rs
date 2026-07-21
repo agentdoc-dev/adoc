@@ -23,10 +23,12 @@ use crate::domain::ports::changed_files::{ChangedFilesError, ChangedFilesProvide
 use crate::domain::ports::snapshot_workspace::{
     SnapshotError, SnapshotSelector, SnapshotWorkspaceProvider,
 };
-use crate::domain::review::impact::{ImpactedObject, compute_impact};
+use crate::domain::review::impact::{ImpactedObject, full_graph_impact};
 use crate::domain::review::object_diff::ObjectDiff;
-use crate::domain::review::obligation_rules::{obligations_for_change, obligations_for_impact};
-use crate::domain::review::reviewer::{RequiredReviewer, required_reviewers};
+use crate::domain::review::obligation_rules::{
+    obligation_for_impacted_node, obligations_for_change, obligations_for_impact,
+};
+use crate::domain::review::reviewer::{RequiredReviewer, required_reviewers_from_head};
 use crate::infrastructure::source::fs::FsSourceProvider;
 
 pub const DIFF_SCHEMA_VERSION: &str = "adoc.diff.v0";
@@ -239,9 +241,11 @@ pub(crate) fn load_review_with_changed_files<
         })?;
 
     let diff = diff_objects(&session);
-    let impact = compute_impact(&diff, &changed);
-    let reviewers = required_reviewers(&diff, &impact);
-    let obligations = proof_obligations(&diff, &impact);
+    let head_objects = extract_knowledge_objects(&session.head);
+    let head = head_objects.iter().collect::<Vec<_>>();
+    let impact = full_graph_impact(&head, &changed);
+    let reviewers = required_reviewers_from_head(&diff, &head, &impact);
+    let obligations = proof_obligations_from_head(&diff, &head, &impact);
 
     Ok(ReviewLoadResult {
         session: ReviewSession {
@@ -264,6 +268,23 @@ pub fn proof_obligations(diff: &ObjectDiff, impact: &[ImpactedObject]) -> Vec<Pr
     // ones on the same (object_id, reason). See [`ProofObligation::merge_dedup_sorted`].
     let from_diff = diff.changed.iter().flat_map(obligations_for_change);
     let from_impact = impact.iter().flat_map(obligations_for_impact);
+    ProofObligation::merge_dedup_sorted(from_diff.chain(from_impact))
+}
+
+fn proof_obligations_from_head(
+    diff: &ObjectDiff,
+    head: &[&GraphKnowledgeObjectNode],
+    impact: &[ImpactedObject],
+) -> Vec<ProofObligation> {
+    let head_by_id = head
+        .iter()
+        .map(|node| (node.id.as_str(), *node))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let from_diff = diff.changed.iter().flat_map(obligations_for_change);
+    let from_impact = impact
+        .iter()
+        .filter_map(|entry| head_by_id.get(entry.id.as_str()))
+        .map(|node| obligation_for_impacted_node(node));
     ProofObligation::merge_dedup_sorted(from_diff.chain(from_impact))
 }
 

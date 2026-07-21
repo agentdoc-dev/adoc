@@ -25,7 +25,7 @@
       "additionalProperties": true
     },
     "impact": {
-      "description": "Verified Knowledge Objects whose `impacts:` declaration intersects the changed-file set. Sorted by Object ID.",
+      "description": "Verified claims, accepted decisions, and verified APIs in the complete head graph whose `impacts:` or path-bearing evidence exactly matches the changed-file set. Paths are deduplicated and records are sorted by Object ID.",
       "type": "array",
       "items": { "$ref": "#/$defs/impactedObject" }
     },

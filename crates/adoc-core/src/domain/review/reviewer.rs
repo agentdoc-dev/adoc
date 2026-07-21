@@ -13,13 +13,8 @@ use serde::{Deserialize, Serialize};
 use crate::domain::graph::GraphKnowledgeObjectNode;
 use crate::domain::knowledge_object::metadata::KnowledgeObjectMetadata;
 
-use super::impact::ImpactedObject;
+use super::impact::{ImpactedObject, is_verified_subject};
 use super::object_diff::ObjectDiff;
-
-const CLAIM_KIND: &str = "claim";
-const DECISION_KIND: &str = "decision";
-const VERIFIED_STATUS: &str = "verified";
-const ACCEPTED_STATUS: &str = "accepted";
 
 /// One reviewer entry. Lists every Knowledge Object ID for which this owner is
 /// the required reviewer — both changed verified objects and impacted objects.
@@ -46,6 +41,19 @@ pub struct RequiredReviewer {
 /// Output is sorted by `owner`; within each entry, `object_ids` is sorted
 /// ascending and deduplicated.
 pub fn required_reviewers(diff: &ObjectDiff, impact: &[ImpactedObject]) -> Vec<RequiredReviewer> {
+    let head = diff
+        .created
+        .iter()
+        .chain(diff.changed.iter().map(|change| &change.head))
+        .collect::<Vec<_>>();
+    required_reviewers_from_head(diff, &head, impact)
+}
+
+pub(crate) fn required_reviewers_from_head(
+    diff: &ObjectDiff,
+    head: &[&GraphKnowledgeObjectNode],
+    impact: &[ImpactedObject],
+) -> Vec<RequiredReviewer> {
     let mut by_owner: BTreeMap<String, std::collections::BTreeSet<String>> = BTreeMap::new();
 
     let head_subjects = diff
@@ -63,10 +71,9 @@ pub fn required_reviewers(diff: &ObjectDiff, impact: &[ImpactedObject]) -> Vec<R
         }
     }
 
-    let head_by_id: BTreeMap<&str, &GraphKnowledgeObjectNode> = diff
-        .created
+    let head_by_id: BTreeMap<&str, &GraphKnowledgeObjectNode> = head
         .iter()
-        .chain(diff.changed.iter().map(|c| &c.head))
+        .copied()
         .map(|node| (node.id.as_str(), node))
         .collect();
 
@@ -94,17 +101,6 @@ fn owner_of(node: &GraphKnowledgeObjectNode) -> Option<&str> {
     KnowledgeObjectMetadata::from_node(node).owner
 }
 
-fn is_verified_subject(node: &GraphKnowledgeObjectNode) -> bool {
-    let Some(status) = node.status.as_deref() else {
-        return false;
-    };
-    match node.kind.as_str() {
-        CLAIM_KIND => status == VERIFIED_STATUS,
-        DECISION_KIND => status == ACCEPTED_STATUS,
-        _ => false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,7 +110,7 @@ mod tests {
 
     fn verified_claim(id: &str, owner: Option<&str>) -> GraphKnowledgeObjectNode {
         let mut node = test_node(id, "sha256:dummy");
-        node.status = Some(VERIFIED_STATUS.to_string());
+        node.status = Some("verified".to_string());
         if let Some(owner) = owner {
             node.fields
                 .insert(OWNER_FIELD.to_string(), owner.to_string());
