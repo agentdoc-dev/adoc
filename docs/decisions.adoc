@@ -52,6 +52,14 @@ owner: maintainer
 ADR-0042: pilot readiness evidence definition and Later un-gating thresholds.
 ::
 
+::source docs.adr-0049
+kind: design_doc
+path: docs/adr/0049-canonical-source-identity-and-portable-hashes.md
+owner: maintainer
+--
+ADR-0049: canonical source identity separates physical, page-identity, and portable logical paths and defines adoc.graph.v5 repository identity.
+::
+
 ::decision docs.markdown-prose-only-ingestion
 status: accepted
 decided_by: maintainer
@@ -104,4 +112,13 @@ owner: maintainer
 evidence_ref: docs.adr-0042
 --
 The dogfood pilot's un-gating thresholds for Markdown migration, composition, and governance were fixed in ADR-0042 before any pilot session ran, so gate decisions cite recorded evidence against pre-committed numbers rather than recollection.
+::
+
+::decision docs.canonical-source-identity
+status: accepted
+decided_by: maintainer
+owner: maintainer
+evidence_ref: docs.adr-0049
+--
+Source coordinates have three explicit roles: canonical physical paths read bytes, docs-root-relative identity paths derive page IDs, and validated project-relative logical paths populate diagnostics, graph spans, hashes, diffs, patches, and receipts. Project-bound Graph Artifacts identify agentdoc.config.yaml; standalone artifacts explicitly carry no repository identity.
 ::
