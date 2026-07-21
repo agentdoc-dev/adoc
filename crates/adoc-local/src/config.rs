@@ -134,6 +134,13 @@ impl RawProjectConfig {
             });
         }
 
+        if !is_portable_project_relative_path(&self.docs_path) {
+            return Err(LocalError::ConfigInvalid {
+                path: path.to_path_buf(),
+                message: "docs_path must be a portable project-relative path".to_string(),
+            });
+        }
+
         let config_dir = path.parent().unwrap_or_else(|| Path::new("."));
         let outputs = self.outputs.unwrap_or_default().resolve(config_dir);
         let embeddings_provider = match self.embeddings {
@@ -207,6 +214,26 @@ fn resolve_config_path(config_dir: &Path, path: PathBuf) -> PathBuf {
     }
 }
 
+fn is_portable_project_relative_path(path: &Path) -> bool {
+    let Some(value) = path.to_str() else {
+        return false;
+    };
+    if value == "." {
+        return true;
+    }
+    let bytes = value.as_bytes();
+    !value.is_empty()
+        && value.trim() == value
+        && !path.is_absolute()
+        && !value.starts_with('\\')
+        && !value.contains('\\')
+        && !value.chars().any(char::is_control)
+        && !(bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
+        && !value
+            .split('/')
+            .any(|component| component.is_empty() || component == "." || component == "..")
+}
+
 fn is_git_boundary(path: &Path) -> bool {
     path.join(".git").exists()
 }
@@ -236,6 +263,28 @@ mod tests {
     }
 
     const BASE_CONFIG: &str = "version: 1\nmode: strict\ndocs_path: docs\n";
+
+    #[test]
+    fn docs_path_must_be_a_portable_project_relative_path() {
+        for docs_path in [
+            "../docs",
+            "/tmp/docs",
+            "docs\\knowledge",
+            " docs",
+            "docs ",
+            "C:/docs",
+        ] {
+            let contents = format!("version: 1\nmode: strict\ndocs_path: '{docs_path}'\n");
+            let (_dir, result) = config_in_tempdir(&contents);
+
+            match result {
+                Err(LocalError::ConfigInvalid { message, .. }) => {
+                    assert!(message.contains("docs_path"), "message: {message}");
+                }
+                other => panic!("unsafe docs_path {docs_path:?} must fail, got {other:?}"),
+            }
+        }
+    }
 
     #[test]
     fn mcp_patch_apply_defaults_to_disabled_when_block_absent() {

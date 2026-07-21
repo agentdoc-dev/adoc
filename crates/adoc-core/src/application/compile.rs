@@ -43,6 +43,12 @@ pub struct BuildInput {
     pub prior_search_artifact_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone)]
+pub struct LocalProjectContext {
+    pub project_root: PathBuf,
+    pub docs_root: PathBuf,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildEmbeddingMode {
     Enabled,
@@ -137,6 +143,7 @@ fn run_compile_pipeline<P: SourceProvider>(
     today: NaiveDate,
     anchor: Option<&dyn EvidenceFileReader>,
 ) -> CompileResult {
+    let repository_identity = provider.repository_identity();
     // Pipeline stages: load → validate-source-pages → resolve-KOs →
     // resolve-object-references → validate-resolved-pages → assemble →
     // validate-workspace → build. Each stage is a separate function below so
@@ -172,6 +179,7 @@ fn run_compile_pipeline<P: SourceProvider>(
         &diagnostics,
         build_options.as_mut(),
         Some(today),
+        repository_identity,
     );
     let artifacts = artifact_result.artifacts;
     diagnostics.extend(artifact_result.diagnostics);
@@ -244,6 +252,14 @@ pub(crate) fn load_error_diagnostic(load_error: SourceLoadError) -> Diagnostic {
                 load_error.path.display(),
             ),
         ),
+        SourceLoadErrorKind::UnsafeSourcePath => Diagnostic::error(
+            DiagnosticCode::IoSourcePathUnsafe,
+            format!(
+                "unsafe AgentDoc Source path {}: {}",
+                load_error.path.display(),
+                load_error.message,
+            ),
+        ),
     }
 }
 
@@ -285,7 +301,14 @@ fn assemble_workspace(parsed: Vec<(SourceFile, PageAst)>) -> WorkspaceAst {
 /// statically dispatched per ADR-0006.
 #[cfg(test)]
 fn build_artifacts(workspace: &WorkspaceAst, diagnostics: &[Diagnostic]) -> Option<BuildArtifacts> {
-    build_artifacts_for_build(workspace, diagnostics, None, None).artifacts
+    build_artifacts_for_build(
+        workspace,
+        diagnostics,
+        None,
+        None,
+        crate::domain::graph::GraphRepositoryIdentity::standalone(),
+    )
+    .artifacts
 }
 
 struct ArtifactBuildResult {
@@ -298,6 +321,7 @@ fn build_artifacts_for_build(
     diagnostics: &[Diagnostic],
     mut build_options: Option<&mut BuildOptions<'_>>,
     today: Option<NaiveDate>,
+    repository_identity: crate::domain::graph::GraphRepositoryIdentity,
 ) -> ArtifactBuildResult {
     if diagnostics
         .iter()
@@ -314,7 +338,12 @@ fn build_artifacts_for_build(
         .filter(|diagnostic| diagnostic.code != DiagnosticCode::BuildEmbeddingsSkipped)
         .cloned()
         .collect::<Vec<_>>();
-    let graph_document = GraphJsonArtifact.build_for_date(workspace, &graph_diagnostics, today);
+    let graph_document = GraphJsonArtifact.build_for_date_and_repository(
+        workspace,
+        &graph_diagnostics,
+        today,
+        repository_identity,
+    );
     let graph_json = graph_document
         .to_pretty_json()
         .expect("graph artifact serialization should not fail");
@@ -552,7 +581,7 @@ mod tests {
                 span.start.line,
                 span.start.column
             )),
-            Some((std::path::Path::new("/work/guide.adoc"), 3, 1))
+            Some((std::path::Path::new("guide.adoc"), 3, 1))
         );
         assert!(
             diagnostic.message.contains("billing.credits")
@@ -615,7 +644,7 @@ mod tests {
                 span.start.line,
                 span.start.column
             )),
-            Some((std::path::Path::new("/work/guide.adoc"), 3, 1))
+            Some((std::path::Path::new("guide.adoc"), 3, 1))
         );
         assert!(
             diagnostic.message.contains("billing.invalid")

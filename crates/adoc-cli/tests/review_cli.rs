@@ -134,6 +134,10 @@ fn build_billing_pilot_with_impacts(name: &str) -> TestWorkspace {
     run_git(&workspace, &["config", "user.name", "adoc tests"]);
     run_git(&workspace, &["config", "commit.gpgsign", "false"]);
 
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\n",
+    );
     workspace.write("docs/billing.adoc", BASE_BILLING_ADOC);
     workspace.write("crates/billing/src/refund.rs", BASE_REFUND_SRC);
     run_git(&workspace, &["add", "-A"]);
@@ -358,6 +362,10 @@ fn review_main_json_emits_owner_reassert_for_changed_unresolved_contradiction() 
     run_git(&workspace, &["config", "user.name", "adoc tests"]);
     run_git(&workspace, &["config", "commit.gpgsign", "false"]);
 
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\n",
+    );
     workspace.write("docs/contradictions.adoc", BASE_CONTRADICTION_ADOC);
     run_git(&workspace, &["add", "-A"]);
     run_git(&workspace, &["commit", "-m", "base"]);

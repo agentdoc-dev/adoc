@@ -4,7 +4,7 @@
     "severity": "error",
     "message": "Object ID must use lowercase dot-separated kebab-case segments with at least two segments",
     "span": {
-      "file": "tests/fixtures/page_id_invalid/annotation/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 1,
         "column": 24,

@@ -249,7 +249,7 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
             Ok(source) => match source.mode() {
                 SourceMode::Compat => compat_sources.push(source),
                 SourceMode::Strict => {
-                    strict_paths.insert(normalize_path(&source.path));
+                    strict_paths.insert(normalize_path(&source.physical_path));
                 }
             },
             Err(load_error) => diagnostics.push(load_error_diagnostic(load_error)),
@@ -258,7 +258,7 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
 
     let migration_set: BTreeSet<PathBuf> = compat_sources
         .iter()
-        .map(|source| normalize_path(&source.path))
+        .map(|source| normalize_path(&source.physical_path))
         .collect();
 
     let mut files = Vec::with_capacity(compat_sources.len());
@@ -272,7 +272,7 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
                     format!(
                         "front matter dropped from {}; strict .adoc has no front-matter \
                          concept — git history and `adoc migrate --export` cover recovery",
-                        source.path.display()
+                        source.physical_path.display()
                     ),
                 )
                 .with_span(source.span_for_line(1, first_line)),
@@ -291,7 +291,7 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
             MigrateDirection::Import,
         ));
 
-        let target_path = source.path.with_extension("adoc");
+        let target_path = source.physical_path.with_extension("adoc");
         if strict_paths.contains(&normalize_path(&target_path)) {
             diagnostics.push(Diagnostic::error(
                 DiagnosticCode::MigrateTargetExists,
@@ -299,12 +299,12 @@ pub(crate) fn migrate_with_provider<P: SourceProvider>(
                     "migration target {} already exists; refusing the run — leaving \
                      {} beside it would compile duplicate page IDs",
                     target_path.display(),
-                    source.path.display()
+                    source.physical_path.display()
                 ),
             ));
         }
         files.push(MigratedFile {
-            source_path: source.path.clone(),
+            source_path: source.physical_path.clone(),
             target_path,
             target_text: adoc_text,
             prose_blocks,
@@ -337,7 +337,7 @@ pub(crate) fn export_with_provider<P: SourceProvider>(
             Ok(source) => match source.mode() {
                 SourceMode::Strict => strict_sources.push(source),
                 SourceMode::Compat => {
-                    compat_paths.insert(normalize_path(&source.path));
+                    compat_paths.insert(normalize_path(&source.physical_path));
                 }
             },
             Err(load_error) => diagnostics.push(load_error_diagnostic(load_error)),
@@ -346,7 +346,7 @@ pub(crate) fn export_with_provider<P: SourceProvider>(
 
     let export_set: BTreeSet<PathBuf> = strict_sources
         .iter()
-        .map(|source| normalize_path(&source.path))
+        .map(|source| normalize_path(&source.physical_path))
         .collect();
 
     let mut files = Vec::with_capacity(strict_sources.len());
@@ -367,7 +367,7 @@ pub(crate) fn export_with_provider<P: SourceProvider>(
                 format!(
                     "{} contains typed Knowledge Object blocks; exporting typed knowledge \
                      to Markdown is lossy by definition — the run is refused",
-                    source.path.display()
+                    source.physical_path.display()
                 ),
             ));
             continue;
@@ -382,7 +382,7 @@ pub(crate) fn export_with_provider<P: SourceProvider>(
             MigrateDirection::Export,
         ));
 
-        let target_path = source.path.with_extension("md");
+        let target_path = source.physical_path.with_extension("md");
         if compat_paths.contains(&normalize_path(&target_path)) {
             diagnostics.push(Diagnostic::error(
                 DiagnosticCode::MigrateTargetExists,
@@ -390,12 +390,12 @@ pub(crate) fn export_with_provider<P: SourceProvider>(
                     "export target {} already exists; refusing the run — leaving \
                      {} beside it would compile duplicate page IDs",
                     target_path.display(),
-                    source.path.display()
+                    source.physical_path.display()
                 ),
             ));
         }
         files.push(MigratedFile {
-            source_path: source.path.clone(),
+            source_path: source.physical_path.clone(),
             target_path,
             target_text: markdown_text,
             prose_blocks,
@@ -455,7 +455,7 @@ fn broken_link_diagnostics<P: SourceProvider>(
         MigrateDirection::Export => "exported to .md",
     };
     let mut diagnostics = Vec::new();
-    let source_dir = source.path.parent().unwrap_or(Path::new(""));
+    let source_dir = source.physical_path.parent().unwrap_or(Path::new(""));
     for block in &page.blocks {
         walk_block_links(block, &mut |url: &str, span| {
             if has_url_scheme(url) {
@@ -477,7 +477,7 @@ fn broken_link_diagnostics<P: SourceProvider>(
                         format!(
                             "link target {target} is {converted_away} by this run; \
                              update the link in {}",
-                            source.path.display()
+                            source.physical_path.display()
                         ),
                     )
                     .with_span(span.clone()),
@@ -488,7 +488,7 @@ fn broken_link_diagnostics<P: SourceProvider>(
                         DiagnosticCode::MigrateBrokenLink,
                         format!(
                             "link target {target} does not exist (referenced from {})",
-                            source.path.display()
+                            source.physical_path.display()
                         ),
                     )
                     .with_span(span.clone()),
@@ -948,7 +948,7 @@ mod tests {
         assert_eq!(suggestion.suggested_kind, "task");
         assert_eq!(suggestion.matched_rule, "todo_line");
         assert_eq!(suggestion.excerpt, "TODO: rotate the signing key.");
-        assert_eq!(suggestion.span.file, PathBuf::from("/work/a/tasks.md"));
+        assert_eq!(suggestion.span.file, PathBuf::from("a/tasks.md"));
         assert_eq!(suggestion.span.start.line, 5);
     }
 

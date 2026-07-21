@@ -21,7 +21,7 @@
 //! All warnings are driven by fixed past dates / wide-margin fixtures so the
 //! budget is clock-stable on any realistic future run date.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde_json::Value;
@@ -106,7 +106,7 @@ fn expanded_pilot_check_emits_documented_diagnostic_budget() {
     );
 }
 
-/// V5.10 acceptance: `adoc build` emits an `adoc.graph.v4` artifact carrying
+/// V5.10 acceptance: `adoc build` emits an `adoc.graph.v5` artifact carrying
 /// every V5 kind with exact per-kind node counts, the V5.8 evidence edges,
 /// V5.10 derived lifecycle fields (`effective_status`, `evidence_quality`),
 /// and pilot-scoped source spans; `docs.html` renders each kind distinctly.
@@ -140,7 +140,7 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
     let graph_text = std::fs::read_to_string(output_directory.join("docs.graph.json"))
         .expect("pilot graph JSON is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph JSON is valid");
-    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+    assert_eq!(graph["schema_version"], "adoc.graph.v5");
 
     let nodes = graph["nodes"]
         .as_array()
@@ -246,8 +246,8 @@ fn expanded_pilot_build_emits_all_kinds_in_html_and_graph() {
             .as_str()
             .unwrap_or_else(|| panic!("KO {} missing source_span.path", object["id"]));
         assert!(
-            path.contains("examples/expanded-pilot/"),
-            "KO {} source span must point back into the pilot, got {path}",
+            Path::new(path).is_relative() && path.ends_with(".adoc"),
+            "KO {} source span must be relative to the explicit pilot root, got {path}",
             object["id"]
         );
     }
@@ -623,6 +623,10 @@ fn expanded_pilot_diff_review_patch() {
         "--\n",
         "Credit consumption is handled by the use-case implementation.\n",
         "::\n",
+    );
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: knowledge\n",
     );
     workspace.write("knowledge/billing.adoc", base_adoc);
     run_git(&workspace, &["add", "-A"]);

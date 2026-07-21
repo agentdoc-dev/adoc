@@ -23,7 +23,6 @@ use crate::domain::ports::changed_files::{ChangedFilesError, ChangedFilesProvide
 use crate::domain::ports::snapshot_workspace::{
     SnapshotError, SnapshotSelector, SnapshotWorkspaceProvider,
 };
-use crate::domain::ports::source_provider::SourceProvider;
 use crate::domain::review::impact::{ImpactedObject, compute_impact};
 use crate::domain::review::object_diff::ObjectDiff;
 use crate::domain::review::obligation_rules::{obligations_for_change, obligations_for_impact};
@@ -38,6 +37,9 @@ pub struct ReviewInput {
     /// Project root used to construct the git-CLI adapter. The directory must
     /// be inside a git repository when `base` or `head` is a [`SnapshotSelector::GitRef`].
     pub project_root: PathBuf,
+    /// Project-root-relative configured documentation directory compiled in
+    /// both snapshots.
+    pub docs_path: PathBuf,
     pub base: SnapshotSelector,
     pub head: SnapshotSelector,
 }
@@ -169,24 +171,26 @@ pub(crate) fn load_review_with_providers<S: SnapshotWorkspaceProvider>(
     input: ReviewInput,
     snapshot_provider: &S,
 ) -> Result<ReviewLoadResult, ReviewError> {
-    let base = compile_snapshot(snapshot_provider, &input.base).map_err(|source| {
-        ReviewError::BaseSnapshot {
-            selector: input.base.clone(),
-            source,
-        }
-    })?;
+    let base =
+        compile_snapshot(snapshot_provider, &input.base, &input.docs_path).map_err(|source| {
+            ReviewError::BaseSnapshot {
+                selector: input.base.clone(),
+                source,
+            }
+        })?;
     if base.has_errors() {
         return Err(ReviewError::BaseCompileBlocked {
             diagnostics: base.diagnostics,
         });
     }
 
-    let head = compile_snapshot(snapshot_provider, &input.head).map_err(|source| {
-        ReviewError::HeadSnapshot {
-            selector: input.head.clone(),
-            source,
-        }
-    })?;
+    let head =
+        compile_snapshot(snapshot_provider, &input.head, &input.docs_path).map_err(|source| {
+            ReviewError::HeadSnapshot {
+                selector: input.head.clone(),
+                source,
+            }
+        })?;
     if head.has_errors() {
         return Err(ReviewError::HeadCompileBlocked {
             diagnostics: head.diagnostics,
@@ -263,20 +267,15 @@ pub fn proof_obligations(diff: &ObjectDiff, impact: &[ImpactedObject]) -> Vec<Pr
     ProofObligation::merge_dedup_sorted(from_diff.chain(from_impact))
 }
 
-/// Constant identity prefix used to rebase both base- and head-side source
-/// paths onto the same logical root. Without this rebase, `content_hash`
-/// values would carry the temporary worktree path on one side and the
-/// project workdir path on the other, and every unchanged Knowledge Object
-/// would appear in the diff's `changed[]` array.
-const REVIEW_IDENTITY_PREFIX: &str = "<review>";
-
 fn compile_snapshot<S: SnapshotWorkspaceProvider>(
     snapshot_provider: &S,
     selector: &SnapshotSelector,
+    docs_path: &std::path::Path,
 ) -> Result<CompileResult, SnapshotError> {
     let workspace = snapshot_provider.checkout(selector)?;
-    let source_provider = FsSourceProvider::new(workspace.path().to_path_buf())
-        .with_identity_prefix(PathBuf::from(REVIEW_IDENTITY_PREFIX));
+    let docs_root = workspace.path().join(docs_path);
+    let source_provider =
+        FsSourceProvider::for_project(docs_root.clone(), workspace.path().to_path_buf(), docs_root);
     let result = compile_with_provider(&source_provider);
     Ok(result)
 }
@@ -442,6 +441,7 @@ mod tests {
         let result = load_review_with_providers(
             ReviewInput {
                 project_root: head_root.path().to_path_buf(),
+                docs_path: std::path::PathBuf::from("docs"),
                 base: SnapshotSelector::GitRef(GitRef::new("main")),
                 head: SnapshotSelector::Workdir,
             },
@@ -455,6 +455,58 @@ mod tests {
         assert!(matches!(recorded[1], SnapshotSelector::Workdir));
         assert!(result.session.base().artifacts.is_some());
         assert!(result.session.head().artifacts.is_some());
+    }
+
+    #[test]
+    fn review_compiles_only_configured_docs_with_portable_project_paths() {
+        let base_root = fresh_workspace("configured-docs-base");
+        write_billing_source(base_root.path(), "Credits are stable.");
+        fs::write(
+            base_root.path().join("outside.adoc"),
+            "<div>ignored</div>\n",
+        )
+        .expect("outside source");
+        let head_root = fresh_workspace("configured-docs-head");
+        write_billing_source(head_root.path(), "Credits are stable.");
+        fs::write(
+            head_root.path().join("outside.adoc"),
+            "<div>ignored</div>\n",
+        )
+        .expect("outside source");
+        let provider = InMemorySnapshotWorkspaceProvider::new(head_root.path().to_path_buf())
+            .with_ref("main", base_root.path().to_path_buf());
+
+        let result = load_review_with_providers(
+            ReviewInput {
+                project_root: head_root.path().to_path_buf(),
+                docs_path: std::path::PathBuf::from("docs"),
+                base: SnapshotSelector::GitRef(GitRef::new("main")),
+                head: SnapshotSelector::Workdir,
+            },
+            &provider,
+        )
+        .expect("configured docs compile");
+        let base = &result
+            .session
+            .base()
+            .artifacts
+            .as_ref()
+            .expect("base")
+            .graph_json;
+        let head = &result
+            .session
+            .head()
+            .artifacts
+            .as_ref()
+            .expect("head")
+            .graph_json;
+        let base: serde_json::Value = serde_json::from_str(base).expect("base JSON");
+        let head: serde_json::Value = serde_json::from_str(head).expect("head JSON");
+
+        assert_eq!(base["nodes"], head["nodes"]);
+        assert!(base.to_string().contains("docs/billing.adoc"));
+        assert!(!base.to_string().contains("<review>"));
+        assert!(diff_objects(&result.session).changed().is_empty());
     }
 
     #[test]
@@ -476,6 +528,7 @@ mod tests {
         let error = load_review_with_providers(
             ReviewInput {
                 project_root: head_root.path().to_path_buf(),
+                docs_path: std::path::PathBuf::from("docs"),
                 base: SnapshotSelector::GitRef(GitRef::new("main")),
                 head: SnapshotSelector::Workdir,
             },
@@ -504,6 +557,7 @@ mod tests {
         let error = load_review_with_providers(
             ReviewInput {
                 project_root: head_root.path().to_path_buf(),
+                docs_path: std::path::PathBuf::from("docs"),
                 base: SnapshotSelector::GitRef(GitRef::new("unseeded")),
                 head: SnapshotSelector::Workdir,
             },
@@ -575,6 +629,7 @@ mod tests {
         let load = load_review_with_providers(
             ReviewInput {
                 project_root: head_root.path().to_path_buf(),
+                docs_path: std::path::PathBuf::from("docs"),
                 base: SnapshotSelector::GitRef(GitRef::new("main")),
                 head: SnapshotSelector::Workdir,
             },
@@ -832,6 +887,7 @@ mod tests {
             let load = load_review_with_providers(
                 ReviewInput {
                     project_root: head_root.path().to_path_buf(),
+                    docs_path: std::path::PathBuf::from("docs"),
                     base: SnapshotSelector::GitRef(GitRef::new("main")),
                     head: SnapshotSelector::Workdir,
                 },

@@ -96,7 +96,7 @@ fn build_accepts_prd_example_and_emits_api_into_graph_v4() {
         .expect("graph artifact is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph json parses");
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+    assert_eq!(graph["schema_version"], "adoc.graph.v5");
 
     let api = graph["nodes"]
         .as_array()

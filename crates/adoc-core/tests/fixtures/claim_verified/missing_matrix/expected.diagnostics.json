@@ -4,7 +4,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-owner` is missing required field `owner`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 3,
         "column": 1,
@@ -24,7 +24,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-verified-at` is missing required field `verified_at`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 11,
         "column": 1,
@@ -44,7 +44,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-evidence` requires at least one evidence field: `source`, `test`, `reviewed_by`, `external_url`, or `evidence_ref`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 19,
         "column": 1,
@@ -64,7 +64,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-owner-verified-at` is missing required field `owner`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 27,
         "column": 1,
@@ -84,7 +84,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-owner-verified-at` is missing required field `verified_at`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 27,
         "column": 1,
@@ -104,7 +104,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-owner-evidence` is missing required field `owner`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 34,
         "column": 1,
@@ -124,7 +124,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-owner-evidence` requires at least one evidence field: `source`, `test`, `reviewed_by`, `external_url`, or `evidence_ref`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 34,
         "column": 1,
@@ -144,7 +144,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-verified-at-evidence` is missing required field `verified_at`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 41,
         "column": 1,
@@ -164,7 +164,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-verified-at-evidence` requires at least one evidence field: `source`, `test`, `reviewed_by`, `external_url`, or `evidence_ref`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 41,
         "column": 1,
@@ -184,7 +184,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-all` is missing required field `owner`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 48,
         "column": 1,
@@ -204,7 +204,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-all` is missing required field `verified_at`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 48,
         "column": 1,
@@ -224,7 +224,7 @@
     "severity": "error",
     "message": "verified claim `billing.missing-all` requires at least one evidence field: `source`, `test`, `reviewed_by`, `external_url`, or `evidence_ref`",
     "span": {
-      "file": "tests/fixtures/claim_verified/missing_matrix/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 48,
         "column": 1,

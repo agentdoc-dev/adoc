@@ -4,7 +4,7 @@
     "severity": "error",
     "message": "Path-derived page ID `notes` is invalid; add a valid @doc(id) annotation or rename the source path",
     "span": {
-      "file": "tests/fixtures/page_id_invalid/path_derived/input/notes.adoc",
+      "file": "notes.adoc",
       "start": {
         "line": 1,
         "column": 1,

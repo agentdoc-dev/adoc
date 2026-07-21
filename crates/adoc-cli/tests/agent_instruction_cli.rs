@@ -182,12 +182,12 @@ fn build_emits_agent_instruction_into_graph_and_renders_banner() {
     );
 
     // Graph: the agent_instruction node carries kind, trust, scope, and both
-    // action sets (schema stays adoc.graph.v4 — additive).
+    // action sets (schema stays adoc.graph.v5 — additive).
     let graph_text = fs::read_to_string(workspace.root.join("dist").join("docs.graph.json"))
         .expect("graph artifact is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph json parses");
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+    assert_eq!(graph["schema_version"], "adoc.graph.v5");
 
     let node = graph["nodes"]
         .as_array()

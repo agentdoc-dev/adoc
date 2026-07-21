@@ -11,13 +11,14 @@ use adoc_core::{
     DiagnosticCode, EmbeddingProviderSelection, GitRef, GraphArtifactInspectionInput,
     GraphDirection, GraphInput as CoreGraphInput, GraphRelationKind, GraphSession,
     GraphTraversalEnvelope, GraphTraversalQuery, GraphTraversalResult, ImpactedEnvelope,
-    ObjectDiffEnvelope, PatchApplyInput as CorePatchApplyInput, PatchApplyResult, PatchCheckResult,
-    PatchInput, ProseRecord, RelPath, RetrievalEntry, RetrievalEnvelope, RetrievalInput,
-    RetrievalLoadResult, RetrievalRecord, ReviewEnvelope, ReviewError,
-    ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters, SearchMode,
-    SearchQuery, SearchRecordScope, Severity, SnapshotSelector, StaleEnvelope,
-    apply_patch as core_apply_patch, build_workspace_with_embedding_provider,
-    changed_files_from_git, changed_paths_strings, check_patch as core_check_patch,
+    LocalProjectContext, ObjectDiffEnvelope, PatchApplyInput as CorePatchApplyInput,
+    PatchApplyResult, PatchCheckResult, PatchInput, ProseRecord, RelPath, RetrievalEntry,
+    RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, RetrievalRecord, ReviewEnvelope,
+    ReviewError, ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters,
+    SearchMode, SearchQuery, SearchRecordScope, Severity, SnapshotSelector, StaleEnvelope,
+    apply_patch as core_apply_patch, build_project_workspace_with_embedding_provider,
+    build_workspace_with_embedding_provider, changed_files_from_git, changed_paths_strings,
+    check_patch as core_check_patch, compile_project_workspace_with_anchor_root,
     compile_workspace_with_anchor_root, diff_objects, embed_query_with_embedding_provider,
     empty_contradictions_envelope, empty_impacted_envelope, empty_stale_envelope,
     evaluate_contradictions, evaluate_impacted, evaluate_stale, export_workspace,
@@ -512,7 +513,17 @@ where
         .unwrap_or_else(|| context.config_start().to_path_buf());
     let path = resolve_docs_path_with_config(path, config.as_ref())?;
     let path = context.path_policy().resolve_read_path(&path)?;
-    let result = compile_workspace_with_anchor_root(CompileInput { root: path }, Some(anchor_root));
+    let project = config
+        .as_ref()
+        .and_then(|config| project_context_for_selected_path(config, &path));
+    let result = match project {
+        Some(project) => compile_project_workspace_with_anchor_root(
+            CompileInput { root: path },
+            project,
+            anchor_root,
+        ),
+        None => compile_workspace_with_anchor_root(CompileInput { root: path }, Some(anchor_root)),
+    };
     let exit_code = if result.has_errors() { 1 } else { 0 };
 
     Ok(CheckOutcome {
@@ -617,19 +628,27 @@ where
         .as_deref()
         .map(|path| context.path_policy().resolve_write_path(path))
         .transpose()?;
-    let needs_config = path.is_none() || out.is_none() || !input.no_embeddings;
-    let config = discover_project_config_if(needs_config, context.config_start())?;
+    let config = discover_project_config_if(true, context.config_start())?;
     let path = resolve_docs_path_with_config(path, config.as_ref())?;
     let path = context.path_policy().resolve_read_path(&path)?;
     let embedding_mode = resolve_embedding_mode(config.as_ref(), input.no_embeddings);
     let embedding_provider = resolve_embedding_provider_selection(config.as_ref());
+    let project = config
+        .as_ref()
+        .and_then(|config| project_context_for_selected_path(config, &path));
 
     match out {
-        Some(out) => build_to_dir(path, out, embedding_mode, embedding_provider),
+        Some(out) => build_to_dir(path, out, embedding_mode, embedding_provider, project),
         None => {
             let output_paths = resolve_build_output_paths(config.as_ref(), embedding_mode)?;
             let output_paths = resolve_build_output_paths_with_policy(&output_paths, context)?;
-            build_to_paths(path, output_paths, embedding_mode, embedding_provider)
+            build_to_paths(
+                path,
+                output_paths,
+                embedding_mode,
+                embedding_provider,
+                project,
+            )
         }
     }
 }
@@ -1017,9 +1036,10 @@ fn diff_with_context<P>(
 where
     P: PathPolicy,
 {
-    let project_root = context.config_start().to_path_buf();
+    let (project_root, docs_path) = review_project_context(context.config_start())?;
     let review_input = CoreReviewInput {
         project_root,
+        docs_path,
         base: SnapshotSelector::GitRef(GitRef::new(input.base_ref)),
         head: snapshot_selector_from_head_ref(input.head_ref),
     };
@@ -1040,7 +1060,7 @@ fn review_with_context<P>(
 where
     P: PathPolicy,
 {
-    let project_root = context.config_start().to_path_buf();
+    let (project_root, docs_path) = review_project_context(context.config_start())?;
     // V3.7: parse the patch source before snapshotting so a malformed patch
     // doesn't pay the cost of a worktree checkout. Path-policy resolution
     // happens here at the orchestration boundary; adoc-core never sees a
@@ -1064,6 +1084,7 @@ where
 
     let review_input = CoreReviewInput {
         project_root,
+        docs_path,
         base: SnapshotSelector::GitRef(GitRef::new(input.base_ref)),
         head: snapshot_selector_from_head_ref(input.head_ref),
     };
@@ -1403,15 +1424,19 @@ fn build_to_dir(
     out: PathBuf,
     embedding_mode: BuildEmbeddingMode,
     embedding_provider: EmbeddingProviderSelection,
+    project: Option<LocalProjectContext>,
 ) -> Result<BuildOutcome, LocalError> {
-    let result = build_workspace_with_embedding_provider(
-        CoreBuildInput {
-            root: path,
-            embeddings: embedding_mode,
-            prior_search_artifact_path: Some(out.join("docs.search.json")),
-        },
-        embedding_provider,
-    );
+    let input = CoreBuildInput {
+        root: path,
+        embeddings: embedding_mode,
+        prior_search_artifact_path: Some(out.join("docs.search.json")),
+    };
+    let result = match project {
+        Some(project) => {
+            build_project_workspace_with_embedding_provider(input, project, embedding_provider)
+        }
+        None => build_workspace_with_embedding_provider(input, embedding_provider),
+    };
     finish_build_result(result, &out)
 }
 
@@ -1420,15 +1445,19 @@ fn build_to_paths(
     output_paths: BuildOutputs,
     embedding_mode: BuildEmbeddingMode,
     embedding_provider: EmbeddingProviderSelection,
+    project: Option<LocalProjectContext>,
 ) -> Result<BuildOutcome, LocalError> {
-    let result = build_workspace_with_embedding_provider(
-        CoreBuildInput {
-            root: path,
-            embeddings: embedding_mode,
-            prior_search_artifact_path: output_paths.search.clone(),
-        },
-        embedding_provider,
-    );
+    let input = CoreBuildInput {
+        root: path,
+        embeddings: embedding_mode,
+        prior_search_artifact_path: output_paths.search.clone(),
+    };
+    let result = match project {
+        Some(project) => {
+            build_project_workspace_with_embedding_provider(input, project, embedding_provider)
+        }
+        None => build_workspace_with_embedding_provider(input, embedding_provider),
+    };
     finish_build_result_at_paths(result, &output_paths)
 }
 
@@ -1643,6 +1672,49 @@ fn discover_project_config_if(
     } else {
         Ok(None)
     }
+}
+
+fn local_project_context(config: &ProjectConfig) -> LocalProjectContext {
+    LocalProjectContext {
+        project_root: config
+            .path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf(),
+        docs_root: config.docs_path.clone(),
+    }
+}
+
+fn project_context_for_selected_path(
+    config: &ProjectConfig,
+    selected_path: &Path,
+) -> Option<LocalProjectContext> {
+    let selected = selected_path.canonicalize().ok()?;
+    let docs = config.docs_path.canonicalize().ok()?;
+    selected
+        .starts_with(docs)
+        .then(|| local_project_context(config))
+}
+
+fn review_project_context(start: &Path) -> Result<(PathBuf, PathBuf), LocalError> {
+    let config = ProjectConfig::discover_from(start)?.ok_or_else(|| LocalError::ConfigMissing {
+        message: "adoc diff/review requires a discovered agentdoc.config.yaml".to_string(),
+        config_path: None,
+    })?;
+    let project_root = config
+        .path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    let docs_path = config
+        .docs_path
+        .strip_prefix(&project_root)
+        .map(Path::to_path_buf)
+        .map_err(|_| LocalError::PathOutsideProject {
+            path: config.docs_path,
+            project_root: project_root.clone(),
+        })?;
+    Ok((project_root, docs_path))
 }
 
 fn resolve_docs_path_with_config(

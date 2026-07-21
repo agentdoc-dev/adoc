@@ -41,7 +41,7 @@ Only `unresolved` contradictions are **active** and must be surfaced when answer
 
 ## Wire surface
 
-`contradiction` nodes are emitted into the graph artifact (`adoc.graph.v4`) with:
+`contradiction` nodes are emitted into the graph artifact (`adoc.graph.v5`) with:
 
 - `kind: "contradiction"`
 - `status`: the lifecycle status (`unresolved`, `resolved`, `dismissed`)

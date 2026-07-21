@@ -198,7 +198,7 @@ fn markdown_pilot_build_emits_safe_html_and_mixed_graph() {
     let graph_text = std::fs::read_to_string(output_directory.join("docs.graph.json"))
         .expect("pilot graph JSON is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph JSON is valid");
-    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+    assert_eq!(graph["schema_version"], "adoc.graph.v5");
 
     let nodes = graph["nodes"]
         .as_array()
@@ -377,6 +377,10 @@ fn markdown_pilot_diff_and_review_handle_mixed_mode_change() {
         "\n",
         "Refunds settle within five business days. See the verified claim\n",
         "for the canonical audit-trail contract.\n",
+    );
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: .\n",
     );
     workspace.write("knowledge/billing.adoc", base_adoc);
     workspace.write("api/refunds.md", prose_md);

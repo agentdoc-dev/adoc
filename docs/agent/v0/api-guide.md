@@ -48,7 +48,7 @@ Consumes one or more credits for a completed generation job.
 
 ## Wire surface
 
-`api` nodes are emitted into the graph artifact (`adoc.graph.v4`) with:
+`api` nodes are emitted into the graph artifact (`adoc.graph.v5`) with:
 
 - `kind: "api"` — the node-level kind discriminant
 - `status` — the lifecycle status, when authored (lifecycle-only per ADR-0039)

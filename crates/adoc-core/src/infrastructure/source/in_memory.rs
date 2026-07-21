@@ -34,6 +34,6 @@ impl SourceProvider for InMemorySourceProvider {
     fn contains(&self, path: &Path) -> bool {
         self.results
             .iter()
-            .any(|result| matches!(result, Ok(source) if source.path == path))
+            .any(|result| matches!(result, Ok(source) if source.physical_path == path))
     }
 }

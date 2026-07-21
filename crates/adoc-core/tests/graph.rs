@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use adoc_core::{
     BuildEmbeddingMode, BuildInput, DiagnosticCode, GraphDirection, GraphInput, GraphRelationKind,
-    GraphTraversalQuery, load_graph_session, traverse_graph,
+    GraphTraversalQuery, LocalProjectContext, build_project_workspace, load_graph_session,
+    traverse_graph,
 };
 use serde_json::{Value, json};
 
@@ -58,11 +59,12 @@ fn relation_edge(source: &str, relation: GraphRelationKind, target: &str) -> Val
 
 fn graph_document(nodes: Vec<Value>, edges: Vec<Value>) -> String {
     serde_json::to_string_pretty(&json!({
-        "schema_version": "adoc.graph.v4",
-        "nodes": nodes,
-        "edges": edges,
-        "diagnostics": []
-    }))
+          "schema_version": "adoc.graph.v5",
+    "repository_identity": null,
+          "nodes": nodes,
+          "edges": edges,
+          "diagnostics": []
+      }))
     .expect("graph fixture serializes")
 }
 
@@ -165,7 +167,7 @@ fn graph_artifact_serializes_with_v2_shape() {
 
     let value: Value = serde_json::from_str(&artifact).expect("graph artifact serializes");
 
-    assert_eq!(value["schema_version"], "adoc.graph.v4");
+    assert_eq!(value["schema_version"], "adoc.graph.v5");
     assert_eq!(value.get("graph_artifact_hash"), None);
     assert!(
         !artifact.contains("\"html\""),
@@ -214,6 +216,106 @@ fn graph_content_hash_is_stable_for_same_source() {
 
     assert!(first.starts_with("sha256:"));
     assert_eq!(first, second);
+}
+
+#[test]
+fn standalone_build_emits_graph_v5_without_repository_identity() {
+    let graph = build_graph_value(
+        "# Graph @doc(team.graph)\n\n::claim billing.credits\nstatus: draft\n--\nCredits.\n::\n",
+    );
+
+    assert_eq!(graph["schema_version"], "adoc.graph.v5");
+    assert!(graph.get("repository_identity").is_some());
+    assert!(graph["repository_identity"].is_null());
+    assert_eq!(graph["nodes"][0]["source_path"], "graph.adoc");
+}
+
+#[test]
+fn project_build_emits_repository_identity_and_project_relative_source_paths() {
+    let workspace = TestWorkspace::new("graph-project-identity");
+    let docs_root = workspace.root().join("knowledge");
+    std::fs::create_dir_all(&docs_root).expect("docs directory");
+    let source_path = docs_root.join("graph.adoc");
+    std::fs::write(
+        &source_path,
+        "# Graph @doc(team.graph)\n\n::claim billing.credits\nstatus: draft\n--\nCredits.\n::\n",
+    )
+    .expect("source");
+
+    let result = build_project_workspace(
+        BuildInput {
+            root: docs_root.clone(),
+            embeddings: BuildEmbeddingMode::Skipped,
+            prior_search_artifact_path: None,
+        },
+        LocalProjectContext {
+            project_root: workspace.root().to_path_buf(),
+            docs_root,
+        },
+    );
+    let graph: Value =
+        serde_json::from_str(&result.artifacts.expect("artifacts").graph_json).expect("graph JSON");
+
+    assert_eq!(
+        graph["repository_identity"],
+        json!({"kind": "local_project", "config_path": "agentdoc.config.yaml"})
+    );
+    assert_eq!(graph["nodes"][0]["source_path"], "knowledge/graph.adoc");
+}
+
+#[test]
+fn project_graph_objects_are_portable_across_checkout_locations() {
+    fn build_clone(workspace: &TestWorkspace) -> Value {
+        let docs_root = workspace.root().join("knowledge");
+        let source_path = docs_root.join("billing/credits.adoc");
+        std::fs::create_dir_all(source_path.parent().expect("source parent"))
+            .expect("docs directory");
+        std::fs::write(
+            &source_path,
+            "# Credits\n\n::claim billing.credits\nstatus: draft\n--\nCredits.\n::\n",
+        )
+        .expect("source");
+        let result = build_project_workspace(
+            BuildInput {
+                root: docs_root.clone(),
+                embeddings: BuildEmbeddingMode::Skipped,
+                prior_search_artifact_path: None,
+            },
+            LocalProjectContext {
+                project_root: workspace.root().to_path_buf(),
+                docs_root,
+            },
+        );
+        serde_json::from_str(&result.artifacts.expect("artifacts").graph_json).expect("graph JSON")
+    }
+
+    let first = build_clone(&TestWorkspace::new("portable-clone-a"));
+    let second = build_clone(&TestWorkspace::new("portable-clone-b"));
+
+    assert_eq!(first["nodes"], second["nodes"]);
+    assert_eq!(first["repository_identity"], second["repository_identity"]);
+    assert_eq!(
+        object_hash(&first, "billing.credits"),
+        object_hash(&second, "billing.credits")
+    );
+    assert_eq!(first["nodes"][0]["id"], "billing.credits");
+}
+
+#[test]
+fn graph_v5_reader_requires_repository_identity_member() {
+    let graph_json =
+        graph_document(Vec::new(), Vec::new()).replace("  \"repository_identity\": null,\n", "");
+    let artifact = write_temp_artifact("missing-repository-identity", ".graph.json", &graph_json);
+
+    let result = load_graph_session(GraphInput {
+        graph_artifact_path: artifact.path().to_path_buf(),
+    });
+
+    assert!(result.session.is_none());
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::IoArtifactMalformed
+    );
 }
 
 #[test]
@@ -331,7 +433,7 @@ fn build_workspace_emits_graph_artifact_with_deterministic_order_when_embeddings
     );
     let artifacts = result.artifacts.expect("artifacts are produced");
     let graph: Value = serde_json::from_str(&artifacts.graph_json).expect("graph artifact is JSON");
-    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+    assert_eq!(graph["schema_version"], "adoc.graph.v5");
     assert!(
         !artifacts.graph_json.contains("\"html\""),
         "graph artifact must not serialize HTML fragments: {}",
@@ -507,7 +609,7 @@ fn graph_traversal_applies_direction_and_relation_filters() {
 
 // ── V6.5.1: v4 golden api node ───────────────────────────────────────────────
 
-/// Pins the `adoc.graph.v4` api node shape: lifecycle-only `status`, method
+/// Pins the `adoc.graph.v5` api node shape: lifecycle-only `status`, method
 /// and path in the hashed `fields` map, and no `severity`/`trust` carriers —
 /// api is born under the ADR-0039 lifecycle-only rule.
 #[test]
@@ -527,7 +629,7 @@ fn built_api_node_is_lifecycle_only_with_method_and_path_fields() {
          ::\n",
     );
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+    assert_eq!(graph["schema_version"], "adoc.graph.v5");
 
     let api = graph["nodes"]
         .as_array()
@@ -575,7 +677,7 @@ fn built_observation_node_is_lifecycle_only_with_sample_size_and_observed_at_fie
          ::\n",
     );
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+    assert_eq!(graph["schema_version"], "adoc.graph.v5");
 
     let observation = graph["nodes"]
         .as_array()
@@ -653,7 +755,7 @@ fn built_answered_question_emits_resolved_by_edge_to_answering_claim() {
 
 // ── V6.5.4: v4 golden task node ──────────────────────────────────────────────
 
-/// Pins the `adoc.graph.v4` task node shape: lifecycle-only `status`, owner
+/// Pins the `adoc.graph.v5` task node shape: lifecycle-only `status`, owner
 /// and due in the hashed `fields` map, and no `severity`/`trust` carriers —
 /// task is born under the ADR-0039 lifecycle-only rule. The PRD §13.11
 /// `depends_on` relation emits a graph edge.
@@ -678,7 +780,7 @@ fn built_task_node_is_lifecycle_only_with_owner_and_due_fields() {
          ::\n",
     );
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+    assert_eq!(graph["schema_version"], "adoc.graph.v5");
 
     let task = graph["nodes"]
         .as_array()

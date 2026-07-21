@@ -350,6 +350,14 @@ const RESOURCES: &[AgentResource] = &[
         mime_type: JSON_SCHEMA,
         contents: include_str!("../../../docs/agent/v0/schema/search-artifact.json"),
     },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/graph-artifact.v5.json",
+        name: "schema-graph-artifact-v5-json",
+        title: "Graph Artifact v5 JSON Schema",
+        description: "JSON Schema for adoc.graph.v5, including portable source coordinates and repository identity.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/graph-artifact.v5.json"),
+    },
 ];
 
 pub fn list() -> Vec<Resource> {

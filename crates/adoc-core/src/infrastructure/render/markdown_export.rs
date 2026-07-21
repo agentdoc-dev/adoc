@@ -88,7 +88,7 @@ impl Exporter<'_> {
                             format!(
                                 "list with continuation content in {} cannot be exported; \
                                  the strict grammar has flat lists only",
-                                self.source.path.display()
+                                self.source.physical_path.display()
                             ),
                         )
                         .with_span(list.span.clone()),
@@ -129,7 +129,7 @@ impl Exporter<'_> {
                             code,
                             format!(
                                 "```{language} fence {UNWRAP_PHRASE} in {}",
-                                self.source.path.display()
+                                self.source.physical_path.display()
                             ),
                         )
                         .with_span(code_block.span.clone()),
@@ -152,7 +152,7 @@ impl Exporter<'_> {
                     format!(
                         "{} contains a typed Knowledge Object block; exporting typed \
                          knowledge to Markdown is lossy by definition and the run is refused",
-                        self.source.path.display()
+                        self.source.physical_path.display()
                     ),
                 ));
             }
@@ -169,7 +169,7 @@ impl Exporter<'_> {
                     format!(
                         "internal: Compatibility Mode block variant in strict source {}; \
                          the .adoc parser must never produce one",
-                        self.source.path.display()
+                        self.source.physical_path.display()
                     ),
                 ));
             }

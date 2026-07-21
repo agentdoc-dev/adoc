@@ -4,7 +4,7 @@
     "severity": "error",
     "message": "depends_on target `missing.object` does not resolve to a declared Knowledge Object",
     "span": {
-      "file": "tests/fixtures/diagnostics/broken_relation/input/team/bad.adoc",
+      "file": "team/bad.adoc",
       "start": {
         "line": 3,
         "column": 13,

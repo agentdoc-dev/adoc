@@ -40,7 +40,7 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
     let mut page = PageAst {
         id: PageId::untitled_fallback(),
         title: None,
-        source_path: source.path.clone(),
+        source_path: source.logical_path.clone(),
         blocks: Vec::new(),
     };
     let mut diagnostics = Vec::new();

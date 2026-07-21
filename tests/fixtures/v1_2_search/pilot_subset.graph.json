@@ -1,5 +1,6 @@
 {
-  "schema_version": "adoc.graph.v4",
+  "schema_version": "adoc.graph.v5",
+  "repository_identity": null,
   "nodes": [
     {
       "type": "page",

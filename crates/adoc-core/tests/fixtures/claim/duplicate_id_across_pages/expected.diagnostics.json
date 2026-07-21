@@ -2,9 +2,9 @@
   {
     "code": "id.duplicate",
     "severity": "error",
-    "message": "duplicate claim id `billing.credits.foo`; previously defined at tests/fixtures/claim/duplicate_id_across_pages/input/01-billing.adoc:5:1",
+    "message": "duplicate claim id `billing.credits.foo`; previously defined at 01-billing.adoc:5:1",
     "span": {
-      "file": "tests/fixtures/claim/duplicate_id_across_pages/input/02-billing-extra.adoc",
+      "file": "02-billing-extra.adoc",
       "start": {
         "line": 5,
         "column": 1,

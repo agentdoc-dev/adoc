@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
+use crate::domain::source::LogicalPath;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -69,9 +70,46 @@ impl fmt::Display for GraphDirection {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct GraphArtifactDocument {
     pub(crate) schema_version: String,
+    #[serde(deserialize_with = "deserialize_repository_identity")]
+    pub(crate) repository_identity: GraphRepositoryIdentity,
     pub(crate) nodes: Vec<GraphNode>,
     pub(crate) edges: Vec<GraphEdge>,
     pub(crate) diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub(crate) struct GraphRepositoryIdentity(pub(crate) Option<RepositoryIdentity>);
+
+impl GraphRepositoryIdentity {
+    pub(crate) fn standalone() -> Self {
+        Self(None)
+    }
+
+    pub(crate) fn local_project(config_path: String) -> Self {
+        Self(Some(RepositoryIdentity::LocalProject { config_path }))
+    }
+}
+
+impl Default for GraphRepositoryIdentity {
+    fn default() -> Self {
+        Self::standalone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub(crate) enum RepositoryIdentity {
+    LocalProject { config_path: String },
+}
+
+fn deserialize_repository_identity<'de, D>(
+    deserializer: D,
+) -> Result<GraphRepositoryIdentity, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<RepositoryIdentity>::deserialize(deserializer).map(GraphRepositoryIdentity)
 }
 
 impl GraphArtifactDocument {
@@ -82,7 +120,7 @@ impl GraphArtifactDocument {
 
 // `GraphKnowledgeObjectNode` is large by design (carries all graph-node fields
 // inline for zero-copy serde). Boxing here would add indirection on every graph
-// traversal; the size asymmetry is acceptable per the `adoc.graph.v4` contract.
+// traversal; the size asymmetry is acceptable per the `adoc.graph.v5` contract.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -189,7 +227,7 @@ impl ProseBlockKind {
 /// Carries the artifact-authored `GraphBlockNode` payload plus two derived
 /// fields: the variant discriminant (`kind`) and the nearest-ancestor-heading
 /// breadcrumb (`heading_context`), both computed at artifact-load time and
-/// never serialized back — `adoc.graph.v4` node shapes are untouched.
+/// never serialized back — `adoc.graph.v5` node shapes are untouched.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct GraphProseBlock {
     pub(crate) id: String,
@@ -443,6 +481,23 @@ impl GraphIndex {
         let mut has_markdown_pages = false;
 
         for node in document.nodes {
+            let source_path = match &node {
+                GraphNode::Page(page) => &page.source_path,
+                GraphNode::Heading(block)
+                | GraphNode::Paragraph(block)
+                | GraphNode::List(block)
+                | GraphNode::CodeBlock(block) => &block.source_span.path,
+                GraphNode::KnowledgeObject(object) => &object.source_span.path,
+            };
+            if LogicalPath::parse(source_path).is_err() {
+                diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::IoArtifactMalformed,
+                        format!("Graph node has a non-portable source path `{source_path}`."),
+                    )
+                    .with_help("Rebuild docs.graph.json from validated AgentDoc Source."),
+                );
+            }
             if let GraphNode::Page(page) = &node {
                 page_ids.insert(page.id.clone());
                 if page.source_path.ends_with(".md") {
@@ -906,7 +961,8 @@ mod tests {
 
     fn graph_document(content_hash: Option<&str>) -> GraphArtifactDocument {
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v4".to_string(),
+            schema_version: "adoc.graph.v5".to_string(),
+            repository_identity: Default::default(),
             nodes: vec![
                 GraphNode::Page(GraphPageNode {
                     id: "team.page".to_string(),
@@ -986,6 +1042,30 @@ mod tests {
         assert!(graph.contains_object(&ObjectId::new_unchecked("billing.credits".to_string())));
     }
 
+    #[test]
+    fn from_document_rejects_non_portable_source_paths() {
+        for unsafe_path in [
+            "/tmp/team.adoc",
+            "../team.adoc",
+            "docs\\team.adoc",
+            " docs/team.adoc",
+            "docs/team.adoc ",
+            "docs/team\0.adoc",
+        ] {
+            let mut document = graph_document(Some("sha256:billing.credits"));
+            let GraphNode::KnowledgeObject(node) = &mut document.nodes[1] else {
+                panic!("fixture knowledge object");
+            };
+            node.source_span.path = unsafe_path.to_string();
+
+            let diagnostics = GraphIndex::from_document(document)
+                .expect_err("non-portable graph source path must fail");
+
+            assert_eq!(diagnostics[0].code, DiagnosticCode::IoArtifactMalformed);
+            assert!(diagnostics[0].message.contains("source path"));
+        }
+    }
+
     fn prose_only_document(source_paths: &[&str]) -> GraphArtifactDocument {
         let nodes = source_paths
             .iter()
@@ -1000,7 +1080,8 @@ mod tests {
             })
             .collect();
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v4".to_string(),
+            schema_version: "adoc.graph.v5".to_string(),
+            repository_identity: Default::default(),
             nodes,
             edges: Vec::new(),
             diagnostics: Vec::new(),
@@ -1034,7 +1115,8 @@ mod tests {
         })];
         all_nodes.extend(nodes);
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v4".to_string(),
+            schema_version: "adoc.graph.v5".to_string(),
+            repository_identity: Default::default(),
             nodes: all_nodes,
             edges: Vec::new(),
             diagnostics: Vec::new(),
