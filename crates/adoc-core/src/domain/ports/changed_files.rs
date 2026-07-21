@@ -44,10 +44,18 @@ pub(crate) trait ChangedFilesProvider {
 pub enum ChangedFilesError {
     /// The underlying provider is unusable (binary missing, repository
     /// not initialized, configuration broken).
-    ProviderUnavailable { reason: String },
+    ProviderUnavailable {
+        reason: String,
+    },
     /// The supplied base selector could not be resolved against the
     /// current workdir history (e.g. `git diff` failed on the ref spec).
-    UnresolvableBase { spec: String, reason: String },
+    UnresolvableBase {
+        spec: String,
+        reason: String,
+    },
+    InvalidPath {
+        reason: String,
+    },
     /// Unstructured filesystem failure the adapter could not classify.
     Io(io::Error),
 }
@@ -60,6 +68,9 @@ impl fmt::Display for ChangedFilesError {
             }
             Self::UnresolvableBase { spec, reason } => {
                 write!(f, "could not resolve base ref `{spec}`: {reason}")
+            }
+            Self::InvalidPath { reason } => {
+                write!(f, "changed-file set contains an invalid path: {reason}")
             }
             Self::Io(error) => write!(f, "changed-files I/O failed: {error}"),
         }

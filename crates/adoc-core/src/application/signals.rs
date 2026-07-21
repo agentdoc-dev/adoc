@@ -560,6 +560,10 @@ pub(crate) fn changed_files_failure_diagnostic(
             DiagnosticCode::ImpactedGitUnavailable,
             format!("git failed while deriving changed files for --ref `{base_ref}`: {err}"),
         ),
+        ChangedFilesError::InvalidPath { reason } => Diagnostic::error(
+            DiagnosticCode::ImpactedInvalidPath,
+            format!("git returned an invalid changed path: {reason}"),
+        ),
     }
 }
 

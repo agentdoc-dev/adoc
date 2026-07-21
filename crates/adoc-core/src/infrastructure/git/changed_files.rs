@@ -10,11 +10,13 @@
 //! adapter materialises `<base>...<head>` so impact analysis honours the
 //! caller-supplied ref rather than silently reporting against `HEAD`.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use crate::domain::ports::changed_files::{ChangedFilesError, ChangedFilesProvider};
 use crate::domain::ports::snapshot_workspace::SnapshotSelector;
+use crate::domain::source::LogicalPath;
 use crate::domain::value_objects::rel_path::RelPath;
 
 use super::error::GitError;
@@ -44,59 +46,83 @@ impl ChangedFilesProvider for GitChangedFilesProvider {
             // alone has no meaningful changed-file set, regardless of head.
             (SnapshotSelector::Workdir, _) => Ok(Vec::new()),
             (SnapshotSelector::GitRef(b), SnapshotSelector::Workdir) => {
-                self.diff_against(b.as_str(), None)
+                self.workdir_changes(b.as_str())
             }
             (SnapshotSelector::GitRef(b), SnapshotSelector::GitRef(h)) => {
-                self.diff_against(b.as_str(), Some(h.as_str()))
+                self.committed_changes(b.as_str(), h.as_str())
             }
         }
     }
 }
 
 impl GitChangedFilesProvider {
-    fn diff_against(
-        &self,
-        base: &str,
-        head: Option<&str>,
-    ) -> Result<Vec<RelPath>, ChangedFilesError> {
-        let three_dot = match head {
-            // `<base>...<head>` — symmetric difference resolving to the
-            // changes on `<head>`'s side since the merge base with `<base>`.
-            Some(head_spec) => format!("{base}...{head_spec}"),
-            // `<base>...` — same shape with `HEAD` implicit, preserving the
-            // workdir-comparison behaviour the V3.3 acceptance tests pin.
-            None => format!("{base}..."),
-        };
-        let output = run_git(&self.repo_root, &["diff", "--name-only", &three_dot])?;
+    fn committed_changes(&self, base: &str, head: &str) -> Result<Vec<RelPath>, ChangedFilesError> {
+        let range = format!("{base}..{head}");
+        self.paths_from(&["diff", "--name-only", "-z", "--no-renames", &range])
+    }
+
+    fn workdir_changes(&self, base: &str) -> Result<Vec<RelPath>, ChangedFilesError> {
+        let range = format!("{base}..HEAD");
+        let mut paths = BTreeSet::new();
+        for args in [
+            vec!["diff", "--name-only", "-z", "--no-renames", &range],
+            vec![
+                "diff",
+                "--cached",
+                "--name-only",
+                "-z",
+                "--no-renames",
+                "HEAD",
+            ],
+            vec!["diff", "--name-only", "-z", "--no-renames"],
+            vec!["ls-files", "-z", "--others", "--exclude-standard"],
+        ] {
+            paths.extend(self.paths_from(&args)?);
+        }
+        Ok(paths.into_iter().collect())
+    }
+
+    fn paths_from(&self, args: &[&str]) -> Result<Vec<RelPath>, ChangedFilesError> {
+        let output = run_git(&self.repo_root, args)?;
         if !output.status.success() {
             // Route exit-code failures through `GitError::CommandFailed` so
             // the `From<GitError> for ChangedFilesError` impl is the single
             // classification site. The arm extracts the failing spec from
             // stderr (git quotes it as `'<spec>...'`).
             return Err(GitError::CommandFailed {
-                command: format!("git diff --name-only {three_dot}"),
+                command: format!("git {}", args.join(" ")),
                 code: output.status.code(),
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             }
             .into());
         }
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut paths = Vec::new();
-        for line in stdout.lines() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            // `git diff --name-only` always emits repo-relative paths with
-            // forward slashes. If a value somehow fails `RelPath::try_new`
-            // we drop it — alerting the caller would falsely block diff/review
-            // on a malformed path that the user did not author.
-            if let Ok(path) = RelPath::try_new(trimmed) {
-                paths.push(path);
-            }
-        }
-        Ok(paths)
+        parse_paths(&output.stdout)
     }
+}
+
+fn parse_paths(stdout: &[u8]) -> Result<Vec<RelPath>, ChangedFilesError> {
+    if stdout.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !stdout.ends_with(&[0]) {
+        return Err(ChangedFilesError::InvalidPath {
+            reason: "NUL-delimited git output was not terminated".to_string(),
+        });
+    }
+    stdout[..stdout.len() - 1]
+        .split(|byte| *byte == 0)
+        .map(|raw| {
+            let value = std::str::from_utf8(raw).map_err(|_| ChangedFilesError::InvalidPath {
+                reason: "path is not valid UTF-8".to_string(),
+            })?;
+            LogicalPath::parse(value).map_err(|_| ChangedFilesError::InvalidPath {
+                reason: format!("{value:?} is not a portable repository-relative path"),
+            })?;
+            RelPath::try_new(value).map_err(|error| ChangedFilesError::InvalidPath {
+                reason: error.to_string(),
+            })
+        })
+        .collect()
 }
 
 fn run_git(repo_root: &Path, args: &[&str]) -> Result<Output, ChangedFilesError> {
@@ -310,6 +336,43 @@ mod tests {
                 assert_eq!(spec, "definitely-not-a-real-ref");
             }
             other => panic!("expected UnresolvableBase, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn nul_path_parser_accepts_non_ascii_and_embedded_newline_is_rejected() {
+        assert_eq!(
+            parse_paths("café.rs\0".as_bytes())
+                .expect("valid UTF-8 path")
+                .into_iter()
+                .map(|path| path.as_str().to_string())
+                .collect::<Vec<_>>(),
+            vec!["café.rs"]
+        );
+        assert!(matches!(
+            parse_paths(b"line\nbreak.rs\0"),
+            Err(ChangedFilesError::InvalidPath { .. })
+        ));
+    }
+
+    #[test]
+    fn nul_path_parser_rejects_malformed_or_unsafe_records() {
+        for output in [
+            b"unterminated".as_slice(),
+            b"\xff\0".as_slice(),
+            b"/absolute.rs\0".as_slice(),
+            b"../escape.rs\0".as_slice(),
+            b"back\\slash.rs\0".as_slice(),
+            b" edge.rs\0".as_slice(),
+            b"a.rs\0\0".as_slice(),
+        ] {
+            assert!(
+                matches!(
+                    parse_paths(output),
+                    Err(ChangedFilesError::InvalidPath { .. })
+                ),
+                "unsafe output should fail: {output:?}"
+            );
         }
     }
 }

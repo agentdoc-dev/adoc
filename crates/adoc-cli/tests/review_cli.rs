@@ -242,6 +242,73 @@ fn review_uses_merge_base_when_requested_base_tip_advanced() {
 }
 
 #[test]
+fn review_workdir_includes_every_non_ignored_change_source() {
+    let workspace = TestWorkspace::new("review-complete-workdir");
+    run_git(&workspace, &["init", "--initial-branch=main"]);
+    run_git(&workspace, &["config", "user.email", "test@adoc.dev"]);
+    run_git(&workspace, &["config", "user.name", "adoc tests"]);
+    run_git(&workspace, &["config", "commit.gpgsign", "false"]);
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\n",
+    );
+    workspace.write(
+        "docs/impact.adoc",
+        concat!(
+            "# Impact @doc(team.impact)\n\n",
+            "::claim impact.workdir\n",
+            "status: verified\n",
+            "owner: team-platform\n",
+            "verified_at: 2026-07-01\n",
+            "source: src/committed.rs\n",
+            "impacts: [src/committed.rs, src/staged.rs, src/unstaged.rs, src/untracked.rs]\n",
+            "--\n",
+            "All workdir change sources are visible.\n",
+            "::\n",
+        ),
+    );
+    workspace.write(".gitignore", "ignored.rs\n");
+    workspace.write("src/committed.rs", "base\n");
+    workspace.write("src/staged.rs", "base\n");
+    workspace.write("src/unstaged.rs", "base\n");
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "base"]);
+
+    run_git(&workspace, &["checkout", "-b", "feature"]);
+    workspace.write("src/committed.rs", "committed\n");
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "committed change"]);
+    workspace.write("src/staged.rs", "staged\n");
+    run_git(&workspace, &["add", "src/staged.rs"]);
+    workspace.write("src/unstaged.rs", "unstaged\n");
+    workspace.write("src/untracked.rs", "untracked\n");
+    workspace.write("ignored.rs", "ignored\n");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+    assert!(
+        output.status.success(),
+        "expected adoc review to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("review stdout is JSON");
+    assert_eq!(
+        value["impact"][0]["paths"],
+        serde_json::json!([
+            "src/committed.rs",
+            "src/staged.rs",
+            "src/unstaged.rs",
+            "src/untracked.rs"
+        ])
+    );
+}
+
+#[test]
 fn review_main_json_envelope_flags_billing_refunds() {
     let workspace = build_billing_pilot_with_impacts("review-json");
 

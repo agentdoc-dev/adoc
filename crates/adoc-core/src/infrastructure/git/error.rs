@@ -210,7 +210,13 @@ fn extract_base_spec(stderr: &str) -> Option<String> {
     let trimmed = stderr.trim();
     let after_quote = trimmed.split_once('\'')?.1;
     let inner = after_quote.split_once('\'')?.0;
-    Some(inner.trim_end_matches('.').to_string())
+    Some(
+        inner
+            .split_once("..")
+            .map_or(inner, |(base, _)| base)
+            .trim_end_matches('.')
+            .to_string(),
+    )
 }
 
 #[cfg(test)]
