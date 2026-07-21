@@ -261,11 +261,11 @@ A repo-relative file path declared on a `claim` or `decision` via the `impacts:`
 _Avoid_: absolute path, `..` segment, free-text source description, evidence-as-impact overload
 
 **Impacted Object**:
-A verified Knowledge Object whose `impacts` field intersects the changed-file set returned by `ChangedFilesProvider` for a given base ref. Surfaced in `adoc.review.v0.impact[]`; carries the changed file paths that matched so reviewers see why an object was flagged.
+A verified claim, accepted decision, or verified API in the complete head graph whose `impacts:` or path-bearing evidence intersects the changed-file set returned by `ChangedFilesProvider` for a given base ref. Surfaced in `adoc.review.v0.impact[]`; carries the deduplicated changed file paths that matched. The legacy envelope does not expose the richer `impacts_path` / `evidence_path` reason kinds retained by the domain traversal.
 _Avoid_: heuristic source matching, flagging non-verified objects, flagging without showing why
 
 **Required Reviewer**:
-The `owner` of a changed verified claim or an Impacted Object, aggregated and deduplicated across the diff and impact lists. Surfaced in `adoc.review.v0.required_reviewers[]` and rendered as a top-of-comment `@team-` mention list in markdown output.
+The `owner` of a changed trusted subject or an Impacted Object, aggregated and deduplicated across the diff and complete head graph. Surfaced in `adoc.review.v0.required_reviewers[]` and rendered as a top-of-comment `@team-` mention list in markdown output.
 _Avoid_: GitHub/GitLab reviewer mapping (deferred), per-line reviewers, file-pattern owners
 
 **Review Report**:

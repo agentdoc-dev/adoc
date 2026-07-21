@@ -5,10 +5,10 @@ V3.6 brings the AgentDoc review surface to MCP-capable agents via two new read-o
 ## When to use which tool
 
 - Use `adoc_diff` when the agent needs a mechanical "what Knowledge Objects changed between this ref and the workdir." It returns the `adoc.diff.v0` envelope: `created`, `deleted`, and `changed` arrays with full before/after Knowledge Object records and optional field-level projections.
-- Use `adoc_review` when the agent needs the enriched report suitable for pull-request feedback. It returns the `adoc.review.v0` envelope: the diff plus source-path impact, required reviewers, and V3.4 proof obligations.
+- Use `adoc_review` when the agent needs the enriched report suitable for pull-request feedback. It returns the `adoc.review.v0` envelope: the diff plus source-path impact over the complete head graph, required reviewers, and proof obligations. A code-only change can therefore impact an unchanged verified claim, accepted decision, or verified API through an exact `impacts:` or path-bearing evidence match.
 - Use `adoc_impacted_by` when **code** changed and no `.adoc` review is in flight — e.g. reviewing a pull request that touches source files only. Pass the PR's changed paths (`paths`, as emitted by `git diff --name-only`) or a base ref (`ref`, compared against the working tree). It returns the `adoc.impacted.v0` envelope: every verified claim and accepted decision whose declared `impacts:` or evidence paths exactly match a changed file, with `reasons[]` naming the matched path and route (`impacts_path`, or `evidence_path` optionally `via_source_object`), plus one impact-review proof obligation per impacted object. Cite the reasons, and treat `proof_obligations[]` as the re-verification checklist. It reads the existing graph artifact — no recompile, no git worktree — so it also works without review readiness when explicit paths are passed.
 
-`adoc_diff` is a strict subset of `adoc_review`'s output; pick whichever envelope matches the question being asked rather than calling both. `adoc_impacted_by` answers the inverse direction of `adoc_review`'s `impact[]` — over all current knowledge instead of just the objects that changed — and matches `adoc review <ref>`'s impact set for the same ref by construction.
+`adoc_diff` is a strict subset of `adoc_review`'s output; pick whichever envelope matches the question being asked rather than calling both. `adoc_impacted_by` and `adoc_review` use the same full-graph impact traversal and trusted-subject predicate. The review envelope projects each rich match down to its Object ID and deduplicated paths; use `adoc_impacted_by` when reason kinds are required.
 
 ## Required preconditions
 
@@ -33,7 +33,7 @@ When supplied, the returned envelope includes a `patch_check` field carrying the
 
 1. `adoc_project_status` with `refresh: "none"`. Confirm `readiness.review`. If false, surface the missing prerequisite (git binary, repo, or commit) and stop.
 2. `adoc_review` with `base_ref` and optional `head_ref`.
-3. Cite each entry in `changed[]` by Object ID. For `impact[]`, name the impacted Knowledge Object alongside the changed paths that matched. For `required_reviewers[]`, surface owner identities as actionable handoffs.
+3. Cite each entry in `changed[]` by Object ID. Separately, cite every `impact[]` entry alongside its matched paths, including unchanged objects affected by code-only changes. For `required_reviewers[]`, surface owner identities as actionable handoffs; their presence does not prove approval.
 4. For every entry in `proof_obligations[]`, treat the obligation as required follow-up — do not present the patch as "approved" if obligations remain.
 5. If a remediation patch is appropriate, validate it inline by re-calling `adoc_review` with `patch: { source: "inline", patch: ... }`. The returned envelope merges patch-driven obligations into the same top-level list so reviewers see one consolidated set. (For pure patch validation without the review context, `adoc_patch_check` remains available.) Review never applies patches; the validation report is informational. To apply a validated patch, use the gated `adoc_patch_apply` tool (see `adoc://agent/v0/patch-apply-guide`).
 

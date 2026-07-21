@@ -152,6 +152,66 @@ fn build_billing_pilot_with_impacts(name: &str) -> TestWorkspace {
     workspace
 }
 
+fn build_code_only_change_with_impacts(name: &str) -> TestWorkspace {
+    let workspace = TestWorkspace::new(name);
+    run_git(&workspace, &["init", "--initial-branch=main"]);
+    run_git(&workspace, &["config", "user.email", "test@adoc.dev"]);
+    run_git(&workspace, &["config", "user.name", "adoc tests"]);
+    run_git(&workspace, &["config", "commit.gpgsign", "false"]);
+
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\n",
+    );
+    workspace.write("docs/billing.adoc", BASE_BILLING_ADOC);
+    workspace.write("crates/billing/src/refund.rs", BASE_REFUND_SRC);
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "base"]);
+
+    run_git(&workspace, &["checkout", "-b", "feature"]);
+    workspace.write("crates/billing/src/refund.rs", HEAD_REFUND_SRC);
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "code only"]);
+
+    workspace
+}
+
+#[test]
+fn review_code_only_change_reports_unchanged_impacted_knowledge() {
+    let workspace = build_code_only_change_with_impacts("review-code-only-impact");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+
+    assert!(
+        output.status.success(),
+        "expected adoc review to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("review stdout is JSON");
+
+    assert!(value["diff"]["created"].as_array().unwrap().is_empty());
+    assert!(value["diff"]["deleted"].as_array().unwrap().is_empty());
+    assert!(value["diff"]["changed"].as_array().unwrap().is_empty());
+    assert_eq!(
+        value["impact"],
+        serde_json::json!([{
+            "id": "billing.refunds",
+            "paths": ["crates/billing/src/refund.rs"]
+        }])
+    );
+    assert_eq!(value["required_reviewers"][0]["owner"], "team-billing");
+    assert_eq!(
+        value["proof_obligations"][0]["reason"],
+        "review impacted claim"
+    );
+}
+
 #[test]
 fn review_main_json_envelope_flags_billing_refunds() {
     let workspace = build_billing_pilot_with_impacts("review-json");

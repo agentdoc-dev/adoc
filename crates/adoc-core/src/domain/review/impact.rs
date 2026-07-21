@@ -210,7 +210,26 @@ pub(crate) fn impacted_objects<'a>(
     impacted
 }
 
-fn is_verified_subject(node: &GraphKnowledgeObjectNode) -> bool {
+pub(crate) fn full_graph_impact(
+    objects: &[&GraphKnowledgeObjectNode],
+    changed_files: &[RelPath],
+) -> Vec<ImpactedObject> {
+    impacted_objects(objects, changed_files)
+        .into_iter()
+        .map(|hit| ImpactedObject {
+            id: hit.node.id.clone(),
+            paths: hit
+                .reasons
+                .into_iter()
+                .map(|reason| reason.matched_path)
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
+        })
+        .collect()
+}
+
+pub(crate) fn is_verified_subject(node: &GraphKnowledgeObjectNode) -> bool {
     let Some(status) = node.status.as_deref() else {
         return false;
     };
@@ -541,6 +560,26 @@ mod tests {
                 hit("src/refund.rs", ImpactReasonKind::ImpactsPath, None),
                 hit("src/refund.rs", ImpactReasonKind::EvidencePath, None),
             ]
+        );
+    }
+
+    #[test]
+    fn full_graph_impact_projects_all_reason_paths_once() {
+        let mut claim = verified_claim_with_impacts("billing.refunds", &["src/refund.rs"]);
+        claim.evidence = vec![
+            crate::domain::graph::GraphEvidence::inline("source_code", "src/refund.rs"),
+            crate::domain::graph::GraphEvidence::inline("test", "tests/refund.rs"),
+        ];
+
+        let impacted =
+            full_graph_impact(&[&claim], &[rel("src/refund.rs"), rel("tests/refund.rs")]);
+
+        assert_eq!(
+            impacted,
+            vec![ImpactedObject {
+                id: "billing.refunds".to_string(),
+                paths: vec!["src/refund.rs".to_string(), "tests/refund.rs".to_string()],
+            }]
         );
     }
 

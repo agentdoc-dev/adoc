@@ -20,7 +20,7 @@ use crate::domain::graph::GraphKnowledgeObjectNode;
 use crate::domain::obligation::ProofObligation;
 use crate::domain::ports::changed_files::ChangedFilesError;
 use crate::domain::review::impact::{ImpactReasonKind, impacted_objects};
-use crate::domain::review::obligation_rules::obligation_for_impacted_id;
+use crate::domain::review::obligation_rules::obligation_for_impacted_node;
 use crate::domain::value_objects::rel_path::RelPath;
 use crate::domain::value_objects::review_interval::ReviewInterval;
 use crate::domain::value_objects::severity::Severity;
@@ -490,7 +490,7 @@ pub(crate) fn evaluate_impacted(
     let mut impacted = Vec::with_capacity(hits.len());
     let mut obligations = Vec::with_capacity(hits.len());
     for hit in hits {
-        obligations.push(obligation_for_impacted_id(&hit.node.id));
+        obligations.push(obligation_for_impacted_node(hit.node));
         impacted.push(ImpactedRecord {
             id: hit.node.id.clone(),
             kind: hit.node.kind.clone(),

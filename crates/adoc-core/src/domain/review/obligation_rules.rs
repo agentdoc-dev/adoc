@@ -21,6 +21,7 @@ use super::impact::ImpactedObject;
 use super::object_change::ChangedObject;
 
 const CLAIM_KIND: &str = "claim";
+const DECISION_KIND: &str = "decision";
 const POLICY_KIND: &str = "policy";
 const API_KIND: &str = "api";
 const AGENT_INSTRUCTION_KIND: &str = "agent_instruction";
@@ -40,6 +41,9 @@ pub(crate) const REASON_REASSIGN_OWNER: &str = "reassign owner";
 pub(crate) const REASON_NEW_OWNER_ACK: &str = "new owner must acknowledge";
 pub(crate) const REASON_REVERIFY_AT_CLEARED: &str = "re-verify (verified_at cleared)";
 pub(crate) const REASON_REVIEW_IMPACT: &str = "review impacted claim";
+pub(crate) const REASON_CONFIRM_DECISION_IMPACT: &str = "confirm impacted decision conformance";
+pub(crate) const REASON_REVALIDATE_API_IMPACT: &str =
+    "revalidate impacted api contract and compatibility";
 pub(crate) const REASON_REEVIDENCE_PREFIX: &str = "re-evidence";
 pub(crate) const REASON_REAPPROVE_EFFECTIVE_AT: &str = "re-approve (effective_at changed)";
 pub(crate) const REASON_REAPPROVE_APPROVER_REMOVED: &str = "re-approve (approver removed)";
@@ -219,6 +223,29 @@ pub(crate) fn obligation_for_impacted_id(object_id: &str) -> ProofObligation {
         object_id: object_id.to_string(),
         reason: REASON_REVIEW_IMPACT.to_string(),
         required_evidence: vec![EvidenceKind::SourceCode.as_str().to_string()],
+    }
+}
+
+pub(crate) fn obligation_for_impacted_node(node: &GraphKnowledgeObjectNode) -> ProofObligation {
+    use crate::domain::value_objects::evidence_kind::EvidenceKind;
+    let (reason, required_evidence) = match node.kind.as_str() {
+        DECISION_KIND => (
+            REASON_CONFIRM_DECISION_IMPACT,
+            vec![EvidenceKind::SourceCode.as_str().to_string()],
+        ),
+        API_KIND => (
+            REASON_REVALIDATE_API_IMPACT,
+            vec![EvidenceKind::ApiSchema.as_str().to_string()],
+        ),
+        _ => (
+            REASON_REVIEW_IMPACT,
+            vec![EvidenceKind::SourceCode.as_str().to_string()],
+        ),
+    };
+    ProofObligation {
+        object_id: node.id.clone(),
+        reason: reason.to_string(),
+        required_evidence,
     }
 }
 
@@ -465,6 +492,33 @@ mod tests {
 
         assert_eq!(obligations.len(), 1);
         assert_eq!(obligations[0].reason, REASON_VERIFIED_DEMOTED);
+    }
+
+    #[test]
+    fn impacted_decision_gets_kind_correct_obligation() {
+        let mut decision = test_node("billing.storage", "sha256:decision");
+        decision.kind = "decision".to_string();
+        decision.status = Some("accepted".to_string());
+
+        let obligation = obligation_for_impacted_node(&decision);
+
+        assert_eq!(obligation.reason, "confirm impacted decision conformance");
+        assert_eq!(obligation.required_evidence, vec!["source_code"]);
+    }
+
+    #[test]
+    fn impacted_api_gets_kind_correct_obligation() {
+        let mut api = test_node("billing.api", "sha256:api");
+        api.kind = "api".to_string();
+        api.status = Some("verified".to_string());
+
+        let obligation = obligation_for_impacted_node(&api);
+
+        assert_eq!(
+            obligation.reason,
+            "revalidate impacted api contract and compatibility"
+        );
+        assert_eq!(obligation.required_evidence, vec!["api_schema"]);
     }
 
     #[test]
