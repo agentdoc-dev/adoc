@@ -1,14 +1,9 @@
 //! `ChangedFilesProvider` adapter backed by the system `git` binary.
 //!
-//! Resolves the file set between a base ref and head via
-//! `git diff --name-only <base>...[<head>]`. The three-dot form returns files
-//! changed in the head side's history since the merge base with `<base>` — the
-//! canonical CI shape ("what did this branch touch since main") and the form
-//! V3-DESIGN.md §V3.3 names. When `head` is `Workdir` the implicit form
-//! `<base>...` (resolves to `<base>...HEAD`) preserves the historical
-//! workdir-comparison behaviour; when `head` is an explicit `GitRef` the
-//! adapter materialises `<base>...<head>` so impact analysis honours the
-//! caller-supplied ref rather than silently reporting against `HEAD`.
+//! Resolves committed changes between the comparison base and exact head.
+//! Workdir review unions that pinned range with staged, unstaged, and
+//! untracked non-ignored paths; explicit-head review reads only the immutable
+//! committed range.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -25,13 +20,20 @@ use super::util::clear_git_env;
 /// V3.3 git-CLI adapter for [`ChangedFilesProvider`].
 pub(crate) struct GitChangedFilesProvider {
     repo_root: PathBuf,
+    expected_workdir_head: Option<String>,
 }
 
 impl GitChangedFilesProvider {
     pub(crate) fn new(repo_root: impl Into<PathBuf>) -> Self {
         Self {
             repo_root: repo_root.into(),
+            expected_workdir_head: None,
         }
+    }
+
+    pub(crate) fn with_expected_workdir_head(mut self, sha: String) -> Self {
+        self.expected_workdir_head = Some(sha);
+        self
     }
 }
 
@@ -62,7 +64,8 @@ impl GitChangedFilesProvider {
     }
 
     fn workdir_changes(&self, base: &str) -> Result<Vec<RelPath>, ChangedFilesError> {
-        let range = format!("{base}..HEAD");
+        let head = self.expected_workdir_head.as_deref().unwrap_or("HEAD");
+        let range = format!("{base}..{head}");
         let mut paths = BTreeSet::new();
         for args in [
             vec!["diff", "--name-only", "-z", "--no-renames", &range],
@@ -156,7 +159,7 @@ mod tests {
     use super::*;
     use crate::domain::ports::snapshot_workspace::GitRef;
 
-    fn run(cwd: &Path, args: &[&str]) {
+    fn run(cwd: &Path, args: &[&str]) -> String {
         let mut command = Command::new("git");
         command.arg("-C").arg(cwd).args(args);
         clear_git_env(&mut command);
@@ -169,6 +172,10 @@ mod tests {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr),
         );
+        String::from_utf8(output.stdout)
+            .expect("git stdout is UTF-8")
+            .trim()
+            .to_string()
     }
 
     struct Repo {
@@ -239,6 +246,38 @@ mod tests {
         paths.sort();
 
         assert_eq!(paths, vec!["a.txt".to_string(), "c.txt".to_string()]);
+    }
+
+    #[test]
+    fn workdir_committed_changes_use_the_expected_head_revision() {
+        let repo = Repo::new();
+        fs::write(repo.root.join("base.txt"), "base\n").unwrap();
+        run(&repo.root, &["add", "-A"]);
+        run(&repo.root, &["commit", "-m", "base"]);
+
+        run(&repo.root, &["checkout", "-b", "feature"]);
+        fs::write(repo.root.join("first.txt"), "first\n").unwrap();
+        run(&repo.root, &["add", "-A"]);
+        run(&repo.root, &["commit", "-m", "first"]);
+        let expected_head = run(&repo.root, &["rev-parse", "HEAD"]);
+
+        fs::write(repo.root.join("later.txt"), "later\n").unwrap();
+        run(&repo.root, &["add", "-A"]);
+        run(&repo.root, &["commit", "-m", "later"]);
+
+        let provider = GitChangedFilesProvider::new(repo.root.clone())
+            .with_expected_workdir_head(expected_head);
+        let paths = provider
+            .changed_files(
+                &SnapshotSelector::GitRef(GitRef::new("main")),
+                &SnapshotSelector::Workdir,
+            )
+            .expect("pinned workdir comparison succeeds")
+            .into_iter()
+            .map(|path| path.as_str().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(paths, vec!["first.txt"]);
     }
 
     #[test]

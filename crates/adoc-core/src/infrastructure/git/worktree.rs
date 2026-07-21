@@ -75,12 +75,19 @@ impl GitWorktreeProvider {
 
 fn verify_head(repo_root: &Path, expected: &str) -> Result<(), SnapshotError> {
     let output = run_git(repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])?;
-    if !output.status.success() || output.stdout.strip_suffix(b"\n") != Some(expected.as_bytes()) {
+    if !output.status.success() || !head_output_matches(&output.stdout, expected) {
         return Err(SnapshotError::ProviderUnavailable {
             reason: format!("materialized HEAD did not match intended revision {expected}"),
         });
     }
     Ok(())
+}
+
+fn head_output_matches(stdout: &[u8], expected: &str) -> bool {
+    stdout
+        .strip_suffix(b"\n")
+        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
+        == Some(expected.as_bytes())
 }
 
 fn resolve_ref(repo_root: &Path, spec: &str) -> Result<String, SnapshotError> {
@@ -256,6 +263,24 @@ mod tests {
             .expect_err("mismatched workdir HEAD must fail");
 
         assert!(format!("{error}").contains("did not match intended revision"));
+    }
+
+    #[test]
+    fn head_verification_accepts_only_lf_or_crlf_terminated_sha() {
+        let expected = "0123456789abcdef0123456789abcdef01234567";
+
+        assert!(head_output_matches(
+            format!("{expected}\n").as_bytes(),
+            expected
+        ));
+        assert!(head_output_matches(
+            format!("{expected}\r\n").as_bytes(),
+            expected
+        ));
+        assert!(!head_output_matches(
+            format!("{expected} \n").as_bytes(),
+            expected
+        ));
     }
 
     #[test]

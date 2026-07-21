@@ -379,12 +379,14 @@ pub fn load_review_with_changed_files_from_git(
         &input.head,
     )
     .map_err(|source| ReviewError::Comparison { source })?;
+    let expected_workdir_head = resolved.head_sha.clone();
     let snapshot =
         infrastructure::git::worktree::GitWorktreeProvider::new(input.project_root.clone())
             .with_expected_workdir_head(resolved.head_sha);
     let changed_files = infrastructure::git::changed_files::GitChangedFilesProvider::new(
         input.project_root.clone(),
-    );
+    )
+    .with_expected_workdir_head(expected_workdir_head);
     application::review::load_project_review_with_changed_files(
         ReviewInput {
             base: resolved.base,
