@@ -343,9 +343,23 @@ pub fn check_patch(input: PatchInput) -> PatchCheckResult {
 /// to the application layer. Mirrors the existing `compile_workspace` /
 /// `check_patch` three-line wrapper pattern.
 pub fn load_review_from_git(input: ReviewInput) -> Result<ReviewLoadResult, ReviewError> {
+    let resolved = infrastructure::git::revision::resolve_review(
+        &input.project_root,
+        &input.base,
+        &input.head,
+    )
+    .map_err(|source| ReviewError::Comparison { source })?;
     let provider =
-        infrastructure::git::worktree::GitWorktreeProvider::new(input.project_root.clone());
-    application::review::load_review_with_providers(input, &provider)
+        infrastructure::git::worktree::GitWorktreeProvider::new(input.project_root.clone())
+            .with_expected_workdir_head(resolved.head_sha);
+    application::review::load_review_with_providers(
+        ReviewInput {
+            base: resolved.base,
+            head: resolved.head,
+            ..input
+        },
+        &provider,
+    )
 }
 
 /// Public entry point for V3.3 review loading. Constructs both the
@@ -355,12 +369,27 @@ pub fn load_review_from_git(input: ReviewInput) -> Result<ReviewLoadResult, Revi
 pub fn load_review_with_changed_files_from_git(
     input: ReviewInput,
 ) -> Result<ReviewLoadResult, ReviewError> {
+    let resolved = infrastructure::git::revision::resolve_review(
+        &input.project_root,
+        &input.base,
+        &input.head,
+    )
+    .map_err(|source| ReviewError::Comparison { source })?;
     let snapshot =
-        infrastructure::git::worktree::GitWorktreeProvider::new(input.project_root.clone());
+        infrastructure::git::worktree::GitWorktreeProvider::new(input.project_root.clone())
+            .with_expected_workdir_head(resolved.head_sha);
     let changed_files = infrastructure::git::changed_files::GitChangedFilesProvider::new(
         input.project_root.clone(),
     );
-    application::review::load_review_with_changed_files(input, &snapshot, &changed_files)
+    application::review::load_review_with_changed_files(
+        ReviewInput {
+            base: resolved.base,
+            head: resolved.head,
+            ..input
+        },
+        &snapshot,
+        &changed_files,
+    )
 }
 
 /// V3.6 readiness probe for the review pipeline. Returns `true` when the local

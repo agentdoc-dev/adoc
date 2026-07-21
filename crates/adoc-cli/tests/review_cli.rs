@@ -213,6 +213,35 @@ fn review_code_only_change_reports_unchanged_impacted_knowledge() {
 }
 
 #[test]
+fn review_uses_merge_base_when_requested_base_tip_advanced() {
+    let workspace = build_code_only_change_with_impacts("review-advanced-base");
+    run_git(&workspace, &["checkout", "main"]);
+    workspace.write("docs/billing.adoc", HEAD_BILLING_ADOC);
+    run_git(&workspace, &["add", "-A"]);
+    run_git(&workspace, &["commit", "-m", "advance main knowledge"]);
+    run_git(&workspace, &["checkout", "feature"]);
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+
+    assert!(
+        output.status.success(),
+        "expected adoc review to exit zero\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("review stdout is JSON");
+    assert!(value["diff"]["created"].as_array().unwrap().is_empty());
+    assert!(value["diff"]["deleted"].as_array().unwrap().is_empty());
+    assert!(value["diff"]["changed"].as_array().unwrap().is_empty());
+    assert_eq!(value["impact"][0]["id"], "billing.refunds");
+}
+
+#[test]
 fn review_main_json_envelope_flags_billing_refunds() {
     let workspace = build_billing_pilot_with_impacts("review-json");
 

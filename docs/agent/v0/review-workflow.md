@@ -22,6 +22,8 @@ Both tools accept:
 - `base_ref` (required): a git ref spec passed verbatim to `git rev-parse` — a branch (`main`), tag, SHA, or revspec (`HEAD~2`) all work.
 - `head_ref` (optional): same shape as `base_ref`. Omit to compare against the current workdir; provide a ref to compare two commits.
 
+AgentDoc resolves the requested refs to full commit SHAs before reading either snapshot, requires exactly one merge base, and compiles that comparison base against the resolved head. A zero- or multiple-merge-base history fails loudly; AgentDoc never chooses a merge base by output order. Temporary worktrees are created from resolved SHAs and their materialized `HEAD` is verified before source reads.
+
 `adoc_review` also accepts an optional `patch` parameter (V3.7):
 
 - `patch.source: "path"`, `patch.patch_path`: filesystem path (project-root sandboxed) to an `adoc.patch.v0` JSON file.

@@ -21,20 +21,32 @@ use super::util::clear_git_env;
 /// V3.1 git-CLI adapter for [`SnapshotWorkspaceProvider`].
 pub(crate) struct GitWorktreeProvider {
     repo_root: PathBuf,
+    expected_workdir_head: Option<String>,
 }
 
 impl GitWorktreeProvider {
     pub(crate) fn new(repo_root: impl Into<PathBuf>) -> Self {
         Self {
             repo_root: repo_root.into(),
+            expected_workdir_head: None,
         }
+    }
+
+    pub(crate) fn with_expected_workdir_head(mut self, sha: String) -> Self {
+        self.expected_workdir_head = Some(sha);
+        self
     }
 }
 
 impl SnapshotWorkspaceProvider for GitWorktreeProvider {
     fn checkout(&self, selector: &SnapshotSelector) -> Result<SnapshotWorkspace, SnapshotError> {
         match selector {
-            SnapshotSelector::Workdir => Ok(SnapshotWorkspace::workdir(self.repo_root.clone())),
+            SnapshotSelector::Workdir => {
+                if let Some(expected) = &self.expected_workdir_head {
+                    verify_head(&self.repo_root, expected)?;
+                }
+                Ok(SnapshotWorkspace::workdir(self.repo_root.clone()))
+            }
             SnapshotSelector::GitRef(spec) => self.checkout_ref(spec.as_str()),
         }
     }
@@ -42,10 +54,11 @@ impl SnapshotWorkspaceProvider for GitWorktreeProvider {
 
 impl GitWorktreeProvider {
     fn checkout_ref(&self, spec: &str) -> Result<SnapshotWorkspace, SnapshotError> {
-        verify_ref(&self.repo_root, spec)?;
+        let sha = resolve_ref(&self.repo_root, spec)?;
 
         let tmp = generate_worktree_path();
-        add_worktree(&self.repo_root, &tmp, spec)?;
+        add_worktree(&self.repo_root, &tmp, &sha)?;
+        verify_head(&tmp, &sha)?;
 
         let repo_root = self.repo_root.clone();
         let tmp_for_cleanup = tmp.clone();
@@ -60,7 +73,17 @@ impl GitWorktreeProvider {
     }
 }
 
-fn verify_ref(repo_root: &Path, spec: &str) -> Result<(), SnapshotError> {
+fn verify_head(repo_root: &Path, expected: &str) -> Result<(), SnapshotError> {
+    let output = run_git(repo_root, &["rev-parse", "--verify", "HEAD^{commit}"])?;
+    if !output.status.success() || output.stdout.strip_suffix(b"\n") != Some(expected.as_bytes()) {
+        return Err(SnapshotError::ProviderUnavailable {
+            reason: format!("materialized HEAD did not match intended revision {expected}"),
+        });
+    }
+    Ok(())
+}
+
+fn resolve_ref(repo_root: &Path, spec: &str) -> Result<String, SnapshotError> {
     let output = run_git(
         repo_root,
         &["rev-parse", "--verify", &format!("{spec}^{{commit}}")],
@@ -72,7 +95,18 @@ fn verify_ref(repo_root: &Path, spec: &str) -> Result<(), SnapshotError> {
         }
         .into());
     }
-    Ok(())
+    let sha = std::str::from_utf8(&output.stdout)
+        .map_err(|_| SnapshotError::ProviderUnavailable {
+            reason: "git returned non-UTF-8 revision output".to_string(),
+        })?
+        .trim();
+    if sha.len() != 40 || !sha.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(SnapshotError::UnresolvableRef {
+            spec: spec.to_string(),
+            reason: "git returned an invalid commit id".to_string(),
+        });
+    }
+    Ok(sha.to_ascii_lowercase())
 }
 
 fn add_worktree(repo_root: &Path, tmp: &Path, spec: &str) -> Result<(), SnapshotError> {
@@ -209,6 +243,19 @@ mod tests {
         // Drop is a no-op for workdir; nothing should be removed.
         drop(workspace);
         assert!(repo.root.join("hello.txt").exists());
+    }
+
+    #[test]
+    fn workdir_selector_rejects_a_head_mismatch() {
+        let repo = Repo::new();
+        let provider =
+            GitWorktreeProvider::new(repo.root.clone()).with_expected_workdir_head("0".repeat(40));
+
+        let error = provider
+            .checkout(&SnapshotSelector::Workdir)
+            .expect_err("mismatched workdir HEAD must fail");
+
+        assert!(format!("{error}").contains("did not match intended revision"));
     }
 
     #[test]
