@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+pub use adoc_core::EmbeddingsProvider;
+use adoc_core::{ParsedConfigOutputs, ProjectConfigDocumentError, parse_project_config};
 
 use crate::LocalError;
 
@@ -27,45 +28,6 @@ pub struct ConfigOutputs {
     pub html: Option<PathBuf>,
     pub graph: Option<PathBuf>,
     pub search: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EmbeddingsProvider {
-    Local,
-    Deterministic,
-    None,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawProjectConfig {
-    version: u32,
-    mode: String,
-    docs_path: PathBuf,
-    outputs: Option<RawOutputs>,
-    embeddings: Option<RawEmbeddings>,
-    mcp: Option<RawMcp>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
-struct RawOutputs {
-    dir: Option<PathBuf>,
-    html: Option<PathBuf>,
-    graph: Option<PathBuf>,
-    search: Option<PathBuf>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawEmbeddings {
-    provider: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawMcp {
-    patch_apply: String,
 }
 
 impl ProjectConfig {
@@ -109,100 +71,44 @@ impl ProjectConfig {
             path: path.to_path_buf(),
             source,
         })?;
-        let raw: RawProjectConfig =
-            serde_saphyr::from_str(&text).map_err(|source| LocalError::ConfigParse {
+        let parsed = parse_project_config(&text).map_err(|error| match error {
+            ProjectConfigDocumentError::Parse(source) => LocalError::ConfigParse {
                 path: path.to_path_buf(),
                 source: Box::new(source),
-            })?;
-        raw.validate_and_resolve(path)
-    }
-}
-
-impl RawProjectConfig {
-    fn validate_and_resolve(self, path: &Path) -> Result<ProjectConfig, LocalError> {
-        if self.version != 1 {
-            return Err(LocalError::ConfigInvalid {
+            },
+            ProjectConfigDocumentError::Invalid(message) => LocalError::ConfigInvalid {
                 path: path.to_path_buf(),
-                message: format!("unsupported version {}; expected 1", self.version),
-            });
-        }
-
-        if self.mode != "strict" {
-            return Err(LocalError::ConfigInvalid {
-                path: path.to_path_buf(),
-                message: format!("unsupported mode {:?}; expected \"strict\"", self.mode),
-            });
-        }
-
-        if !is_portable_project_relative_path(&self.docs_path) {
-            return Err(LocalError::ConfigInvalid {
-                path: path.to_path_buf(),
-                message: "docs_path must be a portable project-relative path".to_string(),
-            });
-        }
-
+                message,
+            },
+        })?;
         let config_dir = path.parent().unwrap_or_else(|| Path::new("."));
-        let outputs = self.outputs.unwrap_or_default().resolve(config_dir);
-        let embeddings_provider = match self.embeddings {
-            Some(embeddings) => match embeddings.provider.as_str() {
-                "local" => EmbeddingsProvider::Local,
-                "deterministic" => EmbeddingsProvider::Deterministic,
-                "none" => EmbeddingsProvider::None,
-                provider => {
-                    return Err(LocalError::ConfigInvalid {
-                        path: path.to_path_buf(),
-                        message: format!(
-                            "unsupported embeddings provider {provider:?}; expected \"local\", \"deterministic\", or \"none\""
-                        ),
-                    });
-                }
-            },
-            None => EmbeddingsProvider::Local,
-        };
-
-        let mcp_patch_apply_enabled = match self.mcp {
-            Some(mcp) => match mcp.patch_apply.as_str() {
-                "enabled" => true,
-                "disabled" => false,
-                value => {
-                    return Err(LocalError::ConfigInvalid {
-                        path: path.to_path_buf(),
-                        message: format!(
-                            "unsupported mcp.patch_apply {value:?}; expected \"enabled\" or \"disabled\""
-                        ),
-                    });
-                }
-            },
-            None => false,
-        };
-
         Ok(ProjectConfig {
             path: path.to_path_buf(),
-            docs_path: resolve_config_path(config_dir, self.docs_path),
-            outputs,
-            embeddings_provider,
-            mcp_patch_apply_enabled,
+            docs_path: resolve_config_path(config_dir, parsed.docs_path),
+            outputs: resolve_outputs(parsed.outputs, config_dir),
+            embeddings_provider: parsed.embeddings_provider,
+            mcp_patch_apply_enabled: parsed.mcp_patch_apply_enabled,
         })
     }
 }
 
-impl RawOutputs {
-    fn resolve(self, config_dir: &Path) -> ConfigOutputs {
-        let dir = self.dir.map(|path| resolve_config_path(config_dir, path));
-        ConfigOutputs {
-            html: self
-                .html
-                .map(|path| resolve_config_path(config_dir, path))
-                .or_else(|| dir.as_ref().map(|dir| dir.join("docs.html"))),
-            graph: self
-                .graph
-                .map(|path| resolve_config_path(config_dir, path))
-                .or_else(|| dir.as_ref().map(|dir| dir.join("docs.graph.json"))),
-            search: self
-                .search
-                .map(|path| resolve_config_path(config_dir, path))
-                .or_else(|| dir.as_ref().map(|dir| dir.join("docs.search.json"))),
-        }
+fn resolve_outputs(outputs: ParsedConfigOutputs, config_dir: &Path) -> ConfigOutputs {
+    let dir = outputs
+        .dir
+        .map(|path| resolve_config_path(config_dir, path));
+    ConfigOutputs {
+        html: outputs
+            .html
+            .map(|path| resolve_config_path(config_dir, path))
+            .or_else(|| dir.as_ref().map(|dir| dir.join("docs.html"))),
+        graph: outputs
+            .graph
+            .map(|path| resolve_config_path(config_dir, path))
+            .or_else(|| dir.as_ref().map(|dir| dir.join("docs.graph.json"))),
+        search: outputs
+            .search
+            .map(|path| resolve_config_path(config_dir, path))
+            .or_else(|| dir.as_ref().map(|dir| dir.join("docs.search.json"))),
     }
 }
 
@@ -212,26 +118,6 @@ fn resolve_config_path(config_dir: &Path, path: PathBuf) -> PathBuf {
     } else {
         config_dir.join(path)
     }
-}
-
-fn is_portable_project_relative_path(path: &Path) -> bool {
-    let Some(value) = path.to_str() else {
-        return false;
-    };
-    if value == "." {
-        return true;
-    }
-    let bytes = value.as_bytes();
-    !value.is_empty()
-        && value.trim() == value
-        && !path.is_absolute()
-        && !value.starts_with('\\')
-        && !value.contains('\\')
-        && !value.chars().any(char::is_control)
-        && !(bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
-        && !value
-            .split('/')
-            .any(|component| component.is_empty() || component == "." || component == "..")
 }
 
 fn is_git_boundary(path: &Path) -> bool {

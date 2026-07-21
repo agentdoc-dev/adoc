@@ -55,7 +55,14 @@ fn resolve_commit(repo_root: &Path, spec: &str) -> Result<String, SnapshotError>
         repo_root,
         &["rev-parse", "--verify", &format!("{spec}^{{commit}}")],
         false,
-    )?;
+    )
+    .map_err(|error| match error {
+        SnapshotError::ProviderUnavailable { reason } => SnapshotError::UnresolvableRef {
+            spec: spec.to_string(),
+            reason,
+        },
+        other => other,
+    })?;
     let [sha] = lines.as_slice() else {
         return Err(SnapshotError::UnresolvableRef {
             spec: spec.to_string(),
@@ -80,7 +87,7 @@ fn git_lines(
     command.arg("-C").arg(repo_root).args(args);
     clear_git_env(&mut command);
     let output = command.output().map_err(SnapshotError::Io)?;
-    if !output.status.success() && !(no_result_is_empty && output.status.code() == Some(1)) {
+    if !(output.status.success() || no_result_is_empty && output.status.code() == Some(1)) {
         return Err(SnapshotError::ProviderUnavailable {
             reason: String::from_utf8_lossy(&output.stderr).trim().to_string(),
         });

@@ -189,7 +189,7 @@ fn diff_unresolvable_ref_exits_nonzero_with_actionable_stderr() {
 }
 
 #[test]
-fn diff_rejects_a_repository_without_discovered_project_config() {
+fn diff_names_a_missing_head_snapshot_config() {
     let workspace = build_two_commit_fixture("diff-no-config");
     fs::remove_file(workspace.root.join("agentdoc.config.yaml")).expect("remove config");
 
@@ -201,7 +201,7 @@ fn diff_rejects_a_repository_without_discovered_project_config() {
 
     assert!(!output.status.success());
     assert!(
-        stderr(&output).contains("requires a discovered agentdoc.config.yaml"),
+        stderr(&output).contains("head snapshot configuration failed"),
         "stderr: {}",
         stderr(&output)
     );

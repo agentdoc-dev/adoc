@@ -24,6 +24,8 @@ Both tools accept:
 
 AgentDoc resolves the requested refs to full commit SHAs before reading either snapshot, requires exactly one merge base, and compiles that comparison base against the resolved head. A zero- or multiple-merge-base history fails loudly; AgentDoc never chooses a merge base by output order. Temporary worktrees are created from resolved SHAs and their materialized `HEAD` is verified before source reads.
 
+Each snapshot then reads and validates its own `agentdoc.config.yaml` from that exact checkout. Base and head may therefore use different `docs_path` and output settings during a configuration transition. AgentDoc never borrows the worktree or opposite snapshot configuration: a missing or invalid base config is reported as a base configuration failure, and the corresponding head problem is reported as a head configuration failure. Snapshot compilation reads only that side's configured documentation root; `docs_path: .` remains valid.
+
 When `head_ref` is omitted, the changed set is the deterministic union of comparison-base-to-`HEAD` commits, staged changes, unstaged tracked changes, and untracked non-ignored files. Git paths are read as NUL-delimited bytes with rename detection disabled, then validated as UTF-8 portable repository-relative paths. Any malformed or unsafe path fails the entire review instead of disappearing from an otherwise successful result.
 
 `adoc_review` also accepts an optional `patch` parameter (V3.7):

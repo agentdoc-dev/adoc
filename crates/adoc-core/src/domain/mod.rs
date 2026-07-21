@@ -9,6 +9,7 @@ pub(crate) mod knowledge_object;
 pub(crate) mod obligation;
 pub(crate) mod patch;
 pub(crate) mod ports;
+pub(crate) mod project_config;
 pub(crate) mod retrieval;
 pub(crate) mod review;
 pub(crate) mod rules;

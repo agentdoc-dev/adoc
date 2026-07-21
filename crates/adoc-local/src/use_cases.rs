@@ -1697,10 +1697,13 @@ fn project_context_for_selected_path(
 }
 
 fn review_project_context(start: &Path) -> Result<(PathBuf, PathBuf), LocalError> {
-    let config = ProjectConfig::discover_from(start)?.ok_or_else(|| LocalError::ConfigMissing {
-        message: "adoc diff/review requires a discovered agentdoc.config.yaml".to_string(),
-        config_path: None,
-    })?;
+    let Some(config) = ProjectConfig::discover_from(start)? else {
+        let project_root = git_project_root(start).ok_or_else(|| LocalError::ConfigMissing {
+            message: "adoc diff/review requires a discovered agentdoc.config.yaml".to_string(),
+            config_path: None,
+        })?;
+        return Ok((project_root, PathBuf::new()));
+    };
     let project_root = config
         .path
         .parent()
@@ -1715,6 +1718,18 @@ fn review_project_context(start: &Path) -> Result<(PathBuf, PathBuf), LocalError
             project_root: project_root.clone(),
         })?;
     Ok((project_root, docs_path))
+}
+
+fn git_project_root(start: &Path) -> Option<PathBuf> {
+    let mut current = start.canonicalize().ok()?;
+    loop {
+        if current.join(".git").exists() {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
 }
 
 fn resolve_docs_path_with_config(

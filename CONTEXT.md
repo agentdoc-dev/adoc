@@ -273,8 +273,8 @@ The V3 aggregate `{ diff, impact[], required_reviewers[], proof_obligations[], p
 _Avoid_: bumping schema per slice, including rendered HTML, mutating source, applying the patch, computing a speculative post-patch diff
 
 **Snapshot Workspace**:
-A RAII handle wrapping a filesystem path. Two variants: workdir (no-op cleanup on drop) or a temporary linked git worktree (drop runs `git worktree remove`). Returned by `SnapshotWorkspaceProvider::checkout`. Existing `FsSourceProvider` reads from the path unchanged.
-_Avoid_: leaking worktrees on panic, sharing tmp paths across processes, mutating the checked-out workdir
+A RAII handle wrapping a filesystem path. Two variants: workdir (no-op cleanup on drop) or a temporary linked git worktree (drop runs `git worktree remove`). Returned by `SnapshotWorkspaceProvider::checkout`. Immutable review snapshots are materialized from resolved commit SHAs and verify their checked-out `HEAD` before reads. Each snapshot independently parses its own `agentdoc.config.yaml` and compiles only its configured documentation root; configuration is never borrowed across sides.
+_Avoid_: leaking worktrees on panic, sharing tmp paths across processes, mutating the checked-out workdir, applying one snapshot's config to the other
 
 **Snapshot Selector**:
 The sealed enum input to a `SnapshotWorkspaceProvider`: `Workdir` or `GitRef(GitRef)`. `GitRef` is an opaque `String` passed verbatim to `git rev-parse`; supports branches, tags, SHAs, and revspecs without reinventing the parser.
