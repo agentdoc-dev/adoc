@@ -166,7 +166,7 @@ fn build_renders_approval_block_and_emits_policy_into_graph_v3() {
         .expect("graph artifact is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph json parses");
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+    assert_eq!(graph["schema_version"], "adoc.graph.v5");
 
     let policy = graph["nodes"]
         .as_array()

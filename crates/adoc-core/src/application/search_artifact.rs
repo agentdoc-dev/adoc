@@ -380,7 +380,8 @@ mod tests {
         })];
         all_nodes.extend(nodes);
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v4".to_string(),
+            schema_version: "adoc.graph.v5".to_string(),
+            repository_identity: Default::default(),
             nodes: all_nodes,
             edges: Vec::new(),
             diagnostics: Vec::new(),

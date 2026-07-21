@@ -21,38 +21,39 @@ fn valid_source() -> &'static str {
 
 fn valid_graph_json() -> String {
     serde_json::to_string_pretty(&json!({
-        "schema_version": "adoc.graph.v4",
-        "nodes": [
-            {
-                "type": "page",
-                "id": "team.billing",
-                "order": 0,
-                "source_path": "docs/billing.adoc"
-            },
-            {
-                "type": "knowledge_object",
-                "id": "billing.ready",
-                "kind": "claim",
-                "content_hash": "sha256:billing.ready",
-                "status": "draft",
-                "body": "Billing docs are ready.",
-                "page_id": "team.billing",
-                "source_span": {
-                    "path": "docs/billing.adoc",
-                    "line": 3,
-                    "column": 1
-                },
-                "fields": {},
-                "relations": {
-                    "depends_on": [],
-                    "supersedes": [],
-                    "related_to": []
-                }
-            }
-        ],
-        "edges": [],
-        "diagnostics": []
-    }))
+          "schema_version": "adoc.graph.v5",
+    "repository_identity": null,
+          "nodes": [
+              {
+                  "type": "page",
+                  "id": "team.billing",
+                  "order": 0,
+                  "source_path": "docs/billing.adoc"
+              },
+              {
+                  "type": "knowledge_object",
+                  "id": "billing.ready",
+                  "kind": "claim",
+                  "content_hash": "sha256:billing.ready",
+                  "status": "draft",
+                  "body": "Billing docs are ready.",
+                  "page_id": "team.billing",
+                  "source_span": {
+                      "path": "docs/billing.adoc",
+                      "line": 3,
+                      "column": 1
+                  },
+                  "fields": {},
+                  "relations": {
+                      "depends_on": [],
+                      "supersedes": [],
+                      "related_to": []
+                  }
+              }
+          ],
+          "edges": [],
+          "diagnostics": []
+      }))
     .expect("graph json serializes")
 }
 
@@ -107,7 +108,7 @@ fn graph_artifact_inspector_reports_missing_malformed_and_unsupported() {
     );
 
     let unsupported_path = root.join("unsupported.graph.json");
-    let unsupported_json = valid_graph_json().replace("adoc.graph.v4", "adoc.graph.v99");
+    let unsupported_json = valid_graph_json().replace("adoc.graph.v5", "adoc.graph.v99");
     write(&unsupported_path, &unsupported_json);
     let unsupported = inspect_graph_artifact(GraphArtifactInspectionInput {
         graph_artifact_path: unsupported_path,
@@ -133,7 +134,7 @@ fn graph_artifact_inspector_rejects_invalid_object_ids_and_counts_valid_objects(
         graph_artifact_path: valid_path,
     });
     assert_eq!(valid.load_status, ArtifactLoadStatus::Readable);
-    assert_eq!(valid.schema_version.as_deref(), Some("adoc.graph.v4"));
+    assert_eq!(valid.schema_version.as_deref(), Some("adoc.graph.v5"));
     assert_eq!(valid.object_count, Some(1));
 
     let invalid_path = root.join("invalid.graph.json");

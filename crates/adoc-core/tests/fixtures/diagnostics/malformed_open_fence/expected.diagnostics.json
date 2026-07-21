@@ -4,7 +4,7 @@
     "severity": "error",
     "message": "::claim block is missing a required id token",
     "span": {
-      "file": "tests/fixtures/diagnostics/malformed_open_fence/input/team/bad.adoc",
+      "file": "team/bad.adoc",
       "start": {
         "line": 1,
         "column": 1,

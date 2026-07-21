@@ -45,7 +45,7 @@ Should unused trial credits expire after 30 days or remain available indefinitel
 
 ## Wire surface
 
-`question` nodes are emitted into the graph artifact (`adoc.graph.v4`) with:
+`question` nodes are emitted into the graph artifact (`adoc.graph.v5`) with:
 
 - `kind: "question"` — the node-level kind discriminant
 - `status` — `open` or `answered` (lifecycle-only per ADR-0039)

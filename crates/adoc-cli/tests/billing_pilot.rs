@@ -18,13 +18,10 @@ fn repo_root() -> PathBuf {
 
 fn is_billing_pilot_adoc_path(path: &str) -> bool {
     let path = Path::new(path);
-
-    path.extension()
-        .is_some_and(|extension| extension == "adoc")
+    path.is_relative()
         && path
-            .parent()
-            .and_then(Path::file_name)
-            .is_some_and(|directory| directory == "billing-pilot")
+            .extension()
+            .is_some_and(|extension| extension == "adoc")
 }
 
 #[test]
@@ -81,7 +78,7 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
         .expect("billing pilot graph JSON is written");
     let graph_json: Value =
         serde_json::from_str(&graph_json_text).expect("graph JSON is valid JSON");
-    assert_eq!(graph_json["schema_version"], "adoc.graph.v4");
+    assert_eq!(graph_json["schema_version"], "adoc.graph.v5");
     let nodes = graph_json["nodes"]
         .as_array()
         .expect("graph JSON nodes is an array");

@@ -1,8 +1,8 @@
 # AgentDoc Roadmap — V9 Cycle: Trustworthy PR Knowledge Assessment and Governed Proposals
 
-**Document version:** 0.1
-**Document status:** Draft
-**Last updated:** 2026-07-20
+**Document version:** 0.2
+**Document status:** Active
+**Last updated:** 2026-07-21
 **Product scope:** Free/local single-repository knowledge loop, with gated successor plans for managed and on-prem delivery
 **Repositories:** `agentdoc-dev/adoc` and `agentdoc-dev/action`
 **Planning baseline:** AgentDoc `v0.2.0` and AgentDoc Action `v1.4.0`
@@ -256,7 +256,7 @@ Parallelism describes merge conflicts and dependencies, not required staffing.
 
 | Slice | Status | User outcome | Repositories | Depends on | Completion evidence |
 | --- | --- | --- | --- | --- | --- |
-| V9.1.1 | Planned | Portable source coordinates and hashes | `adoc` | — | — |
+| V9.1.1 | Implemented | Portable source coordinates and hashes | `adoc` | — | ADR-0049; core/local/CLI/MCP contract tests |
 | V9.1.2 | Planned | Code-only PRs report unchanged affected knowledge | `adoc` | V9.1.1 | — |
 | V9.1.3 | Planned | Failed analysis cannot appear covered | `action` | — | — |
 | V9.1.4 | Planned | Proposal execution has a defensible trust boundary | `action` | — | — |
@@ -296,13 +296,13 @@ V9.1 removes correctness and trust-boundary failures that would otherwise contam
 
 ### V9.1.1: Canonical Source Identity and Portable Hash Slice
 
-**Status:** Planned
+**Status:** Implemented
 **Repositories:** `adoc`
 **Depends on:** —
 **User touchpoint:** `adoc build`, `adoc diff`, `adoc review`, `adoc patch --check`
 **Contract impact:** Breaking `adoc.graph.v5` artifact-semantic correction
 **Gate posture:** Not applicable
-**Completion evidence:** —
+**Completion evidence:** ADR-0049; clone-portability, review-parity, standalone/project identity, path-containment, CLI, patch, and published-schema contract tests; workspace quality gates
 
 #### Goal
 

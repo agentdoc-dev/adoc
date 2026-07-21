@@ -123,6 +123,8 @@ diagnostic_codes! {
         "Check that the source directory exists and can be read by the current user.";
     IoUnsupportedSourceExtension = "io.unsupported_source_extension" =>
         "Use supported source files with the `.adoc` or `.md` extension.";
+    IoSourcePathUnsafe = "io.source_path_unsafe" =>
+        "Keep source paths inside the configured documentation root and use portable relative path components.";
     IoArtifactMissing = "io.artifact_missing" =>
         "Build docs.graph.json before loading the retrieval artifact.";
     IoArtifactUnreadable = "io.artifact_unreadable" =>

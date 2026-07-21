@@ -21,7 +21,7 @@ vocabulary by V6.5.5).
 
 ## Graph JSON
 
-- `schema_version` is `adoc.graph.v4`.
+- `schema_version` is `adoc.graph.v5`.
 - 27 Knowledge Object nodes: 8 claim, 1 decision, 2 glossary, 1 constraint, 1 procedure, 2 example, 1 policy, 1 agent_instruction, 1 contradiction, 3 source, 1 api, 1 observation, 2 question, 2 task.
 - Three `evidence` edges: `billing.credits.consume` and `billing.credits.use-ledger` → `billing.consume-use-case`; `billing.consume-credit` → `billing.openapi-schema`.
 - The answered question emits a `resolved_by` edge to `billing.credits.use-ledger`; the open task a `depends_on` relation edge to `billing.credits.consume`.

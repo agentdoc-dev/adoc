@@ -3,6 +3,54 @@ use std::path::{Path, PathBuf};
 use crate::domain::diagnostic::{SourcePosition, SourceSpan};
 use crate::domain::identity::PageId;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LogicalPath(String);
+
+impl LogicalPath {
+    pub(crate) fn parse(value: &str) -> Result<Self, LogicalPathError> {
+        if value.is_empty()
+            || value.trim() != value
+            || value.starts_with('/')
+            || value.starts_with('\\')
+            || value.contains('\\')
+            || value.chars().any(char::is_control)
+            || has_windows_drive_prefix(value)
+        {
+            return Err(LogicalPathError);
+        }
+        if value
+            .split('/')
+            .any(|component| component.is_empty() || component == "." || component == "..")
+        {
+            return Err(LogicalPathError);
+        }
+        Ok(Self(value.to_string()))
+    }
+
+    pub(crate) fn from_relative_path(path: &Path) -> Result<Self, LogicalPathError> {
+        let mut components = Vec::new();
+        for component in path.components() {
+            let std::path::Component::Normal(component) = component else {
+                return Err(LogicalPathError);
+            };
+            components.push(component.to_str().ok_or(LogicalPathError)?);
+        }
+        Self::parse(&components.join("/"))
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LogicalPathError;
+
+fn has_windows_drive_prefix(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
 /// Position on a single line, expressed in 1-indexed character columns.
 ///
 /// Owns the UTF-8 column arithmetic that parser and inline scanner used to
@@ -48,8 +96,9 @@ pub(crate) fn column_offset(prefix: &str) -> u32 {
 
 #[derive(Debug, Clone)]
 pub(crate) struct SourceFile {
-    pub(crate) path: PathBuf,
+    pub(crate) physical_path: PathBuf,
     pub(crate) identity_path: PathBuf,
+    pub(crate) logical_path: PathBuf,
     pub(crate) text: String,
     pub(crate) line_index: LineIndex,
     /// Validation regime, fixed at construction from the file extension per
@@ -59,15 +108,26 @@ pub(crate) struct SourceFile {
 
 impl SourceFile {
     pub(crate) fn new_with_identity_path(
-        path: PathBuf,
+        physical_path: PathBuf,
         text: String,
         identity_path: PathBuf,
     ) -> Self {
+        let logical_path = identity_path.clone();
+        Self::new_with_coordinates(physical_path, text, identity_path, logical_path)
+    }
+
+    pub(crate) fn new_with_coordinates(
+        physical_path: PathBuf,
+        text: String,
+        identity_path: PathBuf,
+        logical_path: PathBuf,
+    ) -> Self {
         let line_index = LineIndex::new(&text);
-        let mode = mode_for_path(&path);
+        let mode = mode_for_path(&physical_path);
         Self {
-            path,
+            physical_path,
             identity_path,
+            logical_path,
             text,
             line_index,
             mode,
@@ -81,21 +141,6 @@ impl SourceFile {
         self.mode
     }
 
-    /// Return this `SourceFile` with both `path` and `identity_path`
-    /// rebased onto `prefix`. The text and line index are preserved
-    /// byte-identically — only the location metadata changes.
-    ///
-    /// Used by [`crate::domain::ports::source_provider::IdentityRebaseDecorator`]
-    /// so V3's review pipeline can compile the same source tree at two
-    /// different filesystem roots without the diff seeing every
-    /// `content_hash` change as a path change.
-    pub(crate) fn rebased_to_prefix(mut self, prefix: &Path) -> Self {
-        let rebased = prefix.join(&self.identity_path);
-        self.path = rebased.clone();
-        self.identity_path = rebased;
-        self
-    }
-
     pub(crate) fn span_for_line(&self, line_number: u32, text: &str) -> SourceSpan {
         let start = self.line_index.position_for_line(line_number);
         let end = SourcePosition {
@@ -104,7 +149,7 @@ impl SourceFile {
             offset: start.offset + text.len() as u32,
         };
         SourceSpan {
-            file: self.path.clone(),
+            file: self.logical_path.clone(),
             start,
             end,
         }
@@ -121,7 +166,7 @@ impl SourceFile {
 
     pub(crate) fn span_for_offsets(&self, start_offset: usize, end_offset: usize) -> SourceSpan {
         SourceSpan {
-            file: self.path.clone(),
+            file: self.logical_path.clone(),
             start: self.position_for_offset(start_offset),
             end: self.position_for_offset(end_offset),
         }
@@ -140,7 +185,7 @@ impl SourceFile {
             self.line_index
                 .offset_for_line_column(&self.text, line_number, end_column);
         SourceSpan {
-            file: self.path.clone(),
+            file: self.logical_path.clone(),
             start: SourcePosition {
                 line: line_number,
                 column: start_column,
@@ -170,7 +215,7 @@ impl SourceFile {
             .line_index
             .offset_for_line_column(&self.text, end_line, end_column);
         SourceSpan {
-            file: self.path.clone(),
+            file: self.logical_path.clone(),
             start,
             end: SourcePosition {
                 line: end_line,
@@ -451,5 +496,55 @@ mod tests {
         assert_eq!(span.start.offset, 5);
         assert_eq!(span.end.column, 10);
         assert_eq!(span.end.offset, 11);
+    }
+
+    #[test]
+    fn source_coordinates_keep_physical_identity_and_logical_paths_distinct() {
+        let source = SourceFile::new_with_coordinates(
+            PathBuf::from("/tmp/checkout/docs/guide.adoc"),
+            "# Guide\n".to_string(),
+            PathBuf::from("guide.adoc"),
+            PathBuf::from("docs/guide.adoc"),
+        );
+
+        assert_eq!(
+            source.physical_path,
+            PathBuf::from("/tmp/checkout/docs/guide.adoc")
+        );
+        assert_eq!(source.identity_path, PathBuf::from("guide.adoc"));
+        assert_eq!(source.logical_path, PathBuf::from("docs/guide.adoc"));
+        assert_eq!(
+            source.span_for_line(1, "# Guide").file,
+            PathBuf::from("docs/guide.adoc")
+        );
+    }
+
+    #[test]
+    fn logical_path_rejects_non_portable_coordinates() {
+        for unsafe_path in [
+            "",
+            "/docs/guide.adoc",
+            "C:/docs/guide.adoc",
+            "docs//guide.adoc",
+            "docs/./guide.adoc",
+            "docs/../guide.adoc",
+            "docs\\guide.adoc",
+            " docs/guide.adoc",
+            "docs/guide.adoc ",
+            "docs/guide\0.adoc",
+            "docs/guide\n.adoc",
+        ] {
+            assert!(
+                LogicalPath::parse(unsafe_path).is_err(),
+                "unsafe path accepted: {unsafe_path:?}"
+            );
+        }
+
+        assert_eq!(
+            LogicalPath::parse("docs/guide.adoc")
+                .expect("portable path")
+                .as_str(),
+            "docs/guide.adoc"
+        );
     }
 }

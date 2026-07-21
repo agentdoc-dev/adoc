@@ -637,7 +637,8 @@ mod tests {
         };
 
         GraphIndex::from_document(GraphArtifactDocument {
-            schema_version: "adoc.graph.v4".to_string(),
+            schema_version: "adoc.graph.v5".to_string(),
+            repository_identity: Default::default(),
             nodes: vec![GraphNode::Page(GraphPageNode {
                 id: "team.page".to_string(),
                 order: 0,

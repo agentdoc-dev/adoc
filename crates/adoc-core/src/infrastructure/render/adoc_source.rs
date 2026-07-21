@@ -76,7 +76,7 @@ impl Serializer<'_> {
                             format!(
                                 "empty prose block dropped from {}; it carries no content \
                                  and has no strict .adoc form",
-                                self.source.path.display()
+                                self.source.physical_path.display()
                             ),
                         )
                         .with_span(paragraph.span.clone()),
@@ -147,7 +147,7 @@ impl Serializer<'_> {
                     format!(
                         "internal: typed Knowledge Object block in Markdown source {}; \
                          Compatibility Mode parsing must never produce one (ADR-0023)",
-                        self.source.path.display()
+                        self.source.physical_path.display()
                     ),
                 ));
             }
@@ -192,7 +192,7 @@ impl Serializer<'_> {
                         format!(
                             "task-list checkbox marker dropped from a list item in {}; \
                              the item text is preserved",
-                            self.source.path.display()
+                            self.source.physical_path.display()
                         ),
                     )
                     .with_span(item.span.clone()),
@@ -304,7 +304,7 @@ impl Serializer<'_> {
                 code,
                 format!(
                     "{construct} {QUARANTINE_PHRASE} in {}",
-                    self.source.path.display()
+                    self.source.physical_path.display()
                 ),
             )
             .with_span(span.clone()),
@@ -324,7 +324,7 @@ impl Serializer<'_> {
                     format!(
                         "cannot represent content containing a bare ``` fence line in strict \
                          .adoc ({}); resolve the nested fence by hand before migrating",
-                        self.source.path.display()
+                        self.source.physical_path.display()
                     ),
                 )
                 .with_span(span.clone()),

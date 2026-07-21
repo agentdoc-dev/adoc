@@ -103,7 +103,7 @@ pub(crate) fn parse_markdown_page(source: &SourceFile) -> (PageAst, Vec<Diagnost
     let page = PageAst {
         id: page_id,
         title,
-        source_path: source.path.clone(),
+        source_path: source.logical_path.clone(),
         blocks,
     };
     (page, diagnostics)

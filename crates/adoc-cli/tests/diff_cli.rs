@@ -1,5 +1,6 @@
 mod support;
 
+use std::fs;
 use std::process::Command;
 
 use support::{TestWorkspace, adoc_command, stderr, stdout};
@@ -95,6 +96,10 @@ fn build_two_commit_fixture(name: &str) -> TestWorkspace {
     run_git(&workspace, &["config", "user.name", "adoc tests"]);
     run_git(&workspace, &["config", "commit.gpgsign", "false"]);
 
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\n",
+    );
     workspace.write("docs/billing.adoc", BASE_BILLING_ADOC);
     run_git(&workspace, &["add", "-A"]);
     run_git(&workspace, &["commit", "-m", "base"]);
@@ -181,6 +186,25 @@ fn diff_unresolvable_ref_exits_nonzero_with_actionable_stderr() {
     let stderr = stderr(&output);
     assert!(stderr.contains("review"));
     assert!(stderr.contains("definitely-not-a-real-ref"));
+}
+
+#[test]
+fn diff_rejects_a_repository_without_discovered_project_config() {
+    let workspace = build_two_commit_fixture("diff-no-config");
+    fs::remove_file(workspace.root.join("agentdoc.config.yaml")).expect("remove config");
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["diff", "main"])
+        .output()
+        .expect("adoc diff runs");
+
+    assert!(!output.status.success());
+    assert!(
+        stderr(&output).contains("requires a discovered agentdoc.config.yaml"),
+        "stderr: {}",
+        stderr(&output)
+    );
 }
 
 #[test]

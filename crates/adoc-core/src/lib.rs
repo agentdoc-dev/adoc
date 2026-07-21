@@ -12,6 +12,7 @@ pub use application::artifact_inspection::{
 };
 pub use application::compile::{
     BuildArtifacts, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult,
+    LocalProjectContext,
 };
 pub use application::graph::{
     GRAPH_TRAVERSAL_SCHEMA_VERSION, GraphInput, GraphLoadResult, GraphSession,
@@ -131,6 +132,32 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
     application::compile::compile_with_provider(&provider)
 }
 
+pub fn compile_project_workspace(
+    input: CompileInput,
+    project: LocalProjectContext,
+) -> CompileResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::for_project(
+        input.root,
+        project.project_root,
+        project.docs_root,
+    );
+    application::compile::compile_with_provider(&provider)
+}
+
+pub fn compile_project_workspace_with_anchor_root(
+    input: CompileInput,
+    project: LocalProjectContext,
+    anchor_root: std::path::PathBuf,
+) -> CompileResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::for_project(
+        input.root,
+        project.project_root,
+        project.docs_root,
+    );
+    let reader = infrastructure::source::evidence_fs::FsEvidenceFileReader::new(anchor_root);
+    application::compile::compile_with_provider_anchored(&provider, &reader)
+}
+
 /// V8.5.1 (ADR-0048): [`compile_workspace`] plus Evidence Anchor
 /// verification — anchored `source` paths are re-hashed against
 /// `anchor_root`. `None` behaves exactly like [`compile_workspace`]; only
@@ -172,6 +199,24 @@ pub fn export_workspace(root: std::path::PathBuf, mode: MigrateMode) -> MigrateR
 
 pub fn build_workspace(input: BuildInput) -> CompileResult {
     build_workspace_with_embedding_provider(input, EmbeddingProviderSelection::Local)
+}
+
+pub fn build_project_workspace(input: BuildInput, project: LocalProjectContext) -> CompileResult {
+    build_project_workspace_with_embedding_provider(
+        input,
+        project,
+        EmbeddingProviderSelection::Local,
+    )
+}
+
+pub fn build_project_workspace_with_embedding_provider(
+    input: BuildInput,
+    project: LocalProjectContext,
+    provider: EmbeddingProviderSelection,
+) -> CompileResult {
+    build_workspace_with_embedding_provider_factory_and_context(input, Some(project), || {
+        embedding_provider(provider)
+    })
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -389,7 +434,11 @@ pub struct PatchApplyInput {
 /// `applied: false`; this function never panics on user input.
 #[tracing::instrument(level = "debug", skip_all)]
 pub fn apply_patch(input: PatchApplyInput, patch: PatchDocument) -> PatchApplyResult {
-    let provider = infrastructure::source::fs::FsSourceProvider::new(input.docs_root);
+    let provider = infrastructure::source::fs::FsSourceProvider::for_project(
+        input.docs_root.clone(),
+        input.project_root.clone(),
+        input.docs_root,
+    );
     let writer = infrastructure::source::fs_writer::FsWorkspaceWriter::new(input.project_root);
     application::apply::apply_patch_with_ports(
         &input.graph_artifact_path,
@@ -484,6 +533,20 @@ fn use_force_load_fail_test_embedding_provider() -> bool {
 
 fn build_workspace_with_embedding_provider_factory<F>(
     input: BuildInput,
+    provider_factory: F,
+) -> CompileResult
+where
+    F: FnMut() -> Result<
+        Box<dyn domain::ports::embedding_provider::EmbeddingProvider>,
+        domain::ports::embedding_provider::EmbeddingError,
+    >,
+{
+    build_workspace_with_embedding_provider_factory_and_context(input, None, provider_factory)
+}
+
+fn build_workspace_with_embedding_provider_factory_and_context<F>(
+    input: BuildInput,
+    project: Option<LocalProjectContext>,
     mut provider_factory: F,
 ) -> CompileResult
 where
@@ -492,7 +555,14 @@ where
         domain::ports::embedding_provider::EmbeddingError,
     >,
 {
-    let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
+    let provider = match project {
+        Some(project) => infrastructure::source::fs::FsSourceProvider::for_project(
+            input.root,
+            project.project_root,
+            project.docs_root,
+        ),
+        None => infrastructure::source::fs::FsSourceProvider::new(input.root),
+    };
     match input.embeddings {
         BuildEmbeddingMode::Enabled => application::compile::build_with_provider(
             &provider,

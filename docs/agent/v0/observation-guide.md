@@ -40,7 +40,7 @@ Users often misunderstand credit usage before their first generation.
 
 ## Wire surface
 
-`observation` nodes are emitted into the graph artifact (`adoc.graph.v4`) with:
+`observation` nodes are emitted into the graph artifact (`adoc.graph.v5`) with:
 
 - `kind: "observation"` — the node-level kind discriminant
 - `status: "observed"` — the lifecycle status (lifecycle-only per ADR-0039)
