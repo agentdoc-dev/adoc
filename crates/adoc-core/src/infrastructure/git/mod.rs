@@ -8,6 +8,7 @@ pub(crate) mod changed_files;
 pub(crate) mod clean_source;
 pub(crate) mod error;
 pub(crate) mod readiness;
+pub(crate) mod revision;
 pub(crate) mod util;
 pub(crate) mod worktree;
 

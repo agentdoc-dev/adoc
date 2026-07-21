@@ -113,6 +113,9 @@ pub enum ReviewError {
         selector: SnapshotSelector,
         source: ChangedFilesError,
     },
+    Comparison {
+        source: SnapshotError,
+    },
     /// V3.7 — the patch source supplied via `adoc review --patch` (or the
     /// equivalent MCP parameter) could not be parsed into a
     /// [`PatchDocument`]. Validation failures against the head graph stay
@@ -145,6 +148,9 @@ impl fmt::Display for ReviewError {
             Self::ChangedFiles { selector, .. } => {
                 write!(f, "could not resolve changed-file set against {selector}")
             }
+            Self::Comparison { source } => {
+                write!(f, "could not resolve review comparison: {source}")
+            }
             Self::PatchParse { source } => {
                 write!(f, "could not parse review patch source ({source})")
             }
@@ -157,6 +163,7 @@ impl Error for ReviewError {
         match self {
             Self::BaseSnapshot { source, .. } | Self::HeadSnapshot { source, .. } => Some(source),
             Self::ChangedFiles { source, .. } => Some(source),
+            Self::Comparison { source } => Some(source),
             Self::PatchParse { source } => Some(source),
             _ => None,
         }
