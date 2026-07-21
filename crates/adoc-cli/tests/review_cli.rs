@@ -406,6 +406,26 @@ fn review_reports_a_removed_head_config_as_a_head_failure() {
 }
 
 #[test]
+fn review_from_nested_directory_reports_a_malformed_head_config() {
+    let workspace = build_code_only_change_with_impacts("review-malformed-head-config");
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\nunknown: true\n",
+    );
+    let nested = workspace.root.join("nested");
+    std::fs::create_dir_all(&nested).expect("nested directory");
+
+    let output = adoc_command()
+        .current_dir(nested)
+        .args(["review", "main", "--format", "json"])
+        .output()
+        .expect("adoc review runs");
+
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("head snapshot configuration failed"));
+}
+
+#[test]
 fn review_main_json_envelope_flags_billing_refunds() {
     let workspace = build_billing_pilot_with_impacts("review-json");
 

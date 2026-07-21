@@ -1697,27 +1697,11 @@ fn project_context_for_selected_path(
 }
 
 fn review_project_context(start: &Path) -> Result<(PathBuf, PathBuf), LocalError> {
-    let Some(config) = ProjectConfig::discover_from(start)? else {
-        let project_root = git_project_root(start).ok_or_else(|| LocalError::ConfigMissing {
-            message: "adoc diff/review requires a discovered agentdoc.config.yaml".to_string(),
-            config_path: None,
-        })?;
-        return Ok((project_root, PathBuf::new()));
-    };
-    let project_root = config
-        .path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf();
-    let docs_path = config
-        .docs_path
-        .strip_prefix(&project_root)
-        .map(Path::to_path_buf)
-        .map_err(|_| LocalError::PathOutsideProject {
-            path: config.docs_path,
-            project_root: project_root.clone(),
-        })?;
-    Ok((project_root, docs_path))
+    let project_root = git_project_root(start).ok_or_else(|| LocalError::ConfigMissing {
+        message: "adoc diff/review requires a Git repository".to_string(),
+        config_path: None,
+    })?;
+    Ok((project_root, PathBuf::new()))
 }
 
 fn git_project_root(start: &Path) -> Option<PathBuf> {
