@@ -2,7 +2,7 @@
 
 This roadmap converts the broad PRD into small tracer-bullet milestones. A milestone is not complete just because one subsystem exists; it is complete when a user can start with `.adoc` source, run the `adoc` CLI, receive useful diagnostics, and get both human HTML and graph JSON outputs.
 
-The initial product is a local CLI for native AgentDoc authoring in Git repositories. The compiler, graph artifact, local retrieval loop, hybrid search, graph traversal, retrieval evaluation harness, local workflow, agent patch validation, local MCP gateway, team CI diff/review, Markdown compatibility mode, the V5 Expanded Knowledge Model, lifecycle automation, the V6 agent editing loop (lifecycle read commands plus gated patch apply), V1.7 prose retrieval, and V8.1 Markdown migration (`adoc migrate`, reversible via `--export`) are now implemented. The V7 cycle ([ROADMAP-V7.md](ROADMAP-V7.md)) has one open milestone: the V7.2 pilot readiness gate that discharges the MVP acceptance bar; the V8 adoption cycle ([ROADMAP-V8.md](ROADMAP-V8.md)) is underway.
+The initial product is a local CLI for native AgentDoc authoring in Git repositories. The compiler, graph artifact, local retrieval loop, hybrid search, graph traversal, retrieval evaluation harness, local workflow, agent patch validation/application, local MCP gateway, team CI diff/review, Markdown compatibility mode, the V5 Expanded Knowledge Model, lifecycle automation, V1.7 prose retrieval, V8.1 Markdown migration, the V8.3 composite CI Action, and V8.5 evidence anchors are implemented. V7.2/V8.2 pilot evidence and V8.4 contract/health work remain uncompleted as written. The detailed next-cycle implementation handoff is [ROADMAP-V9.md](ROADMAP-V9.md); it keeps V9 local/single-repository and gates managed V10 and on-prem V11 behind evidence.
 
 V0 implementation stack: Rust for the `adoc` CLI, parser, validator, compiler, HTML renderer, and graph JSON emitter. The Rust project starts as a Cargo workspace with `crates/adoc-cli` for command-line behavior and `crates/adoc-core` for reusable compiler behavior. Future editor, web, and agent integrations should consume the compiled artifacts or core library rather than own the source grammar.
 
@@ -53,12 +53,15 @@ Implemented:
 
 Next:
 
-- The V7.2 pilot readiness gate ([ROADMAP-V7.md](ROADMAP-V7.md)) — the last open V7 milestone (V7.1 docs-truth hygiene, V6.5 vocabulary completion, and V1.7 prose retrieval have landed) — and the remaining V8 adoption-cycle milestones ([ROADMAP-V8.md](ROADMAP-V8.md)): external design-partner pilots, the CI surface, and the contract freeze. V8.1 Markdown migration has shipped.
+- [ROADMAP-V9.md](ROADMAP-V9.md): trustworthy single-repository PR assessment and governed proposals. V9 begins with portable hashes, code-only impact correctness, fail-honest Action reporting, and proposal hardening; then adds one deterministic assessment envelope, exact-SHA receipts, cited opt-in semantic review, canonical patch proposals, and a measured pilot.
+- V7.2 dogfood evidence remains governed by accepted ADR-0042 and its `docs/pilots/dogfood/report.md`; V9.4 runs that mandatory track alongside a separately precommitted PR-assessment cohort rather than claiming either complete retroactively.
+- V8.4 contract/health work is re-scoped only through a V9 vertical slice/ADR when required; the absent design/contract documents and conflicting historical ADR reservation are not treated as shipped.
 
 Later:
 
 - Composition and advanced graphs (formerly "V6"): `@include`, nested typed blocks, custom schema registry, automated contradiction detection. Postponed until the editing loop and full vocabulary are proven in real use; un-gating is measured by the V7.2 pilot report ([ROADMAP-V7.md](ROADMAP-V7.md) Later section).
-- V7 web surfaces and governance: read-only object explorer, review dashboard, ownership and approval workflows, agent activity log, SSO/RBAC/audit/compliance, hosted storage.
+- Managed multi-repository knowledge, fixed governance, permission-aware retrieval, Agent Use Receipts, central proposal PRs, and one demand-gated connector are the gated V10 program in [ROADMAP-V9.md](ROADMAP-V9.md).
+- Customer-controlled on-prem deployment, enterprise identity, data controls, audit export, no-public-internet operation through customer-internal GHES, and upgrade/restore conformance are the gated V11 program in [ROADMAP-V9.md](ROADMAP-V9.md).
 
 ## V0: Native CLI Compiler
 
