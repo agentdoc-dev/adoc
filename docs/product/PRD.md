@@ -4736,7 +4736,7 @@ The MVP is acceptable when:
 14. [ ] At least one internal agent can cite AgentDoc object IDs.
 15. [ ] Users can understand and fix validation errors without reading internal compiler details.
 
-Status (0.2, 2026-07-06; item 12 checked at V8.1.4): items 1–12 are shipped — every engineering item. Items 13–15 are checked only by the pilot-readiness report (`docs/pilot-report.md`), with links, when the pilot runs.
+Status (0.2, 2026-07-06; item 12 checked at V8.1.4): items 1–12 are shipped — every engineering item. Items 13–15 are checked only by the pilot-readiness report (`docs/pilots/dogfood/report.md`), with links, when the pilot runs.
 
 ## 50.2 Full Product Acceptance Criteria
 

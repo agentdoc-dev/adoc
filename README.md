@@ -62,7 +62,7 @@ V1 local retrieval supports:
 - search filters for kind, status, owner, and source path
 - graph relation filters for opt-in candidate narrowing with `--related-to`
 
-Includes, custom schemas, migrations, semantic diff, CI/PR integrations, agent patching, a web app, hosted embedding adapters, and permissioned governance are deferred beyond the current local CLI workflow. See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md).
+Includes, custom schemas, automatic semantic-alignment guarantees, a web app, hosted embedding adapters, and permissioned managed governance remain deferred. Markdown migration, deterministic diff/review, CI/PR integration, and guarded agent patch check/apply are shipped. The detailed next implementation cycle is [ROADMAP-V9.md](docs/roadmap/ROADMAP-V9.md).
 
 ## Quick Start
 
@@ -450,8 +450,8 @@ fn main() {}
 
 Current limitations:
 
-- custom schemas, includes, migrations, semantic diff, CI/PR integrations, agent patching, hosted embedding adapters, web app, and permissions are deferred
-- config is intentionally minimal: strict mode only, one `docs_path`, output paths, and `embeddings.provider: local|deterministic|none`
+- custom schemas, includes, automatic semantic contradiction/alignment, hosted embedding adapters, web UI, managed multi-repository storage, and permissioned governance are not shipped
+- current configuration remains repository-local; managed central knowledge, connectors, and on-prem operation are gated successor programs
 
 ## Diagnostics
 
@@ -623,6 +623,7 @@ Dependabot is configured in [.github/dependabot.yml](.github/dependabot.yml) for
 - [CONTEXT.md](CONTEXT.md): project language and domain decisions
 - [docs/product/PRD.md](docs/product/PRD.md): product requirements
 - [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md): product roadmap from completed V0 through planned retrieval, review, patching, schema, graph, and team surfaces
+- [docs/roadmap/ROADMAP-V9.md](docs/roadmap/ROADMAP-V9.md): detailed vertical-slice handoff for trustworthy PR assessment and governed proposals, with gated managed/on-prem successor plans
 - [docs/design/V0-DESIGN.md](docs/design/V0-DESIGN.md): Rust implementation contract
 - [docs/adr/](docs/adr): architecture decision records
 
@@ -675,9 +676,9 @@ Current local retrieval focuses on the graph artifact:
 - prove retrieval against the billing pilot
 - build `docs.search.json` with local FastEmbed embeddings
 
-Later milestones cover migration, review workflows, patch safety, expanded schema, composition, hosted embedding adapters, and team surfaces.
+The shipped surface also includes Markdown migration, review/impact workflows, patch validation/application, the expanded fifteen-kind schema, MCP, the composite GitHub Action, and evidence-anchor drift checks. The next detailed cycle makes PR assessment fail-honest and reproducible before adding cited optional semantic review and governed proposals.
 
-See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) for the full sequence.
+See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) for the full sequence and [docs/roadmap/ROADMAP-V9.md](docs/roadmap/ROADMAP-V9.md) for the implementation handoff.
 
 ## License
 
