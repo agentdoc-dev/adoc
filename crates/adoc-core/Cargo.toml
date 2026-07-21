@@ -16,7 +16,7 @@ tracing = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 dirs = { version = "6", optional = true }
 fastembed = { version = "5", optional = true }
-pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde-saphyr = "0.0.29"
