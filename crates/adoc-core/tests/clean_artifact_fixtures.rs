@@ -49,7 +49,7 @@ impl CleanFixture {
 
         let graph_json: serde_json::Value =
             serde_json::from_str(&artifacts.graph_json).expect("graph JSON is valid");
-        assert_eq!(graph_json["schema_version"], "adoc.graph.v4");
+        assert_eq!(graph_json["schema_version"], "adoc.graph.v5");
         assert!(
             graph_json["nodes"]
                 .as_array()

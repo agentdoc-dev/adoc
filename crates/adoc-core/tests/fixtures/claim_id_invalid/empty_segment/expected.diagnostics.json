@@ -4,7 +4,7 @@
     "severity": "error",
     "message": "invalid claim id `billing..credits`: Object ID must be at least two lowercase kebab-case segments separated by '.'",
     "span": {
-      "file": "tests/fixtures/claim_id_invalid/empty_segment/input/billing.adoc",
+      "file": "billing.adoc",
       "start": {
         "line": 3,
         "column": 1,

@@ -259,6 +259,32 @@ fn build_writes_artifacts_and_reports_written_paths() {
 }
 
 #[test]
+fn configured_build_emits_project_identity_and_project_relative_source_paths() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    write(&root.join("knowledge/index.adoc"), &valid_source());
+    write_config(
+        root,
+        "version: 1\nmode: strict\ndocs_path: knowledge\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+
+    build_with_config(root);
+
+    let graph: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join("dist/docs.graph.json")).expect("graph artifact"),
+    )
+    .expect("graph JSON");
+    assert_eq!(
+        graph["repository_identity"],
+        serde_json::json!({
+            "kind": "local_project",
+            "config_path": "agentdoc.config.yaml"
+        })
+    );
+    assert_eq!(graph["nodes"][0]["source_path"], "knowledge/index.adoc");
+}
+
+#[test]
 fn lexical_search_returns_retrieval_records_and_exit_code() {
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();
@@ -595,7 +621,7 @@ fn project_status_build_refresh_writes_artifacts_and_reports_readiness() {
     assert!(outcome.artifacts.graph.exists);
     assert_eq!(
         outcome.artifacts.graph.schema_version.as_deref(),
-        Some("adoc.graph.v4")
+        Some("adoc.graph.v5")
     );
     assert_eq!(outcome.artifacts.graph.object_count, Some(1));
     assert_eq!(

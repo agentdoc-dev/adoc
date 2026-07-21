@@ -131,11 +131,12 @@ fn sha256_prefixed(bytes: &[u8]) -> String {
 
 fn graph_json_from_objects(objects: Vec<Value>, edges: Vec<Value>) -> String {
     let document = json!({
-        "schema_version": "adoc.graph.v4",
-        "nodes": objects,
-        "edges": edges,
-        "diagnostics": []
-    });
+          "schema_version": "adoc.graph.v5",
+    "repository_identity": null,
+          "nodes": objects,
+          "edges": edges,
+          "diagnostics": []
+      });
     let canonical: CanonicalGraphDocument =
         serde_json::from_value(document).expect("graph fixture has canonical shape");
     serde_json::to_string_pretty(&canonical).expect("search fixture serializes to graph JSON")
@@ -144,6 +145,7 @@ fn graph_json_from_objects(objects: Vec<Value>, edges: Vec<Value>) -> String {
 #[derive(Debug, Serialize, Deserialize)]
 struct CanonicalGraphDocument {
     schema_version: String,
+    repository_identity: Option<Value>,
     nodes: Vec<CanonicalGraphNode>,
     edges: Vec<CanonicalGraphEdge>,
     diagnostics: Vec<Value>,
@@ -1898,7 +1900,8 @@ fn load_retrieval_session_rejects_invalid_object_ids_inside_artifact() {
     let artifact = write_temp_artifact(
         "invalid-object-id",
         r#"{
-          "schema_version": "adoc.graph.v4",
+          "schema_version": "adoc.graph.v5",
+  "repository_identity": null,
           "nodes": [
             {
               "type": "knowledge_object",
@@ -1934,7 +1937,8 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
     let artifact = write_temp_artifact(
         "duplicate",
         r#"{
-          "schema_version": "adoc.graph.v4",
+          "schema_version": "adoc.graph.v5",
+  "repository_identity": null,
           "nodes": [
             {
               "type": "knowledge_object",
@@ -2011,11 +2015,12 @@ fn prose_only_graph_artifact(prose_blocks: usize) -> tempfile::NamedTempFile {
         }));
     }
     let document = json!({
-        "schema_version": "adoc.graph.v4",
-        "nodes": nodes,
-        "edges": [],
-        "diagnostics": []
-    });
+          "schema_version": "adoc.graph.v5",
+    "repository_identity": null,
+          "nodes": nodes,
+          "edges": [],
+          "diagnostics": []
+      });
     write_temp_artifact(
         "prose-only",
         &serde_json::to_string_pretty(&document).expect("prose-only fixture serializes"),
@@ -2024,11 +2029,12 @@ fn prose_only_graph_artifact(prose_blocks: usize) -> tempfile::NamedTempFile {
 
 fn empty_graph_artifact() -> tempfile::NamedTempFile {
     let document = json!({
-        "schema_version": "adoc.graph.v4",
-        "nodes": [],
-        "edges": [],
-        "diagnostics": []
-    });
+          "schema_version": "adoc.graph.v5",
+    "repository_identity": null,
+          "nodes": [],
+          "edges": [],
+          "diagnostics": []
+      });
     write_temp_artifact(
         "empty-graph",
         &serde_json::to_string_pretty(&document).expect("empty graph fixture serializes"),
@@ -2353,7 +2359,8 @@ fn task_object_is_lexically_findable_with_owner_and_due_fields() {
 fn prose_symmetry_graph_json(extension: &str) -> String {
     let path = format!("docs/guide.{extension}");
     serde_json::to_string_pretty(&json!({
-        "schema_version": "adoc.graph.v4",
+        "schema_version": "adoc.graph.v5",
+  "repository_identity": null,
         "nodes": [
             {
                 "type": "page",

@@ -78,7 +78,7 @@ impl<'a> InlineOrigin<'a> {
     pub(crate) fn at(source: &'a SourceFile, line: u32, column: u32) -> Self {
         let position = source.span_for_line_columns(line, column, column).start;
         Self {
-            file: source.path.as_path(),
+            file: source.logical_path.as_path(),
             cursor: LineCursor::at(position.line, position.column),
             offset: position.offset,
         }

@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/graph-artifact.v5.json",
+  "title": "AgentDoc Graph Artifact (adoc.graph.v5)",
+  "description": "Portable AgentDoc graph output. Project-bound artifacts identify the local project; standalone artifacts carry an explicit null repository identity.",
+  "type": "object",
+  "required": ["schema_version", "repository_identity", "nodes", "edges", "diagnostics"],
+  "properties": {
+    "schema_version": { "const": "adoc.graph.v5" },
+    "repository_identity": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["kind", "config_path"],
+          "properties": {
+            "kind": { "const": "local_project" },
+            "config_path": { "const": "agentdoc.config.yaml" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/page" },
+          { "$ref": "#/$defs/proseBlock" },
+          { "$ref": "#/$defs/knowledgeObject" }
+        ]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "source", "target"],
+        "properties": {
+          "kind": { "enum": ["contains", "relation", "reference", "evidence", "resolved_by"] },
+          "source": { "type": "string", "minLength": 1 },
+          "target": { "type": "string", "minLength": 1 },
+          "relation": { "enum": ["depends_on", "supersedes", "related_to"] },
+          "order": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "diagnostics": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "logicalPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/\\\\].*$",
+      "description": "Project-relative UTF-8 path using forward slashes. Runtime validation additionally rejects drive prefixes, dot components, controls, and edge whitespace."
+    },
+    "sourceSpan": {
+      "type": "object",
+      "required": ["path", "line", "column"],
+      "properties": {
+        "path": { "$ref": "#/$defs/logicalPath" },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "page": {
+      "type": "object",
+      "required": ["type", "id", "order", "source_path"],
+      "properties": {
+        "type": { "const": "page" },
+        "id": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer", "minimum": 0 },
+        "title": { "type": "string" },
+        "source_path": { "$ref": "#/$defs/logicalPath" }
+      },
+      "additionalProperties": false
+    },
+    "proseBlock": {
+      "type": "object",
+      "required": ["type", "id", "page_id", "order", "source_span"],
+      "properties": {
+        "type": { "enum": ["heading", "paragraph", "list", "code_block"] },
+        "id": { "type": "string", "minLength": 1 },
+        "page_id": { "type": "string", "minLength": 1 },
+        "order": { "type": "integer", "minimum": 0 },
+        "level": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string" },
+        "language": { "type": "string" },
+        "code": { "type": "string" },
+        "items": { "type": "array", "items": { "type": "string" } },
+        "source_span": { "$ref": "#/$defs/sourceSpan" }
+      },
+      "additionalProperties": false
+    },
+    "relations": {
+      "type": "object",
+      "required": ["depends_on", "supersedes", "related_to"],
+      "properties": {
+        "depends_on": { "type": "array", "items": { "type": "string" } },
+        "supersedes": { "type": "array", "items": { "type": "string" } },
+        "related_to": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "value": { "type": "string" },
+        "reference": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "knowledgeObject": {
+      "type": "object",
+      "required": ["type", "id", "kind", "content_hash", "body", "page_id", "source_span", "fields", "relations"],
+      "properties": {
+        "type": { "const": "knowledge_object" },
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "content_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]+$" },
+        "status": { "type": "string" },
+        "severity": { "type": "string" },
+        "trust": { "type": "string" },
+        "body": { "type": "string" },
+        "page_id": { "type": "string", "minLength": 1 },
+        "source_span": { "$ref": "#/$defs/sourceSpan" },
+        "fields": { "type": "object", "additionalProperties": { "type": "string" } },
+        "relations": { "$ref": "#/$defs/relations" },
+        "impacts": { "type": "array", "items": { "type": "string" } },
+        "approved_by": { "type": "array", "items": { "type": "string" } },
+        "allowed_actions": { "type": "array", "items": { "type": "string" } },
+        "forbidden_actions": { "type": "array", "items": { "type": "string" } },
+        "contradiction_claims": { "type": "array", "items": { "type": "string" } },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+        "effective_status": { "type": "string" },
+        "effective_reason": { "type": "string" },
+        "evidence_quality": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

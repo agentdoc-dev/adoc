@@ -88,7 +88,14 @@ fn project_with_built_graph() -> (tempfile::TempDir, AgentDocMcpServer, String) 
 
 #[test]
 fn validates_representative_serialized_agent_envelopes_against_contract_schemas() {
-    let (_workspace, server, base_hash) = project_with_built_graph();
+    let (workspace, server, base_hash) = project_with_built_graph();
+
+    let graph_artifact: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(workspace.path().join("dist/docs.graph.json"))
+            .expect("graph artifact reads"),
+    )
+    .expect("graph artifact parses");
+    assert_valid("graph-artifact.v5.json", &graph_artifact);
 
     let retrieval = server
         .run_search(SearchParams {
@@ -605,6 +612,7 @@ fn run_git(cwd: &Path, args: &[&str]) {
 fn run_review_diff(root: &Path) -> ObjectDiffEnvelope {
     let load = load_review_from_git(ReviewInput {
         project_root: root.to_path_buf(),
+        docs_path: PathBuf::from("docs"),
         base: SnapshotSelector::GitRef(GitRef::new("main")),
         head: SnapshotSelector::Workdir,
     })
@@ -616,6 +624,7 @@ fn run_review_diff(root: &Path) -> ObjectDiffEnvelope {
 fn run_review(root: &Path) -> ReviewEnvelope {
     let load = load_review_with_changed_files_from_git(ReviewInput {
         project_root: root.to_path_buf(),
+        docs_path: PathBuf::from("docs"),
         base: SnapshotSelector::GitRef(GitRef::new("main")),
         head: SnapshotSelector::Workdir,
     })
@@ -659,6 +668,7 @@ fn validates_adoc_review_v0_envelope_with_patch_check_against_schema() {
 
     let load = load_review_with_changed_files_from_git(ReviewInput {
         project_root: root.to_path_buf(),
+        docs_path: PathBuf::from("docs"),
         base: SnapshotSelector::GitRef(GitRef::new("main")),
         head: SnapshotSelector::Workdir,
     })
@@ -750,10 +760,10 @@ fn adoc_review_mcp_tool_accepts_optional_patch_parameter() {
     assert_eq!(envelope["patch_check"]["valid"], json!(true));
 }
 
-/// V3.6 contract: MCP must serve the V3 schema files verbatim (no transformation,
-/// no drift between the bundled `include_str!` and the source-of-truth file).
+/// MCP serves published schema files verbatim (no transformation and no drift
+/// between the bundled `include_str!` and the source-of-truth file).
 #[test]
-fn mcp_serves_v3_schema_resources_byte_equal_to_on_disk_files() {
+fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
     let workspace = tempfile::tempdir().expect("workspace");
     let server = AgentDocMcpServer::new(workspace.path().to_path_buf());
 
@@ -785,6 +795,10 @@ fn mcp_serves_v3_schema_resources_byte_equal_to_on_disk_files() {
         (
             "adoc://agent/v0/schema/search-artifact.json",
             "search-artifact.json",
+        ),
+        (
+            "adoc://agent/v0/schema/graph-artifact.v5.json",
+            "graph-artifact.v5.json",
         ),
     ] {
         let result = server
@@ -1235,6 +1249,10 @@ fn retrieval_schema_ids_match_their_published_uris() {
         (
             "search-artifact.json",
             "adoc://agent/v0/schema/search-artifact.json",
+        ),
+        (
+            "graph-artifact.v5.json",
+            "adoc://agent/v0/schema/graph-artifact.v5.json",
         ),
     ] {
         assert_eq!(

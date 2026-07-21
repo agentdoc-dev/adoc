@@ -12,7 +12,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::graph::{
     GraphArtifactDocument, GraphBlockNode, GraphEdge, GraphEdgeKind, GraphEvidence,
     GraphKnowledgeObjectNode, GraphNode, GraphPageNode, GraphRelationKind, GraphRelations,
-    GraphSourceSpan,
+    GraphRepositoryIdentity, GraphSourceSpan,
 };
 use crate::domain::inline::{InlineSegment, to_source};
 use crate::domain::knowledge_object::{
@@ -25,7 +25,7 @@ use crate::domain::value_objects::evidence_kind::EvidenceKind;
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GraphJsonArtifact;
 
-pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v4";
+pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v5";
 
 pub(crate) fn read_graph_artifact_document(
     path: &Path,
@@ -34,7 +34,38 @@ pub(crate) fn read_graph_artifact_document(
         Ok(contents) => contents,
         Err(error) => return Err(vec![read_error_diagnostic(path, error)]),
     };
-    let document = match serde_json::from_str::<GraphArtifactDocument>(&contents) {
+    let value = match serde_json::from_str::<serde_json::Value>(&contents) {
+        Ok(value) => value,
+        Err(error) => {
+            return Err(vec![
+                Diagnostic::error(
+                    DiagnosticCode::IoArtifactMalformed,
+                    format!("Artifact '{}' is malformed: {error}", path.display()),
+                )
+                .with_help("Rebuild docs.graph.json from the source workspace."),
+            ]);
+        }
+    };
+    if let Some(schema_version) = value.get("schema_version").and_then(|value| value.as_str())
+        && schema_version != SUPPORTED_GRAPH_SCHEMA_VERSION
+    {
+        return Err(vec![
+            Diagnostic::error(
+                DiagnosticCode::SchemaUnsupportedVersion,
+                format!(
+                    "Artifact '{}' uses unsupported schema_version '{}'.",
+                    path.display(),
+                    schema_version
+                ),
+            )
+            .with_help(format!(
+                "Expected schema_version '{}'.",
+                SUPPORTED_GRAPH_SCHEMA_VERSION
+            )),
+        ]);
+    }
+
+    let document = match serde_json::from_value::<GraphArtifactDocument>(value) {
         Ok(document) => document,
         Err(error) => {
             return Err(vec![
@@ -46,23 +77,6 @@ pub(crate) fn read_graph_artifact_document(
             ]);
         }
     };
-
-    if document.schema_version != SUPPORTED_GRAPH_SCHEMA_VERSION {
-        return Err(vec![
-            Diagnostic::error(
-                DiagnosticCode::SchemaUnsupportedVersion,
-                format!(
-                    "Artifact '{}' uses unsupported schema_version '{}'.",
-                    path.display(),
-                    document.schema_version
-                ),
-            )
-            .with_help(format!(
-                "Expected schema_version '{}'.",
-                SUPPORTED_GRAPH_SCHEMA_VERSION
-            )),
-        ]);
-    }
 
     Ok(document)
 }
@@ -84,6 +98,21 @@ impl GraphJsonArtifact {
         workspace: &WorkspaceAst,
         diagnostics: &[Diagnostic],
         today: Option<NaiveDate>,
+    ) -> GraphArtifactDocument {
+        self.build_for_date_and_repository(
+            workspace,
+            diagnostics,
+            today,
+            GraphRepositoryIdentity::standalone(),
+        )
+    }
+
+    pub(crate) fn build_for_date_and_repository(
+        &self,
+        workspace: &WorkspaceAst,
+        diagnostics: &[Diagnostic],
+        today: Option<NaiveDate>,
+        repository_identity: GraphRepositoryIdentity,
     ) -> GraphArtifactDocument {
         let mut nodes = Vec::new();
         let mut edges = Vec::new();
@@ -209,6 +238,7 @@ impl GraphJsonArtifact {
 
         GraphArtifactDocument {
             schema_version: SUPPORTED_GRAPH_SCHEMA_VERSION.to_string(),
+            repository_identity,
             nodes,
             edges,
             diagnostics: diagnostics.to_vec(),

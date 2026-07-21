@@ -30,7 +30,8 @@ fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
     workspace.write(
         relative_path,
         r#"{
-  "schema_version": "adoc.graph.v4",
+  "schema_version": "adoc.graph.v5",
+  "repository_identity": null,
   "nodes": [
     {
       "type": "page",
@@ -364,8 +365,8 @@ fn config_build_explicit_path_and_out_ignore_config_outputs() {
 }
 
 #[test]
-fn config_build_fully_explicit_no_embeddings_ignores_malformed_config() {
-    let workspace = TestWorkspace::new("config-build-explicit-malformed-ignored");
+fn config_build_fully_explicit_no_embeddings_rejects_malformed_config() {
+    let workspace = TestWorkspace::new("config-build-explicit-malformed-rejected");
     write_valid_source(&workspace, "explicit/source.adoc");
     workspace.write("agentdoc.config.yaml", "version: [\n");
 
@@ -381,25 +382,9 @@ fn config_build_fully_explicit_no_embeddings_ignores_malformed_config() {
         .output()
         .expect("adoc build runs");
 
-    assert!(
-        output.status.success(),
-        "expected fully explicit build to ignore malformed config\nstdout:\n{}\nstderr:\n{}",
-        stdout(&output),
-        stderr(&output)
-    );
-    assert!(workspace.root.join("explicit-dist/docs.html").is_file());
-    assert!(
-        workspace
-            .root
-            .join("explicit-dist/docs.graph.json")
-            .is_file()
-    );
-    assert!(
-        !workspace
-            .root
-            .join("explicit-dist/docs.search.json")
-            .exists()
-    );
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("error[config.parse]"));
+    assert!(!workspace.root.join("explicit-dist").exists());
 }
 
 #[test]

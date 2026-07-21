@@ -676,6 +676,19 @@ Current local retrieval focuses on the graph artifact:
 - prove retrieval against the billing pilot
 - build `docs.search.json` with local FastEmbed embeddings
 
+Graph artifacts use `adoc.graph.v5`. Config-backed check/build/review commands
+publish project-relative `/`-separated source paths and identify the project via
+`agentdoc.config.yaml`; explicit standalone check/build inputs publish
+invocation-relative paths with `"repository_identity": null`. The same source
+revision therefore produces the same Knowledge Object hashes in another clone
+or review worktree. The machine-readable contract is
+[`graph-artifact.v5.json`](docs/agent/v0/schema/graph-artifact.v5.json).
+
+Upgrading from graph v4 requires one rebuild. Regenerate `docs.graph.json`,
+regenerate or re-embed `docs.search.json`, and recreate any in-flight patch
+documents whose `base_hash` came from v4. Readers reject v4 explicitly instead
+of silently mixing hash domains.
+
 The shipped surface also includes Markdown migration, review/impact workflows, patch validation/application, the expanded fifteen-kind schema, MCP, the composite GitHub Action, and evidence-anchor drift checks. The next detailed cycle makes PR assessment fail-honest and reproducible before adding cited optional semantic review and governed proposals.
 
 See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) for the full sequence and [docs/roadmap/ROADMAP-V9.md](docs/roadmap/ROADMAP-V9.md) for the implementation handoff.

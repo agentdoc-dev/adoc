@@ -4,7 +4,7 @@
     "severity": "error",
     "message": "unknown typed-block kind `fact`",
     "span": {
-      "file": "tests/fixtures/diagnostics/unknown_kind/input/team/bad.adoc",
+      "file": "team/bad.adoc",
       "start": {
         "line": 1,
         "column": 3,

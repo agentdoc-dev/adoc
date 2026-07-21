@@ -6,8 +6,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use adoc_core::{
-    CompileInput, DiagnosticCode, PatchApplyInput, PatchApplyResult, compile_workspace,
-    parse_patch_from_value,
+    BuildEmbeddingMode, BuildInput, DiagnosticCode, LocalProjectContext, PatchApplyInput,
+    PatchApplyResult, build_project_workspace, parse_patch_from_value,
 };
 
 const PAGE_RELATIVE: &str = "docs/billing/claims.adoc";
@@ -49,9 +49,17 @@ impl Workspace {
     /// The in-test analogue of `adoc build`: compile and persist the graph
     /// artifact, returning its path.
     fn build(&self) -> PathBuf {
-        let result = compile_workspace(CompileInput {
-            root: self.docs_root(),
-        });
+        let result = build_project_workspace(
+            BuildInput {
+                root: self.docs_root(),
+                embeddings: BuildEmbeddingMode::Skipped,
+                prior_search_artifact_path: None,
+            },
+            LocalProjectContext {
+                project_root: self.root.path().to_path_buf(),
+                docs_root: self.docs_root(),
+            },
+        );
         assert!(
             !result
                 .diagnostics

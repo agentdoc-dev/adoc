@@ -178,7 +178,7 @@ fn read_graph_artifact(path: &Path) -> Value {
 
 fn assert_graph_artifact(text: &str) -> Value {
     let graph: Value = serde_json::from_str(text).expect("graph artifact is valid JSON");
-    assert_eq!(graph["schema_version"], "adoc.graph.v4");
+    assert_eq!(graph["schema_version"], "adoc.graph.v5");
     assert!(graph["nodes"].as_array().is_some());
     assert!(graph["edges"].as_array().is_some());
     assert_eq!(
@@ -266,9 +266,9 @@ fn check_unclosed_fence_diagnostic_surfaces_all_six_fields() {
 
     // Issue #3 acceptance: the diagnostic must carry file, line, column,
     // severity, code, and a fix-oriented message.
-    let prefix = format!("{}:5:1:", source.to_str().expect("source path is utf-8"));
+    let prefix = "unclosed_fence.adoc:5:1:";
     assert!(
-        stdout.contains(&prefix),
+        stdout.contains(prefix),
         "expected diagnostic to start with `path:line:column:` prefix `{prefix}`, got:\n{stdout}"
     );
     assert!(
@@ -2175,9 +2175,9 @@ fn build_renders_v0_6_multi_file_project_to_graph_json() {
     );
 
     assert!(
-        actual.contains("\"source_path\": \"project/01-glossary.adoc\"")
-            && actual.contains("\"source_path\": \"project/02-policy.adoc\"")
-            && actual.contains("\"source_path\": \"project/nested/03-ledger.adoc\""),
+        actual.contains("\"source_path\": \"01-glossary.adoc\"")
+            && actual.contains("\"source_path\": \"02-policy.adoc\"")
+            && actual.contains("\"source_path\": \"nested/03-ledger.adoc\""),
         "expected deterministic recursive .adoc source paths"
     );
     assert!(
@@ -2203,7 +2203,7 @@ fn check_rejects_v0_6_duplicate_id_across_files() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("duplicate_id/02-refunds.adoc:3:1"),
+        stdout.contains("02-refunds.adoc:3:1"),
         "expected duplicate diagnostic on second file, got:\n{stdout}"
     );
     assert!(
@@ -2211,7 +2211,7 @@ fn check_rejects_v0_6_duplicate_id_across_files() {
         "expected id.duplicate diagnostic, got:\n{stdout}"
     );
     assert!(
-        stdout.contains("previously defined as claim at duplicate_id/01-refunds.adoc:3:1"),
+        stdout.contains("previously defined as claim at 01-refunds.adoc:3:1"),
         "expected first definition location, got:\n{stdout}"
     );
 }

@@ -43,7 +43,7 @@ Update the support runbook to mention refund behavior after persistence failure.
 
 ## Wire surface
 
-`task` nodes are emitted into the graph artifact (`adoc.graph.v4`) with:
+`task` nodes are emitted into the graph artifact (`adoc.graph.v5`) with:
 
 - `kind: "task"` — the node-level kind discriminant
 - `status` — the lifecycle status (`open` / `done`, lifecycle-only per ADR-0039)
