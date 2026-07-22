@@ -86,6 +86,35 @@ fn assess_changes_emits_one_complete_body_free_record_per_changed_path() {
 }
 
 #[test]
+fn empty_change_set_with_healthy_knowledge_passes() {
+    let workspace = repo();
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args([
+            "assess-changes",
+            "--base",
+            "HEAD",
+            "--as-of",
+            "2026-07-22",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc assess-changes runs");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assessment JSON");
+    assert_eq!(value["completeness"], "complete");
+    assert_eq!(value["outcome"], "pass");
+    assert_eq!(value["summary"]["changed_paths"], 0);
+    assert_eq!(value["paths"]["value"], serde_json::json!([]));
+    assert_eq!(value["objects"]["value"], serde_json::json!([]));
+    assert_eq!(value["signals"], serde_json::json!([]));
+    assert_eq!(value["required_reviewers"], serde_json::json!([]));
+    assert_eq!(value["proof_obligations"], serde_json::json!([]));
+}
+
+#[test]
 fn same_pr_exclusion_is_prospective_and_cannot_hide_code() {
     let workspace = repo();
     workspace.write(
