@@ -611,12 +611,22 @@ fn complete_envelope(input: CompleteInput<'_>) -> ChangeAssessmentEnvelope {
     } else {
         AssessmentOutcome::Pass
     };
-    let graph_json = &input
-        .head_compile
-        .artifacts
-        .as_ref()
-        .expect("complete input has head artifacts")
-        .graph_json;
+    let Some(head_artifacts) = input.head_compile.artifacts.as_ref() else {
+        return empty_envelope(
+            input.evaluation_date,
+            input.snapshots,
+            AssessmentCompleteness::Error,
+            AssessmentOutcome::NotEvaluated,
+            diagnostic_record(
+                DiagnosticCode::AssessmentGraphFailed,
+                Severity::Error,
+                "head graph artifact is unavailable".to_string(),
+                None,
+                &BTreeSet::new(),
+            ),
+        );
+    };
+    let graph_json = &head_artifacts.graph_json;
     let graph_schema_version = serde_json::from_str::<serde_json::Value>(graph_json)
         .ok()
         .and_then(|value| value["schema_version"].as_str().map(str::to_string));
@@ -627,7 +637,7 @@ fn complete_envelope(input: CompleteInput<'_>) -> ChangeAssessmentEnvelope {
             content_hash: &node.content_hash,
         })
         .collect::<Vec<_>>();
-    let object_set_json = serde_json::to_vec(&object_set).expect("serializable object digest DTO");
+    let object_set_json = compact_json(&object_set);
     let assessment_config = complete_config(&input.base_config, &input.head_config);
 
     ChangeAssessmentEnvelope {
@@ -668,13 +678,12 @@ struct ObjectDigest<'a> {
 }
 
 fn graph_objects(result: &CompileResult) -> Vec<GraphKnowledgeObjectNode> {
-    let graph = &result
-        .artifacts
-        .as_ref()
-        .expect("caller established compile artifacts")
-        .graph_json;
-    let document: GraphArtifactDocument =
-        serde_json::from_str(graph).expect("compiler graph JSON must parse");
+    let Some(artifacts) = result.artifacts.as_ref() else {
+        return Vec::new();
+    };
+    let Ok(document) = serde_json::from_str::<GraphArtifactDocument>(&artifacts.graph_json) else {
+        return Vec::new();
+    };
     document
         .nodes
         .into_iter()
@@ -983,8 +992,8 @@ fn lifecycle_signals(objects: &[GraphKnowledgeObjectNode]) -> Vec<AssessmentSign
 
 fn complete_config(base: &LoadedConfig, head: &LoadedConfig) -> AssessmentConfig {
     let (effective, proposed) = policy_projection(&base.parsed, &head.parsed);
-    let effective_json = serde_json::to_vec(&effective).expect("serializable policy DTO");
-    let proposed_json = serde_json::to_vec(&proposed).expect("serializable policy DTO");
+    let effective_json = compact_json(&effective);
+    let proposed_json = compact_json(&proposed);
     #[derive(Serialize)]
     struct BoundConfig<'a> {
         comparison_base: &'a [u8],
@@ -992,13 +1001,12 @@ fn complete_config(base: &LoadedConfig, head: &LoadedConfig) -> AssessmentConfig
         effective_policy: &'a PolicyDigest,
         proposed_policy: &'a PolicyDigest,
     }
-    let bound = serde_json::to_vec(&BoundConfig {
+    let bound = compact_json(&BoundConfig {
         comparison_base: &base.normalized_json,
         head: &head.normalized_json,
         effective_policy: &effective,
         proposed_policy: &proposed,
-    })
-    .expect("serializable assessment config DTO");
+    });
     AssessmentConfig {
         comparison_base: snapshot_config(base),
         head: snapshot_config(head),
@@ -1184,11 +1192,22 @@ fn partial_envelope(
     mut diagnostics: Vec<AssessmentDiagnostic>,
 ) -> ChangeAssessmentEnvelope {
     let head_objects = graph_objects(head_compile);
-    let graph_json = &head_compile
-        .artifacts
-        .as_ref()
-        .expect("partial head has artifacts")
-        .graph_json;
+    let Some(head_artifacts) = head_compile.artifacts.as_ref() else {
+        return empty_envelope(
+            date,
+            snapshots,
+            AssessmentCompleteness::Error,
+            AssessmentOutcome::NotEvaluated,
+            diagnostic_record(
+                DiagnosticCode::AssessmentGraphFailed,
+                Severity::Error,
+                "head graph artifact is unavailable".to_string(),
+                None,
+                &BTreeSet::new(),
+            ),
+        );
+    };
+    let graph_json = &head_artifacts.graph_json;
     let object_set = head_objects
         .iter()
         .map(|node| ObjectDigest {
@@ -1196,7 +1215,7 @@ fn partial_envelope(
             content_hash: &node.content_hash,
         })
         .collect::<Vec<_>>();
-    let object_set_json = serde_json::to_vec(&object_set).expect("serializable object digest DTO");
+    let object_set_json = compact_json(&object_set);
     let changed_set = changed
         .iter()
         .map(|path| path.as_str().to_string())
@@ -1537,6 +1556,13 @@ fn authority(node: &GraphKnowledgeObjectNode) -> &'static str {
 fn path_string(path: &Path) -> String {
     path.to_string_lossy()
         .replace(std::path::MAIN_SEPARATOR, "/")
+}
+
+fn compact_json<T: Serialize>(value: &T) -> Vec<u8> {
+    match serde_json::to_vec(value) {
+        Ok(bytes) => bytes,
+        Err(_) => b"null".to_vec(),
+    }
 }
 
 #[cfg(test)]

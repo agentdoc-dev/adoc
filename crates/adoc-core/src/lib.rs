@@ -503,7 +503,12 @@ pub fn assess_changes_from_git(input: ChangeAssessmentInput) -> ChangeAssessment
     };
     let comparison_base_commit = match &resolved.base {
         SnapshotSelector::GitRef(value) => value.as_str().to_string(),
-        SnapshotSelector::Workdir => unreachable!("resolved comparison base is immutable"),
+        SnapshotSelector::Workdir => {
+            return application::change_assessment::unresolved_envelope(
+                &input,
+                "comparison base resolved to a mutable worktree".to_string(),
+            );
+        }
     };
     let worktree_dirty = if input.head_ref.is_none() {
         infrastructure::git::revision::worktree_is_dirty(&input.project_root).ok()
