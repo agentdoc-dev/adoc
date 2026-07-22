@@ -401,8 +401,14 @@ where
     };
     let head_config = match load_snapshot_config(head_workspace.path()) {
         Ok(config) => config,
-        Err(message) => {
-            return invalid_head_envelope(input.evaluation_date, snapshots, message, &changed_set);
+        Err(error) => {
+            return invalid_head_envelope(
+                input.evaluation_date,
+                snapshots,
+                error.code(DiagnosticCode::AssessmentHeadInvalid),
+                error.message(),
+                &changed_set,
+            );
         }
     };
     let head_sources = source_inventory(head_workspace.path(), &head_config.parsed.docs_path);
@@ -438,7 +444,7 @@ where
     };
     let base_config = match load_snapshot_config(base_workspace.path()) {
         Ok(config) => config,
-        Err(message) => {
+        Err(error) => {
             return partial_envelope(
                 input.evaluation_date,
                 snapshots,
@@ -447,9 +453,9 @@ where
                 head_workspace.path(),
                 changed,
                 vec![diagnostic_record(
-                    DiagnosticCode::AssessmentBasePartial,
+                    error.code(DiagnosticCode::AssessmentBasePartial),
                     Severity::Error,
-                    message,
+                    error.message(),
                     None,
                     &changed_set,
                 )],
@@ -506,6 +512,26 @@ struct LoadedConfig {
     sha256: String,
 }
 
+enum SnapshotConfigError {
+    InvalidAssessmentPath(String),
+    Other(String),
+}
+
+impl SnapshotConfigError {
+    fn message(&self) -> String {
+        match self {
+            Self::InvalidAssessmentPath(message) | Self::Other(message) => message.clone(),
+        }
+    }
+
+    fn code(&self, fallback: DiagnosticCode) -> DiagnosticCode {
+        match self {
+            Self::InvalidAssessmentPath(_) => DiagnosticCode::AssessmentInvalidConfigPath,
+            Self::Other(_) => fallback,
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct NormalizedConfig<'a> {
     docs_path: String,
@@ -515,11 +541,12 @@ struct NormalizedConfig<'a> {
     assessment_exclude_paths: &'a [String],
 }
 
-fn load_snapshot_config(root: &Path) -> Result<LoadedConfig, String> {
+fn load_snapshot_config(root: &Path) -> Result<LoadedConfig, SnapshotConfigError> {
     let path = root.join(CONFIG_PATH);
-    let text = fs::read_to_string(&path)
-        .map_err(|error| format!("could not read {CONFIG_PATH}: {error}"))?;
-    let parsed = parse_project_config(&text).map_err(config_error_message)?;
+    let text = fs::read_to_string(&path).map_err(|error| {
+        SnapshotConfigError::Other(format!("could not read {CONFIG_PATH}: {error}"))
+    })?;
+    let parsed = parse_project_config(&text).map_err(config_error)?;
     let normalized = NormalizedConfig {
         docs_path: path_string(&parsed.docs_path),
         outputs: configured_outputs(&parsed),
@@ -531,8 +558,9 @@ fn load_snapshot_config(root: &Path) -> Result<LoadedConfig, String> {
         mcp_patch_apply_enabled: parsed.mcp_patch_apply_enabled,
         assessment_exclude_paths: &parsed.assessment_exclude_paths,
     };
-    let normalized_json = serde_json::to_vec(&normalized)
-        .map_err(|error| format!("could not normalize {CONFIG_PATH}: {error}"))?;
+    let normalized_json = serde_json::to_vec(&normalized).map_err(|error| {
+        SnapshotConfigError::Other(format!("could not normalize {CONFIG_PATH}: {error}"))
+    })?;
     let sha256 = sha256_prefixed(&normalized_json);
     Ok(LoadedConfig {
         parsed,
@@ -541,8 +569,16 @@ fn load_snapshot_config(root: &Path) -> Result<LoadedConfig, String> {
     })
 }
 
-fn config_error_message(error: ProjectConfigDocumentError) -> String {
-    format!("invalid {CONFIG_PATH}: {error}")
+fn config_error(error: ProjectConfigDocumentError) -> SnapshotConfigError {
+    let message = format!("invalid {CONFIG_PATH}: {error}");
+    match error {
+        ProjectConfigDocumentError::InvalidAssessmentPath { .. } => {
+            SnapshotConfigError::InvalidAssessmentPath(message)
+        }
+        ProjectConfigDocumentError::Parse(_) | ProjectConfigDocumentError::Invalid(_) => {
+            SnapshotConfigError::Other(message)
+        }
+    }
 }
 
 fn compile_snapshot(root: &Path, config: &ParsedProjectConfig, date: NaiveDate) -> CompileResult {
@@ -1347,6 +1383,7 @@ fn head_compile_error_envelope(
 fn invalid_head_envelope(
     date: NaiveDate,
     snapshots: AssessmentSnapshots,
+    code: DiagnosticCode,
     message: String,
     changed: &BTreeSet<String>,
 ) -> ChangeAssessmentEnvelope {
@@ -1355,13 +1392,7 @@ fn invalid_head_envelope(
         snapshots,
         AssessmentCompleteness::Error,
         AssessmentOutcome::Invalid,
-        diagnostic_record(
-            DiagnosticCode::AssessmentHeadInvalid,
-            Severity::Error,
-            message,
-            None,
-            changed,
-        ),
+        diagnostic_record(code, Severity::Error, message, None, changed),
     )
 }
 
