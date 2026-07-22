@@ -312,19 +312,26 @@ impl ChangeAssessmentEnvelope {
 
 pub(crate) fn unresolved_envelope(
     input: &ChangeAssessmentInput,
-    message: String,
+    error: SnapshotError,
 ) -> ChangeAssessmentEnvelope {
-    let code = if message.contains("merge base") {
-        DiagnosticCode::AssessmentComparisonBaseUnavailable
-    } else {
-        DiagnosticCode::AssessmentRefUnresolved
+    let code = match &error {
+        SnapshotError::ComparisonBaseUnavailable { .. } => {
+            DiagnosticCode::AssessmentComparisonBaseUnavailable
+        }
+        _ => DiagnosticCode::AssessmentRefUnresolved,
     };
     empty_envelope(
         input.evaluation_date,
         unresolved_snapshots(input),
         AssessmentCompleteness::Error,
         AssessmentOutcome::NotEvaluated,
-        diagnostic_record(code, Severity::Error, message, None, &BTreeSet::new()),
+        diagnostic_record(
+            code,
+            Severity::Error,
+            error.to_string(),
+            None,
+            &BTreeSet::new(),
+        ),
     )
 }
 

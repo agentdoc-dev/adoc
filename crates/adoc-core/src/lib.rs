@@ -516,7 +516,7 @@ fn assess_changes_from_git_with_worktree_status(
     ) {
         Ok(resolved) => resolved,
         Err(error) => {
-            return application::change_assessment::unresolved_envelope(&input, error.to_string());
+            return application::change_assessment::unresolved_envelope(&input, error);
         }
     };
     let comparison_base_commit = match &resolved.base {
@@ -524,7 +524,9 @@ fn assess_changes_from_git_with_worktree_status(
         SnapshotSelector::Workdir => {
             return application::change_assessment::unresolved_envelope(
                 &input,
-                "comparison base resolved to a mutable worktree".to_string(),
+                domain::ports::snapshot_workspace::SnapshotError::ComparisonBaseUnavailable {
+                    reason: "comparison base resolved to a mutable worktree".to_string(),
+                },
             );
         }
     };

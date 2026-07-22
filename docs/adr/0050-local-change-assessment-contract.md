@@ -146,6 +146,7 @@ Assessment failures use these stable codes:
 - `assessment.graph_failed`
 
 An invalid `assessment.exclude_paths` entry emits `assessment.invalid_config_path`: an invalid head is `error/invalid`, while an invalid comparison base is `partial/not_evaluated` when head facts remain trustworthy. Other configuration failures retain `assessment.head_invalid` or `assessment.base_partial`.
+Zero or multiple merge bases are typed comparison-base failures and emit `assessment.comparison_base_unavailable`; diagnostic wording does not select the wire code.
 
 ## Consequences
 

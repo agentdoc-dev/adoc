@@ -34,7 +34,7 @@ pub(crate) fn resolve_review(
         true,
     )?;
     let [comparison_base] = merge_bases.as_slice() else {
-        return Err(SnapshotError::ProviderUnavailable {
+        return Err(SnapshotError::ComparisonBaseUnavailable {
             reason: format!(
                 "expected exactly one merge base for {base_sha} and {head_sha}, found {}",
                 merge_bases.len()
@@ -192,6 +192,10 @@ mod tests {
         )
         .expect_err("zero merge bases must fail");
 
+        assert!(matches!(
+            error,
+            SnapshotError::ComparisonBaseUnavailable { .. }
+        ));
         assert!(format!("{error}").contains("found 0"));
     }
 
@@ -228,6 +232,10 @@ mod tests {
         )
         .expect_err("multiple merge bases must fail");
 
+        assert!(matches!(
+            error,
+            SnapshotError::ComparisonBaseUnavailable { .. }
+        ));
         assert!(format!("{error}").contains("found 2"));
     }
 }
