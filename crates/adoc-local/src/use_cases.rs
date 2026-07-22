@@ -1151,7 +1151,7 @@ where
     P: PathPolicy,
 {
     let envelope = assess_changes_from_git(CoreChangeAssessmentInput {
-        project_root: git_project_root(context.config_start()),
+        project_root: assessment_project_root(context.config_start()),
         base_ref: input.base_ref,
         head_ref: input.head_ref,
         evaluation_date: input
@@ -1810,6 +1810,19 @@ fn git_project_root(start: &Path) -> Option<PathBuf> {
         }
         if !current.pop() {
             return None;
+        }
+    }
+}
+
+fn assessment_project_root(start: &Path) -> Option<PathBuf> {
+    let repository_root = git_project_root(start)?;
+    let mut current = start.canonicalize().ok()?;
+    loop {
+        if current.join("agentdoc.config.yaml").is_file() {
+            return Some(current);
+        }
+        if current == repository_root || !current.pop() {
+            return Some(repository_root);
         }
     }
 }
