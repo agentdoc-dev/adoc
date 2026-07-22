@@ -109,3 +109,93 @@ fn same_pr_exclusion_is_prospective_and_cannot_hide_code() {
     assert_eq!(source["classification"], "uncovered");
     assert_eq!(value["policy_changes"]["changed"], true);
 }
+
+#[test]
+fn unresolved_base_emits_error_not_evaluated_envelope_and_exits_two() {
+    let workspace = repo();
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args([
+            "assess-changes",
+            "--base",
+            "missing-ref",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc assess-changes runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("error JSON");
+    assert_eq!(value["completeness"], "error");
+    assert_eq!(value["outcome"], "not_evaluated");
+    assert_eq!(value["paths"]["status"], "unavailable");
+    assert_eq!(value["diagnostics"][0]["code"], "assessment.ref_unresolved");
+}
+
+#[test]
+fn invalid_head_emits_error_invalid_without_fake_empty_graph_sections() {
+    let workspace = repo();
+    workspace.write("docs/billing.adoc", "::claim broken\n::\n");
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["assess-changes", "--base", "HEAD", "--format", "json"])
+        .output()
+        .expect("adoc assess-changes runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("error JSON");
+    assert_eq!(value["completeness"], "error");
+    assert_eq!(value["outcome"], "invalid");
+    assert_eq!(value["knowledge_snapshot"]["status"], "unavailable");
+    assert_eq!(value["objects"]["status"], "unavailable");
+}
+
+#[test]
+fn invalid_comparison_base_retains_head_graph_in_partial_envelope() {
+    let workspace = repo();
+    workspace.write("agentdoc.config.yaml", "version: [broken\n");
+    git(&workspace, &["add", "agentdoc.config.yaml"]);
+    git(&workspace, &["commit", "-m", "broken base config"]);
+    let base = git(&workspace, &["rev-parse", "HEAD"]);
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\nembeddings:\n  provider: none\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["assess-changes", "--base", &base, "--format", "json"])
+        .output()
+        .expect("adoc assess-changes runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("partial JSON");
+    assert_eq!(value["completeness"], "partial");
+    assert_eq!(value["outcome"], "not_evaluated");
+    assert_eq!(value["knowledge_snapshot"]["status"], "available");
+    assert_eq!(value["knowledge_changes"]["status"], "unavailable");
+    assert_eq!(value["objects"]["value"][0]["changed_in_pr"], "unknown");
+}
+
+#[test]
+fn deleting_authoritative_knowledge_keeps_a_body_free_review_tombstone() {
+    let workspace = repo();
+    std::fs::remove_file(workspace.root.join("docs/billing.adoc")).expect("delete source");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["assess-changes", "--base", "HEAD", "--format", "json"])
+        .output()
+        .expect("adoc assess-changes runs");
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assessment JSON");
+    assert_eq!(value["outcome"], "review_required");
+    let deleted = &value["knowledge_changes"]["value"]["deleted"][0];
+    assert_eq!(deleted["id"], "billing.credits");
+    assert_eq!(deleted["kind"], "claim");
+    assert_eq!(deleted["authority"], "authoritative");
+    assert!(deleted["base_content_hash"].as_str().is_some());
+    assert!(deleted.get("body").is_none());
+    assert_eq!(value["proof_obligations"][0]["kind"], "claim");
+}

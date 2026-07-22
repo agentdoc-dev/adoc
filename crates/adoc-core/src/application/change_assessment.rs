@@ -380,6 +380,7 @@ where
             input.evaluation_date,
             snapshots,
             &head_config,
+            head_workspace.path(),
             head_compile.diagnostics,
             &changed_set,
         );
@@ -393,6 +394,7 @@ where
                 snapshots,
                 &head_config,
                 &head_compile,
+                head_workspace.path(),
                 changed,
                 vec![snapshot_diagnostic(error, &changed_set)],
             );
@@ -406,6 +408,7 @@ where
                 snapshots,
                 &head_config,
                 &head_compile,
+                head_workspace.path(),
                 changed,
                 vec![diagnostic_record(
                     DiagnosticCode::AssessmentBasePartial,
@@ -441,6 +444,7 @@ where
             snapshots,
             &head_config,
             &head_compile,
+            head_workspace.path(),
             changed,
             diagnostics,
         );
@@ -1175,8 +1179,9 @@ fn partial_envelope(
     snapshots: AssessmentSnapshots,
     head_config: &LoadedConfig,
     head_compile: &CompileResult,
+    head_root: &Path,
     changed: Vec<RelPath>,
-    diagnostics: Vec<AssessmentDiagnostic>,
+    mut diagnostics: Vec<AssessmentDiagnostic>,
 ) -> ChangeAssessmentEnvelope {
     let head_objects = graph_objects(head_compile);
     let graph_json = &head_compile
@@ -1192,6 +1197,23 @@ fn partial_envelope(
         })
         .collect::<Vec<_>>();
     let object_set_json = serde_json::to_vec(&object_set).expect("serializable object digest DTO");
+    let changed_set = changed
+        .iter()
+        .map(|path| path.as_str().to_string())
+        .collect::<BTreeSet<_>>();
+    diagnostics.extend(
+        head_compile
+            .diagnostics
+            .iter()
+            .map(|diagnostic| project_diagnostic(diagnostic, head_root, &changed_set)),
+    );
+    diagnostics.sort_by(|left, right| {
+        (&left.code, &left.message, &left.object_id).cmp(&(
+            &right.code,
+            &right.message,
+            &right.object_id,
+        ))
+    });
     let mut envelope = empty_envelope(
         date,
         snapshots,
@@ -1232,6 +1254,7 @@ fn head_compile_error_envelope(
     date: NaiveDate,
     snapshots: AssessmentSnapshots,
     head_config: &LoadedConfig,
+    head_root: &Path,
     diagnostics: Vec<Diagnostic>,
     changed: &BTreeSet<String>,
 ) -> ChangeAssessmentEnvelope {
@@ -1251,7 +1274,7 @@ fn head_compile_error_envelope(
     envelope.assessment_config.head = snapshot_config(head_config);
     envelope.diagnostics = diagnostics
         .iter()
-        .map(|diagnostic| project_diagnostic(diagnostic, Path::new("."), changed))
+        .map(|diagnostic| project_diagnostic(diagnostic, head_root, changed))
         .chain(std::iter::once(diagnostic_record(
             DiagnosticCode::AssessmentGraphFailed,
             Severity::Error,
