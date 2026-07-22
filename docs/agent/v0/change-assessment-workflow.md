@@ -10,6 +10,8 @@ Use `--head <commit>` for an immutable comparison, as a CI adapter will. Omit it
 
 The command resolves the requested refs, requires one merge base, materializes immutable snapshots, loads each snapshot's own `agentdoc.config.yaml`, and compiles with the same explicit evaluation date. The comparison-base configuration is effective for the current change. Head exclusions and output changes are prospective, reported in `policy_changes`, and cannot hide code introduced by the same pull request.
 
+Missing Git repository context or an unavailable mutable-worktree status emits a structured `error/not_evaluated` envelope with `assessment.snapshot_failed` and exits 2.
+
 Interpret outcomes as follows:
 
 - `pass`: complete and empty or fully excluded, with no deterministic review signal; this is not a semantic correctness claim.

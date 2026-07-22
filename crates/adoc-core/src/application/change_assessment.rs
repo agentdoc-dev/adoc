@@ -26,7 +26,7 @@ const CONFIG_PATH: &str = "agentdoc.config.yaml";
 
 #[derive(Debug, Clone)]
 pub struct ChangeAssessmentInput {
-    pub project_root: PathBuf,
+    pub project_root: Option<PathBuf>,
     pub base_ref: String,
     pub head_ref: Option<String>,
     pub evaluation_date: NaiveDate,
@@ -323,6 +323,40 @@ pub(crate) fn unresolved_envelope(
         AssessmentCompleteness::Error,
         AssessmentOutcome::NotEvaluated,
         diagnostic_record(code, Severity::Error, message, None, &BTreeSet::new()),
+    )
+}
+
+pub(crate) fn snapshot_failed_envelope(
+    input: &ChangeAssessmentInput,
+    message: String,
+) -> ChangeAssessmentEnvelope {
+    snapshot_failure(input.evaluation_date, unresolved_snapshots(input), message)
+}
+
+pub(crate) fn resolved_snapshot_failed_envelope(
+    input: &ResolvedAssessmentInput,
+    message: String,
+) -> ChangeAssessmentEnvelope {
+    snapshot_failure(input.evaluation_date, resolved_snapshots(input), message)
+}
+
+fn snapshot_failure(
+    date: NaiveDate,
+    snapshots: AssessmentSnapshots,
+    message: String,
+) -> ChangeAssessmentEnvelope {
+    empty_envelope(
+        date,
+        snapshots,
+        AssessmentCompleteness::Error,
+        AssessmentOutcome::NotEvaluated,
+        diagnostic_record(
+            DiagnosticCode::AssessmentSnapshotFailed,
+            Severity::Error,
+            message,
+            None,
+            &BTreeSet::new(),
+        ),
     )
 }
 

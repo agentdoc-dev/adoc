@@ -1150,13 +1150,8 @@ fn assess_changes_with_context<P>(
 where
     P: PathPolicy,
 {
-    let project_root =
-        git_project_root(context.config_start()).ok_or_else(|| LocalError::ConfigMissing {
-            message: "adoc assess-changes requires a Git repository".to_string(),
-            config_path: None,
-        })?;
     let envelope = assess_changes_from_git(CoreChangeAssessmentInput {
-        project_root,
+        project_root: git_project_root(context.config_start()),
         base_ref: input.base_ref,
         head_ref: input.head_ref,
         evaluation_date: input

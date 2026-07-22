@@ -134,6 +134,39 @@ fn unresolved_base_emits_error_not_evaluated_envelope_and_exits_two() {
 }
 
 #[test]
+fn missing_git_repository_emits_error_not_evaluated_envelope_and_exits_two() {
+    let workspace = TestWorkspace::new("assess-changes-no-git");
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args([
+            "assess-changes",
+            "--base",
+            "main",
+            "--as-of",
+            "2026-07-22",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc assess-changes runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("error JSON");
+    assert_eq!(value["schema_version"], "adoc.change_assessment.v0");
+    assert_eq!(value["completeness"], "error");
+    assert_eq!(value["outcome"], "not_evaluated");
+    assert_eq!(value["evaluation_date"], "2026-07-22");
+    assert_eq!(
+        value["snapshots"]["requested_base"]["requested_ref"],
+        "main"
+    );
+    assert_eq!(
+        value["diagnostics"][0]["code"],
+        "assessment.snapshot_failed"
+    );
+}
+
+#[test]
 fn invalid_head_emits_error_invalid_without_fake_empty_graph_sections() {
     let workspace = repo();
     workspace.write("docs/billing.adoc", "::claim broken\n::\n");

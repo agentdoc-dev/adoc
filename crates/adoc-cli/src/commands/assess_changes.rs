@@ -100,7 +100,7 @@ mod tests {
     #[test]
     fn markdown_presenter_is_heading_free_even_for_error_envelopes() {
         let envelope = assess_changes_from_git(ChangeAssessmentInput {
-            project_root: PathBuf::from("/definitely/not/a/repository"),
+            project_root: Some(PathBuf::from("/definitely/not/a/repository")),
             base_ref: "main".to_string(),
             head_ref: None,
             evaluation_date: NaiveDate::from_ymd_opt(2026, 7, 22).expect("date"),
