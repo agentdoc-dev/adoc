@@ -136,6 +136,15 @@ pub fn compile_workspace(input: CompileInput) -> CompileResult {
     application::compile::compile_with_provider(&provider)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
+pub fn compile_workspace_for_date(
+    input: CompileInput,
+    evaluation_date: chrono::NaiveDate,
+) -> CompileResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
+    application::compile::compile_with_provider_for_date(&provider, evaluation_date)
+}
+
 pub fn compile_project_workspace(
     input: CompileInput,
     project: LocalProjectContext,
@@ -162,6 +171,25 @@ pub fn compile_project_workspace_with_anchor_root(
     application::compile::compile_with_provider_anchored(&provider, &reader)
 }
 
+pub fn compile_project_workspace_with_anchor_root_for_date(
+    input: CompileInput,
+    project: LocalProjectContext,
+    anchor_root: std::path::PathBuf,
+    evaluation_date: chrono::NaiveDate,
+) -> CompileResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::for_project(
+        input.root,
+        project.project_root,
+        project.docs_root,
+    );
+    let reader = infrastructure::source::evidence_fs::FsEvidenceFileReader::new(anchor_root);
+    application::compile::compile_with_provider_anchored_for_date(
+        &provider,
+        &reader,
+        evaluation_date,
+    )
+}
+
 /// V8.5.1 (ADR-0048): [`compile_workspace`] plus Evidence Anchor
 /// verification — anchored `source` paths are re-hashed against
 /// `anchor_root`. `None` behaves exactly like [`compile_workspace`]; only
@@ -178,6 +206,26 @@ pub fn compile_workspace_with_anchor_root(
             application::compile::compile_with_provider_anchored(&provider, &reader)
         }
         None => application::compile::compile_with_provider(&provider),
+    }
+}
+
+#[tracing::instrument(level = "debug", skip_all)]
+pub fn compile_workspace_with_anchor_root_for_date(
+    input: CompileInput,
+    anchor_root: Option<std::path::PathBuf>,
+    evaluation_date: chrono::NaiveDate,
+) -> CompileResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::new(input.root);
+    match anchor_root {
+        Some(root) => {
+            let reader = infrastructure::source::evidence_fs::FsEvidenceFileReader::new(root);
+            application::compile::compile_with_provider_anchored_for_date(
+                &provider,
+                &reader,
+                evaluation_date,
+            )
+        }
+        None => application::compile::compile_with_provider_for_date(&provider, evaluation_date),
     }
 }
 
@@ -223,12 +271,40 @@ pub fn build_project_workspace_with_embedding_provider(
     })
 }
 
+pub fn build_project_workspace_with_embedding_provider_for_date(
+    input: BuildInput,
+    project: LocalProjectContext,
+    provider: EmbeddingProviderSelection,
+    evaluation_date: chrono::NaiveDate,
+) -> CompileResult {
+    build_workspace_with_embedding_provider_factory_and_context_for_date(
+        input,
+        Some(project),
+        || embedding_provider(provider),
+        evaluation_date,
+    )
+}
+
 #[tracing::instrument(level = "debug", skip_all)]
 pub fn build_workspace_with_embedding_provider(
     input: BuildInput,
     provider: EmbeddingProviderSelection,
 ) -> CompileResult {
     build_workspace_with_embedding_provider_factory(input, || embedding_provider(provider))
+}
+
+#[tracing::instrument(level = "debug", skip_all)]
+pub fn build_workspace_with_embedding_provider_for_date(
+    input: BuildInput,
+    provider: EmbeddingProviderSelection,
+    evaluation_date: chrono::NaiveDate,
+) -> CompileResult {
+    build_workspace_with_embedding_provider_factory_and_context_for_date(
+        input,
+        None,
+        || embedding_provider(provider),
+        evaluation_date,
+    )
 }
 
 #[tracing::instrument(level = "debug", skip_all, fields(artifact = %input.graph_artifact_path.display()))]
@@ -485,6 +561,29 @@ pub fn apply_patch(input: PatchApplyInput, patch: PatchDocument) -> PatchApplyRe
     )
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
+pub fn apply_patch_for_date(
+    input: PatchApplyInput,
+    patch: PatchDocument,
+    evaluation_date: chrono::NaiveDate,
+) -> PatchApplyResult {
+    let provider = infrastructure::source::fs::FsSourceProvider::for_project(
+        input.docs_root.clone(),
+        input.project_root.clone(),
+        input.docs_root,
+    );
+    let writer = infrastructure::source::fs_writer::FsWorkspaceWriter::new(input.project_root);
+    application::apply::apply_patch_with_ports_for_date(
+        &input.graph_artifact_path,
+        patch,
+        &infrastructure::artifact::GraphJsonArtifact,
+        &provider,
+        &writer,
+        &input.interface,
+        evaluation_date,
+    )
+}
+
 /// V6.4 — build a refusal envelope from parse-failure diagnostics, so the
 /// orchestration layers (CLI, MCP) can report unparseable patch input inside
 /// the normal `adoc.patch.apply.v0` shape instead of a process error.
@@ -616,6 +715,40 @@ where
             },
         ),
     }
+}
+
+fn build_workspace_with_embedding_provider_factory_and_context_for_date<F>(
+    input: BuildInput,
+    project: Option<LocalProjectContext>,
+    mut provider_factory: F,
+    evaluation_date: chrono::NaiveDate,
+) -> CompileResult
+where
+    F: FnMut() -> Result<
+        Box<dyn domain::ports::embedding_provider::EmbeddingProvider>,
+        domain::ports::embedding_provider::EmbeddingError,
+    >,
+{
+    let provider = match project {
+        Some(project) => infrastructure::source::fs::FsSourceProvider::for_project(
+            input.root,
+            project.project_root,
+            project.docs_root,
+        ),
+        None => infrastructure::source::fs::FsSourceProvider::new(input.root),
+    };
+    let options = application::compile::BuildOptions {
+        embeddings: match input.embeddings {
+            BuildEmbeddingMode::Enabled => {
+                application::compile::BuildEmbeddingBehavior::EnabledFactory {
+                    provider_factory: &mut provider_factory,
+                }
+            }
+            BuildEmbeddingMode::Skipped => application::compile::BuildEmbeddingBehavior::Skipped,
+        },
+        prior_search_artifact_path: input.prior_search_artifact_path,
+    };
+    application::compile::build_with_provider_for_date(&provider, options, evaluation_date)
 }
 
 pub fn load_retrieval_session(input: RetrievalInput) -> RetrievalLoadResult {

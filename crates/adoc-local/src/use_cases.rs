@@ -16,10 +16,12 @@ use adoc_core::{
     RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, RetrievalRecord, ReviewEnvelope,
     ReviewError, ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters,
     SearchMode, SearchQuery, SearchRecordScope, Severity, SnapshotSelector, StaleEnvelope,
-    apply_patch as core_apply_patch, build_project_workspace_with_embedding_provider,
-    build_workspace_with_embedding_provider, changed_files_from_git, changed_paths_strings,
-    check_patch as core_check_patch, compile_project_workspace_with_anchor_root,
-    compile_workspace_with_anchor_root, diff_objects, embed_query_with_embedding_provider,
+    apply_patch_for_date as core_apply_patch_for_date,
+    build_project_workspace_with_embedding_provider_for_date,
+    build_workspace_with_embedding_provider_for_date, changed_files_from_git,
+    changed_paths_strings, check_patch as core_check_patch,
+    compile_project_workspace_with_anchor_root_for_date,
+    compile_workspace_with_anchor_root_for_date, diff_objects, embed_query_with_embedding_provider,
     empty_contradictions_envelope, empty_impacted_envelope, empty_stale_envelope,
     evaluate_contradictions, evaluate_impacted, evaluate_stale, export_workspace,
     git_review_available, inspect_graph_artifact, inspect_search_artifact, load_graph_session,
@@ -58,6 +60,7 @@ pub struct InitOutcome {
 #[derive(Debug, Clone)]
 pub struct CheckInput {
     pub path: Option<PathBuf>,
+    pub as_of: Option<chrono::NaiveDate>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -87,6 +90,7 @@ pub struct BuildInput {
     pub path: Option<PathBuf>,
     pub out: Option<PathBuf>,
     pub no_embeddings: bool,
+    pub as_of: Option<chrono::NaiveDate>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -237,6 +241,7 @@ pub struct SearchOutcome {
 pub struct PatchCheckInput {
     pub patch_path: PathBuf,
     pub artifact: Option<PathBuf>,
+    pub as_of: Option<chrono::NaiveDate>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -261,6 +266,7 @@ pub struct PatchApplyInput {
     pub artifact: Option<PathBuf>,
     /// Recorded in the envelope's `trace.interface` (`"cli"` or `"mcp"`).
     pub interface: String,
+    pub as_of: Option<chrono::NaiveDate>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -496,6 +502,9 @@ fn check_with_context<P>(
 where
     P: PathPolicy,
 {
+    let evaluation_date = input
+        .as_of
+        .unwrap_or_else(|| chrono::Utc::now().date_naive());
     let path = input
         .path
         .as_deref()
@@ -517,12 +526,17 @@ where
         .as_ref()
         .and_then(|config| project_context_for_selected_path(config, &path));
     let result = match project {
-        Some(project) => compile_project_workspace_with_anchor_root(
+        Some(project) => compile_project_workspace_with_anchor_root_for_date(
             CompileInput { root: path },
             project,
             anchor_root,
+            evaluation_date,
         ),
-        None => compile_workspace_with_anchor_root(CompileInput { root: path }, Some(anchor_root)),
+        None => compile_workspace_with_anchor_root_for_date(
+            CompileInput { root: path },
+            Some(anchor_root),
+            evaluation_date,
+        ),
     };
     let exit_code = if result.has_errors() { 1 } else { 0 };
 
@@ -618,6 +632,9 @@ fn build_with_context<P>(
 where
     P: PathPolicy,
 {
+    let evaluation_date = input
+        .as_of
+        .unwrap_or_else(|| chrono::Utc::now().date_naive());
     let path = input
         .path
         .as_deref()
@@ -638,7 +655,14 @@ where
         .and_then(|config| project_context_for_selected_path(config, &path));
 
     match out {
-        Some(out) => build_to_dir(path, out, embedding_mode, embedding_provider, project),
+        Some(out) => build_to_dir(
+            path,
+            out,
+            embedding_mode,
+            embedding_provider,
+            project,
+            evaluation_date,
+        ),
         None => {
             let output_paths = resolve_build_output_paths(config.as_ref(), embedding_mode)?;
             let output_paths = resolve_build_output_paths_with_policy(&output_paths, context)?;
@@ -648,6 +672,7 @@ where
                 embedding_mode,
                 embedding_provider,
                 project,
+                evaluation_date,
             )
         }
     }
@@ -1111,6 +1136,9 @@ fn patch_check_with_context<P>(
 where
     P: PathPolicy,
 {
+    let _evaluation_date = input
+        .as_of
+        .unwrap_or_else(|| chrono::Utc::now().date_naive());
     let patch_path = context.path_policy().resolve_read_path(&input.patch_path)?;
     let graph_artifact = resolve_graph_artifact_for_read(context, input.artifact.as_deref())?;
     let result = core_check_patch(PatchInput {
@@ -1135,6 +1163,9 @@ fn patch_apply_with_context<P>(
 where
     P: PathPolicy,
 {
+    let evaluation_date = input
+        .as_of
+        .unwrap_or_else(|| chrono::Utc::now().date_naive());
     let patch = match input.patch {
         PatchApplySource::Path(path) => {
             let resolved = context.path_policy().resolve_read_path(&path)?;
@@ -1167,7 +1198,7 @@ where
         .path_policy()
         .resolve_write_path(context.config_start())?;
 
-    let result = core_apply_patch(
+    let result = core_apply_patch_for_date(
         CorePatchApplyInput {
             graph_artifact_path: graph_artifact,
             docs_root,
@@ -1175,6 +1206,7 @@ where
             interface: input.interface,
         },
         patch,
+        evaluation_date,
     );
     let exit_code = patch_apply_exit_code(&result);
 
@@ -1254,7 +1286,13 @@ where
             outputs: None,
         }),
         ProjectStatusRefresh::Check => {
-            let outcome = check_with_context(context, CheckInput { path: None })?;
+            let outcome = check_with_context(
+                context,
+                CheckInput {
+                    path: None,
+                    as_of: None,
+                },
+            )?;
             Ok(ProjectStatusRefreshReport {
                 requested: ProjectStatusRefresh::Check,
                 exit_code: Some(outcome.exit_code),
@@ -1269,6 +1307,7 @@ where
                     path: None,
                     out: None,
                     no_embeddings: input.no_embeddings,
+                    as_of: None,
                 },
             )?;
             Ok(ProjectStatusRefreshReport {
@@ -1425,6 +1464,7 @@ fn build_to_dir(
     embedding_mode: BuildEmbeddingMode,
     embedding_provider: EmbeddingProviderSelection,
     project: Option<LocalProjectContext>,
+    evaluation_date: chrono::NaiveDate,
 ) -> Result<BuildOutcome, LocalError> {
     let input = CoreBuildInput {
         root: path,
@@ -1432,10 +1472,17 @@ fn build_to_dir(
         prior_search_artifact_path: Some(out.join("docs.search.json")),
     };
     let result = match project {
-        Some(project) => {
-            build_project_workspace_with_embedding_provider(input, project, embedding_provider)
-        }
-        None => build_workspace_with_embedding_provider(input, embedding_provider),
+        Some(project) => build_project_workspace_with_embedding_provider_for_date(
+            input,
+            project,
+            embedding_provider,
+            evaluation_date,
+        ),
+        None => build_workspace_with_embedding_provider_for_date(
+            input,
+            embedding_provider,
+            evaluation_date,
+        ),
     };
     finish_build_result(result, &out)
 }
@@ -1446,6 +1493,7 @@ fn build_to_paths(
     embedding_mode: BuildEmbeddingMode,
     embedding_provider: EmbeddingProviderSelection,
     project: Option<LocalProjectContext>,
+    evaluation_date: chrono::NaiveDate,
 ) -> Result<BuildOutcome, LocalError> {
     let input = CoreBuildInput {
         root: path,
@@ -1453,10 +1501,17 @@ fn build_to_paths(
         prior_search_artifact_path: output_paths.search.clone(),
     };
     let result = match project {
-        Some(project) => {
-            build_project_workspace_with_embedding_provider(input, project, embedding_provider)
-        }
-        None => build_workspace_with_embedding_provider(input, embedding_provider),
+        Some(project) => build_project_workspace_with_embedding_provider_for_date(
+            input,
+            project,
+            embedding_provider,
+            evaluation_date,
+        ),
+        None => build_workspace_with_embedding_provider_for_date(
+            input,
+            embedding_provider,
+            evaluation_date,
+        ),
     };
     finish_build_result_at_paths(result, &output_paths)
 }

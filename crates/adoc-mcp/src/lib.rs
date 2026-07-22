@@ -73,7 +73,10 @@ impl AgentDocMcpServer {
 
     pub fn run_check(&self, params: CheckParams) -> McpAdapterResult<serde_json::Value> {
         let context = self.context(params.project_root)?;
-        let outcome = context.check(CheckInput { path: params.path })?;
+        let outcome = context.check(CheckInput {
+            path: params.path,
+            as_of: None,
+        })?;
         serde_json::to_value(command_envelope("adoc_check", outcome.exit_code, outcome))
             .map_err(Into::into)
     }
@@ -84,6 +87,7 @@ impl AgentDocMcpServer {
             path: params.path,
             out: params.out,
             no_embeddings: params.no_embeddings,
+            as_of: None,
         })?;
         serde_json::to_value(command_envelope("adoc_build", outcome.exit_code, outcome))
             .map_err(Into::into)
@@ -194,6 +198,7 @@ impl AgentDocMcpServer {
                 let outcome = context.patch_check(PatchCheckInput {
                     patch_path,
                     artifact: params.artifact,
+                    as_of: None,
                 })?;
                 serde_json::to_value(outcome.result).map_err(Into::into)
             }
@@ -240,6 +245,7 @@ impl AgentDocMcpServer {
             patch,
             artifact: params.artifact,
             interface: "mcp".to_string(),
+            as_of: None,
         })?;
         serde_json::to_value(outcome.result).map_err(Into::into)
     }

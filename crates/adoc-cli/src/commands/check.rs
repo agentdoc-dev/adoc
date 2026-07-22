@@ -8,14 +8,19 @@ use crate::presentation::{CheckStyle, MarkdownReviewPresenter, ResolvedFormat};
 
 use super::{current_dir, eprint_diagnostics, print_diagnostics, print_summary, report};
 
-pub(crate) fn check(path: Option<PathBuf>, style: CheckStyle, resolved: ResolvedFormat) -> i32 {
+pub(crate) fn check(
+    path: Option<PathBuf>,
+    style: CheckStyle,
+    as_of: Option<chrono::NaiveDate>,
+    resolved: ResolvedFormat,
+) -> i32 {
     let config_start = match current_dir() {
         Ok(path) => path,
         Err(error) => return report(error),
     };
 
     let context = LocalContext::new(config_start.clone(), UnrestrictedPathPolicy);
-    let outcome = match context.check(CheckInput { path }) {
+    let outcome = match context.check(CheckInput { path, as_of }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),
     };

@@ -13,7 +13,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+#[cfg(test)]
 use crate::application::compile::compile_with_provider;
+use crate::application::compile::compile_with_provider_for_date;
 use crate::application::hashing::sha256_prefixed;
 use crate::application::patch::{PatchCheckResult, check_patch_documents};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
@@ -197,6 +199,31 @@ where
     P: SourceProvider,
     W: WorkspaceWriter,
 {
+    apply_patch_with_ports_for_date(
+        graph_artifact_path,
+        patch,
+        graph_reader,
+        source_provider,
+        writer,
+        interface,
+        super::local_today(),
+    )
+}
+
+pub(crate) fn apply_patch_with_ports_for_date<G, P, W>(
+    graph_artifact_path: &Path,
+    patch: PatchDocument,
+    graph_reader: &G,
+    source_provider: &P,
+    writer: &W,
+    interface: &str,
+    evaluation_date: chrono::NaiveDate,
+) -> PatchApplyResult
+where
+    G: ArtifactReader<Output = GraphArtifactDocument>,
+    P: SourceProvider,
+    W: WorkspaceWriter,
+{
     let trace = apply_trace(interface, &patch);
 
     // 1. Load the artifact and run the unchanged V2 validation.
@@ -227,7 +254,7 @@ where
 
     // 2. Recompile the working tree in memory. A dirty tree cannot prove
     //    graph-vs-source freshness, and the recompile supplies fresh spans.
-    let recompiled = compile_with_provider(source_provider);
+    let recompiled = compile_with_provider_for_date(source_provider, evaluation_date);
     if recompiled.has_errors() || recompiled.artifacts.is_none() {
         let mut diagnostics = vec![Diagnostic::error(
             DiagnosticCode::PatchSourceDrift,
@@ -268,6 +295,7 @@ where
             &recompiled_document,
             source_provider,
             writer,
+            evaluation_date,
         );
     }
 
@@ -365,7 +393,8 @@ where
     }
 
     // 8. Post-apply re-check from disk. Reported, never acted on.
-    let (post_check, after_content_hash) = run_post_check(source_provider, &patch.target);
+    let (post_check, after_content_hash) =
+        run_post_check(source_provider, &patch.target, evaluation_date);
 
     PatchApplyResult {
         schema_version: PATCH_APPLY_SCHEMA_VERSION,
@@ -410,6 +439,7 @@ fn apply_create_object<P, W>(
     recompiled_document: &GraphArtifactDocument,
     source_provider: &P,
     writer: &W,
+    evaluation_date: chrono::NaiveDate,
 ) -> PatchApplyResult
 where
     P: SourceProvider,
@@ -541,7 +571,7 @@ where
         return PatchApplyResult::refused_with_check(check, trace, diagnostics);
     }
 
-    let (post_check, after_content_hash) = run_post_check(source_provider, target);
+    let (post_check, after_content_hash) = run_post_check(source_provider, target, evaluation_date);
 
     PatchApplyResult {
         schema_version: PATCH_APPLY_SCHEMA_VERSION,
@@ -572,8 +602,9 @@ where
 fn run_post_check<P: SourceProvider>(
     source_provider: &P,
     target: &str,
+    evaluation_date: chrono::NaiveDate,
 ) -> (PostCheckReport, Option<String>) {
-    let post_compile = compile_with_provider(source_provider);
+    let post_compile = compile_with_provider_for_date(source_provider, evaluation_date);
     let error_count = count_severity(&post_compile.diagnostics, Severity::Error);
     let warning_count = count_severity(&post_compile.diagnostics, Severity::Warning);
     let after_content_hash = post_compile.artifacts.as_ref().and_then(|artifacts| {

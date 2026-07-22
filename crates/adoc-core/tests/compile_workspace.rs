@@ -2,8 +2,9 @@ mod support;
 
 use adoc_core::{
     BuildArtifacts, BuildEmbeddingMode, BuildInput, CompileInput, DiagnosticCode, Severity,
-    build_workspace, compile_workspace,
+    build_workspace, compile_workspace, compile_workspace_for_date,
 };
+use chrono::NaiveDate;
 use serde::Deserialize;
 use support::TestWorkspace;
 
@@ -47,6 +48,55 @@ struct TestGraphObject {
     /// V5.8: typed evidence array (replaces flat source/test/reviewed_by fields).
     #[serde(default)]
     evidence: Vec<TestGraphEvidence>,
+}
+
+#[test]
+fn compile_workspace_for_date_pins_effective_lifecycle_projection() {
+    let workspace = TestWorkspace::new("compile-workspace-pinned-date");
+    let source = workspace.write(
+        "billing.adoc",
+        concat!(
+            "# Billing Guide @doc(team.billing)\n\n",
+            "::claim billing.credits\n",
+            "status: verified\n",
+            "owner: billing\n",
+            "verified_at: 2026-07-01\n",
+            "expires_at: 2026-07-21\n",
+            "source: src/billing.rs\n",
+            "--\nCredits apply after successful payment.\n::\n",
+        ),
+    );
+
+    let before = compile_workspace_for_date(
+        CompileInput {
+            root: source.clone(),
+        },
+        NaiveDate::from_ymd_opt(2026, 7, 21).expect("valid date"),
+    );
+    let after = compile_workspace_for_date(
+        CompileInput { root: source },
+        NaiveDate::from_ymd_opt(2026, 7, 22).expect("valid date"),
+    );
+
+    let effective_status = |artifacts: BuildArtifacts| {
+        let value: serde_json::Value =
+            serde_json::from_str(&artifacts.graph_json).expect("graph JSON");
+        value["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["id"] == "billing.credits")
+            .and_then(|node| node["effective_status"].as_str())
+            .map(str::to_string)
+    };
+    assert_eq!(
+        effective_status(before.artifacts.expect("before artifacts")),
+        None
+    );
+    assert_eq!(
+        effective_status(after.artifacts.expect("after artifacts")).as_deref(),
+        Some("stale")
+    );
 }
 
 #[derive(Debug, Clone, Deserialize)]

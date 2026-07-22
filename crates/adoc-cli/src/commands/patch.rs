@@ -19,17 +19,23 @@ pub(crate) struct PatchCommandInput {
     pub(crate) check: Option<PathBuf>,
     pub(crate) apply: Option<String>,
     pub(crate) artifact: Option<PathBuf>,
+    pub(crate) as_of: Option<chrono::NaiveDate>,
 }
 
 pub(crate) fn patch(input: PatchCommandInput, resolved: ResolvedFormat) -> i32 {
     match (input.check, input.apply) {
-        (Some(patch_path), None) => patch_check(patch_path, input.artifact, resolved),
-        (None, Some(apply)) => patch_apply(apply, input.artifact, resolved),
+        (Some(patch_path), None) => patch_check(patch_path, input.artifact, input.as_of, resolved),
+        (None, Some(apply)) => patch_apply(apply, input.artifact, input.as_of, resolved),
         _ => unreachable!("clap enforces exactly one of --check/--apply"),
     }
 }
 
-fn patch_check(patch_path: PathBuf, artifact: Option<PathBuf>, resolved: ResolvedFormat) -> i32 {
+fn patch_check(
+    patch_path: PathBuf,
+    artifact: Option<PathBuf>,
+    as_of: Option<chrono::NaiveDate>,
+    resolved: ResolvedFormat,
+) -> i32 {
     let config_start = match current_dir() {
         Ok(path) => path,
         Err(error) => return report(error),
@@ -38,6 +44,7 @@ fn patch_check(patch_path: PathBuf, artifact: Option<PathBuf>, resolved: Resolve
     let outcome = match context.patch_check(PatchCheckInput {
         patch_path,
         artifact,
+        as_of,
     }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),
@@ -55,7 +62,12 @@ fn patch_check(patch_path: PathBuf, artifact: Option<PathBuf>, resolved: Resolve
     }
 }
 
-fn patch_apply(apply: String, artifact: Option<PathBuf>, resolved: ResolvedFormat) -> i32 {
+fn patch_apply(
+    apply: String,
+    artifact: Option<PathBuf>,
+    as_of: Option<chrono::NaiveDate>,
+    resolved: ResolvedFormat,
+) -> i32 {
     let source = if apply == "@-" {
         let mut buffer = String::new();
         if let Err(source) = io::stdin().read_to_string(&mut buffer) {
@@ -81,6 +93,7 @@ fn patch_apply(apply: String, artifact: Option<PathBuf>, resolved: ResolvedForma
         patch: source,
         artifact,
         interface: "cli".to_string(),
+        as_of,
     }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),
