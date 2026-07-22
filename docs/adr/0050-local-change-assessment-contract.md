@@ -118,6 +118,7 @@ Only these tuples are legal:
 Precedence is:
 
 1. An unavailable changed set or head snapshot yields `error/not_evaluated`.
+   Missing repository context and an unreadable mutable-worktree state are snapshot failures and use the same structured envelope.
 2. Invalid head configuration or head knowledge yields `error/invalid`.
 3. An unavailable base compile/diff with trustworthy head and changed-set facts yields `partial/not_evaluated`.
 4. Any uncovered or provisional path yields `complete/uncovered`.

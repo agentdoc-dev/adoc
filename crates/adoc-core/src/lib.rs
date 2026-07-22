@@ -485,6 +485,24 @@ pub fn load_review_with_changed_files_from_git(
 
 /// Produce the canonical V9.2.1 assessment for one Git comparison.
 pub fn assess_changes_from_git(input: ChangeAssessmentInput) -> ChangeAssessmentEnvelope {
+    assess_changes_from_git_with_worktree_status(
+        input,
+        infrastructure::git::revision::worktree_is_dirty,
+    )
+}
+
+fn assess_changes_from_git_with_worktree_status(
+    input: ChangeAssessmentInput,
+    worktree_status: impl FnOnce(
+        &std::path::Path,
+    ) -> Result<bool, domain::ports::snapshot_workspace::SnapshotError>,
+) -> ChangeAssessmentEnvelope {
+    let Some(project_root) = input.project_root.as_ref() else {
+        return application::change_assessment::snapshot_failed_envelope(
+            &input,
+            "adoc assess-changes requires a Git repository".to_string(),
+        );
+    };
     let requested_base = SnapshotSelector::GitRef(GitRef::new(input.base_ref.clone()));
     let requested_head = input
         .head_ref
@@ -492,7 +510,7 @@ pub fn assess_changes_from_git(input: ChangeAssessmentInput) -> ChangeAssessment
         .map(|head| SnapshotSelector::GitRef(GitRef::new(head.clone())))
         .unwrap_or(SnapshotSelector::Workdir);
     let resolved = match infrastructure::git::revision::resolve_review(
-        &input.project_root,
+        project_root,
         &requested_base,
         &requested_head,
     ) {
@@ -510,33 +528,34 @@ pub fn assess_changes_from_git(input: ChangeAssessmentInput) -> ChangeAssessment
             );
         }
     };
-    let worktree_dirty = if input.head_ref.is_none() {
-        infrastructure::git::revision::worktree_is_dirty(&input.project_root).ok()
-    } else {
-        None
+    let mut resolved_input = application::change_assessment::ResolvedAssessmentInput {
+        requested_base_ref: input.base_ref,
+        requested_base_commit: resolved.requested_base_sha,
+        comparison_base_commit,
+        head_ref: input.head_ref,
+        head_commit: resolved.head_sha.clone(),
+        base: resolved.base,
+        head: resolved.head,
+        worktree_dirty: None,
+        evaluation_date: input.evaluation_date,
     };
-    let snapshot =
-        infrastructure::git::worktree::GitWorktreeProvider::new(input.project_root.clone())
-            .with_expected_workdir_head(resolved.head_sha.clone());
-    let changed_files = infrastructure::git::changed_files::GitChangedFilesProvider::new(
-        input.project_root.clone(),
-    )
-    .with_expected_workdir_head(resolved.head_sha.clone());
-    application::change_assessment::assess_with_providers(
-        application::change_assessment::ResolvedAssessmentInput {
-            requested_base_ref: input.base_ref,
-            requested_base_commit: resolved.requested_base_sha,
-            comparison_base_commit,
-            head_ref: input.head_ref,
-            head_commit: resolved.head_sha,
-            base: resolved.base,
-            head: resolved.head,
-            worktree_dirty,
-            evaluation_date: input.evaluation_date,
-        },
-        &snapshot,
-        &changed_files,
-    )
+    if resolved_input.head_ref.is_none() {
+        match worktree_status(project_root) {
+            Ok(dirty) => resolved_input.worktree_dirty = Some(dirty),
+            Err(error) => {
+                return application::change_assessment::resolved_snapshot_failed_envelope(
+                    &resolved_input,
+                    format!("could not determine mutable worktree status: {error}"),
+                );
+            }
+        }
+    }
+    let snapshot = infrastructure::git::worktree::GitWorktreeProvider::new(project_root.clone())
+        .with_expected_workdir_head(resolved_input.head_commit.clone());
+    let changed_files =
+        infrastructure::git::changed_files::GitChangedFilesProvider::new(project_root.clone())
+            .with_expected_workdir_head(resolved_input.head_commit.clone());
+    application::change_assessment::assess_with_providers(resolved_input, &snapshot, &changed_files)
 }
 
 /// V3.6 readiness probe for the review pipeline. Returns `true` when the local
@@ -895,6 +914,38 @@ mod tests {
 
     use super::*;
     use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
+
+    #[test]
+    fn worktree_status_failure_emits_resolved_snapshot_failure() {
+        let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("workspace root");
+        let envelope = assess_changes_from_git_with_worktree_status(
+            ChangeAssessmentInput {
+                project_root: Some(project_root),
+                base_ref: "HEAD".to_string(),
+                head_ref: None,
+                evaluation_date: chrono::NaiveDate::from_ymd_opt(2026, 7, 22).expect("date"),
+            },
+            |_| {
+                Err(
+                    domain::ports::snapshot_workspace::SnapshotError::ProviderUnavailable {
+                        reason: "status unavailable".to_string(),
+                    },
+                )
+            },
+        );
+
+        assert_eq!(envelope.completeness, AssessmentCompleteness::Error);
+        assert_eq!(envelope.outcome, AssessmentOutcome::NotEvaluated);
+        assert!(envelope.snapshots.head.resolved_commit.is_some());
+        assert_eq!(envelope.snapshots.head.worktree_state, None);
+        assert_eq!(
+            envelope.diagnostics[0].code,
+            DiagnosticCode::AssessmentSnapshotFailed.as_str()
+        );
+    }
 
     #[test]
     fn parse_patch_from_path_missing_returns_read_error_with_diagnostics() {
