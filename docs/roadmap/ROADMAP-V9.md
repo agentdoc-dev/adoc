@@ -261,7 +261,7 @@ Parallelism describes merge conflicts and dependencies, not required staffing.
 | V9.1.3 | Planned | Failed analysis cannot appear covered | `action` | — | — |
 | V9.1.4 | Planned | Proposal execution has a defensible trust boundary | `action` | — | — |
 | V9.2.1 | Implemented | One deterministic local change-assessment command | `adoc` | V9.1.1–V9.1.2 | ADR-0050; core/local/CLI/MCP schema and failure-envelope tests |
-| V9.2.2 | In progress | Exact-SHA GitHub assessment and retained receipt | `adoc`, `action` | V9.2.1 | ADR-0051; implementation/release evidence pending |
+| V9.2.2 | Implemented | Exact-SHA GitHub assessment and retained receipt | `adoc`, `action` | V9.2.1 | ADR-0051; AgentDoc #125/#126 and v0.3.1; Action #9/#10 and v1.5.1; retained run 29922744068 |
 | V9.2.3 | Planned | Clear advisory PR disposition without false review claims | `action` | V9.2.2 | — |
 | V9.3.1 | Planned | Optional cited semantic classification | `action` | V9.2.3 | — |
 | V9.3.2 | Planned | Canonical AgentDoc patch proposals | `adoc`, `action` | V9.3.1 | — |
@@ -428,7 +428,7 @@ These may be commits in one PR if review remains tractable; do not split tests o
 
 ### V9.1.2: Code-Change Impact Correctness Slice
 
-**Status:** In progress
+**Status:** Implemented
 **Repositories:** `adoc`
 **Depends on:** V9.1.1
 **User touchpoint:** `adoc review <base>` and MCP `adoc_review`
@@ -544,7 +544,7 @@ No shape change to `adoc.review.v0`. The behavioral invariant changes from “af
 **User touchpoint:** AgentDoc PR Report
 **Contract impact:** Behavioral breaking correction for analysis/setup failures; no input/schema change
 **Gate posture:** Setup/internal analysis inability is always non-green; structurally invalid knowledge retains existing `advisory|strict` policy
-**Completion evidence:** —
+**Completion evidence:** ADR-0051; AgentDoc PRs [#125](https://github.com/agentdoc-dev/adoc/pull/125) and [#126](https://github.com/agentdoc-dev/adoc/pull/126); Action PRs [#9](https://github.com/agentdoc-dev/action/pull/9) and [#10](https://github.com/agentdoc-dev/action/pull/10); AgentDoc [v0.3.1](https://github.com/agentdoc-dev/adoc/releases/tag/v0.3.1); Action [v1.5.1](https://github.com/agentdoc-dev/action/releases/tag/v1.5.1); live receipt and repeatability record below
 
 #### Goal
 
@@ -1332,6 +1332,15 @@ A completed receipt with a valid `complete` assessment requires `knowledge_snaps
 - Downloaded receipt validates against its schema and matches Action outputs.
 - Re-running the same commits with the same compiler/config/evaluation date yields the same deterministic assessment digest.
 - No Action shell step independently recomputes coverage.
+
+#### Completion record
+
+- AgentDoc [PR #125](https://github.com/agentdoc-dev/adoc/pull/125) merged as `4acb4b3a388748b74af68f1093453bab3ae53ccf`; the `v0.3.1` tag points to that commit and publishes both supported Linux binaries with checksums.
+- Action [PR #9](https://github.com/agentdoc-dev/action/pull/9) shipped the receipt adapter. Live consumer evidence exposed missing `github.action_ref` wiring; [PR #10](https://github.com/agentdoc-dev/action/pull/10) corrected it as `9aed946ec7c6c29edb1fbd784d04833d7383c2e1`. Immutable `v1.5.1` and floating `v1` both point to the corrected commit.
+- AgentDoc [PR #126](https://github.com/agentdoc-dev/adoc/pull/126) merged the pinned consumer and caller-owned upload as `2a49c5d898a35e638500ab57f164ad6802532f09`. Its final-head [run 29922744068](https://github.com/agentdoc-dev/adoc/actions/runs/29922744068) retained `agentdoc-inv_29922744068_1_report_b406bd245862c2cf0f9c2381a225e038`; the [sticky comment](https://github.com/agentdoc-dev/adoc/pull/126#issuecomment-5046045755) names requested base/comparison base `4acb4b3a388748b74af68f1093453bab3ae53ccf`, head `b31a9a14688b2b7891e12a26820a50b3bf97ccef`, and receipt `sha256:e74fa5634534a89786fcbf04cbeaaec6b49c533fdaa4d86ce8ff67ca49e23470`.
+- The downloaded final receipt validated with `check-jsonschema 0.35.0` against `schemas/adoc.pr_assessment_receipt.v0.schema.json` at Action commit `9aed946ec7c6c29edb1fbd784d04833d7383c2e1`. Its action provenance is `full_sha`, its resolved AgentDoc version is `v0.3.1`, and assessment `sha256:7619410271c80ce5a065b0cb894bcba6bd8a89e5f3cef7036bb53b4960632860` matches the retained file, receipt reference, and verified Action output.
+- Repeatability used [run 29922202760](https://github.com/agentdoc-dev/adoc/actions/runs/29922202760) twice on requested/comparison base `4acb4b3a388748b74af68f1093453bab3ae53ccf`, head `28e625c2a07fc6ef9ececd1d15546eb697c377ae`, and evaluation date `2026-07-22`. Attempts 1 and 2 produced byte-identical assessment `sha256:f62ec183a37828eaae5f40644fc8e9fda4bc4a222fb84fa6cf007c3a00270936`; their invocation IDs and receipt digests (`sha256:3c661a81fc320af31709907aa0f5e49e9559b7258c66c0340c69fca2347e5f1e` and `sha256:b61590ccb2fafa917a92bbd1c505595112978228f5343409e3fc594a32b61ce4`) differ because CI attempt metadata, timestamps, and invocation identity are intentionally receipt-bound.
+- The consumer shell verifies only paths, digests, receipt variant, and schema version. Coverage, impact, lifecycle, and knowledge conclusions remain owned by the single `adoc assess-changes` invocation in the Action.
 
 #### Deferred
 
