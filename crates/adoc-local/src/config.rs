@@ -77,9 +77,9 @@ impl ProjectConfig {
                 path: path.to_path_buf(),
                 source: Box::new(source),
             },
-            ProjectConfigDocumentError::Invalid(message) => LocalError::ConfigInvalid {
+            error => LocalError::ConfigInvalid {
                 path: path.to_path_buf(),
-                message,
+                message: error.to_string(),
             },
         })?;
         let config_dir = path.parent().unwrap_or_else(|| Path::new("."));
