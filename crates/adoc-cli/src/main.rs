@@ -61,7 +61,9 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
             }
             match cli.command {
                 Commands::Init => init(),
-                Commands::Check { path, style } => check(path, style.into(), resolved),
+                Commands::Check { path, style, as_of } => {
+                    check(path, style.into(), as_of, resolved)
+                }
                 Commands::Migrate {
                     path,
                     write,
@@ -80,7 +82,8 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     path,
                     out,
                     no_embeddings,
-                } => build(path, out, no_embeddings),
+                    as_of,
+                } => build(path, out, no_embeddings, as_of),
                 Commands::Why {
                     object_id,
                     artifact,
@@ -125,11 +128,13 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     check,
                     apply,
                     artifact,
+                    as_of,
                 } => patch(
                     PatchCommandInput {
                         check,
                         apply,
                         artifact,
+                        as_of,
                     },
                     resolved,
                 ),

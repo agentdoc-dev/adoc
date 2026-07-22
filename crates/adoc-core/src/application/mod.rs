@@ -15,8 +15,8 @@ pub(crate) mod review_envelope;
 pub(crate) mod search_artifact;
 pub(crate) mod signals;
 
-/// The local calendar date used as `today` by clock-dependent derivations
+/// The UTC calendar date used as `today` by clock-dependent derivations
 /// (compile-time lifecycle validation and the V6.1 read-time signal queries).
 pub(crate) fn local_today() -> chrono::NaiveDate {
-    chrono::Local::now().date_naive()
+    chrono::Utc::now().date_naive()
 }

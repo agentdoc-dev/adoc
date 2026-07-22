@@ -179,6 +179,11 @@ fn parse_within_days(value: &str) -> Result<u32, String> {
     days.parse::<u32>().map_err(|_| error())
 }
 
+fn parse_evaluation_date(value: &str) -> Result<chrono::NaiveDate, String> {
+    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
+        .map_err(|_| format!("expected a date like `2026-07-22`, got `{value}`"))
+}
+
 /// The output format requested on the command line (`--format`).
 #[derive(Clone, Copy, Default, ValueEnum)]
 pub(crate) enum CliFormat {
@@ -330,6 +335,9 @@ pub(crate) enum Commands {
         /// Markdown layout for `--format markdown`; ignored by other formats.
         #[arg(long, value_enum, default_value = "compact")]
         style: CliCheckStyle,
+        /// Pin lifecycle evaluation to this UTC calendar date.
+        #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_evaluation_date)]
+        as_of: Option<chrono::NaiveDate>,
     },
     #[command(
         about = "Convert Markdown sources to prose-mode .adoc, or back with --export (dry-run by default).",
@@ -363,6 +371,9 @@ pub(crate) enum Commands {
         /// Skip embedding generation and search artifact writes.
         #[arg(long)]
         no_embeddings: bool,
+        /// Pin lifecycle evaluation to this UTC calendar date.
+        #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_evaluation_date)]
+        as_of: Option<chrono::NaiveDate>,
     },
     #[command(
         about = "Explain one Knowledge Object from a compiled artifact.",
@@ -471,6 +482,9 @@ pub(crate) enum Commands {
             help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"
         )]
         artifact: Option<PathBuf>,
+        /// Pin lifecycle evaluation to this UTC calendar date.
+        #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_evaluation_date)]
+        as_of: Option<chrono::NaiveDate>,
     },
     #[command(
         about = "Diff Knowledge Objects between a git ref and the working tree.",

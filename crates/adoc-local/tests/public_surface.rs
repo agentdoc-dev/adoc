@@ -29,11 +29,15 @@ fn local_public_surface_is_method_oriented() {
 
     let _: Ctx = LocalContext::new(PathBuf::from("."), UnrestrictedPathPolicy);
 
-    let _: CheckInput = CheckInput { path: None };
+    let _: CheckInput = CheckInput {
+        path: None,
+        as_of: None,
+    };
     let _: BuildInput = BuildInput {
         path: None,
         out: None,
         no_embeddings: true,
+        as_of: None,
     };
     let _: WhyInput = WhyInput {
         object_id: "billing.ready".to_string(),
@@ -64,6 +68,7 @@ fn local_public_surface_is_method_oriented() {
     let _: PatchCheckInput = PatchCheckInput {
         patch_path: PathBuf::from("patch.json"),
         artifact: None,
+        as_of: None,
     };
     let _: ProjectStatusInput = ProjectStatusInput {
         refresh: ProjectStatusRefresh::None,

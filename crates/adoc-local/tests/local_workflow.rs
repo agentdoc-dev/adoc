@@ -37,6 +37,7 @@ fn build_with_config(root: &Path) {
             path: None,
             out: None,
             no_embeddings: true,
+            as_of: None,
         })
         .expect("build should run");
 }
@@ -111,7 +112,10 @@ fn check_uses_configured_docs_path_and_returns_diagnostics_without_printing() {
     );
 
     let outcome = context(root)
-        .check(CheckInput { path: None })
+        .check(CheckInput {
+            path: None,
+            as_of: None,
+        })
         .expect("check should run");
 
     assert_eq!(outcome.exit_code, 0);
@@ -141,7 +145,10 @@ fn check_verifies_evidence_anchors_against_the_config_root() {
     );
 
     let outcome = context(root)
-        .check(CheckInput { path: None })
+        .check(CheckInput {
+            path: None,
+            as_of: None,
+        })
         .expect("check should run");
 
     assert_eq!(outcome.exit_code, 0, "anchor warnings never fail check");
@@ -178,6 +185,7 @@ fn check_with_explicit_path_resolves_anchors_from_the_discovered_config_root() {
     let outcome = context(&root.join("nested"))
         .check(CheckInput {
             path: Some(root.join("docs")),
+            as_of: None,
         })
         .expect("check should run");
 
@@ -207,6 +215,7 @@ fn check_with_explicit_path_falls_back_to_the_context_start_without_config() {
     let outcome = context(root)
         .check(CheckInput {
             path: Some(root.join("docs")),
+            as_of: None,
         })
         .expect("check should run");
 
@@ -230,6 +239,7 @@ fn check_with_explicit_path_fails_loudly_on_a_malformed_config() {
     let error = context(root)
         .check(CheckInput {
             path: Some(root.join("docs")),
+            as_of: None,
         })
         .expect_err("a broken config must never be silently ignored");
 
@@ -247,6 +257,7 @@ fn build_writes_artifacts_and_reports_written_paths() {
             path: Some(root.join("docs")),
             out: Some(root.join("dist")),
             no_embeddings: true,
+            as_of: None,
         })
         .expect("build should run");
 
@@ -294,6 +305,7 @@ fn lexical_search_returns_retrieval_records_and_exit_code() {
             path: Some(root.join("docs")),
             out: Some(root.join("dist")),
             no_embeddings: true,
+            as_of: None,
         })
         .expect("build should run");
 
@@ -352,6 +364,7 @@ fn build_uses_configured_exact_paths_and_preserves_prior_search_when_skipped() {
             path: None,
             out: None,
             no_embeddings: false,
+            as_of: None,
         })
         .expect("build should run");
 
@@ -387,6 +400,7 @@ fn build_uses_deterministic_embedding_provider_from_config() {
             path: None,
             out: None,
             no_embeddings: false,
+            as_of: None,
         })
         .expect("build should run");
 
@@ -415,6 +429,7 @@ fn semantic_search_uses_deterministic_provider_from_config() {
             path: None,
             out: None,
             no_embeddings: false,
+            as_of: None,
         })
         .expect("build should run");
 
@@ -513,6 +528,7 @@ fn retrieval_graph_search_and_patch_exit_codes_are_mapped_locally() {
         .patch_check(PatchCheckInput {
             patch_path: root.join("patch.json"),
             artifact: None,
+            as_of: None,
         })
         .expect("patch check should run");
     assert_eq!(patch.exit_code, 4);
