@@ -1680,8 +1680,8 @@ fn compact_json<T: Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
 #[cfg(test)]
 mod tests {
     use super::{
-        compact_json, graph_schema_version, is_authoritative_subject, object_set_json,
-        path_matches_exclusion, reviewers_of,
+        compact_json, graph_schema_version, is_authoritative_subject, lifecycle_signals,
+        object_set_json, path_matches_exclusion, reviewers_of,
     };
     use crate::domain::review::object_diff::test_support::test_node;
     use serde::ser::Error as _;
@@ -1721,6 +1721,21 @@ mod tests {
         );
         assert_eq!(graph_schema_version("{}"), None);
         assert_eq!(graph_schema_version("not json"), None);
+    }
+
+    #[test]
+    fn lifecycle_signals_include_only_derived_notable_statuses() {
+        let mut healthy = test_node("healthy.claim", "sha256:healthy");
+        healthy.status = Some("verified".to_string());
+        let mut stale = test_node("stale.claim", "sha256:stale");
+        stale.status = Some("verified".to_string());
+        stale.effective_status = Some("stale".to_string());
+
+        let signals = lifecycle_signals(&[healthy, stale]);
+
+        assert_eq!(signals.len(), 1);
+        assert_eq!(signals[0].object_id, "stale.claim");
+        assert_eq!(signals[0].signal, "stale");
     }
 
     #[test]

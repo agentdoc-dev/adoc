@@ -104,6 +104,8 @@ Knowledge creates and changes carry head hashes; changes also carry base hashes.
 
 Source diagnostics are attributed to the complete changed set as `yes`, `no`, or `unknown`. The validation summary reports full, changed, unchanged, and unattributed error counts. Unknown attribution is fail-closed for a diff-scoped consumer.
 
+Lifecycle signals contain exceptional derived `effective_status` values such as `stale` or `contradicted`. Healthy authored statuses such as `verified`, `accepted`, or `active` are not lifecycle signals and do not prevent an otherwise empty complete assessment from returning `pass`.
+
 `required_reviewers` contains only identities authored on Knowledge Objects. An assessment-policy change emits a `human_review` proof obligation for `agentdoc.config.yaml`; repository CODEOWNERS and branch protection resolve the responsible human without introducing a synthetic AgentDoc identity.
 
 ### Completeness, outcome, and exit status
