@@ -1,6 +1,7 @@
 // see ADR-0009
 pub(crate) mod apply;
 pub(crate) mod artifact_inspection;
+pub(crate) mod change_assessment;
 pub(crate) mod compile;
 pub(crate) mod evidence_anchor;
 pub(crate) mod graph;

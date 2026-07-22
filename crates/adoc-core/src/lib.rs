@@ -10,6 +10,15 @@ pub use application::artifact_inspection::{
     ArtifactInspection, ArtifactLoadStatus, GraphArtifactInspectionInput,
     SearchArtifactInspectionInput,
 };
+pub use application::change_assessment::{
+    AssessedPath, AssessmentCompleteness, AssessmentConfig, AssessmentDiagnostic, AssessmentMatch,
+    AssessmentObject, AssessmentObjectReason, AssessmentObligation, AssessmentOutcome,
+    AssessmentPolicy, AssessmentReviewer, AssessmentSignal, AssessmentSnapshot,
+    AssessmentSnapshots, AssessmentSource, AssessmentSummary, AssessmentValidation, Availability,
+    CHANGE_ASSESSMENT_SCHEMA_VERSION, ChangeAssessmentEnvelope, ChangeAssessmentInput,
+    KnowledgeChange, KnowledgeChanges, KnowledgeSnapshot, PathClassification, PolicyChanges,
+    SnapshotConfig,
+};
 pub use application::compile::{
     BuildArtifacts, BuildEmbeddingMode, BuildInput, CompileInput, CompileResult,
     LocalProjectContext,
@@ -468,6 +477,57 @@ pub fn load_review_with_changed_files_from_git(
             base: resolved.base,
             head: resolved.head,
             ..input
+        },
+        &snapshot,
+        &changed_files,
+    )
+}
+
+/// Produce the canonical V9.2.1 assessment for one Git comparison.
+pub fn assess_changes_from_git(input: ChangeAssessmentInput) -> ChangeAssessmentEnvelope {
+    let requested_base = SnapshotSelector::GitRef(GitRef::new(input.base_ref.clone()));
+    let requested_head = input
+        .head_ref
+        .as_ref()
+        .map(|head| SnapshotSelector::GitRef(GitRef::new(head.clone())))
+        .unwrap_or(SnapshotSelector::Workdir);
+    let resolved = match infrastructure::git::revision::resolve_review(
+        &input.project_root,
+        &requested_base,
+        &requested_head,
+    ) {
+        Ok(resolved) => resolved,
+        Err(error) => {
+            return application::change_assessment::unresolved_envelope(&input, error.to_string());
+        }
+    };
+    let comparison_base_commit = match &resolved.base {
+        SnapshotSelector::GitRef(value) => value.as_str().to_string(),
+        SnapshotSelector::Workdir => unreachable!("resolved comparison base is immutable"),
+    };
+    let worktree_dirty = if input.head_ref.is_none() {
+        infrastructure::git::revision::worktree_is_dirty(&input.project_root).ok()
+    } else {
+        None
+    };
+    let snapshot =
+        infrastructure::git::worktree::GitWorktreeProvider::new(input.project_root.clone())
+            .with_expected_workdir_head(resolved.head_sha.clone());
+    let changed_files = infrastructure::git::changed_files::GitChangedFilesProvider::new(
+        input.project_root.clone(),
+    )
+    .with_expected_workdir_head(resolved.head_sha.clone());
+    application::change_assessment::assess_with_providers(
+        application::change_assessment::ResolvedAssessmentInput {
+            requested_base_ref: input.base_ref,
+            requested_base_commit: resolved.requested_base_sha,
+            comparison_base_commit,
+            head_ref: input.head_ref,
+            head_commit: resolved.head_sha,
+            base: resolved.base,
+            head: resolved.head,
+            worktree_dirty,
+            evaluation_date: input.evaluation_date,
         },
         &snapshot,
         &changed_files,

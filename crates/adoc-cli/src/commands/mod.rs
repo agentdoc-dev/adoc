@@ -1,3 +1,4 @@
+mod assess_changes;
 mod build;
 mod check;
 mod contradictions;
@@ -22,6 +23,7 @@ use crate::presentation::{
     ExpiresInfo, PresentationRecord, ResolvedFormat, json as json_presentation,
 };
 
+pub(crate) use assess_changes::{AssessChangesCommandInput, assess_changes};
 pub(crate) use build::build;
 pub(crate) use check::check;
 pub(crate) use contradictions::{ContradictionsCommandInput, contradictions};

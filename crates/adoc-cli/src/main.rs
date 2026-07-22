@@ -9,10 +9,10 @@ use clap::{Parser, error::ErrorKind};
 
 use crate::cli::{Cli, Commands};
 use crate::commands::{
-    ContradictionsCommandInput, DiffCommandInput, GraphCommandInput, ImpactedByCommandInput,
-    MigrateCommandInput, PatchCommandInput, ReviewCommandInput, SearchCommandInput,
-    StaleCommandInput, build, check, contradictions, diff, graph, impacted_by, init, migrate,
-    patch, review, search_command, stale, why,
+    AssessChangesCommandInput, ContradictionsCommandInput, DiffCommandInput, GraphCommandInput,
+    ImpactedByCommandInput, MigrateCommandInput, PatchCommandInput, ReviewCommandInput,
+    SearchCommandInput, StaleCommandInput, assess_changes, build, check, contradictions, diff,
+    graph, impacted_by, init, migrate, patch, review, search_command, stale, why,
 };
 use crate::presentation::{ResolvedFormat, terminal};
 
@@ -38,6 +38,10 @@ fn init_tracing() {
 }
 
 fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
+    let arguments = arguments.into_iter().collect::<Vec<_>>();
+    let assessment_requested = arguments
+        .iter()
+        .any(|argument| argument == "assess-changes");
     match Cli::try_parse_from(arguments) {
         Ok(cli) => {
             let resolved = terminal::detect(cli.format.into(), cli.color.into());
@@ -52,6 +56,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                         | Commands::Diff { .. }
                         | Commands::Review { .. }
                         | Commands::ImpactedBy { .. }
+                        | Commands::AssessChanges { .. }
                 )
             {
                 eprintln!(
@@ -124,6 +129,14 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     },
                     resolved,
                 ),
+                Commands::AssessChanges { base, head, as_of } => assess_changes(
+                    AssessChangesCommandInput {
+                        base_ref: base,
+                        head_ref: head,
+                        as_of,
+                    },
+                    resolved,
+                ),
                 Commands::Patch {
                     check,
                     apply,
@@ -180,13 +193,14 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                 ),
             }
         }
-        Err(error) => report_parse_error(error),
+        Err(error) => report_parse_error(error, assessment_requested),
     }
 }
 
-fn report_parse_error(error: clap::Error) -> i32 {
+fn report_parse_error(error: clap::Error, assessment_requested: bool) -> i32 {
     let exit_code = match error.kind() {
         ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => 0,
+        _ if assessment_requested => 2,
         _ => 1,
     };
 

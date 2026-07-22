@@ -167,6 +167,17 @@ Examples:
   adoc impacted-by --ref main
   adoc impacted-by --ref main --format markdown
 ";
+const ASSESS_CHANGES_LONG_HELP: &str = "\
+Produces the deterministic adoc.change_assessment.v0 envelope for one Git
+comparison. The comparison-base configuration is effective; head policy is
+reported as prospective. Complete outcomes are advisory and exit 0. Partial,
+invalid, or not-evaluated assessments exit 2.
+
+Examples:
+  adoc assess-changes --base main
+  adoc assess-changes --base main --head HEAD --as-of 2026-07-22 --format json
+  adoc assess-changes --base main --format markdown
+";
 
 /// Parse the `--within <N>d` horizon grammar (same `[0-9]+d` shape as the
 /// `review_interval:` field) into a day count.
@@ -459,6 +470,22 @@ pub(crate) enum Commands {
             help = "Graph JSON artifact path (default: config outputs.graph, then dist/docs.graph.json)"
         )]
         artifact: Option<PathBuf>,
+    },
+    #[command(
+        name = "assess-changes",
+        about = "Assess one Git change set against AgentDoc knowledge.",
+        after_long_help = ASSESS_CHANGES_LONG_HELP
+    )]
+    AssessChanges {
+        /// Requested base ref; the unique merge base with head is assessed.
+        #[arg(long, value_name = "GIT_REF")]
+        base: String,
+        /// Immutable head ref. Omit to assess the current worktree.
+        #[arg(long, value_name = "GIT_REF")]
+        head: Option<String>,
+        /// Pin lifecycle evaluation to this UTC calendar date.
+        #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_evaluation_date)]
+        as_of: Option<chrono::NaiveDate>,
     },
     #[command(
         about = "Validate one AgentDoc patch document against graph artifacts, or apply it to source.",
