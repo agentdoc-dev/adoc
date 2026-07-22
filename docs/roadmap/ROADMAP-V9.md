@@ -261,7 +261,7 @@ Parallelism describes merge conflicts and dependencies, not required staffing.
 | V9.1.3 | Planned | Failed analysis cannot appear covered | `action` | — | — |
 | V9.1.4 | Planned | Proposal execution has a defensible trust boundary | `action` | — | — |
 | V9.2.1 | Implemented | One deterministic local change-assessment command | `adoc` | V9.1.1–V9.1.2 | ADR-0050; core/local/CLI/MCP schema and failure-envelope tests |
-| V9.2.2 | Implemented | Exact-SHA GitHub assessment and retained receipt | `adoc`, `action` | V9.2.1 | ADR-0051; AgentDoc #125/#126 and v0.3.1; Action #9/#10 and v1.5.1; retained run 29922744068 |
+| V9.2.2 | Implemented | Exact-SHA GitHub assessment and retained receipt | `adoc`, `action` | V9.2.1 | ADR-0051; AgentDoc #125/#126 and v0.3.1; Action #9/#10 and v1.5.1; retained run 29922744068; repeatability run 29922202760 |
 | V9.2.3 | Planned | Clear advisory PR disposition without false review claims | `action` | V9.2.2 | — |
 | V9.3.1 | Planned | Optional cited semantic classification | `action` | V9.2.3 | — |
 | V9.3.2 | Planned | Canonical AgentDoc patch proposals | `adoc`, `action` | V9.3.1 | — |
