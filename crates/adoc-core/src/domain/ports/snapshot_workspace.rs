@@ -133,6 +133,8 @@ pub enum SnapshotError {
     /// The supplied selector references a snapshot the provider could not
     /// resolve (e.g. `git rev-parse` failed on the ref spec).
     UnresolvableRef { spec: String, reason: String },
+    /// The requested base and head do not have exactly one comparison base.
+    ComparisonBaseUnavailable { reason: String },
     /// The provider could not materialize the workspace at `tmp` (e.g.
     /// `git worktree add`/`remove` failed). `source` is present when the
     /// failure was an `io::Error` the adapter could pass through.
@@ -153,6 +155,9 @@ impl fmt::Display for SnapshotError {
             }
             Self::UnresolvableRef { spec, reason } => {
                 write!(f, "could not resolve snapshot ref `{spec}`: {reason}")
+            }
+            Self::ComparisonBaseUnavailable { reason } => {
+                write!(f, "comparison base unavailable: {reason}")
             }
             Self::WorktreeUnavailable { tmp, reason, .. } => write!(
                 f,
