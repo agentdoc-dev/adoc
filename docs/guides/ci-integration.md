@@ -30,25 +30,30 @@ jobs:
         if: always()
         shell: bash
         env:
+          INVOCATION_ID: ${{ steps.agentdoc.outputs.assessment-invocation-id }}
           ASSESSMENT_PATH: ${{ steps.agentdoc.outputs.assessment-path }}
           ASSESSMENT_SHA256: ${{ steps.agentdoc.outputs.assessment-sha256 }}
           RECEIPT_PATH: ${{ steps.agentdoc.outputs.assessment-receipt-path }}
           RECEIPT_SHA256: ${{ steps.agentdoc.outputs.assessment-receipt-sha256 }}
         run: |
           set -euo pipefail
-          test -n "$RECEIPT_PATH" && test -f "$RECEIPT_PATH"
+          test -n "$INVOCATION_ID"
+          test -n "$RECEIPT_PATH"
+          test -f "$RECEIPT_PATH"
           test "sha256:$(sha256sum "$RECEIPT_PATH" | cut -d ' ' -f 1)" = "$RECEIPT_SHA256"
           jq -e '.schema_version == "adoc.pr_assessment_receipt.v0"' "$RECEIPT_PATH" >/dev/null
           if [ "$(jq -r .run_status "$RECEIPT_PATH")" = completed ]; then
-            test -n "$ASSESSMENT_PATH" && test -f "$ASSESSMENT_PATH"
+            test -n "$ASSESSMENT_PATH"
+            test -f "$ASSESSMENT_PATH"
             test "sha256:$(sha256sum "$ASSESSMENT_PATH" | cut -d ' ' -f 1)" = "$ASSESSMENT_SHA256"
             test "$(jq -r .assessment.sha256 "$RECEIPT_PATH")" = "$ASSESSMENT_SHA256"
           else
             jq -e '.run_status == "failed"' "$RECEIPT_PATH" >/dev/null
-            test -z "$ASSESSMENT_PATH" && test -z "$ASSESSMENT_SHA256"
+            test -z "$ASSESSMENT_PATH"
+            test -z "$ASSESSMENT_SHA256"
           fi
       - name: Retain assessment evidence
-        if: always() && steps.agentdoc.outputs.assessment-receipt-path != ''
+        if: always() && steps.agentdoc.outputs.assessment-receipt-path != '' && steps.agentdoc.outputs.assessment-invocation-id != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agentdoc-${{ steps.agentdoc.outputs.assessment-invocation-id }}
@@ -85,14 +90,17 @@ curl -fsSLO https://github.com/agentdoc-dev/adoc/releases/download/v0.3.1/adoc-v
 sha256sum -c adoc-v0.3.1-x86_64-unknown-linux-gnu.tar.gz.sha256
 tar -xzf adoc-v0.3.1-x86_64-unknown-linux-gnu.tar.gz
 
-# run from the directory holding agentdoc.config.yaml
+# BASE_REF and HEAD_REF are CI-provided commit refs; fetch both before resolving.
+requested_base_sha="$(git rev-parse "${BASE_REF:?set BASE_REF}")"
+head_sha="$(git rev-parse "${HEAD_REF:?set HEAD_REF}")"
 evaluation_date="$(date -u +%F)"
 ./adoc assess-changes \
   --base "$requested_base_sha" \
   --head "$head_sha" \
   --as-of "$evaluation_date" \
   --format json > assessment.json
-sha256sum assessment.json
+assessment_sha256="sha256:$(sha256sum assessment.json | cut -d ' ' -f 1)"
+printf '%s\n' "$assessment_sha256"
 ```
 
 The caller must resolve and fetch both exact commits before invoking the

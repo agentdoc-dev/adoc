@@ -38,26 +38,31 @@ jobs:
         if: always()
         shell: bash
         env:
+          INVOCATION_ID: ${{ steps.agentdoc.outputs.assessment-invocation-id }}
           ASSESSMENT_PATH: ${{ steps.agentdoc.outputs.assessment-path }}
           ASSESSMENT_SHA256: ${{ steps.agentdoc.outputs.assessment-sha256 }}
           RECEIPT_PATH: ${{ steps.agentdoc.outputs.assessment-receipt-path }}
           RECEIPT_SHA256: ${{ steps.agentdoc.outputs.assessment-receipt-sha256 }}
         run: |
           set -euo pipefail
-          test -n "$RECEIPT_PATH" && test -f "$RECEIPT_PATH"
+          test -n "$INVOCATION_ID"
+          test -n "$RECEIPT_PATH"
+          test -f "$RECEIPT_PATH"
           test "sha256:$(sha256sum "$RECEIPT_PATH" | cut -d ' ' -f 1)" = "$RECEIPT_SHA256"
           jq -e '.schema_version == "adoc.pr_assessment_receipt.v0"' "$RECEIPT_PATH" >/dev/null
           if [ "$(jq -r .run_status "$RECEIPT_PATH")" = completed ]; then
-            test -n "$ASSESSMENT_PATH" && test -f "$ASSESSMENT_PATH"
+            test -n "$ASSESSMENT_PATH"
+            test -f "$ASSESSMENT_PATH"
             test "sha256:$(sha256sum "$ASSESSMENT_PATH" | cut -d ' ' -f 1)" = "$ASSESSMENT_SHA256"
             test "$(jq -r .assessment.sha256 "$RECEIPT_PATH")" = "$ASSESSMENT_SHA256"
           else
             jq -e '.run_status == "failed"' "$RECEIPT_PATH" >/dev/null
-            test -z "$ASSESSMENT_PATH" && test -z "$ASSESSMENT_SHA256"
+            test -z "$ASSESSMENT_PATH"
+            test -z "$ASSESSMENT_SHA256"
           fi
 
       - name: Retain assessment evidence
-        if: always() && steps.agentdoc.outputs.assessment-receipt-path != ''
+        if: always() && steps.agentdoc.outputs.assessment-receipt-path != '' && steps.agentdoc.outputs.assessment-invocation-id != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agentdoc-${{ steps.agentdoc.outputs.assessment-invocation-id }}
