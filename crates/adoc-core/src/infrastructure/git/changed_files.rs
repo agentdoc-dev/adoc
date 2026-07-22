@@ -93,6 +93,7 @@ impl GitChangedFilesProvider {
                 "HEAD",
             ],
             vec!["diff", "--relative", "--name-only", "-z", "--no-renames"],
+            // `ls-files` already scopes and renders paths relative to its `-C` directory.
             vec!["ls-files", "-z", "--others", "--exclude-standard"],
         ] {
             paths.extend(self.paths_from(&args)?);

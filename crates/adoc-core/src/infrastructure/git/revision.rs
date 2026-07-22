@@ -52,12 +52,12 @@ pub(crate) fn resolve_review(
     })
 }
 
-pub(crate) fn worktree_is_dirty(repo_root: &Path) -> Result<bool, SnapshotError> {
+pub(crate) fn worktree_is_dirty(project_root: &Path) -> Result<bool, SnapshotError> {
     let mut command = Command::new("git");
     command
         .arg("-C")
-        .arg(repo_root)
-        .args(["status", "--porcelain=v1", "-z"]);
+        .arg(project_root)
+        .args(["status", "--porcelain=v1", "-z", "--", "."]);
     clear_git_env(&mut command);
     let output = command.output().map_err(SnapshotError::Io)?;
     if !output.status.success() {

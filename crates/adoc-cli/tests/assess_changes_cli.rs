@@ -51,7 +51,7 @@ fn repo() -> TestWorkspace {
 }
 
 #[test]
-fn exact_ref_assessment_supports_a_project_below_the_repository_root() {
+fn assessment_supports_a_project_below_the_repository_root() {
     let workspace = TestWorkspace::new("assess-changes-nested-project");
     git(&workspace, &["init", "--initial-branch=main"]);
     git(&workspace, &["config", "user.email", "test@agentdoc.dev"]);
@@ -87,7 +87,7 @@ fn exact_ref_assessment_supports_a_project_below_the_repository_root() {
     let head = git(&workspace, &["rev-parse", "HEAD"]);
 
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
-        .current_dir(workspace.root.join("service"))
+        .current_dir(workspace.root.join("service/src"))
         .args([
             "assess-changes",
             "--base",
@@ -115,6 +115,50 @@ fn exact_ref_assessment_supports_a_project_below_the_repository_root() {
     assert_eq!(paths.len(), 1);
     assert_eq!(paths[0]["path"], "src/billing.rs");
     assert_eq!(paths[0]["classification"], "covered");
+
+    workspace.write("outside.txt", "uncommitted outside project\n");
+    let assess_workdir = || {
+        Command::new(env!("CARGO_BIN_EXE_adoc"))
+            .current_dir(workspace.root.join("service/src"))
+            .args([
+                "assess-changes",
+                "--base",
+                &head,
+                "--as-of",
+                "2026-07-22",
+                "--format",
+                "json",
+            ])
+            .output()
+            .expect("adoc assess-changes runs")
+    };
+
+    let output = assess_workdir();
+    assert!(
+        output.status.success(),
+        "assessment failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assessment JSON");
+    assert_eq!(value["completeness"], "complete");
+    assert_eq!(value["outcome"], "pass");
+    assert_eq!(value["snapshots"]["head"]["worktree_state"], "clean");
+    assert_eq!(value["paths"]["value"], serde_json::json!([]));
+
+    workspace.write("service/src/new.rs", "pub fn new_behavior() {}\n");
+    let output = assess_workdir();
+    assert!(
+        output.status.success(),
+        "assessment failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("assessment JSON");
+    assert_eq!(value["completeness"], "complete");
+    assert_eq!(value["outcome"], "uncovered");
+    assert_eq!(value["snapshots"]["head"]["worktree_state"], "dirty");
+    assert_eq!(value["paths"]["value"][0]["path"], "src/new.rs");
 }
 
 #[test]

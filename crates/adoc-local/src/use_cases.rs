@@ -34,13 +34,13 @@ use adoc_core::{
 use adoc_core::{MigrateMode, MigrateReportEnvelope};
 use serde::Serialize;
 
+use crate::config::CONFIG_FILE_NAME;
 use crate::{EmbeddingsProvider, LocalContext, LocalError, PathPolicy, ProjectConfig};
 
 const DEFAULT_GRAPH_ARTIFACT_PATH: &str = "dist/docs.graph.json";
 const DEFAULT_SEARCH_ARTIFACT_PATH: &str = "dist/docs.search.json";
 const DEFAULT_HTML_ARTIFACT_PATH: &str = "dist/docs.html";
 const PROJECT_STATUS_SCHEMA_VERSION: &str = "adoc.project.status.v0";
-const INIT_CONFIG_PATH: &str = "agentdoc.config.yaml";
 const INIT_INDEX_PATH: &str = "docs/index.adoc";
 const INIT_CONFIG_TEMPLATE: &str = "\
 version: 1
@@ -509,7 +509,7 @@ where
     write_init_files(&project_root)?;
     Ok(InitOutcome {
         created: vec![
-            project_root.join(INIT_CONFIG_PATH),
+            project_root.join(CONFIG_FILE_NAME),
             project_root.join(INIT_INDEX_PATH),
         ],
         exit_code: 0,
@@ -1425,7 +1425,7 @@ fn project_status_embedding_provider(
 }
 
 fn write_init_files(project_root: &Path) -> Result<(), LocalError> {
-    let config_path = project_root.join(INIT_CONFIG_PATH);
+    let config_path = project_root.join(CONFIG_FILE_NAME);
     let index_path = project_root.join(INIT_INDEX_PATH);
 
     for target in [&config_path, &index_path] {
@@ -1818,7 +1818,7 @@ fn assessment_project_root(start: &Path) -> Option<PathBuf> {
     let repository_root = git_project_root(start)?;
     let mut current = start.canonicalize().ok()?;
     loop {
-        if current.join("agentdoc.config.yaml").is_file() {
+        if current.join(CONFIG_FILE_NAME).is_file() {
             return Some(current);
         }
         if current == repository_root || !current.pop() {
