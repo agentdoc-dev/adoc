@@ -49,6 +49,9 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked -p adoc-cli
 
+      - name: Verify release tag matches the binary
+        run: test "$GITHUB_REF_NAME" = "v$(./target/release/adoc --version | awk '{print $2}')"
+
       - name: Smoke-check binary against example project
         run: ./target/release/adoc check examples/expanded-pilot
 
