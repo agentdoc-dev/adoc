@@ -55,6 +55,7 @@ impl SnapshotWorkspaceProvider for GitWorktreeProvider {
 impl GitWorktreeProvider {
     fn checkout_ref(&self, spec: &str) -> Result<SnapshotWorkspace, SnapshotError> {
         let sha = resolve_ref(&self.repo_root, spec)?;
+        let project_prefix = project_prefix(&self.repo_root)?;
 
         let tmp = generate_worktree_path();
         add_worktree(&self.repo_root, &tmp, &sha)?;
@@ -69,8 +70,25 @@ impl GitWorktreeProvider {
             let _ = fs::remove_dir_all(&tmp_for_cleanup);
         });
 
-        Ok(SnapshotWorkspace::with_cleanup(tmp, cleanup))
+        Ok(SnapshotWorkspace::with_cleanup(
+            tmp.join(project_prefix),
+            cleanup,
+        ))
     }
+}
+
+fn project_prefix(project_root: &Path) -> Result<PathBuf, SnapshotError> {
+    let output = run_git(project_root, &["rev-parse", "--show-prefix"])?;
+    if !output.status.success() {
+        return Err(SnapshotError::ProviderUnavailable {
+            reason: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+    let value =
+        std::str::from_utf8(&output.stdout).map_err(|_| SnapshotError::ProviderUnavailable {
+            reason: "git returned a non-UTF-8 project prefix".to_string(),
+        })?;
+    Ok(PathBuf::from(value.trim_end_matches(['\r', '\n'])))
 }
 
 fn verify_head(repo_root: &Path, expected: &str) -> Result<(), SnapshotError> {

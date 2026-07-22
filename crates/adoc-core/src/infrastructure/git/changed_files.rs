@@ -60,7 +60,14 @@ impl ChangedFilesProvider for GitChangedFilesProvider {
 impl GitChangedFilesProvider {
     fn committed_changes(&self, base: &str, head: &str) -> Result<Vec<RelPath>, ChangedFilesError> {
         let range = format!("{base}..{head}");
-        self.paths_from(&["diff", "--name-only", "-z", "--no-renames", &range])
+        self.paths_from(&[
+            "diff",
+            "--relative",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            &range,
+        ])
     }
 
     fn workdir_changes(&self, base: &str) -> Result<Vec<RelPath>, ChangedFilesError> {
@@ -68,16 +75,24 @@ impl GitChangedFilesProvider {
         let range = format!("{base}..{head}");
         let mut paths = BTreeSet::new();
         for args in [
-            vec!["diff", "--name-only", "-z", "--no-renames", &range],
             vec![
                 "diff",
+                "--relative",
+                "--name-only",
+                "-z",
+                "--no-renames",
+                &range,
+            ],
+            vec![
+                "diff",
+                "--relative",
                 "--cached",
                 "--name-only",
                 "-z",
                 "--no-renames",
                 "HEAD",
             ],
-            vec!["diff", "--name-only", "-z", "--no-renames"],
+            vec!["diff", "--relative", "--name-only", "-z", "--no-renames"],
             vec!["ls-files", "-z", "--others", "--exclude-standard"],
         ] {
             paths.extend(self.paths_from(&args)?);
