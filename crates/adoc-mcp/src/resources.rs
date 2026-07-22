@@ -135,6 +135,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/review-workflow.md"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/change-assessment-workflow",
+        name: "agent-change-assessment-workflow",
+        title: "Local Change Assessment Workflow",
+        description: "V9.2.1 report-only local Git change assessment workflow.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/change-assessment-workflow.md"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/compat-guide",
         name: "agent-compat-guide",
         title: "Markdown Compatibility Guide",
@@ -221,6 +229,14 @@ const RESOURCES: &[AgentResource] = &[
         description: "Markdown reference for adoc.impacted.v0.",
         mime_type: MARKDOWN,
         contents: include_str!("../../../docs/agent/v0/schema/impacted.md"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/change-assessment",
+        name: "schema-change-assessment",
+        title: "Change Assessment Schema Reference",
+        description: "Markdown reference for adoc.change_assessment.v0.",
+        mime_type: MARKDOWN,
+        contents: include_str!("../../../docs/agent/v0/schema/change-assessment.md"),
     },
     AgentResource {
         uri: "adoc://agent/v0/schema/migrate-report",
@@ -325,6 +341,16 @@ const RESOURCES: &[AgentResource] = &[
         description: "JSON Schema for adoc.impacted.v0.",
         mime_type: JSON_SCHEMA,
         contents: include_str!("../../../docs/agent/v0/schema/adoc.impacted.v0.schema.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.change_assessment.v0.schema.json",
+        name: "schema-adoc-change-assessment-v0-json",
+        title: "Local Change Assessment JSON Schema",
+        description: "JSON Schema for adoc.change_assessment.v0.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.change_assessment.v0.schema.json"
+        ),
     },
     AgentResource {
         uri: "adoc://agent/v0/schema/adoc.patch.apply.v0.schema.json",
