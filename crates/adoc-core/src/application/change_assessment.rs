@@ -716,9 +716,7 @@ fn complete_envelope(input: CompleteInput<'_>) -> ChangeAssessmentEnvelope {
         AssessmentOutcome::Pass
     };
     let graph_json = &input.head_compile.artifacts.graph_json;
-    let graph_schema_version = serde_json::from_str::<serde_json::Value>(graph_json)
-        .ok()
-        .and_then(|value| value["schema_version"].as_str().map(str::to_string));
+    let graph_schema_version = graph_schema_version(graph_json);
     let object_set_json = match object_set_json(&head_objects) {
         Ok(json) => json,
         Err(error) => {
@@ -782,6 +780,12 @@ fn graph_objects(result: &SuccessfulCompile) -> Vec<GraphKnowledgeObjectNode> {
             _ => None,
         })
         .collect()
+}
+
+fn graph_schema_version(graph_json: &str) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(graph_json)
+        .ok()
+        .and_then(|value| value["schema_version"].as_str().map(str::to_string))
 }
 
 fn object_set_json(objects: &[GraphKnowledgeObjectNode]) -> Result<Vec<u8>, serde_json::Error> {
@@ -1334,7 +1338,7 @@ fn partial_envelope(
     envelope.summary.changed_paths = changed.len();
     envelope.knowledge_snapshot = KnowledgeSnapshot {
         status: "available".to_string(),
-        graph_schema_version: Some("adoc.graph.v5".to_string()),
+        graph_schema_version: graph_schema_version(graph_json),
         graph_sha256: Some(sha256_prefixed(graph_json.as_bytes())),
         object_set_sha256: Some(sha256_prefixed(&object_set_json)),
         docs_path: Some(path_string(&head_config.parsed.docs_path)),
@@ -1676,8 +1680,8 @@ fn compact_json<T: Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
 #[cfg(test)]
 mod tests {
     use super::{
-        compact_json, is_authoritative_subject, object_set_json, path_matches_exclusion,
-        reviewers_of,
+        compact_json, graph_schema_version, is_authoritative_subject, object_set_json,
+        path_matches_exclusion, reviewers_of,
     };
     use crate::domain::review::object_diff::test_support::test_node;
     use serde::ser::Error as _;
@@ -1707,6 +1711,16 @@ mod tests {
     #[test]
     fn compact_json_propagates_serialization_failure() {
         assert!(compact_json(&SerializationFailure).is_err());
+    }
+
+    #[test]
+    fn graph_schema_version_comes_from_the_graph_bytes() {
+        assert_eq!(
+            graph_schema_version(r#"{"schema_version":"adoc.graph.v-next"}"#).as_deref(),
+            Some("adoc.graph.v-next")
+        );
+        assert_eq!(graph_schema_version("{}"), None);
+        assert_eq!(graph_schema_version("not json"), None);
     }
 
     #[test]
