@@ -88,7 +88,7 @@ null resolved commit; local `uses: ./` execution is `local`.
 AgentDoc provenance records the requested release identifier, the version
 reported by the verified binary, and the binary SHA-256. The release workflow
 requires the immutable Git tag to equal that binary version. V9.2.2 requires
-AgentDoc `v0.3.0`; older binaries and unknown future assessment schemas fail
+AgentDoc `v0.3.1`; older binaries and unknown future assessment schemas fail
 honestly.
 
 ### Gate semantics
