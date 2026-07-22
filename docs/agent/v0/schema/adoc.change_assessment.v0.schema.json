@@ -271,7 +271,7 @@
       "additionalProperties": false,
       "required": ["owner", "object_ids"],
       "properties": {
-        "owner": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1, "description": "Reviewer identity authored on a Knowledge Object." },
         "object_ids": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
       }
     },

@@ -108,6 +108,21 @@ fn same_pr_exclusion_is_prospective_and_cannot_hide_code() {
         .expect("source path is assessed");
     assert_eq!(source["classification"], "uncovered");
     assert_eq!(value["policy_changes"]["changed"], true);
+    assert!(
+        value["required_reviewers"]
+            .as_array()
+            .expect("reviewers")
+            .iter()
+            .all(|reviewer| reviewer["owner"] != "agentdoc-config-owner")
+    );
+    let obligation = value["proof_obligations"]
+        .as_array()
+        .expect("obligations")
+        .iter()
+        .find(|obligation| obligation["object_id"] == "agentdoc.config.yaml")
+        .expect("policy review obligation");
+    assert_eq!(obligation["kind"], "assessment_policy");
+    assert_eq!(obligation["required_evidence"][0], "human_review");
 }
 
 #[test]
