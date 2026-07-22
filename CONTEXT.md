@@ -24,6 +24,20 @@ _Avoid_: RAG dump, text chunks
 The initial `adoc` command-line product surface for checking, compiling, and querying AgentDoc inside a Git repository.
 _Avoid_: initial web app, SaaS-first product
 
+**Change Assessment**:
+The deterministic `adoc.change_assessment.v0` result for one requested base,
+unique comparison base, head snapshot, and evaluation date. It reports
+structural validity, changed-path classification, implicated knowledge, and
+review obligations without claiming semantic consistency.
+_Avoid_: compliance verdict, semantic review, GitHub receipt
+
+**PR Assessment Receipt**:
+The Action-owned `adoc.pr_assessment_receipt.v0` artifact that binds one
+validated Change Assessment to exact GitHub revisions, CI identity, verified
+toolchain, Action policy, final conclusion, and optional-stage status. It
+proves what CI assessed, not what a runtime agent used or acted upon.
+_Avoid_: Agent Use Receipt, immutable audit ledger, proof of agent reliance
+
 **Native Authoring**:
 The initial workflow where users write AgentDoc Source directly instead of importing existing Markdown.
 _Avoid_: Markdown migration, compatibility-first workflow

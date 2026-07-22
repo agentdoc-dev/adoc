@@ -8,6 +8,25 @@ adoc assess-changes --base main --as-of 2026-07-22 --format json
 
 Use `--head <commit>` for an immutable comparison, as a CI adapter will. Omit it for local worktree assessment; the envelope records the current HEAD and `worktree_state: clean|dirty`.
 
+A pull-request adapter must use the event's exact base and head commit SHAs,
+not branch names or GitHub's synthetic merge checkout, and must capture one UTC
+date for the whole run:
+
+```text
+adoc assess-changes \
+  --base 0123456789abcdef0123456789abcdef01234567 \
+  --head 89abcdef0123456789abcdef0123456789abcdef \
+  --as-of 2026-07-22 \
+  --format json
+```
+
+Hash the exact JSON bytes only after validating the schema, legal
+completeness/outcome tuple, evaluation date, and requested/comparison/head
+commits. Keep GitHub metadata outside this envelope. The AgentDoc GitHub Action
+places the validated assessment beside an `adoc.pr_assessment_receipt.v0`
+wrapper and exposes both paths and SHA-256 digests; the consuming workflow
+chooses whether and how long to retain them.
+
 The command resolves the requested refs, requires one merge base, materializes immutable snapshots, loads each snapshot's own `agentdoc.config.yaml`, and compiles with the same explicit evaluation date. The comparison-base configuration is effective for the current change. Head exclusions and output changes are prospective, reported in `policy_changes`, and cannot hide code introduced by the same pull request.
 
 Missing Git repository context or an unavailable mutable-worktree status emits a structured `error/not_evaluated` envelope with `assessment.snapshot_failed` and exits 2.
