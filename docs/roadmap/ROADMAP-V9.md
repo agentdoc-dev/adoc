@@ -428,7 +428,7 @@ These may be commits in one PR if review remains tractable; do not split tests o
 
 ### V9.1.2: Code-Change Impact Correctness Slice
 
-**Status:** Implemented
+**Status:** In progress
 **Repositories:** `adoc`
 **Depends on:** V9.1.1
 **User touchpoint:** `adoc review <base>` and MCP `adoc_review`
@@ -544,7 +544,7 @@ No shape change to `adoc.review.v0`. The behavioral invariant changes from “af
 **User touchpoint:** AgentDoc PR Report
 **Contract impact:** Behavioral breaking correction for analysis/setup failures; no input/schema change
 **Gate posture:** Setup/internal analysis inability is always non-green; structurally invalid knowledge retains existing `advisory|strict` policy
-**Completion evidence:** ADR-0051; AgentDoc PRs [#125](https://github.com/agentdoc-dev/adoc/pull/125) and [#126](https://github.com/agentdoc-dev/adoc/pull/126); Action PRs [#9](https://github.com/agentdoc-dev/action/pull/9) and [#10](https://github.com/agentdoc-dev/action/pull/10); AgentDoc [v0.3.1](https://github.com/agentdoc-dev/adoc/releases/tag/v0.3.1); Action [v1.5.1](https://github.com/agentdoc-dev/action/releases/tag/v1.5.1); live receipt and repeatability record below
+**Completion evidence:** —
 
 #### Goal
 
@@ -1089,13 +1089,13 @@ Exact fields are fixed in the slice-start decision record before implementation.
 
 ### V9.2.2: Exact-SHA GitHub Assessment and Receipt Slice
 
-**Status:** In progress
+**Status:** Implemented
 **Repositories:** `adoc`, `action`
 **Depends on:** V9.2.1 release
 **User touchpoint:** PR report, job summary, Action outputs, workflow artifact
 **Contract impact:** New experimental `adoc.pr_assessment_receipt.v0` and Action outputs
 **Gate posture:** Infrastructure/ref/internal failures always non-green; head structural invalidity follows existing `advisory|strict`; knowledge findings advisory
-**Completion evidence:** —
+**Completion evidence:** ADR-0051; AgentDoc PRs [#125](https://github.com/agentdoc-dev/adoc/pull/125) and [#126](https://github.com/agentdoc-dev/adoc/pull/126); Action PRs [#9](https://github.com/agentdoc-dev/action/pull/9) and [#10](https://github.com/agentdoc-dev/action/pull/10); AgentDoc [v0.3.1](https://github.com/agentdoc-dev/adoc/releases/tag/v0.3.1); Action [v1.5.1](https://github.com/agentdoc-dev/action/releases/tag/v1.5.1); live receipt and repeatability record below
 
 #### Goal
 
