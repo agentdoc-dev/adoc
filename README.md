@@ -225,16 +225,17 @@ adoc build
 
 ```bash
 adoc init
-adoc check [path]
-adoc build [path] [--out <directory>] [--no-embeddings]
+adoc check [path] [--as-of <YYYY-MM-DD>]
+adoc build [path] [--out <directory>] [--no-embeddings] [--as-of <YYYY-MM-DD>]
 adoc why <object-id> [--artifact <path>] [--format auto|plain|styled|json]
 adoc graph <object-id> [--artifact <path>] [--relation depends_on|supersedes|related_to] [--direction outgoing|incoming|both] [--format auto|plain|styled|json]
 adoc stale [--artifact <path>] [--within <Nd>] [--format auto|plain|styled|json]
 adoc contradictions [--artifact <path>] [--all] [--format auto|plain|styled|json]
 adoc impacted-by [path]... [--ref <git-ref>] [--artifact <path>] [--format auto|plain|styled|json|markdown]
-adoc patch (--check <patch-json> | --apply <patch-json|@->) [--artifact <path>] [--format auto|plain|styled|json]
+adoc patch (--check <patch-json> | --apply <patch-json|@->) [--artifact <path>] [--as-of <YYYY-MM-DD>] [--format auto|plain|styled|json]
 adoc diff <base-ref> [--format auto|plain|styled|json|markdown]
 adoc review <base-ref> [--patch <patch-json>] [--format auto|plain|styled|json|markdown]
+adoc assess-changes --base <git-ref> [--head <git-ref>] [--as-of <YYYY-MM-DD>] [--format auto|plain|styled|json|markdown]
 adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | --semantic] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--related-to <object-id>] [--relation depends_on|supersedes|related_to] [--direction outgoing|incoming|both] [--top <n>] [--format auto|plain|styled|json]
 ```
 
@@ -331,6 +332,27 @@ as global config.
 - reviews Knowledge Object changes since `<base-ref>` with source-path impact and required reviewers, emitting the `adoc.review.v0` envelope
 - `--patch <patch-json>` embeds an `adoc.patch.check.v0` result in the review
 - supports `--format markdown` for PR-comment output
+
+`adoc assess-changes`:
+
+- resolves the requested base and head to commits and uses their unique merge base for the changed set and comparison snapshot
+- uses the current worktree when `--head` is omitted and records whether it is clean or dirty
+- compiles each snapshot under its own `agentdoc.config.yaml` while applying comparison-base exclusions to the current change
+- pins lifecycle evaluation to `--as-of`, defaulting once to the current UTC date
+- classifies every changed path as covered, provisional, uncovered, or explicitly excluded and emits body-free implicated objects, knowledge changes, reviewers, and proof obligations
+- emits the experimental `adoc.change_assessment.v0` envelope; complete advisory outcomes exit `0`, while partial, invalid, or not-evaluated envelopes exit `2`
+- supports heading-free `--format markdown` for embedding in a larger PR comment
+
+Repositories may add optional assessment exclusions. Entries are exact files or component-aware directory prefixes ending in `/`; globs are not supported:
+
+```yaml
+assessment:
+  exclude_paths:
+    - vendor/
+    - generated/
+```
+
+The block is intentionally absent from `adoc init`. Adding it requires a V9.2.1-capable binary because older strict config parsers reject unknown keys.
 
 `adoc search`:
 
@@ -689,7 +711,7 @@ regenerate or re-embed `docs.search.json`, and recreate any in-flight patch
 documents whose `base_hash` came from v4. Readers reject v4 explicitly instead
 of silently mixing hash domains.
 
-The shipped surface also includes Markdown migration, review/impact workflows, patch validation/application, the expanded fifteen-kind schema, MCP, the composite GitHub Action, and evidence-anchor drift checks. The next detailed cycle makes PR assessment fail-honest and reproducible before adding cited optional semantic review and governed proposals.
+The shipped surface also includes Markdown migration, review/impact workflows, deterministic local change assessment, patch validation/application, the expanded fifteen-kind schema, MCP, the composite GitHub Action, and evidence-anchor drift checks. The next detailed cycle integrates the assessment envelope with exact-SHA GitHub delivery before adding cited optional semantic review and governed proposals.
 
 See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) for the full sequence and [docs/roadmap/ROADMAP-V9.md](docs/roadmap/ROADMAP-V9.md) for the implementation handoff.
 

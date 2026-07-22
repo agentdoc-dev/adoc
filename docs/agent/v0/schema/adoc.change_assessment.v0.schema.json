@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.change_assessment.v0.schema.json",
+  "title": "AgentDoc Local Change Assessment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "completeness", "outcome", "evaluation_date", "snapshots",
+    "knowledge_snapshot", "assessment_config", "summary", "validation", "paths",
+    "objects", "knowledge_changes", "policy_changes", "required_reviewers",
+    "proof_obligations", "signals", "diagnostics"
+  ],
+  "properties": {
+    "schema_version": { "const": "adoc.change_assessment.v0" },
+    "completeness": { "enum": ["complete", "partial", "error"] },
+    "outcome": { "enum": ["pass", "review_required", "uncovered", "invalid", "not_evaluated"] },
+    "evaluation_date": { "type": "string", "format": "date" },
+    "snapshots": { "$ref": "#/$defs/snapshots" },
+    "knowledge_snapshot": { "$ref": "#/$defs/knowledgeSnapshot" },
+    "assessment_config": { "$ref": "#/$defs/assessmentConfig" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "validation": { "$ref": "#/$defs/validation" },
+    "paths": { "$ref": "#/$defs/pathAvailability" },
+    "objects": { "$ref": "#/$defs/objectAvailability" },
+    "knowledge_changes": { "$ref": "#/$defs/knowledgeChangesAvailability" },
+    "policy_changes": { "$ref": "#/$defs/policyChanges" },
+    "required_reviewers": { "type": "array", "items": { "$ref": "#/$defs/reviewer" } },
+    "proof_obligations": { "type": "array", "items": { "$ref": "#/$defs/obligation" } },
+    "signals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "completeness": { "const": "complete" } }, "required": ["completeness"] },
+      "then": { "properties": { "outcome": { "enum": ["pass", "review_required", "uncovered"] } } }
+    },
+    {
+      "if": { "properties": { "completeness": { "const": "partial" } }, "required": ["completeness"] },
+      "then": { "properties": { "outcome": { "const": "not_evaluated" } } }
+    },
+    {
+      "if": { "properties": { "completeness": { "const": "error" } }, "required": ["completeness"] },
+      "then": { "properties": { "outcome": { "enum": ["invalid", "not_evaluated"] } } }
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "availability": { "type": "string", "enum": ["available", "unavailable"] },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["immutable"],
+      "properties": {
+        "requested_ref": { "type": "string", "minLength": 1 },
+        "resolved_commit": { "$ref": "#/$defs/commit" },
+        "immutable": { "type": "boolean" },
+        "strategy": { "const": "merge_base" },
+        "worktree_state": { "enum": ["clean", "dirty"] }
+      }
+    },
+    "snapshots": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requested_base", "comparison_base", "head"],
+      "properties": {
+        "requested_base": { "$ref": "#/$defs/snapshot" },
+        "comparison_base": { "$ref": "#/$defs/snapshot" },
+        "head": { "$ref": "#/$defs/snapshot" }
+      }
+    },
+    "knowledgeSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "graph_schema_version": { "type": "string" },
+        "graph_sha256": { "$ref": "#/$defs/sha256" },
+        "object_set_sha256": { "$ref": "#/$defs/sha256" },
+        "docs_path": { "type": "string" }
+      }
+    },
+    "snapshotConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "source"],
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "source": { "const": "file" },
+        "docs_path": { "type": "string" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "effective_source_snapshot", "exclude_paths", "generated_outputs"],
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "effective_source_snapshot": { "const": "comparison_base" },
+        "exclude_paths": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "generated_outputs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "effective_sha256": { "$ref": "#/$defs/sha256" },
+        "proposed_head_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "assessmentConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comparison_base", "head", "policy"],
+      "properties": {
+        "comparison_base": { "$ref": "#/$defs/snapshotConfig" },
+        "head": { "$ref": "#/$defs/snapshotConfig" },
+        "policy": { "$ref": "#/$defs/policy" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["changed_paths", "covered", "provisional", "uncovered", "excluded", "impacted_objects"],
+      "properties": {
+        "changed_paths": { "type": "integer", "minimum": 0 },
+        "covered": { "type": "integer", "minimum": 0 },
+        "provisional": { "type": "integer", "minimum": 0 },
+        "uncovered": { "type": "integer", "minimum": 0 },
+        "excluded": { "type": "integer", "minimum": 0 },
+        "impacted_objects": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errors_full", "errors_changed", "errors_unchanged", "errors_unattributed", "warnings"],
+      "properties": {
+        "errors_full": { "type": "integer", "minimum": 0 },
+        "errors_changed": { "type": "integer", "minimum": 0 },
+        "errors_unchanged": { "type": "integer", "minimum": 0 },
+        "errors_unattributed": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "reason"],
+      "properties": {
+        "object_id": { "type": "string", "minLength": 1 },
+        "reason": { "enum": ["impacts_path", "evidence_path"] },
+        "via_source_object": { "type": "string", "minLength": 1 }
+      }
+    },
+    "path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "classification", "matches"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "classification": { "enum": ["covered", "provisional", "uncovered", "excluded"] },
+        "exclusion_reason": { "type": "string", "minLength": 1 },
+        "matches": { "type": "array", "items": { "$ref": "#/$defs/match" } }
+      }
+    },
+    "pathAvailability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "value": { "type": "array", "items": { "$ref": "#/$defs/path" } }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line", "column"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "objectReason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "reason"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "reason": { "enum": ["impacts_path", "evidence_path"] },
+        "via_source_object": { "type": "string", "minLength": 1 }
+      }
+    },
+    "object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "content_hash", "source", "authority", "changed_in_pr", "reasons"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "authored_status": { "type": "string" },
+        "effective_status": { "type": "string" },
+        "content_hash": { "$ref": "#/$defs/sha256" },
+        "owner": { "type": "string" },
+        "evidence_quality": { "enum": ["high", "medium", "low"] },
+        "source": { "$ref": "#/$defs/source" },
+        "authority": { "enum": ["authoritative", "provisional"] },
+        "changed_in_pr": { "enum": ["yes", "no", "unknown"] },
+        "reasons": { "type": "array", "items": { "$ref": "#/$defs/objectReason" } }
+      }
+    },
+    "objectAvailability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "value": { "type": "array", "items": { "$ref": "#/$defs/object" } }
+      }
+    },
+    "knowledgeChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "authority", "source", "reason"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "authority": { "enum": ["authoritative", "provisional"] },
+        "base_content_hash": { "$ref": "#/$defs/sha256" },
+        "head_content_hash": { "$ref": "#/$defs/sha256" },
+        "authored_status": { "type": "string" },
+        "effective_status": { "type": "string" },
+        "owner": { "type": "string" },
+        "source": { "$ref": "#/$defs/source" },
+        "reason": { "enum": ["created", "changed", "deleted"] }
+      }
+    },
+    "knowledgeChanges": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["created", "changed", "deleted"],
+      "properties": {
+        "created": { "type": "array", "items": { "$ref": "#/$defs/knowledgeChange" } },
+        "changed": { "type": "array", "items": { "$ref": "#/$defs/knowledgeChange" } },
+        "deleted": { "type": "array", "items": { "$ref": "#/$defs/knowledgeChange" } }
+      }
+    },
+    "knowledgeChangesAvailability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "value": { "$ref": "#/$defs/knowledgeChanges" }
+      }
+    },
+    "policyChanges": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "changed", "changed_fields"],
+      "properties": {
+        "status": { "$ref": "#/$defs/availability" },
+        "changed": { "type": "boolean" },
+        "changed_fields": { "type": "array", "items": { "enum": ["exclude_paths", "generated_outputs"] }, "uniqueItems": true }
+      }
+    },
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "object_ids"],
+      "properties": {
+        "owner": { "type": "string", "minLength": 1 },
+        "object_ids": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      }
+    },
+    "obligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "kind", "reason", "required_evidence"],
+      "properties": {
+        "object_id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "required_evidence": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "kind", "signal"],
+      "properties": {
+        "object_id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "signal": { "type": "string", "minLength": 1 }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "message", "changed_in_pr"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["error", "warning", "info"] },
+        "message": { "type": "string", "minLength": 1 },
+        "source": { "$ref": "#/$defs/source" },
+        "object_id": { "type": "string", "minLength": 1 },
+        "changed_in_pr": { "enum": ["yes", "no", "unknown"] }
+      }
+    }
+  }
+}

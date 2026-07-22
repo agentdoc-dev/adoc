@@ -7,6 +7,7 @@ use adoc_core::{
     load_review_from_git, load_review_with_changed_files_from_git, parse_patch_from_value,
     review_with_patch,
 };
+use adoc_local::{AssessmentInput, LocalContext, UnrestrictedPathPolicy};
 use adoc_mcp::{
     AdocPatchCheckParams, AdocReviewParams, AgentDocMcpServer, BuildParams, ContradictionsParams,
     GraphParams, ImpactedByParams, InitParams, PatchInput, ProjectStatusParams, SearchParams,
@@ -789,6 +790,10 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "adoc.patch.apply.v0.schema.json",
         ),
         (
+            "adoc://agent/v0/schema/adoc.change_assessment.v0.schema.json",
+            "adoc.change_assessment.v0.schema.json",
+        ),
+        (
             "adoc://agent/v0/schema/adoc.migrate.report.v0.schema.json",
             "adoc.migrate.report.v0.schema.json",
         ),
@@ -819,6 +824,81 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "MCP-served schema {uri} drifted from docs/agent/v0/schema/{file}"
         );
     }
+}
+
+#[test]
+fn validates_complete_and_error_change_assessments_and_rejects_illegal_tuples() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let root = workspace.path();
+    run_git(root, &["init", "--initial-branch=main"]);
+    run_git(root, &["config", "user.email", "test@agentdoc.dev"]);
+    run_git(root, &["config", "user.name", "AgentDoc Test"]);
+    run_git(root, &["config", "commit.gpgsign", "false"]);
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\nembeddings:\n  provider: none\n",
+    );
+    write(&root.join("docs/index.adoc"), source());
+    write(&root.join("src/lib.rs"), "pub fn before() {}\n");
+    run_git(root, &["add", "-A"]);
+    run_git(root, &["commit", "-m", "initial"]);
+    write(&root.join("src/lib.rs"), "pub fn after() {}\n");
+    let context = LocalContext::new(root.to_path_buf(), UnrestrictedPathPolicy);
+    let complete = serde_json::to_value(
+        context
+            .assess_changes(AssessmentInput {
+                base_ref: "HEAD".to_string(),
+                head_ref: None,
+                as_of: None,
+            })
+            .expect("complete assessment runs")
+            .envelope,
+    )
+    .expect("complete envelope serializes");
+    assert_valid("adoc.change_assessment.v0.schema.json", &complete);
+
+    run_git(root, &["add", "-A"]);
+    run_git(root, &["commit", "-m", "code change"]);
+    write(&root.join("agentdoc.config.yaml"), "version: [broken\n");
+    run_git(root, &["add", "agentdoc.config.yaml"]);
+    run_git(root, &["commit", "-m", "broken comparison config"]);
+    write(
+        &root.join("agentdoc.config.yaml"),
+        "version: 1\nmode: strict\ndocs_path: docs\nembeddings:\n  provider: none\n",
+    );
+    let partial = serde_json::to_value(
+        context
+            .assess_changes(AssessmentInput {
+                base_ref: "HEAD".to_string(),
+                head_ref: None,
+                as_of: None,
+            })
+            .expect("partial assessment runs")
+            .envelope,
+    )
+    .expect("partial envelope serializes");
+    assert_eq!(partial["completeness"], "partial");
+    assert_valid("adoc.change_assessment.v0.schema.json", &partial);
+
+    let error = serde_json::to_value(
+        context
+            .assess_changes(AssessmentInput {
+                base_ref: "missing-ref".to_string(),
+                head_ref: None,
+                as_of: None,
+            })
+            .expect("error assessment runs")
+            .envelope,
+    )
+    .expect("error envelope serializes");
+    assert_valid("adoc.change_assessment.v0.schema.json", &error);
+
+    let mut illegal = complete;
+    illegal["completeness"] = json!("partial");
+    illegal["outcome"] = json!("pass");
+    let schema = schema("adoc.change_assessment.v0.schema.json");
+    let validator = jsonschema::validator_for(&schema).expect("schema compiles");
+    assert!(!validator.is_valid(&illegal));
 }
 
 /// V8.1.2/V8.1.3: the `adoc migrate` report envelope — built at the same

@@ -4,6 +4,8 @@ V2.2 gives agents a stable local contract over AgentDoc artifacts. Agents must r
 
 The stable read contracts are `adoc.retrieval.v1`, `adoc.graph.traversal.v0`, `adoc.patch.check.v0`, `adoc.project.status.v0`, `adoc.diff.v0`, `adoc.review.v0`, `adoc.stale.v0`, `adoc.contradictions.v0`, `adoc.impacted.v0`, and `adoc.mcp.command.v0`. The write contract is `adoc.patch.apply.v0`, reachable only through the config-gated `adoc_patch_apply` tool (V6.4, ADR-0037).
 
+The experimental local Git contract `adoc.change_assessment.v0` is published as schema and workflow resources in V9.2.1, but deliberately has no MCP tool. CI and local automation invoke `adoc assess-changes --format json`; agents can inspect `adoc://agent/v0/change-assessment-workflow` and `adoc://agent/v0/schema/change-assessment` without acquiring a new execution surface.
+
 ## Rules
 
 - Call `adoc_project_status` before relying on retrieval, patch validation, or review.
