@@ -55,19 +55,17 @@ pub(crate) fn assess_changes(input: AssessChangesCommandInput, resolved: Resolve
 fn render_text(envelope: &ChangeAssessmentEnvelope, markdown: bool) -> String {
     let mut output = String::new();
     let prefix = if markdown { "- " } else { "" };
-    writeln!(
+    let _ = writeln!(
         output,
         "{prefix}Assessment: {:?} / {:?}",
         envelope.completeness, envelope.outcome
-    )
-    .expect("writing to String cannot fail");
-    writeln!(
+    );
+    let _ = writeln!(
         output,
         "{prefix}Evaluation date: {}",
         envelope.evaluation_date
-    )
-    .expect("writing to String cannot fail");
-    writeln!(
+    );
+    let _ = writeln!(
         output,
         "{prefix}Paths: {} changed, {} covered, {} provisional, {} uncovered, {} excluded",
         envelope.summary.changed_paths,
@@ -75,8 +73,7 @@ fn render_text(envelope: &ChangeAssessmentEnvelope, markdown: bool) -> String {
         envelope.summary.provisional,
         envelope.summary.uncovered,
         envelope.summary.excluded
-    )
-    .expect("writing to String cannot fail");
+    );
     if let Some(paths) = &envelope.paths.value {
         for path in paths {
             let marker = match path.classification {
@@ -85,8 +82,7 @@ fn render_text(envelope: &ChangeAssessmentEnvelope, markdown: bool) -> String {
                 PathClassification::Uncovered => "uncovered",
                 PathClassification::Excluded => "excluded",
             };
-            writeln!(output, "{prefix}{marker}: {}", path.path)
-                .expect("writing to String cannot fail");
+            let _ = writeln!(output, "{prefix}{marker}: {}", path.path);
         }
     }
     output
