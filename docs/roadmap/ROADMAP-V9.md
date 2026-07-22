@@ -642,7 +642,7 @@ Tests live in the existing Action CI workflow and use fixture repositories/mocke
 
 ### V9.1.4: Proposal Trust-Boundary Hardening Slice
 
-**Status:** In progress
+**Status:** Planned
 **Repositories:** `action`
 **Depends on:** —
 **User touchpoint:** Proposed Knowledge section and proposal delivery
@@ -1089,7 +1089,7 @@ Exact fields are fixed in the slice-start decision record before implementation.
 
 ### V9.2.2: Exact-SHA GitHub Assessment and Receipt Slice
 
-**Status:** Planned
+**Status:** In progress
 **Repositories:** `adoc`, `action`
 **Depends on:** V9.2.1 release
 **User touchpoint:** PR report, job summary, Action outputs, workflow artifact
