@@ -185,6 +185,29 @@ fn invalid_head_emits_error_invalid_without_fake_empty_graph_sections() {
 }
 
 #[test]
+fn invalid_head_exclusion_emits_specific_config_path_diagnostic() {
+    let workspace = repo();
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\nassessment:\n  exclude_paths:\n    - ../outside\n",
+    );
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["assess-changes", "--base", "HEAD", "--format", "json"])
+        .output()
+        .expect("adoc assess-changes runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("error JSON");
+    assert_eq!(value["completeness"], "error");
+    assert_eq!(value["outcome"], "invalid");
+    assert_eq!(
+        value["diagnostics"][0]["code"],
+        "assessment.invalid_config_path"
+    );
+}
+
+#[test]
 fn invalid_comparison_base_retains_head_graph_in_partial_envelope() {
     let workspace = repo();
     workspace.write("agentdoc.config.yaml", "version: [broken\n");
@@ -209,6 +232,37 @@ fn invalid_comparison_base_retains_head_graph_in_partial_envelope() {
     assert_eq!(value["knowledge_snapshot"]["status"], "available");
     assert_eq!(value["knowledge_changes"]["status"], "unavailable");
     assert_eq!(value["objects"]["value"][0]["changed_in_pr"], "unknown");
+}
+
+#[test]
+fn invalid_base_exclusion_emits_specific_config_path_diagnostic() {
+    let workspace = repo();
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\nassessment:\n  exclude_paths:\n    - ../outside\n",
+    );
+    git(&workspace, &["add", "agentdoc.config.yaml"]);
+    git(&workspace, &["commit", "-m", "invalid base exclusion"]);
+    let base = git(&workspace, &["rev-parse", "HEAD"]);
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\nembeddings:\n  provider: none\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args(["assess-changes", "--base", &base, "--format", "json"])
+        .output()
+        .expect("adoc assess-changes runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("partial JSON");
+    assert_eq!(value["completeness"], "partial");
+    assert_eq!(value["outcome"], "not_evaluated");
+    assert_eq!(
+        value["diagnostics"][0]["code"],
+        "assessment.invalid_config_path"
+    );
 }
 
 #[test]

@@ -143,6 +143,8 @@ Assessment failures use these stable codes:
 - `assessment.head_invalid`
 - `assessment.graph_failed`
 
+An invalid `assessment.exclude_paths` entry emits `assessment.invalid_config_path`: an invalid head is `error/invalid`, while an invalid comparison base is `partial/not_evaluated` when head facts remain trustworthy. Other configuration failures retain `assessment.head_invalid` or `assessment.base_partial`.
+
 ## Consequences
 
 The local binary becomes the sole owner of deterministic assessment semantics. The Action can consume one artifact without parsing human text or rebuilding policy. Existing commands and envelopes remain compatible, while users who add the optional configuration require a V9.2.1-capable binary because older strict config parsers will reject the new key.

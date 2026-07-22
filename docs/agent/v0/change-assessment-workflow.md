@@ -33,4 +33,6 @@ assessment:
 
 Entries are exact files or directory prefixes ending in `/`; there are no globs. AgentDoc Source, `agentdoc.config.yaml`, and comparison-base generated outputs have higher exclusion precedence. `adoc init` intentionally does not create this optional block.
 
+Invalid exclusion entries emit `assessment.invalid_config_path`; they never collapse into a generic successful or empty assessment.
+
 There is no assessment MCP tool in V9.2.1. Agents and adapters may read the published workflow and schema resources; CI invokes the CLI and consumes its JSON envelope.

@@ -35,6 +35,10 @@ pub enum ProjectConfigDocumentError {
     Parse(#[from] serde_saphyr::Error),
     #[error("{0}")]
     Invalid(String),
+    #[error(
+        "assessment.exclude_paths entry {entry:?} must be an exact portable project-relative file or a directory prefix ending in `/`"
+    )]
+    InvalidAssessmentPath { entry: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -148,9 +152,7 @@ fn normalize_assessment_exclusions(
             || entry.as_bytes().get(1) == Some(&b':');
         let logical = entry.strip_suffix('/').unwrap_or(&entry);
         if invalid || logical.is_empty() || LogicalPath::parse(logical).is_err() {
-            return Err(ProjectConfigDocumentError::Invalid(format!(
-                "assessment.exclude_paths entry {entry:?} must be an exact portable project-relative file or a directory prefix ending in `/`"
-            )));
+            return Err(ProjectConfigDocumentError::InvalidAssessmentPath { entry });
         }
         normalized.insert(entry);
     }
@@ -256,6 +258,10 @@ assessment:
             );
             let error = parse_project_config(&config).expect_err("unsafe path must fail");
             assert!(error.to_string().contains("assessment.exclude_paths"));
+            assert!(matches!(
+                error,
+                ProjectConfigDocumentError::InvalidAssessmentPath { entry } if entry == path
+            ));
         }
     }
 }
