@@ -24,6 +24,6 @@ Authoritative kind/status pairs are closed: verified claim, accepted decision, v
 
 `objects` and `knowledge_changes` contain metadata, hashes, source coordinates, and reasons but never Knowledge Object bodies. The contract also excludes raw diffs, timestamps, actors, GitHub metadata, prompts, and model data.
 
-`graph_sha256` hashes the exact head graph bytes. `object_set_sha256` hashes compact sorted `(id, content_hash)` data. The assessment has no self digest; a delivery adapter may hash the exact serialized envelope bytes.
+`graph_sha256` hashes the exact head graph bytes. `object_set_sha256` hashes compact `(id, content_hash)` data sorted at the assessment digest boundary. Canonical serialization failures make the assessment `error/not_evaluated`; fallback bytes are never hashed. The assessment has no self digest; a delivery adapter may hash the exact serialized envelope bytes.
 
 The normative JSON Schema is available at `adoc://agent/v0/schema/adoc.change_assessment.v0.schema.json`.

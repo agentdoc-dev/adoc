@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 use chrono::NaiveDate;
 use serde::Serialize;
 
-use crate::application::compile::{CompileResult, compile_with_provider_anchored_for_date};
+use crate::application::compile::{
+    BuildArtifacts, CompileResult, compile_with_provider_anchored_for_date,
+};
 use crate::application::hashing::sha256_prefixed;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode};
@@ -412,21 +414,23 @@ where
         }
     };
     let head_sources = source_inventory(head_workspace.path(), &head_config.parsed.docs_path);
-    let head_compile = compile_snapshot(
+    let head_compile = match successful_compile(compile_snapshot(
         head_workspace.path(),
         &head_config.parsed,
         input.evaluation_date,
-    );
-    if head_compile.has_errors() || head_compile.artifacts.is_none() {
-        return head_compile_error_envelope(
-            input.evaluation_date,
-            snapshots,
-            &head_config,
-            head_workspace.path(),
-            head_compile.diagnostics,
-            &changed_set,
-        );
-    }
+    )) {
+        Ok(result) => result,
+        Err(diagnostics) => {
+            return head_compile_error_envelope(
+                input.evaluation_date,
+                snapshots,
+                &head_config,
+                head_workspace.path(),
+                diagnostics,
+                &changed_set,
+            );
+        }
+    };
 
     let base_workspace = match snapshot_provider.checkout(&input.base) {
         Ok(workspace) => workspace,
@@ -463,34 +467,37 @@ where
         }
     };
     let base_sources = source_inventory(base_workspace.path(), &base_config.parsed.docs_path);
-    let base_compile = compile_snapshot(
+    let base_compile = match successful_compile(compile_snapshot(
         base_workspace.path(),
         &base_config.parsed,
         input.evaluation_date,
-    );
-    if base_compile.has_errors() || base_compile.artifacts.is_none() {
-        let diagnostics = base_compile
-            .diagnostics
-            .iter()
-            .map(|diagnostic| project_diagnostic(diagnostic, base_workspace.path(), &changed_set))
-            .chain(std::iter::once(diagnostic_record(
-                DiagnosticCode::AssessmentBasePartial,
-                Severity::Error,
-                "comparison-base AgentDoc Source did not compile cleanly".to_string(),
-                None,
-                &changed_set,
-            )))
-            .collect();
-        return partial_envelope(
-            input.evaluation_date,
-            snapshots,
-            &head_config,
-            &head_compile,
-            head_workspace.path(),
-            changed,
-            diagnostics,
-        );
-    }
+    )) {
+        Ok(result) => result,
+        Err(base_diagnostics) => {
+            let diagnostics = base_diagnostics
+                .iter()
+                .map(|diagnostic| {
+                    project_diagnostic(diagnostic, base_workspace.path(), &changed_set)
+                })
+                .chain(std::iter::once(diagnostic_record(
+                    DiagnosticCode::AssessmentBasePartial,
+                    Severity::Error,
+                    "comparison-base AgentDoc Source did not compile cleanly".to_string(),
+                    None,
+                    &changed_set,
+                )))
+                .collect();
+            return partial_envelope(
+                input.evaluation_date,
+                snapshots,
+                &head_config,
+                &head_compile,
+                head_workspace.path(),
+                changed,
+                diagnostics,
+            );
+        }
+    };
 
     complete_envelope(CompleteInput {
         evaluation_date: input.evaluation_date,
@@ -588,6 +595,24 @@ fn compile_snapshot(root: &Path, config: &ParsedProjectConfig, date: NaiveDate) 
     compile_with_provider_anchored_for_date(&provider, &anchor, date)
 }
 
+struct SuccessfulCompile {
+    diagnostics: Vec<Diagnostic>,
+    artifacts: BuildArtifacts,
+}
+
+fn successful_compile(result: CompileResult) -> Result<SuccessfulCompile, Vec<Diagnostic>> {
+    if result.has_errors() {
+        return Err(result.diagnostics);
+    }
+    match result.artifacts {
+        Some(artifacts) => Ok(SuccessfulCompile {
+            diagnostics: result.diagnostics,
+            artifacts,
+        }),
+        None => Err(result.diagnostics),
+    }
+}
+
 struct CompleteInput<'a> {
     evaluation_date: NaiveDate,
     snapshots: AssessmentSnapshots,
@@ -596,8 +621,8 @@ struct CompleteInput<'a> {
     head_config: LoadedConfig,
     base_sources: BTreeSet<String>,
     head_sources: BTreeSet<String>,
-    base_compile: CompileResult,
-    head_compile: CompileResult,
+    base_compile: SuccessfulCompile,
+    head_compile: SuccessfulCompile,
     changed: Vec<RelPath>,
 }
 
@@ -683,34 +708,22 @@ fn complete_envelope(input: CompleteInput<'_>) -> ChangeAssessmentEnvelope {
     } else {
         AssessmentOutcome::Pass
     };
-    let Some(head_artifacts) = input.head_compile.artifacts.as_ref() else {
-        return empty_envelope(
-            input.evaluation_date,
-            input.snapshots,
-            AssessmentCompleteness::Error,
-            AssessmentOutcome::NotEvaluated,
-            diagnostic_record(
-                DiagnosticCode::AssessmentGraphFailed,
-                Severity::Error,
-                "head graph artifact is unavailable".to_string(),
-                None,
-                &BTreeSet::new(),
-            ),
-        );
-    };
-    let graph_json = &head_artifacts.graph_json;
+    let graph_json = &input.head_compile.artifacts.graph_json;
     let graph_schema_version = serde_json::from_str::<serde_json::Value>(graph_json)
         .ok()
         .and_then(|value| value["schema_version"].as_str().map(str::to_string));
-    let object_set = head_objects
-        .iter()
-        .map(|node| ObjectDigest {
-            id: &node.id,
-            content_hash: &node.content_hash,
-        })
-        .collect::<Vec<_>>();
-    let object_set_json = compact_json(&object_set);
-    let assessment_config = complete_config(&input.base_config, &input.head_config);
+    let object_set_json = match object_set_json(&head_objects) {
+        Ok(json) => json,
+        Err(error) => {
+            return serialization_failure_envelope(input.evaluation_date, input.snapshots, error);
+        }
+    };
+    let assessment_config = match complete_config(&input.base_config, &input.head_config) {
+        Ok(config) => config,
+        Err(error) => {
+            return serialization_failure_envelope(input.evaluation_date, input.snapshots, error);
+        }
+    };
 
     ChangeAssessmentEnvelope {
         schema_version: CHANGE_ASSESSMENT_SCHEMA_VERSION,
@@ -749,11 +762,9 @@ struct ObjectDigest<'a> {
     content_hash: &'a str,
 }
 
-fn graph_objects(result: &CompileResult) -> Vec<GraphKnowledgeObjectNode> {
-    let Some(artifacts) = result.artifacts.as_ref() else {
-        return Vec::new();
-    };
-    let Ok(document) = serde_json::from_str::<GraphArtifactDocument>(&artifacts.graph_json) else {
+fn graph_objects(result: &SuccessfulCompile) -> Vec<GraphKnowledgeObjectNode> {
+    let Ok(document) = serde_json::from_str::<GraphArtifactDocument>(&result.artifacts.graph_json)
+    else {
         return Vec::new();
     };
     document
@@ -764,6 +775,18 @@ fn graph_objects(result: &CompileResult) -> Vec<GraphKnowledgeObjectNode> {
             _ => None,
         })
         .collect()
+}
+
+fn object_set_json(objects: &[GraphKnowledgeObjectNode]) -> Result<Vec<u8>, serde_json::Error> {
+    let mut object_set = objects
+        .iter()
+        .map(|node| ObjectDigest {
+            id: &node.id,
+            content_hash: &node.content_hash,
+        })
+        .collect::<Vec<_>>();
+    object_set.sort_by(|left, right| left.id.cmp(right.id));
+    compact_json(&object_set)
 }
 
 fn classify_paths(
@@ -1064,10 +1087,13 @@ fn lifecycle_signals(objects: &[GraphKnowledgeObjectNode]) -> Vec<AssessmentSign
         .collect()
 }
 
-fn complete_config(base: &LoadedConfig, head: &LoadedConfig) -> AssessmentConfig {
+fn complete_config(
+    base: &LoadedConfig,
+    head: &LoadedConfig,
+) -> Result<AssessmentConfig, serde_json::Error> {
     let (effective, proposed) = policy_projection(&base.parsed, &head.parsed);
-    let effective_json = compact_json(&effective);
-    let proposed_json = compact_json(&proposed);
+    let effective_json = compact_json(&effective)?;
+    let proposed_json = compact_json(&proposed)?;
     #[derive(Serialize)]
     struct BoundConfig<'a> {
         comparison_base: &'a [u8],
@@ -1080,8 +1106,8 @@ fn complete_config(base: &LoadedConfig, head: &LoadedConfig) -> AssessmentConfig
         head: &head.normalized_json,
         effective_policy: &effective,
         proposed_policy: &proposed,
-    });
-    AssessmentConfig {
+    })?;
+    Ok(AssessmentConfig {
         comparison_base: snapshot_config(base),
         head: snapshot_config(head),
         policy: AssessmentPolicy {
@@ -1093,7 +1119,7 @@ fn complete_config(base: &LoadedConfig, head: &LoadedConfig) -> AssessmentConfig
             proposed_head_sha256: Some(sha256_prefixed(&proposed_json)),
         },
         sha256: Some(sha256_prefixed(&bound)),
-    }
+    })
 }
 
 fn snapshot_config(config: &LoadedConfig) -> SnapshotConfig {
@@ -1260,36 +1286,17 @@ fn partial_envelope(
     date: NaiveDate,
     snapshots: AssessmentSnapshots,
     head_config: &LoadedConfig,
-    head_compile: &CompileResult,
+    head_compile: &SuccessfulCompile,
     head_root: &Path,
     changed: Vec<RelPath>,
     mut diagnostics: Vec<AssessmentDiagnostic>,
 ) -> ChangeAssessmentEnvelope {
     let head_objects = graph_objects(head_compile);
-    let Some(head_artifacts) = head_compile.artifacts.as_ref() else {
-        return empty_envelope(
-            date,
-            snapshots,
-            AssessmentCompleteness::Error,
-            AssessmentOutcome::NotEvaluated,
-            diagnostic_record(
-                DiagnosticCode::AssessmentGraphFailed,
-                Severity::Error,
-                "head graph artifact is unavailable".to_string(),
-                None,
-                &BTreeSet::new(),
-            ),
-        );
+    let graph_json = &head_compile.artifacts.graph_json;
+    let object_set_json = match object_set_json(&head_objects) {
+        Ok(json) => json,
+        Err(error) => return serialization_failure_envelope(date, snapshots, error),
     };
-    let graph_json = &head_artifacts.graph_json;
-    let object_set = head_objects
-        .iter()
-        .map(|node| ObjectDigest {
-            id: &node.id,
-            content_hash: &node.content_hash,
-        })
-        .collect::<Vec<_>>();
-    let object_set_json = compact_json(&object_set);
     let changed_set = changed
         .iter()
         .map(|path| path.as_str().to_string())
@@ -1393,6 +1400,26 @@ fn invalid_head_envelope(
         AssessmentCompleteness::Error,
         AssessmentOutcome::Invalid,
         diagnostic_record(code, Severity::Error, message, None, changed),
+    )
+}
+
+fn serialization_failure_envelope(
+    date: NaiveDate,
+    snapshots: AssessmentSnapshots,
+    error: serde_json::Error,
+) -> ChangeAssessmentEnvelope {
+    empty_envelope(
+        date,
+        snapshots,
+        AssessmentCompleteness::Error,
+        AssessmentOutcome::NotEvaluated,
+        diagnostic_record(
+            DiagnosticCode::AssessmentGraphFailed,
+            Severity::Error,
+            format!("could not serialize canonical assessment digest input: {error}"),
+            None,
+            &BTreeSet::new(),
+        ),
     )
 }
 
@@ -1639,17 +1666,45 @@ fn path_string(path: &Path) -> String {
         .replace(std::path::MAIN_SEPARATOR, "/")
 }
 
-fn compact_json<T: Serialize>(value: &T) -> Vec<u8> {
-    match serde_json::to_vec(value) {
-        Ok(bytes) => bytes,
-        Err(_) => b"null".to_vec(),
-    }
+fn compact_json<T: Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(value)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{is_authoritative_subject, path_matches_exclusion, reviewers_of};
+    use super::{
+        compact_json, is_authoritative_subject, object_set_json, path_matches_exclusion,
+        reviewers_of,
+    };
     use crate::domain::review::object_diff::test_support::test_node;
+    use serde::ser::Error as _;
+
+    struct SerializationFailure;
+
+    impl serde::Serialize for SerializationFailure {
+        fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            Err(S::Error::custom("serialization failed"))
+        }
+    }
+
+    #[test]
+    fn object_set_serialization_sorts_by_object_id() {
+        let first = test_node("a.object", "sha256:first");
+        let second = test_node("z.object", "sha256:second");
+
+        assert_eq!(
+            object_set_json(&[second.clone(), first.clone()]).expect("object set serializes"),
+            object_set_json(&[first, second]).expect("object set serializes")
+        );
+    }
+
+    #[test]
+    fn compact_json_propagates_serialization_failure() {
+        assert!(compact_json(&SerializationFailure).is_err());
+    }
 
     #[test]
     fn authority_table_is_closed_to_the_five_governing_pairs() {
