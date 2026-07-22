@@ -94,7 +94,7 @@ Unavailable sections are represented explicitly and are never replaced by a misl
 
 The envelope contains no timestamp, GitHub repository or actor, raw diff, object body, prompt, or model data. It has no self digest. V9.2.2 hashes the exact final serialized bytes.
 
-`graph_sha256` is computed over the exact head `CompileArtifacts.graph_json` bytes used by the assessment. `object_set_sha256` is computed over compact JSON of sorted `{id,content_hash}` pairs. Configuration and policy digests use compact deterministic DTO serialization. The outer assessment-config digest excludes its own digest field.
+`graph_sha256` is computed over the exact head `CompileArtifacts.graph_json` bytes used by the assessment. `object_set_sha256` is computed over compact JSON of `{id,content_hash}` pairs sorted explicitly at the assessment digest boundary. Configuration and policy digests use compact deterministic DTO serialization. The outer assessment-config digest excludes its own digest field. Canonical serialization failures emit `error/not_evaluated` with `assessment.graph_failed`; no fallback bytes are hashed.
 
 ### Knowledge and validation facts
 
