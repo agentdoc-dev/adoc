@@ -6,7 +6,7 @@ use adoc_core::{ParsedConfigOutputs, ProjectConfigDocumentError, parse_project_c
 
 use crate::LocalError;
 
-const CONFIG_FILE_NAME: &str = "agentdoc.config.yaml";
+pub(crate) const CONFIG_FILE_NAME: &str = "agentdoc.config.yaml";
 
 #[derive(Debug, Clone)]
 pub struct ProjectConfig {

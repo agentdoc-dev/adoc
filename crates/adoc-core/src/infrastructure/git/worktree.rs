@@ -88,6 +88,7 @@ fn project_prefix(project_root: &Path) -> Result<PathBuf, SnapshotError> {
         std::str::from_utf8(&output.stdout).map_err(|_| SnapshotError::ProviderUnavailable {
             reason: "git returned a non-UTF-8 project prefix".to_string(),
         })?;
+    // Git's empty prefix is the repository-root project; joining it preserves `tmp`.
     Ok(PathBuf::from(value.trim_end_matches(['\r', '\n'])))
 }
 
