@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -10,6 +11,7 @@ pub struct ParsedProjectConfig {
     pub outputs: ParsedConfigOutputs,
     pub embeddings_provider: EmbeddingsProvider,
     pub mcp_patch_apply_enabled: bool,
+    pub assessment_exclude_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -44,6 +46,7 @@ struct RawProjectConfig {
     outputs: Option<RawOutputs>,
     embeddings: Option<RawEmbeddings>,
     mcp: Option<RawMcp>,
+    assessment: Option<RawAssessment>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -65,6 +68,13 @@ struct RawEmbeddings {
 #[serde(deny_unknown_fields)]
 struct RawMcp {
     patch_apply: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct RawAssessment {
+    #[serde(default)]
+    exclude_paths: Vec<String>,
 }
 
 pub fn parse_project_config(text: &str) -> Result<ParsedProjectConfig, ProjectConfigDocumentError> {
@@ -108,6 +118,8 @@ pub fn parse_project_config(text: &str) -> Result<ParsedProjectConfig, ProjectCo
         None => false,
     };
     let outputs = raw.outputs.unwrap_or_default();
+    let assessment_exclude_paths =
+        normalize_assessment_exclusions(raw.assessment.unwrap_or_default().exclude_paths)?;
     Ok(ParsedProjectConfig {
         docs_path: raw.docs_path,
         outputs: ParsedConfigOutputs {
@@ -118,7 +130,41 @@ pub fn parse_project_config(text: &str) -> Result<ParsedProjectConfig, ProjectCo
         },
         embeddings_provider,
         mcp_patch_apply_enabled,
+        assessment_exclude_paths,
     })
+}
+
+fn normalize_assessment_exclusions(
+    entries: Vec<String>,
+) -> Result<Vec<String>, ProjectConfigDocumentError> {
+    let mut normalized = BTreeSet::new();
+    for entry in entries {
+        let invalid = entry.is_empty()
+            || entry == "."
+            || entry.trim() != entry
+            || entry.contains('\\')
+            || entry.chars().any(char::is_control)
+            || entry.starts_with('/')
+            || entry.as_bytes().get(1) == Some(&b':');
+        let logical = entry.strip_suffix('/').unwrap_or(&entry);
+        if invalid || logical.is_empty() || LogicalPath::parse(logical).is_err() {
+            return Err(ProjectConfigDocumentError::Invalid(format!(
+                "assessment.exclude_paths entry {entry:?} must be an exact portable project-relative file or a directory prefix ending in `/`"
+            )));
+        }
+        normalized.insert(entry);
+    }
+
+    let mut result = Vec::new();
+    for entry in normalized {
+        let shadowed = result
+            .iter()
+            .any(|parent: &String| parent.ends_with('/') && entry.starts_with(parent.as_str()));
+        if !shadowed {
+            result.push(entry);
+        }
+    }
+    Ok(result)
 }
 
 fn portable_docs_path(path: &Path) -> bool {
@@ -177,5 +223,39 @@ future_setting: enabled
         .expect_err("unknown field must fail closed");
 
         assert!(error.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn normalizes_assessment_exclusions_and_removes_shadowed_children() {
+        let parsed = parse_project_config(
+            r#"
+version: 1
+mode: strict
+docs_path: docs
+assessment:
+  exclude_paths:
+    - vendor/pkg/
+    - generated.txt
+    - vendor/
+    - generated.txt
+"#,
+        )
+        .expect("assessment config parses");
+
+        assert_eq!(
+            parsed.assessment_exclude_paths,
+            ["generated.txt", "vendor/"]
+        );
+    }
+
+    #[test]
+    fn rejects_unsafe_assessment_exclusions() {
+        for path in ["", ".", "../src", "/tmp", "C:/tmp", "bad\\path", " src"] {
+            let config = format!(
+                "version: 1\nmode: strict\ndocs_path: docs\nassessment:\n  exclude_paths:\n    - '{path}'\n"
+            );
+            let error = parse_project_config(&config).expect_err("unsafe path must fail");
+            assert!(error.to_string().contains("assessment.exclude_paths"));
+        }
     }
 }

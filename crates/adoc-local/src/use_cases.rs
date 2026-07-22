@@ -7,17 +7,18 @@ use std::time::{Duration, Instant};
 
 use adoc_core::{
     ArtifactInspection, ArtifactLoadStatus, BuildArtifacts, BuildEmbeddingMode,
-    BuildInput as CoreBuildInput, CompileInput, CompileResult, ContradictionsEnvelope, Diagnostic,
-    DiagnosticCode, EmbeddingProviderSelection, GitRef, GraphArtifactInspectionInput,
-    GraphDirection, GraphInput as CoreGraphInput, GraphRelationKind, GraphSession,
-    GraphTraversalEnvelope, GraphTraversalQuery, GraphTraversalResult, ImpactedEnvelope,
-    LocalProjectContext, ObjectDiffEnvelope, PatchApplyInput as CorePatchApplyInput,
-    PatchApplyResult, PatchCheckResult, PatchInput, ProseRecord, RelPath, RetrievalEntry,
-    RetrievalEnvelope, RetrievalInput, RetrievalLoadResult, RetrievalRecord, ReviewEnvelope,
-    ReviewError, ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters,
-    SearchMode, SearchQuery, SearchRecordScope, Severity, SnapshotSelector, StaleEnvelope,
-    apply_patch_for_date as core_apply_patch_for_date,
-    build_project_workspace_with_embedding_provider_for_date,
+    BuildInput as CoreBuildInput, ChangeAssessmentEnvelope,
+    ChangeAssessmentInput as CoreChangeAssessmentInput, CompileInput, CompileResult,
+    ContradictionsEnvelope, Diagnostic, DiagnosticCode, EmbeddingProviderSelection, GitRef,
+    GraphArtifactInspectionInput, GraphDirection, GraphInput as CoreGraphInput, GraphRelationKind,
+    GraphSession, GraphTraversalEnvelope, GraphTraversalQuery, GraphTraversalResult,
+    ImpactedEnvelope, LocalProjectContext, ObjectDiffEnvelope,
+    PatchApplyInput as CorePatchApplyInput, PatchApplyResult, PatchCheckResult, PatchInput,
+    ProseRecord, RelPath, RetrievalEntry, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
+    RetrievalRecord, ReviewEnvelope, ReviewError, ReviewInput as CoreReviewInput,
+    SearchArtifactInspectionInput, SearchFilters, SearchMode, SearchQuery, SearchRecordScope,
+    Severity, SnapshotSelector, StaleEnvelope, apply_patch_for_date as core_apply_patch_for_date,
+    assess_changes_from_git, build_project_workspace_with_embedding_provider_for_date,
     build_workspace_with_embedding_provider_for_date, changed_files_from_git,
     changed_paths_strings, check_patch as core_check_patch,
     compile_project_workspace_with_anchor_root_for_date,
@@ -318,6 +319,21 @@ pub struct ReviewOutcome {
     pub exit_code: i32,
 }
 
+#[derive(Debug, Clone)]
+pub struct AssessmentInput {
+    pub base_ref: String,
+    pub head_ref: Option<String>,
+    pub as_of: Option<chrono::NaiveDate>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AssessmentOutcome {
+    #[serde(flatten)]
+    pub envelope: ChangeAssessmentEnvelope,
+    #[serde(skip)]
+    pub exit_code: i32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectStatusRefresh {
@@ -467,6 +483,11 @@ where
     #[tracing::instrument(name = "adoc.review", level = "info", skip_all)]
     pub fn review(&self, input: ReviewInput) -> Result<ReviewOutcome, LocalError> {
         review_with_context(self, input)
+    }
+
+    #[tracing::instrument(name = "adoc.assess_changes", level = "info", skip_all)]
+    pub fn assess_changes(&self, input: AssessmentInput) -> Result<AssessmentOutcome, LocalError> {
+        assess_changes_with_context(self, input)
     }
 
     #[tracing::instrument(name = "adoc.project_status", level = "info", skip_all)]
@@ -1119,6 +1140,33 @@ where
     Ok(ReviewOutcome {
         envelope,
         exit_code: 0,
+    })
+}
+
+fn assess_changes_with_context<P>(
+    context: &LocalContext<P>,
+    input: AssessmentInput,
+) -> Result<AssessmentOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    let project_root =
+        git_project_root(context.config_start()).ok_or_else(|| LocalError::ConfigMissing {
+            message: "adoc assess-changes requires a Git repository".to_string(),
+            config_path: None,
+        })?;
+    let envelope = assess_changes_from_git(CoreChangeAssessmentInput {
+        project_root,
+        base_ref: input.base_ref,
+        head_ref: input.head_ref,
+        evaluation_date: input
+            .as_of
+            .unwrap_or_else(|| chrono::Utc::now().date_naive()),
+    });
+    let exit_code = if envelope.is_complete() { 0 } else { 2 };
+    Ok(AssessmentOutcome {
+        envelope,
+        exit_code,
     })
 }
 

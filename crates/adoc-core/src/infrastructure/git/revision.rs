@@ -9,6 +9,7 @@ use super::util::clear_git_env;
 pub(crate) struct ResolvedReview {
     pub(crate) base: SnapshotSelector,
     pub(crate) head: SnapshotSelector,
+    pub(crate) requested_base_sha: String,
     pub(crate) head_sha: String,
 }
 
@@ -46,8 +47,25 @@ pub(crate) fn resolve_review(
             SnapshotSelector::Workdir => SnapshotSelector::Workdir,
             SnapshotSelector::GitRef(_) => SnapshotSelector::GitRef(GitRef::new(head_sha.clone())),
         },
+        requested_base_sha: base_sha,
         head_sha,
     })
+}
+
+pub(crate) fn worktree_is_dirty(repo_root: &Path) -> Result<bool, SnapshotError> {
+    let mut command = Command::new("git");
+    command
+        .arg("-C")
+        .arg(repo_root)
+        .args(["status", "--porcelain=v1", "-z"]);
+    clear_git_env(&mut command);
+    let output = command.output().map_err(SnapshotError::Io)?;
+    if !output.status.success() {
+        return Err(SnapshotError::ProviderUnavailable {
+            reason: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        });
+    }
+    Ok(!output.stdout.is_empty())
 }
 
 fn resolve_commit(repo_root: &Path, spec: &str) -> Result<String, SnapshotError> {

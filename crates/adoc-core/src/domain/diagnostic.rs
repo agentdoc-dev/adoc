@@ -372,6 +372,24 @@ diagnostic_codes! {
     /// changed-file set for `--ref`.
     ImpactedGitUnavailable = "impacted.git_unavailable" =>
         "Install git and run inside a git repository, or pass explicit changed paths instead of `--ref`.";
+    AssessmentInvalidConfigPath = "assessment.invalid_config_path" =>
+        "Use an exact portable repository-relative path or a directory prefix ending in `/`.";
+    AssessmentRefUnresolved = "assessment.ref_unresolved" =>
+        "Use base and head refs that resolve to commits in this repository.";
+    AssessmentSnapshotFailed = "assessment.snapshot_failed" =>
+        "Retry from a complete Git checkout where the requested snapshots can be materialized.";
+    AssessmentComparisonBaseUnavailable = "assessment.comparison_base_unavailable" =>
+        "Fetch enough history for base and head to have exactly one merge base.";
+    AssessmentBasePartial = "assessment.base_partial" =>
+        "Repair comparison-base knowledge or configuration before relying on a complete assessment.";
+    AssessmentChangedSetFailed = "assessment.changed_set_failed" =>
+        "Retry in a Git checkout where the complete changed path set can be established.";
+    AssessmentInvalidChangedPath = "assessment.invalid_changed_path" =>
+        "Rename the path to a portable UTF-8 repository-relative path before assessment.";
+    AssessmentHeadInvalid = "assessment.head_invalid" =>
+        "Repair head configuration or AgentDoc Source validation errors and rerun the assessment.";
+    AssessmentGraphFailed = "assessment.graph_failed" =>
+        "Repair head compilation so the exact graph artifact can be produced.";
     /// V8.1.1: `adoc migrate` preserved a raw HTML block (or a prose block
     /// strict mode rejects as raw HTML) verbatim inside a fenced code block,
     /// because strict `.adoc` forbids raw HTML (ADR-0043).
