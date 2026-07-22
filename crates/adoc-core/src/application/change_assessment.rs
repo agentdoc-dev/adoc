@@ -1034,10 +1034,6 @@ fn review_requirements(
         );
     }
     if policy_changed {
-        reviewers
-            .entry("agentdoc-config-owner".to_string())
-            .or_default()
-            .insert(CONFIG_PATH.to_string());
         obligations.insert(
             CONFIG_PATH.to_string(),
             AssessmentObligation {

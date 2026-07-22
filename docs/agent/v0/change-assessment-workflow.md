@@ -35,4 +35,6 @@ Entries are exact files or directory prefixes ending in `/`; there are no globs.
 
 Invalid exclusion entries emit `assessment.invalid_config_path`; they never collapse into a generic successful or empty assessment.
 
+Required reviewer identities come only from Knowledge Object metadata. Policy changes retain a human-review obligation for `agentdoc.config.yaml`; use repository CODEOWNERS to select the responsible reviewer.
+
 There is no assessment MCP tool in V9.2.1. Agents and adapters may read the published workflow and schema resources; CI invokes the CLI and consumes its JSON envelope.

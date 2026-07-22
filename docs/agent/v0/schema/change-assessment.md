@@ -20,6 +20,8 @@ Every changed path occurs once in a complete envelope. Classification is `exclud
 
 Authoritative kind/status pairs are closed: verified claim, accepted decision, verified API, active policy, and verified procedure. Every other match is provisional. `agent_instruction` never grants runtime authority.
 
+`required_reviewers` contains only identities authored on Knowledge Objects. Policy changes emit a human-review proof obligation for `agentdoc.config.yaml`; repository CODEOWNERS supplies the reviewer identity.
+
 ## Privacy and determinism
 
 `objects` and `knowledge_changes` contain metadata, hashes, source coordinates, and reasons but never Knowledge Object bodies. The contract also excludes raw diffs, timestamps, actors, GitHub metadata, prompts, and model data.
