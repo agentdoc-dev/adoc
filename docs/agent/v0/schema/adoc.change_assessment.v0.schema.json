@@ -194,7 +194,7 @@
     "object": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "content_hash", "source", "authority", "changed_in_pr", "reasons"],
+      "required": ["id", "kind", "content_hash", "reviewers", "source", "authority", "changed_in_pr", "reasons"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "kind": { "type": "string", "minLength": 1 },
@@ -202,6 +202,7 @@
         "effective_status": { "type": "string" },
         "content_hash": { "$ref": "#/$defs/sha256" },
         "owner": { "type": "string" },
+        "reviewers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
         "evidence_quality": { "enum": ["high", "medium", "low"] },
         "source": { "$ref": "#/$defs/source" },
         "authority": { "enum": ["authoritative", "provisional"] },
@@ -221,7 +222,7 @@
     "knowledgeChange": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "kind", "authority", "source", "reason"],
+      "required": ["id", "kind", "authority", "reviewers", "source", "reason"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "kind": { "type": "string", "minLength": 1 },
@@ -231,6 +232,7 @@
         "authored_status": { "type": "string" },
         "effective_status": { "type": "string" },
         "owner": { "type": "string" },
+        "reviewers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
         "source": { "$ref": "#/$defs/source" },
         "reason": { "enum": ["created", "changed", "deleted"] }
       }

@@ -205,6 +205,7 @@ pub struct AssessmentObject {
     pub content_hash: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+    pub reviewers: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence_quality: Option<String>,
     pub source: AssessmentSource,
@@ -228,6 +229,7 @@ pub struct KnowledgeChange {
     pub effective_status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+    pub reviewers: Vec<String>,
     pub source: AssessmentSource,
     pub reason: String,
 }
@@ -838,6 +840,7 @@ fn assessment_object(
             .or_else(|| node.status.clone()),
         content_hash: node.content_hash.clone(),
         owner: node.fields.get("owner").cloned(),
+        reviewers: reviewers_of(node),
         evidence_quality: node.evidence_quality.clone(),
         source: source(&node.source_span),
         authority: authority(node).to_string(),
@@ -891,6 +894,7 @@ fn knowledge_change(
             .clone()
             .or_else(|| node.status.clone()),
         owner: node.fields.get("owner").cloned(),
+        reviewers: reviewers_of(node),
         source: source(&node.source_span),
         reason: reason.to_string(),
     }
@@ -907,7 +911,7 @@ fn review_requirements(
         .iter()
         .filter(|object| object.authority == "authoritative")
     {
-        if let Some(owner) = &object.owner {
+        for owner in &object.reviewers {
             reviewers
                 .entry(owner.clone())
                 .or_default()
@@ -925,7 +929,7 @@ fn review_requirements(
         .chain(&changes.deleted)
         .filter(|change| change.authority == "authoritative")
     {
-        if let Some(owner) = &change.owner {
+        for owner in &change.reviewers {
             reviewers
                 .entry(owner.clone())
                 .or_default()
@@ -1553,6 +1557,18 @@ fn authority(node: &GraphKnowledgeObjectNode) -> &'static str {
     }
 }
 
+fn reviewers_of(node: &GraphKnowledgeObjectNode) -> Vec<String> {
+    let mut reviewers = BTreeSet::new();
+    if let Some(owner) = node.fields.get("owner") {
+        reviewers.insert(owner.clone());
+    }
+    if let Some(decider) = node.fields.get("decided_by") {
+        reviewers.insert(decider.clone());
+    }
+    reviewers.extend(node.approved_by.iter().cloned());
+    reviewers.into_iter().collect()
+}
+
 fn path_string(path: &Path) -> String {
     path.to_string_lossy()
         .replace(std::path::MAIN_SEPARATOR, "/")
@@ -1567,7 +1583,8 @@ fn compact_json<T: Serialize>(value: &T) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_authoritative_subject, path_matches_exclusion};
+    use super::{is_authoritative_subject, path_matches_exclusion, reviewers_of};
+    use crate::domain::review::object_diff::test_support::test_node;
 
     #[test]
     fn authority_table_is_closed_to_the_five_governing_pairs() {
@@ -1599,5 +1616,15 @@ mod tests {
             "generated.txt.bak",
             "generated.txt"
         ));
+    }
+
+    #[test]
+    fn active_policy_uses_every_approver_as_a_required_reviewer() {
+        let mut policy = test_node("billing.policy", "sha256:policy");
+        policy.kind = "policy".to_string();
+        policy.status = Some("active".to_string());
+        policy.approved_by = vec!["security".to_string(), "architecture".to_string()];
+
+        assert_eq!(reviewers_of(&policy), ["architecture", "security"]);
     }
 }
