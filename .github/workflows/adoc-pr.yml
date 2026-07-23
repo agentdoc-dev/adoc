@@ -30,7 +30,7 @@ jobs:
       - id: agentdoc
         uses: agentdoc-dev/action@6c48dbef32d93d7e285b0e3c1919a3b562f49b1d # v1.6.1
         with:
-          adoc-version: v0.3.1
+          adoc-version: v0.3.2
           enforcement: advisory
           propose: false
 
