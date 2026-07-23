@@ -264,7 +264,7 @@ Parallelism describes merge conflicts and dependencies, not required staffing.
 | V9.2.2 | Implemented | Exact-SHA GitHub assessment and retained receipt | `adoc`, `action` | V9.2.1 | ADR-0051; AgentDoc #125/#126 and v0.3.1; Action #9/#10 and v1.5.1; retained run 29922744068; repeatability run 29922202760 |
 | V9.2.3 | Implemented | Clear advisory PR disposition without false review claims | `action` | V9.2.2 | Action #11/#12 and v1.6.1; AgentDoc #128/#129 and v0.3.2; retained run 29987385082 |
 | V9.3.1 | Implemented | Optional cited semantic classification | `action` | V9.2.3 | ADR-0052; Action #13 and v2.0.0-alpha.1; schema, grounding, security, and fail-honest regressions; smoke run 29990509831 |
-| V9.3.2 | Planned | Canonical AgentDoc patch proposals | `adoc`, `action` | V9.3.1 | — |
+| V9.3.2 | Implemented | Canonical AgentDoc patch proposals | `adoc`, `action` | V9.3.1 | ADR-0053; AgentDoc #134/#135 and v0.3.3; Action #14 and v2.0.0-alpha.2; live provider run 29995163041 |
 | V9.3.3 | Planned | Human-governed comment/commit/PR delivery | `action` | V9.3.2 | — |
 | V9.4.1 | Planned | Precommitted pilot ledger and thresholds | `adoc`, `action` | V9.3.3 | — |
 | V9.4.2 | Planned | Real dogfood and external PR evidence | `adoc`, `action` | V9.4.1 | — |
@@ -1694,13 +1694,13 @@ AgentDoc:
 
 ### V9.3.2: Canonical AgentDoc Patch Proposal Slice
 
-**Status:** Planned
+**Status:** Implemented
 **Repositories:** `adoc`, `action`
 **Depends on:** V9.3.1
 **User touchpoint:** Proposed Knowledge section
 **Contract impact:** `adoc.patch.v0` unchanged; published JSON Schema hardened to match the parser
 **Gate posture:** Proposals advisory and human-reviewed
-**Completion evidence:** —
+**Completion evidence:** ADR-0053; AgentDoc [PR #134](https://github.com/agentdoc-dev/adoc/pull/134), schema/release [PR #135](https://github.com/agentdoc-dev/adoc/pull/135), and [v0.3.3](https://github.com/agentdoc-dev/adoc/releases/tag/v0.3.3); Action [PR #14](https://github.com/agentdoc-dev/action/pull/14) and [v2.0.0-alpha.2](https://github.com/agentdoc-dev/action/releases/tag/v2.0.0-alpha.2); parser/schema parity, four-kind canonical proposal, correlation, authority/placement, deterministic ordering/digest, exact-head sandbox, fail-honest, and security regressions; token-backed [provider run 29995163041](https://github.com/agentdoc-dev/action/actions/runs/29995163041)
 
 #### Goal
 
