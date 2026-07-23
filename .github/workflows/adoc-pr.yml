@@ -28,7 +28,7 @@ jobs:
       # Flip enforcement to strict after one clean week (§24.3); record the
       # flip in this file's history.
       - id: agentdoc
-        uses: agentdoc-dev/action@9aed946ec7c6c29edb1fbd784d04833d7383c2e1 # v1.5.1
+        uses: agentdoc-dev/action@6c48dbef32d93d7e285b0e3c1919a3b562f49b1d # v1.6.1
         with:
           adoc-version: v0.3.1
           enforcement: advisory
