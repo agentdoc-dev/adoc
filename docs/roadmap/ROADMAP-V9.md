@@ -262,7 +262,7 @@ Parallelism describes merge conflicts and dependencies, not required staffing.
 | V9.1.4 | Planned | Proposal execution has a defensible trust boundary | `action` | — | — |
 | V9.2.1 | Implemented | One deterministic local change-assessment command | `adoc` | V9.1.1–V9.1.2 | ADR-0050; core/local/CLI/MCP schema and failure-envelope tests |
 | V9.2.2 | Implemented | Exact-SHA GitHub assessment and retained receipt | `adoc`, `action` | V9.2.1 | ADR-0051; AgentDoc #125/#126 and v0.3.1; Action #9/#10 and v1.5.1; retained run 29922744068; repeatability run 29922202760 |
-| V9.2.3 | Planned | Clear advisory PR disposition without false review claims | `action` | V9.2.2 | — |
+| V9.2.3 | Implemented | Clear advisory PR disposition without false review claims | `action` | V9.2.2 | Action #11/#12 and v1.6.1; AgentDoc #128/#129 and v0.3.2; retained run 29987385082 |
 | V9.3.1 | Planned | Optional cited semantic classification | `action` | V9.2.3 | — |
 | V9.3.2 | Planned | Canonical AgentDoc patch proposals | `adoc`, `action` | V9.3.1 | — |
 | V9.3.3 | Planned | Human-governed comment/commit/PR delivery | `action` | V9.3.2 | — |
@@ -1349,13 +1349,13 @@ A completed receipt with a valid `complete` assessment requires `knowledge_snaps
 
 ### V9.2.3: Advisory Knowledge Disposition Slice
 
-**Status:** Planned
+**Status:** Implemented
 **Repositories:** `action`
 **Depends on:** V9.2.2
 **User touchpoint:** AgentDoc PR Report
 **Contract impact:** Presentation only; no new public envelope
 **Gate posture:** Advisory
-**Completion evidence:** —
+**Completion evidence:** Action PRs [#11](https://github.com/agentdoc-dev/action/pull/11) and [#12](https://github.com/agentdoc-dev/action/pull/12); Action [v1.6.1](https://github.com/agentdoc-dev/action/releases/tag/v1.6.1) and [Marketplace listing](https://github.com/marketplace/actions/agentdoc-pr-report); AgentDoc PRs [#128](https://github.com/agentdoc-dev/adoc/pull/128) and [#129](https://github.com/agentdoc-dev/adoc/pull/129); AgentDoc [v0.3.2](https://github.com/agentdoc-dev/adoc/releases/tag/v0.3.2); live receipt record below
 
 #### Goal
 
@@ -1438,6 +1438,16 @@ AgentDoc:
 - A reviewer can answer “what changed, what knowledge is linked, what is missing, who owns it, and did knowledge change in this PR?” from the comment.
 - No report text uses `verified`, `reviewed`, or `compliant` as a conclusion about code behavior.
 - Structural/setup failures retain existing gate behavior; all knowledge findings remain advisory.
+
+#### Completion record
+
+- Action [PR #11](https://github.com/agentdoc-dev/action/pull/11) merged the assessment-owned advisory disposition renderer, stable report sections, injection hardening, and direct-delivery finalization as `5667b2ac3dcfc2a2ebe60f70f8fe66d91ceeedae`. Its immutable `v1.6.0` release remained available, but GitHub Marketplace correctly rejected the 132-character Action description.
+- Action [PR #12](https://github.com/agentdoc-dev/action/pull/12) reduced the description to 113 characters without changing runtime behavior and merged as `6c48dbef32d93d7e285b0e3c1919a3b562f49b1d`. All eleven PR CI jobs passed in [run 29986289975](https://github.com/agentdoc-dev/action/actions/runs/29986289975); immutable [v1.6.1](https://github.com/agentdoc-dev/action/releases/tag/v1.6.1) is published in the [GitHub Marketplace](https://github.com/marketplace/actions/agentdoc-pr-report).
+- AgentDoc [PR #128](https://github.com/agentdoc-dev/adoc/pull/128) first dogfooded the exact Action commit, then bumped the public CLI version contract and merged as `c146e4ca13c79749129b3a3cefa3f97bbab4df3d`. Tag [v0.3.2](https://github.com/agentdoc-dev/adoc/releases/tag/v0.3.2) points to that commit; [release run 29987172756](https://github.com/agentdoc-dev/adoc/actions/runs/29987172756) built and smoke-checked x86_64 and arm64 Linux archives, and both published checksum files verified against the downloaded archives.
+- AgentDoc [PR #129](https://github.com/agentdoc-dev/adoc/pull/129) merged the final exact pair—Action commit `6c48dbef32d93d7e285b0e3c1919a3b562f49b1d` plus AgentDoc `v0.3.2`—as `a255f2cd27ed4914f872f01481da09652c564d63`. Only after that live smoke passed was floating Action tag `v1` moved; `v1` and `v1.6.1` now resolve to the same commit.
+- The final-head [run 29987385082](https://github.com/agentdoc-dev/adoc/actions/runs/29987385082) retained artifact `agentdoc-inv_29987385082_1_report_97b6e1a0e1da5aea77bcd944aebf4db4`. Its [sticky report](https://github.com/agentdoc-dev/adoc/pull/129#issuecomment-5055503734) renders Validation, Assessment, Changed paths, Affected knowledge, Knowledge signals, owners/obligations, and receipt sections; it names requested/comparison base `c146e4ca13c79749129b3a3cefa3f97bbab4df3d`, head `838a332cd8c1c43384e5b4889949bd47dfdd2761`, and receipt `sha256:cb880a037565921dcd6801f54d9d90a8be12f549bde9a71d3cf314f7df6ea593`.
+- The downloaded final receipt validates against `adoc.pr_assessment_receipt.v0` with `check-jsonschema 0.35.0`. It records Action provenance `full_sha`, resolved AgentDoc `v0.3.2` with binary `sha256:7f7096febfb21c27169917165f7ff5eb85be48c3504ebf71449e946116fc3ee0`, and complete assessment `sha256:ee01ce7cb418e4f96e45c98d91643f0dac6569e93b32b3abf63c9e079249bae5`; the latter matches the retained assessment bytes.
+- No AgentDoc domain behavior, assessment envelope, Action input/output, enforcement policy, reviewer identity, or waiver mechanism changed in this slice. The `v0.3.2` AgentDoc release refreshes executables and the `v1.6.1` Action patch repairs Marketplace metadata; advisory disposition remains presentation derived exclusively from the validated assessment.
 
 #### Deferred
 
