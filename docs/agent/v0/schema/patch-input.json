@@ -6,12 +6,120 @@
   "required": ["schema_version", "op", "target", "changes", "reason"],
   "properties": {
     "schema_version": { "const": "adoc.patch.v0" },
-    "op": { "enum": ["replace_body", "update_fields", "create_object", "supersede", "revoke"] },
+    "op": {
+      "enum": ["replace_body", "update_fields", "create_object", "supersede", "revoke"]
+    },
     "target": { "type": "string" },
     "base_hash": { "type": "string", "pattern": "^sha256:" },
     "changes": { "type": "object" },
     "reason": { "type": "string", "minLength": 1 },
-    "proposer": { "type": "object" }
+    "proposer": { "$ref": "#/$defs/proposer" }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "oneOf": [
+    {
+      "required": ["base_hash"],
+      "properties": {
+        "op": { "const": "replace_body" },
+        "changes": {
+          "type": "object",
+          "required": ["body"],
+          "properties": {
+            "body": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "required": ["base_hash"],
+      "properties": {
+        "op": { "const": "update_fields" },
+        "changes": {
+          "type": "object",
+          "required": ["fields"],
+          "properties": {
+            "fields": {
+              "allOf": [
+                { "$ref": "#/$defs/fields" },
+                { "minProperties": 1 }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "not": { "required": ["base_hash"] },
+      "properties": {
+        "op": { "const": "create_object" },
+        "changes": {
+          "type": "object",
+          "required": ["kind", "body"],
+          "properties": {
+            "kind": { "type": "string" },
+            "status": { "type": "string" },
+            "body": { "type": "string" },
+            "fields": { "$ref": "#/$defs/fields" },
+            "placement": { "$ref": "#/$defs/placement" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "required": ["base_hash"],
+      "properties": {
+        "op": { "const": "supersede" },
+        "changes": {
+          "type": "object",
+          "required": ["supersedes"],
+          "properties": {
+            "supersedes": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "required": ["base_hash"],
+      "properties": {
+        "op": { "const": "revoke" },
+        "changes": {
+          "type": "object",
+          "maxProperties": 0,
+          "additionalProperties": false
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "fields": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "placement": {
+      "type": "object",
+      "required": ["page_id"],
+      "properties": {
+        "page_id": { "type": "string" },
+        "after": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "proposer": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "type": "string" },
+        "id": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
 }
