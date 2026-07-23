@@ -6,6 +6,14 @@ Patch input expresses one proposed object-level change: `replace_body`, `update_
 
 Patch validation is read-only and never applies source edits. Application is the separate `adoc.patch.apply.v0` surface — `adoc patch --apply` on the CLI, and the config-gated MCP `adoc_patch_apply` (ADR-0036/0037).
 
+The published patch-input JSON Schema mirrors the parser's structural
+operation contract. Existing-object operations require `base_hash`;
+`create_object` forbids it. Each operation accepts only its documented
+`changes` members, and placement/proposer objects reject unknown members.
+`changes.fields` remains a string-valued authored metadata map because
+kind-specific field and lifecycle validation belongs to AgentDoc's Rust patch
+validator, not a duplicate JSON Schema rules engine.
+
 ## adoc.patch.v0 placement (V6.4)
 
 `changes.placement` on `create_object` is optional on the wire: a missing placement is the WARNING `patch.create_missing_placement` on `--check` and an ERROR on `--apply` (apply must know where to insert). At apply time `placement.page_id` resolves to a file via the page node's `source_path`; `after: <id>` inserts immediately after that block's close fence; absent `after` appends at end of file. Placement pages must be `.adoc` (`patch.placement_not_adoc`); new-file creation is deferred.

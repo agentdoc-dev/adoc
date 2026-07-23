@@ -49,6 +49,13 @@ fn assert_valid(schema_name: &str, instance: &serde_json::Value) {
     );
 }
 
+fn schema_accepts(schema_name: &str, instance: &serde_json::Value) -> bool {
+    let schema = schema(schema_name);
+    jsonschema::validator_for(&schema)
+        .expect("schema compiles")
+        .is_valid(instance)
+}
+
 fn project_with_built_graph() -> (tempfile::TempDir, AgentDocMcpServer, String) {
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();
@@ -232,6 +239,115 @@ fn validates_representative_serialized_agent_envelopes_against_contract_schemas(
     assert_valid("adoc.contradictions.v0.schema.json", &contradictions);
     assert_eq!(contradictions["contradictions"], serde_json::json!([]));
     assert_eq!(contradictions["contradicted_claims"], serde_json::json!([]));
+}
+
+#[test]
+fn patch_input_schema_matches_the_public_parser_structural_contract() {
+    let replace = json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "replace_body",
+        "target": "billing.ready",
+        "base_hash": "sha256:content",
+        "changes": { "body": "Updated body." },
+        "reason": "Update body."
+    });
+    let create = json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "create_object",
+        "target": "billing.created",
+        "changes": {
+            "kind": "claim",
+            "status": "draft",
+            "body": "Created claim.",
+            "fields": { "owner": "team-billing" },
+            "placement": { "page_id": "team.billing", "after": "billing.ready" }
+        },
+        "reason": "Create claim.",
+        "proposer": { "type": "agent", "id": "agentdoc-action" }
+    });
+    let update = json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "update_fields",
+        "target": "billing.ready",
+        "base_hash": "sha256:content",
+        "changes": { "fields": { "owner": "team-billing" } },
+        "reason": "Set owner."
+    });
+    let supersede = json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "supersede",
+        "target": "billing.ready",
+        "base_hash": "sha256:content",
+        "changes": { "supersedes": ["billing.old"] },
+        "reason": "Record supersession."
+    });
+    let revoke = json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "revoke",
+        "target": "billing.ready",
+        "base_hash": "sha256:content",
+        "changes": {},
+        "reason": "Revoke stale knowledge."
+    });
+
+    let mut cases = vec![
+        ("replace_body", replace.clone()),
+        ("create_object", create.clone()),
+        ("update_fields", update.clone()),
+        ("supersede", supersede.clone()),
+        ("revoke", revoke.clone()),
+    ];
+    let mut invalid = |name: &'static str, mut value: serde_json::Value| {
+        cases.push((name, value.take()));
+    };
+
+    let mut value = replace.clone();
+    value.as_object_mut().expect("object").remove("base_hash");
+    invalid("replace_body missing base_hash", value);
+    let mut value = create.clone();
+    value["base_hash"] = json!("sha256:forbidden");
+    invalid("create_object with base_hash", value);
+    let mut value = replace.clone();
+    value["unexpected"] = json!(true);
+    invalid("unknown top-level member", value);
+    let mut value = replace.clone();
+    value["changes"]["status"] = json!("verified");
+    invalid("operation-incompatible changes member", value);
+    let mut value = create.clone();
+    value["changes"]["placement"]["unexpected"] = json!(true);
+    invalid("unknown placement member", value);
+    let mut value = create.clone();
+    value["changes"]["placement"]
+        .as_object_mut()
+        .expect("placement object")
+        .remove("page_id");
+    invalid("placement missing page_id", value);
+    let mut value = create.clone();
+    value["proposer"]["unexpected"] = json!(true);
+    invalid("unknown proposer member", value);
+    let mut value = update.clone();
+    value["changes"]["fields"] = json!({});
+    invalid("empty update_fields map", value);
+    let mut value = update;
+    value["changes"]["fields"]["owner"] = json!(7);
+    invalid("non-string metadata value", value);
+    let mut value = supersede;
+    value["changes"]["supersedes"] = json!([]);
+    invalid("empty supersedes list", value);
+    let mut value = revoke;
+    value["changes"]["body"] = json!("not accepted");
+    invalid("revoke changes member", value);
+
+    for (name, patch) in cases {
+        let parser_accepts = parse_patch_from_value(patch.clone()).is_ok();
+        let contract_accepts = schema_accepts("patch-input.json", &patch);
+        assert_eq!(
+            contract_accepts,
+            parser_accepts,
+            "schema/parser mismatch for {name}:\n{}",
+            serde_json::to_string_pretty(&patch).expect("pretty patch")
+        );
+    }
 }
 
 /// V6.1: `adoc_stale` envelopes with all three record categories validate
