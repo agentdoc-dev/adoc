@@ -3,14 +3,14 @@ mod support;
 use support::{adoc_command, fixture_path, stderr, stdout, workspace_fixture_path};
 
 #[test]
-fn version_matches_the_v0_3_2_release() {
+fn version_matches_the_v0_3_3_release() {
     let output = adoc_command()
         .arg("--version")
         .output()
         .expect("adoc --version runs");
 
     assert_eq!(output.status.code(), Some(0));
-    assert_eq!(stdout(&output), "adoc 0.3.2\n");
+    assert_eq!(stdout(&output), "adoc 0.3.3\n");
     assert!(output.stderr.is_empty());
 }
 
