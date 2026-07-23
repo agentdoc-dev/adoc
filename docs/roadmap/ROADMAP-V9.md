@@ -263,7 +263,7 @@ Parallelism describes merge conflicts and dependencies, not required staffing.
 | V9.2.1 | Implemented | One deterministic local change-assessment command | `adoc` | V9.1.1–V9.1.2 | ADR-0050; core/local/CLI/MCP schema and failure-envelope tests |
 | V9.2.2 | Implemented | Exact-SHA GitHub assessment and retained receipt | `adoc`, `action` | V9.2.1 | ADR-0051; AgentDoc #125/#126 and v0.3.1; Action #9/#10 and v1.5.1; retained run 29922744068; repeatability run 29922202760 |
 | V9.2.3 | Implemented | Clear advisory PR disposition without false review claims | `action` | V9.2.2 | Action #11/#12 and v1.6.1; AgentDoc #128/#129 and v0.3.2; retained run 29987385082 |
-| V9.3.1 | Planned | Optional cited semantic classification | `action` | V9.2.3 | — |
+| V9.3.1 | Implemented | Optional cited semantic classification | `action` | V9.2.3 | ADR-0052; Action #13 and v2.0.0-alpha.1; schema, grounding, security, and fail-honest regressions; smoke run 29990509831 |
 | V9.3.2 | Planned | Canonical AgentDoc patch proposals | `adoc`, `action` | V9.3.1 | — |
 | V9.3.3 | Planned | Human-governed comment/commit/PR delivery | `action` | V9.3.2 | — |
 | V9.4.1 | Planned | Precommitted pilot ledger and thresholds | `adoc`, `action` | V9.3.3 | — |
@@ -1461,13 +1461,13 @@ V9.3 implements the probabilistic layer the deterministic compiler cannot honest
 
 ### V9.3.1: Cited Semantic Classification Slice
 
-**Status:** Planned
+**Status:** Implemented
 **Repositories:** `action`
 **Depends on:** V9.2.3
 **User touchpoint:** Semantic Review section of the PR report
 **Contract impact:** New experimental Action-owned `adoc.semantic_review.v0` artifact
 **Gate posture:** Advisory only
-**Completion evidence:** —
+**Completion evidence:** ADR-0052; Action [PR #13](https://github.com/agentdoc-dev/action/pull/13) and [v2.0.0-alpha.1](https://github.com/agentdoc-dev/action/releases/tag/v2.0.0-alpha.1); closed-schema, exact-head citation grounding, provider-output security, and fail-honest regressions; prerelease [smoke run 29990509831](https://github.com/agentdoc-dev/action/actions/runs/29990509831)
 
 #### Goal
 
