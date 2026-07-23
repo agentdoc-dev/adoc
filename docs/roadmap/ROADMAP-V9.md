@@ -257,9 +257,9 @@ Parallelism describes merge conflicts and dependencies, not required staffing.
 | Slice | Status | User outcome | Repositories | Depends on | Completion evidence |
 | --- | --- | --- | --- | --- | --- |
 | V9.1.1 | Implemented | Portable source coordinates and hashes | `adoc` | — | ADR-0049; core/local/CLI/MCP contract tests |
-| V9.1.2 | In progress | Code-only PRs report unchanged affected knowledge | `adoc` | V9.1.1 | Full-graph core, exact-revision Git adapter, worktree change-set, and snapshot-config CLI/MCP tests |
-| V9.1.3 | Planned | Failed analysis cannot appear covered | `action` | — | — |
-| V9.1.4 | Planned | Proposal execution has a defensible trust boundary | `action` | — | — |
+| V9.1.2 | Implemented | Code-only PRs report unchanged affected knowledge | `adoc` | V9.1.1 | AgentDoc #122 and v0.3.0; full-graph, exact-revision, worktree, snapshot-config, CLI/MCP tests |
+| V9.1.3 | Implemented | Failed analysis cannot appear covered | `action` | — | Action #6 and v1.4.1; fail-honest and diagnostic-attribution regressions |
+| V9.1.4 | Implemented | Proposal execution has a defensible trust boundary | `action` | — | Action #7/#8 and v1.4.2; proposal security and host-event isolation regressions |
 | V9.2.1 | Implemented | One deterministic local change-assessment command | `adoc` | V9.1.1–V9.1.2 | ADR-0050; core/local/CLI/MCP schema and failure-envelope tests |
 | V9.2.2 | Implemented | Exact-SHA GitHub assessment and retained receipt | `adoc`, `action` | V9.2.1 | ADR-0051; AgentDoc #125/#126 and v0.3.1; Action #9/#10 and v1.5.1; retained run 29922744068; repeatability run 29922202760 |
 | V9.2.3 | Implemented | Clear advisory PR disposition without false review claims | `action` | V9.2.2 | Action #11/#12 and v1.6.1; AgentDoc #128/#129 and v0.3.2; retained run 29987385082 |
@@ -428,13 +428,13 @@ These may be commits in one PR if review remains tractable; do not split tests o
 
 ### V9.1.2: Code-Change Impact Correctness Slice
 
-**Status:** In progress
+**Status:** Implemented
 **Repositories:** `adoc`
 **Depends on:** V9.1.1
 **User touchpoint:** `adoc review <base>` and MCP `adoc_review`
 **Contract impact:** Behavioral correction within `adoc.review.v0`
 **Gate posture:** Advisory
-**Completion evidence:** Full-graph impact and kind-correct obligation unit tests; exact-SHA/merge-base, immutable-worktree, complete changed-path, per-snapshot-config, CLI, MCP, and contract regressions on the implementation branch. Merge and release links remain required before `Implemented`.
+**Completion evidence:** AgentDoc [PR #122](https://github.com/agentdoc-dev/adoc/pull/122) and [v0.3.0](https://github.com/agentdoc-dev/adoc/releases/tag/v0.3.0); full-graph impact and kind-correct obligation unit tests; exact-SHA/merge-base, immutable-worktree, complete changed-path, per-snapshot-config, CLI, MCP, and contract regressions
 
 #### Goal
 
@@ -544,7 +544,7 @@ No shape change to `adoc.review.v0`. The behavioral invariant changes from “af
 **User touchpoint:** AgentDoc PR Report
 **Contract impact:** Behavioral breaking correction for analysis/setup failures; no input/schema change
 **Gate posture:** Setup/internal analysis inability is always non-green; structurally invalid knowledge retains existing `advisory|strict` policy
-**Completion evidence:** —
+**Completion evidence:** Action [PR #6](https://github.com/agentdoc-dev/action/pull/6) and [v1.4.1](https://github.com/agentdoc-dev/action/releases/tag/v1.4.1); unavailable-impact, diagnostic-attribution, and delivery-aware report regressions
 
 #### Goal
 
@@ -642,13 +642,13 @@ Tests live in the existing Action CI workflow and use fixture repositories/mocke
 
 ### V9.1.4: Proposal Trust-Boundary Hardening Slice
 
-**Status:** Planned
+**Status:** Implemented
 **Repositories:** `action`
 **Depends on:** —
 **User touchpoint:** Proposed Knowledge section and proposal delivery
 **Contract impact:** Tightening of accepted provider output
 **Gate posture:** Proposal failures follow existing `propose-on-error`; proposals never determine deterministic compliance
-**Completion evidence:** —
+**Completion evidence:** Action [PR #7](https://github.com/agentdoc-dev/action/pull/7), follow-up [PR #8](https://github.com/agentdoc-dev/action/pull/8), and [v1.4.2](https://github.com/agentdoc-dev/action/releases/tag/v1.4.2); input validation, provider pinning, sandbox, safe-draft, complete-diagnostic, and host-event isolation regressions
 
 #### Goal
 
@@ -751,13 +751,13 @@ V9.2 creates the one canonical change-assessment contract. It composes existing 
 
 ### V9.2.1: Local Assessment Command and Envelope Slice
 
-**Status:** Planned
+**Status:** Implemented
 **Repositories:** `adoc`
 **Depends on:** V9.1.1–V9.1.2
 **User touchpoint:** `adoc assess-changes`
 **Contract impact:** New experimental `adoc.change_assessment.v0`; optional config addition
 **Gate posture:** Report-only command; deterministic outcome is data
-**Completion evidence:** —
+**Completion evidence:** ADR-0050; AgentDoc [PR #123](https://github.com/agentdoc-dev/adoc/pull/123) and [v0.3.0](https://github.com/agentdoc-dev/adoc/releases/tag/v0.3.0); core/local/CLI/MCP assessment schema, exact-revision, governance, digest, and failure-envelope tests
 
 #### Goal
 
