@@ -1482,6 +1482,7 @@ The Action currently asks Claude to draft claim/task blocks for uncovered paths,
 Each finding shows:
 
 - one closed classification;
+- a single-line, plain-language judgment headline of at most 120 characters;
 - changed path and diff-hunk citation;
 - cited Knowledge Object IDs and `content_hash` values where applicable;
 - short rationale;
@@ -1577,6 +1578,7 @@ Minimum shape:
     {
       "finding_id": "finding-001",
       "classification": "extends_existing_knowledge",
+      "headline": "Refund persistence extends the documented workflow.",
       "code_evidence": [
         {
           "path": "src/refunds.rs",
@@ -1649,12 +1651,16 @@ AgentDoc:
 - Reuse existing model, provider, credential, and path-cap inputs after opt-in.
 - Existing `propose` behavior remains unchanged until V9.3.2 replaces its custom draft format; no repository silently incurs broader model cost/data processing on upgrade.
 - Existing no-credential behavior remains deterministic-only.
+- New Action-produced v0 findings include `headline`; existing retained v0
+  artifacts without it remain readable and use the classification label as
+  the rendering fallback.
 
 #### Test matrix
 
 - Each classification with valid citations.
 - Multiple findings over one path.
 - Unknown classification and unknown fields reject.
+- Missing, multiline, or over-120-character producer headlines reject.
 - Hallucinated path, hunk, Object ID, and stale object hash reject.
 - Modified bounded-diff byte, wrong hunk range/hash, and ambiguous repeated hunk header reject.
 - Selected/omitted/truncated input-context manifest and digest goldens, including exact `code_hunks[]` IDs/ranges/hashes.
@@ -1933,6 +1939,16 @@ Action:
 14. Never approve, merge, dismiss review, bypass protection, or alter repository settings.
 15. Finalize the report and receipt after delivery so summary/comment/delivery links agree.
 16. Record `assessed_head`, `delivery_commit`, branch, follow-up PR URL, mode, and status per delivery. The receipt never implies the newly created delivery commit was itself the assessed head.
+17. Keep the existing primary report marker and split oversized reports only
+    between complete Markdown records. Overflow comments use exact
+    repository/PR/part markers and are updated or removed only after comment
+    ownership is verified.
+18. Add `comment-max-comments`, default `5`, accepting a positive integer or
+    `unlimited`. At a finite ceiling retain warnings, uncovered paths,
+    obligations, actionable semantic findings, and proposal outcome before
+    lower-priority detail, with exact omission counts.
+19. Treat `propose-delivery: pr` as conditional delivery: no canonical
+    proposal means no follow-up PR, and the report says so directly.
 
 AgentDoc:
 
@@ -1950,7 +1966,9 @@ AgentDoc:
 
 #### Compatibility and migration
 
-- Existing inputs remain.
+- Existing delivery inputs remain.
+- Existing workflows retain a five-comment ceiling without configuration;
+  use `comment-max-comments: unlimited` for every bounded report record.
 - Current delivery users move from custom block application to canonical patch application.
 - No branch rename unless needed to escape an existing collision; document if changed.
 - Recommended workflows set checkout `persist-credentials: false`; write users must supply a token with the documented least privilege.
@@ -1968,6 +1986,8 @@ AgentDoc:
 - Re-run does not stack delivery commits.
 - Final report/summary/receipt links agree.
 - Mock GitHub API never receives approve/merge calls.
+- Single-part, multi-part, finite-cap, unlimited, stale-part cleanup, spoofed
+  marker, and unverifiable-owner comment cases.
 - Git credential is absent before/after the bounded push and checkout credentials were not persisted.
 
 #### PR and release shape
@@ -2654,9 +2674,13 @@ The slice-start security/contract ADR freezes these values and executable bounda
 | Lexical retrieval | Top 5 objects per uncovered path before global dedup/cap |
 | Provider stdout artifact | 1 MiB |
 | Validated semantic findings | 100 |
+| Code citations per semantic finding | 10 |
+| Knowledge citations per semantic finding | 5 |
+| Semantic judgment headline | 120 Unicode scalar values, single line |
 | Rationale | 1,000 Unicode scalar values per finding |
-| Provider wall time | 120 seconds |
-| Final GitHub report | 60,000 characters before deterministic truncation/linking |
+| Provider wall time | 300 seconds |
+| Final GitHub report comment | 60,000 characters; five comments by default or explicitly unlimited |
+| GitHub job summary | Below 1 MiB |
 | Model/provider/version identifier | `[A-Za-z0-9._@+-]{1,128}` |
 | Canonical working-directory input | At most 4,096 bytes after strict UTF-8 decoding; contained repo-relative path only |
 

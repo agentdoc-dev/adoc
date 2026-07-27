@@ -33,8 +33,9 @@ V9.3.1 is a deliberate exception to ADR-0047 Decision 1:
 4. Findings are advisory and use exactly four classifications:
    `consistent`, `extends_existing_knowledge`,
    `contradicts_existing_knowledge`, and `insufficient_evidence`. They carry
-   exact diff-hunk citations and zero or more exact Knowledge Object
-   ID/`content_hash` citations. Numeric confidence is forbidden.
+   a bounded plain-language judgment headline, exact diff-hunk citations, and
+   zero or more exact Knowledge Object ID/`content_hash` citations. Numeric
+   confidence is forbidden.
 5. Semantic review is an explicit opt-in, disabled by default. It never runs
    for forks, Dependabot, unsupported events, missing credentials, or an
    invalid deterministic assessment.
@@ -54,6 +55,10 @@ V9.3.1 is a deliberate exception to ADR-0047 Decision 1:
 - `adoc-core`, AgentDoc schemas, and the Local CLI gain no model concepts.
 - The Action publishes and validates `adoc.semantic_review.v0` independently
   of the Change Assessment.
+- New V9 producers require a single-line headline of at most 120 characters.
+  The experimental v0 reader keeps the field optional so retained artifacts
+  created before this tightening remain valid; renderers fall back to the
+  classification label when it is absent.
 - Existing proposal behavior remains unchanged until V9.3.2 replaces it with
   canonical `adoc.patch.v0` proposals.
 - Existing stable `v1` Action behavior is not moved to the V9.3 implementation.
