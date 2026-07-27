@@ -2679,7 +2679,7 @@ The slice-start security/contract ADR freezes these values and executable bounda
 | Knowledge citations per semantic finding | 5 |
 | Semantic judgment headline | 120 Unicode scalar values, single line |
 | Rationale | 1,000 Unicode scalar values per finding |
-| Provider wall time | 300 seconds |
+| Provider wall time | `provider-timeout-seconds`, default `600`, minimum `60`, maximum `3,600` |
 | Per GitHub report comment | 60,000 characters before deterministic truncation between complete Markdown records |
 | Report comments per delivery | `comment-max-comments`, default `5`, or `unlimited` |
 | GitHub job summary | Below 1 MiB |
