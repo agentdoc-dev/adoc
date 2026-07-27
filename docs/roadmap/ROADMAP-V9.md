@@ -1482,7 +1482,8 @@ The Action currently asks Claude to draft claim/task blocks for uncovered paths,
 Each finding shows:
 
 - one closed classification;
-- a single-line, plain-language judgment headline of at most 120 characters;
+- a single-line, plain-language judgment headline of at most 120 Unicode
+  scalar values;
 - changed path and diff-hunk citation;
 - cited Knowledge Object IDs and `content_hash` values where applicable;
 - short rationale;
@@ -1526,7 +1527,7 @@ All deterministic semantics and merge-relevant facts remain AgentDoc CLI-owned. 
 
 #### Semantic artifact
 
-Minimum shape:
+Current producer shape:
 
 ```json
 {
@@ -1660,7 +1661,7 @@ AgentDoc:
 - Each classification with valid citations.
 - Multiple findings over one path.
 - Unknown classification and unknown fields reject.
-- Missing, multiline, or over-120-character producer headlines reject.
+- Missing, multiline, or over-120-scalar-value producer headlines reject.
 - Hallucinated path, hunk, Object ID, and stale object hash reject.
 - Modified bounded-diff byte, wrong hunk range/hash, and ambiguous repeated hunk header reject.
 - Selected/omitted/truncated input-context manifest and digest goldens, including exact `code_hunks[]` IDs/ranges/hashes.
@@ -2679,7 +2680,8 @@ The slice-start security/contract ADR freezes these values and executable bounda
 | Semantic judgment headline | 120 Unicode scalar values, single line |
 | Rationale | 1,000 Unicode scalar values per finding |
 | Provider wall time | 300 seconds |
-| Final GitHub report comment | 60,000 characters; five comments by default or explicitly unlimited |
+| Per GitHub report comment | 60,000 characters before deterministic truncation between complete Markdown records |
+| Report comments per delivery | `comment-max-comments`, default `5`, or `unlimited` |
 | GitHub job summary | Below 1 MiB |
 | Model/provider/version identifier | `[A-Za-z0-9._@+-]{1,128}` |
 | Canonical working-directory input | At most 4,096 bytes after strict UTF-8 decoding; contained repo-relative path only |
