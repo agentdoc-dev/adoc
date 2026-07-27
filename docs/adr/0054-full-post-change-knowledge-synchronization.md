@@ -25,11 +25,14 @@ operations, so a second patch or transaction format is unnecessary.
    (`draft`, `proposed`, or `open`, by kind). Consumers may explicitly preserve
    status or keep updates advisory.
 4. Contradiction lifecycle changes remain advisory by default. Explicit
-   opt-in permits only cited `resolved` or `dismissed` proposals.
-5. A logical update may require two existing single-operation patches.
-   The Action validates those operations sequentially in one exact-head
-   sandbox and rolls the whole logical candidate back when either operation
-   fails. `adoc.patch.v0` remains unchanged; no bundle schema is added.
+   opt-in permits only cited `resolved` or `dismissed` proposals. Those are
+   the existing terminal contradiction dispositions; the provider may not
+   invent an intermediate lifecycle or make the cited claim authoritative.
+5. A logical update uses at most two existing single-operation patches:
+   `update_fields` first, then `replace_body`. The Action validates them
+   sequentially in one exact-head sandbox and rolls the whole logical
+   candidate back when either operation fails. `adoc.patch.v0` remains
+   unchanged; no bundle schema is added.
 6. Delivery is atomic by default. Explicit partial delivery may retain
    independently valid logical candidates, but every rejection is prominent
    in the source report and proposal PR.

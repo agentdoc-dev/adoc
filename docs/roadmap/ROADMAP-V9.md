@@ -266,7 +266,7 @@ Parallelism describes merge conflicts and dependencies, not required staffing.
 | V9.3.1 | Implemented | Optional cited semantic classification | `action` | V9.2.3 | ADR-0052; Action #13 and v2.0.0-alpha.1; schema, grounding, security, and fail-honest regressions; smoke run 29990509831 |
 | V9.3.2 | Implemented | Canonical AgentDoc patch proposals | `adoc`, `action` | V9.3.1 | ADR-0053; AgentDoc #134/#135 and v0.3.3; Action #14 and v2.0.0-alpha.2; live provider run 29995163041 |
 | V9.3.3 | Implemented | Human-governed comment/commit/PR delivery | `action` | V9.3.2 | Action #15 and v2.0.0-alpha.3 |
-| V9.3.4 | Implemented | Full post-change knowledge synchronization | `action` | V9.3.3 | ADR-0054; Action #22 |
+| V9.3.4 | Implemented | Full post-change knowledge synchronization | `action` | V9.3.3 | ADR-0054; Action #22 and v2.0.0-alpha.10 |
 | V9.4.1 | Planned | Precommitted pilot ledger and thresholds | `adoc`, `action` | V9.3.4 | — |
 | V9.4.2 | Planned | Real dogfood and external PR evidence | `adoc`, `action` | V9.4.1 | — |
 | V9.4.3 | Planned | Evidence-based enforcement and V10 decision | `adoc`, `action` | V9.4.2 | — |
@@ -2021,7 +2021,7 @@ AgentDoc:
 **User touchpoint:** Semantic review, knowledge proposal, and draft follow-up PR
 **Contract impact:** Additive Action inputs and `path_dispositions` in `adoc.semantic_review.v0`
 **Gate posture:** Advisory; GitHub branch/review policy controls merge
-**Completion evidence:** ADR-0054; Action [PR #22](https://github.com/agentdoc-dev/action/pull/22)
+**Completion evidence:** ADR-0054; Action [PR #22](https://github.com/agentdoc-dev/action/pull/22) and [v2.0.0-alpha.10](https://github.com/agentdoc-dev/action/releases/tag/v2.0.0-alpha.10); full/bounded coverage, mixed create/update, authority preservation/demotion, logical rollback, atomic/partial delivery, draft-PR, security, and live provider regressions
 
 #### Goal
 
