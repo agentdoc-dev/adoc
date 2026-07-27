@@ -265,8 +265,9 @@ Parallelism describes merge conflicts and dependencies, not required staffing.
 | V9.2.3 | Implemented | Clear advisory PR disposition without false review claims | `action` | V9.2.2 | Action #11/#12 and v1.6.1; AgentDoc #128/#129 and v0.3.2; retained run 29987385082 |
 | V9.3.1 | Implemented | Optional cited semantic classification | `action` | V9.2.3 | ADR-0052; Action #13 and v2.0.0-alpha.1; schema, grounding, security, and fail-honest regressions; smoke run 29990509831 |
 | V9.3.2 | Implemented | Canonical AgentDoc patch proposals | `adoc`, `action` | V9.3.1 | ADR-0053; AgentDoc #134/#135 and v0.3.3; Action #14 and v2.0.0-alpha.2; live provider run 29995163041 |
-| V9.3.3 | Planned | Human-governed comment/commit/PR delivery | `action` | V9.3.2 | — |
-| V9.4.1 | Planned | Precommitted pilot ledger and thresholds | `adoc`, `action` | V9.3.3 | — |
+| V9.3.3 | Implemented | Human-governed comment/commit/PR delivery | `action` | V9.3.2 | Action #15 and v2.0.0-alpha.3 |
+| V9.3.4 | Implemented | Full post-change knowledge synchronization | `action` | V9.3.3 | ADR-0054; Action #22 and v2.0.0-alpha.10 |
+| V9.4.1 | Planned | Precommitted pilot ledger and thresholds | `adoc`, `action` | V9.3.4 | — |
 | V9.4.2 | Planned | Real dogfood and external PR evidence | `adoc`, `action` | V9.4.1 | — |
 | V9.4.3 | Planned | Evidence-based enforcement and V10 decision | `adoc`, `action` | V9.4.2 | — |
 | V9.4.4 | Planned | Conditionally implement one measured deterministic knowledge gate | `action` | V9.4.3 affirmative gate decision | — |
@@ -1900,13 +1901,13 @@ The exact field representation must match the shipped parser/schema; this exampl
 
 ### V9.3.3: Human-Governed Delivery Slice
 
-**Status:** Planned
+**Status:** Implemented
 **Repositories:** `action`
 **Depends on:** V9.3.2
 **User touchpoint:** Comment, same-PR commit, or follow-up knowledge PR
 **Contract impact:** Existing delivery inputs retained; receipt gains optional proposal/delivery references defined up front by V9.2.2
 **Gate posture:** GitHub branch/review policy controls merge
-**Completion evidence:** —
+**Completion evidence:** Action [PR #15](https://github.com/agentdoc-dev/action/pull/15) and [v2.0.0-alpha.3](https://github.com/agentdoc-dev/action/releases/tag/v2.0.0-alpha.3); governed delivery, ownership, lease, freshness, stale-comment, and permission regressions
 
 #### Goal
 
@@ -2012,6 +2013,45 @@ AgentDoc:
 - Managed central-knowledge-repository proposal PRs. V10 owns them.
 - Custom approval workflow or waiver service.
 
+### V9.3.4: Full Post-Change Knowledge Synchronization Slice
+
+**Status:** Implemented
+**Repositories:** `action`
+**Depends on:** V9.3.3
+**User touchpoint:** Semantic review, knowledge proposal, and draft follow-up PR
+**Contract impact:** Additive Action inputs and `path_dispositions` in `adoc.semantic_review.v0`
+**Gate posture:** Advisory; GitHub branch/review policy controls merge
+**Completion evidence:** ADR-0054; Action [PR #22](https://github.com/agentdoc-dev/action/pull/22) and [v2.0.0-alpha.10](https://github.com/agentdoc-dev/action/releases/tag/v2.0.0-alpha.10); full/bounded coverage, mixed create/update, authority preservation/demotion, logical rollback, atomic/partial delivery, draft-PR, security, and live provider regressions
+
+#### Goal
+
+Review every selected changed path and propose both new and changed Knowledge
+Objects after the pull-request change, without granting the provider authority.
+
+#### Scope
+
+1. Add bounded/full path coverage and one closed disposition per reviewed path.
+2. Reuse canonical `update_fields` and `replace_body` for exact-head existing
+   objects; keep `adoc.patch.v0` single-operation.
+3. Default authoritative updates to a reviewable lifecycle; make preservation
+   and advisory-only behavior explicit policies.
+4. Keep contradiction lifecycle updates advisory unless explicitly enabled,
+   then permit only cited `resolved` or `dismissed` proposals.
+5. Validate multi-operation logical candidates atomically in the sandbox.
+6. Keep delivery atomic by default; optional partial delivery reports every
+   rejected logical candidate prominently.
+7. Create and maintain follow-up proposal pull requests as drafts.
+
+#### Acceptance
+
+- A full review emits one disposition for every non-excluded changed path.
+- One fixture proves a create and an existing-object update in the same
+  canonical validation and delivery loop.
+- Failed operations cannot leave half of a logical object update deliverable.
+- Active contradictions are present in exact-head review context and may be
+  resolved only under explicit policy.
+- No AgentDoc CLI or patch-schema release is required.
+
 ---
 
 ## V9.4: Pilot Evidence and Enforcement Decision
@@ -2022,7 +2062,7 @@ V9.4 proves whether the PR loop creates enough value and precision to justify st
 
 **Status:** Planned
 **Repositories:** `adoc`, `action`
-**Depends on:** V9.3.3
+**Depends on:** V9.3.4
 **User touchpoint:** Pilot kit and append-only report
 **Contract impact:** None
 **Gate posture:** Thresholds fixed before evidence
