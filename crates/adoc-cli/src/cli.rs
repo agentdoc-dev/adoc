@@ -178,6 +178,15 @@ Examples:
   adoc assess-changes --base main --head HEAD --as-of 2026-07-22 --format json
   adoc assess-changes --base main --format markdown
 ";
+const BASELINE_LONG_HELP: &str = "\
+Inventories every tracked path at one immutable Git ref against AgentDoc
+knowledge. Readiness requires valid source and authoritative coverage for
+every non-excluded path.
+
+Examples:
+  adoc baseline --ref HEAD
+  adoc baseline --ref main --as-of 2026-07-28 --format json
+";
 
 /// Parse the `--within <N>d` horizon grammar (same `[0-9]+d` shape as the
 /// `review_interval:` field) into a day count.
@@ -483,6 +492,18 @@ pub(crate) enum Commands {
         /// Immutable head ref. Omit to assess the current worktree.
         #[arg(long, value_name = "GIT_REF")]
         head: Option<String>,
+        /// Pin lifecycle evaluation to this UTC calendar date.
+        #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_evaluation_date)]
+        as_of: Option<chrono::NaiveDate>,
+    },
+    #[command(
+        about = "Inventory repository-wide AgentDoc coverage at one Git ref.",
+        after_long_help = BASELINE_LONG_HELP
+    )]
+    Baseline {
+        /// Immutable repository ref to inventory.
+        #[arg(long = "ref", value_name = "GIT_REF")]
+        git_ref: String,
         /// Pin lifecycle evaluation to this UTC calendar date.
         #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_evaluation_date)]
         as_of: Option<chrono::NaiveDate>,

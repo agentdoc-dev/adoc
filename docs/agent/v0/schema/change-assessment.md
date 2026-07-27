@@ -16,7 +16,7 @@ Sections that could not be established carry `status: unavailable` and omit `val
 
 ## Paths and authority
 
-Every changed path occurs once in a complete envelope. Classification is `excluded`, `covered`, `provisional`, or `uncovered`. Exact `impacts:` and exact source-code/test evidence paths are the only V9.2.1 linkage rules.
+Every changed path occurs once in a complete envelope. Classification is `excluded`, `covered`, `provisional`, or `uncovered`. An `impacts:` entry matches an exact file or, when it ends in `/`, a component-aware directory prefix. Source-code/test evidence paths remain exact. There are no globs.
 
 Authoritative kind/status pairs are closed: verified claim, accepted decision, verified API, active policy, and verified procedure. Every other match is provisional. `agent_instruction` never grants runtime authority.
 

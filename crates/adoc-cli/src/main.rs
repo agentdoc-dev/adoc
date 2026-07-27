@@ -9,10 +9,11 @@ use clap::{Parser, error::ErrorKind};
 
 use crate::cli::{Cli, Commands};
 use crate::commands::{
-    AssessChangesCommandInput, ContradictionsCommandInput, DiffCommandInput, GraphCommandInput,
-    ImpactedByCommandInput, MigrateCommandInput, PatchCommandInput, ReviewCommandInput,
-    SearchCommandInput, StaleCommandInput, assess_changes, build, check, contradictions, diff,
-    graph, impacted_by, init, migrate, patch, review, search_command, stale, why,
+    AssessChangesCommandInput, BaselineCommandInput, ContradictionsCommandInput, DiffCommandInput,
+    GraphCommandInput, ImpactedByCommandInput, MigrateCommandInput, PatchCommandInput,
+    ReviewCommandInput, SearchCommandInput, StaleCommandInput, assess_changes, baseline, build,
+    check, contradictions, diff, graph, impacted_by, init, migrate, patch, review, search_command,
+    stale, why,
 };
 use crate::presentation::{ResolvedFormat, terminal};
 
@@ -41,7 +42,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
     let arguments = arguments.into_iter().collect::<Vec<_>>();
     let assessment_requested = arguments
         .iter()
-        .any(|argument| argument == "assess-changes");
+        .any(|argument| matches!(argument.as_str(), "assess-changes" | "baseline"));
     match Cli::try_parse_from(arguments) {
         Ok(cli) => {
             let resolved = terminal::detect(cli.format.into(), cli.color.into());
@@ -57,6 +58,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                         | Commands::Review { .. }
                         | Commands::ImpactedBy { .. }
                         | Commands::AssessChanges { .. }
+                        | Commands::Baseline { .. }
                 )
             {
                 eprintln!(
@@ -137,6 +139,9 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     },
                     resolved,
                 ),
+                Commands::Baseline { git_ref, as_of } => {
+                    baseline(BaselineCommandInput { git_ref, as_of }, resolved)
+                }
                 Commands::Patch {
                     check,
                     apply,

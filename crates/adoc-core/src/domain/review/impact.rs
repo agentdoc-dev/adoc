@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 use crate::domain::graph::GraphKnowledgeObjectNode;
-use crate::domain::value_objects::rel_path::RelPath;
+use crate::domain::value_objects::rel_path::{RelPath, matches_declared_path};
 
 use super::object_diff::ObjectDiff;
 
@@ -74,9 +74,13 @@ fn impact_entry_for(
         return None;
     }
     let mut hits: BTreeSet<&str> = BTreeSet::new();
-    for declared in &node.impacts {
-        if changed.contains(declared.as_str()) {
-            hits.insert(declared.as_str());
+    for path in changed {
+        if node
+            .impacts
+            .iter()
+            .any(|declared| matches_declared_path(declared, path))
+        {
+            hits.insert(path);
         }
     }
     if hits.is_empty() {
@@ -293,6 +297,27 @@ mod tests {
                 id: "billing.refunds".to_string(),
                 paths: vec!["crates/billing/src/refund.rs".to_string()],
             }]
+        );
+    }
+
+    #[test]
+    fn compute_impact_expands_directory_declarations_to_changed_files() {
+        let diff = diff_with_created(vec![verified_claim_with_impacts(
+            "billing.refunds",
+            &["crates/billing/"],
+        )]);
+
+        let impacted = compute_impact(
+            &diff,
+            &[
+                rel("crates/billing/src/refund.rs"),
+                rel("crates/billing-old/src/refund.rs"),
+            ],
+        );
+
+        assert_eq!(
+            impacted[0].paths,
+            vec!["crates/billing/src/refund.rs".to_string()]
         );
     }
 

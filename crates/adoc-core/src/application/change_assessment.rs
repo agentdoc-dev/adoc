@@ -19,11 +19,12 @@ use crate::domain::project_config::{
     EmbeddingsProvider, ParsedProjectConfig, ProjectConfigDocumentError, parse_project_config,
 };
 use crate::domain::review::object_diff::ObjectDiff;
-use crate::domain::value_objects::rel_path::RelPath;
+use crate::domain::value_objects::rel_path::{RelPath, matches_declared_path};
 use crate::infrastructure::source::evidence_fs::FsEvidenceFileReader;
 use crate::infrastructure::source::fs::FsSourceProvider;
 
 pub const CHANGE_ASSESSMENT_SCHEMA_VERSION: &str = "adoc.change_assessment.v0";
+pub const REPOSITORY_BASELINE_SCHEMA_VERSION: &str = "adoc.repository_baseline.v0";
 const CONFIG_PATH: &str = "agentdoc.config.yaml";
 
 #[derive(Debug, Clone)]
@@ -307,6 +308,61 @@ pub struct ChangeAssessmentEnvelope {
 impl ChangeAssessmentEnvelope {
     pub fn is_complete(&self) -> bool {
         self.completeness == AssessmentCompleteness::Complete
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RepositoryBaselineReadiness {
+    pub ready: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RepositoryBaselineEnvelope {
+    pub schema_version: &'static str,
+    pub readiness: RepositoryBaselineReadiness,
+    pub evaluation_date: String,
+    pub snapshot: AssessmentSnapshot,
+    pub knowledge_snapshot: KnowledgeSnapshot,
+    pub assessment_config: AssessmentConfig,
+    pub summary: AssessmentSummary,
+    pub validation: AssessmentValidation,
+    pub paths: Availability<Vec<AssessedPath>>,
+    pub objects: Availability<Vec<AssessmentObject>>,
+    pub diagnostics: Vec<AssessmentDiagnostic>,
+}
+
+impl From<ChangeAssessmentEnvelope> for RepositoryBaselineEnvelope {
+    fn from(assessment: ChangeAssessmentEnvelope) -> Self {
+        let ready = assessment.is_complete()
+            && assessment.validation.errors_full == 0
+            && assessment.summary.provisional == 0
+            && assessment.summary.uncovered == 0;
+        let reason = if !assessment.is_complete() || assessment.validation.errors_full > 0 {
+            "invalid_source"
+        } else if assessment.summary.provisional > 0 {
+            "provisional_paths"
+        } else if assessment.summary.uncovered > 0 {
+            "uncovered_paths"
+        } else {
+            "ready"
+        };
+        Self {
+            schema_version: REPOSITORY_BASELINE_SCHEMA_VERSION,
+            readiness: RepositoryBaselineReadiness {
+                ready,
+                reason: reason.to_string(),
+            },
+            evaluation_date: assessment.evaluation_date,
+            snapshot: assessment.snapshots.head,
+            knowledge_snapshot: assessment.knowledge_snapshot,
+            assessment_config: assessment.assessment_config,
+            summary: assessment.summary,
+            validation: assessment.validation,
+            paths: assessment.paths,
+            objects: assessment.objects,
+            diagnostics: assessment.diagnostics,
+        }
     }
 }
 
@@ -870,7 +926,11 @@ fn matches_for_path(path: &str, objects: &[GraphKnowledgeObjectNode]) -> Vec<Ass
         .collect::<BTreeMap<_, _>>();
     let mut matches = BTreeSet::new();
     for node in objects {
-        if node.impacts.iter().any(|value| value == path) {
+        if node
+            .impacts
+            .iter()
+            .any(|value| matches_declared_path(value, path))
+        {
             matches.insert(AssessmentMatch {
                 object_id: node.id.clone(),
                 reason: "impacts_path".to_string(),

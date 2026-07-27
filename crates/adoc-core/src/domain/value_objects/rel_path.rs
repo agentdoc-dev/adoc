@@ -69,6 +69,15 @@ impl RelPath {
     }
 }
 
+/// Match an exact file declaration or a directory declaration ending in `/`.
+pub(crate) fn matches_declared_path(declared: &str, path: &str) -> bool {
+    if declared.ends_with('/') {
+        path.starts_with(declared)
+    } else {
+        path == declared
+    }
+}
+
 fn starts_with_drive_letter(value: &str) -> bool {
     let mut chars = value.chars();
     matches!(
@@ -117,6 +126,19 @@ mod tests {
     fn try_new_accepts_nested_path() {
         let path = RelPath::try_new("crates/billing/src/refund.rs").expect("valid path");
         assert_eq!(path.as_str(), "crates/billing/src/refund.rs");
+    }
+
+    #[test]
+    fn directory_path_matches_descendants_only() {
+        let path = RelPath::try_new("crates/editor/").expect("valid path");
+        assert!(matches_declared_path(
+            path.as_str(),
+            "crates/editor/src/lib.rs"
+        ));
+        assert!(!matches_declared_path(
+            path.as_str(),
+            "crates/editor-old/src/lib.rs"
+        ));
     }
 
     #[test]
