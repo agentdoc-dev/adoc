@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-07-23
+- Amended: 2026-07-27
 - Roadmap: V9.3.1
 
 ## Context
@@ -33,8 +34,9 @@ V9.3.1 is a deliberate exception to ADR-0047 Decision 1:
 4. Findings are advisory and use exactly four classifications:
    `consistent`, `extends_existing_knowledge`,
    `contradicts_existing_knowledge`, and `insufficient_evidence`. They carry
-   exact diff-hunk citations and zero or more exact Knowledge Object
-   ID/`content_hash` citations. Numeric confidence is forbidden.
+   a bounded plain-language judgment headline, exact diff-hunk citations, and
+   zero or more exact Knowledge Object ID/`content_hash` citations. Numeric
+   confidence is forbidden.
 5. Semantic review is an explicit opt-in, disabled by default. It never runs
    for forks, Dependabot, unsupported events, missing credentials, or an
    invalid deterministic assessment.
@@ -54,8 +56,27 @@ V9.3.1 is a deliberate exception to ADR-0047 Decision 1:
 - `adoc-core`, AgentDoc schemas, and the Local CLI gain no model concepts.
 - The Action publishes and validates `adoc.semantic_review.v0` independently
   of the Change Assessment.
+- New V9 producers require a single-line headline of at most 120 Unicode
+  scalar values. The experimental v0 reader keeps the field optional so
+  retained artifacts created before this tightening remain valid; renderers
+  fall back to the classification label when it is absent.
 - Existing proposal behavior remains unchanged until V9.3.2 replaces it with
   canonical `adoc.patch.v0` proposals.
 - Existing stable `v1` Action behavior is not moved to the V9.3 implementation.
   V9.3 is dogfooded through a `v2` prerelease until governed proposals and
   delivery are complete.
+
+## Amendments
+
+### 2026-07-27: Alpha report and provider ceilings
+
+[AgentDoc PR #137](https://github.com/agentdoc-dev/adoc/pull/137) is the
+reviewed contract revision required by Decision 7. It:
+
+- adds the bounded semantic judgment headline while preserving read
+  compatibility for earlier `adoc.semantic_review.v0` artifacts;
+- caps new producer citations at 10 code hunks and 5 Knowledge Objects per
+  finding so one rendered finding remains a complete comment record; and
+- raises provider wall time from 120 to 300 seconds after real provider runs
+  exceeded the original ceiling; the implementation shipped in
+  [Action PR #17](https://github.com/agentdoc-dev/action/pull/17).
