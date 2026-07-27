@@ -23,6 +23,38 @@ pub(crate) struct GitChangedFilesProvider {
     expected_workdir_head: Option<String>,
 }
 
+/// Supplies every tracked path at an immutable ref through the existing
+/// assessment port.
+pub(crate) struct GitTrackedFilesProvider {
+    repo_root: PathBuf,
+}
+
+impl GitTrackedFilesProvider {
+    pub(crate) fn new(repo_root: impl Into<PathBuf>) -> Self {
+        Self {
+            repo_root: repo_root.into(),
+        }
+    }
+}
+
+impl ChangedFilesProvider for GitTrackedFilesProvider {
+    fn changed_files(
+        &self,
+        _base: &SnapshotSelector,
+        head: &SnapshotSelector,
+    ) -> Result<Vec<RelPath>, ChangedFilesError> {
+        let SnapshotSelector::GitRef(head) = head else {
+            return Err(ChangedFilesError::InvalidPath {
+                reason: "repository baseline requires an immutable Git ref".to_string(),
+            });
+        };
+        paths_from(
+            &self.repo_root,
+            &["ls-tree", "-r", "--name-only", "-z", head.as_str()],
+        )
+    }
+}
+
 impl GitChangedFilesProvider {
     pub(crate) fn new(repo_root: impl Into<PathBuf>) -> Self {
         Self {
@@ -102,21 +134,21 @@ impl GitChangedFilesProvider {
     }
 
     fn paths_from(&self, args: &[&str]) -> Result<Vec<RelPath>, ChangedFilesError> {
-        let output = run_git(&self.repo_root, args)?;
-        if !output.status.success() {
-            // Route exit-code failures through `GitError::CommandFailed` so
-            // the `From<GitError> for ChangedFilesError` impl is the single
-            // classification site. The arm extracts the failing spec from
-            // stderr (git quotes it as `'<spec>...'`).
-            return Err(GitError::CommandFailed {
-                command: format!("git {}", args.join(" ")),
-                code: output.status.code(),
-                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            }
-            .into());
-        }
-        parse_paths(&output.stdout)
+        paths_from(&self.repo_root, args)
     }
+}
+
+fn paths_from(repo_root: &Path, args: &[&str]) -> Result<Vec<RelPath>, ChangedFilesError> {
+    let output = run_git(repo_root, args)?;
+    if !output.status.success() {
+        return Err(GitError::CommandFailed {
+            command: format!("git {}", args.join(" ")),
+            code: output.status.code(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        }
+        .into());
+    }
+    parse_paths(&output.stdout)
 }
 
 fn parse_paths(stdout: &[u8]) -> Result<Vec<RelPath>, ChangedFilesError> {

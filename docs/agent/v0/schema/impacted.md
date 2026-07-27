@@ -9,7 +9,7 @@ Impacted envelopes are returned by `adoc impacted-by` and the `adoc_impacted_by`
 
 Only **verified subjects** appear: claims with status `verified` and decisions with status `accepted` (the V3.3 impact scope — a draft is already untrusted, so flagging it adds nothing). Each record carries deduplicated `reasons`:
 
-- `impacts_path` — the object's declared `impacts:` list contains the changed path.
+- `impacts_path` — the object's declared `impacts:` list contains the changed path or a directory prefix ending in `/`; the reason names the actual changed path.
 - `evidence_path` — an inline `source_code`/`test` evidence value equals the changed path, or the `path` of a referenced `source` object does; the latter carries `via_source_object` naming the source object. The same path reached via `impacts:` and via evidence yields two reasons on one record.
 
 Every impacted record carries one impact-review proof obligation (`required_evidence: ["source_code"]`) in the top-level `proof_obligations`, merged and sorted — the same rule `adoc review` applies to its impact list.

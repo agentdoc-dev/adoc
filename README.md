@@ -236,6 +236,7 @@ adoc patch (--check <patch-json> | --apply <patch-json|@->) [--artifact <path>] 
 adoc diff <base-ref> [--format auto|plain|styled|json|markdown]
 adoc review <base-ref> [--patch <patch-json>] [--format auto|plain|styled|json|markdown]
 adoc assess-changes --base <git-ref> [--head <git-ref>] [--as-of <YYYY-MM-DD>] [--format auto|plain|styled|json|markdown]
+adoc baseline --ref <git-ref> [--as-of <YYYY-MM-DD>] [--format auto|plain|styled|json|markdown]
 adoc search <query> [--artifact <path>] [--search-artifact <path>] [--lexical | --semantic] [--kind <value>] [--status <value>] [--owner <value>] [--source-path <value>] [--related-to <object-id>] [--relation depends_on|supersedes|related_to] [--direction outgoing|incoming|both] [--top <n>] [--format auto|plain|styled|json]
 ```
 
@@ -342,6 +343,17 @@ as global config.
 - classifies every changed path as covered, provisional, uncovered, or explicitly excluded and emits body-free implicated objects, knowledge changes, reviewers, and proof obligations
 - emits the experimental `adoc.change_assessment.v0` envelope; complete advisory outcomes exit `0`, while partial, invalid, or not-evaluated envelopes exit `2`
 - supports heading-free `--format markdown` for embedding in a larger PR comment
+
+`adoc baseline`:
+
+- inventories every tracked path at one immutable Git ref
+- uses the same covered, provisional, uncovered, and excluded classifications as pull-request assessment
+- reports `readiness.ready: true` only when source is valid and every non-excluded path has authoritative coverage
+- emits `adoc.repository_baseline.v0`; complete inventories exit `0` even when they are not ready
+
+An `impacts:` entry may name an exact file or a directory prefix ending in
+`/`. Prefixes are component-aware (`src/editor/` does not match
+`src/editor-old/`); globs are not supported. Evidence paths remain exact.
 
 Repositories may add optional assessment exclusions. Entries are exact files or component-aware directory prefixes ending in `/`; globs are not supported:
 

@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 
-use adoc_core::{ChangeAssessmentEnvelope, PathClassification};
-use adoc_local::{AssessmentInput, LocalContext, UnrestrictedPathPolicy};
+use adoc_core::{ChangeAssessmentEnvelope, PathClassification, RepositoryBaselineEnvelope};
+use adoc_local::{AssessmentInput, LocalContext, RepositoryBaselineInput, UnrestrictedPathPolicy};
 
 use crate::error::CliError;
 use crate::presentation::{ResolvedFormat, json as json_presentation};
@@ -11,6 +11,11 @@ use super::{current_dir, report};
 pub(crate) struct AssessChangesCommandInput {
     pub(crate) base_ref: String,
     pub(crate) head_ref: Option<String>,
+    pub(crate) as_of: Option<chrono::NaiveDate>,
+}
+
+pub(crate) struct BaselineCommandInput {
+    pub(crate) git_ref: String,
     pub(crate) as_of: Option<chrono::NaiveDate>,
 }
 
@@ -50,6 +55,79 @@ pub(crate) fn assess_changes(input: AssessChangesCommandInput, resolved: Resolve
             outcome.exit_code
         }
     }
+}
+
+pub(crate) fn baseline(input: BaselineCommandInput, resolved: ResolvedFormat) -> i32 {
+    let config_start = match current_dir() {
+        Ok(path) => path,
+        Err(error) => return report(error),
+    };
+    let context = LocalContext::new(config_start, UnrestrictedPathPolicy);
+    let outcome = match context.repository_baseline(RepositoryBaselineInput {
+        git_ref: input.git_ref,
+        as_of: input.as_of,
+    }) {
+        Ok(outcome) => outcome,
+        Err(error) => return report(error.into()),
+    };
+    for diagnostic in &outcome.envelope.diagnostics {
+        eprintln!(
+            "{}[{}] {}",
+            diagnostic.severity, diagnostic.code, diagnostic.message
+        );
+    }
+    match resolved {
+        ResolvedFormat::Json => {
+            json_presentation::write_json(&outcome.envelope, &mut std::io::stdout()).map_or_else(
+                |source| report(CliError::StdoutIo { source }),
+                |()| outcome.exit_code,
+            )
+        }
+        ResolvedFormat::Plain | ResolvedFormat::Styled => {
+            print!("{}", render_baseline(&outcome.envelope, false));
+            outcome.exit_code
+        }
+        ResolvedFormat::Markdown => {
+            print!("{}", render_baseline(&outcome.envelope, true));
+            outcome.exit_code
+        }
+    }
+}
+
+fn render_baseline(envelope: &RepositoryBaselineEnvelope, markdown: bool) -> String {
+    let mut output = String::new();
+    let prefix = if markdown { "- " } else { "" };
+    let _ = writeln!(
+        output,
+        "{prefix}Baseline: {} ({})",
+        if envelope.readiness.ready {
+            "ready"
+        } else {
+            "not ready"
+        },
+        envelope.readiness.reason
+    );
+    let _ = writeln!(
+        output,
+        "{prefix}Paths: {} tracked, {} covered, {} provisional, {} uncovered, {} excluded",
+        envelope.summary.changed_paths,
+        envelope.summary.covered,
+        envelope.summary.provisional,
+        envelope.summary.uncovered,
+        envelope.summary.excluded
+    );
+    if let Some(paths) = &envelope.paths.value {
+        for path in paths {
+            let marker = match path.classification {
+                PathClassification::Covered => "covered",
+                PathClassification::Provisional => "provisional",
+                PathClassification::Uncovered => "uncovered",
+                PathClassification::Excluded => "excluded",
+            };
+            let _ = writeln!(output, "{prefix}{marker}: {}", path.path);
+        }
+    }
+    output
 }
 
 fn render_text(envelope: &ChangeAssessmentEnvelope, markdown: bool) -> String {

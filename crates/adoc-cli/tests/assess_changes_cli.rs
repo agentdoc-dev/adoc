@@ -474,3 +474,41 @@ fn deleting_authoritative_knowledge_keeps_a_body_free_review_tombstone() {
     assert!(deleted.get("body").is_none());
     assert_eq!(value["proof_obligations"][0]["kind"], "claim");
 }
+
+#[test]
+fn baseline_inventories_only_tracked_paths_and_reports_readiness() {
+    let workspace = repo();
+    workspace.write("scratch.txt", "untracked\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args([
+            "baseline",
+            "--ref",
+            "HEAD",
+            "--as-of",
+            "2026-07-28",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc baseline runs");
+
+    assert!(
+        output.status.success(),
+        "baseline failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("baseline JSON");
+    assert_eq!(value["schema_version"], "adoc.repository_baseline.v0");
+    assert_eq!(value["readiness"]["ready"], true);
+    assert_eq!(value["summary"]["changed_paths"], 3);
+    assert!(
+        value["paths"]["value"]
+            .as_array()
+            .expect("paths")
+            .iter()
+            .all(|path| path["path"] != "scratch.txt")
+    );
+}

@@ -14,11 +14,12 @@ use adoc_core::{
     GraphSession, GraphTraversalEnvelope, GraphTraversalQuery, GraphTraversalResult,
     ImpactedEnvelope, LocalProjectContext, ObjectDiffEnvelope,
     PatchApplyInput as CorePatchApplyInput, PatchApplyResult, PatchCheckResult, PatchInput,
-    ProseRecord, RelPath, RetrievalEntry, RetrievalEnvelope, RetrievalInput, RetrievalLoadResult,
-    RetrievalRecord, ReviewEnvelope, ReviewError, ReviewInput as CoreReviewInput,
-    SearchArtifactInspectionInput, SearchFilters, SearchMode, SearchQuery, SearchRecordScope,
-    Severity, SnapshotSelector, StaleEnvelope, apply_patch_for_date as core_apply_patch_for_date,
-    assess_changes_from_git, build_project_workspace_with_embedding_provider_for_date,
+    ProseRecord, RelPath, RepositoryBaselineEnvelope, RetrievalEntry, RetrievalEnvelope,
+    RetrievalInput, RetrievalLoadResult, RetrievalRecord, ReviewEnvelope, ReviewError,
+    ReviewInput as CoreReviewInput, SearchArtifactInspectionInput, SearchFilters, SearchMode,
+    SearchQuery, SearchRecordScope, Severity, SnapshotSelector, StaleEnvelope,
+    apply_patch_for_date as core_apply_patch_for_date, assess_changes_from_git,
+    build_project_workspace_with_embedding_provider_for_date,
     build_workspace_with_embedding_provider_for_date, changed_files_from_git,
     changed_paths_strings, check_patch as core_check_patch,
     compile_project_workspace_with_anchor_root_for_date,
@@ -28,8 +29,8 @@ use adoc_core::{
     git_review_available, inspect_graph_artifact, inspect_search_artifact, load_graph_session,
     load_retrieval_session_with_embedding_provider, load_review_from_git,
     load_review_with_changed_files_from_git, migrate_workspace, parse_patch_from_path,
-    parse_patch_from_value, patch_apply_refusal, review_with_patch, search as core_search,
-    traverse_graph, validate_changed_paths, why_object,
+    parse_patch_from_value, patch_apply_refusal, repository_baseline_from_git, review_with_patch,
+    search as core_search, traverse_graph, validate_changed_paths, why_object,
 };
 use adoc_core::{MigrateMode, MigrateReportEnvelope};
 use serde::Serialize;
@@ -334,6 +335,20 @@ pub struct AssessmentOutcome {
     pub exit_code: i32,
 }
 
+#[derive(Debug, Clone)]
+pub struct RepositoryBaselineInput {
+    pub git_ref: String,
+    pub as_of: Option<chrono::NaiveDate>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RepositoryBaselineOutcome {
+    #[serde(flatten)]
+    pub envelope: RepositoryBaselineEnvelope,
+    #[serde(skip)]
+    pub exit_code: i32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectStatusRefresh {
@@ -488,6 +503,14 @@ where
     #[tracing::instrument(name = "adoc.assess_changes", level = "info", skip_all)]
     pub fn assess_changes(&self, input: AssessmentInput) -> Result<AssessmentOutcome, LocalError> {
         assess_changes_with_context(self, input)
+    }
+
+    #[tracing::instrument(name = "adoc.baseline", level = "info", skip_all)]
+    pub fn repository_baseline(
+        &self,
+        input: RepositoryBaselineInput,
+    ) -> Result<RepositoryBaselineOutcome, LocalError> {
+        repository_baseline_with_context(self, input)
     }
 
     #[tracing::instrument(name = "adoc.project_status", level = "info", skip_all)]
@@ -1160,6 +1183,33 @@ where
     });
     let exit_code = if envelope.is_complete() { 0 } else { 2 };
     Ok(AssessmentOutcome {
+        envelope,
+        exit_code,
+    })
+}
+
+fn repository_baseline_with_context<P>(
+    context: &LocalContext<P>,
+    input: RepositoryBaselineInput,
+) -> Result<RepositoryBaselineOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    let project_root = assessment_project_root(context.config_start())
+        .unwrap_or_else(|| context.config_start().to_path_buf());
+    let envelope = repository_baseline_from_git(
+        project_root,
+        input.git_ref,
+        input
+            .as_of
+            .unwrap_or_else(|| chrono::Utc::now().date_naive()),
+    );
+    let exit_code = if envelope.paths.status == "available" {
+        0
+    } else {
+        2
+    };
+    Ok(RepositoryBaselineOutcome {
         envelope,
         exit_code,
     })

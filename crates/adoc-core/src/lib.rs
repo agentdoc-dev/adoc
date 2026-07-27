@@ -2,6 +2,8 @@ mod application;
 mod domain;
 mod infrastructure;
 
+use std::path::PathBuf;
+
 pub use application::apply::{
     ApplyProposer, ApplyTrace, ObjectHashes, PATCH_APPLY_SCHEMA_VERSION, PatchApplyResult,
     PostCheckReport, WrittenFile, mcp_patch_apply_disabled_refusal,
@@ -17,6 +19,7 @@ pub use application::change_assessment::{
     AssessmentSnapshots, AssessmentSource, AssessmentSummary, AssessmentValidation, Availability,
     CHANGE_ASSESSMENT_SCHEMA_VERSION, ChangeAssessmentEnvelope, ChangeAssessmentInput,
     KnowledgeChange, KnowledgeChanges, KnowledgeSnapshot, PathClassification, PolicyChanges,
+    REPOSITORY_BASELINE_SCHEMA_VERSION, RepositoryBaselineEnvelope, RepositoryBaselineReadiness,
     SnapshotConfig,
 };
 pub use application::compile::{
@@ -489,6 +492,46 @@ pub fn assess_changes_from_git(input: ChangeAssessmentInput) -> ChangeAssessment
         input,
         infrastructure::git::revision::worktree_is_dirty,
     )
+}
+
+/// Inventory every tracked path at one immutable Git ref against AgentDoc knowledge.
+pub fn repository_baseline_from_git(
+    project_root: PathBuf,
+    git_ref: String,
+    evaluation_date: chrono::NaiveDate,
+) -> RepositoryBaselineEnvelope {
+    let input = ChangeAssessmentInput {
+        project_root: Some(project_root.clone()),
+        base_ref: git_ref.clone(),
+        head_ref: Some(git_ref),
+        evaluation_date,
+    };
+    let requested = SnapshotSelector::GitRef(GitRef::new(input.base_ref.clone()));
+    let resolved = match infrastructure::git::revision::resolve_review(
+        &project_root,
+        &requested,
+        &requested,
+    ) {
+        Ok(resolved) => resolved,
+        Err(error) => {
+            return application::change_assessment::unresolved_envelope(&input, error).into();
+        }
+    };
+    let resolved_input = application::change_assessment::ResolvedAssessmentInput {
+        requested_base_ref: input.base_ref,
+        requested_base_commit: resolved.requested_base_sha,
+        comparison_base_commit: resolved.head_sha.clone(),
+        head_ref: input.head_ref,
+        head_commit: resolved.head_sha.clone(),
+        base: resolved.base,
+        head: resolved.head,
+        worktree_dirty: None,
+        evaluation_date,
+    };
+    let snapshots = infrastructure::git::worktree::GitWorktreeProvider::new(project_root.clone());
+    let tracked = infrastructure::git::changed_files::GitTrackedFilesProvider::new(project_root);
+    application::change_assessment::assess_with_providers(resolved_input, &snapshots, &tracked)
+        .into()
 }
 
 fn assess_changes_from_git_with_worktree_status(
