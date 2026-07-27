@@ -83,8 +83,11 @@ reviewed contract revision required by Decision 7. It:
 
 ### 2026-07-27: Configurable provider wall time
 
-Later dogfood calls completed in 294 seconds and exceeded the fixed 300-second
-ceiling. The Action therefore adds `provider-timeout-seconds`, defaulting to
+Later dogfood runs surfaced provider variability against the fixed ceiling:
+one call completed in 294 seconds, while a subsequent call exceeded 300
+seconds. The Action therefore adds `provider-timeout-seconds`, defaulting to
 600 and accepting integers from 60 through 3,600. The provider still degrades
 safely with `provider_timeout`; callers must give the enclosing GitHub job
 additional time for preparation, delivery, report finalization, and cleanup.
+The implementation shipped in
+[Action PR #20](https://github.com/agentdoc-dev/action/pull/20).
