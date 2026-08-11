@@ -33,7 +33,7 @@ crosswalk. Internal references to old numbered sections are written
 The document is a product-direction contract, not a statement that every V1
 capability is already shipped. Current implementation truth remains defined by
 code, tests, accepted ADRs, and active implementation roadmaps. Its status is
-Draft (pending acceptance).
+Accepted (ADR-0055).
 
 ## Precedence
 
@@ -54,7 +54,7 @@ PRD, it does not retroactively redefine shipped behavior.
 
 Before `PRD-v1.0.md` can replace `PRD.md` as the unversioned canonical file:
 
-1. accept the v1.0 product direction;
+1. accept the v1.0 product direction (done — ADR-0055);
 2. update the implementation roadmap for the Cloud-first V1 boundary;
 3. migrate or version all repository references that cite numbered sections of
    `PRD.md` (Appendix D of `PRD-v1.0.md` is the mechanical input for this

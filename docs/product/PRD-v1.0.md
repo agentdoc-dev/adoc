@@ -5,7 +5,7 @@
 **Document type:** Product requirements — direction contract and capability reference
 **Version:** 1.0
 **Date:** 2026-08-11
-**Status:** Draft (pending acceptance) — current product direction, locked V1 boundary, and capability reference
+**Status:** Accepted (2026-08-11, ADR-0055) — current product direction, locked V1 boundary, and capability reference
 **Primary audience:** Product, engineering, design, developer experience, AI platform, security, infrastructure, enterprise architecture
 **Repository path:** `docs/product/PRD-v1.0.md`
 
