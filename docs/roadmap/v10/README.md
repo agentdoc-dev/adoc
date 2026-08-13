@@ -3,7 +3,7 @@
 **Current status:** Draft planning package in PR #143  
 **Date:** 2026-08-13
 
-Start here. Do not implement directly from the original `ROADMAP-V10.md`.
+Start here. The current implementation plan is the execution map; the complete original V10 draft remains available in the current checkout as archived planning material.
 
 ## Authority order
 
@@ -13,7 +13,9 @@ Start here. Do not implement directly from the original `ROADMAP-V10.md`.
 4. [`RED-TEAM-CLOSURE.md`](RED-TEAM-CLOSURE.md) — mandatory security/runtime/evidence constraints for those slices.
 5. [`DECISION-REGISTER.md`](DECISION-REGISTER.md) and the topic annexes — detailed rationale and long-term direction.
 6. [`../ROADMAP-V10-REVISION.md`](../ROADMAP-V10-REVISION.md) — prior reconciliation narrative.
-7. [`../ROADMAP-V10.md`](../ROADMAP-V10.md) — historical research, threat analysis, test ideas, and original slice decomposition only; **not executable**.
+7. [`../archive/ROADMAP-V10-2026-08-12-original.md`](../archive/ROADMAP-V10-2026-08-12-original.md) — exact 4,816-line original V10 research, threat analysis, test matrices and legacy slice decomposition; **not executable**.
+
+[`../ROADMAP-V10.md`](../ROADMAP-V10.md) is the concise current V10 entry point linking both the active plan and the archived original. The archive policy is documented in [`../archive/README.md`](../archive/README.md).
 
 ## Release sequence
 
@@ -32,3 +34,7 @@ Evidence and stop-ship conditions outrank dates.
 - `agentdoc-dev/web`: public claims/pricing/docs must match released capability maturity.
 
 Repository-specific implementation issues/plans should reference `E*` slice IDs from `EXECUTION-MAP.md`; legacy `V10.x` slice IDs are historical provenance only.
+
+## Historical-detail rule
+
+The archive is part of the current documentation set because it still contains useful implementation detail. Engineers should not need to inspect old commits to recover it. When archived material conflicts with current Product V1 contracts or `EXECUTION-MAP.md`, current authority wins; otherwise its detailed reasoning, tests and threat analysis remain available for reuse.
