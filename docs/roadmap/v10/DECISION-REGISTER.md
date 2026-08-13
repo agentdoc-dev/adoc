@@ -75,6 +75,10 @@ The 2026-08-12 planning session produced D01–D35. The 2026-08-13 red-team prod
 
 Keep visible: custom role/policy language; conditional/risk-aware grants; separation of duties/quorum; AgentDoc-hosted open-weight semantic executor; semantic quality/evaluation control plane (“agent of quality”); validated local semantic bundle; Enterprise zero-egress; GitLab GA parity; first evidence-selected non-Git connector; advanced enterprise identity/policy/SIEM/residency/audit capabilities.
 
-## Implementation authority
+## Implementation and historical authority
 
-`ROADMAP-V10.md` is historical research after this revision. New work uses `E*` slices from `EXECUTION-MAP.md`; `RED-TEAM-CLOSURE.md` supplies mandatory constraints. Legacy `V10.x` slice IDs may be cited only as historical provenance.
+[`../ROADMAP-V10.md`](../ROADMAP-V10.md) is the concise current V10 entry point. New work uses `E*` slices from [`EXECUTION-MAP.md`](EXECUTION-MAP.md); [`RED-TEAM-CLOSURE.md`](RED-TEAM-CLOSURE.md) supplies mandatory constraints.
+
+The exact original 4,816-line V10 draft remains in the latest checkout at [`../ROADMAP-V10-2026-08-12-original.md`](../ROADMAP-V10-2026-08-12-original.md). It is retained for detailed implementation research, threat analysis, test matrices, failure modes and provenance, but its legacy `V10.x` slices are non-executable.
+
+Git history records how the plans evolved; it is not required to recover still-useful historical detail.
