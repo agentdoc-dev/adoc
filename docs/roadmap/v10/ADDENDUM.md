@@ -1,6 +1,6 @@
 # V10 Decision Addendum — Connector Authority Modes and Documentation-State Clarification
 
-**Status:** Locked clarification from the 2026-08-12 planning session  
+**Status:** Locked clarification from the 2026-08-12 planning session, updated 2026-08-13  
 **Parent:** [`DECISION-REGISTER.md`](DECISION-REGISTER.md)
 
 ## 1. Connector authority modes
@@ -52,22 +52,31 @@ Authority mode does not imply synchronization success. A connector may be author
 
 ## 3. Root README pointer clarification
 
-`ROADMAP-V10-REVISION.md` §19 item 3 describes the **required before-ready correction** to the root `README.md` pointer. As of the commit that introduced Revision 1, the root README still points readers to `ROADMAP-V9.md` in its status/project-document/roadmap text.
+`ROADMAP-V10-REVISION.md` §19 item 3 describes the **required before-ready correction** to the root `README.md` pointer. As of the current planning package, the root README still contains V9 roadmap references because the available GitHub write path has rejected the large-file replacement.
 
 Therefore:
 
-- do **not** interpret Revision 1 as evidence that the README pointer is already fixed;
+- do **not** interpret the current V10 package as evidence that the root README pointer is already fixed;
 - PR #143 remains Draft;
-- the root README pointer should be updated in a later additive commit on this PR (or the final roadmap-consolidation PR) before the roadmap package is marked ready;
+- the root README pointer remains a before-ready mechanical documentation item;
 - no existing commit should be rewritten merely to fix that pointer.
 
-## 4. Historical-roadmap consolidation is still intentionally open
+The canonical roadmap entry inside `docs/roadmap/` is [`../ROADMAP-V10.md`](../ROADMAP-V10.md), and the executable sequence is [`EXECUTION-MAP.md`](EXECUTION-MAP.md).
 
-The planning session agreed that a future clean roadmap should avoid several simultaneously active, conflicting roadmap taxonomies. It did **not** explicitly lock the exact physical archive/move strategy before the request to update PR #143.
+## 4. Historical-roadmap preservation decision — RESOLVED
 
-Until that final documentation decision:
+The physical treatment of the original V10 draft is no longer open.
 
-- preserve V6–V10 paths for citation stability;
-- treat Revision 1 + the decision annexes as the normative V10 planning overlay;
-- do not delete/move historical roadmaps without a link/citation migration check;
-- keep repository-specific execution detail close to `adoc`, `action`, and `cloud` implementation work.
+The latest repository tree preserves the exact original 4,816-line V10 document at [`../ROADMAP-V10-2026-08-12-original.md`](../ROADMAP-V10-2026-08-12-original.md), using the same Git blob (`a84551c8861977c1383209e35ec127fb60e56391`) introduced in PR #143's first commit.
+
+The file remains beside the other roadmaps so its original relative links keep their intended base path. [`../ROADMAP-V10.md`](../ROADMAP-V10.md) is now the concise current entry point, and [`EXECUTION-MAP.md`](EXECUTION-MAP.md) is the only executable V10 slice sequence.
+
+This establishes the documentation rule going forward:
+
+- useful superseded planning material remains accessible from the latest checkout;
+- Git history records evolution but is not required to recover still-useful detail;
+- historical material is clearly labeled non-executable;
+- current entry points link both the active replacement and the historical source;
+- do not delete or physically relocate historical documents in a way that breaks useful references without an explicit link/citation migration.
+
+See [`../archive/README.md`](../archive/README.md) for the historical-document policy.
