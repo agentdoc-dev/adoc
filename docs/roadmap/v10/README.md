@@ -3,7 +3,7 @@
 **Current status:** Draft planning package in PR #143  
 **Date:** 2026-08-13
 
-Start here. The current implementation plan is the execution map; the complete original V10 draft remains available in the current checkout as archived planning material.
+Start here. The current implementation plan is the execution map; the complete original V10 draft remains available in the current checkout as historical planning material.
 
 ## Authority order
 
@@ -13,9 +13,11 @@ Start here. The current implementation plan is the execution map; the complete o
 4. [`RED-TEAM-CLOSURE.md`](RED-TEAM-CLOSURE.md) — mandatory security/runtime/evidence constraints for those slices.
 5. [`DECISION-REGISTER.md`](DECISION-REGISTER.md) and the topic annexes — detailed rationale and long-term direction.
 6. [`../ROADMAP-V10-REVISION.md`](../ROADMAP-V10-REVISION.md) — prior reconciliation narrative.
-7. [`../archive/ROADMAP-V10-2026-08-12-original.md`](../archive/ROADMAP-V10-2026-08-12-original.md) — exact 4,816-line original V10 research, threat analysis, test matrices and legacy slice decomposition; **not executable**.
+7. [`../ROADMAP-V10-2026-08-12-original.md`](../ROADMAP-V10-2026-08-12-original.md) — exact 4,816-line original V10 research, threat analysis, test matrices and legacy slice decomposition; **not executable**.
 
-[`../ROADMAP-V10.md`](../ROADMAP-V10.md) is the concise current V10 entry point linking both the active plan and the archived original. The archive policy is documented in [`../archive/README.md`](../archive/README.md).
+[`../ROADMAP-V10.md`](../ROADMAP-V10.md) is the concise current V10 entry point linking both the active plan and the exact historical original. The archive policy is documented in [`../archive/README.md`](../archive/README.md).
+
+The historical original remains alongside the roadmap files so its original relative links continue to resolve. It reuses Git blob `a84551c8861977c1383209e35ec127fb60e56391`, the exact blob from PR #143's first V10 commit.
 
 ## Release sequence
 
@@ -37,4 +39,4 @@ Repository-specific implementation issues/plans should reference `E*` slice IDs 
 
 ## Historical-detail rule
 
-The archive is part of the current documentation set because it still contains useful implementation detail. Engineers should not need to inspect old commits to recover it. When archived material conflicts with current Product V1 contracts or `EXECUTION-MAP.md`, current authority wins; otherwise its detailed reasoning, tests and threat analysis remain available for reuse.
+The historical document is part of the current documentation set because it still contains useful implementation detail. Engineers should not need to inspect old commits to recover it. When historical material conflicts with current Product V1 contracts or `EXECUTION-MAP.md`, current authority wins; otherwise its detailed reasoning, tests and threat analysis remain available for reuse.
