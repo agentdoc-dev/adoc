@@ -24,13 +24,17 @@ Legacy `V10.x` slice IDs are historical provenance only. New implementation work
 
 The exact original 4,816-line roadmap is preserved in the **current repository tree** at:
 
-[`archive/ROADMAP-V10-2026-08-12-original.md`](archive/ROADMAP-V10-2026-08-12-original.md)
+[`ROADMAP-V10-2026-08-12-original.md`](ROADMAP-V10-2026-08-12-original.md)
 
-That archived file reuses the exact Git blob from PR #143's first commit (`3ae520311d13001e263a1d675fa16751b5e6be66`, blob `a84551c8861977c1383209e35ec127fb60e56391`). It is byte-for-byte identical to the original draft.
+That historical file reuses the exact Git blob from PR #143's first commit (`3ae520311d13001e263a1d675fa16751b5e6be66`, blob `a84551c8861977c1383209e35ec127fb60e56391`). It is byte-for-byte identical to the original draft.
 
-Keep it available for implementation research, threat analysis, detailed test matrices, failure cases, historical contract inventories, and sequencing rationale. Do **not** implement its superseded instructions directly; when it conflicts with current Product V1 decisions or the execution map, current authority wins.
+It deliberately remains in the same `docs/roadmap/` directory so its original relative links continue to resolve as intended. Keep it available for implementation research, threat analysis, detailed test matrices, failure cases, historical contract inventories, and sequencing rationale.
 
-See [`archive/README.md`](archive/README.md) for the archive policy.
+Do **not** implement its superseded instructions directly; when it conflicts with current Product V1 decisions or the execution map, current authority wins.
+
+See [`archive/README.md`](archive/README.md) for the historical-document policy.
+
+> **Compatibility note:** planning documents written before this historical filename was introduced may refer to “the original `ROADMAP-V10.md`.” Those references mean [`ROADMAP-V10-2026-08-12-original.md`](ROADMAP-V10-2026-08-12-original.md), while this file is now the current V10 entry point.
 
 ## Supporting current documents
 
