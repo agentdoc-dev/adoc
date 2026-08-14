@@ -11,7 +11,7 @@ This is the implementation roadmap for Product V1: every `E*` slice from the exe
 1. Pick the earliest slice whose **Depends on** entries are all accepted. Slices in the same milestone with disjoint dependencies may run in parallel worktrees.
 2. Create the repository-specific issue/plan referencing the `E*` slice ID (never a legacy `V10.x` ID).
 3. Read the slice card's **Read first** pointers before writing code; they are the governing contracts, not background.
-4. Implement tracer bullets in order. Each `E*.Tn` bullet is one thin end-to-end cut — failing test first, then the minimum to green, then refactor — committed individually with the slice tag, e.g. `feat(core): semantic hash foundation (E1.1.T1)`.
+4. Implement tracer bullets in order. Each `E*.Tn` bullet is one thin end-to-end cut — failing test first, then the minimum to green, then refactor — committed individually with the slice tag, e.g. `feat(core): semantic hash foundation (E1.1.T1)`. Decision/doc bullets (ADRs, registers, audits) are exempt from failing-test-first: the recorded artifact is their acceptance.
 5. A slice is done when its **Acceptance** checks all pass and the exit gate in the execution map holds. Exit gates and the permanent stop-ship invariants (execution map, final section) outrank dates and outrank this file.
 
 Tracer-bullet IDs (`E*.Tn`) are defined here and exist for commit/issue traceability; contracts, dependencies, repos, and exit gates remain owned by the execution map.
@@ -55,7 +55,7 @@ Establish the product boundary, the four managed-product invariants, the single 
 **Repos:** `adoc` · **Depends on:** E0.1
 **Read first:** [../../adr/0057-fix-four-managed-product-invariants.md](../../adr/0057-fix-four-managed-product-invariants.md) · [AUTHORIZATION.md §A3/§A8](AUTHORIZATION.md#a3-source-system-permissions-are-an-access-ceiling) · [KNOWLEDGE-MODEL.md §K4](KNOWLEDGE-MODEL.md#k4-governance-effectivity-and-synchronization-are-separate) · [RED-TEAM-CLOSURE.md §RT-05](RED-TEAM-CLOSURE.md#rt-05--authorization-evaluator-algebra)
 **Tracer bullets:**
-1. `E0.2.T1` — Draft/finalize ADR-0057 stating the four invariants — workspace-qualified identity, append-only managed state, deterministic authorization precedence, human-review independence — each with its refuted alternative; record acceptance.
+1. `E0.2.T1` — Verify ADR-0057 (already Accepted) states the four invariants — workspace-qualified identity, append-only managed state, deterministic authorization precedence, human-review independence — each with its refuted alternative; repair any gap via an amendment decision.
 2. `E0.2.T2` — Fix the authorization precedence pipeline verbatim in the ADR: freshness → hard denies → source-ACL ceiling → scoped grants/denies → field visibility → action policy → `allow|deny|insufficient_context`; deny-by-default; consequential uncertainty fails closed.
 3. `E0.2.T3` — Cross-link the invariants from AUTHORIZATION.md and KNOWLEDGE-MODEL.md so no annex carries a competing precedence order; extend the E0.1 doc guard to catch reintroduction.
 **Acceptance:**
@@ -122,7 +122,7 @@ Cut the domain contracts everything downstream consumes: location-independent se
 **Repos:** `adoc`, `cloud` · **Depends on:** E0.2, E1.1
 **Read first:** [KNOWLEDGE-MODEL.md §K6](KNOWLEDGE-MODEL.md#k6-separate-object-identity-version-identity-semantic-hash-and-source-binding) · [RED-TEAM-CLOSURE.md §RT-03](RED-TEAM-CLOSURE.md#rt-03--managed-object-namespace-and-reconciliation) · [../../adr/0057-fix-four-managed-product-invariants.md](../../adr/0057-fix-four-managed-product-invariants.md) · [DECISION-REGISTER.md §D36–D39](DECISION-REGISTER.md#d36d39--red-team-founder-decisions)
 **Tracer bullets:**
-1. `E1.2.T1` — Failing test first in `adoc-core`: import two Graph Artifacts carrying the same Object ID → both retained distinct, a typed reconciliation candidate emitted, no merge; identity contract distinguishes the five layers (workspace canonical identity, human-readable Object ID, immutable managed version ID, Source Assertion identity, Source Binding — D08 four-way split plus Source Assertion).
+1. `E1.2.T1` — Failing test first in `adoc-core`: import two Graph Artifacts carrying the same Object ID → both retained distinct, a typed reconciliation candidate emitted, no merge; identity contract distinguishes the five layers (workspace canonical identity, human-readable Object ID, immutable managed version ID, Source Assertion identity, Source Binding — the map's E1.2 goal set; extends D08 with workspace canonical identity and Source Assertion identity, while the semantic hash stays with E1.1).
 2. `E1.2.T2` — Negative fixtures: same semantic `content_hash` under two different IDs stays two objects; same title and high similarity likewise never unify (RT-03/D36 — no auto-merge on ID/title/hash/similarity).
 3. `E1.2.T3` — Cloud cut (contract → route → fixture): workspace-qualified canonical identity stored separately from the human Object ID; fixture proves the same unqualified Object ID in two workspaces is not linkable cross-workspace; compatibility fixture pins producer/consumer versions per the E0.4 table.
 4. `E1.2.T4` — Managed repository record keys on graph `repository_identity` ({kind, config_path} or explicit null — required since v5, ADR-0049); reserve the binding slot before the first artifact arrives (provenance: V10.3.2); Object IDs stay repository-local on import — no silent same-ID merge across repos.
@@ -199,7 +199,7 @@ Cut the domain contracts everything downstream consumes: location-independent se
 
 ### E1.7 — AgentDoc Validation Runtime
 **Repos:** `adoc`, `cloud` · **Depends on:** E1.1–E1.6
-**Read first:** [SEMANTICS.md §S6](SEMANTICS.md#s6-agentdoc-validation-runtime-is-authoritative) · [SEMANTICS.md §S10](SEMANTICS.md#s10-no-model-text-directly-reaches-gate-authority) · [../../product/PRD-v1.0.md](../../product/PRD-v1.0.md) (§4, §11) · [RED-TEAM-CLOSURE.md §RT-16](RED-TEAM-CLOSURE.md#rt-16--external-workerresult-authenticity)
+**Read first:** [SEMANTICS.md §S6](SEMANTICS.md#s6-agentdoc-validation-runtime-is-authoritative) · [SEMANTICS.md §S10](SEMANTICS.md#s10-no-model-text-directly-reaches-gate-authority) · [../../product/PRD-v1.0.md](../../product/PRD-v1.0.md) (§6 Guarantee Model, §13–§14) · [RED-TEAM-CLOSURE.md §RT-16](RED-TEAM-CLOSURE.md#rt-16--external-workerresult-authenticity)
 **Tracer bullets:**
 1. `E1.7.T1` — Failing test first: a domain fixture through the local CLI yields a digest-bound `adoc.validation_receipt.v0` (exact runtime version/digest, input/context digests, contract versions, result, diagnostics digest); compile-time visibility test proves the validator is the only constructor path for the typed envelope — unvalidated JSON has no core representation downstream code can consume (provenance: V10.2.1).
 2. `E1.7.T2` — Checksum-pinned `adoc` binary/container packaged for an isolated worker; failing fixture: the same domain input through local CLI and the CI harness produces byte-identical receipts (deterministic envelopes: stable ordering, no incidental wall-clock timestamps).
@@ -215,7 +215,7 @@ Cut the domain contracts everything downstream consumes: location-independent se
 
 ## Milestone E2 — Workspace Identity and Authorization Foundation
 
-Replaces owner-only workspace RLS with workspace-scoped principals, one authorization evaluator, verified external identities, groups, execution identity, and ACL freshness — the isolation/authorization bed every later record type inherits. **Milestone exit:** E2.6 gate — connector declares ACL refresh/expiry/revocation/outage policy; stale required evidence cannot widen access; permission change invalidates affected caches/indexes. **Release anchor:** Internal Integrated Tracer — 2026-09-30 (E5.2/E5.3 consume E2.2/E2.6).
+Replaces owner-only workspace RLS with workspace-scoped principals, one authorization evaluator, verified external identities, groups, execution identity, and ACL freshness — the isolation/authorization bed every later record type inherits. **Milestone exit:** E2.6 gate — connector declares ACL refresh/expiry/revocation/outage policy; stale required evidence cannot widen access; permission change invalidates affected caches/indexes. **Release anchor:** Internal Integrated Tracer — 2026-09-30 (E5.2 consumes E2.2; E4.1/E6.1 consume E2.6).
 
 ### E2.1 — Workspace principals and membership
 **Repos:** `cloud` · **Depends on:** E0.2
@@ -248,7 +248,7 @@ Replaces owner-only workspace RLS with workspace-scoped principals, one authoriz
 - Conformance suite implements ADR-0057 precedence order: freshness → hard denies → source-ACL ceiling → scoped grants/denies → field visibility → action policy → result (exit gate).
 - Explicit deny at equal/more-specific scope beats broader allow; expired/stale grant never authorizes.
 - Missing ACL evidence on a consequential operation → typed `insufficient_context`, fail-closed.
-- Eligibility truth table (owner-list hit / CODEOWNERS hit / neither / both) passes; indeterminate input rejects, never defaults eligible (provenance: V10.4.4).
+- Indeterminate consequential eligibility input rejects with typed `insufficient_context`, never defaults eligible (provenance: V10.4.4; the GitHub owner-list/CODEOWNERS truth table lands with E8.1).
 - Adversarial fixture: model/bot identity as principal satisfies nothing by default.
 **Out of scope:** custom roles, policy expressions, inheritance/templates, conditional grants, separation-of-duties, quorum, SCIM → P4; ACL snapshot acquisition (E2.6); group membership (E2.4).
 
@@ -393,7 +393,7 @@ Digest-bound semantic context and assessment contracts, executor qualification, 
 1. `E3.5.T1` — Closed semantic status vocabulary `required|completed|skipped|fell_back|failed` as durable envelope/receipt data; failing tests: unknown status rejected; `completed` reachable only through a validator-accepted envelope (provenance: V10.2.3).
 2. `E3.5.T2` — Exactly-one-optional-fallback configuration with independent eligibility check across capability qualification, maturity/risk floor, org approval, egress + residency policy, retention/telemetry policy, endpoint trust class, exact context contract; failing fixture: zero-egress primary + public-provider fallback candidate → blocked, typed honest failure — never silent fallback.
 3. `E3.5.T3` — Fallback execution: invalid primary output triggers fallback exactly as a process failure does; failing test: kill-primary → `fell_back` recorded with both provider identities.
-4. `E3.5.T4` — Deterministic-before-semantic ordering: deterministic assessment always publishes fail-honest regardless of semantic outcome; failing test: kill-both → visible `failed` (`action.semantic_failed`) with the deterministic result still published.
+4. `E3.5.T4` — Deterministic-before-semantic ordering: deterministic assessment always publishes fail-honest regardless of semantic outcome; failing test: kill-both → visible `failed` (the registered semantic-failure code per the E0.3.T3 disposition) with the deterministic result still published.
 **Acceptance:**
 - Permutation matrix — primary-ok / primary-invalid+fallback-ok / both-invalid / primary-timeout+fallback-ok / no-fallback-configured — lands the correct status in envelope, receipt, and check.
 - Zero-egress adversarial fixture: no eligible fallback → honest failure (exit gate; stop-ship: failure-as-success, silent fallback).
@@ -408,7 +408,7 @@ Digest-bound semantic context and assessment contracts, executor qualification, 
 **Tracer bullets:**
 1. `E3.6.T1` — Contract fields in `adoc`: assessment record carries reviewing principal + independence determination against the change/requesting principal, so gate evaluation stays deterministic (ADR-0057 #4); failing test: record missing the independence result rejected where policy requires it.
 2. `E3.6.T2` — `cloud` policy: low-risk/advisory may allow author self-assessment; higher-risk defaults to independent reviewer; failing fixture: independent-review obligation + self-review attempt → rejected.
-3. `E3.6.T3` — Authority separation: semantic review and proposal approval are separate authorities; failing test: same principal holding both exercises them as two distinct recorded actions — one record never silently satisfies both unless policy explicitly permits.
+3. `E3.6.T3` — Authority separation: semantic review and proposal approval are separate authorities; failing test: same principal holding both exercises them as two distinct recorded actions — one record never satisfies both.
 **Acceptance:**
 - Self-review under an independence obligation → rejected (exit gate).
 - Policy permitting self-assessment at low risk passes; independence result is a deterministic gate input, not prose.
@@ -494,7 +494,7 @@ Stand up the Cloud's immutable source-observation store, the PostgreSQL canonica
 **Repos:** `cloud` · **Depends on:** E4.2, E2.2
 **Read first:** [PRD v1.0](../../product/PRD-v1.0.md) (§3 authority vocabulary) · [KNOWLEDGE-MODEL.md](KNOWLEDGE-MODEL.md) (K3 promotion path) · [DECISION-REGISTER.md](DECISION-REGISTER.md) (D02 governance vs access ceiling, D07/D15 authority/effectivity/sync separation)
 **Tracer bullets:**
-1. `E4.3.T1` — Policy resolution: authority mode as data over the scope hierarchy (workspace → connector → source container → knowledge kind → scope/object) resolving to exactly one effective promotion policy; lands failing `scope_hierarchy_single_effective_policy`.
+1. `E4.3.T1` — Policy resolution: authority mode as data over the E2.2 scope hierarchy (workspace → connector → source container → repo/project/space/channel → knowledge kind → object) resolving to exactly one effective promotion policy; lands failing `scope_hierarchy_single_effective_policy`.
 2. `E4.3.T2` — `proposal_source` end-to-end (recommended Git default post-migration): observation → Source Assertion + candidate; no activation without a Governance Event; lands failing `proposal_source_requires_governance_event`.
 3. `E4.3.T3` — `evidence_only`: observation creates provenance/context only, never a candidate or active knowledge; lands failing `evidence_only_never_creates_candidate`.
 4. `E4.3.T4` — `externally_canonical` (explicit opt-in): qualifying external attestation satisfies promotion, but Cloud still records the exact observation, authority rule, Governance Event, and resulting active version; lands failing attestation-recording fixture.
@@ -616,14 +616,14 @@ Cut the first end-to-end governed flow — proposal, native approval, four-mode 
 
 ### E5.3 — Four-mode gate evaluator
 **Repos:** `cloud`, contract codes `adoc` · **Depends on:** E5.2, E3.5, E3.6
-**Read first:** [PRD v1.0](../../product/PRD-v1.0.md) (§11 gate modes) · [DECISION-REGISTER.md](DECISION-REGISTER.md) (D09 cumulative modes) · [RED-TEAM-CLOSURE.md](RED-TEAM-CLOSURE.md) (RT-11 no model-set gate results) · provenance: V10.5.1, V10.2.5 (non-executable)
+**Read first:** [PRD v1.0](../../product/PRD-v1.0.md) (§14 V1 Gate Model, §15 V1 Approval Model) · [DECISION-REGISTER.md](DECISION-REGISTER.md) (D09 cumulative modes) · [RED-TEAM-CLOSURE.md](RED-TEAM-CLOSURE.md) (RT-11 no model-set gate results) · provenance: [V10.5.1, V10.2.5](../ROADMAP-V10-2026-08-12-original.md) (non-executable)
 **Tracer bullets:**
 1. `E5.3.T1` — Evaluator as a pure function over validated typed facts (status + digest fields only — the input type carries no model-authored free text by construction); `advisory` mode end-to-end with every decision persisted (policy version, input digests, mode, result, reasons) and idempotent per (head SHA, policy version, input digest set); lands failing `same_facts_same_conclusion_bytes`.
 2. `E5.3.T2` — `assessment_required`: valid complete deterministic AND valid complete semantic assessment — never deterministic-only (the superseded first-draft weakening must not resurface); lands failing `deterministic_pass_semantic_missing_blocks` (`gate.assessment_missing`, `gate.semantic_invalid`).
 3. `E5.3.T3` — `proposal_required`: typed materiality consumed from the assessment envelope as data (never recomputed): every materially affected finding needs a proposal or an accepted no-change disposition; lands failing `material_finding_without_proposal_blocks` (`gate.proposal_missing`).
 4. `E5.3.T4` — `approval_required`: approval bound to current proposal digest + gate-blocking obligations; full failure matrix written red-first, one named `gate.*` code per row (12-code closed set incl. `gate.proposal_hash_mismatch`, `gate.approval_invalidated`, `gate.cloud_unavailable`, `gate.audit_persistence_failed`); lands the failing matrix suite.
 5. `E5.3.T5` — Mode handling: unknown mode string → `gate.mode_unknown` config error, never a default fallback; unset mode = advisory; no repo silently gains a blocking gate; lands failing `unknown_mode_is_config_error`.
-6. `E5.3.T6` — Promotion rule R2: verified/accepted/active appearing in a PR diff — status edit or object created at an authority pair (read from created entries; created diff entries project to empty field_changes) — receives configured gate/approval treatment regardless of authorship; emergency path receipted (invoker, scope, expiry) with expired posture reverting to blocking automatically; lands failing five-authority-pair detection suite.
+6. `E5.3.T6` — Authority-promotion gating rule (provenance: original ruling R2, non-executable): verified/accepted/active appearing in a PR diff — status edit or object created at an authority pair (read from created entries; created diff entries project to empty field_changes) — receives configured gate/approval treatment regardless of authorship; emergency path receipted (invoker, scope, expiry) with expired posture reverting to blocking automatically; lands failing five-authority-pair detection suite.
 **Acceptance:**
 - `assessment_required` with deterministic pass but missing semantic → blocks with canonical code (exit gate).
 - ASM-008 suite: no combination of semantic-artifact contents changes a gate conclusion absent deterministic/policy/approval typed facts (exit gate: model prose cannot set result).
@@ -757,10 +757,10 @@ Make every observable retrieval path permission-aware and side-channel-safe, add
 **Repos:** `cloud`, `action` transmit enforcement, shared contracts `adoc` · **Depends on:** E4.1, E2.2
 **Read first:** [KNOWLEDGE-MODEL.md K9](KNOWLEDGE-MODEL.md#k9-policy-driven-layered-source-retention) · [KNOWLEDGE-MODEL.md K10](KNOWLEDGE-MODEL.md#k10-portable-exit-from-cloud) · [PRD v1.1 §14](../../product/PRD-v1.1-amendment.md#14-retention-writeback-and-connector-capability-trust)
 **Tracer bullets:**
-1. `E6.6.T1` — Egress policy contract (`adoc.egress_policy.v0` lineage) with seven closed categories: raw source, source excerpts, PR diffs, compiled objects, embeddings, semantic assessments, audit metadata; failing schema fixture "unknown category key → structural error (`egress.policy_unknown_category`)"; additions need a version decision; policy-fetch failure fails closed to most-restrictive + visible `egress.policy_unavailable`, never a cached wider policy (provenance: V10.7.2).
+1. `E6.6.T1` — Egress policy contract (`agentdoc.cloud.egress_policy.v0`, per E4.4.T4) with seven closed categories: raw source, source excerpts, PR diffs, compiled objects, embeddings, semantic assessments, audit metadata; failing schema fixture "unknown category key → structural error (`egress.policy_unknown_category`)"; additions need a version decision; policy-fetch failure fails closed to most-restrictive + visible `egress.policy_unavailable`, never a cached wider policy (provenance: V10.7.2).
 2. `E6.6.T2` — Transmit-time sender enforcement in `action` + wire verification: failing test on a recording HTTP harness "disabled category's bytes appear in NO request — not as a field, not embedded, not in a retry"; ingestion-side rejection (`egress.payload_rejected`) as defense-in-depth, each production firing triaged as a defect.
 3. `E6.6.T3` — Disablement governs transmission, not execution: assessment still runs, record carries `egress.category_disabled` — never rendered as assessment failure or as coverage; gate-mode × egress compatibility validated at config write (`egress.policy_gate_conflict`) with remediation — required gates never silently degraded; pre-existing repos keep the most-restrictive stub until explicit owner action.
-4. `E6.6.T4` — Retention + deletion: post-deletion sweep verifies unreachability across store AND every derived index including embeddings; residue → `privacy.deletion_incomplete`, never silent success; audit records inside the retention floor survive byte-identical and still digest-verify (`privacy.retention_floor_violation` guards the floor); deleted evidence updates replay posture — never claim full replayability afterward.
+4. `E6.6.T4` — Retention + deletion: post-deletion sweep verifies unreachability across store AND every derived index including embeddings; residue → `privacy.deletion_incomplete`, never silent success; audit records inside the retention floor survive byte-identical and still digest-verify (`store.retention_floor_violation` guards the floor, per E1.4.T2); deleted evidence updates replay posture — never claim full replayability afterward.
 5. `E6.6.T5` — Portable export (K10): exact stored bytes + manifest (digest/type/repo/timestamp per row), manifest self-digested, verifiable with `sha256sum` alone; owner-gated and itself audited; `.adoc` remains a portable projection with explicit loss markers (`privacy.export_digest_mismatch` on corruption).
 6. `E6.6.T6` — Policy-change receipts: actor, old digest, new digest; every run's receipt names the policy digest it transmitted under; mid-lifecycle change fixture.
 **Acceptance:**
@@ -809,14 +809,14 @@ Move standalone Git-canonical repos into managed Cloud governance without dual a
 - Retry/rollback duplicates zero active versions and zero Governance Events.
 - Rollback restores Git-canonical authority without rewriting Git history or deleting source.
 - Cutover scoping respects explicit per-repo/source/scope adoption; unscoped repos untouched.
-**Out of scope:** operational rollback drills and runbooks (E7.4); post-cutover writeback flows (E6.5, already landed).
+**Out of scope:** operational rollback drills and runbooks (E7.4); post-cutover writeback flows (owned by E6.5).
 
 ### E7.3 — Pilot-grade security/data baseline
 **Repos:** `cloud` · **Depends on:** E2.*, E4.*
 **Read first:** [RELEASE-EVIDENCE.md R5](RELEASE-EVIDENCE.md#r5-pilot-grade-production-baseline) · [AUTHORIZATION.md A8](AUTHORIZATION.md#a8-authorization-decision-record) · [CONNECTORS-API.md C3](CONNECTORS-API.md#c3-machine-readable-connector-capability-manifest)
 **Tracer bullets:**
 1. `E7.3.T1` — Verifiable credential separation: semantic-provider credentials and source/write credentials in stores with disjoint IAM/service identities; no single identity reads both, no code path reads both in one operation; providers execute in CI/workers, never the control plane (custody = storage + dispensing); failing test: canary in the provider-credential store unreadable from every write path, and vice versa (provenance: V10.1.2/V10.3.3).
-2. `E7.3.T2` — Connect-time app permission audit against the least-privilege manifest: failing fixture "deliberately widened grant fails the audit (`connect.permission_exceeds_manifest`), connection unhealthy, ingestion paused until re-consent".
+2. `E7.3.T2` — Connect-time app permission audit against the least-privilege manifest: re-run and extend the E4.6.T6 permission-drift suite as part of the baseline review — the fixture itself lands in E4.6, not here.
 3. `E7.3.T3` — Settings strict-parse: failing fixture "unknown config field → `connect.unknown_config_field`", mirroring project-config discipline.
 4. `E7.3.T4` — Tenant-isolation/RLS suite + log minimization sweep (no source bodies, prompts, tokens, customer knowledge in ordinary logs) + prod/preview separation check; failing cross-tenant probe lands first.
 5. `E7.3.T5` — Documented deletion/export procedure, backup retention definition, threat model, connector token rotation/revocation, short-lived workload auth where possible — manual procedure acceptable pre-Alpha, but documented and tested.
