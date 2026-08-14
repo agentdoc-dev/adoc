@@ -9,7 +9,7 @@
 
 This file replaces the original `ROADMAP-V10.md` as the executable V10 implementation sequence.
 
-The original 4,816-line roadmap is retained as research, threat-model input, test inventory, and historical planning evidence. **No original V10.x slice is executable merely because it exists in that file.** A requirement survives only when it appears in this execution map or an accepted ADR/PRD contract. [`MILESTONES.md`](MILESTONES.md) is this map's engineer hand-off decomposition: its `E*.Tn` tracer bullets and acceptance checks are executable elaboration of the surviving E-slices — they count as appearing in this map — and yield to the map wherever they conflict.
+The original 4,816-line roadmap is retained as research, threat-model input, test inventory, and historical planning evidence. **No original V10.x slice is executable merely because it exists in that file.** A requirement survives only when it appears in this execution map or an accepted ADR/PRD contract. [`MILESTONES.md`](MILESTONES.md) is this map's engineer hand-off decomposition: its `E*.Tn` tracer bullets and acceptance checks are executable elaboration of the surviving E-slices — they count as appearing in this map — and yield to the map and to `RED-TEAM-CLOSURE.md` wherever they conflict.
 
 This eliminates overlay ambiguity: engineers do not mentally merge old slice text with later annexes.
 
@@ -18,7 +18,7 @@ This eliminates overlay ambiguity: engineers do not mentally merge old slice tex
 1. shipped code/tests/released contracts and accepted implementation ADRs;
 2. accepted Product V1 direction (`PRD-v1.0.md` + v1.1 amendment / ADR-0056);
 3. this execution map;
-   - 3b. [`MILESTONES.md`](MILESTONES.md) — the hand-off decomposition of this map; its tracer bullets and acceptance checks are executable elaboration unless they conflict with the map;
+   - 3b. [`MILESTONES.md`](MILESTONES.md) — the hand-off decomposition of this map; its tracer bullets and acceptance checks are executable elaboration unless they conflict with the map or with `RED-TEAM-CLOSURE.md`;
 4. `RED-TEAM-CLOSURE.md`;
 5. decision register/annexes;
 6. `ROADMAP-V10-REVISION.md`;
@@ -570,7 +570,7 @@ Custom roles, declarative policy language, inheritance/templates, conditional/ri
 The disposition rule is intentionally simple and safe:
 
 - **all original `ROADMAP-V10.md` slices are retired as executable slices**;
-- their requirements/test ideas are carried forward only where named in E0–E9 above or in accepted contracts;
+- their requirements/test ideas are carried forward only where named in E0–E9 above, in accepted contracts, or in [`MILESTONES.md`](MILESTONES.md) tracer bullets/acceptance checks (which count as named here per §1);
 - original slice IDs may be cited as historical provenance but never as current dependencies;
 - no engineer should implement a legacy V10.x slice directly;
 - repository issues/plans created from this point forward reference E-slice IDs.
