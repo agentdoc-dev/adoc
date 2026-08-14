@@ -110,6 +110,10 @@ _Avoid_: full graph relation model, graph traversal
 A small vertical slice that starts with `.adoc` input and ends with runnable CLI behavior, HTML output, graph JSON output, diagnostics, fixtures, and documentation.
 _Avoid_: horizontal layer milestone, infrastructure-only phase
 
+**V10 Planning Milestone**:
+A deliberate second sense of "milestone" for the V10 planning layer: a phase-sized grouping of `E*` slices (E0–E9) in `docs/roadmap/v10/MILESTONES.md`, anchored to release stages. The **Tracer-Bullet Milestone** vertical-cut discipline is preserved inside each grouping at the `E*.Tn` tracer-bullet level.
+_Avoid_: using this sense outside the V10 planning documents, phase groupings without tracer-bullet decomposition
+
 **V0 Implementation Stack**:
 Rust for the initial `adoc` CLI, parser, validator, compiler, HTML renderer, and artifact emitters.
 _Avoid_: TypeScript-first compiler, web-first implementation

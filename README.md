@@ -62,7 +62,7 @@ V1 local retrieval supports:
 - search filters for kind, status, owner, and source path
 - graph relation filters for opt-in candidate narrowing with `--related-to`
 
-Includes, custom schemas, automatic semantic-alignment guarantees, a web app, hosted embedding adapters, and permissioned managed governance remain deferred. Markdown migration, deterministic diff/review, CI/PR integration, and guarded agent patch check/apply are shipped. The detailed next implementation cycle is [ROADMAP-V9.md](docs/roadmap/ROADMAP-V9.md).
+Includes, custom schemas, automatic semantic-alignment guarantees, a web app, hosted embedding adapters, and permissioned managed governance remain deferred. Markdown migration, deterministic diff/review, CI/PR integration, and guarded agent patch check/apply are shipped. The detailed next implementation cycle is [ROADMAP-V10.md](docs/roadmap/ROADMAP-V10.md).
 
 ## Quick Start
 
