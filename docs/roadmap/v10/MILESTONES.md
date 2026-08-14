@@ -24,14 +24,14 @@ Tracer-bullet IDs (`E*.Tn`) are defined here and exist for commit/issue traceabi
 | E1 | Core Identity, Hash, State, and Validation Contracts | — |
 | E2 | Workspace Identity and Authorization Foundation | — |
 | E3 | Semantic Context, Executors, and Trusted Processing | — |
-| E4 | Cloud Source Records, Canonical Store, and API | G1A gate (E4.7) |
+| E4 | Cloud Source Records, Canonical Store, and API | — |
 | E5 | Internal Integrated Governance Tracer | Internal Integrated Tracer — 2026-09-30 |
 | E6 | Retrieval, Privacy, Effectivity, and Synchronization | — |
 | E7 | Managed Migration and Pilot-Grade Operations | V1 Pilot Candidate / Private Alpha — 2026-11-30 |
 | E8 | Feature Complete / RC / Beta | V1 Feature Complete / RC — 2027-02-28 |
 | E9 | Evidence and GA | Earliest V1 GA — 2027-04-30 |
 
-Milestones without their own anchor feed the next anchored milestone; evidence and stop-ship conditions outrank all dates.
+Milestones without their own anchor feed the next anchored milestone; evidence and stop-ship conditions outrank all dates. A milestone is complete when every one of its slices' acceptance checks and exit gates hold — passing the header's named gate slice alone never closes a milestone.
 
 ## Milestone E0 — Product Authority, Baselines, and Contract Registry
 
@@ -69,7 +69,7 @@ Establish the product boundary, the four managed-product invariants, the single 
 **Repos:** `adoc`, `action`, `cloud` · **Depends on:** E0.1
 **Read first:** [RED-TEAM-CLOSURE.md §RT-21](RED-TEAM-CLOSURE.md#rt-21--contract-inventory-corrections-from-original-pr-review) · [RED-TEAM-CLOSURE.md §RT-08](RED-TEAM-CLOSURE.md#rt-08--side-channel-safe-permission-aware-retrieval) · [SEMANTICS.md §S8](SEMANTICS.md#s8-base-controlled-trusted-workflow-for-untrusted-changes) · [KNOWLEDGE-MODEL.md §K9](KNOWLEDGE-MODEL.md#k9-policy-driven-layered-source-retention) · [DECISION-REGISTER.md](DECISION-REGISTER.md)
 **Tracer bullets:**
-1. `E0.3.T1` — Land the versioned registry file in `adoc` (id, owner repo, status, producer/consumer versions, migration posture per entry) seeded with every shipped contract (`adoc.graph.v5`, `adoc.patch.v0`, `adoc.diff.v0`, `adoc.review.v0`, `adoc.change_assessment.v0`, `adoc.pr_assessment_receipt.v0`, retrieval/status envelopes), plus a failing-first completeness scan test that greps emitted Diagnostic Codes/wire codes in `adoc` and fails on any code absent from the registry.
+1. `E0.3.T1` — Land the versioned registry file in `adoc` (id, owner repo, status, producer/consumer versions, migration posture per entry) seeded with every shipped contract (`adoc.graph.v5`, `adoc.patch.v0`, `adoc.patch.check.v0`, `adoc.patch.apply.v0`, `adoc.diff.v0`, `adoc.review.v0`, `adoc.migrate.report.v0`, `adoc.change_assessment.v0`, `adoc.repository_baseline.v0` (known registration-gap history — flagged unregistered in the original V10 inventory), `adoc.mcp.command.v0`, retrieval/status envelopes, plus the Action-owned `adoc.pr_assessment_receipt.v0` (ADR-0051) and `adoc.semantic_review.v0` (ADR-0052) — owner repo `action` recorded on both), plus a failing-first completeness scan test that greps emitted Diagnostic Codes/wire codes in `adoc` and fails on any code absent from the registry.
 2. `E0.3.T2` — Register the planned contract set as `planned` rows with owners: `adoc.semantic_context.v0`, `adoc.semantic_assessment.v0`, `adoc.validation_receipt.v0`, `adoc.lifecycle_mapping.v0`, source record/assertion/ACL snapshot/Source Binding, `adoc.sensitive_access.v0` (name held until a final registered successor), egress policy contract, authorization decision, work request/result, migration request/receipt, connector capability manifest, governance/proposal/approval/gate contracts.
 3. `E0.3.T3` — Resolve `action.semantic_failed`: register it with one canonical meaning + remediation, or remove it in favor of an existing registered code — no third option; register the canonical bot-attestation family (`attestation.bot_approver_rejected`) with a documented Action wrapper mapping if a separate `action.*` code exists.
 4. `E0.3.T4` — Register the S8 untrusted-change state vocabulary (`not_required, awaiting_authorization, authorized, running, completed, denied, failed, expired_after_head_change`), retention classes (`digest_only, bounded_evidence, exact_candidate_input, temporary_processing, full_source_snapshot`), and replay postures (`fully_replayable, source_access_required, intentionally_non_replayable, no_longer_replayable_after_deletion`).
@@ -80,7 +80,7 @@ Establish the product boundary, the four managed-product invariants, the single 
 - `action.semantic_failed` has exactly one disposition; no competing bot-attestation suffixes exist across `cloud` and `action`.
 - Egress-policy contract and `adoc.sensitive_access.v0` both appear (original V10 omitted both — provenance: RT-21).
 - Gate-matrix codes referenced anywhere resolve to registered entries only.
-**Out of scope:** implementing any registered contract (E1+/E3+); deprecating the legacy semantic-review contract (explicit window per stability policy, with E3.2).
+**Out of scope:** implementing any registered contract (E1+/E3+); deprecating the legacy semantic-review contract (explicit window via the E8.6 deprecation machinery, per stability policy).
 
 ### E0.4 — Cross-repository baseline and release compatibility table
 **Repos:** `adoc`, `action`, `cloud` · **Depends on:** E0.3
@@ -91,7 +91,7 @@ Establish the product boundary, the four managed-product invariants, the single 
 3. `E0.4.T3` — Map Cloud historical "Phase 0 / Cloud 0.1–0.7" labels into Pilot Candidate / RC / GA / post-V1 stages (RT-02); implementation-history labels never appear as product release gates.
 **Acceptance:**
 - Row-completeness lint fails when a cross-repo slice row is deleted; passes on the full table.
-- Action baseline cites `v2.0.0-alpha.19` per the 2026-08-13 audit; no alpha.18 reference survives grep.
+- Action baseline cites `v2.0.0-alpha.19` per the 2026-08-13 audit; no alpha.18 baseline reference survives grep of current executable planning surfaces — preserved historical documents and provenance citations quoting the correction are excluded from the check.
 - Every row names exactly one contract owner and one owning release train (cross-repo delivery order: adoc tag → checksum-verified binaries → Action pin → immutable Action release → floating tag after smoke; Cloud last).
 - No Cloud historical phase label is used as a release gate anywhere in planning docs.
 **Out of scope:** deprecation/compatibility machinery (E8.6); publishing any release from the table.
@@ -124,7 +124,7 @@ Cut the domain contracts everything downstream consumes: location-independent se
 **Tracer bullets:**
 1. `E1.2.T1` — Failing test first in `adoc-core`: import two Graph Artifacts carrying the same Object ID → both retained distinct, a typed reconciliation candidate emitted, no merge; identity contract distinguishes the five layers (workspace canonical identity, human-readable Object ID, immutable managed version ID, Source Assertion identity, Source Binding — the map's E1.2 goal set; extends D08 with workspace canonical identity and Source Assertion identity, while the semantic hash stays with E1.1).
 2. `E1.2.T2` — Negative fixtures: same semantic `content_hash` under two different IDs stays two objects; same title and high similarity likewise never unify (RT-03/D36 — no auto-merge on ID/title/hash/similarity).
-3. `E1.2.T3` — Cloud cut (contract → route → fixture): workspace-qualified canonical identity stored separately from the human Object ID; fixture proves the same unqualified Object ID in two workspaces is not linkable cross-workspace; compatibility fixture pins producer/consumer versions per the E0.4 table.
+3. `E1.2.T3` — Cloud cut (contract → route → fixture): workspace-qualified canonical identity stored separately from the human Object ID; fixture proves the same unqualified Object ID in two workspaces is not linkable cross-workspace; compatibility fixture pins producer/consumer versions per the E0.4 table (requires E0.4 accepted — E0.4 is not reachable from this slice's Depends-on list).
 4. `E1.2.T4` — Managed repository record keys on graph `repository_identity` ({kind, config_path} or explicit null — required since v5, ADR-0049); reserve the binding slot before the first artifact arrives (provenance: V10.3.2); Object IDs stay repository-local on import — no silent same-ID merge across repos.
 **Acceptance:**
 - Exit tests verbatim: same ID in two repos; same hash under two IDs; two imported repos collide; no automatic merge; reconciliation candidate produced.
@@ -172,7 +172,7 @@ Cut the domain contracts everything downstream consumes: location-independent se
 **Tracer bullets:**
 1. `E1.5.T1` — Failing test first: import with `authored_status: active` and no attestation → candidate, never active; `adoc.lifecycle_mapping.v0` in `adoc-core` maps flat authored status to multi-dimension state (e.g. active → governance:approved + effectivity:effective) — versioned, with explicit loss declaration; authority comes only from migration attestation, source-control attestation, or a Cloud Governance Event.
 2. `E1.5.T2` — Export projection: managed multi-dimension state → flat `.adoc` status via a versioned projection policy; failing fixture: round-trip drops the verification dimension → explicit loss report present; approval never rendered as verification.
-3. `E1.5.T3` — Cloud cut: import path consumes `adoc.lifecycle_mapping.v0` as data (never re-implements it); compatibility fixture pins the mapping version per E0.4; unknown mapping version fails exact-match closed.
+3. `E1.5.T3` — Cloud cut: import path consumes `adoc.lifecycle_mapping.v0` as data (never re-implements it); compatibility fixture pins the mapping version per E0.4 (requires E0.4 accepted); unknown mapping version fails exact-match closed.
 **Acceptance:**
 - Import with `authored_status=active` but no attestation → candidate, not active (adversarial authority-grant attempt fails).
 - Round-trip export loss report explicitly names every dropped dimension; export is machine-readable about lossy projection.
@@ -215,7 +215,7 @@ Cut the domain contracts everything downstream consumes: location-independent se
 
 ## Milestone E2 — Workspace Identity and Authorization Foundation
 
-Replaces owner-only workspace RLS with workspace-scoped principals, one authorization evaluator, verified external identities, groups, execution identity, and ACL freshness — the isolation/authorization bed every later record type inherits. **Milestone exit:** E2.6 gate — connector declares ACL refresh/expiry/revocation/outage policy; stale required evidence cannot widen access; permission change invalidates affected caches/indexes. **Release anchor:** Internal Integrated Tracer — 2026-09-30 (E5.2 consumes E2.2; E4.1/E6.1 consume E2.6).
+Replaces owner-only workspace RLS with workspace-scoped principals, one authorization evaluator, verified external identities, groups, execution identity, and ACL freshness — the isolation/authorization bed every later record type inherits. **Milestone exit:** E2.6 gate — connector declares ACL refresh/expiry/revocation/outage policy; stale required evidence cannot widen access; permission change invalidates affected caches/indexes. **Release anchor:** feeds Internal Integrated Tracer — 2026-09-30 (E5.2 consumes E2.2; E4.1 consumes E2.6).
 
 ### E2.1 — Workspace principals and membership
 **Repos:** `cloud` · **Depends on:** E0.2
@@ -248,7 +248,7 @@ Replaces owner-only workspace RLS with workspace-scoped principals, one authoriz
 - Conformance suite implements ADR-0057 precedence order: freshness → hard denies → source-ACL ceiling → scoped grants/denies → field visibility → action policy → result (exit gate).
 - Explicit deny at equal/more-specific scope beats broader allow; expired/stale grant never authorizes.
 - Missing ACL evidence on a consequential operation → typed `insufficient_context`, fail-closed.
-- Indeterminate consequential eligibility input rejects with typed `insufficient_context`, never defaults eligible (provenance: V10.4.4; the GitHub owner-list/CODEOWNERS truth table lands with E8.1).
+- Indeterminate consequential eligibility input rejects with typed `insufficient_context`, never defaults eligible (provenance: V10.4.4; the legacy owner-list eligibility model is superseded by the E2.2 grant evaluator; the CODEOWNERS validation truth table lands with E8.1.T2).
 - Adversarial fixture: model/bot identity as principal satisfies nothing by default.
 **Out of scope:** custom roles, policy expressions, inheritance/templates, conditional grants, separation-of-duties, quorum, SCIM → P4; ACL snapshot acquisition (E2.6); group membership (E2.4).
 
@@ -305,18 +305,18 @@ Replaces owner-only workspace RLS with workspace-scoped principals, one authoriz
 1. `E2.6.T1` — Connector ACL policy declaration contract in `adoc` (acquisition, freshness window, refresh mechanism, revocation propagation, connector-unavailable behavior, invalidation); failing test: connector without a declaration is rejected at activation.
 2. `E2.6.T2` — Separate the two snapshot roles: immutable historical Source ACL Snapshot retained on each Source Assertion vs freshness-bounded current-authorization input; failing test: stale snapshot offered as required current evidence denies.
 3. `E2.6.T3` — Wire the source-ACL ceiling into the E2.2 evaluator; failing fixture: connector outage on a required current ACL check → fail closed, not stale-allow.
-4. `E2.6.T4` — Revocation propagation: failing test: permission change invalidates affected caches, embeddings, retrieval index entries, and active access sessions per policy.
+4. `E2.6.T4` — Revocation propagation: the invalidation contract/hook plus failing test: permission change invalidates affected caches and active access sessions that exist at E2 time per policy; embeddings/retrieval index entries extend this suite in E6.3.T4 once that machinery exists.
 **Acceptance:**
 - Connector declares refresh/expiry/revocation/outage policy before activation (exit gate).
 - Stale/expired required ACL evidence can never widen access (exit gate, stop-ship: stale-ACL widening).
-- Permission change invalidates affected caches/indexes/embeddings (exit gate); revocation suspends derived AgentDoc visibility.
+- Permission change invalidates affected caches/indexes (exit gate); embeddings/retrieval indexes ride the E6.3.T4 extension of this suite; revocation suspends derived AgentDoc visibility.
 - Adversarial fixture: connector outage + restricted content request → typed fail-closed unless an explicit documented continuity policy for that risk class permits, and that use is receipted.
 - Historical ACL provenance on Source Assertions stays immutable and is never consulted as current authorization.
 **Out of scope:** Source Record/Assertion store itself (E4.1), retrieval tiers and side-channel tests (E6.1), embedding/reranking exclusion machinery (E6.3); AgentDoc-authored knowledge stays governed by AgentDoc policy, not connector ACLs.
 
 ## Milestone E3 — Semantic Context, Executors, and Trusted Processing
 
-Digest-bound semantic context and assessment contracts, executor qualification, provider-neutral adapters with honest fallback, human-review independence, authentic external work results, and trusted fork processing — everything the gate evaluator will later consume as validated typed facts. **Milestone exit:** E3.8 gate — no contributor-controlled code executes with provider/Cloud-write/source-write credentials; exact-head change expires the semantic result. **Release anchor:** Internal Integrated Tracer — 2026-09-30 (E5.3/E5.5 consume E3.2/E3.5/E3.6).
+Digest-bound semantic context and assessment contracts, executor qualification, provider-neutral adapters with honest fallback, human-review independence, authentic external work results, and trusted fork processing — everything the gate evaluator will later consume as validated typed facts. **Milestone exit:** E3.8 gate — no contributor-controlled code executes with provider/Cloud-write/source-write credentials; exact-head change expires the semantic result. **Release anchor:** feeds Internal Integrated Tracer — 2026-09-30 (E5.1 consumes E3.2; E5.3 consumes E3.5/E3.6).
 
 ### E3.1 — `adoc.semantic_context.v0`
 **Repos:** `adoc` · **Depends on:** E1.7
@@ -351,7 +351,7 @@ Digest-bound semantic context and assessment contracts, executor qualification, 
 - Human fixture and model fixture validate identically at the contract boundary (exit gate).
 - Guard: no free-text field is reachable by gate-decision code — free-form prose is explanatory only (stop-ship: model-created authority).
 - `no_change_required` carries exact context/assessment scope; negative verdict never becomes silent authority.
-**Out of scope:** executor qualification (E3.3), gate evaluator (E5.3), legacy semantic-review deprecation window (stability-policy work, explicit window — never silent removal).
+**Out of scope:** executor qualification (E3.3), gate evaluator (E5.3), legacy semantic-review deprecation window (E8.6 deprecation machinery, explicit window — never silent removal).
 
 ### E3.3 — Executor capability/qualification contract
 **Repos:** `adoc`, `cloud` · **Depends on:** E3.2
@@ -446,12 +446,13 @@ Digest-bound semantic context and assessment contracts, executor qualification, 
 - Head update between phases or after the semantic run expires the semantic result (exit gate; stop-ship: stale approval after content change).
 - Adversarial fixtures: malicious fork CI hooks/packages inert in both phases; Dependabot sees no provider or write credentials.
 - Rejected writes degrade safely and never call bypass APIs; `delivery.fork_branch_read_only` carries non-empty remediation.
+- Trusted phase re-authorizes the contributor-influenced semantic-context REQUEST against authorization/egress policy before provider dispatch: adversarial fixture — a REQUEST naming content outside the authorized scope (restricted path, other-repo object, symlink/path escape) is rejected or reduced, receipted, and the over-broad portion never reaches the provider.
 - Trusted-phase receipts complete: authorizer, policy, workload, executor, qualification, context all recorded; OIDC/short-lived workload identity preferred over a long-lived upload secret.
 **Out of scope:** GitLab trusted fork path (E8.5), `agentdoc_managed`/`customer_worker` maturity evidencing (E8.4), gate publication (E5.4).
 
 ## Milestone E4 — Cloud Source Records, Canonical Store, and API
 
-Stand up the Cloud's immutable source-observation store, the PostgreSQL canonical managed graph, connector-authority policy, the versioned `/api/v1` surface, capability-manifest trust, and GitHub ingestion — everything the governance tracer consumes. **Milestone exit:** E4.7 — G1A evidence contract frozen/published before first eligible internal run; contract/idempotency/digest/stale/isolation tests plus the precommitted small real internal run set pass; only then does the governance tracer proceed. **Release anchor:** Internal Integrated Tracer, 2026-09-30.
+Stand up the Cloud's immutable source-observation store, the PostgreSQL canonical managed graph, connector-authority policy, the versioned `/api/v1` surface, capability-manifest trust, and GitHub ingestion — everything the governance tracer consumes. **Milestone exit:** E4.7 — G1A evidence contract frozen/published before first eligible internal run; contract/idempotency/digest/stale/isolation tests plus the precommitted small real internal run set pass; only then does the governance tracer proceed. **Release anchor:** feeds Internal Integrated Tracer, 2026-09-30 — via the E4.7 G1A gate, which must be green first.
 
 ### E4.1 — Source Record / Assertion / Binding / ACL Snapshot store
 **Repos:** `cloud`, schemas/contracts `adoc` · **Depends on:** E1.2, E2.6
@@ -479,7 +480,7 @@ Stand up the Cloud's immutable source-observation store, the PostgreSQL canonica
 1. `E4.2.T1` — Thinnest promotion path: candidate → Governance Event → single active managed version per logical object, all state changes append-only events; lands failing `promotion_single_active_version`.
 2. `E4.2.T2` — Concurrency: two candidates promoted racily → exactly one active version survives, the other stays candidate; lands failing `concurrent_candidates_one_active_truth`.
 3. `E4.2.T3` — Idempotency over governance records: proposal records keyed by proposal-set digest over exact sorted patch bytes; duplicate hand-off creates one record; honest failed receipts are first-class rows; lands failing `duplicate_proposal_handoff_one_record`.
-4. `E4.2.T4` — Append-only enforcement: attempted mutation of an audit/governance record → `governance.record_conflict`; deletion below the retention floor → `store.retention_floor_violation`; lands both failing tests red-first.
+4. `E4.2.T4` — Append-only enforcement: re-run the E1.4.T2 store-layer enforcement suite against the PostgreSQL canonical store — attempted mutation of an audit/governance record → `governance.record_conflict`; deletion below the retention floor → `store.retention_floor_violation`; both land red-first against this store.
 5. `E4.2.T5` — Reconstruction: read model replayed from immutable versions + state events + policy versions equals current state; backfill from stored exact bytes is digest-verified and idempotent; lands failing replay-equivalence test.
 **Acceptance:**
 - Concurrent candidates never create multiple active truths (exit gate).
@@ -565,7 +566,7 @@ Stand up the Cloud's immutable source-observation store, the PostgreSQL canonica
 **Repos:** all implementation repos · **Depends on:** E4.6
 **Read first:** [RELEASE-EVIDENCE.md](RELEASE-EVIDENCE.md) (evidence-contract YAML, G1A/G1B split) · [RED-TEAM-CLOSURE.md](RED-TEAM-CLOSURE.md) (RT-20 frozen cohorts) · provenance: V10.1.7 G1 shape (non-executable)
 **Tracer bullets:**
-1. `E4.7.T1` — Evidence contract authored as versioned YAML (id, version, frozen_at, eligible_from, cohort_definition, minimum_population, minimum_duration, metrics, numerator_denominator_rules, exclusions, thresholds, stop_ship_conditions, approved_by) + schema validation; lands failing CI check that `frozen_at` precedes the earliest eligible observation.
+1. `E4.7.T1` — Evidence contract authored as versioned YAML (id, version, frozen_at, eligible_from, cohort_definition, minimum_population, minimum_duration, metrics, numerator_denominator_rules, exclusions, thresholds, stop_ship_conditions, approved_by) + schema validation; lands failing CI check that `frozen_at` precedes the earliest eligible observation. This slice is the single owner of the evidence-contract YAML schema — E7.6.T1/E9.1.T1 freeze contract instances validating against it, never re-land the schema.
 2. `E4.7.T2` — Evidence collection over internal runs: digest-match rate (Action-emitted vs Cloud-stored bytes), duplicate-governance-event count under 5× replay, stale-overwrite count, isolation results — every rate names its denominator; lands failing test: report generator marks any rate with denominator below the frozen floor as descriptive + `insufficient_evidence`, promoting nothing.
 3. `E4.7.T3` — Run the precommitted small real internal run set and publish the G1A readout; a red result is a falsification checkpoint that stops downstream Cloud governance build (local product and standalone Action unaffected — every envelope is locally producible).
 **Acceptance:**
@@ -584,7 +585,7 @@ Cut the first end-to-end governed flow — proposal, native approval, four-mode 
 **Repos:** `adoc`, `cloud`, `action` · **Depends on:** E4.2, E3.2
 **Read first:** [ADR-0053](../../adr/0053-canonical-create-only-model-proposals.md) (proposal-set digest, create-only floors) · [SEMANTICS.md](SEMANTICS.md) (assessment binding) · [KNOWLEDGE-MODEL.md](KNOWLEDGE-MODEL.md) · provenance: V10.5.3/V10.5.4 (non-executable)
 **Tracer bullets:**
-1. `E5.1.T1` — Canonical proposal record bound to exact source/semantic/context/content digests, keyed by proposal-set digest over exact sorted patch bytes; record with any binding missing is unconstructible; lands failing round-trip fixture through `agentdoc.cloud.proposal_command.v0`.
+1. `E5.1.T1` — Canonical proposal record bound to exact source/semantic/context/content digests, keyed by proposal-set digest over exact sorted patch bytes; record with any binding missing is unconstructible; lands failing round-trip fixture through `agentdoc.cloud.proposal_command.v0` (schema owned and registered by E4.4.T4 — outside this slice's Depends-on closure; E4.4 accepted first, or the contract stubbed as its E0.3 planned row).
 2. `E5.1.T2` — Edit invalidation: any byte change to patch bytes changes the proposal-set digest and mints a new proposal version; prior version stays immutable; the invalidation consequence is surfaced before submission; lands failing `edit_mints_new_proposal_version`.
 3. `E5.1.T3` — Model cannot mutate active state: model-originated submissions can only create proposal records — never candidate activation or governance-record update/delete (create-only lifecycle floor); lands failing `model_path_cannot_touch_active_state`.
 4. `E5.1.T4` — Cross-links stored by identifier + digest, never mutable titles or branch names; Git-delivered (Action) and API-submitted proposals produce byte-equivalent canonical records; lands failing branch-rename link-survival fixture + delivery-parity fixture.
@@ -601,7 +602,7 @@ Cut the first end-to-end governed flow — proposal, native approval, four-mode 
 **Repos:** `cloud` · **Depends on:** E2.2, E5.1, E1.6
 **Read first:** [AUTHORIZATION.md](AUTHORIZATION.md) (eligibility, principal types) · [ADR-0057](../../adr/0057-fix-four-managed-product-invariants.md) (human-review independence, deterministic precedence) · provenance: V10.4.3/V10.4.4 (non-executable)
 **Tracer bullets:**
-1. `E5.2.T1` — Approval record via `agentdoc.cloud.approval_command.v0` with five mandatory recorded validations — approver eligibility, exact proposal hash, object-scope match, obligations surfaced, policy version — partial record unconstructible at type level; approval has exactly one binding field by construction; lands failing happy-path + per-validation rejection fixtures (`approval.ineligible_approver`, `approval.proposal_hash_mismatch`, `approval.scope_mismatch`, `approval.policy_version_stale`).
+1. `E5.2.T1` — Approval record via `agentdoc.cloud.approval_command.v0` (schema owned and registered by E4.4.T4 — outside this slice's Depends-on closure; E4.4 accepted first, or the contract stubbed as its E0.3 planned row) with five mandatory recorded validations — approver eligibility, exact proposal hash, object-scope match, obligations surfaced, policy version — partial record unconstructible at type level; approval has exactly one binding field by construction; lands failing happy-path + per-validation rejection fixtures (`approval.ineligible_approver`, `approval.proposal_hash_mismatch`, `approval.scope_mismatch`, `approval.policy_version_stale`).
 2. `E5.2.T2` — Validity as a pure function of (approved digest, current digest), computed on read and never cached as a boolean: semantic content change invalidates (`approval.invalidated_proposal_changed`); source-placement-only change does not; lands failing fixture pair reusing the E1.1 hash twins.
 3. `E5.2.T3` — Monotonic invalidation: invalidation never resurrects; re-approval is a new record against the new digest; digest-computation failure on a changed proposal → treated invalidated pending a valid digest; lands failing monotonicity property test.
 4. `E5.2.T4` — Optimistic concurrency: writes carry expected record version + digest; mismatch → `approval.concurrent_write_rejected`, never last-write-wins; approve racing a proposal edit → exactly one of {approval stands, invalidation wins}; lands failing race fixture.
@@ -616,17 +617,17 @@ Cut the first end-to-end governed flow — proposal, native approval, four-mode 
 
 ### E5.3 — Four-mode gate evaluator
 **Repos:** `cloud`, contract codes `adoc` · **Depends on:** E5.2, E3.5, E3.6
-**Read first:** [PRD v1.0](../../product/PRD-v1.0.md) (§14 V1 Gate Model, §15 V1 Approval Model) · [DECISION-REGISTER.md](DECISION-REGISTER.md) (D09 cumulative modes) · [RED-TEAM-CLOSURE.md](RED-TEAM-CLOSURE.md) (RT-11 no model-set gate results) · provenance: [V10.5.1, V10.2.5](../ROADMAP-V10-2026-08-12-original.md) (non-executable)
+**Read first:** [PRD v1.0](../../product/PRD-v1.0.md) (§14 V1 Gate Model, §15 V1 Approval Model) · [SEMANTICS.md §S1](SEMANTICS.md#s1-four-cumulative-managed-gate-modes) · [§S9](SEMANTICS.md#s9-negative-verdicts-and-materiality) · [DECISION-REGISTER.md](DECISION-REGISTER.md) (D09 cumulative modes) · [RED-TEAM-CLOSURE.md](RED-TEAM-CLOSURE.md) (RT-11 no model-set gate results) · provenance: [V10.5.1, V10.2.5](../ROADMAP-V10-2026-08-12-original.md) (non-executable)
 **Tracer bullets:**
 1. `E5.3.T1` — Evaluator as a pure function over validated typed facts (status + digest fields only — the input type carries no model-authored free text by construction); `advisory` mode end-to-end with every decision persisted (policy version, input digests, mode, result, reasons) and idempotent per (head SHA, policy version, input digest set); lands failing `same_facts_same_conclusion_bytes`.
 2. `E5.3.T2` — `assessment_required`: valid complete deterministic AND valid complete semantic assessment — never deterministic-only (the superseded first-draft weakening must not resurface); lands failing `deterministic_pass_semantic_missing_blocks` (`gate.assessment_missing`, `gate.semantic_invalid`).
-3. `E5.3.T3` — `proposal_required`: typed materiality consumed from the assessment envelope as data (never recomputed): every materially affected finding needs a proposal or an accepted no-change disposition; lands failing `material_finding_without_proposal_blocks` (`gate.proposal_missing`).
+3. `E5.3.T3` — `proposal_required`: typed materiality consumed from the assessment envelope as data (never recomputed): every materially affected finding needs a proposal or an accepted no-change disposition — at gate time "accepted" means a valid, visible `no_change_required` verdict per E5.4.T2 (merge-time acceptance recorded post-hoc); lands failing `material_finding_without_proposal_blocks` (`gate.proposal_missing`) plus a fixture for the material-finding-with-disposition pass path.
 4. `E5.3.T4` — `approval_required`: approval bound to current proposal digest + gate-blocking obligations; full failure matrix written red-first, one named `gate.*` code per row (12-code closed set incl. `gate.proposal_hash_mismatch`, `gate.approval_invalidated`, `gate.cloud_unavailable`, `gate.audit_persistence_failed`); lands the failing matrix suite.
 5. `E5.3.T5` — Mode handling: unknown mode string → `gate.mode_unknown` config error, never a default fallback; unset mode = advisory; no repo silently gains a blocking gate; lands failing `unknown_mode_is_config_error`.
 6. `E5.3.T6` — Authority-promotion gating rule (provenance: original ruling R2, non-executable): verified/accepted/active appearing in a PR diff — status edit or object created at an authority pair (read from created entries; created diff entries project to empty field_changes) — receives configured gate/approval treatment regardless of authorship; emergency path receipted (invoker, scope, expiry) with expired posture reverting to blocking automatically; lands failing five-authority-pair detection suite.
 **Acceptance:**
 - `assessment_required` with deterministic pass but missing semantic → blocks with canonical code (exit gate).
-- ASM-008 suite: no combination of semantic-artifact contents changes a gate conclusion absent deterministic/policy/approval typed facts (exit gate: model prose cannot set result).
+- ASM-008 suite: no free-form/non-typed semantic-artifact content changes a gate conclusion — only deterministic/policy/approval typed facts plus schema-validated semantic typed facts (findings, classification, materiality) are gate inputs (exit gate: model prose cannot set result).
 - Every failure-matrix row demonstrably blocking under `approval_required` via its named registered `gate.*` code (exit gate).
 - Determinism: same recorded facts + policy version → same conclusion bytes; completeness precedence holds (partial/error never carry pass; only the allowed tuples).
 - Direct-edit draft→verified blocks under `approval_required` without approval, passes with one; create-at-claim/verified yields a promotion record with empty before-status; non-authority and same-status edits yield no record.
@@ -639,7 +640,7 @@ Cut the first end-to-end governed flow — proposal, native approval, four-mode 
 **Tracer bullets:**
 1. `E5.4.T1` — Check as pure rendering of the gate decision record — no independent policy computation, no model-internal-reasoning claims in check text; lands failing `check_body_derived_from_decision_record_bytes`.
 2. `E5.4.T2` — Visible negative verdict: `no_change_required` publishes scanned scope (changed-path count + knowledge-scope digests), classification, and the acceptance sentence (merging under branch protection = acceptance by the merging principal), receipted — never a silent green check; only a COMPLETE deterministic assessment may render it; lands failing `partial_completeness_cannot_render_no_change_required`.
-3. `E5.4.T3` — Stale protection: a stale run never overwrites a newer head's check state (same head-lineage ordering as E4.6 ingestion); lands failing stale-overwrite fixture.
+3. `E5.4.T3` — Stale protection: a stale run never overwrites a newer head's check state (same head-lineage ordering as E4.6 ingestion — reuse the E4.6.T3 lineage comparator/fixtures; E4.6 sits on a disjoint dependency chain, so this is a cross-chain coordination point, never a second implementation); lands failing stale-overwrite fixture.
 4. `E5.4.T4` — Acceptance recording: merge webhook → acceptance row with merging-principal identity taken from the authenticated webhook payload only (never an Action-supplied string), recorded post-hoc, never blocking the merge, idempotent over merge-event identity, referencing the verdict receipt bytes by digest; lands failing duplicate-webhook fixture.
 5. `E5.4.T5` — Publish-failure honesty: a required check that cannot publish fails closed by absence (branch protection blocks on the missing check) and `gate.check_publish_failed` is recorded for diagnosability; approval flips the blocking check without a new assessment run; lands both failing.
 **Acceptance:**
@@ -654,6 +655,7 @@ Cut the first end-to-end governed flow — proposal, native approval, four-mode 
 ### E5.5 — Internal integrated tracer
 **Repos:** `adoc`, `action`, `cloud` · **Depends on:** E5.1–E5.4
 **Read first:** [EXECUTION-MAP.md](EXECUTION-MAP.md) (Phase E5, stop-ship invariants) · [RELEASE-EVIDENCE.md](RELEASE-EVIDENCE.md) · provenance: V10 Test Matrix + Stage 0/1 rollout (non-executable)
+**Gate note:** Requires E4.6 accepted and the E4.7 G1A readout green before the tracer run — the map's E4.7 exit outranks the Depends-on list.
 **Tracer bullets:**
 1. `E5.5.T1` — Thinnest full tracer on one internal repo with synthetic data: GitHub change → deterministic assessment → one qualified semantic executor → proposal → Cloud candidate → native approval → active managed version → check → durable receipt/audit as the terminal step; lands failing E2E test asserting a digest-linked exact trace across every contract in the chain.
 2. `E5.5.T2` — Adversarial injections inside the same tracer run, from the carried E2E checklist: hash stability, replay/out-of-order delivery, tenant-isolation probe, approval invalidation both directions, bot rejection, negative verdict + acceptance, promotion gating; each lands as a failing tracer assertion before wiring.
@@ -669,7 +671,7 @@ Cut the first end-to-end governed flow — proposal, native approval, four-mode 
 
 ## Milestone E6 — Retrieval, Privacy, Effectivity, and Synchronization
 
-Make every observable retrieval path permission-aware and side-channel-safe, add governed field visibility and sensitive-access auditing, separate effectivity/synchronization from governance, and close the writeback, egress, deletion, and export loops. **Milestone exit:** E6.6 gate — transmit-time egress enforcement, no sensitive ordinary logs, deleted evidence updates replay posture, machine-readable export explicit about lossy projection. **Release anchor:** V1 Pilot Candidate / Private Alpha, 2026-11-30 (E7.7 depends on E6.*).
+Make every observable retrieval path permission-aware and side-channel-safe, add governed field visibility and sensitive-access auditing, separate effectivity/synchronization from governance, and close the writeback, egress, deletion, and export loops. **Milestone exit:** E6.6 gate — transmit-time egress enforcement, no sensitive ordinary logs, deleted evidence updates replay posture, machine-readable export explicit about lossy projection. **Release anchor:** feeds V1 Pilot Candidate / Private Alpha, 2026-11-30 (E7.7 depends on E6.*).
 
 ### E6.1 — Permission-aware governed retrieval
 **Repos:** `adoc`, `cloud` · **Depends on:** E2.2, E2.6, E4.2
@@ -683,7 +685,7 @@ Make every observable retrieval path permission-aware and side-channel-safe, add
 6. `E6.1.T6` — Sensitive+authorized path: returned, visibly classified sensitive, sensitive-access event emitted (registered E0.3 code; deep sink/spool machinery deferred to E6.3); failing test: authorized sensitive retrieval emits the event (closes legacy V10.6.4 unreachability finding).
 **Acceptance:**
 - Adversarial suite ≥50 attempts across pin/search (all modes)/why/graph traversal (both directions, all relations)/impacted-by/related-status → zero excluded-class records.
-- Unauthorized record present vs absent → byte-identical result counts, ranking, error text, and cache keys.
+- Unauthorized record present vs absent → byte-identical whole observable responses across every surface (result counts, ranking, bodies, metadata, error text, cache keys — no pre-filter-derived field serializes), with a coarse timing assertion or an explicitly recorded waiver of the RT-08 timing channel.
 - Policy-removed control run returns the objects — exclusion is policy-driven, not hardcoded.
 - MCP vs CLI/API parity byte-identical; audience threading from gateway config verified.
 - Field-list regression guard over a fully-populated record: full governed field list preserved; supporting/prose labeled unverified; no-reliance wording on the contract.
@@ -714,7 +716,7 @@ Make every observable retrieval path permission-aware and side-channel-safe, add
 1. `E6.3.T1` — Register + emit `adoc.sensitive_access.v0` (or final registered successor): caller identity from authenticated session context (never tool-call arguments), repo identity, command, object IDs + content hashes, class, policy version, per-session monotonic sequence; clock-free — sink assigns received-at; failing test: sensitive+authorized retrieval via MCP Agent Gateway emits, local single-user CLI read does not (obligation binds to agent-facing access; rationale recorded, provenance: V10.6.1/V10.6.4).
 2. `E6.3.T2` — Exactly three delivery states: recorded / spooled pending (warning `retrieval.sensitive_access_unrecorded`) / refused (`retrieval.audit_sink_unavailable` under synchronous policy); sink-down failing fixture first; spool inside sandbox root, append-only, drained with idempotency keys; corruption is a typed error on next call, never a quiet reset.
 3. `E6.3.T3` — Embedding/reranking exclusion before any derived material: extend the existing embeddable-set filter (code-block/sub-threshold precedent); Embedding Composition formulas unchanged → no search schema bump; failing graph↔search drift test: nothing policy-excluded exists in the Search Artifact — no ID, no vector.
-4. `E6.3.T4` — Permission revocation invalidates derived access material: cache/index re-key rides the hash/permission change (provenance: V10 §34.12); fixture: revoke → prior cache entries unusable, no stale authorized read.
+4. `E6.3.T4` — Permission revocation invalidates derived access material, explicitly extending the E2.6.T4 invalidation suite to embeddings/retrieval indexes: cache/index re-key rides the hash/permission change (provenance: V10 §34.12); fixture: revoke → prior cache entries unusable, no stale authorized read.
 **Acceptance:**
 - Sink dedupe under 5× redelivery; sink-down shows pending spool; no event lost across recovery.
 - Events carry digests/IDs/identities only — never object bodies; asserted over a sensitive fixture corpus.
@@ -751,13 +753,15 @@ Make every observable retrieval path permission-aware and side-channel-safe, add
 - Target revision precondition mismatch → writeback refused with typed code; no latest-writer-wins path.
 - Retry storm with one idempotency key produces one target mutation and one lineage record.
 - Writeback success mutates zero governance/verification/effectivity events beyond the sync fact.
+- Own-projection recognition anchors to the payload digest: the observed content digest must match the writeback payload digest — a lineage marker alone never suppresses; external edit preserving/copying the lineage marker → candidate still created (adversarial fixture).
+- A refused writeback is never automatically redispatched against a moved target revision: redispatch requires the new observation ingested and the E6.4 divergence policy or a governed decision authorizing re-projection.
 **Out of scope:** original-branch and follow-up knowledge-PR delivery paths (E8.2); non-Git connector writeback (P2).
 
 ### E6.6 — Egress, retention, deletion, export
 **Repos:** `cloud`, `action` transmit enforcement, shared contracts `adoc` · **Depends on:** E4.1, E2.2
 **Read first:** [KNOWLEDGE-MODEL.md K9](KNOWLEDGE-MODEL.md#k9-policy-driven-layered-source-retention) · [KNOWLEDGE-MODEL.md K10](KNOWLEDGE-MODEL.md#k10-portable-exit-from-cloud) · [PRD v1.1 §14](../../product/PRD-v1.1-amendment.md#14-retention-writeback-and-connector-capability-trust)
 **Tracer bullets:**
-1. `E6.6.T1` — Egress policy contract (`agentdoc.cloud.egress_policy.v0`, per E4.4.T4) with seven closed categories: raw source, source excerpts, PR diffs, compiled objects, embeddings, semantic assessments, audit metadata; failing schema fixture "unknown category key → structural error (`egress.policy_unknown_category`)"; additions need a version decision; policy-fetch failure fails closed to most-restrictive + visible `egress.policy_unavailable`, never a cached wider policy (provenance: V10.7.2).
+1. `E6.6.T1` — Egress policy contract (`agentdoc.cloud.egress_policy.v0` — schema registration owned by E4.4.T4, outside this slice's Depends-on closure and accepted first; this slice owns only category semantics and enforcement) with seven closed categories: raw source, source excerpts, PR diffs, compiled objects, embeddings, semantic assessments, audit metadata; failing schema fixture "unknown category key → structural error (`egress.policy_unknown_category`)"; additions need a version decision; policy-fetch failure fails closed to most-restrictive + visible `egress.policy_unavailable`, never a cached wider policy (provenance: V10.7.2).
 2. `E6.6.T2` — Transmit-time sender enforcement in `action` + wire verification: failing test on a recording HTTP harness "disabled category's bytes appear in NO request — not as a field, not embedded, not in a retry"; ingestion-side rejection (`egress.payload_rejected`) as defense-in-depth, each production firing triaged as a defect.
 3. `E6.6.T3` — Disablement governs transmission, not execution: assessment still runs, record carries `egress.category_disabled` — never rendered as assessment failure or as coverage; gate-mode × egress compatibility validated at config write (`egress.policy_gate_conflict`) with remediation — required gates never silently degraded; pre-existing repos keep the most-restrictive stub until explicit owner action.
 4. `E6.6.T4` — Retention + deletion: post-deletion sweep verifies unreachability across store AND every derived index including embeddings; residue → `privacy.deletion_incomplete`, never silent success; audit records inside the retention floor survive byte-identical and still digest-verify (`store.retention_floor_violation` guards the floor, per E1.4.T2); deleted evidence updates replay posture — never claim full replayability afterward.
@@ -809,22 +813,24 @@ Move standalone Git-canonical repos into managed Cloud governance without dual a
 - Retry/rollback duplicates zero active versions and zero Governance Events.
 - Rollback restores Git-canonical authority without rewriting Git history or deleting source.
 - Cutover scoping respects explicit per-repo/source/scope adoption; unscoped repos untouched.
+- `cutover_committed` re-verifies the source head equals the recorded cutover checkpoint atomically (or a source-side freeze covers the window); a commit landing after the checkpoint but before commit forces re-entry to catching_up — never a silent authority demotion.
 **Out of scope:** operational rollback drills and runbooks (E7.4); post-cutover writeback flows (owned by E6.5).
 
 ### E7.3 — Pilot-grade security/data baseline
 **Repos:** `cloud` · **Depends on:** E2.*, E4.*
 **Read first:** [RELEASE-EVIDENCE.md R5](RELEASE-EVIDENCE.md#r5-pilot-grade-production-baseline) · [AUTHORIZATION.md A8](AUTHORIZATION.md#a8-authorization-decision-record) · [CONNECTORS-API.md C3](CONNECTORS-API.md#c3-machine-readable-connector-capability-manifest)
 **Tracer bullets:**
-1. `E7.3.T1` — Verifiable credential separation: semantic-provider credentials and source/write credentials in stores with disjoint IAM/service identities; no single identity reads both, no code path reads both in one operation; providers execute in CI/workers, never the control plane (custody = storage + dispensing); failing test: canary in the provider-credential store unreadable from every write path, and vice versa (provenance: V10.1.2/V10.3.3).
+1. `E7.3.T1` — Verifiable credential separation: semantic-provider credentials and source/write credentials in stores with disjoint IAM/service identities; no single identity reads both, no code path reads both in one operation; providers execute in CI/workers, never the control plane (custody = storage + dispensing); all Cloud secrets (DB credentials, webhook secrets, provider keys) live in managed secret storage — credential separation alone does not satisfy this; failing test: canary in the provider-credential store unreadable from every write path, and vice versa (provenance: V10.1.2/V10.3.3).
 2. `E7.3.T2` — Connect-time app permission audit against the least-privilege manifest: re-run and extend the E4.6.T6 permission-drift suite as part of the baseline review — the fixture itself lands in E4.6, not here.
 3. `E7.3.T3` — Settings strict-parse: failing fixture "unknown config field → `connect.unknown_config_field`", mirroring project-config discipline.
-4. `E7.3.T4` — Tenant-isolation/RLS suite + log minimization sweep (no source bodies, prompts, tokens, customer knowledge in ordinary logs) + prod/preview separation check; failing cross-tenant probe lands first.
+4. `E7.3.T4` — Tenant-isolation/RLS: extend/re-run the E2.1.T5 permanent regression bed across all record types (never a new suite) + log minimization sweep (no source bodies, prompts, tokens, customer knowledge in ordinary logs) + prod/preview separation check; failing cross-tenant probe lands first as a bed extension.
 5. `E7.3.T5` — Documented deletion/export procedure, backup retention definition, threat model, connector token rotation/revocation, short-lived workload auth where possible — manual procedure acceptable pre-Alpha, but documented and tested.
 **Acceptance:**
 - Canary tests pass in both directions; enumerated service identities show disjoint read paths; `connect.credential_store_violation` unreachable in normal operation.
 - Widened fixture grant fails the permission audit and pauses ingestion until re-consent.
 - Unknown settings field rejected typed; no silent-accept path.
 - RLS cross-tenant discovery/read/write probes fail closed; log sweep clean; prod/preview separated.
+- Managed secret storage holds every Cloud secret; none in code, config files, or ordinary logs.
 - Exit: no unresolved critical issue in the baseline review.
 **Out of scope:** SSO/SCIM, SIEM, certification, selectable residency (P4; explicitly not required for Pilot); reliability/ops runbook (E7.4).
 
@@ -836,12 +842,13 @@ Move standalone Git-canonical repos into managed Cloud governance without dual a
 2. `E7.4.T2` — Health/error alerting, retry/dead-letter visibility, audit persistence/capacity alerts: synthetic failure fixtures trigger each alert path; no silent queue loss.
 3. `E7.4.T3` — Deployment rollback + migration rollback rehearsed; rollback never deletes source, rewrites Git history, suppresses retained failure receipts, or converts generated drafts into authority (provenance: V10 rollback plan); rehearsal transcript is the fixture.
 4. `E7.4.T4` — Operator error contract: every error states stage, deterministic completeness, safe cause + remediation, exact versions, artifact/record location, whether any write occurred, and Cloud persistence + digest; contract test over representative injected failures.
-5. `E7.4.T5` — Documented Cloud outage behavior per gate mode + receipted emergency path where allowed; kill switches (semantic off, provider off, delivery to comment, mode to advisory) never waive infrastructure/ref/contract failures; publish Private Alpha/no-SLA/subprocessor/residency/data-handling disclosures, named ops owner, support channel/hours.
+5. `E7.4.T5` — Documented Cloud outage behavior per gate mode (written against the SEMANTICS S1 contract; finalized only once E5.3 — outside this slice's Depends-on closure — is accepted) + receipted emergency path where allowed; kill switches (semantic off, provider off, delivery to comment, mode to advisory) never waive infrastructure/ref/contract failures; publish Private Alpha/no-SLA/subprocessor/residency/data-handling disclosures, the incident-response runbook, named ops owner, support channel/hours.
 **Acceptance:**
 - Restore drill green with receipt; backup cadence automated.
 - Each alert class fires on its synthetic fixture; dead-letter queue visible and drainable.
 - Kill-switch fixture cannot waive a required infrastructure/ref/contract failure (adversarial test).
 - Operator error contract holds for every injected failure class; "did a write occur" is always answered.
+- Incident-response runbook published and exercised in the rehearsal.
 - Exit: disclosure set published and matching implementation.
 **Out of scope:** multi-region active-active, certification, 24x7 support, SLA commitments (post-V1 unless a partner contract requires); capacity limits (E7.5).
 
@@ -849,7 +856,7 @@ Move standalone Git-canonical repos into managed Cloud governance without dual a
 **Repos:** `cloud` · **Depends on:** E7.4
 **Read first:** [RED-TEAM-CLOSURE.md RT-19](RED-TEAM-CLOSURE.md#rt-19--capacity-cost-and-overload-behavior) · [RELEASE-EVIDENCE.md R5](RELEASE-EVIDENCE.md#r5-pilot-grade-production-baseline)
 **Tracer bullets:**
-1. `E7.5.T1` — Recorded limit registry: repository size, work queue depth, semantic calls, storage, design-partner support capacity — manual/technical enforcement both acceptable, all visible and documented; failing test: registry served and every limit named with its enforcement mechanism.
+1. `E7.5.T1` — Recorded limit registry with all six map categories: repository size, workload (concurrent work), work queue depth, semantic calls, storage, design-partner support capacity — manual/technical enforcement both acceptable, all visible and documented; failing test: registry served and every limit named with its enforcement mechanism.
 2. `E7.5.T2` — Typed limit-exceeded behavior per category: failing fixture per limit class "over limit → typed fail-honest refusal or backpressure"; adversarial fixture "over-limit request under a required gate mode still cannot bypass or weaken the gate".
 3. `E7.5.T3` — Semantic-spend ceiling: budget exceeded → typed refusal + honest recorded status; no silent fallback to a cheaper/other provider (E3.5 eligibility chain respected); no unbounded pilot spend path.
 **Acceptance:**
@@ -862,9 +869,9 @@ Move standalone Git-canonical repos into managed Cloud governance without dual a
 **Repos:** all · **Depends on:** E7.2–E7.5
 **Read first:** [RELEASE-EVIDENCE.md R7](RELEASE-EVIDENCE.md#r7-g1a--g1b-ingestion-gates) · [RELEASE-EVIDENCE.md R8](RELEASE-EVIDENCE.md#r8-versioned-layer-specific-evidence-contracts) · [RED-TEAM-CLOSURE.md RT-20](RED-TEAM-CLOSURE.md#rt-20--evidence-and-release-gate-integrity) · [ADR-0042](../../adr/0042-pilot-readiness-thresholds.md)
 **Tracer bullets:**
-1. `E7.6.T1` — Ratify-or-amend the G1B proposal BEFORE freeze (original: ~≥25 assessments across ≥2 repos, perfect digest integrity, zero duplicate/stale corruption), then freeze the versioned evidence-contract YAML (id, version, frozen_at, eligible_from, cohort_definition, minimum_population, minimum_duration, metrics, numerator_denominator_rules, exclusions, thresholds, stop_ship_conditions, approved_by) before the first eligible observation; failing check: schema-validating the frozen contract.
+1. `E7.6.T1` — Ratify-or-amend the G1B proposal BEFORE freeze (original: ~≥25 assessments across ≥2 repos, perfect digest integrity, zero duplicate/stale corruption), then freeze the versioned evidence contract as a YAML instance validating against the E4.7.T1 schema (which owns the field set) before the first eligible observation; failing check: schema-validating the frozen contract against E4.7.T1.
 2. `E7.6.T2` — Precommit the real-run population across ≥2 repositories; collection harness records per run: digest acceptance, duplicate Governance Events, stale overwrites, isolation/idempotency properties; fixture runs marked ineligible and never cited as real use.
-3. `E7.6.T3` — Evaluation readout: every rate names its denominator; a percentage under the denominator floor is descriptive + insufficient_evidence and cannot promote enforcement or contracts (ADR-0042); pass/fail recorded as a decision record.
+3. `E7.6.T3` — Evaluation readout: every rate names its denominator; a percentage under the denominator floor is descriptive + insufficient_evidence and cannot promote enforcement or contracts (provenance: original V10 evidence discipline, non-executable); pass/fail recorded as a decision record.
 **Acceptance:**
 - Timestamps prove the contract froze before the first eligible observation; population precommitted before collection.
 - 100% digest acceptance, zero duplicate Governance Events, zero stale overwrites over the precommitted population (legacy G1 shape strengthened; provenance: V10.1.7).
@@ -876,7 +883,7 @@ Move standalone Git-canonical repos into managed Cloud governance without dual a
 **Repos:** all + `web` claim check · **Depends on:** E6.*, E7.6, E5.5
 **Read first:** [RELEASE-EVIDENCE.md R2](RELEASE-EVIDENCE.md#r2-pilot-candidate-minimum-workflow) · [RELEASE-EVIDENCE.md R10](RELEASE-EVIDENCE.md#r10-action-v2-maturity-split) · [CONNECTORS-API.md C4](CONNECTORS-API.md#c4-user-facing-connector-maturity-labels) · [RED-TEAM-CLOSURE.md RT-23](RED-TEAM-CLOSURE.md#rt-23--public-claim-alignment)
 **Tracer bullets:**
-1. `E7.7.T1` — End-to-end design-partner rehearsal of the R2 Pilot Candidate minimum workflow on a partner-like repo: connect → ingest → assess → propose → approve → effective → retrieve → audit, with an exact trace across all contracts; the failing check is the trace-completeness assertion, cross-repo per the E0.4 compatibility table.
+1. `E7.7.T1` — End-to-end design-partner rehearsal of the R2 Pilot Candidate minimum workflow on a partner-like repo: connect → ingest → assess → propose → approve → effective → retrieve → audit, with an exact trace across all contracts; the failing check is the trace-completeness assertion, cross-repo per the E0.4 compatibility table (requires E0.4 accepted).
 2. `E7.7.T2` — Capability/maturity/limitations labeling pass: per-capability manifest authoritative for policy/config validity (overall maturity label is onboarding only); `web` claims audited — no Preview/Beta capability claims GA; Cloud-connected Action features labeled Beta while standalone Action v2 GA stays independent.
 3. `E7.7.T3` — Stop-ship sweep: full security acceptance suite (fork-no-secrets, injection, path-escape/symlink corpus, stale head, oversized/malformed provider JSON, model-creates-authority attempt, checksum mismatch, tenant isolation, replay, credential canary, wire egress) green; any zero-tolerance invariant violation blocks the stage regardless of aggregate metrics.
 4. `E7.7.T4` — Go/no-go decision record citing G1A/G1B results, stop-ship sweep, and disclosures; a missed threshold moves the date — it never shrinks accepted V1 scope or rewrites thresholds.
@@ -896,7 +903,7 @@ Close every remaining accepted V1 P0 capability at declared maturity — second 
 **Repos:** `action`, `cloud` · **Depends on:** E2.3, E5.2
 **Read first:** [CONNECTORS-API C2](CONNECTORS-API.md#c2-tiered-v1-source-control-implementations) · [ADR-0057](../../adr/0057-fix-four-managed-product-invariants.md) · [RED-TEAM-CLOSURE RT-05](RED-TEAM-CLOSURE.md#rt-05--authorization-evaluator-algebra) · provenance: V10.4.5 in [original roadmap](../ROADMAP-V10-2026-08-12-original.md) (non-executable)
 **Tracer bullets:**
-1. `E8.1.T1` — Register the attestation record contract plus `attestation.bot_approver_rejected` / `attestation.binding_mismatch` / `attestation.requirements_unmet` codes in the E0.3 registry; land a failing Cloud fixture where one human GitHub review with all bindings present produces a complete stored attestation record bound to exact proposal-set digest and head commit SHA — partial record unconstructible by type.
+1. `E8.1.T1` — Register the attestation record contract plus `attestation.binding_mismatch` / `attestation.requirements_unmet` codes in the E0.3 registry, flipping the E0.3.T3-registered `attestation.bot_approver_rejected` row from planned to implemented rather than re-registering it; land a failing Cloud fixture where one human GitHub review with all bindings present produces a complete stored attestation record bound to exact proposal-set digest and head commit SHA — partial record unconstructible by type.
 2. `E8.1.T2` — Validation truth table: each input (review identity/state, CODEOWNERS satisfaction, required checks, branch protection, head SHA, proposal digest, merge state) failing independently rejects; unreadable branch protection and indeterminate CODEOWNERS fixtures fail closed, never default-satisfied.
 3. `E8.1.T3` — Bot/service approver rejected by default with Action check code `action.attestation_bot_rejected`; check body renders all four attestation statuses from fixture responses.
 4. `E8.1.T4` — Exact-match named-identity bot allowlist as a receipted, audited governed-setting change; failing fixture: attestation racing the change resolves against the pre-change list; no same-transaction allowlist-then-approve.
@@ -916,7 +923,7 @@ Close every remaining accepted V1 P0 capability at declared maturity — second 
 1. `E8.2.T1` — Action-owned knowledge-PR reference block (§16.2): one delimited machine-parseable format carrying five references (source PR, exact source head SHA, assessment receipt digest, affected object IDs + content hashes, proposal-set hash); parse-round-trip fixture lands first; absent fields impossible by construction.
 2. `E8.2.T2` — Cloud ingestion validation: missing/incomplete block → `delivery.reference_missing`; head SHA no longer matching the recorded assessment → `delivery.reference_stale`; both surfaced on the proposal record, never silently repaired; Cloud validates but never regenerates the block.
 3. `E8.2.T3` — Original-branch delivery under branch-protection/source-binding/divergence preconditions; fork-origin write attempt → typed `delivery.fork_branch_read_only` refusal fixture.
-4. `E8.2.T4` — Delivery and approval as independent records: delivered-but-unapproved still blocks under `approval_required`; post-delivery content change on the original branch invalidates the prior approval, receipted.
+4. `E8.2.T4` — Delivery and approval as independent records: delivered-but-unapproved still blocks under `approval_required`; post-delivery content change on the original branch invalidates the prior approval, receipted. Requires E5.2 (approval records) and E5.3 (`approval_required` evaluation) accepted — both outside this slice's Depends-on closure; the invalidation assertions run through the E8.1.T5 shared suite, never a third implementation.
 5. `E8.2.T5` — Cross-link integrity: Cloud proposal state and Git projection resolve both directions on both paths; disconnected-repo fixture delivers both paths byte-identically to the prior release.
 **Acceptance:**
 - Reference block parse-round-trips; property test proves no constructible block lacks any of the five references.
@@ -934,7 +941,7 @@ Close every remaining accepted V1 P0 capability at declared maturity — second 
 2. `E8.3.T2` — Model rationale rendered in a visually distinct labeled container; one parameterized test asserts the label on every rationale rendering path.
 3. `E8.3.T3` — Approve/reject/request-change submitting the exact proposal-set hash; server authenticates the acting identity and re-validates eligibility via the E5.2 API; stale-page hash mismatch fails closed with remediation.
 4. `E8.3.T4` — Edit path produces a new proposal digest/version and visibly invalidates the prior approval (failing e2e fixture first).
-5. `E8.3.T5` — Stored envelope digest failing re-verification renders an integrity error, never partially-trusted content; capability checklist becomes executable acceptance — one test per owed UI capability.
+5. `E8.3.T5` — Stored envelope digest failing re-verification renders an integrity error, never partially-trusted content; capability checklist becomes executable acceptance — one test per owed UI capability, including the reconciliation-candidate review surface routed here by E1.3.
 **Acceptance:**
 - Approve and reject end-to-end from the surface; edit → new hash → prior approval visibly invalidated.
 - Stale-page approval against a superseded hash fails closed with remediation (adversarial fixture).
@@ -964,7 +971,7 @@ Close every remaining accepted V1 P0 capability at declared maturity — second 
 **Repos:** source-control component repository/location + `cloud`, shared contracts `adoc` · **Depends on:** E3.*, E4.4, E4.5
 **Read first:** [CONNECTORS-API C1](CONNECTORS-API.md#c1-provider-neutral-source-control-contract) · [CONNECTORS-API C2](CONNECTORS-API.md#c2-tiered-v1-source-control-implementations) · [CONNECTORS-API C5](CONNECTORS-API.md#c5-risk-aware-maturity-eligibility) · [ADR-0056](../../adr/0056-amend-product-v1-boundary-for-source-neutral-managed-architecture.md)
 **Tracer bullets:**
-1. `E8.5.T1` — Provider-neutral source-control contract fixtures (repository/change-request/revision/review/status/delivery/workload/group primitives) with the GitLab adapter mapping; failing test: no canonical domain record carries MR IID / project ID — they stay adapter-boundary metadata (ADR-0056 guard).
+1. `E8.5.T1` — Provider-neutral source-control contract fixtures (repository/change-request/revision/review/status/delivery/workload primitives plus user/group identity mappings per CONNECTORS-API C1) with the GitLab adapter mapping; failing test: no canonical domain record carries MR IID / project ID — they stay adapter-boundary metadata (ADR-0056 guard).
 2. `E8.5.T2` — Maintained first-party GitLab CI component/reference pipeline running exact-revision MR deterministic assessment; fixture: exact SHA recorded, exact-head change expires the result.
 3. `E8.5.T3` — Semantic context/assessment plus validated Cloud submission over workload auth; the same envelope fixture validates identically through GitHub and GitLab paths.
 4. `E8.5.T4` — Trusted-fork path: secret-free untrusted phase, contributor content treated as inert data; negative fixture proves fork MRs get no provider/Cloud-write credentials.
@@ -984,7 +991,7 @@ Close every remaining accepted V1 P0 capability at declared maturity — second 
 **Tracer bullets:**
 1. `E8.6.T1` — Deprecation/compatibility policy encoded as data per contract class (Preview: best effort, typically ≥30-day notice; stable SaaS: current + previous, ≥6 months from deprecation; Enterprise LTS target ≥12 months); failing test reads the policy for every E0.3 registry entry.
 2. `E8.6.T2` — Compatibility matrix suite: server tested against every envelope version emitted by the two most recent client releases; pinned-older-client fixture lands first.
-3. `E8.6.T3` — Deprecation warning surface and post-retirement early typed error with upgrade remediation; unknown-future-schema fails honestly, never empty success.
+3. `E8.6.T3` — Deprecation warning surface and post-retirement early typed error with upgrade remediation; unknown-future-schema fails honestly, never empty success; first applied deprecation: the legacy semantic-review contract (`adoc.semantic_review.v0`, ADR-0052) enters its explicit window here — the home the E0.3/E3.2 out-of-scope notes route to.
 4. `E8.6.T4` — Historical-record version interpretation: a receipt written under v0 still interprets under v0 semantics after v1 ships (fixture; historical records never silently reinterpreted).
 5. `E8.6.T5` — Pin-set validation: producer + consumer versions are a tested compatibility set; a newer client requiring a newer contract cannot be "rolled back" by pinning an older producer (failing fixture first).
 **Acceptance:**
@@ -999,7 +1006,7 @@ Close every remaining accepted V1 P0 capability at declared maturity — second 
 **Repos:** `cloud`, `web` claims · **Depends on:** E7.5
 **Read first:** [RED-TEAM-CLOSURE RT-19](RED-TEAM-CLOSURE.md#rt-19--capacity-cost-and-overload-behavior) · [RELEASE-EVIDENCE R5](RELEASE-EVIDENCE.md#r5-pilot-grade-production-baseline) · [PRD v1.1 amendment §16](../../product/PRD-v1.1-amendment.md)
 **Tracer bullets:**
-1. `E8.7.T1` — Workspace repository/source-size limits with typed `workspace.repository_limit_reached`; failing test: exceeding the limit is a typed error; the number is workspace configuration, not contract (provenance: V10.3.2).
+1. `E8.7.T1` — Extend the E2.1.T3 limit suite (which owns `workspace.repository_limit_reached` and its failing test) to source-size limits and configurable values; failing test: exceeding a configured source-size limit is a typed error; the number is workspace configuration, not contract (provenance: V10.3.2).
 2. `E8.7.T2` — Semantic quotas + cost budgets with attribution and budget alerts; failing fixture: budget exhaustion yields typed limit-exceeded and either evaluates the required gate or refuses the run honestly — never a skipped gate shown as success.
 3. `E8.7.T3` — Rate limits, worker concurrency/backpressure, queue saturation/dead-letter; overload fixture: every queued/dead-lettered unit visible and typed, zero silent loss.
 4. `E8.7.T4` — Storage/audit-retention limits with typed temporarily-unavailable behavior; audit persistence never silently truncated.
@@ -1010,6 +1017,7 @@ Close every remaining accepted V1 P0 capability at declared maturity — second 
 - Resource ceilings frozen in owning decision records with executable boundary tests; a ceiling change is a reviewed contract revision.
 - Every limit hit is typed and fail-honest; no governance weakening under load.
 - Public pricing/limits match implementation (parity test green).
+- Rate-limited governance-relevant deliveries leave a minimal admission-refusal record (or are exempt from shedding); the overload test reconciles sender-side delivery counts against Cloud-side records.
 **Out of scope:** enterprise chargeback/advanced quota administration (P4); explicit large-source path beyond documented limits (separate decision).
 
 ### E8.8 — V1 Feature Complete / RC
@@ -1037,7 +1045,7 @@ Convert the frozen layered evidence program into an explicit GA decision: qualif
 **Repos:** `adoc`, `cloud` · **Depends on:** E3.3
 **Read first:** [RELEASE-EVIDENCE R6/R8](RELEASE-EVIDENCE.md#r6-layered-evidence-program) · [SEMANTICS S5](SEMANTICS.md#s5-capability-specific-executor-qualification) · [RED-TEAM-CLOSURE RT-18](RED-TEAM-CLOSURE.md#rt-18--evidence-anti-bias-controls) · provenance: V10.1.7 G2 in [original roadmap](../ROADMAP-V10-2026-08-12-original.md)
 **Tracer bullets:**
-1. `E9.1.T1` — Evidence-contract YAML schema in `adoc` (id, version, frozen_at, eligible_from, cohort_definition, minimum_population, minimum_duration, metrics, numerator_denominator_rules, exclusions, thresholds, stop_ship_conditions, approved_by) with a failing validation test; frozen-before-first-eligible-observation enforced by type.
+1. `E9.1.T1` — Qualification evidence contracts frozen as YAML instances validating against the E4.7.T1 schema (which owns the schema; E4.7 is outside this slice's Depends-on closure — an explicit out-of-closure dependency, E4.7.T1 must be accepted first) with a failing validation test; frozen-before-first-eligible-observation enforced by the E4.7.T1 check.
 2. `E9.1.T2` — Cloud qualification record store binding an executor configuration (model/task/context/tool/runtime digests) to a current qualification result; failing fixture: proposal-style required gate modes stay unavailable without a current record.
 3. `E9.1.T3` — Requalification triggers: material model/task/context/tool/runtime change invalidates the record (one fixture per trigger); a defect closes the cohort version and starts a new one — never rewrites criteria.
 4. `E9.1.T4` — Layer-1 qualification content as an executable suite: protocol conformance, closed citations, exact context, malformed outputs, prompt injection, fallback, no-model-authority, capability benchmarks (provenance: V10.1.7 G2 shape — schema-valid ≥95% over ≥30 runs, 100% invalid outputs visibly fell_back/failed).
