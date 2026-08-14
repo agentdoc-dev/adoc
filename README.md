@@ -657,7 +657,8 @@ Dependabot is configured in [.github/dependabot.yml](.github/dependabot.yml) for
 - [CONTEXT.md](CONTEXT.md): project language and domain decisions
 - [docs/product/PRD.md](docs/product/PRD.md): product requirements
 - [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md): product roadmap from completed V0 through planned retrieval, review, patching, schema, graph, and team surfaces
-- [docs/roadmap/ROADMAP-V9.md](docs/roadmap/ROADMAP-V9.md): detailed vertical-slice handoff for trustworthy PR assessment and governed proposals, with gated managed/on-prem successor plans
+- [docs/roadmap/ROADMAP-V10.md](docs/roadmap/ROADMAP-V10.md): current V10 implementation entry point — the `E*` slice sequence and milestones hand-off layer under `docs/roadmap/v10/`
+- [docs/roadmap/ROADMAP-V9.md](docs/roadmap/ROADMAP-V9.md): shipped V9 cycle record — trustworthy PR assessment and governed proposals
 - [docs/design/V0-DESIGN.md](docs/design/V0-DESIGN.md): Rust implementation contract
 - [docs/adr/](docs/adr): architecture decision records
 
@@ -723,9 +724,9 @@ regenerate or re-embed `docs.search.json`, and recreate any in-flight patch
 documents whose `base_hash` came from v4. Readers reject v4 explicitly instead
 of silently mixing hash domains.
 
-The shipped surface also includes Markdown migration, review/impact workflows, deterministic local change assessment, patch validation/application, the expanded fifteen-kind schema, MCP, the composite GitHub Action, and evidence-anchor drift checks. The next detailed cycle integrates the assessment envelope with exact-SHA GitHub delivery before adding cited optional semantic review and governed proposals.
+The shipped surface also includes Markdown migration, review/impact workflows, deterministic local change assessment, patch validation/application, the expanded fifteen-kind schema, MCP, the composite GitHub Action, evidence-anchor drift checks, exact-SHA GitHub delivery of the assessment envelope, cited optional semantic review, and governed proposals. The next detailed cycle is Product V1 (V10): the graph v6 contract spine and provider-neutral assessment, then the Cloud control plane and governance trust chain.
 
-See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) for the full sequence and [docs/roadmap/ROADMAP-V9.md](docs/roadmap/ROADMAP-V9.md) for the implementation handoff.
+See [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) for the full sequence and [docs/roadmap/ROADMAP-V10.md](docs/roadmap/ROADMAP-V10.md) for the implementation handoff.
 
 ## License
 
