@@ -169,6 +169,15 @@ fn milestones_slices_match_execution_map() {
             "EXECUTION-MAP.md parse lost bookend slice {bookend} — parser drifted from doc structure"
         );
     }
+    // Floor pins parser health beyond the bookends: a slice dropped from BOTH
+    // documents (or a format break hiding it from the parser) fails here even
+    // though the two parsed sets still agree with each other.
+    assert!(
+        map_slices.len() >= 65,
+        "EXECUTION-MAP.md parsed only {} E-slices (expected at least 65) — \
+         slice lost from both documents or parser drifted",
+        map_slices.len()
+    );
     let mismatches = sync_mismatches(&map, &milestones);
     assert!(
         mismatches.is_empty(),
@@ -210,9 +219,22 @@ fn release_stage_dates_appear_in_milestones() {
         "EXECUTION-MAP.md §3 should list exactly four release stages, parsed: {dates:?}"
     );
     for (stage, date) in &dates {
+        // Stage↔date association, not bare presence: some MILESTONES line must
+        // carry the date next to the stage's name (its first '/'-segment, since
+        // MILESTONES may shorten e.g. "V1 Feature Complete / RC / Beta"),
+        // so swapping two dates between milestone headers fails.
+        let stage_prefix = stage
+            .split('/')
+            .next()
+            .map(str::trim)
+            .unwrap_or(stage.as_str());
         assert!(
-            milestones.contains(date),
-            "release-stage date {date} ({stage}) from EXECUTION-MAP.md §3 is absent from MILESTONES.md"
+            milestones
+                .lines()
+                .any(|line| line.contains(date) && line.contains(stage_prefix)),
+            "no MILESTONES.md line pairs release-stage date {date} with its stage \
+             ({stage_prefix}…) from EXECUTION-MAP.md §3 — date missing or associated \
+             with the wrong stage"
         );
     }
 }
