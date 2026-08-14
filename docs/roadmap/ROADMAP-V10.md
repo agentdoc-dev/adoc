@@ -7,7 +7,7 @@ This short file is the current V10 entry point. It is intentionally concise; it 
 
 ## Current implementation plan
 
-Start with [`v10/README.md`](v10/README.md), then implement only the `E*` slices in [`v10/EXECUTION-MAP.md`](v10/EXECUTION-MAP.md).
+Start with [`v10/README.md`](v10/README.md), then implement only the `E*` slices in [`v10/EXECUTION-MAP.md`](v10/EXECUTION-MAP.md). The engineer hand-off layer is [`v10/MILESTONES.md`](v10/MILESTONES.md): every `E*` slice decomposed into ordered `E*.Tn` tracer bullets with acceptance checks, grouped into milestones anchored to the release stages. Pick up implementation work from a milestone slice card there; the execution map remains the contract authority on any conflict.
 
 The execution map incorporates:
 

@@ -9,7 +9,7 @@ Start here. The current implementation plan is the execution map; the complete o
 
 1. [`../../product/PRD-v1.1-amendment.md`](../../product/PRD-v1.1-amendment.md) + ADR-0056 — accepted Product V1 boundary amendments.
 2. [`../../adr/0057-fix-four-managed-product-invariants.md`](../../adr/0057-fix-four-managed-product-invariants.md) — four founder-approved managed-product invariants.
-3. [`EXECUTION-MAP.md`](EXECUTION-MAP.md) — **only executable V10 slice sequence**.
+3. [`EXECUTION-MAP.md`](EXECUTION-MAP.md) — **only executable V10 slice sequence**. Its engineer hand-off decomposition is [`MILESTONES.md`](MILESTONES.md) (tracer bullets `E*.Tn`, milestone grouping, acceptance checks); it carries no independent authority — the map wins on conflict.
 4. [`RED-TEAM-CLOSURE.md`](RED-TEAM-CLOSURE.md) — mandatory security/runtime/evidence constraints for those slices.
 5. [`DECISION-REGISTER.md`](DECISION-REGISTER.md) and the topic annexes — detailed rationale and long-term direction.
 6. [`../ROADMAP-V10-REVISION.md`](../ROADMAP-V10-REVISION.md) — prior reconciliation narrative.
