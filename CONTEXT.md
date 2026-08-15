@@ -166,6 +166,10 @@ _Avoid_: second PRD, implementation without a contract
 A stable lowercase dot-separated identifier with at least two kebab-case segments, used to cite and relate Knowledge Objects. Lives in code as the `ObjectId` newtype in `adoc-core`; a page-level Object ID is the `PageId` wrapper.
 _Avoid_: UUID-only ID, heading slug, arbitrary string
 
+**Managed Object**:
+A Knowledge Object under managed Cloud governance, carrying workspace-qualified canonical identity distinct from its human-readable **Object ID**, its immutable managed version ID, and its Source Binding (ADR-0057 invariant 1; EXECUTION-MAP E1.2). Matching IDs, titles, hashes, or semantic similarity across sources never auto-merge Managed Objects — collisions produce reconciliation candidates only.
+_Avoid_: global object namespace, auto-merged identity, cross-workspace object
+
 **Diagnostic Code**:
 A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`. Lives in code as the `DiagnosticCode` enum in `adoc-core`; emission sites accept the typed value rather than a free-form string.
 _Avoid_: numeric-only code, unstable message matching
