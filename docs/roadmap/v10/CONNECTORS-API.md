@@ -43,6 +43,8 @@ Target full parity:
 
 ### GitLab — first-party V1 Preview
 
+Authorized by [`../../product/PRD-v1.1-amendment.md`](../../product/PRD-v1.1-amendment.md) §15 (boundary amendment [B2](BOUNDARY-AMENDMENTS.md), accepted by ADR-0056 item 5), which amends PRD v1.0 §10/§50.5; GitLab GA parity stays post-V1 unless separately promoted by evidence.
+
 A real maintained implementation, not docs-only:
 
 - first-party GitLab CI component/reference pipeline;
