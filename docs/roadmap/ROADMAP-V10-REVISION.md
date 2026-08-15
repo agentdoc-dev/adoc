@@ -3,7 +3,7 @@
 **Status:** Draft, normative planning revision  
 **Date:** 2026-08-12  
 **Supersedes conflicting statements in:** [`ROADMAP-V10.md`](ROADMAP-V10.md)  
-**Locked product boundary:** `docs/product/PRD-v1.0.md` / ADR-0055  
+**Locked product boundary:** `docs/product/PRD-v1.0.md` / ADR-0055, as amended by [`../product/PRD-v1.1-amendment.md`](../product/PRD-v1.1-amendment.md) / ADR-0056  
 **Decision register:** [`v10/DECISION-REGISTER.md`](v10/DECISION-REGISTER.md)
 
 This revision records the founder/product-architecture planning session held after PR #143 was published. It does not rewrite shipped behavior or accepted ADRs. Where this revision conflicts with the original `ROADMAP-V10.md`, this revision governs V10 planning until the roadmap is consolidated. Code/tests/accepted ADRs remain implementation truth.
@@ -83,6 +83,8 @@ See [`v10/KNOWLEDGE-MODEL.md`](v10/KNOWLEDGE-MODEL.md).
 ## 3. V1 authorization is source-neutral
 
 The first V10 draft’s GitHub-derived reviewer/owner model is insufficient as the full product authorization system. GitHub/GitLab/source ACLs are inputs and ceilings, not AgentDoc permission primitives.
+
+This boundary expansion is authorized by [`../product/PRD-v1.1-amendment.md`](../product/PRD-v1.1-amendment.md) §5 (boundary amendment B1, accepted by ADR-0056), which explicitly supersedes PRD v1.0's GitHub-primitives-plus-Cloud-approval-policy V1 posture.
 
 V1 authorization must include:
 
