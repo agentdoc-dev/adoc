@@ -1,6 +1,6 @@
 # Product V1 / V10 Planning Entry Point
 
-**Current status:** Draft planning package in PR #143  
+**Current status:** Accepted planning package (carried in PR #143)  
 **Date:** 2026-08-13
 
 Start here. The current implementation plan is the execution map; the complete original V10 draft remains available in the current checkout as historical planning material.

@@ -1,6 +1,6 @@
 # V10 Product-Boundary Amendments — Resolution Register
 
-**Status:** Resolved by ADR-0056 / `docs/product/PRD-v1.1-amendment.md` when PR #143 merges  
+**Status:** Resolved by ADR-0056 / `docs/product/PRD-v1.1-amendment.md`  
 **Date:** 2026-08-13  
 **Parent:** [`DECISION-REGISTER.md`](DECISION-REGISTER.md)
 

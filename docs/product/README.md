@@ -45,7 +45,7 @@ The original `docs/roadmap/ROADMAP-V10.md` is historical research/detail only af
 Before replacing the unversioned historical `PRD.md` file:
 
 1. accept PRD v1.0 (done — ADR-0055);
-2. accept the Product V1 amendment (done when ADR-0056 merges);
+2. accept the Product V1 amendment (done — ADR-0056 Accepted);
 3. re-cut the active implementation sequence against the amended boundary (done by `docs/roadmap/v10/EXECUTION-MAP.md` in PR #143);
 4. migrate/version old bare `PRD §N` citations using the v1.0 crosswalk;
 5. decide the final archive name/path for PRD v0.2 and historical roadmaps;
