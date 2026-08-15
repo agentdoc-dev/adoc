@@ -1,6 +1,6 @@
 # AgentDoc PRD v1.1 Amendment — Product V1 Boundary
 
-**Status:** Accepted by ADR-0056 when merged  
+**Status:** Accepted by ADR-0056  
 **Date:** 2026-08-13  
 **Amends:** [`PRD-v1.0.md`](PRD-v1.0.md) / ADR-0055
 

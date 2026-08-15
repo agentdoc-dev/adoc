@@ -1,6 +1,6 @@
 # ROADMAP-V10 — Product V1 Current Entry Point
 
-**Status:** Draft in PR #143  
+**Status:** Accepted (carried in PR #143)  
 **Executable implementation authority:** [`v10/EXECUTION-MAP.md`](v10/EXECUTION-MAP.md)
 
 This short file is the current V10 entry point. It is intentionally concise; it does **not** replace or discard the detailed original V10 planning material.

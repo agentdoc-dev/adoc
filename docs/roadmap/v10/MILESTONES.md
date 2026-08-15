@@ -1,6 +1,6 @@
 # Product V1 Implementation Milestones — Engineer Hand-Off Layer
 
-**Status:** Draft in PR #143
+**Status:** Accepted (carried in PR #143)
 **Date:** 2026-08-14
 **Contract authority:** [`EXECUTION-MAP.md`](EXECUTION-MAP.md) — this file decomposes it; it never redefines it. On any conflict, the execution map and the planning precedence in its §1 win.
 

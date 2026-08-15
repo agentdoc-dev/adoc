@@ -1,6 +1,6 @@
 # Product V1 Execution Map — Authoritative V10 Slice Sequence
 
-**Status:** Draft until PR #143 merges; executable authority after merge  
+**Status:** Accepted — executable implementation authority (carried in PR #143)  
 **Date:** 2026-08-13  
 **Product boundary:** PRD v1.0 as amended by [`../../product/PRD-v1.1-amendment.md`](../../product/PRD-v1.1-amendment.md) / ADR-0056  
 **Red-team constraints:** [`RED-TEAM-CLOSURE.md`](RED-TEAM-CLOSURE.md)
