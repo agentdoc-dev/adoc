@@ -1,7 +1,7 @@
 # V10 Decision Annex — Semantic Assessment, Validation, Processing, and Untrusted Changes
 
 **Status:** Locked planning decisions from 2026-08-12  
-**Parent:** [`../ROADMAP-V10.md`](../ROADMAP-V10.md)
+**Parent:** [`DECISION-REGISTER.md`](DECISION-REGISTER.md)
 
 ## S1. Four cumulative managed gate modes
 

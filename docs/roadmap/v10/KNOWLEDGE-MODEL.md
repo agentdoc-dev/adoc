@@ -1,7 +1,7 @@
 # V10 Decision Annex — Canonical Knowledge, Migration, State, Hashing, Proof, and Retention
 
 **Status:** Locked planning decisions from 2026-08-12  
-**Parent:** [`../ROADMAP-V10.md`](../ROADMAP-V10.md)
+**Parent:** [`DECISION-REGISTER.md`](DECISION-REGISTER.md)
 
 ## K1. Two first-class operating modes
 

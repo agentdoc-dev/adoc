@@ -1,7 +1,7 @@
 # V10 Decision Annex — Release Stages, Operations, Evidence, Action Maturity, and Targets
 
 **Status:** Locked planning decisions from 2026-08-12  
-**Parent:** [`../ROADMAP-V10.md`](../ROADMAP-V10.md)
+**Parent:** [`DECISION-REGISTER.md`](DECISION-REGISTER.md)
 
 ## R1. Three readiness stages inside the locked V1 boundary
 

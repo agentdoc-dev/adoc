@@ -1,7 +1,7 @@
 # V10 Decision Annex — Identity, Authorization, ACLs, and Groups
 
 **Status:** Locked planning decisions from 2026-08-12  
-**Parent:** [`../ROADMAP-V10.md`](../ROADMAP-V10.md)
+**Parent:** [`DECISION-REGISTER.md`](DECISION-REGISTER.md)
 
 This annex is normative for V10 planning. Shipped code and accepted ADRs remain implementation truth.
 
