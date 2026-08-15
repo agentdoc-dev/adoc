@@ -50,16 +50,9 @@ After standalone-to-Cloud migration the recommended default is `proposal_source`
 
 Authority mode does not imply synchronization success. A connector may be authoritative yet temporarily out of sync with a projection, or non-authoritative yet required as an effectivity dependency. Keep governance/effectivity/synchronization dimensions separate.
 
-## 3. Root README pointer clarification
+## 3. Root README pointer clarification — RESOLVED
 
-`ROADMAP-V10-REVISION.md` §19 item 3 describes the **required before-ready correction** to the root `README.md` pointer. As of the current planning package, the root README still contains V9 roadmap references because the available GitHub write path has rejected the large-file replacement.
-
-Therefore:
-
-- do **not** interpret the current V10 package as evidence that the root README pointer is already fixed;
-- PR #143 remains Draft;
-- the root README pointer remains a before-ready mechanical documentation item;
-- no existing commit should be rewritten merely to fix that pointer.
+`ROADMAP-V10-REVISION.md` §19 item 3 describes the **required before-ready correction** to the root `README.md` pointer. That correction has landed on this branch: commits `d25fbc1` and `953729b` replaced all three V9 roadmap references (lines 65, 660, and 728) with V10 pointers. The earlier note that the GitHub write path had rejected the replacement is historical; no commit was rewritten to achieve the fix.
 
 The canonical roadmap entry inside `docs/roadmap/` is [`../ROADMAP-V10.md`](../ROADMAP-V10.md), and the executable sequence is [`EXECUTION-MAP.md`](EXECUTION-MAP.md).
 
