@@ -23,6 +23,24 @@ fn normalize(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Drops every line inside a ``` fence: fenced content is sample text, never
+/// document structure — it must neither terminate a slice body (`#!/…`) nor
+/// contribute phantom headings, labels, or table rows.
+fn structural_lines(doc: &str) -> Vec<&str> {
+    let mut in_fence = false;
+    let mut out = Vec::new();
+    for line in doc.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if !in_fence {
+            out.push(line);
+        }
+    }
+    out
+}
+
 /// Returns the `E<major>.<minor>` slice ID opening a heading, if any.
 fn e_slice_id(heading_rest: &str) -> Option<&str> {
     let id = heading_rest.split_whitespace().next()?;
@@ -39,9 +57,11 @@ struct SliceFields {
 /// Parses every E-slice section opened by `heading_prefix`, reading the bold
 /// `**Repos:**` / `**Depends on:**` labels — either as two separate lines
 /// (execution map) or joined on one line with a middle-dot separator
-/// (MILESTONES). Fails loudly on duplicate IDs or a slice missing a field.
+/// (MILESTONES). The first labelled occurrence in a slice body wins — a stray
+/// later label (e.g. a quoted rejected variant) never overwrites the header.
+/// Fails loudly on duplicate IDs or a slice missing a field.
 fn slice_fields(doc: &str, doc_name: &str, heading_prefix: &str) -> BTreeMap<String, SliceFields> {
-    let lines: Vec<&str> = doc.lines().collect();
+    let lines = structural_lines(doc);
     let mut slices = BTreeMap::new();
     let mut i = 0;
     while i < lines.len() {
@@ -53,20 +73,26 @@ fn slice_fields(doc: &str, doc_name: &str, heading_prefix: &str) -> BTreeMap<Str
             i += 1;
             continue;
         };
-        let mut repos = None;
-        let mut depends_on = None;
+        let mut repos: Option<String> = None;
+        let mut depends_on: Option<String> = None;
         let mut j = i + 1;
         while j < lines.len() && !lines[j].starts_with('#') {
             let line = lines[j].trim();
             if let Some(value) = line.strip_prefix("**Repos:**") {
                 if let Some((repos_part, depends_part)) = value.split_once("**Depends on:**") {
                     let repos_part = repos_part.trim().trim_end_matches('·');
-                    repos = Some(normalize(repos_part));
-                    depends_on = Some(normalize(depends_part));
-                } else {
+                    if repos.is_none() {
+                        repos = Some(normalize(repos_part));
+                    }
+                    if depends_on.is_none() {
+                        depends_on = Some(normalize(depends_part));
+                    }
+                } else if repos.is_none() {
                     repos = Some(normalize(value));
                 }
-            } else if let Some(value) = line.strip_prefix("**Depends on:**") {
+            } else if let Some(value) = line.strip_prefix("**Depends on:**")
+                && depends_on.is_none()
+            {
                 depends_on = Some(normalize(value));
             }
             j += 1;
@@ -137,7 +163,7 @@ fn release_stage_dates(map: &str) -> Vec<(String, String)> {
     };
     let mut in_section = false;
     let mut dates = Vec::new();
-    for line in map.lines() {
+    for line in structural_lines(map) {
         if line.starts_with("## 3. Release stages") {
             in_section = true;
             continue;
@@ -152,6 +178,11 @@ fn release_stage_dates(map: &str) -> Vec<(String, String)> {
         if let [_, stage, date, ..] = cells.as_slice()
             && is_date(date)
         {
+            assert!(
+                !stage.is_empty(),
+                "release-stage row for {date} has an empty stage cell — parse failure, \
+                 not a sentinel pair"
+            );
             dates.push((stage.to_string(), date.to_string()));
         }
     }
@@ -237,6 +268,58 @@ fn release_stage_dates_appear_in_milestones() {
              with the wrong stage"
         );
     }
+}
+
+#[test]
+fn fenced_hash_lines_are_not_structure() {
+    // A fenced code block between the heading and the labels must neither
+    // terminate the slice body (`#!/usr/bin/env bash`) nor contribute phantom
+    // headings or labels (`**Repos:**` sample inside the fence).
+    let doc = "\
+## E1.1 — Fenced
+```bash
+#!/usr/bin/env bash
+## E9.9 — phantom heading inside fence
+**Repos:** `phantom`
+```
+**Repos:** `adoc`
+**Depends on:** E0.3
+";
+    let slices = slice_fields(doc, "fixture", "## ");
+    assert_eq!(slices.len(), 1, "phantom fenced heading must not parse");
+    let slice = &slices["E1.1"];
+    assert_eq!(slice.repos, "`adoc`");
+    assert_eq!(slice.depends_on, "E0.3");
+}
+
+#[test]
+fn first_labeled_occurrence_wins() {
+    // A stray second label later in the body (e.g. quoted under an
+    // out-of-scope bullet) must not overwrite the slice-header values.
+    let doc = "\
+## E1.1 — Duplicated label
+**Repos:** `adoc`
+**Depends on:** E0.3
+Out of scope: a rejected variant carried this header:
+**Repos:** `cloud` · **Depends on:** E9.9
+";
+    let slice = &slice_fields(doc, "fixture", "## ")["E1.1"];
+    assert_eq!(slice.repos, "`adoc`");
+    assert_eq!(slice.depends_on, "E0.3");
+}
+
+#[test]
+#[should_panic(expected = "empty stage")]
+fn empty_stage_cell_is_a_parse_failure() {
+    // An empty stage cell must fail parsing, never yield ("", date) — a
+    // sentinel pair downstream degenerates `line.contains("")` to always-true.
+    let map = "\
+## 3. Release stages
+| Stage | Target | Meaning |
+| --- | --- | --- |
+| | 2026-09-30 | meaning |
+";
+    release_stage_dates(map);
 }
 
 #[test]
