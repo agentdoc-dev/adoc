@@ -18,16 +18,16 @@ Product V1 is amended as follows:
 
 1. AgentDoc has two first-class operating modes: standalone Git-canonical open source and managed Cloud-canonical governance.
 2. Managed Cloud uses PostgreSQL as the canonical active managed Knowledge Object graph. External systems remain canonical for original source artifacts and feed Source Records/Assertions/candidates.
-3. Product V1 Feature Complete includes explicit standalone-to-Cloud managed migration with exact-revision validation, qualification policy, migration attestation, atomic cutover/rollback, and portable exit.
-4. V1 includes a source-neutral authorization foundation: workspace principals, verified external identity links, stable permission primitives, built-in role bundles, scoped grants, AgentDoc groups, external membership bindings, source ACL ceilings, and auditable authorization decisions. Custom roles/policy language remain post-V1.
+3. Product V1 Feature Complete includes explicit standalone-to-Cloud managed migration meeting the full requirement set enumerated in PRD-v1.1 §4: exact-revision binding, pinned Validation Runtime validation, immutable source/provenance records and candidate versions, versioned qualification policy, authorized migration attestation, Governance-Event-only promotion, migration receipt, atomic cutover/catch-up, lost-update prevention, abort/rollback, and portable export.
+4. V1 includes the source-neutral authorization foundation enumerated in PRD-v1.1 §5, including the global login account, workspace-scoped principals, verified external identity links, stable permission primitives, built-in role bundles, scoped grants, AgentDoc groups, external membership bindings, source ACL ceilings, object/field/proposition visibility policy, and auditable authorization decisions. Custom roles/policy language remain post-V1.
 5. GitHub remains the complete managed V1 GA forge. GitLab is admitted only as a first-party V1 Preview behind capability/maturity policy; GitLab GA parity remains post-V1.
-6. V1 semantic architecture includes an AgentDoc-owned generic semantic-executor protocol in addition to Claude and Codex adapters, allowing qualified local/customer-hosted endpoints and human structured assessments. AgentDoc-hosted open-weight models and packaged zero-egress bundles remain later capabilities.
+6. V1 semantic architecture includes an AgentDoc-owned generic semantic-executor protocol per PRD-v1.1 §10, in addition to Claude and Codex adapters, allowing qualified local/customer-hosted endpoints and human structured assessments, and including one optional fallback that independently satisfies the same qualification, maturity, egress, residency, retention, and organization-approval requirements as the primary. AgentDoc-hosted open-weight models and packaged zero-egress bundles remain later capabilities.
 7. Managed Git processing is defined against one contract and may run as `source_ci`, `agentdoc_managed`, or `customer_worker`, with maturity declared per mode and no silent fallback.
 8. The roadmap may not represent any of the above as previously accepted ADR-0055 content; ADR-0056 is the accepting decision.
 
 ## Consequences
 
-- `PRD-v1.0.md` remains the full capability reference, but the clauses listed above are amended by `docs/product/PRD-v1.1-amendment.md`.
+- `PRD-v1.0.md` remains the full capability reference, but the clauses listed above are amended by `docs/product/PRD-v1.1-amendment.md`. Where this ADR summarizes an amended clause, the PRD-v1.1 enumeration is the complete normative list; this ADR never narrows it.
 - Existing standalone/open-source workflows remain first-class and do not require Cloud.
 - V1 implementation must avoid GitHub-specific canonical domain records when a source-neutral concept exists.
 - The minimum authorization foundation moves into V1; advanced enterprise policy administration stays later.
