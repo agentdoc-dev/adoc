@@ -1,7 +1,7 @@
 # V10 Decision Annex — Source Control, Connector Capabilities, Cloud API, and Compatibility
 
 **Status:** Locked planning decisions from 2026-08-12  
-**Parent:** [`../ROADMAP-V10.md`](../ROADMAP-V10.md)
+**Parent:** [`DECISION-REGISTER.md`](DECISION-REGISTER.md)
 
 ## C1. Provider-neutral source-control contract
 
