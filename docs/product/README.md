@@ -8,6 +8,8 @@ This directory separates historical numbered specifications from the current acc
 
 PRD v1.0 remains the complete product/capability reference accepted by ADR-0055.
 
+PRD v1.0 and the v1.1 amendment are product-direction contracts, not statements that any V1 capability is already shipped. Current implementation truth remains defined by code, tests, accepted implementation ADRs, and the active implementation sequence.
+
 ### [`PRD-v1.1-amendment.md`](PRD-v1.1-amendment.md) — accepted Product V1 boundary amendment
 
 ADR-0056 amends the Product V1 boundary without duplicating the full PRD. For clauses it changes, the v1.1 amendment takes precedence over PRD v1.0. All unmodified PRD v1.0 clauses remain in force.
@@ -38,6 +40,8 @@ ADR-0057 fixes four implementation invariants: workspace-qualified managed Objec
 3. Forward Product V1 direction: PRD v1.1 amendment for changed clauses, then PRD v1.0 for everything else.
 4. Historical numbered citations: PRD v0.2 (`PRD.md`).
 
+Where PRD v1.0 or the v1.1 amendment changes the forward product direction relative to earlier cycles, it does not retroactively redefine shipped behavior.
+
 The original `docs/roadmap/ROADMAP-V10.md` is historical research/detail only after this amendment; new implementation work uses `E*` slices from `docs/roadmap/v10/EXECUTION-MAP.md`.
 
 ## Migration plan
@@ -47,8 +51,8 @@ Before replacing the unversioned historical `PRD.md` file:
 1. accept PRD v1.0 (done — ADR-0055);
 2. accept the Product V1 amendment (done — ADR-0056 Accepted);
 3. re-cut the active implementation sequence against the amended boundary (done by `docs/roadmap/v10/EXECUTION-MAP.md` in PR #143);
-4. migrate/version old bare `PRD §N` citations using the v1.0 crosswalk;
+4. migrate/version old bare `PRD §N` citations using the v1.0 crosswalk (Appendix D of `PRD-v1.0.md` is the mechanical input for this migration);
 5. decide the final archive name/path for PRD v0.2 and historical roadmaps;
 6. only then rename/consolidate canonical product documents.
 
-This preserves historical citation meaning while allowing Product V1 to evolve through explicit accepted amendments rather than silent roadmap overrides.
+This preserves historical citation meaning while allowing Product V1 to evolve through explicit accepted amendments rather than silent roadmap overrides — and prevents an apparently valid historical `PRD §N` citation from silently pointing at an unrelated requirement after a renumbering.
