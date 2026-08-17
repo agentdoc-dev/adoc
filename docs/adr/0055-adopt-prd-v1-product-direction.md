@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-11
+- Superseded in part by: ADR-0056 (V1 boundary amendments, `docs/product/PRD-v1.1-amendment.md`)
 
 ## Context
 
