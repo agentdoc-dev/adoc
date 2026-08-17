@@ -50,7 +50,9 @@ const ALLOWED_CRITERION_CLOSURE_LINES: &[(&str, &str)] = &[
 ];
 
 /// Reads every current roadmap/annex doc as `(repo-relative name, content)`,
-/// sorted for deterministic failure output.
+/// sorted for deterministic failure output. Asserts the parser-health floor
+/// here so every real-tree guard inherits it: an empty or relocated
+/// directory must fail loudly, never pass by scanning nothing.
 fn roadmap_docs() -> Vec<(String, String)> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -77,6 +79,11 @@ fn roadmap_docs() -> Vec<(String, String)> {
         }
     }
     docs.sort();
+    assert!(
+        docs.len() >= 15,
+        "scanned only {} roadmap docs (expected at least 15) — directory moved or empty",
+        docs.len()
+    );
     docs
 }
 
@@ -174,15 +181,7 @@ fn v10_dependency_violations(doc_name: &str, content: &str) -> Vec<String> {
 
 #[test]
 fn roadmap_never_misattributes_boundary_to_adr_0055() {
-    let docs = roadmap_docs();
-    // Parser-health floor: an empty or relocated directory must fail loudly,
-    // never pass by scanning nothing.
-    assert!(
-        docs.len() >= 15,
-        "scanned only {} roadmap docs (expected at least 15) — directory moved or empty",
-        docs.len()
-    );
-    let violations: Vec<String> = docs
+    let violations: Vec<String> = roadmap_docs()
         .iter()
         .flat_map(|(name, content)| adr_0055_violations(name, content))
         .collect();
