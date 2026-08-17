@@ -25,6 +25,30 @@ const ALLOWED_ADR_0055_LINES: &[(&str, &str)] = &[(
      passes on the repaired tree.",
 )];
 
+/// Lines that legitimately combine close/criterion/by-construction because
+/// they state the PR #143 acceptance-wording rule itself. Same pinning
+/// discipline as `ALLOWED_ADR_0055_LINES`.
+const ALLOWED_CRITERION_CLOSURE_LINES: &[(&str, &str)] = &[
+    (
+        "docs/roadmap/ROADMAP-V10-REVISION.md",
+        "10. **PR acceptance wording:** planned slices do not \u{201c}close\u{201d} PRD \
+         acceptance criteria by construction. Criteria are mapped to planned work until \
+         implementation/evidence exists.",
+    ),
+    (
+        "docs/roadmap/ROADMAP-V10-REVISION.md",
+        "- PR description no longer claims 19/20 acceptance criteria are closed \
+         \u{201c}by construction\u{201d};",
+    ),
+    (
+        "docs/roadmap/v10/MILESTONES.md",
+        "3. `E0.1.T3` — Sweep acceptance wording per PR #143: no planned slice text \
+         claims to \"close\" a PRD acceptance criterion by construction; criteria map to \
+         planned work until implementation/evidence exists; extend the T1 check to guard \
+         the phrasing.",
+    ),
+];
+
 /// Reads every current roadmap/annex doc as `(repo-relative name, content)`,
 /// sorted for deterministic failure output.
 fn roadmap_docs() -> Vec<(String, String)> {
@@ -77,9 +101,8 @@ fn amendment_context(lower_line: &str) -> bool {
         || lower_line.contains("supersede")
 }
 
-fn allow_listed(doc_name: &str, line: &str) -> bool {
-    ALLOWED_ADR_0055_LINES
-        .iter()
+fn allow_listed(list: &[(&str, &str)], doc_name: &str, line: &str) -> bool {
+    list.iter()
         .any(|(file, allowed)| *file == doc_name && line.trim() == *allowed)
 }
 
@@ -91,11 +114,57 @@ fn adr_0055_violations(doc_name: &str, content: &str) -> Vec<String> {
             let lower = line.to_lowercase();
             (lower.contains("adr-0055")
                 && !amendment_context(&lower)
-                && !allow_listed(doc_name, line))
+                && !allow_listed(ALLOWED_ADR_0055_LINES, doc_name, line))
             .then(|| {
                 format!(
                     "{doc_name}:{number}: names ADR-0055 without amendment context \
                      (ADR-0056 rule 8): {}",
+                    line.trim()
+                )
+            })
+        })
+        .collect()
+}
+
+/// True when the line carries `close`/`closes`/`closed` as a standalone
+/// word — `disclosure` and `closure` never match.
+fn has_close_token(lower_line: &str) -> bool {
+    lower_line
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .any(|word| matches!(word, "close" | "closes" | "closed"))
+}
+
+/// One message per line claiming acceptance-criterion closure by
+/// construction — the PR #143 acceptance-wording signature: a close token,
+/// "criteri", and "by construction" together on one line.
+fn criterion_closure_violations(doc_name: &str, content: &str) -> Vec<String> {
+    structural_lines(content)
+        .filter_map(|(number, line)| {
+            let lower = line.to_lowercase();
+            (lower.contains("by construction")
+                && lower.contains("criteri")
+                && has_close_token(&lower)
+                && !allow_listed(ALLOWED_CRITERION_CLOSURE_LINES, doc_name, line))
+            .then(|| {
+                format!(
+                    "{doc_name}:{number}: claims criterion closure by construction \
+                     (PR #143 acceptance-wording rule): {}",
+                    line.trim()
+                )
+            })
+        })
+        .collect()
+}
+
+/// One message per `**Depends on:**` line citing a legacy `V10.x` slice —
+/// dependencies use `E*` IDs only; `V10.x` is provenance, never a dependency.
+fn v10_dependency_violations(doc_name: &str, content: &str) -> Vec<String> {
+    structural_lines(content)
+        .filter_map(|(number, line)| {
+            let dependencies = line.split("**Depends on:**").nth(1)?;
+            dependencies.to_lowercase().contains("v10.").then(|| {
+                format!(
+                    "{doc_name}:{number}: legacy V10.x slice cited as a dependency: {}",
                     line.trim()
                 )
             })
@@ -165,6 +234,84 @@ B3 is ADR-0055 accepted — sample inside a fence\n\
 ```\n\
 Prose after.\n";
     assert_eq!(adr_0055_violations("fixture.md", doc), Vec::<String>::new());
+}
+
+#[test]
+fn roadmap_never_claims_criterion_closure_by_construction() {
+    let violations: Vec<String> = roadmap_docs()
+        .iter()
+        .flat_map(|(name, content)| criterion_closure_violations(name, content))
+        .collect();
+    assert!(
+        violations.is_empty(),
+        "planned slice text claims to close a PRD acceptance criterion by construction \
+         (PR #143 acceptance-wording rule):\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn guard_fires_on_seeded_criterion_closure() {
+    let violations = criterion_closure_violations(
+        "fixture.md",
+        "E4.2 closes acceptance criterion AC-7 by construction.\n",
+    );
+    assert_eq!(
+        violations.len(),
+        1,
+        "seeded closure claim must fire: {violations:?}"
+    );
+    assert!(
+        violations[0].starts_with("fixture.md:1:"),
+        "{}",
+        violations[0]
+    );
+}
+
+#[test]
+fn technical_by_construction_lines_pass() {
+    // Type-level impossibility statements are not acceptance-criterion
+    // closure claims; "disclosure" must not match as a close token.
+    let clean = "\
+absent fields impossible by construction;\n\
+approval has exactly one binding field by construction.\n\
+disclosure criteria hold by construction.\n";
+    assert_eq!(
+        criterion_closure_violations("fixture.md", clean),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn roadmap_never_depends_on_legacy_v10_slices() {
+    let violations: Vec<String> = roadmap_docs()
+        .iter()
+        .flat_map(|(name, content)| v10_dependency_violations(name, content))
+        .collect();
+    assert!(
+        violations.is_empty(),
+        "plan text references a legacy V10.x slice as a dependency \
+         (provenance citations only):\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn guard_fires_on_seeded_v10_dependency() {
+    let violations = v10_dependency_violations(
+        "fixture.md",
+        "**Repos:** `adoc` · **Depends on:** V10.1.4\n",
+    );
+    assert_eq!(
+        violations.len(),
+        1,
+        "seeded V10.x dependency must fire: {violations:?}"
+    );
+    let clean = v10_dependency_violations(
+        "fixture.md",
+        "**Depends on:** E0.3\nrestaged into V10, carrying debt (provenance: V10.1.4)\n",
+    );
+    assert_eq!(clean, Vec::<String>::new());
 }
 
 #[test]
