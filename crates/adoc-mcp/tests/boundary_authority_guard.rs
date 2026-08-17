@@ -208,6 +208,7 @@ fn issue_template_docs() -> Vec<(String, String)> {
         .join("../..")
         .join(".github");
     let mut docs = Vec::new();
+    let mut reserved_config_seen = false;
     let template_dir = github.join("ISSUE_TEMPLATE");
     let template_dir_exists = template_dir.is_dir();
     if let Ok(entries) = fs::read_dir(&template_dir) {
@@ -220,6 +221,10 @@ fn issue_template_docs() -> Vec<(String, String)> {
             let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
+            if matches!(file_name, "config.yml" | "config.yaml") {
+                reserved_config_seen = true;
+                continue;
+            }
             if !is_template_file(file_name) {
                 continue;
             }
@@ -230,9 +235,13 @@ fn issue_template_docs() -> Vec<(String, String)> {
     }
     // Absence is vacuously clean, but an existing template directory that
     // parses to nothing is a filter bug, never a pass. Counted before the
-    // PR template is added, so its presence cannot mask an empty parse.
+    // PR template is added, so its presence cannot mask an empty parse. A
+    // config-only directory (chooser metadata, zero bodies) is a valid
+    // GitHub setup and counts as parsed without being scanned.
+    // ponytail: config.yml alongside silently dropped bodies still passes —
+    // per-file drop detection if the extension filter ever grows.
     assert!(
-        !template_dir_exists || !docs.is_empty(),
+        !template_dir_exists || !docs.is_empty() || reserved_config_seen,
         ".github/ISSUE_TEMPLATE/ exists but no templates were parsed — \
          scanner filter drifted"
     );
