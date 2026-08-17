@@ -161,7 +161,7 @@ fn criterion_closure_violations(doc_name: &str, content: &str) -> Vec<String> {
 fn v10_dependency_violations(doc_name: &str, content: &str) -> Vec<String> {
     structural_lines(content)
         .filter_map(|(number, line)| {
-            let dependencies = line.split("**Depends on:**").nth(1)?;
+            let (_, dependencies) = line.split_once("**Depends on:**")?;
             dependencies.to_lowercase().contains("v10.").then(|| {
                 format!(
                     "{doc_name}:{number}: legacy V10.x slice cited as a dependency: {}",
@@ -312,6 +312,49 @@ fn guard_fires_on_seeded_v10_dependency() {
         "**Depends on:** E0.3\nrestaged into V10, carrying debt (provenance: V10.1.4)\n",
     );
     assert_eq!(clean, Vec::<String>::new());
+    // A stray second label must not truncate the inspected remainder.
+    let doubled = v10_dependency_violations(
+        "fixture.md",
+        "**Depends on:** E0.3 **Depends on:** V10.9.9\n",
+    );
+    assert_eq!(
+        doubled.len(),
+        1,
+        "second-label remainder must be inspected: {doubled:?}"
+    );
+}
+
+#[test]
+fn scan_scope_covers_every_roadmap_subdirectory() {
+    // The archive/ exemption is structural (subdirectories are not recursed),
+    // so a NEW subdirectory would be silently unguarded. Pin the known set:
+    // adding e.g. docs/roadmap/v11/ must fail here and force a deliberate
+    // guard-scope decision.
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("docs/roadmap");
+    for (dir, expected) in [
+        (root.clone(), vec!["archive", "v10"]),
+        (root.join("v10"), vec![]),
+    ] {
+        let mut subdirs: Vec<String> = fs::read_dir(&dir)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", dir.display()))
+            .filter_map(|entry| {
+                let path = entry.ok()?.path();
+                path.is_dir()
+                    .then(|| path.file_name()?.to_str().map(str::to_string))
+                    .flatten()
+            })
+            .collect();
+        subdirs.sort();
+        assert_eq!(
+            subdirs,
+            expected,
+            "unexpected subdirectory under {} — extend the guard scan scope or \
+             exempt it deliberately",
+            dir.display()
+        );
+    }
 }
 
 #[test]
