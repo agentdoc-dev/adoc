@@ -368,12 +368,32 @@ fn scan_scope_covers_every_roadmap_subdirectory() {
 }
 
 #[test]
-fn allow_list_is_exact_per_file_and_line() {
-    let (file, line) = ALLOWED_ADR_0055_LINES[0];
-    // The pinned line passes only in its own file…
-    assert_eq!(adr_0055_violations(file, line), Vec::<String>::new());
-    // …not under another name, and not once edited.
-    assert_eq!(adr_0055_violations("fixture.md", line).len(), 1);
-    let edited = format!("{line} plus drift");
-    assert_eq!(adr_0055_violations(file, &edited).len(), 1);
+fn allow_lists_are_exact_and_present() {
+    type RuleFn = fn(&str, &str) -> Vec<String>;
+    let lists: [(&[(&str, &str)], RuleFn); 2] = [
+        (ALLOWED_ADR_0055_LINES, adr_0055_violations),
+        (
+            ALLOWED_CRITERION_CLOSURE_LINES,
+            criterion_closure_violations,
+        ),
+    ];
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for (list, violations) in lists {
+        for (file, line) in list {
+            // The pinned line passes only in its own file…
+            assert_eq!(violations(file, line), Vec::<String>::new());
+            // …not under another name, and not once edited.
+            assert_eq!(violations("fixture.md", line).len(), 1, "{file}: {line}");
+            let edited = format!("{line} plus drift");
+            assert_eq!(violations(file, &edited).len(), 1, "{file}: {line}");
+            // Deleting the pinned line is a guard failure too — an allow-list
+            // entry pointing at nothing is silent un-guarding in waiting.
+            let content = fs::read_to_string(repo_root.join(file))
+                .unwrap_or_else(|error| panic!("failed to read {file}: {error}"));
+            assert!(
+                content.lines().any(|doc_line| doc_line.trim() == *line),
+                "allow-listed line no longer present in {file}: {line}"
+            );
+        }
+    }
 }
