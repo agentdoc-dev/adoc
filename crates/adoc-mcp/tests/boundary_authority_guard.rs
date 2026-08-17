@@ -546,11 +546,13 @@ fn allow_lists_are_exact_and_present() {
             assert_eq!(violations(file, &edited).len(), 1, "{file}: {line}");
             // Deleting the pinned line is a guard failure too — an allow-list
             // entry pointing at nothing is silent un-guarding in waiting.
+            // Presence runs over the same structural view the suppression
+            // does: a pinned line moved inside a fence is equally dead.
             let content = fs::read_to_string(repo_root.join(file))
                 .unwrap_or_else(|error| panic!("failed to read {file}: {error}"));
             assert!(
-                content.lines().any(|doc_line| doc_line.trim() == *line),
-                "allow-listed line no longer present in {file}: {line}"
+                structural_lines(&content).any(|(_, doc_line)| doc_line.trim() == *line),
+                "allow-listed line no longer structurally present in {file}: {line}"
             );
         }
     }
