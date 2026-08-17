@@ -133,12 +133,12 @@ fn adr_0055_violations(doc_name: &str, content: &str) -> Vec<String> {
         .collect()
 }
 
-/// True when the line carries `close`/`closes`/`closed` as a standalone
-/// word — `disclosure` and `closure` never match.
+/// True when the line carries a close inflection as a standalone word —
+/// `disclosure` never matches.
 fn has_close_token(lower_line: &str) -> bool {
     lower_line
         .split(|c: char| !c.is_ascii_alphanumeric())
-        .any(|word| matches!(word, "close" | "closes" | "closed"))
+        .any(|word| matches!(word, "close" | "closes" | "closed" | "closing" | "closure"))
 }
 
 /// One message per line claiming acceptance-criterion closure by
@@ -265,6 +265,17 @@ fn guard_fires_on_seeded_criterion_closure() {
         "{}",
         violations[0]
     );
+    // Inflections make the same prohibited claim.
+    for line in [
+        "E4.2 is closing acceptance criterion AC-7 by construction.\n",
+        "by construction, this is closure of acceptance criterion AC-7.\n",
+    ] {
+        assert_eq!(
+            criterion_closure_violations("fixture.md", line).len(),
+            1,
+            "inflected closure claim must fire: {line:?}"
+        );
+    }
 }
 
 #[test]
