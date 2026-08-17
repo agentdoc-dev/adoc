@@ -4,11 +4,14 @@
 //! or boundary claims. One implementation, so the guards' notion of
 //! "structural" can never drift apart.
 
-/// Yields `(1-based line number, line)` outside ``` fences.
+/// Yields `(1-based line number, line)` outside fences. CommonMark §4.5
+/// admits backtick and tilde fences alike; the toggle does not pair fence
+/// characters, a simplification both markers share.
 pub fn structural_lines(content: &str) -> impl Iterator<Item = (usize, &str)> {
     let mut in_fence = false;
     content.lines().enumerate().filter_map(move |(i, line)| {
-        if line.trim_start().starts_with("```") {
+        let stripped = line.trim_start();
+        if stripped.starts_with("```") || stripped.starts_with("~~~") {
             in_fence = !in_fence;
             return None;
         }

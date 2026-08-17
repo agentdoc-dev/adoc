@@ -294,13 +294,25 @@ Supersedes in part: ADR-0055\n";
 
 #[test]
 fn fenced_samples_are_not_violations() {
-    let doc = "\
-Prose before.\n\
-```\n\
-B3 is ADR-0055 accepted — sample inside a fence\n\
-```\n\
-Prose after.\n";
-    assert_eq!(adr_0055_violations("fixture.md", doc), Vec::<String>::new());
+    // CommonMark §4.5: backtick and tilde fences both delimit code blocks.
+    for fence in ["```", "~~~"] {
+        let doc = format!(
+            "Prose before.\n{fence}\n\
+             B3 is ADR-0055 accepted — sample inside a fence\n\
+             E4.2 closes acceptance criterion AC-7 by construction.\n\
+             {fence}\nProse after.\n"
+        );
+        assert_eq!(
+            adr_0055_violations("fixture.md", &doc),
+            Vec::<String>::new(),
+            "{fence} fence must exempt the misattribution sample"
+        );
+        assert_eq!(
+            criterion_closure_violations("fixture.md", &doc),
+            Vec::<String>::new(),
+            "{fence} fence must exempt the closure-claim sample"
+        );
+    }
 }
 
 #[test]

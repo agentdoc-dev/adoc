@@ -286,6 +286,30 @@ fn fenced_hash_lines_are_not_structure() {
 }
 
 #[test]
+fn tilde_fenced_lines_are_not_structure() {
+    // The tilde twin of `fenced_hash_lines_are_not_structure` (CommonMark
+    // §4.5 admits both fence characters).
+    let doc = "\
+## E1.1 — Fenced
+~~~text
+## E9.9 — phantom heading inside tilde fence
+**Repos:** `phantom`
+~~~
+**Repos:** `adoc`
+**Depends on:** E0.3
+";
+    let slices = slice_fields(doc, "fixture", "## ");
+    assert_eq!(
+        slices.len(),
+        1,
+        "phantom tilde-fenced heading must not parse"
+    );
+    let slice = &slices["E1.1"];
+    assert_eq!(slice.repos, "`adoc`");
+    assert_eq!(slice.depends_on, "E0.3");
+}
+
+#[test]
 fn first_labeled_occurrence_wins() {
     // A stray second label later in the body (e.g. quoted under an
     // out-of-scope bullet) must not overwrite the slice-header values.
