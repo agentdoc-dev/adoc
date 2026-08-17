@@ -125,11 +125,14 @@ fn adr_0055_violations(doc_name: &str, content: &str) -> Vec<String> {
         .collect()
 }
 
-/// True when the line carries a close inflection as a standalone word —
-/// `disclosure` never matches.
+/// True when the line carries a close inflection as a standalone word.
+/// Words are whitespace-delimited with boundary punctuation trimmed, so
+/// `disclosure`, path/URL fragments (`docs/close-book/`), and hyphenated
+/// compounds (`close-out`) never match, while quoted forms (`“close”`) do.
 fn has_close_token(lower_line: &str) -> bool {
     lower_line
-        .split(|c: char| !c.is_ascii_alphanumeric())
+        .split_whitespace()
+        .map(|word| word.trim_matches(|c: char| !c.is_ascii_alphanumeric()))
         .any(|word| {
             matches!(
                 word,
@@ -427,7 +430,9 @@ fn technical_by_construction_lines_pass() {
     let clean = "\
 absent fields impossible by construction;\n\
 approval has exactly one binding field by construction.\n\
-disclosure criteria hold by construction.\n";
+disclosure criteria hold by construction.\n\
+See docs/close-book/criteria.md for by-construction acceptance rules.\n\
+the close-out review criteria hold by construction.\n";
     assert_eq!(
         criterion_closure_violations("fixture.md", clean),
         Vec::<String>::new()
