@@ -130,7 +130,12 @@ fn adr_0055_violations(doc_name: &str, content: &str) -> Vec<String> {
 fn has_close_token(lower_line: &str) -> bool {
     lower_line
         .split(|c: char| !c.is_ascii_alphanumeric())
-        .any(|word| matches!(word, "close" | "closes" | "closed" | "closing" | "closure"))
+        .any(|word| {
+            matches!(
+                word,
+                "close" | "closes" | "closed" | "closing" | "closure" | "closures"
+            )
+        })
 }
 
 /// One message per line claiming acceptance-criterion closure by
@@ -396,6 +401,7 @@ fn guard_fires_on_seeded_criterion_closure() {
         "E4.2 is closing acceptance criterion AC-7 by construction.\n",
         "by construction, this is closure of acceptance criterion AC-7.\n",
         "by-construction closure of criterion AC-7.\n",
+        "gate closures for acceptance criteria hold by construction.\n",
     ] {
         assert_eq!(
             criterion_closure_violations("fixture.md", line).len(),
