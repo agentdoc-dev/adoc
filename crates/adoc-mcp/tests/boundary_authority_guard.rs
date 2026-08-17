@@ -7,8 +7,12 @@
 //! `ROADMAP-V10-2026-08-12-original.md` and `archive/` are preserved history
 //! (see `docs/roadmap/archive/README.md`) and exempt.
 
+mod support;
+
 use std::fs;
 use std::path::PathBuf;
+
+use support::doc_scan::structural_lines;
 
 /// The preserved byte-for-byte historical original; exempt per the
 /// archive policy. `archive/` is exempt structurally: only the roadmap
@@ -85,19 +89,6 @@ fn roadmap_docs() -> Vec<(String, String)> {
         docs.len()
     );
     docs
-}
-
-/// Yields `(1-based line number, line)` outside ``` fences: fenced content
-/// is sample text, never a boundary claim.
-fn structural_lines(content: &str) -> impl Iterator<Item = (usize, &str)> {
-    let mut in_fence = false;
-    content.lines().enumerate().filter_map(move |(i, line)| {
-        if line.trim_start().starts_with("```") {
-            in_fence = !in_fence;
-            return None;
-        }
-        (!in_fence).then_some((i + 1, line))
-    })
 }
 
 /// A line naming ADR-0055 acknowledges the amendment when it also names
