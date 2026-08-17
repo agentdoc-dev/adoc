@@ -1,4 +1,5 @@
-//! Shared test helpers for V3.6 MCP review tests.
+//! Shared test helpers: the V3.6 MCP review fixture below, and the
+//! docs-truth-guard doc scanner in [`doc_scan`].
 //!
 //! Builds a 2-commit git fixture matching the V3.3/V3.4 acceptance scenario:
 //! a verified claim (`billing.refunds`) whose body changes and a second
@@ -10,6 +11,8 @@
 //! fire on review.
 
 #![allow(dead_code)]
+
+pub mod doc_scan;
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -5,6 +5,8 @@
 //! targets stable structure only — slice headings and the bold field labels —
 //! never the overview table or free prose.
 
+mod support;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
@@ -23,22 +25,13 @@ fn normalize(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Drops every line inside a ``` fence: fenced content is sample text, never
-/// document structure — it must neither terminate a slice body (`#!/…`) nor
+/// Drops every line inside a ``` fence via the shared docs-truth scanner —
+/// fenced content must neither terminate a slice body (`#!/…`) nor
 /// contribute phantom headings, labels, or table rows.
 fn structural_lines(doc: &str) -> Vec<&str> {
-    let mut in_fence = false;
-    let mut out = Vec::new();
-    for line in doc.lines() {
-        if line.trim_start().starts_with("```") {
-            in_fence = !in_fence;
-            continue;
-        }
-        if !in_fence {
-            out.push(line);
-        }
-    }
-    out
+    support::doc_scan::structural_lines(doc)
+        .map(|(_, line)| line)
+        .collect()
 }
 
 /// Returns the `E<major>.<minor>` slice ID opening a heading, if any.
