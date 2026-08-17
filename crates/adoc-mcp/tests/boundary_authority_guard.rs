@@ -138,7 +138,10 @@ fn has_close_token(lower_line: &str) -> bool {
 fn criterion_closure_violations(doc_name: &str, content: &str) -> Vec<String> {
     structural_lines(content)
         .filter_map(|(number, line)| {
-            let lower = line.to_lowercase();
+            // The compound adjective is written both ways.
+            let lower = line
+                .to_lowercase()
+                .replace("by-construction", "by construction");
             (lower.contains("by construction")
                 && lower.contains("criteri")
                 && has_close_token(&lower)
@@ -316,10 +319,11 @@ fn guard_fires_on_seeded_criterion_closure() {
         "{}",
         violations[0]
     );
-    // Inflections make the same prohibited claim.
+    // Inflections and the hyphenated compound make the same prohibited claim.
     for line in [
         "E4.2 is closing acceptance criterion AC-7 by construction.\n",
         "by construction, this is closure of acceptance criterion AC-7.\n",
+        "by-construction closure of criterion AC-7.\n",
     ] {
         assert_eq!(
             criterion_closure_violations("fixture.md", line).len(),
