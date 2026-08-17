@@ -94,9 +94,12 @@ fn roadmap_docs() -> Vec<(String, String)> {
         }
     }
     docs.sort();
+    // Pinned at the current count: adding docs is free (>=), removing one
+    // fails here until the pin is deliberately lowered with the removal.
     assert!(
-        docs.len() >= 15,
-        "scanned only {} roadmap docs (expected at least 15) — directory moved or empty",
+        docs.len() >= 19,
+        "scanned only {} roadmap docs (expected at least 19) — doc removed or \
+         directory moved; lower the pin deliberately with the removal",
         docs.len()
     );
     docs
