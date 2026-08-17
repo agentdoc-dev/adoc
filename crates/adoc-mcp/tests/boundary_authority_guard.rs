@@ -462,10 +462,13 @@ fn template_scope_covers_every_github_variant() {
     for alternative in [
         "PULL_REQUEST_TEMPLATE.md",
         "pull_request_template.md",
+        "PULL_REQUEST_TEMPLATE",
         "docs/PULL_REQUEST_TEMPLATE.md",
         "docs/pull_request_template.md",
+        "docs/PULL_REQUEST_TEMPLATE",
         ".github/pull_request_template.md",
         ".github/PULL_REQUEST_TEMPLATE",
+        ".github/ISSUE_TEMPLATE.md",
         "ISSUE_TEMPLATE.md",
         "docs/ISSUE_TEMPLATE.md",
     ] {
