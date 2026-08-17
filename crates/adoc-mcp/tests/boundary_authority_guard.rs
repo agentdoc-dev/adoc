@@ -193,6 +193,7 @@ fn issue_template_docs() -> Vec<(String, String)> {
         .join(".github");
     let mut docs = Vec::new();
     let template_dir = github.join("ISSUE_TEMPLATE");
+    let template_dir_exists = template_dir.is_dir();
     if let Ok(entries) = fs::read_dir(&template_dir) {
         for entry in entries {
             let path = entry
@@ -215,6 +216,13 @@ fn issue_template_docs() -> Vec<(String, String)> {
     if let Ok(content) = fs::read_to_string(github.join("PULL_REQUEST_TEMPLATE.md")) {
         docs.push((".github/PULL_REQUEST_TEMPLATE.md".to_string(), content));
     }
+    // Absence is vacuously clean, but an existing template directory that
+    // parses to nothing is a filter bug, never a pass.
+    assert!(
+        !template_dir_exists || !docs.is_empty(),
+        ".github/ISSUE_TEMPLATE/ exists but no templates were parsed — \
+         scanner filter drifted"
+    );
     docs.sort();
     docs
 }
@@ -440,6 +448,32 @@ fn dependency_rule_ignores_v10_filenames() {
     let clean =
         v10_dependency_violations("fixture.md", "**Depends on:** the plan in ROADMAP-V10.md\n");
     assert_eq!(clean, Vec::<String>::new());
+}
+
+#[test]
+fn template_scope_covers_every_github_variant() {
+    // The scanner reads .github/ISSUE_TEMPLATE/ and
+    // .github/PULL_REQUEST_TEMPLATE.md. GitHub also recognises these
+    // alternative template locations; introducing one must fail here and
+    // force a deliberate scan-scope decision, mirroring
+    // scan_scope_covers_every_roadmap_subdirectory.
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for alternative in [
+        "PULL_REQUEST_TEMPLATE.md",
+        "pull_request_template.md",
+        "docs/PULL_REQUEST_TEMPLATE.md",
+        "docs/pull_request_template.md",
+        ".github/pull_request_template.md",
+        ".github/PULL_REQUEST_TEMPLATE",
+        "ISSUE_TEMPLATE.md",
+        "docs/ISSUE_TEMPLATE.md",
+    ] {
+        assert!(
+            !repo_root.join(alternative).exists(),
+            "{alternative} exists but issue_template_docs() does not scan it — \
+             extend the template scan scope or exempt it deliberately"
+        );
+    }
 }
 
 #[test]
