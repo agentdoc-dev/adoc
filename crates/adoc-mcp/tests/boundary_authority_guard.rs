@@ -565,6 +565,27 @@ fn dependency_rule_ignores_v10_filenames() {
     assert_eq!(clean, Vec::<String>::new());
 }
 
+/// Byte-exact existence check: `Path::exists()` on a case-insensitive
+/// filesystem aliases case variants, so pinning `pull_request_template.md`
+/// absent would spuriously fail once the canonical uppercase file exists.
+fn exists_exact(repo_root: &std::path::Path, relative: &str) -> bool {
+    let (dir, name) = relative.rsplit_once('/').unwrap_or((".", relative));
+    fs::read_dir(repo_root.join(dir)).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|entry| entry.file_name().to_str() == Some(name))
+    })
+}
+
+#[test]
+fn exact_existence_does_not_alias_case() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    assert!(exists_exact(&repo_root, ".github/dependabot.yml"));
+    // On APFS, Path::exists() would say true here; the byte-exact check
+    // must not.
+    assert!(!exists_exact(&repo_root, ".github/DEPENDABOT.YML"));
+}
+
 #[test]
 fn template_scope_covers_every_github_variant() {
     // The scanner reads .github/ISSUE_TEMPLATE/ and
@@ -587,7 +608,7 @@ fn template_scope_covers_every_github_variant() {
         "docs/ISSUE_TEMPLATE.md",
     ] {
         assert!(
-            !repo_root.join(alternative).exists(),
+            !exists_exact(&repo_root, alternative),
             "{alternative} exists but issue_template_docs() does not scan it — \
              extend the template scan scope or exempt it deliberately"
         );
