@@ -5,7 +5,7 @@
 **Document type:** Product requirements — direction contract and capability reference
 **Version:** 1.0
 **Date:** 2026-08-11
-**Status:** Accepted (2026-08-11, ADR-0055) — current product direction, locked V1 boundary, and capability reference
+**Status:** Accepted (2026-08-11, ADR-0055) — full capability reference; the V1 boundary is amended by [`PRD-v1.1-amendment.md`](PRD-v1.1-amendment.md) / ADR-0056, which takes precedence for the clauses it changes
 **Primary audience:** Product, engineering, design, developer experience, AI platform, security, infrastructure, enterprise architecture
 **Repository path:** `docs/product/PRD-v1.0.md`
 
