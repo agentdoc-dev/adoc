@@ -163,18 +163,78 @@ fn criterion_closure_violations(doc_name: &str, content: &str) -> Vec<String> {
         .collect()
 }
 
+/// True when the text carries a `V10.<digit>` slice ID — `ROADMAP-V10.md`
+/// and bare `V10` never match.
+fn mentions_v10_slice(lower_text: &str) -> bool {
+    lower_text.match_indices("v10.").any(|(index, marker)| {
+        lower_text[index + marker.len()..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit())
+    })
+}
+
 /// One message per `**Depends on:**` line citing a legacy `V10.x` slice —
 /// dependencies use `E*` IDs only; `V10.x` is provenance, never a dependency.
 fn v10_dependency_violations(doc_name: &str, content: &str) -> Vec<String> {
     structural_lines(content)
         .filter_map(|(number, line)| {
             let (_, dependencies) = line.split_once("**Depends on:**")?;
-            dependencies.to_lowercase().contains("v10.").then(|| {
+            mentions_v10_slice(&dependencies.to_lowercase()).then(|| {
                 format!(
                     "{doc_name}:{number}: legacy V10.x slice cited as a dependency: {}",
                     line.trim()
                 )
             })
+        })
+        .collect()
+}
+
+/// Reads every `.github` issue/PR template as `(repo-relative name,
+/// content)`. Absence is the normal state and vacuously clean; templates
+/// that appear later are scanned automatically, never silently skipped.
+fn issue_template_docs() -> Vec<(String, String)> {
+    let github = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(".github");
+    let mut docs = Vec::new();
+    let template_dir = github.join("ISSUE_TEMPLATE");
+    if let Ok(entries) = fs::read_dir(&template_dir) {
+        for entry in entries {
+            let path = entry
+                .unwrap_or_else(|error| {
+                    panic!("failed to list {}: {error}", template_dir.display())
+                })
+                .path();
+            let extension = path.extension().and_then(|e| e.to_str());
+            if !matches!(extension, Some("md" | "yml" | "yaml")) {
+                continue;
+            }
+            let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let content = fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+            docs.push((format!(".github/ISSUE_TEMPLATE/{file_name}"), content));
+        }
+    }
+    if let Ok(content) = fs::read_to_string(github.join("PULL_REQUEST_TEMPLATE.md")) {
+        docs.push((".github/PULL_REQUEST_TEMPLATE.md".to_string(), content));
+    }
+    docs.sort();
+    docs
+}
+
+/// One message per template line naming a `V10.x` slice: templates seed new
+/// plans, where legacy IDs are never legitimate — not even as provenance.
+fn template_v10_violations(doc_name: &str, content: &str) -> Vec<String> {
+    structural_lines(content)
+        .filter(|(_, line)| mentions_v10_slice(&line.to_lowercase()))
+        .map(|(number, line)| {
+            format!(
+                "{doc_name}:{number}: legacy V10.x slice referenced in a template: {}",
+                line.trim()
+            )
         })
         .collect()
 }
@@ -332,6 +392,43 @@ fn guard_fires_on_seeded_v10_dependency() {
         1,
         "second-label remainder must be inspected: {doubled:?}"
     );
+}
+
+#[test]
+fn issue_templates_never_reference_legacy_v10_slices() {
+    let violations: Vec<String> = issue_template_docs()
+        .iter()
+        .flat_map(|(name, content)| template_v10_violations(name, content))
+        .collect();
+    assert!(
+        violations.is_empty(),
+        "issue/PR template references a legacy V10.x slice:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn guard_fires_on_seeded_template_v10_reference() {
+    let violations =
+        template_v10_violations(".github/ISSUE_TEMPLATE/fixture.md", "Depends on: V10.1.4\n");
+    assert_eq!(
+        violations.len(),
+        1,
+        "seeded template V10.x reference must fire: {violations:?}"
+    );
+    // A dot not followed by a digit is a filename, not a slice ID.
+    let clean = template_v10_violations(
+        ".github/ISSUE_TEMPLATE/fixture.md",
+        "See ROADMAP-V10.md for the current plan.\n",
+    );
+    assert_eq!(clean, Vec::<String>::new());
+}
+
+#[test]
+fn dependency_rule_ignores_v10_filenames() {
+    let clean =
+        v10_dependency_violations("fixture.md", "**Depends on:** the plan in ROADMAP-V10.md\n");
+    assert_eq!(clean, Vec::<String>::new());
 }
 
 #[test]
