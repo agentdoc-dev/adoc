@@ -293,6 +293,42 @@ Supersedes in part: ADR-0055\n";
 }
 
 #[test]
+fn fence_delimiters_pair_by_character() {
+    // A tilde line inside a backtick fence is content, not a closer; the
+    // real closer must not reopen the fence and hide later prose. The one
+    // violation must be the post-fence prose on line 6 — an unpaired toggle
+    // reports line 4 instead.
+    let doc = "\
+Prose before.\n\
+```\n\
+~~~\n\
+B3 is ADR-0055 accepted — still inside the backtick fence\n\
+```\n\
+B3 is ADR-0055 accepted — real prose after the fence\n";
+    let violations = adr_0055_violations("fixture.md", doc);
+    assert_eq!(
+        violations.len(),
+        1,
+        "only the post-fence prose fires: {violations:?}"
+    );
+    assert!(
+        violations[0].starts_with("fixture.md:6:"),
+        "violation must be the prose after the paired close: {}",
+        violations[0]
+    );
+    // A same-character line with trailing text is not a closer either.
+    let info_string = "\
+```\n\
+```rust — sample line, not a closer\n\
+B3 is ADR-0055 accepted — inside\n\
+```\n";
+    assert_eq!(
+        adr_0055_violations("fixture.md", info_string),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
 fn fenced_samples_are_not_violations() {
     // CommonMark §4.5: backtick and tilde fences both delimit code blocks.
     for fence in ["```", "~~~"] {

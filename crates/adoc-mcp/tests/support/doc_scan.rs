@@ -1,20 +1,45 @@
 //! Fence-aware doc scanning shared by the docs-truth guards (ADR-0041).
-//! Lines inside ``` fences are sample text, never document structure — they
+//! Lines inside code fences are sample text, never document structure — they
 //! must neither terminate a section nor contribute phantom headings, labels,
 //! or boundary claims. One implementation, so the guards' notion of
 //! "structural" can never drift apart.
 
-/// Yields `(1-based line number, line)` outside fences. CommonMark §4.5
-/// admits backtick and tilde fences alike; the toggle does not pair fence
-/// characters, a simplification both markers share.
+/// Yields `(1-based line number, line)` outside fences. CommonMark §4.5:
+/// backtick and tilde fences alike; a fence closes only on a bare run of the
+/// same character at least as long as its opener, so a tilde line inside a
+/// backtick fence is content and an info-string line never closes anything.
 pub fn structural_lines(content: &str) -> impl Iterator<Item = (usize, &str)> {
-    let mut in_fence = false;
+    let mut open_fence: Option<(char, usize)> = None;
     content.lines().enumerate().filter_map(move |(i, line)| {
         let stripped = line.trim_start();
-        if stripped.starts_with("```") || stripped.starts_with("~~~") {
-            in_fence = !in_fence;
-            return None;
+        match (open_fence, fence_marker(stripped)) {
+            (None, Some(marker)) => {
+                open_fence = Some(marker);
+                None
+            }
+            (Some((open_char, open_len)), Some((close_char, close_len)))
+                if close_char == open_char
+                    && close_len >= open_len
+                    // Fence characters are ASCII, so char count == byte index.
+                    && stripped[close_len..].trim().is_empty() =>
+            {
+                open_fence = None;
+                None
+            }
+            (Some(_), _) => None,
+            (None, None) => Some((i + 1, line)),
         }
-        (!in_fence).then_some((i + 1, line))
     })
+}
+
+/// `Some((fence char, run length))` when the line starts a ``` or ~~~ run of
+/// at least three; trailing text (an info string) is permitted here — whether
+/// it may close a fence is the caller's pairing decision.
+fn fence_marker(stripped: &str) -> Option<(char, usize)> {
+    let first = stripped.chars().next()?;
+    if first != '`' && first != '~' {
+        return None;
+    }
+    let length = stripped.chars().take_while(|&c| c == first).count();
+    (length >= 3).then_some((first, length))
 }
