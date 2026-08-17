@@ -75,7 +75,11 @@ fn roadmap_docs() -> Vec<(String, String)> {
             // The exemption is tied to the archive policy's location — a
             // same-named file appearing under v10/ is scanned, not exempt.
             let exempt_here = prefix.is_empty() && file_name == HISTORICAL_ORIGINAL;
-            if path.extension().and_then(|e| e.to_str()) != Some("md") || exempt_here {
+            let is_markdown = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| e.eq_ignore_ascii_case("md"));
+            if !is_markdown || exempt_here {
                 continue;
             }
             let content = fs::read_to_string(&path)
@@ -198,9 +202,14 @@ fn v10_dependency_violations(doc_name: &str, content: &str) -> Vec<String> {
 /// is UI configuration nobody pastes into an issue — its contact_links may
 /// legitimately reference legacy V10 material.
 fn is_template_file(file_name: &str) -> bool {
-    let extension = file_name.rsplit_once('.').map(|(_, ext)| ext);
-    matches!(extension, Some("md" | "yml" | "yaml"))
-        && !matches!(file_name, "config.yml" | "config.yaml")
+    // Case-insensitive: case-preserving filesystems produce .MD files that
+    // GitHub's loader still serves.
+    let extension = file_name
+        .rsplit_once('.')
+        .map(|(_, ext)| ext.to_ascii_lowercase());
+    let reserved = file_name.eq_ignore_ascii_case("config.yml")
+        || file_name.eq_ignore_ascii_case("config.yaml");
+    matches!(extension.as_deref(), Some("md" | "yml" | "yaml")) && !reserved
 }
 
 /// Reads every `.github` issue/PR template as `(repo-relative name,
@@ -224,7 +233,9 @@ fn issue_template_docs() -> Vec<(String, String)> {
             let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if matches!(file_name, "config.yml" | "config.yaml") {
+            if file_name.eq_ignore_ascii_case("config.yml")
+                || file_name.eq_ignore_ascii_case("config.yaml")
+            {
                 reserved_config_seen = true;
                 continue;
             }
@@ -241,8 +252,10 @@ fn issue_template_docs() -> Vec<(String, String)> {
     // PR template is added, so its presence cannot mask an empty parse. A
     // config-only directory (chooser metadata, zero bodies) is a valid
     // GitHub setup and counts as parsed without being scanned.
-    // ponytail: config.yml alongside silently dropped bodies still passes —
-    // per-file drop detection if the extension filter ever grows.
+    // ponytail: with config.yml present, the alarm cannot see any other
+    // dropped file; remaining drops are files GitHub ignores too
+    // (non-template extensions), so the blindness is benign until the
+    // filter and GitHub's loader disagree.
     assert!(
         !template_dir_exists || !docs.is_empty() || reserved_config_seen,
         ".github/ISSUE_TEMPLATE/ exists but no templates were parsed — \
@@ -502,7 +515,9 @@ fn template_selection_metadata_is_not_a_template() {
     for (file, is_template) in [
         ("config.yml", false),
         ("config.yaml", false),
+        ("CONFIG.YML", false),
         ("bug_report.md", true),
+        ("feature_request.MD", true),
         ("feature.yml", true),
         ("form.yaml", true),
         ("README.txt", false),
