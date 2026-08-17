@@ -184,6 +184,16 @@ fn v10_dependency_violations(doc_name: &str, content: &str) -> Vec<String> {
         .collect()
 }
 
+/// True for issue-template bodies: md/yml/yaml files except GitHub's
+/// reserved template-selection metadata (`config.yml`/`config.yaml`), which
+/// is UI configuration nobody pastes into an issue — its contact_links may
+/// legitimately reference legacy V10 material.
+fn is_template_file(file_name: &str) -> bool {
+    let extension = file_name.rsplit_once('.').map(|(_, ext)| ext);
+    matches!(extension, Some("md" | "yml" | "yaml"))
+        && !matches!(file_name, "config.yml" | "config.yaml")
+}
+
 /// Reads every `.github` issue/PR template as `(repo-relative name,
 /// content)`. Absence is the normal state and vacuously clean; templates
 /// that appear later are scanned automatically, never silently skipped.
@@ -201,13 +211,12 @@ fn issue_template_docs() -> Vec<(String, String)> {
                     panic!("failed to list {}: {error}", template_dir.display())
                 })
                 .path();
-            let extension = path.extension().and_then(|e| e.to_str());
-            if !matches!(extension, Some("md" | "yml" | "yaml")) {
-                continue;
-            }
             let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
+            if !is_template_file(file_name) {
+                continue;
+            }
             let content = fs::read_to_string(&path)
                 .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
             docs.push((format!(".github/ISSUE_TEMPLATE/{file_name}"), content));
@@ -462,6 +471,27 @@ fn issue_templates_never_reference_legacy_v10_slices() {
         "issue/PR template references a legacy V10.x slice:\n{}",
         violations.join("\n")
     );
+}
+
+#[test]
+fn template_selection_metadata_is_not_a_template() {
+    // GitHub-reserved template-selection metadata may legitimately link
+    // legacy V10 migration notes in contact_links URLs; template bodies
+    // stay scanned.
+    for (file, is_template) in [
+        ("config.yml", false),
+        ("config.yaml", false),
+        ("bug_report.md", true),
+        ("feature.yml", true),
+        ("form.yaml", true),
+        ("README.txt", false),
+    ] {
+        assert_eq!(
+            is_template_file(file),
+            is_template,
+            "{file} template classification"
+        );
+    }
 }
 
 #[test]
