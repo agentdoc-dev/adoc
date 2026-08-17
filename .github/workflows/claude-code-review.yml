@@ -10,7 +10,14 @@ concurrency:
 
 jobs:
   claude-review:
+    name: claude-review (${{ matrix.model }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every PR gets two independent reviews: one from Fable 5, one from
+        # Opus 5. fail-fast off so one model's failure never cancels the other.
+        model: [claude-fable-5, claude-opus-5]
     permissions:
       contents: read
       pull-requests: read
@@ -49,5 +56,5 @@ jobs:
             actions: read
 
           claude_args: |
-            --model claude-opus-4-7
+            --model ${{ matrix.model }}
             --allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"
