@@ -213,16 +213,17 @@ fn issue_template_docs() -> Vec<(String, String)> {
             docs.push((format!(".github/ISSUE_TEMPLATE/{file_name}"), content));
         }
     }
-    if let Ok(content) = fs::read_to_string(github.join("PULL_REQUEST_TEMPLATE.md")) {
-        docs.push((".github/PULL_REQUEST_TEMPLATE.md".to_string(), content));
-    }
     // Absence is vacuously clean, but an existing template directory that
-    // parses to nothing is a filter bug, never a pass.
+    // parses to nothing is a filter bug, never a pass. Counted before the
+    // PR template is added, so its presence cannot mask an empty parse.
     assert!(
         !template_dir_exists || !docs.is_empty(),
         ".github/ISSUE_TEMPLATE/ exists but no templates were parsed — \
          scanner filter drifted"
     );
+    if let Ok(content) = fs::read_to_string(github.join("PULL_REQUEST_TEMPLATE.md")) {
+        docs.push((".github/PULL_REQUEST_TEMPLATE.md".to_string(), content));
+    }
     docs.sort();
     docs
 }
