@@ -32,6 +32,30 @@ pub fn structural_lines(content: &str) -> impl Iterator<Item = (usize, &str)> {
     })
 }
 
+/// `Some(opener line number)` when the document ends inside a fence — the
+/// span from there to EOF is invisible to every guard, which callers should
+/// treat as a loud failure, never a silent pass. Same pairing rules as
+/// `structural_lines`, restated here because the iterator cannot speak
+/// after its last item.
+pub fn unclosed_fence(content: &str) -> Option<usize> {
+    let mut open: Option<(usize, char, usize)> = None;
+    for (i, line) in content.lines().enumerate() {
+        let stripped = line.trim_start();
+        match (open, fence_marker(stripped)) {
+            (None, Some((ch, len))) => open = Some((i + 1, ch, len)),
+            (Some((_, open_char, open_len)), Some((close_char, close_len)))
+                if close_char == open_char
+                    && close_len >= open_len
+                    && stripped[close_len..].trim().is_empty() =>
+            {
+                open = None;
+            }
+            _ => {}
+        }
+    }
+    open.map(|(line, _, _)| line)
+}
+
 /// `Some((fence char, run length))` when the line starts a ``` or ~~~ run of
 /// at least three; trailing text (an info string) is permitted here — whether
 /// it may close a fence is the caller's pairing decision.

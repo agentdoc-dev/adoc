@@ -84,6 +84,12 @@ fn roadmap_docs() -> Vec<(String, String)> {
             }
             let content = fs::read_to_string(&path)
                 .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+            if let Some(opener) = support::doc_scan::unclosed_fence(&content) {
+                panic!(
+                    "docs/roadmap/{prefix}{file_name}:{opener}: fence never closes — \
+                     everything to EOF is invisible to the guards; close or repair it"
+                );
+            }
             docs.push((format!("docs/roadmap/{prefix}{file_name}"), content));
         }
     }
@@ -330,6 +336,20 @@ Supersedes in part: ADR-0055\n";
         adr_0055_violations("fixture.md", clean),
         Vec::<String>::new()
     );
+}
+
+#[test]
+fn unclosed_fence_is_reported() {
+    use support::doc_scan::unclosed_fence;
+    // An accidentally unclosed (or mismatch-closed) fence would silently
+    // unguard everything to EOF; the scanner must say so.
+    assert_eq!(unclosed_fence("Prose.\n```\nhidden to EOF\n"), Some(2));
+    assert_eq!(
+        unclosed_fence("```\n~~~ is content, not a closer\n"),
+        Some(1)
+    );
+    assert_eq!(unclosed_fence("Prose.\n```\nsample\n```\n"), None);
+    assert_eq!(unclosed_fence("no fences at all\n"), None);
 }
 
 #[test]
