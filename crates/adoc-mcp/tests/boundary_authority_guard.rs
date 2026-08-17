@@ -221,12 +221,17 @@ fn issue_template_docs() -> Vec<(String, String)> {
 
 /// One message per template line naming a `V10.x` slice: templates seed new
 /// plans, where legacy IDs are never legitimate — not even as provenance.
+/// Every line counts, fenced or not: a template's fenced skeleton is the
+/// payload users paste verbatim, unlike the narrative docs' sample fences.
 fn template_v10_violations(doc_name: &str, content: &str) -> Vec<String> {
-    structural_lines(content)
+    content
+        .lines()
+        .enumerate()
         .filter(|(_, line)| mentions_v10_slice(&line.to_lowercase()))
-        .map(|(number, line)| {
+        .map(|(index, line)| {
             format!(
-                "{doc_name}:{number}: legacy V10.x slice referenced in a template: {}",
+                "{doc_name}:{}: legacy V10.x slice referenced in a template: {}",
+                index + 1,
                 line.trim()
             )
         })
@@ -417,6 +422,17 @@ fn guard_fires_on_seeded_template_v10_reference() {
         "See ROADMAP-V10.md for the current plan.\n",
     );
     assert_eq!(clean, Vec::<String>::new());
+    // Templates are pasted verbatim, so a fenced skeleton is payload, not a
+    // sample — the fence exemption of the narrative-doc guards must not apply.
+    let fenced = template_v10_violations(
+        ".github/ISSUE_TEMPLATE/fixture.md",
+        "## Copy this\n```\n**Depends on:** V10.1.4\n```\n",
+    );
+    assert_eq!(
+        fenced.len(),
+        1,
+        "fenced template payload must fire: {fenced:?}"
+    );
 }
 
 #[test]
