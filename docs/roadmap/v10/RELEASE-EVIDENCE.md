@@ -1,6 +1,7 @@
 # V10 Decision Annex — Release Stages, Operations, Evidence, Action Maturity, and Targets
 
 **Status:** Locked planning decisions from 2026-08-12  
+**Product boundary:** PRD v1.0 as amended by [`../../product/PRD-v1.1-amendment.md`](../../product/PRD-v1.1-amendment.md) / ADR-0056 — "locked V1" throughout this annex means this amended boundary  
 **Parent:** [`DECISION-REGISTER.md`](DECISION-REGISTER.md)
 
 ## R1. Three readiness stages inside the locked V1 boundary
