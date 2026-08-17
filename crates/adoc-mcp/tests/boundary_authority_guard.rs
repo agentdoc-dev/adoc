@@ -72,9 +72,10 @@ fn roadmap_docs() -> Vec<(String, String)> {
             let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if path.extension().and_then(|e| e.to_str()) != Some("md")
-                || file_name == HISTORICAL_ORIGINAL
-            {
+            // The exemption is tied to the archive policy's location — a
+            // same-named file appearing under v10/ is scanned, not exempt.
+            let exempt_here = prefix.is_empty() && file_name == HISTORICAL_ORIGINAL;
+            if path.extension().and_then(|e| e.to_str()) != Some("md") || exempt_here {
                 continue;
             }
             let content = fs::read_to_string(&path)
