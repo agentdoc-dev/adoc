@@ -1,6 +1,7 @@
 # V10 Decision Annex — Identity, Authorization, ACLs, and Groups
 
 **Status:** Locked planning decisions from 2026-08-12  
+**Invariant authority:** [ADR-0057](../../adr/0057-fix-four-managed-product-invariants.md) fixes the deterministic, deny-by-default authorization precedence (invariant 3, D38) — this annex elaborates that order and never redefines it  
 **Parent:** [`DECISION-REGISTER.md`](DECISION-REGISTER.md)
 
 This annex is normative for V10 planning. Shipped code and accepted ADRs remain implementation truth.
