@@ -351,6 +351,76 @@ fn adr_0057_states_all_four_invariants() {
     }
 }
 
+/// The authorization precedence pipeline, line by line as accepted in
+/// PRD v1.1 §5.1 (RT-05/D38). ADR-0057 must carry it verbatim, and the PRD
+/// section itself must not drift from the pinned canon.
+const PRECEDENCE_PIPELINE: &[&str] = &[
+    "identity/session/grant freshness",
+    "→ hard/system denies",
+    "→ current source-ACL ceiling",
+    "→ scoped AgentDoc grants/denies",
+    "→ object/field/proposition visibility",
+    "→ action-specific policy",
+    "→ allow | deny | insufficient_context",
+];
+
+/// Asserts every pipeline line appears — and in pipeline order. Plain
+/// `contains` per line would accept a reordered pipeline, and the order is
+/// D38's substance.
+fn assert_pipeline_in_order(doc_name: &str, content: &str) {
+    let mut tail = content;
+    for line in PRECEDENCE_PIPELINE {
+        let found = tail.find(line).unwrap_or_else(|| {
+            panic!("{doc_name}: precedence pipeline line missing or out of order: {line}")
+        });
+        tail = &tail[found + line.len()..];
+    }
+}
+
+#[test]
+fn adr_0057_pins_the_precedence_pipeline_verbatim() {
+    // E0.2.T2: ADR-0057 states the PRD v1.1 §5.1 pipeline verbatim, with
+    // deny-by-default, the equal-or-more-specific deny tie-break, and
+    // fail-closed consequential uncertainty (RT-05/D38 — never a
+    // permissive default).
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let prd_path = repo_root.join("docs/product/PRD-v1.1-amendment.md");
+    let prd = fs::read_to_string(&prd_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", prd_path.display()));
+    assert_pipeline_in_order("docs/product/PRD-v1.1-amendment.md §5.1", &prd);
+    let adr = adr_0057();
+    assert_pipeline_in_order("ADR-0057", &adr);
+    for sentence in [
+        "deny-by-default",
+        "Hard deny wins.",
+        "At equal or more-specific scope, explicit deny wins over allow.",
+        "Expired/stale grants/membership observations do not authorize.",
+        "Consequential uncertainty fails closed",
+        "never a permissive default",
+    ] {
+        assert!(adr.contains(sentence), "ADR-0057 must state: {sentence}");
+    }
+}
+
+#[test]
+fn pipeline_order_pin_rejects_a_reordered_pipeline() {
+    // The audit fixture: swapping two stages must fail even though every
+    // stage is still present as a substring.
+    let reordered = "\
+identity/session/grant freshness\n\
+→ current source-ACL ceiling\n\
+→ hard/system denies\n\
+→ scoped AgentDoc grants/denies\n\
+→ object/field/proposition visibility\n\
+→ action-specific policy\n\
+→ allow | deny | insufficient_context\n";
+    let result = std::panic::catch_unwind(|| assert_pipeline_in_order("fixture.md", reordered));
+    assert!(
+        result.is_err(),
+        "reordered pipeline must fail the order pin"
+    );
+}
+
 #[test]
 fn roadmap_never_misattributes_boundary_to_adr_0055() {
     let violations: Vec<String> = roadmap_docs()
