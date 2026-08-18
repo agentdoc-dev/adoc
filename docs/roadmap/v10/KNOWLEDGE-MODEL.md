@@ -1,6 +1,7 @@
 # V10 Decision Annex — Canonical Knowledge, Migration, State, Hashing, Proof, and Retention
 
 **Status:** Locked planning decisions from 2026-08-12  
+**Invariant authority:** [ADR-0057](../../adr/0057-fix-four-managed-product-invariants.md) fixes workspace-qualified Object identity (D36; K6) and append-only managed state over immutable content versions (D37; K4) — this annex elaborates those invariants and never redefines them  
 **Parent:** [`DECISION-REGISTER.md`](DECISION-REGISTER.md)
 
 ## K1. Two first-class operating modes

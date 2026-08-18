@@ -9,8 +9,8 @@
 //!
 //! Slice E0.2 extends the guard to the four managed-product invariants
 //! (ADR-0057, D36–D39): the ADR's invariant statements and its verbatim
-//! authorization precedence pipeline are pinned, and no annex line may state
-//! a permissive-default authorization resolution.
+//! authorization precedence pipeline are pinned, and no roadmap/annex line
+//! may state a permissive-default authorization resolution.
 
 mod support;
 
@@ -57,6 +57,14 @@ const ALLOWED_CRITERION_CLOSURE_LINES: &[(&str, &str)] = &[
          the phrasing.",
     ),
 ];
+
+/// Lines that legitimately state a permissive-default signature because
+/// they describe this guard's own seeded fixture. Same pinning discipline
+/// as `ALLOWED_ADR_0055_LINES`.
+const ALLOWED_PERMISSIVE_DEFAULT_LINES: &[(&str, &str)] = &[(
+    "docs/roadmap/v10/MILESTONES.md",
+    "- Doc guard fails on a seeded fixture stating a permissive-default resolution.",
+)];
 
 /// Reads every current roadmap/annex doc as `(repo-relative name, content)`,
 /// sorted for deterministic failure output. Asserts the parser-health floor
@@ -177,6 +185,47 @@ fn criterion_closure_violations(doc_name: &str, content: &str) -> Vec<String> {
                 format!(
                     "{doc_name}:{number}: claims criterion closure by construction \
                      (PR #143 acceptance-wording rule): {}",
+                    line.trim()
+                )
+            })
+        })
+        .collect()
+}
+
+/// One message per line stating a permissive-default authorization
+/// resolution — the ADR-0057 invariant-3 reintroduction signature.
+/// Hyphens normalize to spaces so compound forms (`permissive-default`,
+/// `allow-by-default`, `fail-open`) match; `never` or `no permissive
+/// default` on the same line marks the prohibition statements this rule
+/// exists to protect. `deny-by-default` normalizes to `deny by default`
+/// and matches no signature.
+fn permissive_default_violations(doc_name: &str, content: &str) -> Vec<String> {
+    const SIGNATURES: &[&str] = &[
+        "permissive default",
+        "permissive by default",
+        "default allow",
+        "allow by default",
+        "allowed by default",
+        "default to allow",
+        "defaults to allow",
+        "implicit allow",
+        "open by default",
+        "fail open",
+        "fails open",
+    ];
+    const PROHIBITION_MARKERS: &[&str] = &["never", "no permissive default"];
+    structural_lines(content)
+        .filter_map(|(number, line)| {
+            let lower = line.to_lowercase().replace('-', " ");
+            (SIGNATURES.iter().any(|signature| lower.contains(signature))
+                && !PROHIBITION_MARKERS
+                    .iter()
+                    .any(|marker| lower.contains(marker))
+                && !allow_listed(ALLOWED_PERMISSIVE_DEFAULT_LINES, doc_name, line))
+            .then(|| {
+                format!(
+                    "{doc_name}:{number}: states a permissive-default authorization \
+                     resolution (ADR-0057 invariant 3): {}",
                     line.trim()
                 )
             })
@@ -418,6 +467,83 @@ identity/session/grant freshness\n\
     assert!(
         result.is_err(),
         "reordered pipeline must fail the order pin"
+    );
+}
+
+#[test]
+fn annexes_cross_link_the_adr_0057_invariants() {
+    // E0.2.T3: the authorization and knowledge-model annexes defer to
+    // ADR-0057 explicitly, so no annex carries a competing precedence
+    // order. Removing a cross-link fails here. Reusing the scanned corpus
+    // inherits its fence-health floor.
+    let docs = roadmap_docs();
+    for annex in [
+        "docs/roadmap/v10/AUTHORIZATION.md",
+        "docs/roadmap/v10/KNOWLEDGE-MODEL.md",
+    ] {
+        let (_, content) = docs
+            .iter()
+            .find(|(name, _)| name == annex)
+            .unwrap_or_else(|| panic!("{annex} missing from the roadmap scan"));
+        assert!(
+            structural_lines(content).any(|(_, line)| line.contains("ADR-0057")),
+            "{annex} must cross-link ADR-0057 as the invariant authority"
+        );
+    }
+}
+
+#[test]
+fn roadmap_never_states_a_permissive_default() {
+    let violations: Vec<String> = roadmap_docs()
+        .iter()
+        .flat_map(|(name, content)| permissive_default_violations(name, content))
+        .collect();
+    assert!(
+        violations.is_empty(),
+        "roadmap text states a permissive-default authorization resolution \
+         (ADR-0057 invariant 3):\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn guard_fires_on_seeded_permissive_default() {
+    // The E0.2 acceptance fixture: a line stating a permissive-default
+    // resolution, in each written form.
+    for line in [
+        "Unknown authorization context resolves to a permissive default.\n",
+        "Unmatched scopes default to allow.\n",
+        "Ambiguous grants are allow-by-default.\n",
+        "Absent policy rows mean default allow.\n",
+        "Consequential uncertainty fails open.\n",
+        "Gate checks fail-open on timeout.\n",
+        "Retrieval scopes are allowed by default.\n",
+        "Grants are permissive by default.\n",
+        "Absent policy rows imply an implicit allow.\n",
+        "Visibility is open by default.\n",
+    ] {
+        let violations = permissive_default_violations("fixture.md", line);
+        assert_eq!(
+            violations.len(),
+            1,
+            "seeded permissive default must fire: {line:?} -> {violations:?}"
+        );
+        assert!(
+            violations[0].starts_with("fixture.md:1:"),
+            "{}",
+            violations[0]
+        );
+    }
+    // The prohibition statements the rule protects pass on their own
+    // merits, as does the deny-side compound.
+    let clean = "\
+Consequential uncertainty yields `deny` or typed `insufficient_context`, \
+never a permissive default.\n\
+Precedence matches RT-05/D38: no permissive default anywhere.\n\
+Authorization is deterministic and deny-by-default.\n";
+    assert_eq!(
+        permissive_default_violations("fixture.md", clean),
+        Vec::<String>::new()
     );
 }
 
@@ -799,11 +925,15 @@ fn scan_scope_covers_every_roadmap_subdirectory() {
 #[test]
 fn allow_lists_are_exact_and_present() {
     type RuleFn = fn(&str, &str) -> Vec<String>;
-    let lists: [(&[(&str, &str)], RuleFn); 2] = [
+    let lists: [(&[(&str, &str)], RuleFn); 3] = [
         (ALLOWED_ADR_0055_LINES, adr_0055_violations),
         (
             ALLOWED_CRITERION_CLOSURE_LINES,
             criterion_closure_violations,
+        ),
+        (
+            ALLOWED_PERMISSIVE_DEFAULT_LINES,
+            permissive_default_violations,
         ),
     ];
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
