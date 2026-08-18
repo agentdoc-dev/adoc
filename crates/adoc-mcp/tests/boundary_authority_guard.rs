@@ -1,11 +1,16 @@
-//! Docs-truth guard (ADR-0041, slice E0.1): ADR-0056 rule 8 forbids the
-//! roadmap from representing the B1–B6 amended Product V1 boundary as
+//! Docs-truth guard (ADR-0041, slices E0.1/E0.2): ADR-0056 rule 8 forbids
+//! the roadmap from representing the B1–B6 amended Product V1 boundary as
 //! pre-existing ADR-0055 acceptance — ADR-0056 is the accepting decision.
 //! The guard scans every current roadmap/annex document: a line naming
 //! ADR-0055 must acknowledge the amendment in the same line (name ADR-0056,
 //! or say amended/superseded) or be a pinned allow-listed rule quotation.
 //! `ROADMAP-V10-2026-08-12-original.md` and `archive/` are preserved history
 //! (see `docs/roadmap/archive/README.md`) and exempt.
+//!
+//! Slice E0.2 extends the guard to the four managed-product invariants
+//! (ADR-0057, D36–D39): the ADR's invariant statements and its verbatim
+//! authorization precedence pipeline are pinned, and no annex line may state
+//! a permissive-default authorization resolution.
 
 mod support;
 
@@ -294,6 +299,56 @@ fn template_v10_violations(doc_name: &str, content: &str) -> Vec<String> {
             )
         })
         .collect()
+}
+
+/// Reads ADR-0057 — the accepting decision the E0.2 pins run against.
+fn adr_0057() -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("docs/adr/0057-fix-four-managed-product-invariants.md");
+    fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
+}
+
+#[test]
+fn adr_0057_states_all_four_invariants() {
+    // E0.2.T1: ADR-0057 is Accepted and states the four managed-product
+    // invariants (D36–D39) as architecture rules, each with its refuted
+    // alternative. Editing one away fails here and forces re-review — the
+    // invariant-3 pin stops at the stable sentence prefix because E0.2.T2
+    // completes that decision's pipeline wording.
+    let adr = adr_0057();
+    assert!(
+        adr.contains("- Status: Accepted"),
+        "ADR-0057 must remain Accepted"
+    );
+    for (invariant, refuted_alternative) in [
+        (
+            "**Managed Object identity is workspace-qualified.**",
+            "never auto-merge",
+        ),
+        (
+            "**Content versions are immutable; managed state changes are append-only events.**",
+            "does not create a new semantic content version",
+        ),
+        (
+            "**Authorization uses one deterministic",
+            "may narrow but never widen AgentDoc authority",
+        ),
+        (
+            "**Human semantic review can require independence.**",
+            "cannot satisfy an explicit independent-review obligation",
+        ),
+    ] {
+        assert!(
+            adr.contains(invariant),
+            "ADR-0057 lost an invariant: {invariant}"
+        );
+        assert!(
+            adr.contains(refuted_alternative),
+            "ADR-0057 lost a refuted alternative: {refuted_alternative}"
+        );
+    }
 }
 
 #[test]
