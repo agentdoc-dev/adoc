@@ -10,6 +10,7 @@ mod support;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::ops::RangeInclusive;
 use std::path::PathBuf;
 
 const COMPATIBILITY: &str = "docs/roadmap/v10/COMPATIBILITY.md";
@@ -38,8 +39,10 @@ fn compatibility() -> String {
     content
 }
 
-/// The block between `<!-- {anchor} -->` and `<!-- /{anchor} -->`.
-fn anchored_block<'doc>(doc: &'doc str, doc_name: &str, anchor: &str) -> &'doc str {
+/// Byte offsets of the span between `<!-- {anchor} -->` and
+/// `<!-- /{anchor} -->` — the one source for both the block text and its
+/// position in the document.
+fn anchored_span(doc: &str, doc_name: &str, anchor: &str) -> std::ops::Range<usize> {
     let open = format!("<!-- {anchor} -->");
     let close = format!("<!-- /{anchor} -->");
     let start = doc
@@ -50,7 +53,12 @@ fn anchored_block<'doc>(doc: &'doc str, doc_name: &str, anchor: &str) -> &'doc s
         .find(&close)
         .unwrap_or_else(|| panic!("{doc_name} is missing the closing `{close}` anchor"))
         + start;
-    &doc[start..end]
+    start..end
+}
+
+/// The block between `<!-- {anchor} -->` and `<!-- /{anchor} -->`.
+fn anchored_block<'doc>(doc: &'doc str, doc_name: &str, anchor: &str) -> &'doc str {
+    &doc[anchored_span(doc, doc_name, anchor)]
 }
 
 /// Repositories a slice's `**Repos:**` field names, in delivery order.
@@ -394,27 +402,65 @@ fn mentions_phase_label(line: &str) -> bool {
     phase || cloud
 }
 
+/// 1-based line numbers spanned by the `compat:phase-map` block, anchor
+/// lines included — the exemption is POSITIONAL, so a verbatim copy of a
+/// phase-map row pasted elsewhere in the document is still scanned.
+fn phase_map_lines(doc: &str) -> RangeInclusive<usize> {
+    let span = anchored_span(doc, COMPATIBILITY, "compat:phase-map");
+    let line_of = |offset: usize| doc[..offset].matches('\n').count() + 1;
+    line_of(span.start)..=line_of(span.end)
+}
+
+/// Structural lines that mention a historical phase label without
+/// historical context, outside the exempt line range.
+fn phase_label_violations(
+    name: &str,
+    content: &str,
+    exempt_lines: RangeInclusive<usize>,
+) -> Vec<String> {
+    support::doc_scan::structural_lines(content)
+        .filter(|(number, line)| {
+            !exempt_lines.contains(number)
+                && mentions_phase_label(line)
+                && !line.to_lowercase().contains("histor")
+        })
+        .map(|(number, line)| format!("{name}:{number}: {}", line.trim()))
+        .collect()
+}
+
 #[test]
 fn phase_labels_stay_historical_context_only() {
     let compatibility = compatibility();
-    let map_block = anchored_block(&compatibility, COMPATIBILITY, "compat:phase-map");
+    let map_lines = phase_map_lines(&compatibility);
     let mut violations = Vec::new();
     for (name, content) in v10_documents() {
-        for (number, line) in support::doc_scan::structural_lines(&content) {
-            let inside_phase_map = name.ends_with("COMPATIBILITY.md") && map_block.contains(line);
-            if mentions_phase_label(line)
-                && !inside_phase_map
-                && !line.to_lowercase().contains("histor")
-            {
-                violations.push(format!("{name}:{number}: {}", line.trim()));
-            }
-        }
+        let exempt = if name.ends_with("COMPATIBILITY.md") {
+            map_lines.clone()
+        } else {
+            0..=0 // line numbers are 1-based, so this exempts nothing
+        };
+        violations.extend(phase_label_violations(&name, &content, exempt));
     }
     assert!(
         violations.is_empty(),
         "historical Cloud phase labels used without historical context \
          (RT-02: never a release gate):\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn a_phase_map_row_pasted_outside_the_block_fires() {
+    let compatibility = compatibility();
+    let row = anchored_block(&compatibility, COMPATIBILITY, "compat:phase-map")
+        .lines()
+        .find(|line| line.trim_start().starts_with("| `Cloud"))
+        .expect("phase map has a `Cloud 0.<n>` row");
+    let doctored = format!("{compatibility}\n{row}");
+    let violations = phase_label_violations(COMPATIBILITY, &doctored, phase_map_lines(&doctored));
+    assert!(
+        violations.iter().any(|v| v.contains(row.trim())),
+        "a verbatim phase-map row outside the anchored block must be a violation"
     );
 }
 
