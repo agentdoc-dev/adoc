@@ -19,10 +19,11 @@
 //!
 //! Routing (E1.3, adjudication of PR #150 claim 5): repositories live in
 //! reserved binding slots keyed by [`RepositorySlotId`] handle, because the
-//! CLI's `repository_identity` is degenerate across physical repositories.
-//! Import routes explicitly by slot handle; identity-equality lookup
-//! remains only as the single-repo convenience and fails closed when
-//! ambiguous.
+//! CLI's `repository_identity` is degenerate across physical repositories
+//! (see [`ManagedRepositoryRecord`] for what the graph identity does and
+//! does not distinguish). Import routes explicitly by slot handle;
+//! identity-equality lookup remains only as the single-repo convenience
+//! and fails closed when ambiguous.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -105,12 +106,29 @@ pub(crate) enum ManagedIdentityError {
     InvalidObjectId,
     #[error("object id appears more than once in one artifact")]
     DuplicateObjectId,
+    #[error("content hash must be `sha256:` followed by lowercase hex")]
+    InvalidContentHash,
     #[error("repository identity matches more than one reserved slot; route by slot handle")]
     AmbiguousRepositoryIdentity,
     #[error("repository slot handle is not reserved in this workspace")]
     UnknownRepositorySlot,
     #[error("artifact repository identity differs from the reserved slot's")]
     RepositoryIdentityMismatch,
+}
+
+/// The published v6 wire grammar for `content_hash`
+/// (`docs/agent/v0/schema/graph-artifact.v6.json`: `^sha256:[0-9a-f]+$`).
+/// Stricter than the graph loader's pinned non-blank-suffix acceptance
+/// (`graph::content_hash_matches_grammar`): at this trust boundary a
+/// malformed or padded value would be enshrined in an immutable version
+/// and compared verbatim for RT-04 unchanged-ness ever after.
+fn content_hash_matches_published_grammar(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|suffix| {
+        !suffix.is_empty()
+            && suffix
+                .bytes()
+                .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    })
 }
 
 /// The workspace-minted handle of one reserved binding slot (V10.3.2).
@@ -129,6 +147,15 @@ pub(crate) struct RepositorySlotId(String);
 /// required since v5, ADR-0049) it was reserved for, can exist before the
 /// first artifact arrives, and its Object IDs stay repository-local — the
 /// same ID in another slot is a different Managed Object.
+///
+/// The graph identity names the producing invocation family, not a
+/// workspace-unique repository: every project-bound build emits the
+/// constant `{local_project, "agentdoc.config.yaml"}`
+/// (`FsSourceProvider::repository_identity`, ADR-0049 §7), so
+/// identity-equality keying distinguishes repositories only as far as the
+/// caller's identities do — that is why the slot handle, not the
+/// identity, is the key, and identity lookup is the single-repository
+/// convenience only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedRepositoryRecord {
     pub(crate) repository_identity: GraphRepositoryIdentity,
@@ -504,14 +531,24 @@ impl ManagedWorkspace {
 
     /// Fail closed on crafted input (`GraphArtifactDocument` derives
     /// `Deserialize`, so callers cannot assume compiler-built documents): a
-    /// blank, grammar-violating, or repeated Object ID anywhere in the
-    /// artifact rejects the whole import before any state changes. The
-    /// graph loader enforces the same invariants (`id.invalid`,
-    /// `DiagnosticCode::IdDuplicateInArtifact`); a document handed to
-    /// import directly must not bypass them — a grammar-evading ID would
-    /// also evade the exact-ID collision detector, and a repeated ID would
-    /// silently unify into one record (the intra-artifact shape of the
-    /// merge RT-03/D36 forbids).
+    /// blank, grammar-violating, or repeated Object ID — or a
+    /// `content_hash` outside the published v6 wire grammar — anywhere in
+    /// the artifact rejects the whole import before any state changes.
+    /// The graph loader enforces the same ID invariants (`id.invalid`,
+    /// `DiagnosticCode::IdDuplicateInArtifact`); for `content_hash` it is
+    /// deliberately more lenient (see
+    /// `content_hash_matches_published_grammar`). A document handed to
+    /// import directly must not bypass this boundary — a
+    /// grammar-evading ID would also evade the exact-ID collision
+    /// detector, a repeated ID would silently unify into one record (the
+    /// intra-artifact shape of the merge RT-03/D36 forbids), and a
+    /// malformed hash would be enshrined in an immutable version and
+    /// compared for RT-04 unchanged-ness ever after.
+    ///
+    /// Deliberate boundary: unlike `GraphIndex::from_document`, which
+    /// degrades per node into diagnostics, one bad node rejects the whole
+    /// document — at this trust boundary a partial import would be a
+    /// silent drop.
     fn validate_artifact_object_ids(
         artifact: &GraphArtifactDocument,
     ) -> Result<(), ManagedIdentityError> {
@@ -521,6 +558,8 @@ impl ManagedWorkspace {
             .iter()
             .filter_map(GraphNode::as_knowledge_object)
         {
+            // Blank is a strict subset of the grammar failure below —
+            // checked first only for the more precise error.
             if node.id.trim().is_empty() {
                 return Err(ManagedIdentityError::BlankObjectId);
             }
@@ -529,6 +568,9 @@ impl ManagedWorkspace {
             }
             if !seen_ids.insert(node.id.as_str()) {
                 return Err(ManagedIdentityError::DuplicateObjectId);
+            }
+            if !content_hash_matches_published_grammar(&node.content_hash) {
+                return Err(ManagedIdentityError::InvalidContentHash);
             }
         }
         Ok(())
@@ -787,6 +829,28 @@ mod tests {
         assert_eq!(candidate.existing.repository_identity, repo_a);
         assert_eq!(candidate.incoming.canonical, object_b.canonical);
         assert_eq!(candidate.incoming.repository_identity, repo_b);
+
+        // Single-shot: the collision was announced on the ID's first
+        // appearance in repo b — a later revision of the still-colliding
+        // object mints a version but never re-announces the candidate
+        // (the caller persists it until decided, E1.2.T3/E1.3).
+        let third = workspace
+            .import_artifact(&artifact(
+                repo_b.clone(),
+                vec![knowledge_object("billing.credits", "sha256:ccc")],
+            ))
+            .expect("import accepted");
+        assert_eq!(third.imported.len(), 1);
+        assert!(
+            third.reconciliation_candidates.is_empty(),
+            "a candidate is emitted exactly once, not per revision"
+        );
+        let object_b = &workspace
+            .repository(&repo_b)
+            .expect("identity unambiguous")
+            .expect("repo b recorded")
+            .objects["billing.credits"];
+        assert_eq!(object_b.versions.len(), 2);
     }
 
     /// The serialized record the Cloud cut consumes under the planned
@@ -1027,7 +1091,7 @@ mod tests {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
 
-        for hashes in [["sha256:aaa", "sha256:bbb"], ["sha256:same", "sha256:same"]] {
+        for hashes in [["sha256:aaa", "sha256:bbb"], ["sha256:5a3e", "sha256:5a3e"]] {
             let outcome = workspace.import_artifact(&artifact(
                 repo.clone(),
                 vec![
@@ -1068,6 +1132,48 @@ mod tests {
             assert_eq!(
                 outcome,
                 Err(ManagedIdentityError::InvalidObjectId),
+                "{invalid:?} must be rejected"
+            );
+        }
+        assert_eq!(
+            workspace.repository(&repo),
+            Ok(None),
+            "a rejected import must not bind the repository slot or mint anything"
+        );
+    }
+
+    /// A crafted artifact carrying a blank or malformed `content_hash`
+    /// would otherwise mint an immutable version around it, surface it in
+    /// reconciliation candidates, and treat every later observation of the
+    /// same malformed value as unchanged. Import enforces the published v6
+    /// wire grammar `^sha256:[0-9a-f]+$` (graph-artifact.v6.json): non-hex,
+    /// uppercase, and whitespace-padded suffixes all fail closed before any
+    /// state changes — a padded spelling of an existing hash would
+    /// otherwise mint a fresh version of unchanged content and ship the
+    /// padded value in the candidate payload.
+    #[test]
+    fn malformed_content_hashes_on_import_are_rejected_without_partial_state() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+
+        for invalid in [
+            "",
+            "  ",
+            "sha256:",
+            "sha256:  ",
+            "md5:abc",
+            "sha256:not-a-digest",
+            "sha256:abc ",
+            " sha256:abc",
+            "sha256:ABC",
+        ] {
+            let outcome = workspace.import_artifact(&artifact(
+                repo.clone(),
+                vec![knowledge_object("billing.credits", invalid)],
+            ));
+            assert_eq!(
+                outcome,
+                Err(ManagedIdentityError::InvalidContentHash),
                 "{invalid:?} must be rejected"
             );
         }
@@ -1145,8 +1251,8 @@ mod tests {
             .import_artifact(&artifact(
                 repo.clone(),
                 vec![
-                    knowledge_object("billing.credits", "sha256:same"),
-                    knowledge_object("billing.refunds", "sha256:same"),
+                    knowledge_object("billing.credits", "sha256:5a3e"),
+                    knowledge_object("billing.refunds", "sha256:5a3e"),
                 ],
             ))
             .expect("import accepted");
@@ -1179,13 +1285,13 @@ mod tests {
         workspace
             .import_artifact(&artifact(
                 repo_a.clone(),
-                vec![knowledge_object("billing.credits", "sha256:same")],
+                vec![knowledge_object("billing.credits", "sha256:5a3e")],
             ))
             .expect("import accepted");
         let outcome = workspace
             .import_artifact(&artifact(
                 repo_b.clone(),
-                vec![knowledge_object("billing.refunds", "sha256:same")],
+                vec![knowledge_object("billing.refunds", "sha256:5a3e")],
             ))
             .expect("import accepted");
 
@@ -1216,11 +1322,11 @@ mod tests {
     fn identical_titles_and_bodies_never_unify() {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
-        let mut first = knowledge_object("billing.credits", "sha256:same");
+        let mut first = knowledge_object("billing.credits", "sha256:5a3e");
         first
             .fields
             .insert("title".to_string(), "Credit policy".to_string());
-        let mut second = knowledge_object("billing.credit-rules", "sha256:same");
+        let mut second = knowledge_object("billing.credit-rules", "sha256:5a3e");
         second
             .fields
             .insert("title".to_string(), "Credit policy".to_string());
@@ -1257,13 +1363,13 @@ mod tests {
         workspace
             .import_artifact(&artifact(
                 repo_a.clone(),
-                vec![knowledge_object("billing.credits", "sha256:same")],
+                vec![knowledge_object("billing.credits", "sha256:5a3e")],
             ))
             .expect("import accepted");
         let outcome = workspace
             .import_artifact(&artifact(
                 repo_b.clone(),
-                vec![knowledge_object("billing.credits", "sha256:same")],
+                vec![knowledge_object("billing.credits", "sha256:5a3e")],
             ))
             .expect("import accepted");
 
@@ -1731,7 +1837,7 @@ mod tests {
                 repo_a.clone(),
                 vec![bound_object(
                     "billing.credits",
-                    "sha256:same",
+                    "sha256:5a3e",
                     "docs/team.adoc",
                     "sha256:feed",
                 )],
@@ -1742,7 +1848,7 @@ mod tests {
                 repo_b.clone(),
                 vec![bound_object(
                     "billing.credits",
-                    "sha256:same",
+                    "sha256:5a3e",
                     "docs/other.adoc",
                     "sha256:beef",
                 )],
@@ -2284,5 +2390,52 @@ mod tests {
         assert_ne!(in_project.canonical, in_standalone.canonical);
         assert_eq!(in_project.versions[0].content_hash, "sha256:aaa");
         assert_eq!(in_standalone.versions[0].content_hash, "sha256:bbb");
+    }
+
+    /// Pins what the wire actually exhibits today: every project-bound
+    /// artifact the compiler emits carries the constant
+    /// `{local_project, "agentdoc.config.yaml"}` identity
+    /// (`FsSourceProvider::repository_identity`, ADR-0049 §7), so two
+    /// physical repositories importing under the producer identity are
+    /// one record here — the shared Object ID appends as a revision and
+    /// no candidate is emitted. Identity-equality keying distinguishes
+    /// repositories only as far as the caller's identities do
+    /// ([`ManagedRepositoryRecord`]); distinct physical repositories
+    /// route explicitly via [`ManagedWorkspace::reserve_repository_slot`]
+    /// and [`ManagedWorkspace::import_artifact_into`], and the Cloud cut
+    /// keys uploads from its authenticated channel, never from the
+    /// artifact.
+    #[test]
+    fn identical_producer_identities_collapse_into_one_repository_record() {
+        let mut workspace = workspace();
+        let producer = local_repo("agentdoc.config.yaml");
+
+        workspace
+            .import_artifact(&artifact(
+                producer.clone(),
+                vec![knowledge_object("billing.credits", "sha256:aaa")],
+            ))
+            .expect("import accepted");
+        let second = workspace
+            .import_artifact(&artifact(
+                producer.clone(),
+                vec![knowledge_object("billing.credits", "sha256:bbb")],
+            ))
+            .expect("import accepted");
+
+        assert!(
+            second.reconciliation_candidates.is_empty(),
+            "equal keys are one repository: no cross-repository collision exists to announce"
+        );
+        let object = &workspace
+            .repository(&producer)
+            .expect("identity unambiguous")
+            .expect("one record under the producer identity")
+            .objects["billing.credits"];
+        assert_eq!(
+            object.versions.len(),
+            2,
+            "the second import appends a revision of the first repository's object"
+        );
     }
 }

@@ -970,14 +970,24 @@ fn content_hash_diagnostic(node: &GraphKnowledgeObjectNode) -> Option<Diagnostic
         );
     }
 
-    let Some(suffix) = node.content_hash.strip_prefix("sha256:") else {
-        return Some(invalid_content_hash_diagnostic(node));
-    };
-    if suffix.trim().is_empty() {
+    if !content_hash_matches_grammar(&node.content_hash) {
         return Some(invalid_content_hash_diagnostic(node));
     }
 
     None
+}
+
+/// Loader-side content-hash acceptance: `sha256:` with a non-empty suffix.
+/// Deliberately lenient — non-hex and whitespace-padded suffixes pass —
+/// because this acceptance is pinned wire behavior (the help text below
+/// promises exactly this shape). Managed import does not share it: at its
+/// trust boundary it enforces the full published v6 grammar
+/// `^sha256:[0-9a-f]+$` instead (`domain::managed`), so padded or non-hex
+/// spellings never reach an immutable managed version.
+fn content_hash_matches_grammar(value: &str) -> bool {
+    value
+        .strip_prefix("sha256:")
+        .is_some_and(|suffix| !suffix.trim().is_empty())
 }
 
 fn invalid_content_hash_diagnostic(node: &GraphKnowledgeObjectNode) -> Diagnostic {
