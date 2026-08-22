@@ -16,6 +16,11 @@ pub(crate) struct PageAst {
     pub(crate) id: PageId,
     pub(crate) title: Option<String>,
     pub(crate) source_path: PathBuf,
+    /// ADR-0058 §4 (E1.1.T2): sha256-prefixed digest of the page's source
+    /// bytes as read, recorded at parse time for the Source Binding
+    /// source-revision digest. Empty only in unit-test fixtures that
+    /// construct `PageAst` directly.
+    pub(crate) source_digest: String,
     pub(crate) blocks: Vec<BlockAst>,
 }
 

@@ -86,7 +86,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.source_record.v0` | adoc | E4.1 | immutable source observation |
 | `adoc.source_assertion.v0` | adoc | E4.1 | source assertion bound to its Source Record |
 | `adoc.source_acl_snapshot.v0` | adoc | E2.6 | historical ACL provenance, separate from freshness-bounded authorization |
-| `adoc.source_binding.v0` | adoc | E1.1 | exact source placement binding, independent of the semantic hash |
+| `adoc.source_binding.v0` | adoc | E1.1 | exact source placement binding, independent of the semantic hash; carried since E1.1.T2 as the `source_binding` member of `adoc.graph.v6` Knowledge Object nodes (schema `graph-artifact.v6.json`), governed by that envelope's version — registered as a standalone envelope when a surface emits it outside the graph artifact |
 | `adoc.sensitive_access.v0` | adoc | E6.3 | name held until a final registered successor (RT-08) |
 | `adoc.egress_policy.v0` | adoc | E6.6 | provenance RT-21: absent from the original V10 inventory |
 | `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record |
@@ -171,6 +171,7 @@ Shared row values: producer `adoc` 0.3.4 (`adoc-core` `diagnostic_codes!` table,
 | `patch.invalid_document` |
 | `patch.placement_invalid` |
 | `patch.placement_not_adoc` |
+| `patch.source_binding_stale` |
 | `patch.source_drift` |
 | `patch.target_already_exists` |
 | `patch.validation_failed` |

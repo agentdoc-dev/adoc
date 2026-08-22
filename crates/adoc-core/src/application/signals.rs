@@ -634,6 +634,7 @@ mod tests {
                 line: 1,
                 column: 1,
             },
+            source_binding: None,
             fields: fields
                 .iter()
                 .map(|(key, value)| ((*key).to_string(), (*value).to_string()))

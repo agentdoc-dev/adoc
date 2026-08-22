@@ -175,6 +175,8 @@ diagnostic_codes! {
         "Use an existing page_id and, when after is supplied, an object already on that page.";
     PatchSourceDrift = "patch.source_drift" =>
         "Source changed since last build; run adoc build and re-propose the patch.";
+    PatchSourceBindingStale = "patch.source_binding_stale" =>
+        "The target's Source Binding no longer matches the source file; run adoc build and re-propose the patch.";
     PatchCreateMissingPlacement = "patch.create_missing_placement" =>
         "Add changes.placement with a page_id (and optional after) so apply knows where to insert the new block.";
     PatchPlacementNotAdoc = "patch.placement_not_adoc" =>

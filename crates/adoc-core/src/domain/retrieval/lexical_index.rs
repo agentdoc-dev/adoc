@@ -296,6 +296,7 @@ mod tests {
                 line: 1,
                 column: 1,
             },
+            source_binding: None,
             fields,
             relations: GraphRelations::default(),
             impacts: Vec::new(),

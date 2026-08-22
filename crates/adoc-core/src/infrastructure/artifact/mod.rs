@@ -35,6 +35,7 @@ mod tests {
             id: PageId::from_string(id).expect("test page id is valid"),
             title: None,
             source_path: PathBuf::from(format!("{id}.adoc")),
+            source_digest: String::new(),
             blocks: Vec::new(),
         }
     }

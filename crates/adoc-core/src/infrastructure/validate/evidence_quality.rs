@@ -140,6 +140,7 @@ mod tests {
             id: PageId::from_string("docs.test".to_string()).expect("valid page id"),
             title: None,
             source_path: PathBuf::from("test.adoc"),
+            source_digest: String::new(),
             blocks,
         }
     }

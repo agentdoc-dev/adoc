@@ -211,6 +211,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("valid page id"),
             title: None,
             source_path: PathBuf::from("guide.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::Paragraph(ParagraphAst {
                 inlines: vec![InlineSegment::ObjectReferencePending {
                     raw_id: raw_id.to_string(),
@@ -306,6 +307,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("team.guide").expect("valid"),
             title: None,
             source_path: std::path::PathBuf::from("guide.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::List(ListAst {
                 kind: ListKind::Unordered,
                 items: vec![item],
@@ -342,6 +344,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("team.guide").expect("valid"),
             title: None,
             source_path: std::path::PathBuf::from("guide.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::Table(TableAst {
                 header: vec![cell],
                 rows: Vec::new(),
@@ -392,6 +395,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("team.guide").expect("valid"),
             title: None,
             source_path: std::path::PathBuf::from("guide.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
                 claim,
             )))],

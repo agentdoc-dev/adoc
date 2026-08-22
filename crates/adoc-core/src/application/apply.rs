@@ -327,6 +327,20 @@ where
     };
     let before_file_hash = sha256_prefixed(original_text.as_bytes());
 
+    // 4b. Source Binding source-revision digest gate (E1.1.T2, ADR-0058 §4):
+    //     the v6 governed-meaning hash is placement-blind, so a position-only
+    //     move passes the drift gate above while the artifact's recorded
+    //     placement may be stale. The bytes just read must reproduce the
+    //     binding's source-revision digest; an absent binding fails closed.
+    let binding_is_fresh = artifact_node
+        .source_binding
+        .as_ref()
+        .is_some_and(|binding| binding.source_revision_digest == before_file_hash);
+    if !binding_is_fresh {
+        let diagnostics = vec![source_binding_stale(&patch.target)];
+        return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+    }
+
     // 5. Fresh spans from a re-parse of the bytes just read — never artifact
     //    spans (start-only, build-stale).
     let source_file = SourceFile::new_with_identity_path(
@@ -637,6 +651,17 @@ fn source_drift(target: &str) -> Diagnostic {
     Diagnostic::error(
         DiagnosticCode::PatchSourceDrift,
         format!("source changed since last build for `{target}`; run adoc build and re-propose"),
+    )
+    .with_object_id(target)
+}
+
+fn source_binding_stale(target: &str) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::PatchSourceBindingStale,
+        format!(
+            "the Source Binding for `{target}` no longer matches the source file; \
+             run adoc build and re-propose"
+        ),
     )
     .with_object_id(target)
 }

@@ -12,7 +12,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::graph::{
     GraphArtifactDocument, GraphBlockNode, GraphEdge, GraphEdgeKind, GraphEvidence,
     GraphKnowledgeObjectNode, GraphNode, GraphPageNode, GraphRelationKind, GraphRelations,
-    GraphRepositoryIdentity, GraphSourceSpan,
+    GraphRepositoryIdentity, GraphSourceBinding, GraphSourceSpan,
 };
 use crate::domain::inline::{InlineSegment, to_source};
 use crate::domain::knowledge_object::{
@@ -129,7 +129,14 @@ impl GraphJsonArtifact {
             for (block_index, block) in page.blocks.iter().enumerate() {
                 let order = block_index as u32;
                 let node_id = block_node_id(page, block, order);
-                nodes.push(block_to_graph_node(block, &node_id, &page_id, order, today));
+                nodes.push(block_to_graph_node(
+                    block,
+                    &node_id,
+                    &page_id,
+                    &page.source_digest,
+                    order,
+                    today,
+                ));
                 edges.push(GraphEdge {
                     kind: GraphEdgeKind::Contains,
                     source: page_id.clone(),
@@ -265,6 +272,7 @@ fn block_to_graph_node(
     block: &BlockAst,
     id: &str,
     page_id: &str,
+    page_source_digest: &str,
     order: u32,
     today: Option<NaiveDate>,
 ) -> GraphNode {
@@ -336,7 +344,7 @@ fn block_to_graph_node(
             source_span: source_span(&code_block.span),
         }),
         BlockAst::KnowledgeObject(knowledge_object) => GraphNode::KnowledgeObject(
-            knowledge_object_to_graph_node(knowledge_object, page_id, today),
+            knowledge_object_to_graph_node(knowledge_object, page_id, page_source_digest, today),
         ),
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before graph emission")
@@ -412,16 +420,27 @@ fn block_to_graph_node(
 fn knowledge_object_to_graph_node(
     knowledge_object: &KnowledgeObject,
     page_id: &str,
+    page_source_digest: &str,
     today: Option<NaiveDate>,
 ) -> GraphKnowledgeObjectNode {
-    let mut node = knowledge_object_to_graph_node_without_hash(knowledge_object, page_id, today);
+    let mut node = knowledge_object_to_graph_node_without_hash(
+        knowledge_object,
+        page_id,
+        page_source_digest,
+        today,
+    );
     node.content_hash = graph_knowledge_object_content_hash(&node);
     node
 }
 
+/// ADR-0058 §4: the local filesystem connector name recorded in every Source
+/// Binding this builder emits.
+const LOCAL_FS_CONNECTOR: &str = "local_fs";
+
 fn knowledge_object_to_graph_node_without_hash(
     knowledge_object: &KnowledgeObject,
     page_id: &str,
+    page_source_digest: &str,
     today: Option<NaiveDate>,
 ) -> GraphKnowledgeObjectNode {
     let span = knowledge_object.span();
@@ -462,6 +481,17 @@ fn knowledge_object_to_graph_node_without_hash(
         body: knowledge_object.body().to_source(),
         page_id: page_id.to_string(),
         source_span: source_span(span),
+        // ADR-0058 §4 (E1.1.T2): exact placement, hash-inert by construction
+        // (it is not a KnowledgeObjectHashPayload member), so the
+        // evidence-ref post-pass hash recompute never has to touch it.
+        source_binding: Some(GraphSourceBinding {
+            connector: LOCAL_FS_CONNECTOR.to_string(),
+            source: page_id.to_string(),
+            revision: None,
+            path: span.file.display().to_string(),
+            anchor: knowledge_object.id().as_str().to_string(),
+            source_revision_digest: page_source_digest.to_string(),
+        }),
         fields: metadata_fields_to_graph(metadata.fields()),
         relations: relations_to_graph(knowledge_object.relations()),
         impacts: impacts_to_graph(knowledge_object.impacts()),
@@ -959,6 +989,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("test id"),
             title: None,
             source_path: PathBuf::from("guide.md"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::List(ListAst {
                 kind: ListKind::Unordered,
                 items: vec![ListItem {
@@ -1031,6 +1062,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("test id"),
             title: None,
             source_path: PathBuf::from("guide.md"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::List(ListAst {
                 kind: ListKind::Unordered,
                 items: vec![
@@ -1102,6 +1134,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.sources").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/sources.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(
                 KnowledgeObject::Source(source),
             ))],
@@ -1172,6 +1205,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.sources").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/sources.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(
                 KnowledgeObject::Source(source),
             ))],
@@ -1214,6 +1248,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("test id"),
             title: None,
             source_path: PathBuf::from("guide.md"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::List(ListAst {
                 kind: ListKind::Unordered,
                 items: vec![ListItem {
@@ -1316,6 +1351,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.claims").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/claims.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Source(source))),
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim))),
@@ -1393,6 +1429,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.claims").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/claims.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
                 claim,
             )))],
@@ -1479,6 +1516,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.decisions").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/decisions.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Source(source))),
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision))),
@@ -1562,6 +1600,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.decisions").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/decisions.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(
                 KnowledgeObject::Decision(decision),
             ))],
@@ -1618,6 +1657,7 @@ mod tests {
                 line: 1,
                 column: 1,
             },
+            source_binding: None,
             fields: std::collections::BTreeMap::new(),
             relations: GraphRelations::default(),
             impacts: Vec::new(),
@@ -1748,6 +1788,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.billing").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/billing.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
                 claim,
             )))],
@@ -1812,6 +1853,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.billing").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/billing.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
                 claim,
             )))],
@@ -1867,6 +1909,7 @@ mod tests {
                 line: 1,
                 column: 1,
             },
+            source_binding: None,
             fields: std::collections::BTreeMap::new(),
             relations: GraphRelations::default(),
             impacts: Vec::new(),
@@ -2125,6 +2168,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.auth").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/auth.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_a))),
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_b))),
@@ -2278,6 +2322,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.auth").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/auth.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(stale_claim))),
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(plain_claim))),
@@ -2400,6 +2445,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.auth").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/auth.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_a))),
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_b))),

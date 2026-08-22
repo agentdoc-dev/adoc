@@ -231,6 +231,42 @@ Body with multibyte: \u{e9}\u{e9}\u{e9} \u{1f980}.
     );
 }
 
+/// E1.1.T2 (ADR-0058 §4): a position-only source edit leaves the v6
+/// governed-meaning hash unchanged, so the semantic drift gate passes — the
+/// Source Binding source-revision digest gate must refuse instead of
+/// splicing against stale placement.
+#[test]
+fn apply_refuses_stale_source_binding_after_position_only_source_edit() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    // Position-only edit: new prose above the claim shifts every line but
+    // changes no governed meaning, so the recompiled content_hash still
+    // matches the artifact while the recorded source revision is stale.
+    let moved_on = PAGE_TEXT.replace("# Billing\n", "# Billing\n\nNew intro prose.\n");
+    assert_ne!(moved_on, PAGE_TEXT, "fixture edit must change the page");
+    fs::write(workspace.page_path(), &moved_on).expect("write moved-on page");
+
+    let result = workspace.apply(&artifact, replace_body_patch(&base_hash, "Rewritten body."));
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagnosticCode::PatchSourceBindingStale),
+        "diagnostics: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        moved_on,
+        "refusal writes nothing"
+    );
+}
+
 #[test]
 fn recompiling_unchanged_source_reproduces_artifact_content_hashes() {
     // Drift-gate soundness: apply's in-memory recompile must reproduce the

@@ -159,6 +159,7 @@ mod tests {
             id: PageId::untitled_fallback(),
             title: None,
             source_path: PathBuf::from("test.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObjectPending(Box::new(pending))],
         }
     }
@@ -511,6 +512,7 @@ mod tests {
             id: PageId::untitled_fallback(),
             title: None,
             source_path: PathBuf::from("test.adoc"),
+            source_digest: String::new(),
             blocks: vec![heading, BlockAst::KnowledgeObjectPending(Box::new(pending))],
         };
         let mut pairs = vec![(source(), page)];
