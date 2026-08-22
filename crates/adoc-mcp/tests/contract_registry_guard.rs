@@ -776,6 +776,28 @@ fn semantic_failed_has_exactly_one_disposition() {
 }
 
 #[test]
+fn bot_attestation_codes_are_exactly_the_canonical_pair() {
+    let registry = registry();
+    let bot_attestation: BTreeSet<String> = all_registered_ids(&registry)
+        .into_iter()
+        .filter(|id| id.contains("bot") && (id.contains("attestation") || id.contains("approver")))
+        .collect();
+    let canonical: BTreeSet<String> = [
+        "attestation.bot_approver_rejected",
+        "action.attestation_bot_rejected",
+    ]
+    .iter()
+    .map(|id| id.to_string())
+    .collect();
+    assert_eq!(
+        bot_attestation, canonical,
+        "competing bot-attestation suffixes across the registry — the E0.3 \
+         acceptance allows exactly one canonical Cloud code and its one \
+         documented Action wrapper"
+    );
+}
+
+#[test]
 fn bot_attestation_family_has_one_documented_wrapper_mapping() {
     let registry = registry();
     let attestation = anchored_ids(&registry, "registry:attestation-codes");
