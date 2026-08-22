@@ -984,7 +984,7 @@ fn content_hash_diagnostic(node: &GraphKnowledgeObjectNode) -> Option<Diagnostic
 /// trust boundary it enforces the full published v6 grammar
 /// `^sha256:[0-9a-f]+$` instead (`domain::managed`), so padded or non-hex
 /// spellings never reach an immutable managed version.
-pub(crate) fn content_hash_matches_grammar(value: &str) -> bool {
+fn content_hash_matches_grammar(value: &str) -> bool {
     value
         .strip_prefix("sha256:")
         .is_some_and(|suffix| !suffix.trim().is_empty())
