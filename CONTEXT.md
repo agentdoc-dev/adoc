@@ -203,7 +203,7 @@ The canonical local read model, `dist/docs.graph.json`, now with schema version 
 _Avoid_: graph database, SQLite-first graph storage, graph as authoring source of truth, presentation HTML inside graph JSON
 
 **Base Hash**:
-The `content_hash` value a patch declares for its target object. It is a `sha256:` hash over canonical JSON for the graph Knowledge Object node's governed meaning (ADR-0058): identity, kind, lifecycle/status, body, authored classifications, fields, relations, and evidence declarations — never placement (page, source span) and never the **Source Binding**.
+The `content_hash` value a patch declares for its target object. It is a `sha256:` hash over canonical JSON for the graph Knowledge Object node's governed meaning (ADR-0058): kind, lifecycle/status, body, authored classifications, fields, relations, and evidence declarations — never identity (the **Object ID** is its own K6 layer), never placement (page, source span), and never the **Source Binding**.
 _Avoid_: source-file checksum, search embedding hash, approval token
 
 **Source Binding**:
