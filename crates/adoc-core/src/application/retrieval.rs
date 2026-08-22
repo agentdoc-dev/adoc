@@ -249,8 +249,7 @@ where
                 }
 
                 if !artifact_unloadable {
-                    let actual_hash =
-                        crate::application::hashing::sha256_prefixed(&canonical_bytes);
+                    let actual_hash = crate::domain::hashing::sha256_prefixed(&canonical_bytes);
                     if actual_hash != doc.graph_artifact_hash {
                         diagnostics.push(Diagnostic::warning(
                             DiagnosticCode::SearchHashDrift,
@@ -835,7 +834,6 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use crate::application::hashing::sha256_prefixed;
     use crate::domain::artifact::{
         SearchArtifactDocument, SearchEmbedding, SearchEntryKind, SearchModelHeader,
     };
@@ -843,6 +841,7 @@ mod tests {
         GraphArtifactDocument, GraphBlockNode, GraphEdge, GraphEdgeKind, GraphKnowledgeObjectNode,
         GraphNode, GraphPageNode, GraphRelationKind, GraphRelations, GraphSourceSpan,
     };
+    use crate::domain::hashing::sha256_prefixed;
     use crate::domain::ports::artifact_reader::ArtifactReader;
 
     struct StubSearchArtifactReader {

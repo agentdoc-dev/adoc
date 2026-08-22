@@ -14,7 +14,7 @@ use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::application::hashing::sha256_prefixed;
+use crate::domain::hashing::sha256_prefixed;
 use crate::domain::ports::workspace_writer::{WorkspaceWriteError, WorkspaceWriter};
 
 pub(crate) struct FsWorkspaceWriter {

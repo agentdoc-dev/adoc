@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use crate::application::hashing::sha256_prefixed;
 use crate::domain::artifact::{
     SearchArtifactDocument, SearchEmbedding, SearchEntryKind, SearchModelHeader,
 };
@@ -9,6 +8,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{
     GraphArtifactDocument, GraphBlockNode, GraphKnowledgeObjectNode, GraphNode, ProseBlockKind,
 };
+use crate::domain::hashing::sha256_prefixed;
 use crate::domain::ports::embedding_provider::{EmbeddingError, EmbeddingProvider};
 use crate::domain::retrieval::metadata;
 use crate::infrastructure::artifact::search_json::{

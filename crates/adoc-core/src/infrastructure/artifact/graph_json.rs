@@ -6,7 +6,6 @@ use std::path::Path;
 use chrono::NaiveDate;
 use serde::Serialize;
 
-use crate::application::hashing::sha256_prefixed;
 use crate::domain::ast::{BlockAst, ListKind, PageAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::graph::{
@@ -14,6 +13,7 @@ use crate::domain::graph::{
     GraphKnowledgeObjectNode, GraphNode, GraphPageNode, GraphRelationKind, GraphRelations,
     GraphRepositoryIdentity, GraphSourceBinding, GraphSourceSpan,
 };
+use crate::domain::hashing::sha256_prefixed;
 use crate::domain::inline::{InlineSegment, to_source};
 use crate::domain::knowledge_object::{
     FIELD_VISIBILITY_FIELD, KnowledgeObject, RelationTarget, Relations, VISIBILITY_FIELD,

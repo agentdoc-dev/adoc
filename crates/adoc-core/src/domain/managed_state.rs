@@ -202,6 +202,38 @@ impl SynchronizationState {
     }
 }
 
+/// The recorded K9 replay posture (registered closed vocabulary,
+/// E0.3.T4): can this derivation be reproduced later? A deletion/
+/// tombstone event records the posture it leaves behind — deleting
+/// retained evidence updates the posture by APPENDING, never by
+/// rewriting governance history (K9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ReplayPosture {
+    FullyReplayable,
+    SourceAccessRequired,
+    IntentionallyNonReplayable,
+    NoLongerReplayableAfterDeletion,
+}
+
+impl ReplayPosture {
+    pub(crate) const ALL: [Self; 4] = [
+        Self::FullyReplayable,
+        Self::SourceAccessRequired,
+        Self::IntentionallyNonReplayable,
+        Self::NoLongerReplayableAfterDeletion,
+    ];
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::FullyReplayable => "fully_replayable",
+            Self::SourceAccessRequired => "source_access_required",
+            Self::IntentionallyNonReplayable => "intentionally_non_replayable",
+            Self::NoLongerReplayableAfterDeletion => "no_longer_replayable_after_deletion",
+        }
+    }
+}
+
 /// One connector's identity within a workspace — opaque to `adoc-core`.
 /// Non-blank without surrounding whitespace, never normalized (the
 /// fail-closed posture of every identity value since E1.2: two spellings
@@ -261,12 +293,16 @@ pub(crate) struct StateEventSubject {
     pub(crate) version_id: ManagedVersionId,
 }
 
-/// What one managed state event records, tagged by its event family
-/// (RT-04). One variant per §K4 dimension, each carrying only that
-/// dimension's closed vocabulary — dimensions are never conflated into a
-/// shared status field (D07/D15). The remaining RT-04 families
-/// (authorization-affecting source changes, declassification, migration,
-/// deletion/tombstone) land in E1.4.T5.
+/// What one managed state event records, tagged by its event family —
+/// all ten RT-04 families. One variant per §K4 dimension, each carrying
+/// only that dimension's closed vocabulary — dimensions are never
+/// conflated into a shared status field (D07/D15) — plus the four
+/// families beyond the dimensions: an authorization-affecting source
+/// change names the connector whose source ACL observation changed
+/// (RT-04); a deletion/tombstone records the K9 replay posture it
+/// leaves behind; declassification and migration are bare family
+/// markers here — their policy mechanics are E6.2/E6.6, only the
+/// append-only record shape is E1.4's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "family", rename_all = "snake_case")]
 pub(crate) enum ManagedStateChange {
@@ -289,6 +325,14 @@ pub(crate) enum ManagedStateChange {
         connector: ConnectorId,
         state: SynchronizationState,
         required_before_effective: bool,
+    },
+    AuthorizationAffectingSourceChange {
+        connector: ConnectorId,
+    },
+    Declassification,
+    Migration,
+    DeletionTombstone {
+        replay_posture: ReplayPosture,
     },
 }
 
@@ -316,11 +360,21 @@ pub(crate) struct ManagedStateEvent {
 #[serde(transparent)]
 pub(crate) struct EventOrdinal(pub(crate) u64);
 
-/// One event as recorded: the store-assigned ordinal plus the event.
+/// One event as recorded: the store-assigned ordinal, the event, and —
+/// stored at write time, never re-derived (E1.4.T5) — the event's exact
+/// canonical bytes plus the chained digest. Later export needs no extra
+/// data: the `(ordinal, event_bytes, digest)` triples alone reproduce
+/// every event and prove the log's order and integrity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct RecordedStateEvent {
     pub(crate) ordinal: EventOrdinal,
     pub(crate) event: ManagedStateEvent,
+    /// The exact canonical JSON of `event` as serialized at write time.
+    pub(crate) event_bytes: String,
+    /// `sha256:`-prefixed digest over the previous record's digest (the
+    /// empty string for ordinal 0) concatenated with `event_bytes` —
+    /// each record binds the whole prefix.
+    pub(crate) digest: String,
 }
 
 /// One dimension of reconstructed managed state. [`RecordedDimension::Gap`]
@@ -403,6 +457,15 @@ impl ManagedVersionState {
                     },
                 );
             }
+            // The four RT-04 families beyond the §K4 dimensions are
+            // recorded in the log but advance no dimension: what state
+            // they imply is policy (declassification E6.2, deletion
+            // execution E6.6, ACL re-evaluation E2.2) — inferring a
+            // transition here would fabricate history (RT-04).
+            ManagedStateChange::AuthorizationAffectingSourceChange { .. }
+            | ManagedStateChange::Declassification
+            | ManagedStateChange::Migration
+            | ManagedStateChange::DeletionTombstone { .. } => {}
         }
     }
 }
@@ -446,6 +509,8 @@ pub(crate) enum StateEventStoreError {
     },
     #[error("the audit sink failed to persist the transition's audit record")]
     AuditPersistenceFailed,
+    #[error("the state event could not be canonically serialized for its audit record")]
+    EventSerializationUnavailable,
 }
 
 impl StateEventStoreError {
@@ -463,17 +528,28 @@ impl StateEventStoreError {
                 DiagnosticCode::GovernanceRecordConflict
             }
             Self::RetentionFloorViolation { .. } => DiagnosticCode::StoreRetentionFloorViolation,
-            Self::AuditPersistenceFailed => DiagnosticCode::AuditPersistenceFailed,
+            // Exact bytes at write time are part of the audit trail
+            // (E1.4.T5): an event whose canonical bytes cannot be
+            // produced fails exactly like a sink that cannot persist
+            // them — the owning operation never succeeds unaudited.
+            Self::AuditPersistenceFailed | Self::EventSerializationUnavailable => {
+                DiagnosticCode::AuditPersistenceFailed
+            }
         }
     }
 }
 
 /// One audit record, written by the store at append time — one per
-/// recorded transition (E1.4.T5 extends it with the exact bytes and the
-/// digest chain).
+/// recorded transition, carrying the exact event bytes and the chained
+/// digest (E1.4.T5) so the full lifecycle reconstructs from audit rows
+/// alone.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AuditRecord {
     pub(crate) ordinal: EventOrdinal,
+    /// Same exact bytes as [`RecordedStateEvent::event_bytes`].
+    pub(crate) event_bytes: String,
+    /// Same chained digest as [`RecordedStateEvent::digest`].
+    pub(crate) digest: String,
 }
 
 /// The audit sink could not persist a record. Deliberately carries no
@@ -667,14 +743,33 @@ impl ManagedStateEventStore {
         {
             return Err(StateEventStoreError::CorrectionTargetMissing { corrects });
         }
-        if sink.record(&AuditRecord { ordinal }).is_err() {
+        // Exact bytes + chained digest, produced at write time (E1.4.T5)
+        // — never re-derived later, so export needs no extra data.
+        let event_bytes = serde_json::to_string(&event)
+            .map_err(|_| StateEventStoreError::EventSerializationUnavailable)?;
+        let previous_digest = self.events.last().map(|r| r.digest.as_str()).unwrap_or("");
+        let digest =
+            super::hashing::sha256_prefixed(format!("{previous_digest}{event_bytes}").as_bytes());
+        if sink
+            .record(&AuditRecord {
+                ordinal,
+                event_bytes: event_bytes.clone(),
+                digest: digest.clone(),
+            })
+            .is_err()
+        {
             return Err(StateEventStoreError::AuditPersistenceFailed);
         }
         self.current
             .entry(event.subject.clone())
             .or_insert_with(ManagedVersionState::all_gaps)
             .apply(&event.change);
-        self.events.push(RecordedStateEvent { ordinal, event });
+        self.events.push(RecordedStateEvent {
+            ordinal,
+            event,
+            event_bytes,
+            digest,
+        });
         Ok(ordinal)
     }
 
@@ -893,8 +988,9 @@ mod tests {
     }
 
     /// The serialized event record the Cloud cut consumes: ordinal,
-    /// version-exact subject, family-tagged change, emitter, and policy
-    /// version — and nothing else (no wall-clock anywhere).
+    /// version-exact subject, family-tagged change, emitter, policy
+    /// version, exact bytes, and chained digest — and nothing else (no
+    /// wall-clock anywhere).
     #[test]
     fn recorded_event_serialized_shape_is_pinned() {
         let mut workspace = workspace();
@@ -920,26 +1016,40 @@ mod tests {
             )
             .expect("append accepted");
 
-        let value = serde_json::to_value(&store.events()[0]).expect("record serializes");
+        let record = &store.events()[0];
+        let value = serde_json::to_value(record).expect("record serializes");
+        let expected_event = json!({
+            "subject": {
+                "canonical": {
+                    "workspace_id": "ws-acme",
+                    "canonical_id": "mo-1"
+                },
+                "version_id": "mv-1"
+            },
+            "change": { "family": "freshness", "state": "stale" },
+            "emitter": "cloud.freshness_evaluator",
+            "policy_version": "freshness-policy-1",
+            "corrects": null
+        });
         assert_eq!(
             value,
             json!({
                 "ordinal": 0,
-                "event": {
-                    "subject": {
-                        "canonical": {
-                            "workspace_id": "ws-acme",
-                            "canonical_id": "mo-1"
-                        },
-                        "version_id": "mv-1"
-                    },
-                    "change": { "family": "freshness", "state": "stale" },
-                    "emitter": "cloud.freshness_evaluator",
-                    "policy_version": "freshness-policy-1",
-                    "corrects": null
-                }
+                "event": expected_event,
+                "event_bytes": record.event_bytes,
+                "digest": record.digest,
             }),
             "recorded state event shape drifted"
+        );
+        // The stored bytes are the event's canonical serialization; the
+        // first digest chains from the empty string.
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&record.event_bytes).expect("bytes parse"),
+            expected_event
+        );
+        assert_eq!(
+            record.digest,
+            crate::domain::hashing::sha256_prefixed(record.event_bytes.as_bytes())
         );
     }
 
@@ -1657,5 +1767,265 @@ mod tests {
                 "{invalid:?} must be rejected"
             );
         }
+    }
+
+    // E1.4.T5 (MILESTONES §E1.4; RT-04; K9): the remaining event
+    // families, plus exact bytes and the digest chain stored at write
+    // time — later export needs no extra data.
+
+    /// The serialized shapes of the four RT-04 families beyond the six
+    /// §K4 dimensions, pinned for the Cloud cut: authorization-affecting
+    /// source changes name their connector, deletion/tombstone records
+    /// the K9 replay posture it leaves behind, declassification and
+    /// migration are bare family markers (their policy mechanics are
+    /// E6.2/E6.6 — the append-only record shape is fixed here).
+    #[test]
+    fn remaining_event_family_serialized_shapes_are_pinned() {
+        let cases = [
+            (
+                ManagedStateChange::AuthorizationAffectingSourceChange {
+                    connector: ConnectorId::new("confluence").expect("non-blank"),
+                },
+                json!({
+                    "family": "authorization_affecting_source_change",
+                    "connector": "confluence"
+                }),
+            ),
+            (
+                ManagedStateChange::Declassification,
+                json!({ "family": "declassification" }),
+            ),
+            (
+                ManagedStateChange::Migration,
+                json!({ "family": "migration" }),
+            ),
+            (
+                ManagedStateChange::DeletionTombstone {
+                    replay_posture: ReplayPosture::NoLongerReplayableAfterDeletion,
+                },
+                json!({
+                    "family": "deletion_tombstone",
+                    "replay_posture": "no_longer_replayable_after_deletion"
+                }),
+            ),
+        ];
+        for (change, expected) in cases {
+            assert_eq!(
+                serde_json::to_value(&change).expect("serializes"),
+                expected,
+                "family shape drifted"
+            );
+        }
+    }
+
+    /// The registered K9 replay-posture vocabulary (E0.3.T4), pinned
+    /// value-for-value against the domain enum — the wire string is the
+    /// single spelling everywhere.
+    #[test]
+    fn replay_posture_vocabulary_is_closed_and_wire_stable() {
+        let wire: Vec<String> = ReplayPosture::ALL
+            .iter()
+            .map(|posture| {
+                serde_json::to_value(posture)
+                    .expect("serializes")
+                    .as_str()
+                    .expect("posture serializes as a bare string")
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            wire,
+            [
+                "fully_replayable",
+                "source_access_required",
+                "intentionally_non_replayable",
+                "no_longer_replayable_after_deletion"
+            ]
+        );
+        for posture in ReplayPosture::ALL {
+            assert_eq!(
+                serde_json::to_value(posture).expect("serializes"),
+                json!(posture.as_str())
+            );
+        }
+    }
+
+    /// The four non-dimension families are recorded in the log but
+    /// advance no §K4 dimension — a deletion/tombstone APPENDS (K9:
+    /// governance history is never rewritten), and none of them touches
+    /// a version record.
+    #[test]
+    fn non_dimension_families_advance_no_state_dimension() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let before = workspace.clone();
+        let mut sink = InMemoryAuditSink::default();
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let changes = [
+            ManagedStateChange::AuthorizationAffectingSourceChange {
+                connector: ConnectorId::new("confluence").expect("non-blank"),
+            },
+            ManagedStateChange::Declassification,
+            ManagedStateChange::Migration,
+            ManagedStateChange::DeletionTombstone {
+                replay_posture: ReplayPosture::NoLongerReplayableAfterDeletion,
+            },
+        ];
+        for change in changes {
+            store
+                .append(
+                    &mut sink,
+                    ManagedStateEvent {
+                        subject: subject.clone(),
+                        change,
+                        emitter: EventEmitter::new("cloud.governance").expect("non-blank"),
+                        policy_version: PolicyVersion::new("policy-1").expect("non-blank"),
+                        corrects: None,
+                    },
+                )
+                .expect("append accepted");
+        }
+
+        assert_eq!(store.events().len(), 4, "every family appends a record");
+        let state = &store.current_state()[&subject];
+        assert_eq!(state.governance, RecordedDimension::Gap);
+        assert_eq!(state.verification, RecordedDimension::Gap);
+        assert_eq!(state.effectivity, RecordedDimension::Gap);
+        assert_eq!(state.freshness, RecordedDimension::Gap);
+        assert_eq!(state.integrity, RecordedDimension::Gap);
+        assert!(state.synchronization.is_empty());
+        assert_eq!(
+            store.current_state(),
+            &store.reconstruct_through(EventOrdinal(3)),
+            "replay must match the derived cache for every family"
+        );
+        assert_eq!(
+            workspace, before,
+            "no family may touch any managed version record"
+        );
+    }
+
+    /// Store-level round trip (MILESTONES §E1.4.T5): the exact canonical
+    /// event bytes and the chained digest are stored at write time, on
+    /// the recorded row AND on its audit record. Walking the stored
+    /// `(ordinal, event_bytes, digest)` triples alone — no live structs,
+    /// no recomputation from external data — verifies the whole chain
+    /// and reproduces every event, so a later export needs no extra
+    /// data.
+    #[test]
+    fn exact_bytes_and_digest_chain_round_trip_from_stored_records_alone() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let all_ten_families = [
+            ManagedStateChange::Governance {
+                state: GovernanceState::Approved,
+            },
+            ManagedStateChange::Verification {
+                state: VerificationState::Verified,
+            },
+            ManagedStateChange::Effectivity {
+                state: EffectivityState::Effective,
+            },
+            ManagedStateChange::Freshness {
+                state: FreshnessState::Current,
+            },
+            ManagedStateChange::Integrity {
+                state: IntegrityState::Clear,
+            },
+            ManagedStateChange::Synchronization {
+                connector: ConnectorId::new("confluence").expect("non-blank"),
+                state: SynchronizationState::InSync,
+                required_before_effective: false,
+            },
+            ManagedStateChange::AuthorizationAffectingSourceChange {
+                connector: ConnectorId::new("confluence").expect("non-blank"),
+            },
+            ManagedStateChange::Declassification,
+            ManagedStateChange::Migration,
+            ManagedStateChange::DeletionTombstone {
+                replay_posture: ReplayPosture::NoLongerReplayableAfterDeletion,
+            },
+        ];
+        for change in all_ten_families {
+            store
+                .append(
+                    &mut sink,
+                    ManagedStateEvent {
+                        subject: subject.clone(),
+                        change,
+                        emitter: EventEmitter::new("cloud.governance").expect("non-blank"),
+                        policy_version: PolicyVersion::new("policy-1").expect("non-blank"),
+                        corrects: None,
+                    },
+                )
+                .expect("append accepted");
+        }
+
+        // The export input: only what the store persisted at write time.
+        let stored: Vec<(EventOrdinal, String, String)> = store
+            .events()
+            .iter()
+            .map(|record| {
+                (
+                    record.ordinal,
+                    record.event_bytes.clone(),
+                    record.digest.clone(),
+                )
+            })
+            .collect();
+        assert_eq!(stored.len(), 10);
+
+        let mut previous_digest = String::new();
+        for (index, (ordinal, event_bytes, digest)) in stored.iter().enumerate() {
+            assert_eq!(*ordinal, EventOrdinal(index as u64));
+            // Exact bytes: the stored text IS the canonical serialization
+            // of the recorded event — byte-identical, not re-derived.
+            assert_eq!(
+                event_bytes,
+                &serde_json::to_string(&store.events()[index].event).expect("event serializes"),
+                "stored bytes drifted from the recorded event"
+            );
+            // Chain: each digest binds the exact bytes to the whole
+            // prefix; verification needs only the stored triples.
+            let chained = format!("{previous_digest}{event_bytes}");
+            assert_eq!(
+                digest,
+                &crate::domain::hashing::sha256_prefixed(chained.as_bytes()),
+                "digest chain broken at ordinal {index}"
+            );
+            previous_digest = digest.clone();
+            // The bytes alone reproduce the event content.
+            let replayed: serde_json::Value =
+                serde_json::from_str(event_bytes).expect("stored bytes parse");
+            assert_eq!(
+                replayed,
+                serde_json::to_value(&store.events()[index].event).expect("event serializes")
+            );
+        }
+
+        // The audit trail carries the same bytes and digests: the full
+        // lifecycle reconstructs from audit rows alone (acceptance).
+        assert_eq!(sink.records.len(), 10);
+        for (record, (ordinal, event_bytes, digest)) in sink.records.iter().zip(&stored) {
+            assert_eq!(record.ordinal, *ordinal);
+            assert_eq!(&record.event_bytes, event_bytes);
+            assert_eq!(&record.digest, digest);
+        }
+    }
+
+    /// An event whose bytes cannot be produced must fail the owning
+    /// operation with `audit.persistence_failed` — exact bytes at write
+    /// time are part of the audit trail, and nothing succeeds without
+    /// them.
+    #[test]
+    fn event_serialization_failure_maps_to_audit_persistence_failed() {
+        assert_eq!(
+            StateEventStoreError::EventSerializationUnavailable
+                .diagnostic_code()
+                .as_str(),
+            "audit.persistence_failed"
+        );
     }
 }
