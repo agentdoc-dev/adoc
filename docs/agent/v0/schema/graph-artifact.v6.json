@@ -131,7 +131,7 @@
     },
     "knowledgeObject": {
       "type": "object",
-      "required": ["type", "id", "kind", "content_hash", "body", "page_id", "source_span", "source_binding", "fields", "relations"],
+      "required": ["type", "id", "kind", "content_hash", "body", "page_id", "source_span", "fields", "relations"],
       "properties": {
         "type": { "const": "knowledge_object" },
         "id": { "type": "string", "minLength": 1 },
@@ -143,7 +143,10 @@
         "body": { "type": "string" },
         "page_id": { "type": "string", "minLength": 1 },
         "source_span": { "$ref": "#/$defs/sourceSpan" },
-        "source_binding": { "$ref": "#/$defs/sourceBinding" },
+        "source_binding": {
+          "$ref": "#/$defs/sourceBinding",
+          "description": "Every built artifact emits this member; readers tolerate absence (consumers must treat a missing binding as placement-unverifiable — `adoc patch --apply` fails closed with `patch.source_binding_stale`)."
+        },
         "visibility": {
           "enum": ["public", "internal", "restricted"],
           "description": "ADR-0058 authored visibility classification; hash-included when present. Absence means public and is not serialized."
