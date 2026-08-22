@@ -48,6 +48,12 @@ fn anchored_ids(doc: &str, anchor: &str) -> BTreeSet<String> {
         .find(&close)
         .unwrap_or_else(|| panic!("{REGISTRY} is missing the closing `{close}` anchor"))
         + start;
+    // A duplicated anchor block (the classic bad merge-conflict resolution)
+    // would make every row in the later block invisible to the scan.
+    assert!(
+        doc[start..].find(&open).is_none(),
+        "{REGISTRY}: `{open}` appears more than once — rows in later blocks are invisible to the scan"
+    );
 
     let mut ids = BTreeSet::new();
     let mut saw_header = false;
@@ -59,7 +65,9 @@ fn anchored_ids(doc: &str, anchor: &str) -> BTreeSet<String> {
             panic!("{REGISTRY}: `{anchor}` block contains a non-table line: {line:?}");
         };
         let first_cell = row.split('|').next().unwrap_or_default().trim();
-        if first_cell.chars().all(|c| c == '-' || c == ':') {
+        // An empty first cell must fall through and fail loudly below —
+        // `all()` is vacuously true on "", which would silently drop the row.
+        if !first_cell.is_empty() && first_cell.chars().all(|c| c == '-' || c == ':') {
             continue; // separator row
         }
         if let Some(id) = first_cell
@@ -123,17 +131,20 @@ fn is_envelope_id(candidate: &str) -> bool {
 }
 
 /// Envelope ids appearing as complete double-quoted string literals in one
-/// source text. Quote pairing restarts on every line, so a stray `'"'` char
-/// literal or an escaped quote earlier in the FILE can never desync the
-/// scan and hide a later id — desync is bounded to the one line carrying
-/// it. Whole files are scanned, `#[cfg(test)]` modules included: fixture
-/// ids there are registered rows (the test-fixture table), so a new
-/// unregistered literal fails loudly wherever it sits.
+/// source text. `//` comment lines are skipped (mirroring
+/// `diagnostic_codes_in`) so an id surviving only in a comment cannot keep
+/// a stale shipped row alive. Quote pairing restarts on every line, so a
+/// stray `'"'` char literal or an escaped quote earlier in the FILE can
+/// never desync the scan and hide a later id — desync is bounded to the one
+/// line carrying it. Whole files are scanned, `#[cfg(test)]` modules
+/// included: fixture ids there are registered rows (the test-fixture
+/// table), so a new unregistered literal fails loudly wherever it sits.
 // ponytail: ids built with format!/concat are outside any textual net —
 // the workspace convention is whole-literal schema-version consts.
 fn envelope_ids_in(source: &str) -> BTreeSet<String> {
     source
         .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
         .flat_map(|line| line.split('"').skip(1).step_by(2))
         .filter(|chunk| is_envelope_id(chunk))
         .map(str::to_string)
@@ -251,8 +262,8 @@ fn shipped_adoc_envelope_rows_match_the_source_scan() {
     let stale: Vec<_> = registered.difference(&emitted).collect();
     assert!(
         stale.is_empty(),
-        "shipped adoc envelope rows in {REGISTRY} no longer emitted by any \
-         non-test source: {stale:?}"
+        "shipped adoc envelope rows in {REGISTRY} no longer appear in any \
+         crates/*/src string literal (test modules included): {stale:?}"
     );
 }
 
@@ -404,6 +415,50 @@ fn guard_fires_on_a_malformed_registry_row() {
     assert!(
         result.is_err(),
         "a data row whose first cell is not backticked must fail loudly, never drop silently"
+    );
+}
+
+#[test]
+fn guard_fires_on_a_duplicated_anchor_block() {
+    let duplicated = "\
+<!-- registry:dup -->\n\
+| id | status |\n\
+| --- | --- |\n\
+| `adoc.graph.v5` | shipped |\n\
+<!-- /registry:dup -->\n\
+<!-- registry:dup -->\n\
+| `adoc.diff.v0` | shipped |\n\
+<!-- /registry:dup -->\n";
+    let result = std::panic::catch_unwind(|| anchored_ids(duplicated, "registry:dup"));
+    assert!(
+        result.is_err(),
+        "a duplicated anchor block must fail loudly — later rows are invisible to the scan"
+    );
+}
+
+#[test]
+fn guard_fires_on_an_empty_first_cell() {
+    let broken = "\
+<!-- registry:empty -->\n\
+| id | status |\n\
+| --- | --- |\n\
+|  | shipped |\n\
+<!-- /registry:empty -->\n";
+    let result = std::panic::catch_unwind(|| anchored_ids(broken, "registry:empty"));
+    assert!(
+        result.is_err(),
+        "a data row with an empty first cell must fail loudly, never scan as a separator"
+    );
+}
+
+#[test]
+fn comment_lines_do_not_scan_as_emissions() {
+    let commented = r#"
+        // wire id: "adoc.diff.v0"
+    "#;
+    assert!(
+        envelope_ids_in(commented).is_empty(),
+        "an id surviving only in a line comment must not keep a stale shipped row alive"
     );
 }
 
@@ -565,8 +620,8 @@ fn bot_attestation_family_has_one_documented_wrapper_mapping() {
     );
 }
 
-/// One closed vocabulary pinned exactly: registry rows = the annex list,
-/// in the S8/K9 order, no additions and no losses.
+/// One closed vocabulary pinned exactly: registry rows equal the annex
+/// list, no additions and no losses (sets — document order is not checked).
 fn assert_vocabulary(anchor: &str, annex: &str, expected: &[&str]) {
     let registered = anchored_ids(&registry(), anchor);
     let expected_set: BTreeSet<String> = expected.iter().map(|s| s.to_string()).collect();
