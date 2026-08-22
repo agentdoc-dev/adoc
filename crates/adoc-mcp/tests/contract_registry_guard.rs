@@ -151,10 +151,50 @@ fn rust_sources_under(dir: &Path, sources: &mut Vec<PathBuf>) {
     }
 }
 
-/// Every envelope id appearing in `crates/*/src`, test modules included.
+/// One source file split at its `#[cfg(test)] mod` boundary: everything
+/// above is production scope, the module and everything after it is test
+/// scope. A `#[cfg(test)]` on a single item (a test-only `use` at the file
+/// top) does not split. An out-of-line `#[cfg(test)] mod tests;` would put
+/// production code below it into the wrong scope, so it fails loudly
+/// instead of misclassifying.
+// ponytail: tail-scope split, not brace matching — the workspace convention
+// keeps inline test modules at the file end; production code after one
+// would be counted as test scope (still registered-checked, but outside
+// the shipped equality).
+fn split_test_scope(source: &str) -> (String, String) {
+    let lines: Vec<&str> = source.lines().collect();
+    let boundary = lines.iter().enumerate().position(|(i, line)| {
+        line.trim_start().starts_with("#[cfg(test)]")
+            && lines[i + 1..]
+                .iter()
+                .find(|next| !next.trim().is_empty())
+                .is_some_and(|next| {
+                    let next = next.trim();
+                    let is_module = next.starts_with("mod ") || next.starts_with("pub mod ");
+                    assert!(
+                        !(is_module && next.ends_with(';')),
+                        "out-of-line #[cfg(test)] mod is unsupported by the scan — \
+                         production code after it would be misclassified; use an inline module"
+                    );
+                    is_module
+                })
+    });
+    let split = boundary.unwrap_or(lines.len());
+    (lines[..split].join("\n"), lines[split..].join("\n"))
+}
+
+struct EmittedIds {
+    production: BTreeSet<String>,
+    test_scoped: BTreeSet<String>,
+}
+
+/// Every envelope id appearing in `crates/*/src`, split by scope: production
+/// literals must match the shipped table exactly; test-scoped literals may
+/// additionally cite historical rows (back-compat tests) and registered
+/// fixture ids, but never an unregistered id.
 // ponytail: the walk covers crates/<name>/src only — a build.rs or a nested
 // crate would sit outside it; neither exists in this workspace.
-fn emitted_envelope_ids() -> BTreeSet<String> {
+fn emitted_envelope_ids() -> EmittedIds {
     let crates_dir = repo_root().join("crates");
     let mut sources = Vec::new();
     let entries = fs::read_dir(&crates_dir)
@@ -172,14 +212,18 @@ fn emitted_envelope_ids() -> BTreeSet<String> {
         !sources.is_empty(),
         "no Rust sources found under crates/*/src — the scan would pass vacuously"
     );
-    sources
-        .iter()
-        .flat_map(|path| {
-            let content = fs::read_to_string(path)
-                .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
-            envelope_ids_in(&content)
-        })
-        .collect()
+    let mut emitted = EmittedIds {
+        production: BTreeSet::new(),
+        test_scoped: BTreeSet::new(),
+    };
+    for path in &sources {
+        let content = fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let (production, test) = split_test_scope(&content);
+        emitted.production.extend(envelope_ids_in(&production));
+        emitted.test_scoped.extend(envelope_ids_in(&test));
+    }
+    emitted
 }
 
 /// `Variant = "wire.string" =>` rows from one source text. Comment lines
@@ -232,23 +276,27 @@ fn all_anchors_present() {
 fn shipped_adoc_envelope_rows_match_the_source_scan() {
     let registry = registry();
     let registered = anchored_ids(&registry, "registry:envelopes-shipped-adoc");
-    let fixtures = anchored_ids(&registry, "registry:test-fixture-ids");
-    let emitted: BTreeSet<String> = emitted_envelope_ids()
-        .difference(&fixtures)
-        .cloned()
-        .collect();
+    let emitted = emitted_envelope_ids();
 
-    let unregistered: Vec<_> = emitted.difference(&registered).collect();
+    let unregistered: Vec<_> = emitted.production.difference(&registered).collect();
     assert!(
         unregistered.is_empty(),
-        "envelope ids emitted by crates/*/src without a shipped registry row \
-         in {REGISTRY}: {unregistered:?}"
+        "envelope ids emitted by production code in crates/*/src without a \
+         shipped registry row in {REGISTRY}: {unregistered:?}"
     );
-    let stale: Vec<_> = registered.difference(&emitted).collect();
+    let stale: Vec<_> = registered.difference(&emitted.production).collect();
     assert!(
         stale.is_empty(),
         "shipped adoc envelope rows in {REGISTRY} no longer appear in any \
-         crates/*/src string literal (test modules included): {stale:?}"
+         production string literal in crates/*/src: {stale:?}"
+    );
+
+    let all = all_registered_ids(&registry);
+    let rogue: Vec<_> = emitted.test_scoped.difference(&all).collect();
+    assert!(
+        rogue.is_empty(),
+        "test-scoped envelope ids in crates/*/src without any registry row \
+         (shipped, historical, or test-fixture) in {REGISTRY}: {rogue:?}"
     );
 }
 
@@ -261,17 +309,14 @@ fn historical_envelope_rows_are_no_longer_emitted() {
         "{REGISTRY}: the historical table lost its rows — adoc.retrieval.v0 \
          is a retained documented version"
     );
-    let fixtures = anchored_ids(&registry, "registry:test-fixture-ids");
-    let emitted: BTreeSet<String> = emitted_envelope_ids()
-        .difference(&fixtures)
-        .cloned()
-        .collect();
-    let resurrected: Vec<_> = historical.intersection(&emitted).collect();
+    let emitted = emitted_envelope_ids();
+    let resurrected: Vec<_> = historical.intersection(&emitted.production).collect();
     assert!(
         resurrected.is_empty(),
-        "historical envelope rows appear in crates/*/src again: {resurrected:?} — \
-         if the envelope genuinely ships again, register a new version; if a \
-         back-compat test cites the id, add it to the test-fixture table"
+        "historical envelope rows are emitted from production code again: \
+         {resurrected:?} — a genuinely re-shipped envelope registers a new \
+         version, never revives a retired one (back-compat tests belong in \
+         a test module, where the historical row already covers them)"
     );
 }
 
@@ -331,24 +376,71 @@ fn fixture_ids_are_registered_and_disjoint_from_real_rows() {
         fixtures.contains("adoc.search.v99"),
         "the rejected-version fixture id lost its registry row"
     );
-    // Historical ids are excluded from the collision set: a back-compat test
-    // in crates/*/src citing e.g. adoc.retrieval.v0 registers the id in the
-    // fixture table, which must not deadlock against the historical row.
+    // Scope does the separating now: back-compat tests cite historical rows
+    // from test scope with no fixture row at all, so a fixture id colliding
+    // with ANY real row would only ever blur the inventory.
     let real: BTreeSet<String> = ANCHORS
         .iter()
-        .filter(|anchor| {
-            !matches!(
-                **anchor,
-                "registry:test-fixture-ids" | "registry:envelopes-historical"
-            )
-        })
+        .filter(|anchor| **anchor != "registry:test-fixture-ids")
         .flat_map(|anchor| anchored_ids(&registry, anchor))
         .collect();
     let colliding: Vec<_> = fixtures.intersection(&real).collect();
     assert!(
         colliding.is_empty(),
-        "a test-fixture id may never collide with a shipped/planned/code row \
-         (historical ids are the deliberate exception for back-compat tests): {colliding:?}"
+        "a test-fixture id may never collide with a real contract row: {colliding:?}"
+    );
+    let leaked: Vec<_> = fixtures
+        .intersection(&emitted_envelope_ids().production)
+        .cloned()
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "test-fixture ids emitted from production code — the fixture table \
+         registers test-scope literals only: {leaked:?}"
+    );
+}
+
+#[test]
+fn test_only_use_does_not_split_the_scope() {
+    let fixture = r#"
+        #[cfg(test)]
+        use std::fmt;
+
+        pub const REAL: &str = "adoc.diff.v0";
+    "#;
+    let (production, _) = split_test_scope(fixture);
+    assert!(
+        envelope_ids_in(&production).contains("adoc.diff.v0"),
+        "a test-only use at the file top must not push real emitters into test scope"
+    );
+}
+
+#[test]
+fn tail_test_module_is_test_scope() {
+    let fixture = r#"
+        pub const REAL: &str = "adoc.diff.v0";
+
+        #[cfg(test)]
+        mod tests {
+            const REJECTED_VERSION_FIXTURE: &str = "adoc.search.v99";
+        }
+    "#;
+    let (production, test) = split_test_scope(fixture);
+    assert!(envelope_ids_in(&production).contains("adoc.diff.v0"));
+    assert!(
+        !envelope_ids_in(&production).contains("adoc.search.v99"),
+        "rejected-version fixtures live in test scope"
+    );
+    assert!(envelope_ids_in(&test).contains("adoc.search.v99"));
+}
+
+#[test]
+fn out_of_line_test_module_fails_loudly() {
+    let fixture = "#[cfg(test)]\nmod tests;\npub const LATE: &str = \"adoc.diff.v0\";";
+    let result = std::panic::catch_unwind(|| split_test_scope(fixture));
+    assert!(
+        result.is_err(),
+        "an out-of-line test module would misclassify the code after it — must fail loudly"
     );
 }
 
