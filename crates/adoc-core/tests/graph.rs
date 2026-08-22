@@ -59,7 +59,7 @@ fn relation_edge(source: &str, relation: GraphRelationKind, target: &str) -> Val
 
 fn graph_document(nodes: Vec<Value>, edges: Vec<Value>) -> String {
     serde_json::to_string_pretty(&json!({
-          "schema_version": "adoc.graph.v5",
+          "schema_version": "adoc.graph.v6",
     "repository_identity": null,
           "nodes": nodes,
           "edges": edges,
@@ -167,7 +167,7 @@ fn graph_artifact_serializes_with_v2_shape() {
 
     let value: Value = serde_json::from_str(&artifact).expect("graph artifact serializes");
 
-    assert_eq!(value["schema_version"], "adoc.graph.v5");
+    assert_eq!(value["schema_version"], "adoc.graph.v6");
     assert_eq!(value.get("graph_artifact_hash"), None);
     assert!(
         !artifact.contains("\"html\""),
@@ -218,13 +218,134 @@ fn graph_content_hash_is_stable_for_same_source() {
     assert_eq!(first, second);
 }
 
+/// E1.1.T1 acceptance: two snapshots differing only by file path and object
+/// position produce byte-identical `content_hash` values (ADR-0058 —
+/// placement is excluded from the governed-meaning hash).
 #[test]
-fn standalone_build_emits_graph_v5_without_repository_identity() {
+fn graph_content_hash_is_stable_across_file_path_and_object_position() {
+    let claims = |first: &str, second: &str, prefix: &str| {
+        format!(
+            concat!(
+                "# Graph @doc(team.graph)\n",
+                "\n",
+                "{prefix}",
+                "::claim {first}\n",
+                "status: draft\n",
+                "--\n",
+                "Body of {first}.\n",
+                "::\n",
+                "\n",
+                "::claim {second}\n",
+                "status: draft\n",
+                "--\n",
+                "Body of {second}.\n",
+                "::\n",
+            ),
+            prefix = prefix,
+            first = first,
+            second = second,
+        )
+    };
+
+    let build_at = |file: &str, source: &str| {
+        let workspace = TestWorkspace::new("graph-hash-placement");
+        let source_path = workspace.write(file, source);
+        let result = adoc_core::build_workspace(BuildInput {
+            root: source_path,
+            embeddings: BuildEmbeddingMode::Skipped,
+            prior_search_artifact_path: None,
+        });
+        assert!(
+            !result.has_errors(),
+            "build should pass: {:?}",
+            result.diagnostics
+        );
+        serde_json::from_str::<Value>(&result.artifacts.expect("artifacts are produced").graph_json)
+            .expect("graph artifact is JSON")
+    };
+
+    // Snapshot A: original file, alpha before beta, no leading prose.
+    let original = build_at("graph.adoc", &claims("billing.alpha", "billing.beta", ""));
+    // Snapshot B: renamed file in a subdirectory, objects reordered, and a
+    // prose paragraph shifting every line number.
+    let moved = build_at(
+        "moved/renamed.adoc",
+        &claims(
+            "billing.beta",
+            "billing.alpha",
+            "Intro prose shifts lines.\n\n",
+        ),
+    );
+
+    for id in ["billing.alpha", "billing.beta"] {
+        assert_eq!(
+            object_hash(&original, id),
+            object_hash(&moved, id),
+            "position-only move must not change the content_hash of {id}"
+        );
+    }
+}
+
+/// E1.1.T1 acceptance: a one-word body edit changes exactly one hash.
+#[test]
+fn one_word_body_edit_changes_exactly_one_content_hash() {
+    let source = |verb: &str| {
+        format!(
+            concat!(
+                "# Graph @doc(team.graph)\n",
+                "\n",
+                "::claim billing.credits\n",
+                "status: draft\n",
+                "--\n",
+                "Credits {verb} after successful payment.\n",
+                "::\n",
+                "\n",
+                "::claim billing.refunds\n",
+                "status: draft\n",
+                "--\n",
+                "Refunds require audit review.\n",
+                "::\n",
+            ),
+            verb = verb,
+        )
+    };
+    let hashes = |graph: &Value| -> Vec<(String, String)> {
+        graph["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .filter(|node| node["type"] == "knowledge_object")
+            .map(|node| {
+                (
+                    node["id"].as_str().expect("id").to_string(),
+                    node["content_hash"]
+                        .as_str()
+                        .expect("content_hash")
+                        .to_string(),
+                )
+            })
+            .collect()
+    };
+
+    let base = hashes(&build_graph_value(&source("apply")));
+    let edited = hashes(&build_graph_value(&source("post")));
+
+    let changed: Vec<_> = base
+        .iter()
+        .zip(edited.iter())
+        .filter(|(before, after)| before != after)
+        .collect();
+    assert_eq!(changed.len(), 1, "exactly one hash changes: {changed:?}");
+    assert_eq!(changed[0].0.0, "billing.credits");
+}
+
+#[test]
+fn standalone_build_emits_graph_v6_without_repository_identity() {
     let graph = build_graph_value(
         "# Graph @doc(team.graph)\n\n::claim billing.credits\nstatus: draft\n--\nCredits.\n::\n",
     );
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v5");
+    assert_eq!(graph["schema_version"], "adoc.graph.v6");
     assert!(graph.get("repository_identity").is_some());
     assert!(graph["repository_identity"].is_null());
     assert_eq!(graph["nodes"][0]["source_path"], "graph.adoc");
@@ -383,8 +504,9 @@ fn graph_content_hash_changes_when_node_semantics_change() {
     );
 
     assert_ne!(base, changed_body);
-    assert_ne!(base, changed_page);
-    assert_ne!(base, changed_source_span);
+    // ADR-0058: page and source span are placement — hash-invariant in v6.
+    assert_eq!(base, changed_page);
+    assert_eq!(base, changed_source_span);
     assert_ne!(base, changed_fields);
     assert_ne!(base, changed_relations);
 }
@@ -433,7 +555,7 @@ fn build_workspace_emits_graph_artifact_with_deterministic_order_when_embeddings
     );
     let artifacts = result.artifacts.expect("artifacts are produced");
     let graph: Value = serde_json::from_str(&artifacts.graph_json).expect("graph artifact is JSON");
-    assert_eq!(graph["schema_version"], "adoc.graph.v5");
+    assert_eq!(graph["schema_version"], "adoc.graph.v6");
     assert!(
         !artifacts.graph_json.contains("\"html\""),
         "graph artifact must not serialize HTML fragments: {}",
@@ -609,7 +731,7 @@ fn graph_traversal_applies_direction_and_relation_filters() {
 
 // ── V6.5.1: v4 golden api node ───────────────────────────────────────────────
 
-/// Pins the `adoc.graph.v5` api node shape: lifecycle-only `status`, method
+/// Pins the `adoc.graph.v6` api node shape: lifecycle-only `status`, method
 /// and path in the hashed `fields` map, and no `severity`/`trust` carriers —
 /// api is born under the ADR-0039 lifecycle-only rule.
 #[test]
@@ -629,7 +751,7 @@ fn built_api_node_is_lifecycle_only_with_method_and_path_fields() {
          ::\n",
     );
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v5");
+    assert_eq!(graph["schema_version"], "adoc.graph.v6");
 
     let api = graph["nodes"]
         .as_array()
@@ -677,7 +799,7 @@ fn built_observation_node_is_lifecycle_only_with_sample_size_and_observed_at_fie
          ::\n",
     );
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v5");
+    assert_eq!(graph["schema_version"], "adoc.graph.v6");
 
     let observation = graph["nodes"]
         .as_array()
@@ -755,7 +877,7 @@ fn built_answered_question_emits_resolved_by_edge_to_answering_claim() {
 
 // ── V6.5.4: v4 golden task node ──────────────────────────────────────────────
 
-/// Pins the `adoc.graph.v5` task node shape: lifecycle-only `status`, owner
+/// Pins the `adoc.graph.v6` task node shape: lifecycle-only `status`, owner
 /// and due in the hashed `fields` map, and no `severity`/`trust` carriers —
 /// task is born under the ADR-0039 lifecycle-only rule. The PRD §13.11
 /// `depends_on` relation emits a graph edge.
@@ -780,7 +902,7 @@ fn built_task_node_is_lifecycle_only_with_owner_and_due_fields() {
          ::\n",
     );
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v5");
+    assert_eq!(graph["schema_version"], "adoc.graph.v6");
 
     let task = graph["nodes"]
         .as_array()

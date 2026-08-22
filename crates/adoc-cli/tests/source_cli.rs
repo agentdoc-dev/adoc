@@ -111,7 +111,7 @@ fn build_emits_source_graph_node_with_expected_fields() {
         .expect("graph artifact is written");
     let graph: Value = serde_json::from_str(&graph_text).expect("graph json parses");
 
-    assert_eq!(graph["schema_version"], "adoc.graph.v5");
+    assert_eq!(graph["schema_version"], "adoc.graph.v6");
 
     let node = graph["nodes"]
         .as_array()

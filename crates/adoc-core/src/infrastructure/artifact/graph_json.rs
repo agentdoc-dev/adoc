@@ -25,7 +25,7 @@ use crate::domain::value_objects::evidence_kind::EvidenceKind;
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GraphJsonArtifact;
 
-pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v5";
+pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v6";
 
 pub(crate) fn read_graph_artifact_document(
     path: &Path,
@@ -689,45 +689,25 @@ fn impacts_to_graph(impacts: &[crate::domain::value_objects::rel_path::RelPath])
         .collect()
 }
 
+/// ADR-0058 (`adoc.graph.v6`): the governed-meaning hash payload. Placement
+/// (`page_id`, `source_span`) is excluded, derived projections never enter,
+/// and every member serializes unconditionally — v6 is a clean canonical
+/// form with no v3–v5 byte-compat serialization exceptions.
 #[derive(Serialize)]
 struct KnowledgeObjectHashPayload<'a> {
     id: &'a str,
     kind: &'a str,
     status: &'a Option<String>,
-    /// ADR-0039: authored carriers, hashed. Omitted when absent so kinds that
-    /// carry neither keep their v3 `content_hash` byte-for-byte.
-    #[serde(skip_serializing_if = "Option::is_none")]
     severity: &'a Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     trust: &'a Option<String>,
     body: &'a str,
-    page_id: &'a str,
-    source_span: &'a GraphSourceSpan,
     fields: &'a BTreeMap<String, String>,
     relations: &'a GraphRelations,
-    /// V3.3: omitted from canonical JSON when empty so claims without
-    /// `impacts:` keep their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     impacts: &'a Vec<String>,
-    /// V5.4: omitted from canonical JSON when empty so non-policy nodes keep
-    /// their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     approved_by: &'a Vec<String>,
-    /// V5.5: omitted from canonical JSON when empty so non-agent_instruction
-    /// nodes keep their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     allowed_actions: &'a Vec<String>,
-    /// V5.5: omitted from canonical JSON when empty so non-agent_instruction
-    /// nodes keep their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     forbidden_actions: &'a Vec<String>,
-    /// V5.6: omitted from canonical JSON when empty so non-contradiction nodes
-    /// keep their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     contradiction_claims: &'a Vec<String>,
-    /// V5.8: omitted from canonical JSON when empty so non-verified nodes keep
-    /// their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     evidence: &'a Vec<GraphEvidence>,
 }
 
@@ -739,8 +719,6 @@ pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNod
         severity: &node.severity,
         trust: &node.trust,
         body: &node.body,
-        page_id: &node.page_id,
-        source_span: &node.source_span,
         fields: &node.fields,
         relations: &node.relations,
         impacts: &node.impacts,
@@ -1700,10 +1678,11 @@ mod tests {
         );
     }
 
-    /// ADR-0039: kinds that carry neither severity nor trust keep their v3
-    /// hash payload byte-for-byte — the absent fields are skipped, not null.
+    /// ADR-0058: the v6 payload is one clean canonical form — every member
+    /// serializes unconditionally (absent options as null), and placement
+    /// (`page_id`, `source_span`) never appears.
     #[test]
-    fn hash_payload_omits_absent_severity_and_trust() {
+    fn hash_payload_excludes_placement_and_serializes_canonically() {
         let node = make_ko_node(None, None);
         let payload = KnowledgeObjectHashPayload {
             id: &node.id,
@@ -1712,8 +1691,6 @@ mod tests {
             severity: &node.severity,
             trust: &node.trust,
             body: &node.body,
-            page_id: &node.page_id,
-            source_span: &node.source_span,
             fields: &node.fields,
             relations: &node.relations,
             impacts: &node.impacts,
@@ -1725,8 +1702,12 @@ mod tests {
         };
         let canonical = serde_json::to_string(&payload).expect("payload serializes");
         assert!(
-            !canonical.contains("severity") && !canonical.contains("trust"),
-            "absent severity/trust must be omitted from the hash payload: {canonical}"
+            !canonical.contains("page_id") && !canonical.contains("source_span"),
+            "placement must be excluded from the hash payload: {canonical}"
+        );
+        assert!(
+            canonical.contains("\"severity\":null") && canonical.contains("\"trust\":null"),
+            "absent carriers serialize as null in the v6 canonical form: {canonical}"
         );
     }
 

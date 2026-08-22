@@ -5,7 +5,7 @@
     "provider": "deterministic",
     "dim": 4
   },
-  "graph_artifact_hash": "sha256:73d2b69febb043b447ca58d3447039198606127152dccb1120e4edb0aef149a3",
+  "graph_artifact_hash": "sha256:b7662500341ca77ba6ee38340f19d534fbb478e8016b5145e3924ee07ec709f0",
   "embeddings": [
     {
       "id": "billing.credits",

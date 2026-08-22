@@ -711,18 +711,19 @@ Current local retrieval focuses on the graph artifact:
 - prove retrieval against the billing pilot
 - build `docs.search.json` with local FastEmbed embeddings
 
-Graph artifacts use `adoc.graph.v5`. Config-backed check/build/review commands
+Graph artifacts use `adoc.graph.v6`. Config-backed check/build/review commands
 publish project-relative `/`-separated source paths and identify the project via
 `agentdoc.config.yaml`; explicit standalone check/build inputs publish
 invocation-relative paths with `"repository_identity": null`. The same source
 revision therefore produces the same Knowledge Object hashes in another clone
 or review worktree. The machine-readable contract is
-[`graph-artifact.v5.json`](docs/agent/v0/schema/graph-artifact.v5.json).
+[`graph-artifact.v6.json`](docs/agent/v0/schema/graph-artifact.v6.json).
 
-Upgrading from graph v4 requires one rebuild. Regenerate `docs.graph.json`,
-regenerate or re-embed `docs.search.json`, and recreate any in-flight patch
-documents whose `base_hash` came from v4. Readers reject v4 explicitly instead
-of silently mixing hash domains.
+Upgrading from an earlier graph version requires one rebuild. Regenerate
+`docs.graph.json`, regenerate or re-embed `docs.search.json`, and recreate any
+in-flight patch documents whose `base_hash` came from the earlier version.
+Readers reject earlier versions explicitly instead of silently mixing hash
+domains.
 
 The shipped surface also includes Markdown migration, review/impact workflows, deterministic local change assessment, patch validation/application, the expanded fifteen-kind schema, MCP, the composite GitHub Action, evidence-anchor drift checks, exact-SHA GitHub delivery of the assessment envelope, cited optional semantic review, and governed proposals. The next detailed cycle is Product V1 (V10): the graph v6 contract spine and provider-neutral assessment, then the Cloud control plane and governance trust chain.
 

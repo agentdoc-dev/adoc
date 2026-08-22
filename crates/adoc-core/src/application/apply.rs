@@ -183,9 +183,10 @@ pub(crate) fn apply_trace(interface: &str, patch: &PatchDocument) -> ApplyTrace 
 /// Apply a patch document against the graph artifact at
 /// `graph_artifact_path`, recompiling the working tree through
 /// `source_provider` (which must resolve the docs root exactly as
-/// `check`/`build` do — `content_hash` payloads embed source paths, so a
-/// differently-spelled root reads as source drift) and writing through
-/// `writer` (sandboxed to the project root).
+/// `check`/`build` do) and writing through `writer` (sandboxed to the
+/// project root). ADR-0058: `content_hash` covers governed meaning only, so
+/// the drift gate below catches semantic drift; placement/source-revision
+/// protection is the Source Binding digest gate (E1.1.T2).
 pub(crate) fn apply_patch_with_ports<G, P, W>(
     graph_artifact_path: &Path,
     patch: PatchDocument,
