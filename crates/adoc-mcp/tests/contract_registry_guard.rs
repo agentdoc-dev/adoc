@@ -819,10 +819,10 @@ fn fenced_lists_in(section: &str) -> Vec<Vec<String>> {
                 Some(block) => blocks.push(block),
                 None => current = Some(Vec::new()),
             }
-        } else if let Some(block) = current.as_mut() {
-            if !trimmed.is_empty() {
-                block.push(trimmed.to_string());
-            }
+        } else if let Some(block) = current.as_mut()
+            && !trimmed.is_empty()
+        {
+            block.push(trimmed.to_string());
         }
     }
     assert!(
