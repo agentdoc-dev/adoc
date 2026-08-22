@@ -76,9 +76,11 @@ The 2026-08-12 planning session produced D01–D35. The 2026-08-13 red-team prod
 
 Decision work owed at a named slice start, tracked here so it cannot silently lapse (E0.3.T5).
 
+<!-- decisions:obligations -->
 | ID | Obligation | Owed at | Provenance |
 | --- | --- | --- | --- |
 | O-01 | Repository-readiness true-up for `adoc.repository_baseline.v0`, which shipped in PR #140 without a decision record or contract registration: a retroactive ADR, a published schema, and a parity test must exist before Cloud ingestion consumes the envelope. Registry row: [`CONTRACT-REGISTRY.md`](CONTRACT-REGISTRY.md). | E4.6 slice start | V10.1.6 (historical), RT-21 |
+<!-- /decisions:obligations -->
 
 ## Required post-V1 commitments
 

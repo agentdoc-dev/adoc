@@ -568,6 +568,49 @@ fn cited_codes_resolve_to_registered_entries_only() {
     );
 }
 
+/// The decision register's executable obligations table claims O-01 "cannot
+/// silently lapse" — this is what makes that claim true: deleting the row or
+/// blanking its "Owed at" cell fails here (E0.3.T5).
+#[test]
+fn obligations_table_pins_o01() {
+    const DECISION_REGISTER: &str = "docs/roadmap/v10/DECISION-REGISTER.md";
+    let content = read_repo_doc(DECISION_REGISTER);
+    if let Some(opener) = support::doc_scan::unclosed_fence(&content) {
+        panic!(
+            "{DECISION_REGISTER}:{opener}: fence never closes — the table below may be invisible"
+        );
+    }
+    let block =
+        support::doc_scan::anchored_block(&content, DECISION_REGISTER, "decisions:obligations");
+    let row = block
+        .lines()
+        .map(str::trim)
+        .find(|line| {
+            line.strip_prefix('|')
+                .and_then(|rest| rest.split('|').next())
+                .is_some_and(|cell| cell.trim() == "O-01")
+        })
+        .unwrap_or_else(|| {
+            panic!("{DECISION_REGISTER}: the O-01 obligation row is gone — the E4.6 true-up lapsed")
+        });
+    let owed_at = row.split('|').nth(3).map(str::trim).unwrap_or_default();
+    let is_slice_start = owed_at
+        .strip_prefix('E')
+        .and_then(|rest| rest.strip_suffix(" slice start"))
+        .and_then(|slice| slice.split_once('.'))
+        .is_some_and(|(major, minor)| {
+            !major.is_empty()
+                && major.chars().all(|c| c.is_ascii_digit())
+                && !minor.is_empty()
+                && minor.chars().all(|c| c.is_ascii_digit())
+        });
+    assert!(
+        is_slice_start,
+        "{DECISION_REGISTER}: O-01's \"Owed at\" cell must name an executable \
+         `E<major>.<minor> slice start`, got {owed_at:?}"
+    );
+}
+
 #[test]
 fn semantic_failed_has_exactly_one_disposition() {
     let registry = registry();
