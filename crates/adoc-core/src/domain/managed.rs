@@ -107,6 +107,18 @@ pub(crate) enum ManagedIdentityError {
 /// it can exist before the first artifact arrives, and its Object IDs stay
 /// repository-local — the same ID in another repository is a different
 /// Managed Object.
+///
+/// The graph identity names the producing invocation family, not a
+/// workspace-unique repository: every project-bound build emits the
+/// constant `{local_project, "agentdoc.config.yaml"}`
+/// (`FsSourceProvider::repository_identity`, ADR-0049 §7), so two
+/// physical repositories importing under the producer identity are one
+/// record to this aggregate. Identity-equality keying is therefore the
+/// single-repository convenience only. A multi-repository workspace
+/// routes each import to a reserved slot explicitly — the key supplied
+/// by the caller from its authenticated channel, never read from the
+/// artifact — with the reserved binding slot as the disambiguator; that
+/// routing path is E1.3 scope (PR #150 adjudication).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedRepositoryRecord {
     pub(crate) repository_identity: GraphRepositoryIdentity,
@@ -271,6 +283,15 @@ impl ManagedWorkspace {
     /// intra-artifact shape of the merge RT-03/D36 forbids), and a
     /// malformed hash would be enshrined in an immutable version and
     /// compared for RT-04 unchanged-ness ever after.
+    ///
+    /// Two deliberate boundaries: (1) unlike `GraphIndex::from_document`,
+    /// which degrades per node into diagnostics, one bad node rejects the
+    /// whole document — at this trust boundary a partial import would be
+    /// a silent drop; (2) the artifact's self-declared
+    /// `repository_identity` is taken as the record key, which
+    /// distinguishes repositories only as far as the caller's identities
+    /// do ([`ManagedRepositoryRecord`]) — a caller on a trust boundary
+    /// routes to a reserved slot instead of trusting the payload (E1.3).
     pub(crate) fn import_artifact(
         &mut self,
         artifact: &GraphArtifactDocument,
@@ -281,6 +302,8 @@ impl ManagedWorkspace {
             .iter()
             .filter_map(GraphNode::as_knowledge_object)
         {
+            // Blank is a strict subset of the grammar failure below —
+            // checked first only for the more precise error.
             if node.id.trim().is_empty() {
                 return Err(ManagedIdentityError::BlankObjectId);
             }
@@ -1141,5 +1164,49 @@ mod tests {
         assert_ne!(in_project.canonical, in_standalone.canonical);
         assert_eq!(in_project.versions[0].content_hash, "sha256:aaa");
         assert_eq!(in_standalone.versions[0].content_hash, "sha256:bbb");
+    }
+
+    /// Pins what the wire actually exhibits today: every project-bound
+    /// artifact the compiler emits carries the constant
+    /// `{local_project, "agentdoc.config.yaml"}` identity
+    /// (`FsSourceProvider::repository_identity`, ADR-0049 §7), so two
+    /// physical repositories importing under the producer identity are
+    /// one record here — the shared Object ID appends as a revision and
+    /// no candidate is emitted. Identity-equality keying distinguishes
+    /// repositories only as far as the caller's identities do
+    /// ([`ManagedRepositoryRecord`]); explicit routing to a reserved
+    /// binding slot (V10.3.2) is E1.3 scope, and the Cloud cut keys
+    /// uploads from its authenticated channel, never from the artifact.
+    #[test]
+    fn identical_producer_identities_collapse_into_one_repository_record() {
+        let mut workspace = workspace();
+        let producer = local_repo("agentdoc.config.yaml");
+
+        workspace
+            .import_artifact(&artifact(
+                producer.clone(),
+                vec![knowledge_object("billing.credits", "sha256:aaa")],
+            ))
+            .expect("import accepted");
+        let second = workspace
+            .import_artifact(&artifact(
+                producer.clone(),
+                vec![knowledge_object("billing.credits", "sha256:bbb")],
+            ))
+            .expect("import accepted");
+
+        assert!(
+            second.reconciliation_candidates.is_empty(),
+            "equal keys are one repository: no cross-repository collision exists to announce"
+        );
+        let object = &workspace
+            .repository(&producer)
+            .expect("one record under the producer identity")
+            .objects["billing.credits"];
+        assert_eq!(
+            object.versions.len(),
+            2,
+            "the second import appends a revision of the first repository's object"
+        );
     }
 }
