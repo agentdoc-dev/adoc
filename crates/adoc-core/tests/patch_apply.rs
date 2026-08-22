@@ -426,6 +426,58 @@ fn v5_derived_base_hash_fails_loudly_and_v6_base_hash_validates() {
     assert!(applied.applied, "diagnostics: {:?}", applied.diagnostics);
 }
 
+/// E1.1.T2 (ADR-0058 §4): a create anchored `after` an object splices into
+/// that object's page, so the anchor's Source Binding must prove the page
+/// bytes are still the built revision. A position-only edit keeps the
+/// anchor's placement-blind `content_hash` equal while the page moved on —
+/// the create must refuse with `patch.source_binding_stale`, not splice
+/// against a source revision the proposal never saw.
+#[test]
+fn create_apply_refuses_stale_anchor_source_binding_after_position_only_edit() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+        .as_str()
+        .expect("anchor page_id")
+        .to_string();
+
+    let moved_on = PAGE_TEXT.replace("# Billing\n", "# Billing\n\nNew intro prose.\n");
+    assert_ne!(moved_on, PAGE_TEXT, "fixture edit must change the page");
+    fs::write(workspace.page_path(), &moved_on).expect("write moved-on page");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.ledger-claim",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Ledger commits settle credits.",
+                "placement": { "page_id": page_id, "after": "billing.credits" }
+            },
+            "reason": "E1.1 create-anchor binding gate test"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagnosticCode::PatchSourceBindingStale),
+        "diagnostics: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        moved_on,
+        "refusal writes nothing"
+    );
+}
+
 #[test]
 fn recompiling_unchanged_source_reproduces_artifact_content_hashes() {
     // Drift-gate soundness: apply's in-memory recompile must reproduce the
