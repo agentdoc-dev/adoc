@@ -28,9 +28,10 @@ with rebuild guidance in the diagnostic.
 ## What changed in `adoc.graph.v6`
 
 - **`content_hash` covers governed meaning only.** Placement — `page_id`,
-  `source_span` (Logical Source Path, line, column) — is no longer hashed.
-  Moving an object to another file or position leaves its hash byte-identical;
-  `adoc diff` reports zero changes for position-only moves.
+  `source_span` (Logical Source Path, line, column) — and object identity
+  (`id`, the K6 identity layer) are no longer hashed. Moving an object to
+  another file or position leaves its hash byte-identical; `adoc diff`
+  reports zero changes for position-only moves.
 - **Every per-object hash changed.** The payload re-scope (and the removal of
   the v3–v5 byte-compat serialization exceptions) changes the canonical bytes
   of every object, even ones that never carried placement-adjacent fields.
