@@ -131,8 +131,13 @@ pub(crate) struct ManagedObjectRecord {
 pub(crate) struct ManagedVersionRecord {
     pub(crate) version_id: ManagedVersionId,
     pub(crate) content_hash: String,
-    /// The exact Source Binding observed at import time, when the artifact
-    /// carried one.
+    /// The exact Source Binding observed when this version was minted,
+    /// when the artifact carried one. A same-hash re-observation with a
+    /// changed binding (document moved, rename-only source revision) mints
+    /// nothing and does **not** refresh this record: versions are
+    /// immutable, and a placement change is not a content change (RT-04,
+    /// ADR-0058 — placement is excluded from the v6 hash). Re-observation
+    /// freshness is the connector/store's concern (E4.1).
     pub(crate) source_binding: Option<GraphSourceBinding>,
     /// Contributing Source Assertions. Empty until the Source
     /// Record/Assertion store lands (E4.1).
@@ -180,6 +185,11 @@ pub(crate) struct ManagedImportOutcome {
     /// meaning mints nothing — a re-observation is not a new content
     /// version (RT-04).
     pub(crate) imported: Vec<ImportedVersion>,
+    /// A collision is announced exactly once — on the colliding Object
+    /// ID's first appearance in a repository — and is not re-derivable
+    /// from the aggregate afterwards. The caller owns persisting every
+    /// candidate until it is decided (durability is the Cloud cut,
+    /// E1.2.T3; decisions are E1.3).
     pub(crate) reconciliation_candidates: Vec<ReconciliationCandidate>,
 }
 
@@ -598,6 +608,46 @@ mod tests {
         assert_eq!(first.imported[0].canonical, second.imported[0].canonical);
         assert_eq!(second.imported[0].object_id, "billing.credits");
         assert!(second.reconciliation_candidates.is_empty());
+    }
+
+    /// Pins the binding-retention contract: a same-hash re-observation
+    /// carrying a *changed* Source Binding mints nothing and keeps the
+    /// original binding — versions are immutable and placement is not
+    /// content (RT-04, ADR-0058). Re-observation freshness is E4.1's
+    /// concern, and the Cloud cut copies this behavior.
+    #[test]
+    fn reimporting_unchanged_content_with_a_new_binding_keeps_the_original() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+        let binding = |path: &str, digest: &str| GraphSourceBinding {
+            connector: "local_fs".to_string(),
+            source: "team.page".to_string(),
+            revision: None,
+            path: path.to_string(),
+            anchor: "billing.credits".to_string(),
+            source_revision_digest: digest.to_string(),
+        };
+        let mut node = knowledge_object("billing.credits", "sha256:aaa");
+        node.source_binding = Some(binding("docs/team.adoc", "sha256:feed"));
+        let original = node.source_binding.clone();
+        workspace
+            .import_artifact(&artifact(repo.clone(), vec![node]))
+            .expect("import accepted");
+
+        let mut moved = knowledge_object("billing.credits", "sha256:aaa");
+        moved.source_binding = Some(binding("docs/moved.adoc", "sha256:beef"));
+        let again = workspace
+            .import_artifact(&artifact(repo.clone(), vec![moved]))
+            .expect("import accepted");
+
+        assert!(again.imported.is_empty());
+        let object =
+            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        assert_eq!(object.versions.len(), 1);
+        assert_eq!(
+            object.versions[0].source_binding, original,
+            "an immutable version keeps the binding observed when it was minted"
+        );
     }
 
     /// RT-04: re-observing unchanged governed meaning is not a new content
