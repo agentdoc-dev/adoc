@@ -12,10 +12,12 @@
 //!
 //! Managed import (RT-03, D36): matching Object IDs, titles, hashes, or
 //! semantic similarity never auto-merge. A same-ID collision across
-//! repositories retains every object distinct and emits a typed
-//! [`ReconciliationCandidate`] (`adoc.reconciliation_candidate.v0`,
-//! registered planned in CONTRACT-REGISTRY.md); deciding a candidate is a
-//! governed E1.3 action, never an import side effect.
+//! distinctly keyed repositories (see [`ManagedRepositoryRecord`] for what
+//! the graph identity does and does not distinguish) retains every object
+//! distinct and emits a typed [`ReconciliationCandidate`]
+//! (`adoc.reconciliation_candidate.v0`, registered planned in
+//! CONTRACT-REGISTRY.md); deciding a candidate is a governed E1.3 action,
+//! never an import side effect.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -126,11 +128,12 @@ fn content_hash_matches_published_grammar(value: &str) -> bool {
 /// (`FsSourceProvider::repository_identity`, ADR-0049 §7), so two
 /// physical repositories importing under the producer identity are one
 /// record to this aggregate. Identity-equality keying is therefore the
-/// single-repository convenience only. A multi-repository workspace
-/// routes each import to a reserved slot explicitly — the key supplied
-/// by the caller from its authenticated channel, never read from the
-/// artifact — with the reserved binding slot as the disambiguator; that
-/// routing path is E1.3 scope (PR #150 adjudication).
+/// single-repository convenience only. E1.3 adds explicit routing for
+/// the multi-repository workspace — a caller-supplied repository key
+/// bound from the authenticated channel, never read from the artifact,
+/// with the reserved binding slot (V10.3.2) as the disambiguator (PR
+/// #150 adjudication); until then the artifact's declared identity *is*
+/// the key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedRepositoryRecord {
     pub(crate) repository_identity: GraphRepositoryIdentity,
@@ -302,8 +305,10 @@ impl ManagedWorkspace {
     /// a silent drop; (2) the artifact's self-declared
     /// `repository_identity` is taken as the record key, which
     /// distinguishes repositories only as far as the caller's identities
-    /// do ([`ManagedRepositoryRecord`]) — a caller on a trust boundary
-    /// routes to a reserved slot instead of trusting the payload (E1.3).
+    /// do ([`ManagedRepositoryRecord`]) — E1.3 adds a caller-supplied
+    /// repository key so the record is bound from the authenticated
+    /// channel rather than the payload; until then the artifact's
+    /// declared identity *is* the key.
     pub(crate) fn import_artifact(
         &mut self,
         artifact: &GraphArtifactDocument,
