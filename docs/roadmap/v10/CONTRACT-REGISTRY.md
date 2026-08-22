@@ -327,3 +327,47 @@ Codes resolved out of existence (RT-21). A disposition is permanent: the id is n
 | --- | --- |
 | `action.semantic_failed` | removed — appeared only in pre-V10 planning text and never shipped (no occurrence in Action v2.0.0-alpha.19 sources); the shipped registered code `action.semantic_review_failed` is the single canonical Action semantic-failure reason code, and any gate-matrix or planning reference resolves there |
 <!-- /registry:dispositions -->
+
+## Untrusted-change states — owner `adoc` contracts, produced by `action`/`cloud`
+
+The closed S8 state vocabulary for the base-controlled trusted workflow ([`SEMANTICS.md §S8`](SEMANTICS.md#s8-base-controlled-trusted-workflow-for-untrusted-changes), E3.8). A new state is a registry edit plus an S8 amendment, never an ad hoc string.
+
+<!-- registry:untrusted-change-states -->
+| state |
+| --- |
+| `not_required` |
+| `awaiting_authorization` |
+| `authorized` |
+| `running` |
+| `completed` |
+| `denied` |
+| `failed` |
+| `expired_after_head_change` |
+<!-- /registry:untrusted-change-states -->
+
+## Source retention classes — owner `adoc` contracts, enforced by `cloud`
+
+The closed K9 retention-class vocabulary ([`KNOWLEDGE-MODEL.md §K9`](KNOWLEDGE-MODEL.md#k9-policy-driven-layered-source-retention), E6.6). Full source mirroring stays exceptional and disabled by default.
+
+<!-- registry:retention-classes -->
+| class |
+| --- |
+| `digest_only` |
+| `bounded_evidence` |
+| `exact_candidate_input` |
+| `temporary_processing` |
+| `full_source_snapshot` |
+<!-- /registry:retention-classes -->
+
+## Replay postures — owner `adoc` contracts, recorded by `cloud`
+
+The closed K9 replay-posture vocabulary. A digest-only record is never `fully_replayable`; deleting retained evidence appends a deletion/tombstone event and updates the posture without rewriting governance history.
+
+<!-- registry:replay-postures -->
+| posture |
+| --- |
+| `fully_replayable` |
+| `source_access_required` |
+| `intentionally_non_replayable` |
+| `no_longer_replayable_after_deletion` |
+<!-- /registry:replay-postures -->
