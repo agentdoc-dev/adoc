@@ -295,8 +295,8 @@ Artifact-only validation of one **Agent Patch** against a **Graph Artifact**. It
 _Avoid_: applying edits, mutating graph JSON, bypassing source review
 
 **Proof Obligation**:
-A review-time requirement emitted when a patch touches knowledge that needs renewed evidence, especially Verified Claims. It records what evidence or follow-up must be resolved before humans or agents treat the proposed change as approved knowledge.
-_Avoid_: validation error by default, approval, automated trust upgrade
+A review-time requirement emitted when a patch touches knowledge that needs renewed evidence, especially Verified Claims. It records what evidence or follow-up must be resolved before humans or agents treat the proposed change as approved knowledge. Since E1.6 the concept also exists as a typed, stateful, stage-bound record (`adoc.proof_obligation.v0`, `domain/obligation_record.rs`): state `open|satisfied|waived|failed|expired`, `required_at` naming one of the six K8 stages, bound to the exact Managed Object version — both vocabularies registered and closed. Whether an obligation is informational or blocking at a stage/risk/action is classification-policy data, never code. The stateless wire shape embedded in `adoc.review.v0`/`adoc.patch.check.v0` is unchanged; a bridge constructor lifts it into the stage-bound record.
+_Avoid_: validation error by default, approval, automated trust upgrade, hard-coded stage or role blocking
 
 **Embedding Provider**:
 The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the deterministic adapter is available for repeatable local/offline use.

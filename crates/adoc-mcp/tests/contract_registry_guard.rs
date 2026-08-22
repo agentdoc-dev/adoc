@@ -97,6 +97,8 @@ const ANCHORS: &[&str] = &[
     "registry:retention-classes",
     "registry:replay-postures",
     "registry:managed-state-dimensions",
+    "registry:proof-obligation-states",
+    "registry:proof-obligation-stages",
 ];
 
 /// True for `adoc.<dotted lowercase path>.v<digits>` — the envelope
@@ -938,18 +940,18 @@ const RETENTION_CLASSES: [&str; 5] = [
     "full_source_snapshot",
 ];
 
-/// The wire strings of `ReplayPosture::as_str` in adoc-core, parsed
-/// from the source in declaration order — the E1.4 domain enum for the
-/// vocabulary this table registered in E0.3.T4 must not drift from it.
-fn replay_posture_wire_strings() -> Vec<String> {
-    let content = read_repo_doc("crates/adoc-core/src/domain/managed_state.rs");
+/// The wire strings of one closed-vocabulary enum's `as_str` in an
+/// adoc-core source file, parsed in declaration order — the domain enum
+/// for a registered vocabulary must not drift from its registry table.
+fn as_str_wire_strings(relative: &str, impl_marker: &str, arms: usize) -> Vec<String> {
+    let content = read_repo_doc(relative);
     let start = content
-        .find("impl ReplayPosture")
-        .expect("managed_state.rs no longer carries `impl ReplayPosture`");
+        .find(impl_marker)
+        .unwrap_or_else(|| panic!("{relative} no longer carries `{impl_marker}`"));
     let block = &content[start..];
     let end = block
         .find("\n}")
-        .expect("managed_state.rs: `impl ReplayPosture` block never closes");
+        .unwrap_or_else(|| panic!("{relative}: `{impl_marker}` block never closes"));
     let strings: Vec<String> = block[..end]
         .lines()
         .filter_map(|line| line.split_once("=> \"")?.1.split_once('"'))
@@ -957,11 +959,21 @@ fn replay_posture_wire_strings() -> Vec<String> {
         .collect();
     assert_eq!(
         strings.len(),
-        4,
-        "ReplayPosture::as_str parse found {} arms — the pattern drifted",
+        arms,
+        "`{impl_marker}` as_str parse found {} arms — the pattern drifted",
         strings.len()
     );
     strings
+}
+
+/// The wire strings of `ReplayPosture::as_str` in adoc-core — the E1.4
+/// domain enum for the vocabulary this table registered in E0.3.T4.
+fn replay_posture_wire_strings() -> Vec<String> {
+    as_str_wire_strings(
+        "crates/adoc-core/src/domain/managed_state.rs",
+        "impl ReplayPosture",
+        4,
+    )
 }
 
 #[test]
@@ -1111,6 +1123,105 @@ fn managed_state_dimensions_match_k4() {
          per-connector `required_before_effective` flag"
     );
 }
+
+/// The two closed vocabularies in KNOWLEDGE-MODEL §K8's first fenced
+/// block: the `state:` line's values, then the `required_at:`
+/// continuation lines' values (both `|`-separated, in document order).
+fn k8_obligation_vocabularies() -> (Vec<String>, Vec<String>) {
+    let knowledge_model = read_repo_doc("docs/roadmap/v10/KNOWLEDGE-MODEL.md");
+    let section = annex_section(&knowledge_model, "KNOWLEDGE-MODEL.md", "## K8.");
+    let lists = fenced_lists_in(section);
+    assert_eq!(
+        lists.len(),
+        2,
+        "KNOWLEDGE-MODEL.md §K8 must carry exactly its two fenced blocks \
+         (state/required_at vocabularies, the Approved · Not verified · \
+         Pending effectivity composite), found {}",
+        lists.len()
+    );
+    let split = |values: &str| -> Vec<String> {
+        values
+            .split('|')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+    let mut states = Vec::new();
+    let mut stages = Vec::new();
+    let mut in_stages = false;
+    for line in &lists[0] {
+        if let Some(values) = line.strip_prefix("state:") {
+            in_stages = false;
+            states.extend(split(values));
+        } else if line == "required_at:" {
+            in_stages = true;
+        } else if in_stages {
+            stages.extend(split(line));
+        } else {
+            panic!("KNOWLEDGE-MODEL.md §K8: unrecognized vocabulary line {line:?}");
+        }
+    }
+    (states, stages)
+}
+
+/// The K8 proof-obligation vocabularies (E1.6, decision D16): registry
+/// rows, the pinned lists here, KNOWLEDGE-MODEL §K8's fenced block, and
+/// adoc-core's `ObligationState`/`ObligationStage` wire strings must
+/// agree exactly — a change anywhere is a registry edit plus a §K8
+/// amendment, never one alone.
+#[test]
+fn proof_obligation_vocabularies_match_k8() {
+    assert_vocabulary(
+        "registry:proof-obligation-states",
+        "KNOWLEDGE-MODEL.md §K8",
+        &OBLIGATION_STATES,
+    );
+    assert_vocabulary(
+        "registry:proof-obligation-stages",
+        "KNOWLEDGE-MODEL.md §K8",
+        &OBLIGATION_STAGES,
+    );
+    let (states, stages) = k8_obligation_vocabularies();
+    assert_eq!(
+        states,
+        OBLIGATION_STATES.map(String::from),
+        "KNOWLEDGE-MODEL.md §K8's state vocabulary drifted from the \
+         registry — amend both together, never one alone"
+    );
+    assert_eq!(
+        stages,
+        OBLIGATION_STAGES.map(String::from),
+        "KNOWLEDGE-MODEL.md §K8's required_at vocabulary drifted from the \
+         registry — amend both together, never one alone"
+    );
+    const OBLIGATION_RECORD: &str = "crates/adoc-core/src/domain/obligation_record.rs";
+    assert_eq!(
+        as_str_wire_strings(OBLIGATION_RECORD, "impl ObligationState", 5),
+        OBLIGATION_STATES.map(String::from),
+        "adoc-core's ObligationState wire strings drifted from the registry — \
+         amend the registry and KNOWLEDGE-MODEL §K8 together with the code, \
+         never one alone"
+    );
+    assert_eq!(
+        as_str_wire_strings(OBLIGATION_RECORD, "impl ObligationStage", 6),
+        OBLIGATION_STAGES.map(String::from),
+        "adoc-core's ObligationStage wire strings drifted from the registry — \
+         amend the registry and KNOWLEDGE-MODEL §K8 together with the code, \
+         never one alone"
+    );
+}
+
+const OBLIGATION_STATES: [&str; 5] = ["open", "satisfied", "waived", "failed", "expired"];
+
+const OBLIGATION_STAGES: [&str; 6] = [
+    "proposal_validation",
+    "approval",
+    "verification",
+    "effectivity",
+    "connector_synchronization",
+    "agent_action",
+];
 
 const MANAGED_STATE_DIMENSIONS: [&str; 27] = [
     "governance.proposed",
