@@ -148,6 +148,8 @@ pub(crate) mod test_support {
                 column: 1,
             },
             source_binding: None,
+            visibility: None,
+            field_visibility: None,
             fields: BTreeMap::new(),
             relations: GraphRelations::default(),
             impacts: Vec::new(),

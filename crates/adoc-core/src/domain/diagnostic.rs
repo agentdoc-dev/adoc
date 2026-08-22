@@ -79,6 +79,10 @@ diagnostic_codes! {
         "Add the required field with a non-empty value.";
     SchemaDuplicateField = "schema.duplicate_field" =>
         "Keep only one value for each field inside the object.";
+    SchemaUnknownField = "schema.unknown_field" =>
+        "Remove the unknown field or rename it to one of the kind's allowed fields.";
+    SchemaVisibilityInvalid = "schema.visibility_invalid" =>
+        "Author one of: public, internal, restricted. An invalid visibility never falls back to a default.";
     SchemaInvalidStatus = "schema.invalid_status" =>
         "Use one of the allowed status values for this object kind.";
     SchemaConstraintMissingSeverity = "schema.constraint_missing_severity" =>

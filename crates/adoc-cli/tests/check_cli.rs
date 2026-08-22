@@ -282,6 +282,92 @@ fn check_unclosed_fence_diagnostic_surfaces_all_six_fields() {
     assert!(stdout.contains("1 errors"));
 }
 
+/// E1.1.T3 (ADR-0058): a misspelled field key on a claim fails `adoc check`
+/// closed with `schema.unknown_field` naming the key and the kind's allowed
+/// field set — per-kind schemas are closed, never open metadata.
+#[test]
+fn check_rejects_unknown_field_naming_key_and_allowed_set() {
+    let workspace = TestWorkspace::new("check-unknown-field");
+    let source = workspace.write(
+        "claims.adoc",
+        concat!(
+            "# Claims @doc(team.claims)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "onwer: team-billing\n",
+            "--\n",
+            "Credits body.\n",
+            "::\n",
+        ),
+    );
+
+    let output = adoc_command()
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "an unknown field must fail check closed"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.unknown_field]"),
+        "expected schema.unknown_field code in stdout:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("`onwer`"),
+        "expected the diagnostic to name the unknown key:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("owner") && stdout.contains("verified_at"),
+        "expected the diagnostic to list the claim's allowed field set:\n{stdout}"
+    );
+}
+
+/// E1.1.T3 (ADR-0058 §3): an invalid visibility value fails `adoc check`
+/// closed with `schema.visibility_invalid` — never a silent public default.
+#[test]
+fn check_rejects_invalid_visibility_without_silent_default() {
+    let workspace = TestWorkspace::new("check-visibility-invalid");
+    let source = workspace.write(
+        "claims.adoc",
+        concat!(
+            "# Claims @doc(team.claims)\n",
+            "\n",
+            "::claim billing.credits\n",
+            "status: draft\n",
+            "visibility: secret\n",
+            "--\n",
+            "Credits body.\n",
+            "::\n",
+        ),
+    );
+
+    let output = adoc_command()
+        .args(["check", source.to_str().expect("source path is utf-8")])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        !output.status.success(),
+        "an invalid visibility must fail check closed"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error[schema.visibility_invalid]"),
+        "expected schema.visibility_invalid code in stdout:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("`secret`")
+            && stdout.contains("public")
+            && stdout.contains("internal")
+            && stdout.contains("restricted"),
+        "expected the diagnostic to name the value and the closed set:\n{stdout}"
+    );
+}
+
 #[test]
 fn check_rejects_unsafe_link_with_source_location() {
     let workspace = TestWorkspace::new("check-rejects-unsafe-link");

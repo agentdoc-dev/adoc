@@ -16,11 +16,12 @@ use crate::domain::graph::{
 };
 use crate::domain::inline::{InlineSegment, to_source};
 use crate::domain::knowledge_object::{
-    KnowledgeObject, RelationTarget, Relations, contradiction::Contradiction, policy::Policy,
-    projection::MetadataField,
+    FIELD_VISIBILITY_FIELD, KnowledgeObject, RelationTarget, Relations, VISIBILITY_FIELD,
+    contradiction::Contradiction, policy::Policy, projection::MetadataField,
 };
 use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::ArtifactWriter};
 use crate::domain::value_objects::evidence_kind::EvidenceKind;
+use crate::domain::value_objects::visibility::parse_field_visibility;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GraphJsonArtifact;
@@ -470,6 +471,25 @@ fn knowledge_object_to_graph_node_without_hash(
     // parseable kind, the field is omitted.
     let evidence_quality = best_evidence_quality(&evidence);
 
+    // ADR-0058 §3 (E1.1.T3): the visibility classifications are dedicated
+    // typed members, not free-form fields — pull them out of the metadata
+    // map. Values were validated (or removed) by the closed-schema check in
+    // `resolve_pending_block`, so the map parse cannot fail for
+    // resolver-built objects; if a test-constructed object carries an
+    // unparseable value it stays in `fields` (still serialized and hashed —
+    // no silent loss).
+    let mut fields = metadata_fields_to_graph(metadata.fields());
+    let visibility = fields.remove(VISIBILITY_FIELD);
+    let mut field_visibility = None;
+    if let Some(raw) = fields.remove(FIELD_VISIBILITY_FIELD) {
+        match parse_field_visibility(&raw) {
+            Ok(entries) => field_visibility = Some(entries),
+            Err(_) => {
+                fields.insert(FIELD_VISIBILITY_FIELD.to_string(), raw);
+            }
+        }
+    }
+
     GraphKnowledgeObjectNode {
         id: knowledge_object.id().as_str().to_string(),
         kind: knowledge_object.kind().as_str().to_string(),
@@ -492,7 +512,11 @@ fn knowledge_object_to_graph_node_without_hash(
             anchor: knowledge_object.id().as_str().to_string(),
             source_revision_digest: page_source_digest.to_string(),
         }),
-        fields: metadata_fields_to_graph(metadata.fields()),
+        // ADR-0058 §3 (E1.1.T3): authored classifications — hash-included
+        // when authored, absent otherwise.
+        visibility,
+        field_visibility,
+        fields,
         relations: relations_to_graph(knowledge_object.relations()),
         impacts: impacts_to_graph(knowledge_object.impacts()),
         approved_by,
@@ -731,6 +755,14 @@ struct KnowledgeObjectHashPayload<'a> {
     severity: &'a Option<String>,
     trust: &'a Option<String>,
     body: &'a str,
+    /// ADR-0058 §3: authored classifications are hash-included; absence
+    /// means `public` by definition and is deliberately NOT serialized into
+    /// the payload (the one canonical-form exception), so objects without a
+    /// classification keep their pre-T3 v6 hashes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    visibility: &'a Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    field_visibility: &'a Option<BTreeMap<String, String>>,
     fields: &'a BTreeMap<String, String>,
     relations: &'a GraphRelations,
     impacts: &'a Vec<String>,
@@ -749,6 +781,8 @@ pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNod
         severity: &node.severity,
         trust: &node.trust,
         body: &node.body,
+        visibility: &node.visibility,
+        field_visibility: &node.field_visibility,
         fields: &node.fields,
         relations: &node.relations,
         impacts: &node.impacts,
@@ -1658,6 +1692,8 @@ mod tests {
                 column: 1,
             },
             source_binding: None,
+            visibility: None,
+            field_visibility: None,
             fields: std::collections::BTreeMap::new(),
             relations: GraphRelations::default(),
             impacts: Vec::new(),
@@ -1719,8 +1755,11 @@ mod tests {
     }
 
     /// ADR-0058: the v6 payload is one clean canonical form — every member
-    /// serializes unconditionally (absent options as null), and placement
-    /// (`page_id`, `source_span`) never appears.
+    /// serializes unconditionally (absent options as null), placement
+    /// (`page_id`, `source_span`) never appears, and the one exception is
+    /// the §3 visibility pair: absent classifications mean `public` and are
+    /// not serialized at all (which also keeps pre-classification v6 hashes
+    /// stable).
     #[test]
     fn hash_payload_excludes_placement_and_serializes_canonically() {
         let node = make_ko_node(None, None);
@@ -1731,6 +1770,8 @@ mod tests {
             severity: &node.severity,
             trust: &node.trust,
             body: &node.body,
+            visibility: &node.visibility,
+            field_visibility: &node.field_visibility,
             fields: &node.fields,
             relations: &node.relations,
             impacts: &node.impacts,
@@ -1748,6 +1789,10 @@ mod tests {
         assert!(
             canonical.contains("\"severity\":null") && canonical.contains("\"trust\":null"),
             "absent carriers serialize as null in the v6 canonical form: {canonical}"
+        );
+        assert!(
+            !canonical.contains("visibility"),
+            "absent visibility classifications are unserialized and unhashed: {canonical}"
         );
     }
 
@@ -1910,6 +1955,8 @@ mod tests {
                 column: 1,
             },
             source_binding: None,
+            visibility: None,
+            field_visibility: None,
             fields: std::collections::BTreeMap::new(),
             relations: GraphRelations::default(),
             impacts: Vec::new(),

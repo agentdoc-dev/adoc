@@ -367,6 +367,117 @@ fn source_binding_tracks_moves_while_content_hash_is_stable() {
     );
 }
 
+/// E1.1.T3 acceptance (ADR-0058 §3): an authored visibility classification
+/// is serialized as a dedicated typed member and is hash-included, so a
+/// classification change changes `content_hash`; absence means public and is
+/// neither serialized nor hashed.
+#[test]
+fn visibility_classification_is_serialized_and_hash_included() {
+    let source = |classification_line: &str| {
+        format!(
+            concat!(
+                "# Graph @doc(team.graph)\n",
+                "\n",
+                "::claim billing.credits\n",
+                "status: draft\n",
+                "{classification_line}",
+                "--\n",
+                "Credits body.\n",
+                "::\n",
+            ),
+            classification_line = classification_line,
+        )
+    };
+    let object_node = |graph: &Value| -> Value {
+        graph["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find(|node| node["type"] == "knowledge_object" && node["id"] == "billing.credits")
+            .expect("knowledge object node")
+            .clone()
+    };
+
+    let absent = object_node(&build_graph_value(&source("")));
+    let internal = object_node(&build_graph_value(&source("visibility: internal\n")));
+    let restricted = object_node(&build_graph_value(&source("visibility: restricted\n")));
+
+    assert_eq!(
+        absent.get("visibility"),
+        None,
+        "absent visibility is not serialized"
+    );
+    assert_eq!(internal["visibility"], "internal");
+    assert_eq!(restricted["visibility"], "restricted");
+    assert_eq!(
+        internal["fields"].get("visibility"),
+        None,
+        "visibility is a dedicated member, not a free-form field"
+    );
+    assert_ne!(
+        absent["content_hash"], internal["content_hash"],
+        "authoring a classification changes the hash"
+    );
+    assert_ne!(
+        internal["content_hash"], restricted["content_hash"],
+        "changing the classification changes the hash"
+    );
+}
+
+/// E1.1.T3 (ADR-0058 §3): the optional per-field `field_visibility` map is
+/// carried as a typed member (carriage only — enforcement is E6) and is
+/// hash-included like every authored classification.
+#[test]
+fn field_visibility_map_is_carried_as_typed_member() {
+    let source = |classification_line: &str| {
+        format!(
+            concat!(
+                "# Graph @doc(team.graph)\n",
+                "\n",
+                "::claim billing.credits\n",
+                "status: draft\n",
+                "owner: team-billing\n",
+                "{classification_line}",
+                "--\n",
+                "Credits body.\n",
+                "::\n",
+            ),
+            classification_line = classification_line,
+        )
+    };
+    let object_node = |graph: &Value| -> Value {
+        graph["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find(|node| node["type"] == "knowledge_object" && node["id"] == "billing.credits")
+            .expect("knowledge object node")
+            .clone()
+    };
+
+    let absent = object_node(&build_graph_value(&source("")));
+    let classified = object_node(&build_graph_value(&source(
+        "field_visibility: owner=internal, status=public\n",
+    )));
+
+    assert_eq!(
+        absent.get("field_visibility"),
+        None,
+        "absent field_visibility is not serialized"
+    );
+    assert_eq!(classified["field_visibility"]["owner"], "internal");
+    assert_eq!(classified["field_visibility"]["status"], "public");
+    assert_eq!(
+        classified["fields"].get("field_visibility"),
+        None,
+        "field_visibility is a dedicated member, not a free-form field"
+    );
+    assert_ne!(
+        absent["content_hash"], classified["content_hash"],
+        "authoring per-field classifications changes the hash"
+    );
+}
+
 /// E1.1.T1 acceptance: a one-word body edit changes exactly one hash.
 #[test]
 fn one_word_body_edit_changes_exactly_one_content_hash() {

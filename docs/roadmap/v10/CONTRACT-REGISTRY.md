@@ -246,8 +246,10 @@ Shared row values: producer `adoc` 0.3.4 (`adoc-core` `diagnostic_codes!` table,
 | `schema.task_invalid_status` |
 | `schema.task_missing_owner` |
 | `schema.task_missing_status` |
+| `schema.unknown_field` |
 | `schema.unknown_kind` |
 | `schema.unsupported_version` |
+| `schema.visibility_invalid` |
 | `search.artifact_missing` |
 | `search.deterministic_quality` |
 | `search.hash_drift` |
