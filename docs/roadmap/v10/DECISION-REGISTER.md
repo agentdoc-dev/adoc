@@ -16,6 +16,7 @@ The 2026-08-12 planning session produced D01–D35. The 2026-08-13 red-team prod
 - [`ADDENDUM.md`](ADDENDUM.md)
 - [`BOUNDARY-AMENDMENTS.md`](BOUNDARY-AMENDMENTS.md)
 - [`RED-TEAM-CLOSURE.md`](RED-TEAM-CLOSURE.md)
+- [`CONTRACT-REGISTRY.md`](CONTRACT-REGISTRY.md)
 
 ## D01–D09 — authorization, canonicality, gates
 
@@ -70,6 +71,14 @@ The 2026-08-12 planning session produced D01–D35. The 2026-08-13 red-team prod
 - **D37:** content versions are immutable; governance/verification/effectivity/freshness/integrity/sync transitions are append-only events over content versions.
 - **D38:** authorization uses one deterministic precedence with source ACL as ceiling, scope specificity, expiry, explicit restrictions, and fail-closed consequential uncertainty.
 - **D39:** human semantic assessment may self-assess only where policy allows; an independent-review obligation requires a distinct eligible principal.
+
+## Executable decision obligations
+
+Decision work owed at a named slice start, tracked here so it cannot silently lapse (E0.3.T5).
+
+| ID | Obligation | Owed at | Provenance |
+| --- | --- | --- | --- |
+| O-01 | Repository-readiness true-up for `adoc.repository_baseline.v0`, which shipped in PR #140 without a decision record or contract registration: a retroactive ADR, a published schema, and a parity test must exist before Cloud ingestion consumes the envelope. Registry row: [`CONTRACT-REGISTRY.md`](CONTRACT-REGISTRY.md). | E4.6 slice start | V10.1.6 (historical), RT-21 |
 
 ## Required post-V1 commitments
 
