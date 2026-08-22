@@ -442,6 +442,14 @@ diagnostic_codes! {
     /// arrive in E6.6.
     StoreRetentionFloorViolation = "store.retention_floor_violation" =>
         "Narrow the sweep so every record inside the retention floor stays fully retained; deletion below the floor is never permitted.";
+    /// E1.4.T4 (V10.4.6): the audit sink could not persist a state
+    /// transition's audit record, so the owning operation failed instead
+    /// of succeeding unaudited. Operation-level; the planned gate-level
+    /// `gate.audit_persistence_failed` (E5.3) is a distinct registered
+    /// surface that consumes it — explicit mapping, never spelling
+    /// drift (RT-21).
+    AuditPersistenceFailed = "audit.persistence_failed" =>
+        "Restore audit record persistence and retry; the operation never succeeds while its audit record cannot be written.";
 }
 
 impl DiagnosticCode {
