@@ -322,6 +322,27 @@ fn seeded_alpha18_reversion_fires() {
     ));
 }
 
+#[test]
+fn true_up_records_shipped_not_shipped_and_the_o01_allocation() {
+    let compatibility = compatibility();
+    let block = anchored_block(&compatibility, COMPATIBILITY, "compat:true-up");
+    for required in [
+        "exact-SHA assessment",
+        "creator/owner-only RLS",
+        "NOT shipped at the baseline",
+        "graph v6",
+        "canonical Knowledge Object tables",
+        "O-01",
+        "E4.6 slice start",
+        "V10.1.6",
+    ] {
+        assert!(
+            block.contains(required),
+            "{COMPATIBILITY}: baseline true-up lost: {required:?}"
+        );
+    }
+}
+
 /// Every executable v10 planning document, `(file name, content)`.
 fn v10_documents() -> Vec<(String, String)> {
     let dir = repo_root().join("docs/roadmap/v10");
