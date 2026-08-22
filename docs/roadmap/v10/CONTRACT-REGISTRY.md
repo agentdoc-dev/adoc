@@ -63,7 +63,7 @@ Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and l
 
 ## Test-fixture ids — never emitted
 
-Deliberately invalid version fixtures inside `#[cfg(test)]` modules in `crates/*/src`, proving rejected-version handling. The completeness scan subtracts exactly these rows and nothing else; a fixture id must never collide with a real contract id (guard-enforced).
+Deliberately invalid version fixtures inside `#[cfg(test)]` modules in `crates/*/src`, proving rejected-version handling. The completeness scan subtracts exactly these rows and nothing else. A fixture row may also carry a historical id exercised by back-compat tests; a fixture id must never collide with a shipped or planned id (guard-enforced).
 
 <!-- registry:test-fixture-ids -->
 | id | status | notes |
