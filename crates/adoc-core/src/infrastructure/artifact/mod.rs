@@ -35,6 +35,7 @@ mod tests {
             id: PageId::from_string(id).expect("test page id is valid"),
             title: None,
             source_path: PathBuf::from(format!("{id}.adoc")),
+            source_digest: String::new(),
             blocks: Vec::new(),
         }
     }
@@ -58,7 +59,7 @@ mod tests {
 
         let graph_document = GraphJsonArtifact.build(&workspace, &[]);
 
-        assert_eq!(graph_document.schema_version, "adoc.graph.v5");
+        assert_eq!(graph_document.schema_version, "adoc.graph.v6");
         assert!(graph_document.nodes.is_empty());
         assert!(graph_document.edges.is_empty());
     }

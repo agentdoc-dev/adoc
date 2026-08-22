@@ -25,3 +25,4 @@ pub(crate) mod scope;
 pub(crate) mod severity;
 pub(crate) mod trust;
 pub(crate) mod url;
+pub(crate) mod visibility;

@@ -195,16 +195,24 @@ The V1 compiler outputs: `dist/docs.html`, `dist/docs.graph.json`, and optionall
 _Avoid_: SQLite graph artifact, RAG ndjson, separate diagnostics artifact
 
 **Search Artifact**:
-The V1 build output, `dist/docs.search.json`, with schema version `adoc.search.v1` since V1.7.2 (ADR-0040). Carries one `{ id, entry_kind, content_hash, vector }` entry per Knowledge Object and per indexed prose block (`entry_kind: "knowledge_object" | "prose"`), a `model: { id, provider, dim }` header, and a `graph_artifact_hash` for drift detection. Code blocks and prose under a minimum token threshold are not embedded; prose cache reuse is keyed by content hash and model, never by order-derived block id. The serialized JSON shape is public; the Rust DTO used to build or read it is internal to `adoc-core`.
+The V1 build output, `dist/docs.search.json`, with schema version `adoc.search.v2` since E1.1.T5 (ADR-0058; prose entries since V1.7.2, ADR-0040 — the v2 bump deliberately invalidates v1 embedding caches for the Graph Artifact v6 full re-embed). Carries one `{ id, entry_kind, content_hash, vector }` entry per Knowledge Object and per indexed prose block (`entry_kind: "knowledge_object" | "prose"`), a `model: { id, provider, dim }` header, and a `graph_artifact_hash` for drift detection. Code blocks and prose under a minimum token threshold are not embedded; prose cache reuse is keyed by content hash and model, never by order-derived block id. The serialized JSON shape is public; the Rust DTO used to build or read it is internal to `adoc-core`.
 _Avoid_: per-chunk embedding store, vectors embedded in `docs.graph.json`, binary sidecar in V1
 
 **Graph Artifact**:
-The canonical local read model, `dist/docs.graph.json`, now with schema version `adoc.graph.v5` (ADR-0049). It is derived from validated AgentDoc Source and carries a required `repository_identity` member, page/prose/Knowledge Object nodes, and directed edges. Project-bound builds identify the local project through `agentdoc.config.yaml`; standalone builds emit an explicit `null`. Each Knowledge Object carries a `content_hash` over authored semantics and its portable **Logical Source Path**, so equal revisions hash identically across checkouts and review snapshots. It is data-only and contains no rendered HTML fields; the serialized JSON shape and JSON Schema are public, while the Rust DTO remains internal to `adoc-core`.
+The canonical local read model, `dist/docs.graph.json`, now with schema version `adoc.graph.v6` (ADR-0058). It is derived from validated AgentDoc Source and carries a required `repository_identity` member, page/prose/Knowledge Object nodes, and directed edges. Project-bound builds identify the local project through `agentdoc.config.yaml`; standalone builds emit an explicit `null`. Each Knowledge Object carries a `content_hash` over governed meaning only — placement (**Logical Source Path**, line/column, page, the **Source Binding** member) is serialized on the node but excluded from the hash, so equal semantics hash identically across checkouts, review snapshots, and position-only moves. It is data-only and contains no rendered HTML fields; the serialized JSON shape and JSON Schema are public, while the Rust DTO remains internal to `adoc-core`.
 _Avoid_: graph database, SQLite-first graph storage, graph as authoring source of truth, presentation HTML inside graph JSON
 
 **Base Hash**:
-The `content_hash` value a patch declares for its target object. It is a `sha256:` hash over canonical JSON for the full graph Knowledge Object node excluding its own `content_hash`, including identity, kind, lifecycle/status, body, page placement, source span, fields, and relations.
+The `content_hash` value a patch declares for its target object. It is a `sha256:` hash over canonical JSON for the graph Knowledge Object node's governed meaning (ADR-0058): kind, lifecycle/status, body, authored classifications, fields, relations, and evidence declarations — never identity (the **Object ID** is its own K6 layer), never placement (page, source span), and never the **Source Binding**.
 _Avoid_: source-file checksum, search embedding hash, approval token
+
+**Source Binding**:
+The exact source placement recorded per Knowledge Object node in the **Graph Artifact** (ADR-0058 §4): connector, source, optional connector-native revision, path-or-coordinate, anchor, and a source-revision digest. Serialized alongside the node and never part of `content_hash`, it exists for provenance, writeback, patch safety, and stale-source detection — `adoc patch --apply` refuses with `patch.source_binding_stale` when the target file's bytes no longer reproduce the recorded digest. For the local filesystem connector (`local_fs`) the source is the containing page, the path is the **Logical Source Path**, the anchor is the **Object ID**, and the digest is the sha256 of the source page bytes.
+_Avoid_: hash-bearing placement, source-file checksum inside `content_hash`, connector transport metadata in object hashes
+
+**Visibility**:
+The authored per-object visibility classification on any Knowledge Object: the closed set `public | internal | restricted` (ADR-0058 §3). An authored value is typed, serialized as a dedicated node member, and hash-included, so a classification change changes `content_hash`; absence means `public` and is neither serialized nor hashed. An invalid value fails closed with `schema.visibility_invalid` — never a silent default. The optional `field_visibility` map (`field=visibility` entries) carries per-field classifications, carriage only until enforcement lands (E6/V10.6).
+_Avoid_: silent public default, open visibility vocabulary, visibility-based access enforcement before E6
 
 **Agent Patch**:
 A single-operation JSON proposal with schema version `adoc.patch.v0`, validated by `adoc patch --check`. It expresses patch intent validated against compiled artifacts; since V6.4 (ADR-0036) a validated patch can be **applied** to AgentDoc Source via `adoc patch --apply` or the gated MCP `adoc_patch_apply`, emitting `adoc.patch.apply.v0` — a formatting-preserving span splice on the working tree, never an artifact edit. It does not approve knowledge or create hosted review state.
@@ -235,7 +243,7 @@ A production-configurable, repeatable hash-based embedding provider selected wit
 _Avoid_: hidden debug-only provider, calling deterministic vectors semantic quality, model-header mismatch between build and query
 
 **Embedding Composition**:
-The canonical input string each embedded record is reduced to before embedding. Knowledge Objects: `{kind}: {body_plain_text}\n[id: {id}] [status: {status}] [owner: {owner}]`. Prose blocks (V1.7.2): `prose: {text}\n[page: {page_id}]`. Part of the `adoc.search.v1` contract; changing either formula requires a schema-version bump.
+The canonical input string each embedded record is reduced to before embedding. Knowledge Objects: `{kind}: {body_plain_text}\n[id: {id}] [status: {status}] [owner: {owner}]`. Prose blocks (V1.7.2): `prose: {text}\n[page: {page_id}]`. Part of the `adoc.search.v2` contract; changing either formula requires a schema-version bump.
 _Avoid_: per-field separate embeddings in V1, relations folded into embedding input, freeform composition
 
 **Hybrid Retrieval**:
@@ -531,7 +539,7 @@ _Avoid_: reusing `compute_impact`'s diff projection, glob `impacts:` matching, l
 - "V1 retrieval staging" could mean shipping lexical search first and embeddings later - resolved: V1 ships **Hybrid Retrieval** with embeddings as a first-class build output, gated behind the **Embedding Provider** port.
 - "Embedding compute" could mean a hosted embeddings API in V1 - resolved: the V1 default **Embedding Provider** is local (`fastembed-rs` + `bge-small-en-v1.5`); a hosted adapter is deferred behind the same port.
 - "Vector storage shape" could mean SQLite, an embedded ANN library, or a binary sidecar in V1 - resolved: V1 uses a sidecar JSON (**Search Artifact**) with `adoc.search.v0` as schema version.
-- "Graph storage shape" could mean SQLite or a graph database - resolved: the local product uses a sidecar JSON (**Graph Artifact**), currently `adoc.graph.v5`; SQLite waits until JSON becomes limiting.
+- "Graph storage shape" could mean SQLite or a graph database - resolved: the local product uses a sidecar JSON (**Graph Artifact**), currently `adoc.graph.v6`; SQLite waits until JSON becomes limiting.
 - "Embedding granularity" could mean per-paragraph or per-chunk embeddings - resolved: V1 is one embedding per **Knowledge Object**; chunked retrieval is deferred.
 - "Search ranking" could mean a multi-factor weighted score from the PRD - resolved: V1 uses **Hybrid Retrieval** via parameter-free RRF; lifecycle, freshness, and authority remain filters, not score modifiers.
 - "Agent surface" could mean an MCP/JSON-RPC retrieval server in V1 - resolved: V1 ships only CLI commands plus a stable `--format json` envelope (`adoc.retrieval.v0`); a server is deferred.

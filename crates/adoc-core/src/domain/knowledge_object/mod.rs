@@ -9,10 +9,154 @@ use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::value_objects::approved_by::ApprovedBy;
 use crate::domain::value_objects::evidence::Evidence;
 use crate::domain::value_objects::rel_path::RelPath;
+use crate::domain::value_objects::visibility::{
+    VISIBILITY_CLOSED_SET_HELP, Visibility, parse_field_visibility,
+};
 use crate::domain::values::{Body, NonEmpty, trim_ascii_edges};
 
 pub(super) const IMPACTS_FIELD: &str = "impacts";
 pub(crate) const APPROVED_BY_FIELD: &str = "approved_by";
+/// E1.1.T3 (ADR-0058 §3): the authored per-object visibility classification.
+pub(crate) const VISIBILITY_FIELD: &str = "visibility";
+/// E1.1.T3 (ADR-0058 §3): the optional per-field visibility map (carriage
+/// only — enforcement is E6).
+pub(crate) const FIELD_VISIBILITY_FIELD: &str = "field_visibility";
+
+/// E1.1.T3 (ADR-0058): field keys allowed on every kind — the relation trio,
+/// the shared extractors' keys (`impacts`, `evidence_ref`, `approved_by`),
+/// the blessed cross-kind metadata authored in today's corpora (`owner`,
+/// `audience`, `expires_at`), and the visibility carriage fields.
+const SHARED_FIELD_KEYS: &[&str] = &[
+    APPROVED_BY_FIELD,
+    "audience",
+    "depends_on",
+    EVIDENCE_REF_FIELD,
+    "expires_at",
+    FIELD_VISIBILITY_FIELD,
+    IMPACTS_FIELD,
+    "owner",
+    "related_to",
+    "supersedes",
+    VISIBILITY_FIELD,
+];
+
+/// E1.1.T3 (ADR-0058): each kind's extra allowed field keys — its dedicated
+/// consumed fields plus per-kind blessed metadata authored in today's
+/// corpora (`status` on `glossary`, the CONTEXT-documented optional
+/// `procedure` set). Together with [`SHARED_FIELD_KEYS`] this closes every
+/// kind's schema; `resolve_pending_block` enforces the closure centrally
+/// BEFORE dispatch.
+fn kind_field_keys(kind: BlockKind) -> &'static [&'static str] {
+    match kind {
+        BlockKind::Claim => &[
+            "external_url",
+            "human_review",
+            "reviewed_by",
+            "source",
+            "status",
+            "test",
+            "verified_at",
+        ],
+        BlockKind::Decision => &["decided_by", "reviewed_by", "source", "status", "test"],
+        BlockKind::Glossary => &["status"],
+        BlockKind::Warning => &["severity"],
+        BlockKind::Constraint => &["severity"],
+        BlockKind::Policy => &["effective_at", "review_interval", "status"],
+        BlockKind::Procedure => &[
+            "environment",
+            "estimated_time",
+            "human_review",
+            "permissions_required",
+            "reviewed_by",
+            "risks",
+            "role_required",
+            "rollback",
+            "source",
+            "status",
+            "verified_at",
+        ],
+        BlockKind::Example => &["checks", "format", "lang", "sandbox", "status"],
+        BlockKind::AgentInstruction => &["allowed_actions", "forbidden_actions", "scope", "trust"],
+        BlockKind::Contradiction => &["claims", "severity", "status"],
+        BlockKind::Source => &[
+            "commit",
+            "hash",
+            "kind",
+            "last_seen_at",
+            "path",
+            "symbol",
+            "url",
+        ],
+        BlockKind::Api => &[
+            "interface_type",
+            "method",
+            "path",
+            "reviewed_by",
+            "source",
+            "status",
+            "symbol",
+            "test",
+            "verified_at",
+        ],
+        BlockKind::Observation => &["observed_at", "sample_size", "source", "status"],
+        BlockKind::Question => &["resolved_by", "status"],
+        BlockKind::Task => &["due", "status"],
+    }
+}
+
+/// Whether `key` is in `kind`'s closed field schema (E1.1.T3).
+pub(crate) fn is_allowed_field_key(kind: BlockKind, key: &str) -> bool {
+    SHARED_FIELD_KEYS.contains(&key) || kind_field_keys(kind).contains(&key)
+}
+
+/// E1.1.T3 (ADR-0058): the closed-schema check for the Agent Patch surface.
+/// Unknown keys and invalid visibility values are refused at `--check`, so
+/// `--apply` can never write source that then fails `adoc check` with
+/// `schema.unknown_field` or `schema.visibility_invalid`. Mirrors
+/// `enforce_closed_schema` on the parse path.
+pub(crate) fn closed_schema_field_error(
+    kind: BlockKind,
+    key: &str,
+    value: &str,
+) -> Option<Diagnostic> {
+    if !is_allowed_field_key(kind, key) {
+        return Some(Diagnostic::error(
+            DiagnosticCode::SchemaUnknownField,
+            format!(
+                "unknown field `{key}` on `{}`; allowed fields: {}",
+                kind.as_str(),
+                allowed_field_keys(kind)
+            ),
+        ));
+    }
+    let invalid_visibility = match key {
+        VISIBILITY_FIELD => Visibility::try_new(value).is_err(),
+        FIELD_VISIBILITY_FIELD => parse_field_visibility(value).is_err(),
+        _ => false,
+    };
+    invalid_visibility.then(|| {
+        Diagnostic::error(
+            DiagnosticCode::SchemaVisibilityInvalid,
+            format!(
+                "invalid visibility `{value}` in `{key}`; visibility is one of: \
+                 {VISIBILITY_CLOSED_SET_HELP}"
+            ),
+        )
+    })
+}
+
+/// The sorted, comma-joined allowed field list for `kind`, rendered into
+/// `schema.unknown_field` diagnostics.
+pub(crate) fn allowed_field_keys(kind: BlockKind) -> String {
+    let mut keys: Vec<&str> = SHARED_FIELD_KEYS
+        .iter()
+        .chain(kind_field_keys(kind))
+        .copied()
+        .collect();
+    keys.sort_unstable();
+    keys.dedup();
+    keys.join(", ")
+}
 
 pub(crate) mod agent_instruction;
 pub(crate) mod api;

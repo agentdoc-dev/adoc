@@ -8,10 +8,14 @@ use crate::domain::ast::ParsedTypedBlock;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::ObjectId;
 use crate::domain::knowledge_object::{
-    BlockKind, KnowledgeObject, agent_instruction::AgentInstruction, api::Api, claim::Claim,
+    BlockKind, FIELD_VISIBILITY_FIELD, KnowledgeObject, VISIBILITY_FIELD,
+    agent_instruction::AgentInstruction, allowed_field_keys, api::Api, claim::Claim,
     constraint::Constraint, contradiction::Contradiction, decision::Decision, example::Example,
-    glossary::Glossary, observation::Observation, policy::Policy, procedure::Procedure,
-    question::Question, source::Source, task::Task, warning::Warning,
+    glossary::Glossary, is_allowed_field_key, observation::Observation, policy::Policy,
+    procedure::Procedure, question::Question, source::Source, task::Task, warning::Warning,
+};
+use crate::domain::value_objects::visibility::{
+    VISIBILITY_CLOSED_SET_HELP, Visibility, parse_field_visibility,
 };
 
 type KnowledgeObjectBuilder = fn(ParsedTypedBlock, &mut Vec<Diagnostic>) -> Option<KnowledgeObject>;
@@ -87,7 +91,7 @@ const RESOLVERS: &[KnowledgeObjectResolver] = &[
 ];
 
 pub(crate) fn resolve_pending_block(
-    parsed: ParsedTypedBlock,
+    mut parsed: ParsedTypedBlock,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<KnowledgeObject> {
     let Some(kind) = BlockKind::from_fence_word(&parsed.kind_word) else {
@@ -95,8 +99,101 @@ pub(crate) fn resolve_pending_block(
         return None;
     };
 
+    enforce_closed_schema(kind, &mut parsed, diagnostics);
+
     let resolver = resolver_for(kind).expect("every BlockKind must have a pending-block resolver");
     (resolver)(parsed, diagnostics)
+}
+
+/// E1.1.T3 (ADR-0058): closed per-kind schemas, checked centrally BEFORE
+/// dispatch — after the builders run, leftover keys are already moved into
+/// free-form metadata and verified builds strip dedicated fields, so a
+/// post-hoc check would double-report or miss. Unknown keys and invalid
+/// visibility values are removed so they never reach metadata or the hash
+/// (fail closed with a registered error diagnostic — never a silent
+/// default); the block still resolves so references to it stay intact.
+fn enforce_closed_schema(
+    kind: BlockKind,
+    parsed: &mut ParsedTypedBlock,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let unknown_keys: Vec<String> = parsed
+        .raw_fields
+        .keys()
+        .filter(|key| !is_allowed_field_key(kind, key))
+        .cloned()
+        .collect();
+    for key in unknown_keys {
+        parsed.raw_fields.remove(&key);
+        diagnostics.push(unknown_field_diagnostic(kind, &key, parsed));
+    }
+
+    for field in [VISIBILITY_FIELD, FIELD_VISIBILITY_FIELD] {
+        let invalid_value = match parsed.raw_fields.get(field) {
+            Some(value) if field == VISIBILITY_FIELD => {
+                Visibility::try_new(value).is_err().then(|| value.clone())
+            }
+            Some(value) => parse_field_visibility(value)
+                .is_err()
+                .then(|| value.clone()),
+            None => None,
+        };
+        if let Some(value) = invalid_value {
+            parsed.raw_fields.remove(field);
+            diagnostics.push(visibility_invalid_diagnostic(field, &value, parsed));
+        }
+    }
+}
+
+fn unknown_field_diagnostic(kind: BlockKind, key: &str, parsed: &ParsedTypedBlock) -> Diagnostic {
+    let mut diagnostic = Diagnostic::error(
+        DiagnosticCode::SchemaUnknownField,
+        format!(
+            "unknown field `{key}` on `{}`; allowed fields: {}",
+            kind.as_str(),
+            allowed_field_keys(kind)
+        ),
+    )
+    .with_span(
+        parsed
+            .raw_field_spans
+            .get(key)
+            .cloned()
+            .unwrap_or_else(|| parsed.span.clone()),
+    );
+
+    if ObjectId::new(parsed.id_text.clone()).is_ok() {
+        diagnostic = diagnostic.with_object_id(&parsed.id_text);
+    }
+
+    diagnostic
+}
+
+fn visibility_invalid_diagnostic(
+    field: &str,
+    value: &str,
+    parsed: &ParsedTypedBlock,
+) -> Diagnostic {
+    let mut diagnostic = Diagnostic::error(
+        DiagnosticCode::SchemaVisibilityInvalid,
+        format!(
+            "invalid visibility `{value}` in `{field}`; visibility is one of: \
+             {VISIBILITY_CLOSED_SET_HELP}"
+        ),
+    )
+    .with_span(
+        parsed
+            .raw_field_spans
+            .get(field)
+            .cloned()
+            .unwrap_or_else(|| parsed.span.clone()),
+    );
+
+    if ObjectId::new(parsed.id_text.clone()).is_ok() {
+        diagnostic = diagnostic.with_object_id(&parsed.id_text);
+    }
+
+    diagnostic
 }
 
 fn resolver_for(_kind: BlockKind) -> Option<KnowledgeObjectBuilder> {
@@ -329,6 +426,98 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaUnknownKind);
         assert!(diagnostics[0].object_id.is_none());
+    }
+
+    /// E1.1.T3: the closed-schema check runs centrally before dispatch — the
+    /// unknown key is named with the kind's allowed set, removed so it never
+    /// reaches metadata, and the block still resolves.
+    #[test]
+    fn removes_unknown_field_and_emits_schema_unknown_field() {
+        let mut block = pending("claim", "billing.credits");
+        block
+            .raw_fields
+            .insert("onwer".to_string(), "team-billing".to_string());
+        block.raw_field_spans.insert("onwer".to_string(), span());
+        let mut diagnostics = Vec::new();
+
+        let object = resolve_pending_block(block, &mut diagnostics);
+
+        assert_eq!(diagnostics.len(), 1, "diagnostics: {diagnostics:?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaUnknownField);
+        assert!(diagnostics[0].message.contains("`onwer`"));
+        assert!(
+            diagnostics[0].message.contains("owner") && diagnostics[0].message.contains("claim"),
+            "the message names the kind's allowed set: {}",
+            diagnostics[0].message
+        );
+        assert_eq!(diagnostics[0].span.as_ref(), Some(&span()));
+        assert_eq!(diagnostics[0].object_id.as_deref(), Some("billing.credits"));
+        let object = object.expect("the block still resolves without the unknown field");
+        assert!(
+            object.fields().iter().all(|(key, _)| key != "onwer"),
+            "the unknown field never reaches metadata"
+        );
+    }
+
+    /// E1.1.T3 (ADR-0058 §3): an invalid visibility fails closed with the
+    /// registered code and the value is dropped — never a silent default.
+    #[test]
+    fn emits_schema_visibility_invalid_and_drops_the_value() {
+        let mut block = pending("claim", "billing.credits");
+        block
+            .raw_fields
+            .insert("visibility".to_string(), "secret".to_string());
+        let mut diagnostics = Vec::new();
+
+        let object = resolve_pending_block(block, &mut diagnostics);
+
+        assert_eq!(diagnostics.len(), 1, "diagnostics: {diagnostics:?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaVisibilityInvalid);
+        assert!(diagnostics[0].message.contains("`secret`"));
+        let object = object.expect("the block still resolves without the invalid value");
+        assert!(
+            object.fields().iter().all(|(key, _)| key != "visibility"),
+            "the invalid value never reaches metadata"
+        );
+    }
+
+    /// E1.1.T3 (ADR-0058 §3): a malformed `field_visibility` entry uses the
+    /// same registered code as an invalid per-object visibility.
+    #[test]
+    fn emits_schema_visibility_invalid_for_malformed_field_visibility() {
+        let mut block = pending("claim", "billing.credits");
+        block
+            .raw_fields
+            .insert("field_visibility".to_string(), "owner=secret".to_string());
+        let mut diagnostics = Vec::new();
+
+        let object = resolve_pending_block(block, &mut diagnostics);
+
+        assert_eq!(diagnostics.len(), 1, "diagnostics: {diagnostics:?}");
+        assert_eq!(diagnostics[0].code, DiagnosticCode::SchemaVisibilityInvalid);
+        let object = object.expect("the block still resolves without the invalid value");
+        assert!(
+            object
+                .fields()
+                .iter()
+                .all(|(key, _)| key != "field_visibility"),
+            "the invalid value never reaches metadata"
+        );
+    }
+
+    /// E1.1.T3: the visibility carriage fields are in every kind's allowed
+    /// set, so the closed-schema check never rejects a classification.
+    #[test]
+    fn every_kind_allows_the_visibility_carriage_fields() {
+        for kind in BlockKind::ALL {
+            for field in [VISIBILITY_FIELD, FIELD_VISIBILITY_FIELD] {
+                assert!(
+                    is_allowed_field_key(*kind, field),
+                    "`{}` must allow `{field}`",
+                    kind.as_str()
+                );
+            }
+        }
     }
 
     #[test]

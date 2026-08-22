@@ -30,7 +30,7 @@ fn copy_valid_artifact(workspace: &TestWorkspace, relative_path: &str) {
     workspace.write(
         relative_path,
         r#"{
-  "schema_version": "adoc.graph.v5",
+  "schema_version": "adoc.graph.v6",
   "repository_identity": null,
   "nodes": [
     {

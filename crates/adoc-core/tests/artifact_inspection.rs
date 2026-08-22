@@ -21,7 +21,7 @@ fn valid_source() -> &'static str {
 
 fn valid_graph_json() -> String {
     serde_json::to_string_pretty(&json!({
-          "schema_version": "adoc.graph.v5",
+          "schema_version": "adoc.graph.v6",
     "repository_identity": null,
           "nodes": [
               {
@@ -108,7 +108,7 @@ fn graph_artifact_inspector_reports_missing_malformed_and_unsupported() {
     );
 
     let unsupported_path = root.join("unsupported.graph.json");
-    let unsupported_json = valid_graph_json().replace("adoc.graph.v5", "adoc.graph.v99");
+    let unsupported_json = valid_graph_json().replace("adoc.graph.v6", "adoc.graph.v99");
     write(&unsupported_path, &unsupported_json);
     let unsupported = inspect_graph_artifact(GraphArtifactInspectionInput {
         graph_artifact_path: unsupported_path,
@@ -134,7 +134,7 @@ fn graph_artifact_inspector_rejects_invalid_object_ids_and_counts_valid_objects(
         graph_artifact_path: valid_path,
     });
     assert_eq!(valid.load_status, ArtifactLoadStatus::Readable);
-    assert_eq!(valid.schema_version.as_deref(), Some("adoc.graph.v5"));
+    assert_eq!(valid.schema_version.as_deref(), Some("adoc.graph.v6"));
     assert_eq!(valid.object_count, Some(1));
 
     let invalid_path = root.join("invalid.graph.json");
@@ -214,7 +214,7 @@ fn search_artifact_inspector_validates_model_hash_and_deterministic_quality() {
         embedding_provider: Some(EmbeddingProviderSelection::Deterministic),
     });
     assert_eq!(valid.load_status, ArtifactLoadStatus::Readable);
-    assert_eq!(valid.schema_version.as_deref(), Some("adoc.search.v1"));
+    assert_eq!(valid.schema_version.as_deref(), Some("adoc.search.v2"));
     assert_eq!(valid.object_count, Some(1));
     assert!(
         valid.diagnostics.iter().any(|diagnostic| {

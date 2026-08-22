@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/search-artifact.json",
-  "title": "AgentDoc Search Artifact (adoc.search.v1)",
+  "title": "AgentDoc Search Artifact (adoc.search.v2)",
   "description": "The dist/docs.search.json build output. One embedding entry per Knowledge Object and per indexed prose block; code blocks and sub-threshold prose are never embedded, and prose cache reuse is keyed by content hash and model, never by order-derived block id (ADR-0040).",
   "type": "object",
   "required": ["schema_version", "model", "graph_artifact_hash", "embeddings"],
   "properties": {
-    "schema_version": { "const": "adoc.search.v1" },
+    "schema_version": { "const": "adoc.search.v2" },
     "model": {
       "type": "object",
       "required": ["id", "provider", "dim"],

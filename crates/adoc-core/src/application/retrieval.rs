@@ -108,7 +108,7 @@ impl SearchQuery {
     /// metadata filters (filters imply object intent). Adapters reject the
     /// combination at argument-parse time; a direct library caller gets a
     /// diagnostic instead of a silent empty result. The V1.7.1 prose-only ×
-    /// semantic conflict is gone: prose vectors ship in `adoc.search.v1`.
+    /// semantic conflict is gone: prose vectors ship in `adoc.search.v2`.
     fn scope_conflict(&self) -> Option<Diagnostic> {
         if self.scope != SearchRecordScope::ProseOnly {
             return None;
@@ -474,7 +474,7 @@ fn search_hybrid_impl(session: &RetrievalSession, query: SearchQuery) -> SearchR
         .query_vector
         .as_deref()
         .expect("query_vector is checked above");
-    // V1.7.2 (adoc.search.v1): prose vectors ship in the search artifact, so
+    // V1.7.2 (now adoc.search.v2): prose vectors ship in the search artifact, so
     // the whole blended pool enters the vector ranking.
     let vector_hits = vector_index.rank_among(
         query_vector,
@@ -553,7 +553,7 @@ fn search_semantic_impl(session: &RetrievalSession, query: SearchQuery) -> Searc
         return missing_query_vector_result(SearchMode::Semantic);
     }
 
-    // V1.7.2 (adoc.search.v1): the semantic pool blends Knowledge Objects
+    // V1.7.2 (now adoc.search.v2): the semantic pool blends Knowledge Objects
     // and prose, mirroring hybrid; prose vectors ship in the search artifact.
     let ko_candidates = match SearchScope::resolve(session, &query.filters) {
         Ok(scope) if query.include_objects() => {
@@ -884,6 +884,9 @@ mod tests {
                 line: 1,
                 column: 1,
             },
+            source_binding: None,
+            visibility: None,
+            field_visibility: None,
             fields: BTreeMap::new(),
             relations: GraphRelations::default(),
             impacts: Vec::new(),
@@ -1024,7 +1027,7 @@ mod tests {
 
     fn search_document(graph_artifact_hash: &str) -> SearchArtifactDocument {
         SearchArtifactDocument {
-            schema_version: "adoc.search.v1".to_string(),
+            schema_version: "adoc.search.v2".to_string(),
             model: SearchModelHeader {
                 id: "hash-v1".to_string(),
                 provider: "deterministic".to_string(),
@@ -1045,7 +1048,7 @@ mod tests {
         edges: Vec<GraphEdge>,
     ) -> GraphArtifactDocument {
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v5".to_string(),
+            schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: objects
                 .into_iter()
@@ -1089,7 +1092,7 @@ mod tests {
             },
         }));
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v5".to_string(),
+            schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes,
             edges: Vec::new(),
@@ -1308,7 +1311,7 @@ mod tests {
         assert!(result.records[0].as_knowledge_object().is_some());
     }
 
-    /// V1.7.2 (ADR-0040): prose vectors ship in adoc.search.v1, so a
+    /// V1.7.2 (ADR-0040): prose vectors ship in adoc.search.v2, so a
     /// prose-only semantic query is a valid scope; without a search artifact
     /// it fails on the missing artifact, not on the scope.
     #[test]
@@ -1320,7 +1323,7 @@ mod tests {
         let result = search(&session, query);
 
         // V1.7.2: prose-only semantic search is a valid scope now that prose
-        // vectors ship in adoc.search.v1; on a session without a search
+        // vectors ship in adoc.search.v2; on a session without a search
         // artifact it fails exactly like any other semantic query.
         assert!(result.records.is_empty());
         assert_eq!(result.diagnostics.len(), 1);

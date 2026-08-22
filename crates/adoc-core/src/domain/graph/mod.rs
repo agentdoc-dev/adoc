@@ -120,7 +120,7 @@ impl GraphArtifactDocument {
 
 // `GraphKnowledgeObjectNode` is large by design (carries all graph-node fields
 // inline for zero-copy serde). Boxing here would add indirection on every graph
-// traversal; the size asymmetry is acceptable per the `adoc.graph.v5` contract.
+// traversal; the size asymmetry is acceptable per the `adoc.graph.v6` contract.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -227,7 +227,7 @@ impl ProseBlockKind {
 /// Carries the artifact-authored `GraphBlockNode` payload plus two derived
 /// fields: the variant discriminant (`kind`) and the nearest-ancestor-heading
 /// breadcrumb (`heading_context`), both computed at artifact-load time and
-/// never serialized back — `adoc.graph.v5` node shapes are untouched.
+/// never serialized back — `adoc.graph.v6` node shapes are untouched.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct GraphProseBlock {
     pub(crate) id: String,
@@ -326,6 +326,24 @@ pub(crate) struct GraphKnowledgeObjectNode {
     pub(crate) body: String,
     pub(crate) page_id: String,
     pub(crate) source_span: GraphSourceSpan,
+    /// ADR-0058 §4 (E1.1.T2): exact source placement for this object —
+    /// serialized alongside the node, NEVER part of `content_hash`. Optional
+    /// on read so artifact-only fixtures without a binding still parse;
+    /// every built artifact emits it, and `adoc patch --apply` fails closed
+    /// when it is absent or stale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) source_binding: Option<GraphSourceBinding>,
+    /// ADR-0058 §3 (E1.1.T3): the authored per-object visibility
+    /// classification, one of `public | internal | restricted`. An authored
+    /// value is serialized and hash-included; absence means `public` and is
+    /// neither serialized nor hashed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) visibility: Option<String>,
+    /// ADR-0058 §3 (E1.1.T3): the optional per-field visibility map —
+    /// carriage only (enforcement is E6), hash-included like every authored
+    /// classification. Absence is neither serialized nor hashed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) field_visibility: Option<BTreeMap<String, String>>,
     pub(crate) fields: BTreeMap<String, String>,
     pub(crate) relations: GraphRelations,
     /// V3.3 opt-in source-path impact list. Repo-relative paths, sorted and
@@ -381,6 +399,25 @@ pub(crate) struct GraphSourceSpan {
     pub(crate) path: String,
     pub(crate) line: u32,
     pub(crate) column: u32,
+}
+
+/// ADR-0058 §4: the Source Binding — connector, source, revision,
+/// path-or-coordinate, anchor, and source-revision digest — recorded per
+/// Knowledge Object for provenance, writeback, patch safety, and
+/// stale-source detection. For the local filesystem connector the source is
+/// the containing page, the path is the Logical Source Path, the anchor is
+/// the Object ID (typed blocks are located by id, never by line), and the
+/// source-revision digest is the sha256 of the source page bytes; there is
+/// no connector-native revision.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub(crate) struct GraphSourceBinding {
+    pub(crate) connector: String,
+    pub(crate) source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) revision: Option<String>,
+    pub(crate) path: String,
+    pub(crate) anchor: String,
+    pub(crate) source_revision_digest: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
@@ -961,7 +998,7 @@ mod tests {
 
     fn graph_document(content_hash: Option<&str>) -> GraphArtifactDocument {
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v5".to_string(),
+            schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: vec![
                 GraphNode::Page(GraphPageNode {
@@ -984,6 +1021,9 @@ mod tests {
                         line: 1,
                         column: 1,
                     },
+                    source_binding: None,
+                    visibility: None,
+                    field_visibility: None,
                     fields: BTreeMap::new(),
                     relations: GraphRelations::default(),
                     impacts: Vec::new(),
@@ -1080,7 +1120,7 @@ mod tests {
             })
             .collect();
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v5".to_string(),
+            schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes,
             edges: Vec::new(),
@@ -1115,7 +1155,7 @@ mod tests {
         })];
         all_nodes.extend(nodes);
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v5".to_string(),
+            schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: all_nodes,
             edges: Vec::new(),

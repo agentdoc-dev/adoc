@@ -20,7 +20,7 @@ Field vocabularies enclosed by an envelope (statuses, enum-valued fields) are go
 
 ## Envelopes — shipped, owner `adoc`
 
-Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and local gateway surfaces).
+Producer for every row is the `adoc` release train (CLI, MCP server, and local gateway surfaces); each row records its tested producer versions.
 
 <!-- registry:envelopes-shipped-adoc -->
 | id | status | producer (min–max tested) | consumers (min–max tested) | migration posture |
@@ -29,7 +29,7 @@ Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and l
 | `adoc.contradictions.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.diff.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.graph.traversal.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
-| `adoc.graph.v5` | shipped | adoc 0.3.4 | adoc 0.3.4; Action v2.0.0-alpha.19 | frozen at v5; `adoc.graph.v6` (E1.1) ships with deterministic v5→v6 migration fixtures |
+| `adoc.graph.v6` | shipped | adoc 0.4.0 | adoc 0.4.0 (CLI/MCP/local gateway surfaces) | exact-match reader; v5 rejected with `schema.unsupported_version` + rebuild guidance; migration is deterministic regeneration from source (ADR-0058) |
 | `adoc.impacted.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.mcp.command.v0` | shipped | adoc 0.3.4 | MCP agent clients (contract-tested at adoc 0.3.4) | v0-additive |
 | `adoc.migrate.report.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
@@ -40,7 +40,7 @@ Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and l
 | `adoc.repository_baseline.v0` | shipped | adoc 0.3.4 | Action v2.0.0-alpha.19 | v0-additive; known registration-gap history — the original V10 inventory flagged it unregistered; true-up obligation tracked in [`DECISION-REGISTER.md`](DECISION-REGISTER.md) |
 | `adoc.retrieval.v1` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v1 additive; v0 is historical (see “Envelopes — historical”) |
 | `adoc.review.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
-| `adoc.search.v1` | shipped | adoc 0.3.4 | adoc 0.3.4 | v1 additive |
+| `adoc.search.v2` | shipped | adoc 0.4.0 | adoc 0.4.0 | exact-match reader; v1 rejected — the bump deliberately invalidates v1 embedding caches so the Graph Artifact v6 wave forces a full re-embed (E1.1.T5, ADR-0058); wire shape unchanged from v1 |
 | `adoc.stale.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 <!-- /registry:envelopes-shipped-adoc -->
 
@@ -58,7 +58,9 @@ Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and l
 <!-- registry:envelopes-historical -->
 | id | status | notes |
 | --- | --- | --- |
+| `adoc.graph.v5` | historical | superseded by `adoc.graph.v6` (E1.1, ADR-0058); production emission stopped; the v5 schema stays published at `docs/agent/v0/schema/graph-artifact.v5.json` for the historical record; rejection fixtures cite it from test scope only |
 | `adoc.retrieval.v0` | historical | superseded by `adoc.retrieval.v1`; the v0 schema stays published at `docs/agent/v0/schema/retrieval-envelope.v0.json` for readers of retained output |
+| `adoc.search.v1` | historical | superseded by `adoc.search.v2` (E1.1.T5, ADR-0058); production emission stopped; the wire shape is unchanged — the bump exists to invalidate v1 embedding caches for the v6 full re-embed; `docs/agent/v0/schema/search-artifact.json` is updated in place to v2 (unversioned filename) |
 <!-- /registry:envelopes-historical -->
 
 ## Test-fixture ids — never emitted
@@ -85,7 +87,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.source_record.v0` | adoc | E4.1 | immutable source observation |
 | `adoc.source_assertion.v0` | adoc | E4.1 | source assertion bound to its Source Record |
 | `adoc.source_acl_snapshot.v0` | adoc | E2.6 | historical ACL provenance, separate from freshness-bounded authorization |
-| `adoc.source_binding.v0` | adoc | E1.1 | exact source placement binding, independent of the semantic hash |
+| `adoc.source_binding.v0` | adoc | E1.1 | exact source placement binding, independent of the semantic hash; carried since E1.1.T2 as the `source_binding` member of `adoc.graph.v6` Knowledge Object nodes (schema `graph-artifact.v6.json`), governed by that envelope's version — registered as a standalone envelope when a surface emits it outside the graph artifact |
 | `adoc.sensitive_access.v0` | adoc | E6.3 | name held until a final registered successor (RT-08) |
 | `adoc.egress_policy.v0` | adoc | E6.6 | provenance RT-21: absent from the original V10 inventory |
 | `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record |
@@ -98,12 +100,11 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.proposal.v0` | cloud | E5.1 | canonical proposal record; includes the typed per-finding no-change disposition record (E5.3.T3) |
 | `adoc.approval.v0` | cloud | E5.2 | native approval bound to exact proposal digest, principal, policy version |
 | `adoc.gate_result.v0` | adoc | E5.3 | four-mode gate decision record carrying registered `gate.*` codes |
-| `adoc.graph.v6` | adoc | E1.1 | successor Graph Artifact separating governed semantic hash from source placement |
 <!-- /registry:envelopes-planned -->
 
 ## Diagnostic Codes — shipped, owner `adoc`
 
-Shared row values: producer `adoc` 0.3.4 (`adoc-core` `diagnostic_codes!` table, the single declaring source); consumers are every envelope embedding `Diagnostic` records (CLI/MCP surfaces at adoc 0.3.4, Action v2.0.0-alpha.19 report rendering). Migration posture for every row: wire-stable string — a meaning change or removal requires a row in “Dispositions”, never reuse.
+Shared row values: producer `adoc` 0.4.0 (`adoc-core` `diagnostic_codes!` table, the single declaring source); consumers are every envelope embedding `Diagnostic` records (CLI/MCP surfaces at adoc 0.4.0, Action v2.0.0-alpha.19 report rendering). Migration posture for every row: wire-stable string — a meaning change or removal requires a row in “Dispositions”, never reuse.
 
 <!-- registry:diagnostic-codes -->
 | code |
@@ -171,6 +172,7 @@ Shared row values: producer `adoc` 0.3.4 (`adoc-core` `diagnostic_codes!` table,
 | `patch.invalid_document` |
 | `patch.placement_invalid` |
 | `patch.placement_not_adoc` |
+| `patch.source_binding_stale` |
 | `patch.source_drift` |
 | `patch.target_already_exists` |
 | `patch.validation_failed` |
@@ -245,8 +247,10 @@ Shared row values: producer `adoc` 0.3.4 (`adoc-core` `diagnostic_codes!` table,
 | `schema.task_invalid_status` |
 | `schema.task_missing_owner` |
 | `schema.task_missing_status` |
+| `schema.unknown_field` |
 | `schema.unknown_kind` |
 | `schema.unsupported_version` |
+| `schema.visibility_invalid` |
 | `search.artifact_missing` |
 | `search.deterministic_quality` |
 | `search.hash_drift` |

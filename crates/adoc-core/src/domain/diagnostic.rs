@@ -79,6 +79,10 @@ diagnostic_codes! {
         "Add the required field with a non-empty value.";
     SchemaDuplicateField = "schema.duplicate_field" =>
         "Keep only one value for each field inside the object.";
+    SchemaUnknownField = "schema.unknown_field" =>
+        "Remove the unknown field or rename it to one of the kind's allowed fields.";
+    SchemaVisibilityInvalid = "schema.visibility_invalid" =>
+        "Author one of: public, internal, restricted. An invalid visibility never falls back to a default.";
     SchemaInvalidStatus = "schema.invalid_status" =>
         "Use one of the allowed status values for this object kind.";
     SchemaConstraintMissingSeverity = "schema.constraint_missing_severity" =>
@@ -175,6 +179,8 @@ diagnostic_codes! {
         "Use an existing page_id and, when after is supplied, an object already on that page.";
     PatchSourceDrift = "patch.source_drift" =>
         "Source changed since last build; run adoc build and re-propose the patch.";
+    PatchSourceBindingStale = "patch.source_binding_stale" =>
+        "The target's Source Binding no longer matches the source file; run adoc build and re-propose the patch.";
     PatchCreateMissingPlacement = "patch.create_missing_placement" =>
         "Add changes.placement with a page_id (and optional after) so apply knows where to insert the new block.";
     PatchPlacementNotAdoc = "patch.placement_not_adoc" =>

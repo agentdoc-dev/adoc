@@ -12,20 +12,21 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, SourceSpan};
 use crate::domain::graph::{
     GraphArtifactDocument, GraphBlockNode, GraphEdge, GraphEdgeKind, GraphEvidence,
     GraphKnowledgeObjectNode, GraphNode, GraphPageNode, GraphRelationKind, GraphRelations,
-    GraphRepositoryIdentity, GraphSourceSpan,
+    GraphRepositoryIdentity, GraphSourceBinding, GraphSourceSpan,
 };
 use crate::domain::inline::{InlineSegment, to_source};
 use crate::domain::knowledge_object::{
-    KnowledgeObject, RelationTarget, Relations, contradiction::Contradiction, policy::Policy,
-    projection::MetadataField,
+    FIELD_VISIBILITY_FIELD, KnowledgeObject, RelationTarget, Relations, VISIBILITY_FIELD,
+    contradiction::Contradiction, policy::Policy, projection::MetadataField,
 };
 use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::ArtifactWriter};
 use crate::domain::value_objects::evidence_kind::EvidenceKind;
+use crate::domain::value_objects::visibility::{Visibility, parse_field_visibility};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GraphJsonArtifact;
 
-pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v5";
+pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v6";
 
 pub(crate) fn read_graph_artifact_document(
     path: &Path,
@@ -59,8 +60,9 @@ pub(crate) fn read_graph_artifact_document(
                 ),
             )
             .with_help(format!(
-                "Expected schema_version '{}'.",
-                SUPPORTED_GRAPH_SCHEMA_VERSION
+                "Expected schema_version '{}'. {}",
+                SUPPORTED_GRAPH_SCHEMA_VERSION,
+                DiagnosticCode::SchemaUnsupportedVersion.default_help()
             )),
         ]);
     }
@@ -129,7 +131,14 @@ impl GraphJsonArtifact {
             for (block_index, block) in page.blocks.iter().enumerate() {
                 let order = block_index as u32;
                 let node_id = block_node_id(page, block, order);
-                nodes.push(block_to_graph_node(block, &node_id, &page_id, order, today));
+                nodes.push(block_to_graph_node(
+                    block,
+                    &node_id,
+                    &page_id,
+                    &page.source_digest,
+                    order,
+                    today,
+                ));
                 edges.push(GraphEdge {
                     kind: GraphEdgeKind::Contains,
                     source: page_id.clone(),
@@ -265,6 +274,7 @@ fn block_to_graph_node(
     block: &BlockAst,
     id: &str,
     page_id: &str,
+    page_source_digest: &str,
     order: u32,
     today: Option<NaiveDate>,
 ) -> GraphNode {
@@ -336,7 +346,7 @@ fn block_to_graph_node(
             source_span: source_span(&code_block.span),
         }),
         BlockAst::KnowledgeObject(knowledge_object) => GraphNode::KnowledgeObject(
-            knowledge_object_to_graph_node(knowledge_object, page_id, today),
+            knowledge_object_to_graph_node(knowledge_object, page_id, page_source_digest, today),
         ),
         BlockAst::KnowledgeObjectPending(_) => {
             unreachable!("resolver must replace pending knowledge objects before graph emission")
@@ -412,16 +422,27 @@ fn block_to_graph_node(
 fn knowledge_object_to_graph_node(
     knowledge_object: &KnowledgeObject,
     page_id: &str,
+    page_source_digest: &str,
     today: Option<NaiveDate>,
 ) -> GraphKnowledgeObjectNode {
-    let mut node = knowledge_object_to_graph_node_without_hash(knowledge_object, page_id, today);
+    let mut node = knowledge_object_to_graph_node_without_hash(
+        knowledge_object,
+        page_id,
+        page_source_digest,
+        today,
+    );
     node.content_hash = graph_knowledge_object_content_hash(&node);
     node
 }
 
+/// ADR-0058 §4: the local filesystem connector name recorded in every Source
+/// Binding this builder emits.
+const LOCAL_FS_CONNECTOR: &str = "local_fs";
+
 fn knowledge_object_to_graph_node_without_hash(
     knowledge_object: &KnowledgeObject,
     page_id: &str,
+    page_source_digest: &str,
     today: Option<NaiveDate>,
 ) -> GraphKnowledgeObjectNode {
     let span = knowledge_object.span();
@@ -451,6 +472,36 @@ fn knowledge_object_to_graph_node_without_hash(
     // parseable kind, the field is omitted.
     let evidence_quality = best_evidence_quality(&evidence);
 
+    // ADR-0058 §3 (E1.1.T3): the visibility classifications are dedicated
+    // typed members, not free-form fields — pull them out of the metadata
+    // map. Values were validated (or removed) by the closed-schema check in
+    // `resolve_pending_block`, so the map parse cannot fail for
+    // resolver-built objects; if a test-constructed object carries an
+    // unparseable value it stays in `fields` (still serialized and hashed —
+    // no silent loss).
+    let mut fields = metadata_fields_to_graph(metadata.fields());
+    // Canonicalize through the closed vocabulary — the parser strips at most
+    // one space after the colon, so the raw value may carry authoring
+    // whitespace that must never reach the wire or the hash.
+    let mut visibility = None;
+    if let Some(raw) = fields.remove(VISIBILITY_FIELD) {
+        match Visibility::try_new(&raw) {
+            Ok(canonical) => visibility = Some(canonical.as_str().to_string()),
+            Err(_) => {
+                fields.insert(VISIBILITY_FIELD.to_string(), raw);
+            }
+        }
+    }
+    let mut field_visibility = None;
+    if let Some(raw) = fields.remove(FIELD_VISIBILITY_FIELD) {
+        match parse_field_visibility(&raw) {
+            Ok(entries) => field_visibility = Some(entries),
+            Err(_) => {
+                fields.insert(FIELD_VISIBILITY_FIELD.to_string(), raw);
+            }
+        }
+    }
+
     GraphKnowledgeObjectNode {
         id: knowledge_object.id().as_str().to_string(),
         kind: knowledge_object.kind().as_str().to_string(),
@@ -462,7 +513,22 @@ fn knowledge_object_to_graph_node_without_hash(
         body: knowledge_object.body().to_source(),
         page_id: page_id.to_string(),
         source_span: source_span(span),
-        fields: metadata_fields_to_graph(metadata.fields()),
+        // ADR-0058 §4 (E1.1.T2): exact placement, hash-inert by construction
+        // (it is not a KnowledgeObjectHashPayload member), so the
+        // evidence-ref post-pass hash recompute never has to touch it.
+        source_binding: Some(GraphSourceBinding {
+            connector: LOCAL_FS_CONNECTOR.to_string(),
+            source: page_id.to_string(),
+            revision: None,
+            path: span.file.display().to_string(),
+            anchor: knowledge_object.id().as_str().to_string(),
+            source_revision_digest: page_source_digest.to_string(),
+        }),
+        // ADR-0058 §3 (E1.1.T3): authored classifications — hash-included
+        // when authored, absent otherwise.
+        visibility,
+        field_visibility,
+        fields,
         relations: relations_to_graph(knowledge_object.relations()),
         impacts: impacts_to_graph(knowledge_object.impacts()),
         approved_by,
@@ -689,58 +755,46 @@ fn impacts_to_graph(impacts: &[crate::domain::value_objects::rel_path::RelPath])
         .collect()
 }
 
+/// ADR-0058 (`adoc.graph.v6`): the governed-meaning hash payload. Placement
+/// (`page_id`, `source_span`) and identity (`id` — the K6 identity layer,
+/// not governed meaning; E1.2's same-hash-under-two-IDs fixture depends on
+/// its exclusion) are excluded, derived projections never enter, and every
+/// member serializes unconditionally — v6 is a clean canonical form with no
+/// v3–v5 byte-compat serialization exceptions.
 #[derive(Serialize)]
 struct KnowledgeObjectHashPayload<'a> {
-    id: &'a str,
     kind: &'a str,
     status: &'a Option<String>,
-    /// ADR-0039: authored carriers, hashed. Omitted when absent so kinds that
-    /// carry neither keep their v3 `content_hash` byte-for-byte.
-    #[serde(skip_serializing_if = "Option::is_none")]
     severity: &'a Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     trust: &'a Option<String>,
     body: &'a str,
-    page_id: &'a str,
-    source_span: &'a GraphSourceSpan,
+    /// ADR-0058 §3: authored classifications are hash-included; absence
+    /// means `public` by definition and is deliberately NOT serialized into
+    /// the payload (the one canonical-form exception), so objects without a
+    /// classification keep their pre-T3 v6 hashes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    visibility: &'a Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    field_visibility: &'a Option<BTreeMap<String, String>>,
     fields: &'a BTreeMap<String, String>,
     relations: &'a GraphRelations,
-    /// V3.3: omitted from canonical JSON when empty so claims without
-    /// `impacts:` keep their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     impacts: &'a Vec<String>,
-    /// V5.4: omitted from canonical JSON when empty so non-policy nodes keep
-    /// their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     approved_by: &'a Vec<String>,
-    /// V5.5: omitted from canonical JSON when empty so non-agent_instruction
-    /// nodes keep their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     allowed_actions: &'a Vec<String>,
-    /// V5.5: omitted from canonical JSON when empty so non-agent_instruction
-    /// nodes keep their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     forbidden_actions: &'a Vec<String>,
-    /// V5.6: omitted from canonical JSON when empty so non-contradiction nodes
-    /// keep their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     contradiction_claims: &'a Vec<String>,
-    /// V5.8: omitted from canonical JSON when empty so non-verified nodes keep
-    /// their existing `content_hash`.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
     evidence: &'a Vec<GraphEvidence>,
 }
 
 pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNode) -> String {
     let payload = KnowledgeObjectHashPayload {
-        id: &node.id,
         kind: &node.kind,
         status: &node.status,
         severity: &node.severity,
         trust: &node.trust,
         body: &node.body,
-        page_id: &node.page_id,
-        source_span: &node.source_span,
+        visibility: &node.visibility,
+        field_visibility: &node.field_visibility,
         fields: &node.fields,
         relations: &node.relations,
         impacts: &node.impacts,
@@ -981,6 +1035,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("test id"),
             title: None,
             source_path: PathBuf::from("guide.md"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::List(ListAst {
                 kind: ListKind::Unordered,
                 items: vec![ListItem {
@@ -1053,6 +1108,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("test id"),
             title: None,
             source_path: PathBuf::from("guide.md"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::List(ListAst {
                 kind: ListKind::Unordered,
                 items: vec![
@@ -1124,6 +1180,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.sources").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/sources.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(
                 KnowledgeObject::Source(source),
             ))],
@@ -1194,6 +1251,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.sources").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/sources.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(
                 KnowledgeObject::Source(source),
             ))],
@@ -1236,6 +1294,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("test id"),
             title: None,
             source_path: PathBuf::from("guide.md"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::List(ListAst {
                 kind: ListKind::Unordered,
                 items: vec![ListItem {
@@ -1338,6 +1397,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.claims").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/claims.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Source(source))),
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim))),
@@ -1415,6 +1475,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.claims").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/claims.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
                 claim,
             )))],
@@ -1501,6 +1562,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.decisions").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/decisions.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Source(source))),
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Decision(decision))),
@@ -1584,6 +1646,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.decisions").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/decisions.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(
                 KnowledgeObject::Decision(decision),
             ))],
@@ -1640,6 +1703,9 @@ mod tests {
                 line: 1,
                 column: 1,
             },
+            source_binding: None,
+            visibility: None,
+            field_visibility: None,
             fields: std::collections::BTreeMap::new(),
             relations: GraphRelations::default(),
             impacts: Vec::new(),
@@ -1700,20 +1766,23 @@ mod tests {
         );
     }
 
-    /// ADR-0039: kinds that carry neither severity nor trust keep their v3
-    /// hash payload byte-for-byte — the absent fields are skipped, not null.
+    /// ADR-0058: the v6 payload is one clean canonical form — every member
+    /// serializes unconditionally (absent options as null), placement
+    /// (`page_id`, `source_span`) never appears, and the one exception is
+    /// the §3 visibility pair: absent classifications mean `public` and are
+    /// not serialized at all (which also keeps pre-classification v6 hashes
+    /// stable).
     #[test]
-    fn hash_payload_omits_absent_severity_and_trust() {
+    fn hash_payload_excludes_placement_and_serializes_canonically() {
         let node = make_ko_node(None, None);
         let payload = KnowledgeObjectHashPayload {
-            id: &node.id,
             kind: &node.kind,
             status: &node.status,
             severity: &node.severity,
             trust: &node.trust,
             body: &node.body,
-            page_id: &node.page_id,
-            source_span: &node.source_span,
+            visibility: &node.visibility,
+            field_visibility: &node.field_visibility,
             fields: &node.fields,
             relations: &node.relations,
             impacts: &node.impacts,
@@ -1725,8 +1794,20 @@ mod tests {
         };
         let canonical = serde_json::to_string(&payload).expect("payload serializes");
         assert!(
-            !canonical.contains("severity") && !canonical.contains("trust"),
-            "absent severity/trust must be omitted from the hash payload: {canonical}"
+            !canonical.contains("page_id") && !canonical.contains("source_span"),
+            "placement must be excluded from the hash payload: {canonical}"
+        );
+        assert!(
+            !canonical.contains("\"id\""),
+            "object identity must be excluded from the hash payload: {canonical}"
+        );
+        assert!(
+            canonical.contains("\"severity\":null") && canonical.contains("\"trust\":null"),
+            "absent carriers serialize as null in the v6 canonical form: {canonical}"
+        );
+        assert!(
+            !canonical.contains("visibility"),
+            "absent visibility classifications are unserialized and unhashed: {canonical}"
         );
     }
 
@@ -1767,6 +1848,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.billing").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/billing.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
                 claim,
             )))],
@@ -1831,6 +1913,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.billing").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/billing.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
                 claim,
             )))],
@@ -1886,6 +1969,9 @@ mod tests {
                 line: 1,
                 column: 1,
             },
+            source_binding: None,
+            visibility: None,
+            field_visibility: None,
             fields: std::collections::BTreeMap::new(),
             relations: GraphRelations::default(),
             impacts: Vec::new(),
@@ -2144,6 +2230,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.auth").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/auth.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_a))),
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_b))),
@@ -2297,6 +2384,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.auth").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/auth.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(stale_claim))),
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(plain_claim))),
@@ -2419,6 +2507,7 @@ mod tests {
             id: crate::domain::identity::PageId::from_string("docs.auth").expect("page id"),
             title: None,
             source_path: PathBuf::from("docs/auth.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_a))),
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(claim_b))),

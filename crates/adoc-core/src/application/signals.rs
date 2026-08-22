@@ -634,6 +634,9 @@ mod tests {
                 line: 1,
                 column: 1,
             },
+            source_binding: None,
+            visibility: None,
+            field_visibility: None,
             fields: fields
                 .iter()
                 .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
@@ -662,7 +665,7 @@ mod tests {
         })];
         all_nodes.extend(nodes);
         let document = GraphArtifactDocument {
-            schema_version: "adoc.graph.v5".to_string(),
+            schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: all_nodes,
             edges: Vec::new(),

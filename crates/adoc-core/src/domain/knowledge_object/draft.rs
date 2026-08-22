@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::graph::GraphRelationKind;
 use crate::domain::identity::ObjectId;
-use crate::domain::knowledge_object::EVIDENCE_REF_FIELD;
 use crate::domain::knowledge_object::api::{
     INTERFACE_TYPE_FIELD, METHOD_FIELD, PATH_FIELD as API_PATH_FIELD, SYMBOL_FIELD,
 };
@@ -21,6 +20,7 @@ use crate::domain::knowledge_object::question::{
     ANSWERED_STATUS, QuestionStatus, RESOLVED_BY_FIELD,
 };
 use crate::domain::knowledge_object::task::{DUE_FIELD, TaskStatus};
+use crate::domain::knowledge_object::{BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error};
 use crate::domain::value_objects::effective_date::EffectiveDate;
 use crate::domain::value_objects::http_method::HttpMethod;
 use crate::domain::value_objects::sample_size::SampleSize;
@@ -282,6 +282,9 @@ impl DraftValidator<'_> {
     }
 
     fn validate_fields(&mut self) {
+        // E1.1.T3 (ADR-0058): created drafts are held to the kind's closed
+        // schema; an unparseable kind is already an error in `validate`.
+        let kind = BlockKind::from_fence_word(self.draft.kind);
         for (key, value) in self.draft.fields {
             if !is_valid_field_key(key) {
                 self.error(format!("field key `{key}` is invalid"));
@@ -295,6 +298,14 @@ impl DraftValidator<'_> {
             }
             if NonEmptyText::try_new(value).is_none() {
                 self.error(format!("field `{key}` requires a non-empty value"));
+                continue;
+            }
+            if let Some(diagnostic) =
+                kind.and_then(|kind| closed_schema_field_error(kind, key, value))
+            {
+                self.validation
+                    .diagnostics
+                    .push(diagnostic.with_object_id(self.draft.id.as_str()));
             }
         }
     }

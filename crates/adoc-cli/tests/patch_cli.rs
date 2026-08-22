@@ -316,9 +316,10 @@ fn patch_help_lists_check_apply_and_artifact_flags() {
 // V6.4 TB1 — `adoc patch --apply`
 // ---------------------------------------------------------------------------
 
-/// Apply needs config-driven docs-root resolution: `content_hash` payloads
-/// embed source paths, so the artifact must be built through the same
-/// (config) chain apply recompiles through.
+/// Apply needs config-driven docs-root resolution: splicing reads the target
+/// file from the artifact node's `source_span.path` (v6 hashes are
+/// placement-blind per ADR-0058), so the artifact must be built through the
+/// same (config) chain apply recompiles through.
 fn build_apply_workspace(name: &str) -> TestWorkspace {
     let workspace = TestWorkspace::new(name);
     workspace.write(

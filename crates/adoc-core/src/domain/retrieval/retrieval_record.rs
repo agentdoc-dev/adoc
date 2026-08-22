@@ -307,6 +307,9 @@ mod tests {
                 line: 5,
                 column: 1,
             },
+            source_binding: None,
+            visibility: None,
+            field_visibility: None,
             fields: BTreeMap::from([
                 ("owner".to_string(), "team-billing".to_string()),
                 ("status".to_string(), "domain-extra".to_string()),

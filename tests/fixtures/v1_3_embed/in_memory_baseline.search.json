@@ -1,11 +1,11 @@
 {
-  "schema_version": "adoc.search.v1",
+  "schema_version": "adoc.search.v2",
   "model": {
     "id": "hash-v1",
     "provider": "deterministic",
     "dim": 4
   },
-  "graph_artifact_hash": "sha256:73d2b69febb043b447ca58d3447039198606127152dccb1120e4edb0aef149a3",
+  "graph_artifact_hash": "sha256:48e4003bdf93416dc52e1f47df3419b2d305c920324017150ee124a9061de1fe",
   "embeddings": [
     {
       "id": "billing.credits",

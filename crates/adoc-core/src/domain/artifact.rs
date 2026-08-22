@@ -21,7 +21,7 @@ pub(crate) struct SearchModelHeader {
     pub(crate) dim: usize,
 }
 
-/// V1.7.2 (ADR-0040): the `adoc.search.v1` entry discriminator. A prose
+/// V1.7.2 (ADR-0040): the `adoc.search.v2` entry discriminator. A prose
 /// entry's `content_hash` is derived from its Embedding Composition, not
 /// from a graph node hash, and its cache reuse is keyed by that hash rather
 /// than by its order-derived block id.
@@ -47,7 +47,7 @@ mod tests {
     #[test]
     fn search_artifact_serializes_with_v1_7_2_shape() {
         let artifact = SearchArtifactDocument {
-            schema_version: "adoc.search.v1".to_string(),
+            schema_version: "adoc.search.v2".to_string(),
             model: SearchModelHeader {
                 id: "bge-small-en-v1.5".to_string(),
                 provider: "fastembed".to_string(),
@@ -72,7 +72,7 @@ mod tests {
 
         let value = serde_json::to_value(&artifact).expect("search artifact serializes");
 
-        assert_eq!(value["schema_version"], "adoc.search.v1");
+        assert_eq!(value["schema_version"], "adoc.search.v2");
         assert_eq!(value["model"]["id"], "bge-small-en-v1.5");
         assert_eq!(value["model"]["provider"], "fastembed");
         assert_eq!(value["model"]["dim"], 384);

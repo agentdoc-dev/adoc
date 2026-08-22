@@ -637,7 +637,7 @@ fn project_status_build_refresh_writes_artifacts_and_reports_readiness() {
     assert!(outcome.artifacts.graph.exists);
     assert_eq!(
         outcome.artifacts.graph.schema_version.as_deref(),
-        Some("adoc.graph.v5")
+        Some("adoc.graph.v6")
     );
     assert_eq!(outcome.artifacts.graph.object_count, Some(1));
     assert_eq!(
@@ -677,7 +677,7 @@ fn project_status_reports_deterministic_semantic_readiness_with_quality_warning(
     assert!(outcome.readiness.patch_validation);
     assert_eq!(
         outcome.artifacts.search.schema_version.as_deref(),
-        Some("adoc.search.v1")
+        Some("adoc.search.v2")
     );
     assert!(
         outcome

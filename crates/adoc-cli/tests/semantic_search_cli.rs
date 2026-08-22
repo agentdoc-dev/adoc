@@ -303,7 +303,7 @@ mod paraphrase_recall {
     }
 }
 
-/// V1.7.2 (ADR-0040): prose vectors in adoc.search.v1, exercised through the
+/// V1.7.2 (ADR-0040): prose vectors in adoc.search.v2, exercised through the
 /// real CLI against the Markdown Pilot with the deterministic provider.
 mod prose_semantic {
     use std::path::PathBuf;
@@ -392,7 +392,7 @@ mod prose_semantic {
         )
         .expect("search artifact is JSON");
 
-        assert_eq!(artifact["schema_version"], "adoc.search.v1");
+        assert_eq!(artifact["schema_version"], "adoc.search.v2");
         let embeddings = artifact["embeddings"].as_array().expect("embeddings array");
         assert!(
             embeddings

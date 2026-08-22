@@ -63,7 +63,7 @@ fn load_session_from_objects_with_vectors(
     let graph_json = graph_json_from_objects(objects, Vec::new());
     let artifact = write_temp_artifact("hybrid-graph", &graph_json);
     let search_document = serde_json::json!({
-        "schema_version": "adoc.search.v1",
+        "schema_version": "adoc.search.v2",
         "model": {
             "id": "bge-small-en-v1.5",
             "provider": "fastembed",
@@ -131,7 +131,7 @@ fn sha256_prefixed(bytes: &[u8]) -> String {
 
 fn graph_json_from_objects(objects: Vec<Value>, edges: Vec<Value>) -> String {
     let document = json!({
-          "schema_version": "adoc.graph.v5",
+          "schema_version": "adoc.graph.v6",
     "repository_identity": null,
           "nodes": objects,
           "edges": edges,
@@ -1900,7 +1900,7 @@ fn load_retrieval_session_rejects_invalid_object_ids_inside_artifact() {
     let artifact = write_temp_artifact(
         "invalid-object-id",
         r#"{
-          "schema_version": "adoc.graph.v5",
+          "schema_version": "adoc.graph.v6",
   "repository_identity": null,
           "nodes": [
             {
@@ -1937,7 +1937,7 @@ fn load_retrieval_session_rejects_duplicate_object_ids_inside_artifact() {
     let artifact = write_temp_artifact(
         "duplicate",
         r#"{
-          "schema_version": "adoc.graph.v5",
+          "schema_version": "adoc.graph.v6",
   "repository_identity": null,
           "nodes": [
             {
@@ -2015,7 +2015,7 @@ fn prose_only_graph_artifact(prose_blocks: usize) -> tempfile::NamedTempFile {
         }));
     }
     let document = json!({
-          "schema_version": "adoc.graph.v5",
+          "schema_version": "adoc.graph.v6",
     "repository_identity": null,
           "nodes": nodes,
           "edges": [],
@@ -2029,7 +2029,7 @@ fn prose_only_graph_artifact(prose_blocks: usize) -> tempfile::NamedTempFile {
 
 fn empty_graph_artifact() -> tempfile::NamedTempFile {
     let document = json!({
-          "schema_version": "adoc.graph.v5",
+          "schema_version": "adoc.graph.v6",
     "repository_identity": null,
           "nodes": [],
           "edges": [],
@@ -2359,7 +2359,7 @@ fn task_object_is_lexically_findable_with_owner_and_due_fields() {
 fn prose_symmetry_graph_json(extension: &str) -> String {
     let path = format!("docs/guide.{extension}");
     serde_json::to_string_pretty(&json!({
-        "schema_version": "adoc.graph.v5",
+        "schema_version": "adoc.graph.v6",
   "repository_identity": null,
         "nodes": [
             {
@@ -2550,7 +2550,7 @@ fn load_prose_session_with_vectors(vectors: Vec<(&str, Vec<f32>)>) -> RetrievalS
         serde_json::to_string_pretty(&canonical).expect("prose fixture serializes canonically");
     let artifact = write_temp_artifact("prose-vectors-graph", &graph_json);
     let search_document = json!({
-        "schema_version": "adoc.search.v1",
+        "schema_version": "adoc.search.v2",
         "model": {
             "id": "bge-small-en-v1.5",
             "provider": "fastembed",
@@ -2627,7 +2627,7 @@ fn semantic_search_returns_prose_records_ranked_by_cosine() {
 }
 
 /// V1.7.2: prose-only semantic search is un-gated now that prose vectors
-/// exist in adoc.search.v1.
+/// exist in adoc.search.v2.
 #[test]
 fn prose_only_semantic_search_returns_prose_without_scope_conflict() {
     let session = load_prose_session_with_vectors(vec![

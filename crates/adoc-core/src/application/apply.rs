@@ -183,9 +183,10 @@ pub(crate) fn apply_trace(interface: &str, patch: &PatchDocument) -> ApplyTrace 
 /// Apply a patch document against the graph artifact at
 /// `graph_artifact_path`, recompiling the working tree through
 /// `source_provider` (which must resolve the docs root exactly as
-/// `check`/`build` do — `content_hash` payloads embed source paths, so a
-/// differently-spelled root reads as source drift) and writing through
-/// `writer` (sandboxed to the project root).
+/// `check`/`build` do) and writing through `writer` (sandboxed to the
+/// project root). ADR-0058: `content_hash` covers governed meaning only, so
+/// the drift gate below catches semantic drift; placement/source-revision
+/// protection is the Source Binding digest gate (E1.1.T2).
 pub(crate) fn apply_patch_with_ports<G, P, W>(
     graph_artifact_path: &Path,
     patch: PatchDocument,
@@ -233,9 +234,11 @@ where
     };
     let target_node = find_object(&graph_document, &patch.target).cloned();
     // TB3: a create with an `after` anchor splices against that anchor's
-    // block, so the anchor joins the drift gate. Captured before the check
-    // consumes the document.
-    let anchor_artifact_hash = match &patch.intent {
+    // block, so the anchor joins the drift gate. E1.1.T2: the anchor's
+    // Source Binding digest joins too — the placement-blind v6 hash cannot
+    // prove the page bytes are still the built revision. Captured before
+    // the check consumes the document.
+    let (anchor_artifact_hash, anchor_binding_digest) = match &patch.intent {
         PatchIntent::CreateObject {
             placement: Some(placement),
             ..
@@ -243,8 +246,15 @@ where
             .after
             .as_ref()
             .and_then(|after| find_object(&graph_document, after))
-            .map(|node| node.content_hash.clone()),
-        _ => None,
+            .map_or((None, None), |node| {
+                (
+                    Some(node.content_hash.clone()),
+                    node.source_binding
+                        .as_ref()
+                        .map(|binding| binding.source_revision_digest.clone()),
+                )
+            }),
+        _ => (None, None),
     };
     let check = check_patch_documents(graph_document, patch.clone());
     if !check.valid {
@@ -291,6 +301,7 @@ where
                 fields,
                 placement: placement.as_ref(),
                 anchor_artifact_hash,
+                anchor_binding_digest,
             },
             &recompiled_document,
             source_provider,
@@ -325,6 +336,20 @@ where
         }
     };
     let before_file_hash = sha256_prefixed(original_text.as_bytes());
+
+    // 4b. Source Binding source-revision digest gate (E1.1.T2, ADR-0058 §4):
+    //     the v6 governed-meaning hash is placement-blind, so a position-only
+    //     move passes the drift gate above while the artifact's recorded
+    //     placement may be stale. The bytes just read must reproduce the
+    //     binding's source-revision digest; an absent binding fails closed.
+    let binding_is_fresh = artifact_node
+        .source_binding
+        .as_ref()
+        .is_some_and(|binding| binding.source_revision_digest == before_file_hash);
+    if !binding_is_fresh {
+        let diagnostics = vec![source_binding_stale(&patch.target)];
+        return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+    }
 
     // 5. Fresh spans from a re-parse of the bytes just read — never artifact
     //    spans (start-only, build-stale).
@@ -432,6 +457,7 @@ struct CreateApplyContext<'a> {
     /// The artifact's `content_hash` for the `after` anchor, when one is
     /// named — the anchor's half of the drift gate.
     anchor_artifact_hash: Option<String>,
+    anchor_binding_digest: Option<String>,
 }
 
 fn apply_create_object<P, W>(
@@ -455,6 +481,7 @@ where
         fields,
         placement,
         anchor_artifact_hash,
+        anchor_binding_digest,
     } = context;
 
     // Placement is a WARNING on --check and an ERROR here (ADR-0036).
@@ -524,6 +551,17 @@ where
             );
             if !anchor_fresh {
                 let diagnostics = vec![source_drift(after)];
+                return PatchApplyResult::refused_with_check(check, trace, diagnostics);
+            }
+            // E1.1.T2 (ADR-0058 §4): the anchor's placement-blind hash
+            // stays equal across position-only page edits, so the anchor's
+            // Source Binding digest must reproduce the bytes just read; an
+            // absent binding fails closed, mirroring the update path.
+            let binding_is_fresh = anchor_binding_digest
+                .as_ref()
+                .is_some_and(|digest| digest == &before_file_hash);
+            if !binding_is_fresh {
+                let diagnostics = vec![source_binding_stale(after)];
                 return PatchApplyResult::refused_with_check(check, trace, diagnostics);
             }
             let source_file = SourceFile::new_with_identity_path(
@@ -636,6 +674,17 @@ fn source_drift(target: &str) -> Diagnostic {
     Diagnostic::error(
         DiagnosticCode::PatchSourceDrift,
         format!("source changed since last build for `{target}`; run adoc build and re-propose"),
+    )
+    .with_object_id(target)
+}
+
+fn source_binding_stale(target: &str) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::PatchSourceBindingStale,
+        format!(
+            "the Source Binding for `{target}` no longer matches the source file; \
+             run adoc build and re-propose"
+        ),
     )
     .with_object_id(target)
 }

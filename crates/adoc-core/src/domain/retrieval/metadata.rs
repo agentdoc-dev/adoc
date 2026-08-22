@@ -78,7 +78,7 @@ pub(crate) fn embedding_input(object: &GraphKnowledgeObjectNode) -> String {
 
 /// V1.7.2 (ADR-0040): the prose Embedding Composition — `prose: {text}` plus
 /// a page-id marker line, the analogue of the Knowledge Object composition
-/// above. Part of the `adoc.search.v1` contract; prose `content_hash` is
+/// above. Part of the `adoc.search.v2` contract; prose `content_hash` is
 /// derived from this exact string.
 pub(crate) fn prose_embedding_input(content_text: &str, page_id: &str) -> String {
     let body = normalized_embedding_body(content_text);
@@ -124,6 +124,9 @@ mod tests {
                 line: 1,
                 column: 1,
             },
+            source_binding: None,
+            visibility: None,
+            field_visibility: None,
             fields,
             relations: GraphRelations::default(),
             impacts: Vec::new(),

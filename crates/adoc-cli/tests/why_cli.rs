@@ -346,6 +346,50 @@ fn why_format_json_artifact_errors_exit_2_with_envelope() {
     }
 }
 
+/// E1.1.T4 (ADR-0058): a real `adoc.graph.v5` artifact — the pre-v6 wire
+/// shape whose hashes still covered placement — is rejected exact-match with
+/// `schema.unsupported_version`, and the diagnostic's help carries rebuild
+/// guidance. No tolerant dual-version reader.
+#[test]
+fn why_rejects_v5_artifact_exact_match_with_rebuild_guidance() {
+    let workspace = TestWorkspace::new("why-v5-artifact-rejected");
+    let artifact = fixture_path("v1_1_why/v5_artifact.graph.json");
+    let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+        .current_dir(&workspace.root)
+        .args([
+            "why",
+            "billing.refunds.issue-credit",
+            "--artifact",
+            artifact.to_str().expect("fixture path is UTF-8"),
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("adoc why runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("stdout is JSON");
+    assert_eq!(value["records"], serde_json::json!([]));
+    assert_eq!(
+        value["diagnostics"][0]["code"],
+        "schema.unsupported_version"
+    );
+    let message = value["diagnostics"][0]["message"]
+        .as_str()
+        .expect("diagnostic message is a string");
+    assert!(
+        message.contains("adoc.graph.v5"),
+        "rejection must name the unsupported version exactly; got: {message}"
+    );
+    let help = value["diagnostics"][0]["help"]
+        .as_str()
+        .expect("diagnostic help is a string");
+    assert!(
+        help.contains("Regenerate the artifact"),
+        "help must carry rebuild guidance; got: {help}"
+    );
+}
+
 #[test]
 fn top_level_help_exits_0_and_lists_commands() {
     let output = Command::new(env!("CARGO_BIN_EXE_adoc"))
@@ -533,7 +577,7 @@ fn why_styled_shows_contradicted_chip_on_relation_target() {
     // Build the fixture JSON inline — same schema_version as the existing
     // valid_artifact.graph.json fixture.
     let fixture = serde_json::json!({
-          "schema_version": "adoc.graph.v5",
+          "schema_version": "adoc.graph.v6",
     "repository_identity": null,
           "nodes": [
               {

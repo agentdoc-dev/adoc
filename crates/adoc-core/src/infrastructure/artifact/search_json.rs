@@ -9,7 +9,7 @@ use crate::domain::ports::artifact_reader::ArtifactReader;
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct SearchJsonArtifact;
 
-pub(crate) const SUPPORTED_SEARCH_SCHEMA_VERSION: &str = "adoc.search.v1";
+pub(crate) const SUPPORTED_SEARCH_SCHEMA_VERSION: &str = "adoc.search.v2";
 
 pub(crate) fn read_search_artifact_document(
     path: &Path,
