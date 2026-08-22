@@ -21,10 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
-use super::graph::{
-    GraphArtifactDocument, GraphNode, GraphRepositoryIdentity, GraphSourceBinding,
-    content_hash_matches_grammar,
-};
+use super::graph::{GraphArtifactDocument, GraphNode, GraphRepositoryIdentity, GraphSourceBinding};
 use super::identity::ObjectId;
 
 /// Cloud workspace identifier — opaque to `adoc-core`. Blank or padded
@@ -97,8 +94,23 @@ pub(crate) enum ManagedIdentityError {
     InvalidObjectId,
     #[error("object id appears more than once in one artifact")]
     DuplicateObjectId,
-    #[error("content hash must be `sha256:` with a non-empty suffix")]
+    #[error("content hash must be `sha256:` followed by lowercase hex")]
     InvalidContentHash,
+}
+
+/// The published v6 wire grammar for `content_hash`
+/// (`docs/agent/v0/schema/graph-artifact.v6.json`: `^sha256:[0-9a-f]+$`).
+/// Stricter than the graph loader's pinned non-blank-suffix acceptance
+/// (`graph::content_hash_matches_grammar`): at this trust boundary a
+/// malformed or padded value would be enshrined in an immutable version
+/// and compared verbatim for RT-04 unchanged-ness ever after.
+fn content_hash_matches_published_grammar(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|suffix| {
+        !suffix.is_empty()
+            && suffix
+                .bytes()
+                .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    })
 }
 
 /// One managed repository inside a workspace, keyed on the graph
@@ -313,7 +325,7 @@ impl ManagedWorkspace {
             if !seen_ids.insert(node.id.as_str()) {
                 return Err(ManagedIdentityError::DuplicateObjectId);
             }
-            if !content_hash_matches_grammar(&node.content_hash) {
+            if !content_hash_matches_published_grammar(&node.content_hash) {
                 return Err(ManagedIdentityError::InvalidContentHash);
             }
         }
@@ -806,7 +818,7 @@ mod tests {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
 
-        for hashes in [["sha256:aaa", "sha256:bbb"], ["sha256:same", "sha256:same"]] {
+        for hashes in [["sha256:aaa", "sha256:bbb"], ["sha256:5a3e", "sha256:5a3e"]] {
             let outcome = workspace.import_artifact(&artifact(
                 repo.clone(),
                 vec![
@@ -858,15 +870,28 @@ mod tests {
     /// A crafted artifact carrying a blank or malformed `content_hash`
     /// would otherwise mint an immutable version around it, surface it in
     /// reconciliation candidates, and treat every later observation of the
-    /// same malformed value as unchanged. The graph loader rejects these
-    /// documents (`content_hash_diagnostic`, `io.artifact_malformed`);
-    /// import fails closed the same way, before any state changes.
+    /// same malformed value as unchanged. Import enforces the published v6
+    /// wire grammar `^sha256:[0-9a-f]+$` (graph-artifact.v6.json): non-hex,
+    /// uppercase, and whitespace-padded suffixes all fail closed before any
+    /// state changes — a padded spelling of an existing hash would
+    /// otherwise mint a fresh version of unchanged content and ship the
+    /// padded value in the candidate payload.
     #[test]
     fn malformed_content_hashes_on_import_are_rejected_without_partial_state() {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
 
-        for invalid in ["", "  ", "sha256:", "sha256:  ", "md5:abc"] {
+        for invalid in [
+            "",
+            "  ",
+            "sha256:",
+            "sha256:  ",
+            "md5:abc",
+            "sha256:not-a-digest",
+            "sha256:abc ",
+            " sha256:abc",
+            "sha256:ABC",
+        ] {
             let outcome = workspace.import_artifact(&artifact(
                 repo.clone(),
                 vec![knowledge_object("billing.credits", invalid)],
@@ -947,8 +972,8 @@ mod tests {
             .import_artifact(&artifact(
                 repo.clone(),
                 vec![
-                    knowledge_object("billing.credits", "sha256:same"),
-                    knowledge_object("billing.refunds", "sha256:same"),
+                    knowledge_object("billing.credits", "sha256:5a3e"),
+                    knowledge_object("billing.refunds", "sha256:5a3e"),
                 ],
             ))
             .expect("import accepted");
@@ -977,13 +1002,13 @@ mod tests {
         workspace
             .import_artifact(&artifact(
                 repo_a.clone(),
-                vec![knowledge_object("billing.credits", "sha256:same")],
+                vec![knowledge_object("billing.credits", "sha256:5a3e")],
             ))
             .expect("import accepted");
         let outcome = workspace
             .import_artifact(&artifact(
                 repo_b.clone(),
-                vec![knowledge_object("billing.refunds", "sha256:same")],
+                vec![knowledge_object("billing.refunds", "sha256:5a3e")],
             ))
             .expect("import accepted");
 
@@ -1004,11 +1029,11 @@ mod tests {
     fn identical_titles_and_bodies_never_unify() {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
-        let mut first = knowledge_object("billing.credits", "sha256:same");
+        let mut first = knowledge_object("billing.credits", "sha256:5a3e");
         first
             .fields
             .insert("title".to_string(), "Credit policy".to_string());
-        let mut second = knowledge_object("billing.credit-rules", "sha256:same");
+        let mut second = knowledge_object("billing.credit-rules", "sha256:5a3e");
         second
             .fields
             .insert("title".to_string(), "Credit policy".to_string());
@@ -1041,13 +1066,13 @@ mod tests {
         workspace
             .import_artifact(&artifact(
                 repo_a.clone(),
-                vec![knowledge_object("billing.credits", "sha256:same")],
+                vec![knowledge_object("billing.credits", "sha256:5a3e")],
             ))
             .expect("import accepted");
         let outcome = workspace
             .import_artifact(&artifact(
                 repo_b.clone(),
-                vec![knowledge_object("billing.credits", "sha256:same")],
+                vec![knowledge_object("billing.credits", "sha256:5a3e")],
             ))
             .expect("import accepted");
 
