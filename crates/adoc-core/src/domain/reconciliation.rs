@@ -17,6 +17,15 @@
 //! at most (RT-03/D36). Recording never rewrites or drops any managed
 //! version, Source Binding, or Source Assertion — reconciliation state is
 //! derived from the append-only decision log alone.
+//!
+//! Stated invariant (the stop-ship guard above is visibility-enforced):
+//! unconstructibility rests on private fields, validating constructors,
+//! and the deliberate ABSENCE of a `Deserialize` derive on
+//! [`ReconciliationDecision`], [`Principal`], and [`PolicyVersion`].
+//! Never derive `Deserialize` on these types — a wire adapter accepting
+//! decision input must parse into its own shape and go through the
+//! validating constructors, or forged unprincipaled decisions become
+//! constructible from bytes while every existing test stays green.
 
 use std::collections::BTreeMap;
 
