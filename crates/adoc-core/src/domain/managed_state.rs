@@ -25,7 +25,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use super::diagnostic::DiagnosticCode;
-use super::managed::{ManagedVersionId, WorkspaceCanonicalIdentity};
+use super::managed::{ManagedVersionId, ManagedWorkspace, WorkspaceCanonicalIdentity};
 use super::reconciliation::PolicyVersion;
 
 /// §K4 governance dimension.
@@ -283,16 +283,53 @@ pub(crate) enum ManagedStateEventError {
     InvalidEmitter,
     #[error("retention floor must protect at least one record")]
     ZeroRetentionFloor,
+    #[error(
+        "state event subject does not name a recorded immutable version of its canonical object"
+    )]
+    SubjectVersionUnrecorded,
 }
 
 /// The immutable content version a state event attaches to (ADR-0057
 /// invariant 2): the Managed Object's workspace canonical identity plus
 /// the exact managed version ID — never a bare Object ID, which is
-/// neither workspace-qualified nor version-exact.
+/// neither workspace-qualified nor version-exact. Fields are private:
+/// outside this module a subject exists only via
+/// [`StateEventSubject::bound`], so a pair the workspace never minted —
+/// one object's canonical identity with another object's version ID —
+/// is unconstructable, and the log can never claim state for a
+/// nonexistent content version.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub(crate) struct StateEventSubject {
-    pub(crate) canonical: WorkspaceCanonicalIdentity,
-    pub(crate) version_id: ManagedVersionId,
+    canonical: WorkspaceCanonicalIdentity,
+    version_id: ManagedVersionId,
+}
+
+impl StateEventSubject {
+    /// Bind a (canonical identity, version ID) pair against the
+    /// workspace's recorded immutable versions. Fails closed when the
+    /// version is not a recorded version of exactly that canonical
+    /// object — an unknown canonical identity and a foreign version ID
+    /// are the same rejection.
+    pub(crate) fn bound(
+        workspace: &ManagedWorkspace,
+        canonical: &WorkspaceCanonicalIdentity,
+        version_id: &ManagedVersionId,
+    ) -> Result<Self, ManagedStateEventError> {
+        let recorded = workspace.managed_object(canonical).is_some_and(|object| {
+            object
+                .versions
+                .iter()
+                .any(|version| &version.version_id == version_id)
+        });
+        if recorded {
+            Ok(Self {
+                canonical: canonical.clone(),
+                version_id: version_id.clone(),
+            })
+        } else {
+            Err(ManagedStateEventError::SubjectVersionUnrecorded)
+        }
+    }
 }
 
 /// What one managed state event records, tagged by its event family —
@@ -373,7 +410,10 @@ pub(crate) struct ManagedStateEvent {
     pub(crate) policy_version: PolicyVersion,
     /// A correction is a NEW record referencing the corrected one
     /// (V10.4.2): the referenced record stays byte-identical in the log
-    /// forever. `None` for ordinary events.
+    /// forever. The referenced record must be the newest in its state
+    /// slot — "correction" means exactly "supersede the value that is
+    /// current", never a rewrite of state already superseded. `None`
+    /// for ordinary events.
     pub(crate) corrects: Option<EventOrdinal>,
 }
 
@@ -546,6 +586,10 @@ pub(crate) enum StateEventStoreError {
     )]
     CorrectionTargetMismatch { corrects: EventOrdinal },
     #[error(
+        "correction targets ordinal {corrects:?}, which a later record in its state slot already superseded; a correction targets the newest record in its slot"
+    )]
+    CorrectionTargetSuperseded { corrects: EventOrdinal },
+    #[error(
         "sweep below {delete_below:?} reaches into the span protected by the retention floor (from {protected_from:?})"
     )]
     RetentionFloorViolation {
@@ -559,10 +603,11 @@ pub(crate) enum StateEventStoreError {
 }
 
 impl StateEventStoreError {
-    /// The registered wire code for this rejection. All three conflict
+    /// The registered wire code for this rejection. All four conflict
     /// shapes — an occupied/future-ordinal write, a correction naming an
-    /// unrecorded target, and a correction naming a record of another
-    /// subject or state slot — are appends contradicting recorded
+    /// unrecorded target, a correction naming a record of another
+    /// subject or state slot, and a correction naming a record its slot
+    /// has already superseded — are appends contradicting recorded
     /// history, the `governance.record_conflict` family (V10.4.2).
     /// `audit.persistence_failed` is the operation-level code (E1.4);
     /// the gate-level `gate.audit_persistence_failed` (E5.3) is a
@@ -572,7 +617,8 @@ impl StateEventStoreError {
         match self {
             Self::RecordConflict { .. }
             | Self::CorrectionTargetMissing { .. }
-            | Self::CorrectionTargetMismatch { .. } => DiagnosticCode::GovernanceRecordConflict,
+            | Self::CorrectionTargetMismatch { .. }
+            | Self::CorrectionTargetSuperseded { .. } => DiagnosticCode::GovernanceRecordConflict,
             Self::RetentionFloorViolation { .. } => DiagnosticCode::StoreRetentionFloorViolation,
             // Exact bytes at write time are part of the audit trail
             // (E1.4.T5): an event whose canonical bytes cannot be
@@ -771,8 +817,11 @@ impl ManagedStateEventStore {
     /// version (RT-04) — this store has no reference to the workspace's
     /// version records at all, so the invariant holds by construction.
     /// A correction must reference a recorded ordinal carrying the same
-    /// subject and state slot; a dangling or mismatched one fails closed
-    /// and appends nothing.
+    /// subject and state slot, and its target must still be the newest
+    /// record in that slot — replay is last-write-wins, so a correction
+    /// of a superseded record would discard the newer uncorrected
+    /// observation. A dangling, mismatched, or superseded target fails
+    /// closed and appends nothing.
     ///
     /// The transition's audit record is written to `sink` BEFORE the
     /// event commits: a sink failure aborts the whole append with
@@ -786,14 +835,24 @@ impl ManagedStateEventStore {
     ) -> Result<EventOrdinal, StateEventStoreError> {
         let ordinal = EventOrdinal(self.events.len() as u64);
         if let Some(corrects) = event.corrects {
-            let target = usize::try_from(corrects.0)
+            let index = usize::try_from(corrects.0)
                 .ok()
-                .and_then(|index| self.events.get(index))
+                .filter(|index| *index < self.events.len())
                 .ok_or(StateEventStoreError::CorrectionTargetMissing { corrects })?;
+            let target = &self.events[index];
             if target.event.subject != event.subject
                 || !target.event.change.same_state_slot(&event.change)
             {
                 return Err(StateEventStoreError::CorrectionTargetMismatch { corrects });
+            }
+            // `apply` is last-write-wins, so a correction of an already
+            // superseded record would make a corrected HISTORICAL value
+            // current, discarding the newer uncorrected observation.
+            if self.events[index + 1..].iter().any(|later| {
+                later.event.subject == event.subject
+                    && later.event.change.same_state_slot(&event.change)
+            }) {
+                return Err(StateEventStoreError::CorrectionTargetSuperseded { corrects });
             }
         }
         // Exact bytes + chained digest, produced at write time (E1.4.T5)
@@ -879,16 +938,25 @@ impl ManagedStateEventStore {
 
     /// Historical current-state at time T, where T is an event ordinal:
     /// replay the recorded events `0..=through`, in order, from the
-    /// immutable records alone. A correction applies at its own position
-    /// — history before it stands unrewritten, and no transition is ever
-    /// inferred or backfilled (RT-04). A T past the last recorded event
-    /// replays everything: nothing after the log's end exists to change
-    /// the answer.
+    /// immutable records alone. `versions` is the immutable-version set
+    /// known at T — a reconstruction input in its own right (ADR-0057
+    /// invariant 2), because this store deliberately holds no reference
+    /// to the workspace's version records: a version predating every
+    /// state emitter has no event to replay, and it renders explicit
+    /// all-gap dimensions rather than silent absence. A correction
+    /// applies at its own position — history before it stands
+    /// unrewritten, and no transition is ever inferred or backfilled
+    /// (RT-04). A T past the last recorded event replays everything:
+    /// nothing after the log's end exists to change the answer.
     pub(crate) fn reconstruct_through(
         &self,
+        versions: impl IntoIterator<Item = StateEventSubject>,
         through: EventOrdinal,
     ) -> BTreeMap<StateEventSubject, ManagedVersionState> {
-        let mut state: BTreeMap<StateEventSubject, ManagedVersionState> = BTreeMap::new();
+        let mut state: BTreeMap<StateEventSubject, ManagedVersionState> = versions
+            .into_iter()
+            .map(|subject| (subject, ManagedVersionState::all_gaps()))
+            .collect();
         for recorded in self.events.iter().take_while(|r| r.ordinal <= through) {
             state
                 .entry(recorded.event.subject.clone())
@@ -1251,10 +1319,8 @@ mod tests {
             )]))
             .expect("import accepted");
         let imported = &outcome.imported[0];
-        StateEventSubject {
-            canonical: imported.canonical.clone(),
-            version_id: imported.version_id.clone(),
-        }
+        StateEventSubject::bound(workspace, &imported.canonical, &imported.version_id)
+            .expect("a minted pair binds")
     }
 
     /// Acceptance (MILESTONES §E1.4): an in-place update attempt — a
@@ -1476,6 +1542,106 @@ mod tests {
         assert_eq!(store.events().len(), 2);
     }
 
+    /// A subject must name a real immutable version: pairing one
+    /// object's canonical identity with another object's legitimate
+    /// version ID would let the log claim state for a content version
+    /// that never existed, undermining exact-version reconstruction
+    /// (ADR-0057 invariant 2). Binding fails closed; the matching pair
+    /// binds.
+    #[test]
+    fn a_subject_pairing_a_foreign_version_does_not_bind() {
+        let mut workspace = workspace();
+        let a = workspace
+            .import_artifact(&artifact(vec![knowledge_object(
+                "billing.credits",
+                "sha256:aaa",
+            )]))
+            .expect("import accepted")
+            .imported[0]
+            .clone();
+        let b = workspace
+            .import_artifact(&artifact(vec![knowledge_object(
+                "billing.refunds",
+                "sha256:bbb",
+            )]))
+            .expect("import accepted")
+            .imported[0]
+            .clone();
+
+        let error = StateEventSubject::bound(&workspace, &a.canonical, &b.version_id)
+            .expect_err("a cross-object pair must not bind");
+        assert_eq!(error, ManagedStateEventError::SubjectVersionUnrecorded);
+
+        let subject = StateEventSubject::bound(&workspace, &a.canonical, &a.version_id)
+            .expect("a minted pair binds");
+        assert_eq!(
+            subject,
+            StateEventSubject {
+                canonical: a.canonical,
+                version_id: a.version_id,
+            }
+        );
+    }
+
+    /// A correction must target the newest record in its state slot:
+    /// `apply` is last-write-wins, so a correction of an already
+    /// superseded record would discard the newer, uncorrected
+    /// observation and move current state backwards without a new
+    /// observation. That contradicts recorded history — the same
+    /// registered conflict code, and nothing appends. Records of OTHER
+    /// slots in between do not supersede: the check is slot-scoped.
+    #[test]
+    fn a_correction_of_a_superseded_record_is_rejected() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
+        let mut store = ManagedStateEventStore::new(floor(1));
+        for state in [FreshnessState::Stale, FreshnessState::Current] {
+            store
+                .append(&mut sink, freshness_event(subject.clone(), state))
+                .expect("append accepted");
+        }
+        let before = store.clone();
+
+        let mut superseded = freshness_event(subject.clone(), FreshnessState::NeedsReview);
+        superseded.corrects = Some(EventOrdinal(0));
+        let error = store
+            .append(&mut sink, superseded)
+            .expect_err("a correction of a superseded record must be rejected");
+        assert_eq!(
+            error,
+            StateEventStoreError::CorrectionTargetSuperseded {
+                corrects: EventOrdinal(0)
+            }
+        );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "governance.record_conflict"
+        );
+        assert_eq!(store, before, "nothing may append");
+
+        // An intervening record of another slot does not supersede.
+        store
+            .append(
+                &mut sink,
+                event(
+                    &subject,
+                    ManagedStateChange::Governance {
+                        state: GovernanceState::Approved,
+                    },
+                    "cloud.governance",
+                    "policy-1",
+                ),
+            )
+            .expect("append accepted");
+        let mut newest_in_slot = freshness_event(subject, FreshnessState::NeedsReview);
+        newest_in_slot.corrects = Some(EventOrdinal(1));
+        store
+            .append(&mut sink, newest_in_slot)
+            .expect("a correction of the newest record in its slot appends");
+        assert_eq!(store.events().len(), 4);
+    }
+
     /// Adversarial acceptance (MILESTONES §E1.4): a retention sweep
     /// reaching one record into the floor-protected span — the
     /// "floor-minus-one-day" case in recorded-event-order terms — is
@@ -1612,7 +1778,7 @@ mod tests {
         }
 
         assert_eq!(
-            store.reconstruct_through(EventOrdinal(5)),
+            store.reconstruct_through([subject.clone()], EventOrdinal(5)),
             *store.current_state(),
             "full replay must reproduce the derived cache exactly"
         );
@@ -1667,7 +1833,7 @@ mod tests {
             )
             .expect("append accepted");
 
-        let at_one = store.reconstruct_through(EventOrdinal(1));
+        let at_one = store.reconstruct_through([subject.clone()], EventOrdinal(1));
         let state = &at_one[&subject];
         assert_eq!(
             state.governance,
@@ -1679,7 +1845,7 @@ mod tests {
             RecordedDimension::Recorded(FreshnessState::Stale)
         );
 
-        let now = store.reconstruct_through(EventOrdinal(2));
+        let now = store.reconstruct_through([subject.clone()], EventOrdinal(2));
         assert_eq!(
             now[&subject].governance,
             RecordedDimension::Recorded(GovernanceState::Approved)
@@ -1733,6 +1899,54 @@ mod tests {
         );
     }
 
+    /// ADR-0057 invariant 2 names the immutable-version set a
+    /// reconstruction input alongside the events: an immutable version
+    /// predating every state emitter has no event at any T, and it must
+    /// reconstruct as explicit all-gap dimensions — never be silently
+    /// absent, which a caller could mistake for "no such version".
+    #[test]
+    fn a_version_predating_all_emitters_reconstructs_as_explicit_gaps() {
+        let mut workspace = workspace();
+        let unobserved = subject_for(&mut workspace);
+        let observed = {
+            let outcome = workspace
+                .import_artifact(&artifact(vec![knowledge_object(
+                    "billing.refunds",
+                    "sha256:bbb",
+                )]))
+                .expect("import accepted");
+            StateEventSubject::bound(
+                &workspace,
+                &outcome.imported[0].canonical,
+                &outcome.imported[0].version_id,
+            )
+            .expect("a minted pair binds")
+        };
+        let mut sink = InMemoryAuditSink::default();
+        let mut store = ManagedStateEventStore::new(floor(1));
+        store
+            .append(
+                &mut sink,
+                freshness_event(observed.clone(), FreshnessState::Current),
+            )
+            .expect("append accepted");
+
+        let at_zero =
+            store.reconstruct_through([unobserved.clone(), observed.clone()], EventOrdinal(0));
+        let state = &at_zero[&unobserved];
+        assert_eq!(state.governance, RecordedDimension::Gap);
+        assert_eq!(state.verification, RecordedDimension::Gap);
+        assert_eq!(state.effectivity, RecordedDimension::Gap);
+        assert_eq!(state.freshness, RecordedDimension::Gap);
+        assert_eq!(state.integrity, RecordedDimension::Gap);
+        assert!(state.synchronization.is_empty());
+        assert_eq!(
+            at_zero[&observed].freshness,
+            RecordedDimension::Recorded(FreshnessState::Current),
+            "seeding never masks recorded events"
+        );
+    }
+
     /// A correction applies at its own position in the recorded order —
     /// reconstruction at a T before the correction still shows the
     /// corrected record's state, because history is never rewritten and
@@ -1770,7 +1984,7 @@ mod tests {
             .expect("correction appends");
 
         assert_eq!(
-            store.reconstruct_through(EventOrdinal(0))[&subject].freshness,
+            store.reconstruct_through([subject.clone()], EventOrdinal(0))[&subject].freshness,
             RecordedDimension::Recorded(FreshnessState::Stale),
             "history at T=0 keeps the uncorrected record — never rewritten"
         );
@@ -2108,7 +2322,7 @@ mod tests {
         assert!(state.synchronization.is_empty());
         assert_eq!(
             store.current_state(),
-            &store.reconstruct_through(EventOrdinal(3)),
+            &store.reconstruct_through([subject.clone()], EventOrdinal(3)),
             "replay must match the derived cache for every family"
         );
         assert_eq!(
