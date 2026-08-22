@@ -71,8 +71,10 @@ impl fmt::Display for Visibility {
 /// `field=visibility` entries (e.g. `owner=internal, cost=restricted`) —
 /// into a field → canonical-visibility map. Field names are carried, never
 /// checked against the kind's schema (carriage only; enforcement is E6).
-/// Any entry without a `=`, with an empty field name, or with an invalid
-/// visibility fails the whole value.
+/// Any entry without a `=`, with an empty field name, with an invalid
+/// visibility, or naming a field already classified earlier in the value
+/// fails the whole value — a duplicate must never silently last-win into a
+/// widened classification (ADR-0058: never a silent default).
 pub(crate) fn parse_field_visibility(
     value: &str,
 ) -> Result<BTreeMap<String, String>, VisibilityError> {
@@ -93,7 +95,12 @@ pub(crate) fn parse_field_visibility(
             "" => VisibilityError::Invalid(entry.to_string()),
             other => VisibilityError::Invalid(other.to_string()),
         })?;
-        entries.insert(field.to_string(), visibility.as_str().to_string());
+        if entries
+            .insert(field.to_string(), visibility.as_str().to_string())
+            .is_some()
+        {
+            return Err(VisibilityError::Invalid(entry.to_string()));
+        }
     }
     if entries.is_empty() {
         return Err(VisibilityError::Missing);
@@ -146,5 +153,15 @@ mod tests {
         assert!(parse_field_visibility("=internal").is_err());
         assert!(parse_field_visibility("owner=secret").is_err());
         assert!(parse_field_visibility("owner=internal,").is_err());
+    }
+
+    /// ADR-0058: `owner=restricted, owner=public` must not silently last-win
+    /// into a widened classification — the whole value fails closed.
+    #[test]
+    fn field_visibility_rejects_duplicate_field_entries() {
+        assert_eq!(
+            parse_field_visibility("owner=restricted, owner=public"),
+            Err(VisibilityError::Invalid("owner=public".to_string()))
+        );
     }
 }
