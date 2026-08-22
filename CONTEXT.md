@@ -183,8 +183,8 @@ The identity of one immutable Source Assertion extracted from a Source Artifact 
 _Avoid_: Source Binding synonym, assertion as Knowledge Object, mutable assertion
 
 **Managed Repository Record**:
-One imported repository inside a Cloud workspace (`ManagedRepositoryRecord` in `adoc-core`), keyed on the Graph Artifact's `repository_identity` — `{kind, config_path}` or explicit `null`, required since v5 (ADR-0049). The record is the binding slot: it can be reserved before the first artifact arrives (V10.3.2), and its Object IDs stay repository-local — the same ID in another repository is a different **Managed Object**, never silently merged.
-_Avoid_: global repository namespace, path-string repository key, cross-repository ID merge
+One imported repository inside a Cloud workspace (`ManagedRepositoryRecord` in `adoc-core`) — the reserved binding slot, keyed by a workspace-minted slot handle (`RepositorySlotId`) and recording the Graph Artifact's `repository_identity` — `{kind, config_path}` or explicit `null`, required since v5 (ADR-0049). Import routes by slot handle because the CLI identity is degenerate across physical repositories; identity-equality lookup remains only as the single-repo convenience and fails closed when ambiguous. The slot can be reserved before the first artifact arrives (V10.3.2), and its Object IDs stay repository-local — the same ID in another slot is a different **Managed Object**, never silently merged.
+_Avoid_: global repository namespace, path-string repository key, repository identity as slot router, cross-repository ID merge
 
 **Reconciliation Candidate**:
 The typed record (`adoc.reconciliation_candidate.v0`, registered planned) emitted when an imported **Object ID** collides with a **Managed Object** in another repository of the same workspace. Both objects stay distinct; the candidate names both parties by **Workspace Canonical Identity**, repository identity, latest **Managed Version ID**, and content hash. Deciding a candidate (keep distinct, link, supersede, merge) is a governed E1.3 action; matching hashes, titles, or similarity never produce one.
