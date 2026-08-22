@@ -127,6 +127,16 @@ impl ReconciliationDecision {
     pub(crate) fn counterpart(&self) -> &DecisionParty {
         &self.counterpart
     }
+
+    /// The unordered pair this decision adjudicates — the standing-state
+    /// key: a later decision for the same pair supersedes the earlier one.
+    pub(crate) fn pair_key(&self) -> (WorkspaceCanonicalIdentity, WorkspaceCanonicalIdentity) {
+        let (a, b) = (
+            self.subject.canonical.clone(),
+            self.counterpart.canonical.clone(),
+        );
+        if a <= b { (a, b) } else { (b, a) }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -143,6 +153,12 @@ pub(crate) enum ReconciliationDecisionError {
     NotACandidatePair,
     #[error("decision is bound to a version that is not the party's latest")]
     StaleVersionBinding,
+    #[error("decision names a party already merged away by a standing merge/re-home decision")]
+    PartyAlreadyMerged,
+    #[error(
+        "merging away a survivor that holds merged antecedents is nested reconciliation (post-V1 policy)"
+    )]
+    NestedMergeUnsupported,
 }
 
 /// The derived reconciliation state: the standing (last-recorded) decision
@@ -162,10 +178,7 @@ impl ReconciliationState {
             ReconciliationDecision,
         > = BTreeMap::new();
         for decision in log {
-            let a = decision.subject().canonical.clone();
-            let b = decision.counterpart().canonical.clone();
-            let key = if a <= b { (a, b) } else { (b, a) };
-            standing.insert(key, decision.clone());
+            standing.insert(decision.pair_key(), decision.clone());
         }
         Self {
             standing: standing.into_values().collect(),
