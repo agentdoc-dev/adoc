@@ -938,6 +938,32 @@ const RETENTION_CLASSES: [&str; 5] = [
     "full_source_snapshot",
 ];
 
+/// The wire strings of `ReplayPosture::as_str` in adoc-core, parsed
+/// from the source in declaration order — the E1.4 domain enum for the
+/// vocabulary this table registered in E0.3.T4 must not drift from it.
+fn replay_posture_wire_strings() -> Vec<String> {
+    let content = read_repo_doc("crates/adoc-core/src/domain/managed_state.rs");
+    let start = content
+        .find("impl ReplayPosture")
+        .expect("managed_state.rs no longer carries `impl ReplayPosture`");
+    let block = &content[start..];
+    let end = block
+        .find("\n}")
+        .expect("managed_state.rs: `impl ReplayPosture` block never closes");
+    let strings: Vec<String> = block[..end]
+        .lines()
+        .filter_map(|line| line.split_once("=> \"")?.1.split_once('"'))
+        .map(|(value, _)| value.to_string())
+        .collect();
+    assert_eq!(
+        strings.len(),
+        4,
+        "ReplayPosture::as_str parse found {} arms — the pattern drifted",
+        strings.len()
+    );
+    strings
+}
+
 #[test]
 fn replay_postures_match_k9() {
     assert_vocabulary(
@@ -950,6 +976,13 @@ fn replay_postures_match_k9() {
         REPLAY_POSTURES,
         "KNOWLEDGE-MODEL.md §K9's replay-posture list drifted from the \
          registry — amend both together, never one alone"
+    );
+    assert_eq!(
+        replay_posture_wire_strings(),
+        REPLAY_POSTURES.map(String::from),
+        "adoc-core's ReplayPosture wire strings drifted from the registry — \
+         amend the registry and KNOWLEDGE-MODEL §K9 together with the code, \
+         never one alone"
     );
 }
 
@@ -1012,10 +1045,42 @@ fn extend_states(pairs: &mut BTreeSet<String>, dimension: Option<&str>, values: 
     );
 }
 
+/// The `wired("<dimension>", "<state>")` rows of adoc-core's
+/// `AUDIT_EMITTER_REGISTRY`, parsed from the source like
+/// [`diagnostic_code_table`] parses `diagnostic.rs`. adoc-core's own
+/// coverage tests force that registry to equal the six vocabulary enums
+/// exactly (both directions), so pinning the registry table to these
+/// rows transitively pins it to the domain enums — a vocabulary edit in
+/// `managed_state.rs` cannot pass while the registry document and §K4
+/// stay stale.
+fn audit_emitter_wired_pairs() -> BTreeSet<String> {
+    let content = read_repo_doc("crates/adoc-core/src/domain/managed_state.rs");
+    let mut pairs = BTreeSet::new();
+    for line in content.lines() {
+        let Some(rest) = line.trim().strip_prefix("wired(\"") else {
+            continue;
+        };
+        let Some((dimension, rest)) = rest.split_once("\", \"") else {
+            continue;
+        };
+        let Some((state, _)) = rest.split_once('"') else {
+            continue;
+        };
+        pairs.insert(format!("{dimension}.{state}"));
+    }
+    assert!(
+        pairs.len() >= 27,
+        "wired(...) parse found only {} rows in managed_state.rs — the row pattern drifted",
+        pairs.len()
+    );
+    pairs
+}
+
 /// The six-dimension managed state vocabularies (E1.4, decision D07/D15):
-/// registry rows, the pinned list here, and KNOWLEDGE-MODEL §K4's fenced
-/// block must agree exactly — a change anywhere is a registry edit plus a
-/// §K4 amendment, never one alone.
+/// registry rows, the pinned list here, KNOWLEDGE-MODEL §K4's fenced
+/// block, and adoc-core's audit emitter registry (transitively, the
+/// domain enums) must agree exactly — a change anywhere is a registry
+/// edit plus a §K4 amendment, never one alone.
 #[test]
 fn managed_state_dimensions_match_k4() {
     assert_vocabulary(
@@ -1032,6 +1097,13 @@ fn managed_state_dimensions_match_k4() {
         expected,
         "KNOWLEDGE-MODEL.md §K4's dimension block drifted from the registry — \
          amend both together, never one alone"
+    );
+    assert_eq!(
+        audit_emitter_wired_pairs(),
+        expected,
+        "adoc-core's AUDIT_EMITTER_REGISTRY (and with it the domain vocabulary \
+         enums) drifted from the registry table — amend the registry and \
+         KNOWLEDGE-MODEL §K4 together with the code, never one alone"
     );
     assert!(
         registry().contains("required_before_effective"),
