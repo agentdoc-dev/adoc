@@ -104,7 +104,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 
 ## Diagnostic Codes — shipped, owner `adoc`
 
-Shared row values: producer `adoc` 0.3.4 (`adoc-core` `diagnostic_codes!` table, the single declaring source); consumers are every envelope embedding `Diagnostic` records (CLI/MCP surfaces at adoc 0.3.4, Action v2.0.0-alpha.19 report rendering). Migration posture for every row: wire-stable string — a meaning change or removal requires a row in “Dispositions”, never reuse.
+Shared row values: producer `adoc` 0.4.0 (`adoc-core` `diagnostic_codes!` table, the single declaring source); consumers are every envelope embedding `Diagnostic` records (CLI/MCP surfaces at adoc 0.4.0, Action v2.0.0-alpha.19 report rendering). Migration posture for every row: wire-stable string — a meaning change or removal requires a row in “Dispositions”, never reuse.
 
 <!-- registry:diagnostic-codes -->
 | code |
