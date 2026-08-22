@@ -2015,6 +2015,184 @@ mod tests {
         }
     }
 
+    /// Acceptance (MILESTONES §E1.4): the full lifecycle — record →
+    /// deliver → approve → edit → invalidate → re-approve — reconstructs
+    /// exactly from the audit rows alone. The edit is a content change:
+    /// it mints a second immutable version on the same canonical
+    /// identity (RT-04 — never a mutation of the recorded one), every
+    /// subsequent event lands on the new subject, and the first
+    /// version's recorded history stands unrewritten.
+    #[test]
+    fn full_lifecycle_with_an_edit_reconstructs_from_audit_rows_alone() {
+        let mut workspace = workspace();
+        let subject_v1 = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        // record → deliver → approve, on the first managed version.
+        for change in [
+            ManagedStateChange::Governance {
+                state: GovernanceState::Proposed,
+            },
+            ManagedStateChange::Effectivity {
+                state: EffectivityState::Effective,
+            },
+            ManagedStateChange::Governance {
+                state: GovernanceState::Approved,
+            },
+        ] {
+            store
+                .append(
+                    &mut sink,
+                    event(&subject_v1, change, "cloud.governance", "policy-1"),
+                )
+                .expect("append accepted");
+        }
+
+        // The edit: re-importing the object with changed governed meaning
+        // mints a second immutable version on the same canonical identity.
+        let edited = workspace
+            .import_artifact(&artifact(vec![knowledge_object(
+                "billing.credits",
+                "sha256:bbb",
+            )]))
+            .expect("edit import accepted");
+        let minted = &edited.imported[0];
+        assert_eq!(minted.canonical, subject_v1.canonical);
+        assert_ne!(minted.version_id, subject_v1.version_id);
+        let subject_v2 = StateEventSubject {
+            canonical: minted.canonical.clone(),
+            version_id: minted.version_id.clone(),
+        };
+        assert_eq!(
+            workspace
+                .managed_object(&subject_v1.canonical)
+                .expect("object recorded")
+                .versions
+                .len(),
+            2,
+            "the edit appends a second immutable version"
+        );
+
+        // invalidate → re-approve, landing on the new subject.
+        for change in [
+            ManagedStateChange::Governance {
+                state: GovernanceState::Revoked,
+            },
+            ManagedStateChange::Governance {
+                state: GovernanceState::Approved,
+            },
+        ] {
+            store
+                .append(
+                    &mut sink,
+                    event(&subject_v2, change, "cloud.governance", "policy-2"),
+                )
+                .expect("append accepted");
+        }
+
+        // Reconstruction input: the audit rows ALONE — each row's exact
+        // bytes parsed back, keyed by the subject the bytes carry, folded
+        // per dimension. No live store structures are consulted.
+        let fold = |records: &[AuditRecord]| -> BTreeMap<(String, String), serde_json::Value> {
+            let mut replayed = BTreeMap::new();
+            for record in records {
+                let bytes: serde_json::Value =
+                    serde_json::from_str(&record.event_bytes).expect("audit bytes parse");
+                let key = (
+                    bytes["subject"]["canonical"]["canonical_id"]
+                        .as_str()
+                        .expect("canonical id")
+                        .to_string(),
+                    bytes["subject"]["version_id"]
+                        .as_str()
+                        .expect("version id")
+                        .to_string(),
+                );
+                let state = replayed.entry(key).or_insert_with(|| {
+                    json!({
+                        "governance": "gap",
+                        "verification": "gap",
+                        "effectivity": "gap",
+                        "freshness": "gap",
+                        "integrity": "gap",
+                        "synchronization": {}
+                    })
+                });
+                let family = bytes["change"]["family"].as_str().expect("family");
+                assert!(
+                    matches!(
+                        family,
+                        "governance" | "verification" | "effectivity" | "freshness" | "integrity"
+                    ),
+                    "unexpected family in the lifecycle fixture: {family}"
+                );
+                state[family] = json!({ "recorded": bytes["change"]["state"].clone() });
+            }
+            replayed
+        };
+        let key_of = |subject: &StateEventSubject| {
+            let value = serde_json::to_value(subject).expect("subject serializes");
+            (
+                value["canonical"]["canonical_id"]
+                    .as_str()
+                    .expect("canonical id")
+                    .to_string(),
+                value["version_id"]
+                    .as_str()
+                    .expect("version id")
+                    .to_string(),
+            )
+        };
+
+        // The full replay from audit rows matches the derived cache.
+        let replayed = fold(&sink.records);
+        let expected: BTreeMap<(String, String), serde_json::Value> = store
+            .current_state()
+            .iter()
+            .map(|(subject, state)| {
+                (
+                    key_of(subject),
+                    serde_json::to_value(state).expect("state serializes"),
+                )
+            })
+            .collect();
+        assert_eq!(
+            replayed, expected,
+            "audit rows alone must reproduce the derived cache"
+        );
+        assert_eq!(
+            replayed[&key_of(&subject_v1)],
+            json!({
+                "governance": { "recorded": "approved" },
+                "verification": "gap",
+                "effectivity": { "recorded": "effective" },
+                "freshness": "gap",
+                "integrity": "gap",
+                "synchronization": {}
+            }),
+            "the first version's history stands unrewritten after the edit"
+        );
+        assert_eq!(
+            replayed[&key_of(&subject_v2)],
+            json!({
+                "governance": { "recorded": "approved" },
+                "verification": "gap",
+                "effectivity": "gap",
+                "freshness": "gap",
+                "integrity": "gap",
+                "synchronization": {}
+            }),
+            "the re-approval lands on the edited version"
+        );
+        // Mid-log: right after the invalidation (ordinal 3), the edited
+        // version is revoked — the re-approval is invisible.
+        let at_invalidation = fold(&sink.records[..4]);
+        assert_eq!(
+            at_invalidation[&key_of(&subject_v2)]["governance"],
+            json!({ "recorded": "revoked" })
+        );
+    }
+
     /// An event whose bytes cannot be produced must fail the owning
     /// operation with `audit.persistence_failed` — exact bytes at write
     /// time are part of the audit trail, and nothing succeeds without
