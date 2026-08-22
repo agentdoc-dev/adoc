@@ -21,7 +21,7 @@ use crate::domain::knowledge_object::{
 };
 use crate::domain::ports::{artifact_reader::ArtifactReader, artifact_writer::ArtifactWriter};
 use crate::domain::value_objects::evidence_kind::EvidenceKind;
-use crate::domain::value_objects::visibility::parse_field_visibility;
+use crate::domain::value_objects::visibility::{Visibility, parse_field_visibility};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GraphJsonArtifact;
@@ -480,7 +480,18 @@ fn knowledge_object_to_graph_node_without_hash(
     // unparseable value it stays in `fields` (still serialized and hashed —
     // no silent loss).
     let mut fields = metadata_fields_to_graph(metadata.fields());
-    let visibility = fields.remove(VISIBILITY_FIELD);
+    // Canonicalize through the closed vocabulary — the parser strips at most
+    // one space after the colon, so the raw value may carry authoring
+    // whitespace that must never reach the wire or the hash.
+    let mut visibility = None;
+    if let Some(raw) = fields.remove(VISIBILITY_FIELD) {
+        match Visibility::try_new(&raw) {
+            Ok(canonical) => visibility = Some(canonical.as_str().to_string()),
+            Err(_) => {
+                fields.insert(VISIBILITY_FIELD.to_string(), raw);
+            }
+        }
+    }
     let mut field_visibility = None;
     if let Some(raw) = fields.remove(FIELD_VISIBILITY_FIELD) {
         match parse_field_visibility(&raw) {
