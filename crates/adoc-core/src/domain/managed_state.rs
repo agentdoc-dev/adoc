@@ -444,6 +444,8 @@ pub(crate) enum StateEventStoreError {
         delete_below: EventOrdinal,
         protected_from: EventOrdinal,
     },
+    #[error("the audit sink failed to persist the transition's audit record")]
+    AuditPersistenceFailed,
 }
 
 impl StateEventStoreError {
@@ -451,13 +453,165 @@ impl StateEventStoreError {
     /// — an occupied/future-ordinal write and a correction naming an
     /// unrecorded target — are appends contradicting recorded history,
     /// the `governance.record_conflict` family (V10.4.2).
+    /// `audit.persistence_failed` is the operation-level code (E1.4);
+    /// the gate-level `gate.audit_persistence_failed` (E5.3) is a
+    /// distinct registered surface that consumes it — explicit mapping,
+    /// never spelling drift (RT-21).
     pub(crate) fn diagnostic_code(&self) -> DiagnosticCode {
         match self {
             Self::RecordConflict { .. } | Self::CorrectionTargetMissing { .. } => {
                 DiagnosticCode::GovernanceRecordConflict
             }
             Self::RetentionFloorViolation { .. } => DiagnosticCode::StoreRetentionFloorViolation,
+            Self::AuditPersistenceFailed => DiagnosticCode::AuditPersistenceFailed,
         }
+    }
+}
+
+/// One audit record, written by the store at append time — one per
+/// recorded transition (E1.4.T5 extends it with the exact bytes and the
+/// digest chain).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AuditRecord {
+    pub(crate) ordinal: EventOrdinal,
+}
+
+/// The audit sink could not persist a record. Deliberately carries no
+/// recovery hint: the owning operation must fail — under every V10.4.1
+/// policy cell the failure is surfaced (blocking where policy blocks,
+/// loudly annotated under the advisory default via the returned code),
+/// and nothing ever silently succeeds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("audit record persistence failed")]
+pub(crate) struct AuditSinkError;
+
+/// Internal port: where transition audit records are persisted. The
+/// store writes the audit record BEFORE committing the event — a sink
+/// failure aborts the append entirely, so an unaudited transition can
+/// never exist (fail closed, V10.4.6).
+pub(crate) trait AuditSink {
+    fn record(&mut self, record: &AuditRecord) -> Result<(), AuditSinkError>;
+}
+
+/// One audited transition: a dimension, a target state, and the
+/// emitting operation wired to audit it. Keyed by target state because
+/// every recorded event lands on exactly one state — a dimension's
+/// transition set is covered exactly when every reachable target state
+/// is audited (edge-level narrowing is policy, E6.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AuditedTransition {
+    pub(crate) dimension: &'static str,
+    pub(crate) state: &'static str,
+    pub(crate) emitter: &'static str,
+}
+
+/// The audit emitter registry (E1.4.T4): the hand-maintained wiring
+/// table the CI coverage guard diffs against the state machines. A new
+/// vocabulary state fails the guard until a row lands here — auditing
+/// is wired consciously, never assumed. Today every transition is
+/// audited by the single append path, which writes the audit record
+/// before committing the event.
+const APPEND_EMITTER: &str = "managed_state_event_store.append";
+pub(crate) const AUDIT_EMITTER_REGISTRY: &[AuditedTransition] = &{
+    const fn wired(dimension: &'static str, state: &'static str) -> AuditedTransition {
+        AuditedTransition {
+            dimension,
+            state,
+            emitter: APPEND_EMITTER,
+        }
+    }
+    [
+        wired("governance", "proposed"),
+        wired("governance", "approved"),
+        wired("governance", "rejected"),
+        wired("governance", "revoked"),
+        wired("verification", "unverified"),
+        wired("verification", "partially_verified"),
+        wired("verification", "verified"),
+        wired("verification", "failed"),
+        wired("effectivity", "pending"),
+        wired("effectivity", "scheduled"),
+        wired("effectivity", "effective"),
+        wired("effectivity", "suspended"),
+        wired("effectivity", "expired"),
+        wired("freshness", "current"),
+        wired("freshness", "needs_review"),
+        wired("freshness", "stale"),
+        wired("integrity", "clear"),
+        wired("integrity", "potentially_conflicting"),
+        wired("integrity", "contradicted"),
+        wired("synchronization", "in_sync"),
+        wired("synchronization", "pending_writeback"),
+        wired("synchronization", "pending_external_approval"),
+        wired("synchronization", "writeback_failed"),
+        wired("synchronization", "source_ahead"),
+        wired("synchronization", "source_diverged"),
+        wired("synchronization", "paused"),
+        wired("synchronization", "not_applicable"),
+    ]
+};
+
+/// The two directions the audit coverage guard checks: transitions the
+/// registry does not audit, and registry entries naming no known
+/// transition (stale or misspelled rows must not pass silently).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AuditCoverageDiff {
+    pub(crate) unaudited: Vec<(String, String)>,
+    pub(crate) unknown: Vec<(String, String)>,
+}
+
+/// Diff the six state machines' transition sets — every (dimension,
+/// target state) pair derivable from the closed vocabularies — against
+/// an audit emitter registry. Pure so the guard can also prove that a
+/// deliberately unwired fixture fails.
+pub(crate) fn audit_coverage_diff(registry: &[AuditedTransition]) -> AuditCoverageDiff {
+    let mut complete: Vec<(String, String)> = Vec::new();
+    complete.extend(
+        GovernanceState::ALL
+            .iter()
+            .map(|s| ("governance".to_string(), s.as_str().to_string())),
+    );
+    complete.extend(
+        VerificationState::ALL
+            .iter()
+            .map(|s| ("verification".to_string(), s.as_str().to_string())),
+    );
+    complete.extend(
+        EffectivityState::ALL
+            .iter()
+            .map(|s| ("effectivity".to_string(), s.as_str().to_string())),
+    );
+    complete.extend(
+        FreshnessState::ALL
+            .iter()
+            .map(|s| ("freshness".to_string(), s.as_str().to_string())),
+    );
+    complete.extend(
+        IntegrityState::ALL
+            .iter()
+            .map(|s| ("integrity".to_string(), s.as_str().to_string())),
+    );
+    complete.extend(
+        SynchronizationState::ALL
+            .iter()
+            .map(|s| ("synchronization".to_string(), s.as_str().to_string())),
+    );
+
+    let registered: Vec<(String, String)> = registry
+        .iter()
+        .map(|entry| (entry.dimension.to_string(), entry.state.to_string()))
+        .collect();
+    AuditCoverageDiff {
+        unaudited: complete
+            .iter()
+            .filter(|pair| !registered.contains(pair))
+            .cloned()
+            .collect(),
+        unknown: registered
+            .iter()
+            .filter(|pair| !complete.contains(pair))
+            .cloned()
+            .collect(),
     }
 }
 
@@ -496,8 +650,15 @@ impl ManagedStateEventStore {
     /// version records at all, so the invariant holds by construction.
     /// A correction must reference a recorded ordinal; a dangling one
     /// fails closed and appends nothing.
+    ///
+    /// The transition's audit record is written to `sink` BEFORE the
+    /// event commits: a sink failure aborts the whole append with
+    /// `audit.persistence_failed` — the owning operation surfaces the
+    /// failure under every V10.4.1 policy cell, and an unaudited
+    /// committed transition can never exist (never fail-open, V10.4.6).
     pub(crate) fn append(
         &mut self,
+        sink: &mut dyn AuditSink,
         event: ManagedStateEvent,
     ) -> Result<EventOrdinal, StateEventStoreError> {
         let ordinal = EventOrdinal(self.events.len() as u64);
@@ -505,6 +666,9 @@ impl ManagedStateEventStore {
             && corrects >= ordinal
         {
             return Err(StateEventStoreError::CorrectionTargetMissing { corrects });
+        }
+        if sink.record(&AuditRecord { ordinal }).is_err() {
+            return Err(StateEventStoreError::AuditPersistenceFailed);
         }
         self.current
             .entry(event.subject.clone())
@@ -521,13 +685,14 @@ impl ManagedStateEventStore {
     /// conflict, and nothing changes on rejection.
     pub(crate) fn append_at(
         &mut self,
+        sink: &mut dyn AuditSink,
         claimed: EventOrdinal,
         event: ManagedStateEvent,
     ) -> Result<EventOrdinal, StateEventStoreError> {
         if claimed != EventOrdinal(self.events.len() as u64) {
             return Err(StateEventStoreError::RecordConflict { claimed });
         }
-        self.append(event)
+        self.append(sink, event)
     }
 
     /// Validate a retention sweep request: delete every record with
@@ -608,6 +773,21 @@ mod tests {
         ManagedWorkspace::new(WorkspaceId::new("ws-acme").expect("workspace id is non-blank"))
     }
 
+    /// The reference audit sink for domain tests: persists every record
+    /// in memory, in write order. Production sinks are adapter concerns
+    /// (the Cloud store, E1.4 cloud cut).
+    #[derive(Debug, Default)]
+    struct InMemoryAuditSink {
+        records: Vec<AuditRecord>,
+    }
+
+    impl AuditSink for InMemoryAuditSink {
+        fn record(&mut self, record: &AuditRecord) -> Result<(), AuditSinkError> {
+            self.records.push(record.clone());
+            Ok(())
+        }
+    }
+
     fn knowledge_object(id: &str, content_hash: &str) -> GraphKnowledgeObjectNode {
         GraphKnowledgeObjectNode {
             id: id.to_string(),
@@ -683,12 +863,19 @@ mod tests {
         };
         let before = workspace.clone();
 
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(1));
         store
-            .append(freshness_event(subject.clone(), FreshnessState::Current))
+            .append(
+                &mut sink,
+                freshness_event(subject.clone(), FreshnessState::Current),
+            )
             .expect("append accepted");
         store
-            .append(freshness_event(subject.clone(), FreshnessState::Stale))
+            .append(
+                &mut sink,
+                freshness_event(subject.clone(), FreshnessState::Stale),
+            )
             .expect("append accepted");
 
         assert_eq!(
@@ -718,15 +905,19 @@ mod tests {
             )]))
             .expect("import accepted");
         let imported = &outcome.imported[0];
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(1));
         store
-            .append(freshness_event(
-                StateEventSubject {
-                    canonical: imported.canonical.clone(),
-                    version_id: imported.version_id.clone(),
-                },
-                FreshnessState::Stale,
-            ))
+            .append(
+                &mut sink,
+                freshness_event(
+                    StateEventSubject {
+                        canonical: imported.canonical.clone(),
+                        version_id: imported.version_id.clone(),
+                    },
+                    FreshnessState::Stale,
+                ),
+            )
             .expect("append accepted");
 
         let value = serde_json::to_value(&store.events()[0]).expect("record serializes");
@@ -908,14 +1099,19 @@ mod tests {
     fn write_at_an_occupied_or_future_ordinal_is_a_record_conflict() {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(1));
         store
-            .append(freshness_event(subject.clone(), FreshnessState::Current))
+            .append(
+                &mut sink,
+                freshness_event(subject.clone(), FreshnessState::Current),
+            )
             .expect("append accepted");
         let before = store.clone();
 
         for claimed in [EventOrdinal(0), EventOrdinal(2)] {
             let outcome = store.append_at(
+                &mut sink,
                 claimed,
                 freshness_event(subject.clone(), FreshnessState::Stale),
             );
@@ -930,6 +1126,7 @@ mod tests {
 
         store
             .append_at(
+                &mut sink,
                 EventOrdinal(1),
                 freshness_event(subject, FreshnessState::Stale),
             )
@@ -943,15 +1140,21 @@ mod tests {
     fn a_correction_appends_a_new_record_and_rewrites_nothing() {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(1));
         store
-            .append(freshness_event(subject.clone(), FreshnessState::Stale))
+            .append(
+                &mut sink,
+                freshness_event(subject.clone(), FreshnessState::Stale),
+            )
             .expect("append accepted");
         let original = store.events()[0].clone();
 
         let mut correction = freshness_event(subject, FreshnessState::Current);
         correction.corrects = Some(EventOrdinal(0));
-        store.append(correction).expect("correction appends");
+        store
+            .append(&mut sink, correction)
+            .expect("correction appends");
 
         assert_eq!(store.events().len(), 2);
         assert_eq!(
@@ -969,12 +1172,13 @@ mod tests {
     fn a_correction_referencing_an_unrecorded_ordinal_is_rejected() {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(1));
         let mut correction = freshness_event(subject, FreshnessState::Current);
         correction.corrects = Some(EventOrdinal(3));
 
         let error = store
-            .append(correction)
+            .append(&mut sink, correction)
             .expect_err("a dangling correction must be rejected");
         assert_eq!(
             error,
@@ -999,10 +1203,14 @@ mod tests {
     fn a_retention_sweep_into_the_protected_span_is_rejected() {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(3));
         for _ in 0..5 {
             store
-                .append(freshness_event(subject.clone(), FreshnessState::Stale))
+                .append(
+                    &mut sink,
+                    freshness_event(subject.clone(), FreshnessState::Stale),
+                )
                 .expect("append accepted");
         }
         let before = store.clone();
@@ -1041,9 +1249,10 @@ mod tests {
     fn a_short_log_is_entirely_floor_protected() {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(3));
         store
-            .append(freshness_event(subject, FreshnessState::Stale))
+            .append(&mut sink, freshness_event(subject, FreshnessState::Stale))
             .expect("append accepted");
 
         let error = store
@@ -1086,6 +1295,7 @@ mod tests {
     fn full_replay_matches_the_derived_cache() {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(1));
         let connector = ConnectorId::new("confluence").expect("non-blank");
         for change in [
@@ -1111,7 +1321,10 @@ mod tests {
             },
         ] {
             store
-                .append(event(&subject, change, "cloud.governance", "policy-1"))
+                .append(
+                    &mut sink,
+                    event(&subject, change, "cloud.governance", "policy-1"),
+                )
                 .expect("append accepted");
         }
 
@@ -1129,36 +1342,46 @@ mod tests {
     fn historical_state_at_an_event_ordinal_reconstructs_exactly() {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(1));
         store
-            .append(event(
-                &subject,
-                ManagedStateChange::Governance {
-                    state: GovernanceState::Proposed,
-                },
-                "cloud.governance",
-                "policy-1",
-            ))
+            .append(
+                &mut sink,
+                event(
+                    &subject,
+                    ManagedStateChange::Governance {
+                        state: GovernanceState::Proposed,
+                    },
+                    "cloud.governance",
+                    "policy-1",
+                ),
+            )
             .expect("append accepted");
         store
-            .append(event(
-                &subject,
-                ManagedStateChange::Freshness {
-                    state: FreshnessState::Stale,
-                },
-                "cloud.freshness_evaluator",
-                "policy-1",
-            ))
+            .append(
+                &mut sink,
+                event(
+                    &subject,
+                    ManagedStateChange::Freshness {
+                        state: FreshnessState::Stale,
+                    },
+                    "cloud.freshness_evaluator",
+                    "policy-1",
+                ),
+            )
             .expect("append accepted");
         store
-            .append(event(
-                &subject,
-                ManagedStateChange::Governance {
-                    state: GovernanceState::Approved,
-                },
-                "cloud.governance",
-                "policy-2",
-            ))
+            .append(
+                &mut sink,
+                event(
+                    &subject,
+                    ManagedStateChange::Governance {
+                        state: GovernanceState::Approved,
+                    },
+                    "cloud.governance",
+                    "policy-2",
+                ),
+            )
             .expect("append accepted");
 
         let at_one = store.reconstruct_through(EventOrdinal(1));
@@ -1188,16 +1411,20 @@ mod tests {
     fn unrecorded_dimensions_render_explicit_gap_markers() {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(1));
         store
-            .append(event(
-                &subject,
-                ManagedStateChange::Freshness {
-                    state: FreshnessState::Current,
-                },
-                "cloud.freshness_evaluator",
-                "policy-1",
-            ))
+            .append(
+                &mut sink,
+                event(
+                    &subject,
+                    ManagedStateChange::Freshness {
+                        state: FreshnessState::Current,
+                    },
+                    "cloud.freshness_evaluator",
+                    "policy-1",
+                ),
+            )
             .expect("append accepted");
 
         let state = &store.current_state()[&subject];
@@ -1231,16 +1458,20 @@ mod tests {
     fn a_correction_applies_at_its_own_ordinal_never_retroactively() {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(1));
         store
-            .append(event(
-                &subject,
-                ManagedStateChange::Freshness {
-                    state: FreshnessState::Stale,
-                },
-                "cloud.freshness_evaluator",
-                "policy-1",
-            ))
+            .append(
+                &mut sink,
+                event(
+                    &subject,
+                    ManagedStateChange::Freshness {
+                        state: FreshnessState::Stale,
+                    },
+                    "cloud.freshness_evaluator",
+                    "policy-1",
+                ),
+            )
             .expect("append accepted");
         let mut correction = event(
             &subject,
@@ -1251,7 +1482,9 @@ mod tests {
             "policy-1",
         );
         correction.corrects = Some(EventOrdinal(0));
-        store.append(correction).expect("correction appends");
+        store
+            .append(&mut sink, correction)
+            .expect("correction appends");
 
         assert_eq!(
             store.reconstruct_through(EventOrdinal(0))[&subject].freshness,
@@ -1271,22 +1504,26 @@ mod tests {
     fn synchronization_reconstructs_per_connector() {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
         let mut store = ManagedStateEventStore::new(RetentionFloor(1));
         for (connector, state, required) in [
             ("confluence", SynchronizationState::InSync, true),
             ("github", SynchronizationState::SourceDiverged, false),
         ] {
             store
-                .append(event(
-                    &subject,
-                    ManagedStateChange::Synchronization {
-                        connector: ConnectorId::new(connector).expect("non-blank"),
-                        state,
-                        required_before_effective: required,
-                    },
-                    "cloud.sync_observer",
-                    "policy-1",
-                ))
+                .append(
+                    &mut sink,
+                    event(
+                        &subject,
+                        ManagedStateChange::Synchronization {
+                            connector: ConnectorId::new(connector).expect("non-blank"),
+                            state,
+                            required_before_effective: required,
+                        },
+                        "cloud.sync_observer",
+                        "policy-1",
+                    ),
+                )
                 .expect("append accepted");
         }
 
@@ -1298,6 +1535,109 @@ mod tests {
         let github = &sync[&ConnectorId::new("github").expect("non-blank")];
         assert_eq!(github.state, SynchronizationState::SourceDiverged);
         assert!(!github.required_before_effective);
+    }
+
+    // E1.4.T4 (MILESTONES §E1.4; V10.4.6 provenance): every state
+    // transition is audited, the coverage guard fails the build on any
+    // unaudited one, and a failing audit sink can never fail open.
+
+    /// An audit sink whose persistence always fails — the forced-failure
+    /// fixture of the milestone's acceptance.
+    struct FailingAuditSink;
+
+    impl AuditSink for FailingAuditSink {
+        fn record(&mut self, _record: &AuditRecord) -> Result<(), AuditSinkError> {
+            Err(AuditSinkError)
+        }
+    }
+
+    /// Acceptance: forced audit-sink failure surfaces
+    /// `audit.persistence_failed` from the owning operation and nothing
+    /// silently succeeds — the event is not appended, the derived cache
+    /// is untouched, and no partial record exists anywhere.
+    #[test]
+    fn forced_audit_sink_failure_fails_the_append_closed() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+
+        let error = store
+            .append(
+                &mut FailingAuditSink,
+                freshness_event(subject.clone(), FreshnessState::Stale),
+            )
+            .expect_err("a failed audit write must fail the owning operation");
+        assert_eq!(error, StateEventStoreError::AuditPersistenceFailed);
+        assert_eq!(error.diagnostic_code().as_str(), "audit.persistence_failed");
+        assert!(store.events().is_empty(), "nothing may append");
+        assert!(store.current_state().is_empty(), "no cache entry may exist");
+
+        // The same event persists once the sink recovers — the failure
+        // was the sink's, not the event's.
+        store
+            .append(&mut sink, freshness_event(subject, FreshnessState::Stale))
+            .expect("append accepted");
+        assert_eq!(store.events().len(), 1);
+        assert_eq!(sink.records.len(), 1);
+        assert_eq!(sink.records[0].ordinal, EventOrdinal(0));
+    }
+
+    /// The audit coverage guard (CI): diff the six state machines'
+    /// transition sets — every reachable target state per dimension,
+    /// since each recorded event lands on exactly one — against the
+    /// audit emitter registry. The complete set passes.
+    #[test]
+    fn audit_emitter_registry_covers_every_transition() {
+        let diff = audit_coverage_diff(AUDIT_EMITTER_REGISTRY);
+        assert_eq!(
+            diff.unaudited,
+            Vec::<(String, String)>::new(),
+            "unaudited transitions — extend AUDIT_EMITTER_REGISTRY and wire the emitter"
+        );
+        assert_eq!(
+            diff.unknown,
+            Vec::<(String, String)>::new(),
+            "registry entries naming no known transition — stale or misspelled"
+        );
+        for entry in AUDIT_EMITTER_REGISTRY {
+            assert!(
+                !entry.emitter.trim().is_empty(),
+                "every audited transition names its emitter"
+            );
+        }
+    }
+
+    /// Acceptance: a deliberately unwired fixture transition fails the
+    /// coverage guard — dropping one entry surfaces exactly that
+    /// transition as unaudited, and a fixture entry naming a state the
+    /// vocabularies do not carry is flagged as unknown.
+    #[test]
+    fn an_unwired_or_unknown_fixture_transition_fails_the_coverage_guard() {
+        let unwired: Vec<AuditedTransition> = AUDIT_EMITTER_REGISTRY
+            .iter()
+            .filter(|entry| !(entry.dimension == "freshness" && entry.state == "stale"))
+            .cloned()
+            .collect();
+        let diff = audit_coverage_diff(&unwired);
+        assert_eq!(
+            diff.unaudited,
+            vec![("freshness".to_string(), "stale".to_string())],
+            "the dropped transition must surface as unaudited"
+        );
+
+        let mut with_unknown: Vec<AuditedTransition> = AUDIT_EMITTER_REGISTRY.to_vec();
+        with_unknown.push(AuditedTransition {
+            dimension: "freshness",
+            state: "fresh",
+            emitter: "managed_state_event_store.append",
+        });
+        let diff = audit_coverage_diff(&with_unknown);
+        assert_eq!(
+            diff.unknown,
+            vec![("freshness".to_string(), "fresh".to_string())],
+            "an entry outside the closed vocabularies must be flagged"
+        );
     }
 
     /// Blank or padded connector and emitter values fail closed — an
