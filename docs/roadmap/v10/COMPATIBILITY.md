@@ -17,7 +17,7 @@ Every cross-repo slice names exactly one contract owner and one owning release t
 
 ## Compatibility table
 
-One row per multi-repo slice in the execution map. Until a slice ships its first tested cross-repo pair, its row carries the verified baseline above as both the minimum and maximum tested producer-consumer versions; the owning slice updates its row with the tested versions at slice completion — deleting a row instead of updating it fails the guard.
+One row per multi-repo slice in the execution map. Until a slice ships its first tested cross-repo pair, its row carries the verified baseline above as both the minimum and maximum tested producer-consumer versions; the owning slice updates its row with the tested versions at slice completion — deleting a row instead of updating it fails the guard. In a versions cell, a single value means minimum = maximum; a genuine range writes an en dash between the tested endpoints, e.g. `adoc` 0.3.4–0.5.0.
 E8.5's GitLab CI component has no named home repository yet; its row covers the named contract parties (`adoc`, `cloud`) and gains the component repository's versions when E8.5 names it at slice start.
 
 <!-- compat:slice-rows -->
