@@ -139,6 +139,7 @@ Shared row values: producer `adoc` 0.4.0 (`adoc-core` `diagnostic_codes!` table,
 | `evidence.hash_invalid` |
 | `evidence.hash_target_missing` |
 | `evidence.hash_unverifiable` |
+| `governance.record_conflict` |
 | `graph.object_not_found` |
 | `id.duplicate` |
 | `id.duplicate_in_artifact` |
@@ -260,6 +261,7 @@ Shared row values: producer `adoc` 0.4.0 (`adoc-core` `diagnostic_codes!` table,
 | `search.invalid_filter` |
 | `search.invalid_scope` |
 | `search.model_mismatch` |
+| `store.retention_floor_violation` |
 | `task.overdue` |
 <!-- /registry:diagnostic-codes -->
 
