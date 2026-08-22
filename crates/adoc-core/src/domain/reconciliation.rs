@@ -139,6 +139,8 @@ pub(crate) enum ReconciliationDecisionError {
     SelfDecision,
     #[error("decision names a managed object unknown to this workspace")]
     UnknownParty,
+    #[error("decision parties never formed a reconciliation candidate pair")]
+    NotACandidatePair,
     #[error("decision is bound to a version that is not the party's latest")]
     StaleVersionBinding,
 }
