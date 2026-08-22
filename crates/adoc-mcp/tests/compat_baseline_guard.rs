@@ -114,6 +114,18 @@ fn multi_repo_slices(map: &str) -> BTreeMap<String, Vec<&'static str>> {
         } else if let (Some(id), Some((_, field))) =
             (current.as_ref(), line.split_once("**Repos:**"))
         {
+            // Every repository the field NAMES (backticked) must be one the
+            // delivery order knows — an unrecognised name would otherwise be
+            // silently dropped and its party never appear in the table
+            // (E8.5's future component repository is the live case).
+            for token in field.split('`').skip(1).step_by(2) {
+                assert!(
+                    DELIVERY_ORDER.contains(&token),
+                    "{EXECUTION_MAP}: slice {id} names repository {token:?}, which the \
+                     delivery order does not know — add it to DELIVERY_ORDER or the \
+                     slice silently ships with an uncovered party"
+                );
+            }
             let repos = repos_named(field);
             assert!(
                 !repos.is_empty(),
@@ -223,7 +235,9 @@ fn rows_name_owner_versions_and_owning_train() {
         "compat:slice-rows",
     ));
     for (id, row) in &rows {
-        let repos = &slices[id];
+        let Some(repos) = slices.get(id) else {
+            continue; // stale rows are `every_multi_repo_slice_has_exactly_one_row`'s report
+        };
         assert!(
             repos.contains(&row.owner.as_str()),
             "{id}: contract owner {:?} is not an involved repository {repos:?}",
@@ -235,22 +249,43 @@ fn rows_name_owner_versions_and_owning_train() {
             "{id}: owning release train must be the last involved repository \
              in the delivery order (Cloud last, web after)"
         );
-        for repo in repos {
+        // Exact in both directions: an extra repo in the cell is the same
+        // silent divergence from the map as a missing one.
+        assert_eq!(
+            repos_named(&row.repos),
+            *repos,
+            "{id}: repos cell does not mirror the map's involved repositories: {:?}",
+            row.repos
+        );
+        let segments: Vec<&str> = row.versions.split('·').map(str::trim).collect();
+        for repo in DELIVERY_ORDER {
             let display = match *repo {
                 "action" => "Action",
                 "cloud" => "Cloud",
                 other => other,
             };
-            assert!(
-                row.versions.contains(display),
-                "{id}: versions cell names no tested version for {repo}: {:?}",
-                row.versions
-            );
-            assert!(
-                row.repos.contains(repo),
-                "{id}: repos cell omits {repo}: {:?}",
-                row.repos
-            );
+            let segment = segments.iter().find(|part| part.starts_with(display));
+            if repos.contains(repo) {
+                // The segment must carry a version or status beyond the bare
+                // name — `Cloud` alone is not a tested baseline.
+                let segment = segment.unwrap_or_else(|| {
+                    panic!(
+                        "{id}: versions cell names nothing for {repo}: {:?}",
+                        row.versions
+                    )
+                });
+                assert!(
+                    segment.len() > display.len(),
+                    "{id}: versions cell names {repo} with no tested version or status: \
+                     {segment:?}"
+                );
+            } else {
+                assert!(
+                    segment.is_none(),
+                    "{id}: versions cell names {repo}, which the map does not involve: {:?}",
+                    row.versions
+                );
+            }
         }
     }
 }
@@ -269,6 +304,21 @@ fn deleting_a_row_fires_the_lint() {
     assert!(
         mismatches.iter().any(|m| m.contains("E0.3")),
         "removing the E0.3 row must be reported as a missing row"
+    );
+}
+
+#[test]
+fn a_stale_row_fires_the_lint() {
+    let slices = multi_repo_slices(&read_repo_doc(EXECUTION_MAP));
+    let compatibility = compatibility();
+    let block = anchored_block(&compatibility, COMPATIBILITY, "compat:slice-rows");
+    // E0.1 is a single-repo slice, so a row for it is stale by construction.
+    let doctored =
+        format!("{block}\n| `E0.1` | adoc, cloud | adoc | adoc 0.3.4 · Cloud scaffold | cloud |");
+    let mismatches = row_completeness_mismatches(&slices, &compat_rows(&doctored));
+    assert!(
+        mismatches.iter().any(|m| m.contains("E0.1")),
+        "a row for a single-repo slice must be reported as stale"
     );
 }
 
