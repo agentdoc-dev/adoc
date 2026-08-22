@@ -1,0 +1,259 @@
+# Product V1 Contract and Wire-Code Registry
+
+**Status:** Accepted — canonical wire inventory (E0.3)  
+**Date:** 2026-08-22  
+**Registry version:** 1  
+**Authority:** [`EXECUTION-MAP.md`](EXECUTION-MAP.md) §E0.3 · corrections provenance [`RED-TEAM-CLOSURE.md §RT-21`](RED-TEAM-CLOSURE.md#rt-21--contract-inventory-corrections-from-original-pr-review)  
+**Guards:** `crates/adoc-mcp/tests/contract_registry_guard.rs` (`adoc`) and the completeness-scan CI referencing this file from `agentdoc-dev/action` and `agentdoc-dev/cloud` (E0.3.T5)
+
+## Registry rule
+
+No externally observable V1 wire code or contract exists outside this registry (E0.3 exit gate). A new envelope, Diagnostic Code, event code, state vocabulary entry, retention class, or replay posture ships only together with its row here; the guards fail any repository emitting a code this file does not carry.
+
+The executable planning surface this registry governs is `docs/roadmap/v10`; preserved historical documents (non-executable per [`EXECUTION-MAP.md`](EXECUTION-MAP.md) §1) may cite retired codes as provenance without a row here.
+
+Field vocabularies enclosed by an envelope (statuses, enum-valued fields) are governed by that envelope's schema and registered through its row; vocabularies observable independently of a single envelope are registered explicitly in §9.
+
+**Statuses:** `shipped` — emitted by a released surface; `planned` — reserved id with an owning E-slice (name adjustments before first implementation are registry edits at slice start); `historical` — no longer emitted, documentation retained; `removed` — never to be emitted again, carried as a disposition (§8).
+
+**Version cells** name the minimum–maximum tested producer/consumer releases; a single value means minimum = maximum. **v0-additive** as a migration posture means fields may be added JSON-optionally within the version and any breaking change requires a new registered version id.
+
+## 1. Envelopes — shipped, owner `adoc`
+
+Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and local gateway surfaces).
+
+<!-- registry:envelopes-shipped-adoc -->
+| id | status | producer (min–max tested) | consumers (min–max tested) | migration posture |
+| --- | --- | --- | --- | --- |
+| `adoc.change_assessment.v0` | shipped | adoc 0.3.4 | Action v2.0.0-alpha.19; Cloud ingestion planned (E4.6) | v0-additive |
+| `adoc.contradictions.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
+| `adoc.diff.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
+| `adoc.graph.traversal.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
+| `adoc.graph.v5` | shipped | adoc 0.3.4 | adoc 0.3.4; Action v2.0.0-alpha.19 | frozen at v5; `adoc.graph.v6` (E1.1) ships with deterministic v5→v6 migration fixtures |
+| `adoc.impacted.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
+| `adoc.mcp.command.v0` | shipped | adoc 0.3.4 | MCP agent clients (contract-tested at adoc 0.3.4) | v0-additive |
+| `adoc.migrate.report.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
+| `adoc.patch.apply.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4; Action v2.0.0-alpha.19 | v0-additive |
+| `adoc.patch.check.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4; Action v2.0.0-alpha.19 | v0-additive |
+| `adoc.patch.v0` | shipped | adoc 0.3.4 (validator; input authored by agents) | adoc 0.3.4; Action v2.0.0-alpha.19 | v0-additive |
+| `adoc.project.status.v0` | shipped | adoc 0.3.4 | MCP agent clients (contract-tested at adoc 0.3.4) | v0-additive |
+| `adoc.repository_baseline.v0` | shipped | adoc 0.3.4 | Action v2.0.0-alpha.19 | v0-additive; known registration-gap history — the original V10 inventory flagged it unregistered; true-up obligation tracked in [`DECISION-REGISTER.md`](DECISION-REGISTER.md) |
+| `adoc.retrieval.v1` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v1 additive; v0 is historical (§3) |
+| `adoc.review.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
+| `adoc.search.v1` | shipped | adoc 0.3.4 | adoc 0.3.4 | v1 additive |
+| `adoc.stale.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
+<!-- /registry:envelopes-shipped-adoc -->
+
+## 2. Envelopes — shipped, owner `action`
+
+<!-- registry:envelopes-shipped-action -->
+| id | status | producer (min–max tested) | consumers (min–max tested) | migration posture |
+| --- | --- | --- | --- | --- |
+| `adoc.pr_assessment_receipt.v0` | shipped | Action v2.0.0-alpha.19 (ADR-0051) | Action report/enforce surfaces v2.0.0-alpha.19; Cloud ingestion planned (E4.6) | v0-additive |
+| `adoc.semantic_review.v0` | shipped | Action v2.0.0-alpha.19 (ADR-0052) | Action report surfaces v2.0.0-alpha.19 | v0-additive; deprecation only via the E8.6 machinery |
+<!-- /registry:envelopes-shipped-action -->
+
+## 3. Envelopes — historical
+
+<!-- registry:envelopes-historical -->
+| id | status | notes |
+| --- | --- | --- |
+| `adoc.retrieval.v0` | historical | superseded by `adoc.retrieval.v1`; the v0 schema stays published at `docs/agent/v0/schema/retrieval-envelope.v0.json` for readers of retained output |
+<!-- /registry:envelopes-historical -->
+
+## Test-fixture ids — never emitted
+
+Deliberately invalid version fixtures inside `#[cfg(test)]` modules in `crates/*/src`, proving rejected-version handling. The completeness scan subtracts exactly these rows and nothing else; a fixture id must never collide with a real contract id (guard-enforced).
+
+<!-- registry:test-fixture-ids -->
+| id | status | notes |
+| --- | --- | --- |
+| `adoc.search.v99` | fixture | rejected-version fixture for Search Artifact version gating |
+<!-- /registry:test-fixture-ids -->
+
+## 4. Diagnostic Codes — shipped, owner `adoc`
+
+Shared row values: producer `adoc` 0.3.4 (`adoc-core` `diagnostic_codes!` table, the single declaring source); consumers are every envelope embedding `Diagnostic` records (CLI/MCP surfaces at adoc 0.3.4, Action v2.0.0-alpha.19 report rendering). Migration posture for every row: wire-stable string — a meaning change or removal requires a disposition row in §8, never reuse.
+
+<!-- registry:diagnostic-codes -->
+| code |
+| --- |
+| `api.verified_missing_schema_evidence` |
+| `assessment.base_partial` |
+| `assessment.changed_set_failed` |
+| `assessment.comparison_base_unavailable` |
+| `assessment.graph_failed` |
+| `assessment.head_invalid` |
+| `assessment.invalid_changed_path` |
+| `assessment.invalid_config_path` |
+| `assessment.ref_unresolved` |
+| `assessment.snapshot_failed` |
+| `build.embeddings_cache_ignored` |
+| `build.embeddings_cached` |
+| `build.embeddings_skipped` |
+| `claim.evidence_quality_low` |
+| `claim.status_casing` |
+| `claim.verified_missing_evidence` |
+| `compat.raw_html_quarantined` |
+| `compat.unknown_extension` |
+| `compat.unsafe_image_src_dropped` |
+| `compat.unsafe_link_dropped` |
+| `embed.compute_failed` |
+| `embed.model_load_failed` |
+| `embed.unexpected_dim` |
+| `evidence.hash_drift` |
+| `evidence.hash_invalid` |
+| `evidence.hash_target_missing` |
+| `evidence.hash_unverifiable` |
+| `graph.object_not_found` |
+| `id.duplicate` |
+| `id.duplicate_in_artifact` |
+| `id.invalid` |
+| `impacted.git_unavailable` |
+| `impacted.invalid_path` |
+| `impacted.ref_unresolvable` |
+| `io.artifact_malformed` |
+| `io.artifact_missing` |
+| `io.artifact_unreadable` |
+| `io.source_path_unsafe` |
+| `io.unreadable_directory` |
+| `io.unreadable_file` |
+| `io.unsupported_source_extension` |
+| `lifecycle.expired` |
+| `lifecycle.invalid_expires_at` |
+| `mcp.patch_apply_disabled` |
+| `migrate.broken_link` |
+| `migrate.export_typed_blocks_present` |
+| `migrate.raw_html_quarantined` |
+| `migrate.source_not_committed` |
+| `migrate.target_exists` |
+| `migrate.unrecognized_extension` |
+| `parse.malformed_field` |
+| `parse.malformed_markdown` |
+| `parse.malformed_open_fence` |
+| `parse.malformed_page_annotation` |
+| `parse.nested_typed_block` |
+| `parse.raw_html` |
+| `parse.unclosed_fence` |
+| `parse.unsafe_link` |
+| `patch.base_hash_mismatch` |
+| `patch.create_missing_placement` |
+| `patch.invalid_document` |
+| `patch.placement_invalid` |
+| `patch.placement_not_adoc` |
+| `patch.source_drift` |
+| `patch.target_already_exists` |
+| `patch.validation_failed` |
+| `procedure.verified_missing_evidence` |
+| `ref.broken` |
+| `retrieval.no_knowledge_objects_consider_migration` |
+| `retrieval.object_not_found` |
+| `schema.agent_instruction_actions_not_disjoint` |
+| `schema.agent_instruction_invalid_trust` |
+| `schema.agent_instruction_missing_allowed_actions` |
+| `schema.agent_instruction_missing_forbidden_actions` |
+| `schema.agent_instruction_missing_scope` |
+| `schema.agent_instruction_missing_trust` |
+| `schema.api_conflicting_method_and_interface_type` |
+| `schema.api_conflicting_path_and_symbol` |
+| `schema.api_invalid_method` |
+| `schema.api_invalid_path` |
+| `schema.api_missing_method_or_interface_type` |
+| `schema.api_missing_path_or_symbol` |
+| `schema.claim_contradicted_by_unresolved` |
+| `schema.constraint_invalid_severity` |
+| `schema.constraint_missing_severity` |
+| `schema.contradiction_claim_not_a_claim` |
+| `schema.contradiction_claim_not_found` |
+| `schema.contradiction_claims_too_few` |
+| `schema.contradiction_invalid_severity` |
+| `schema.contradiction_invalid_status` |
+| `schema.contradiction_missing_claims` |
+| `schema.contradiction_missing_severity` |
+| `schema.contradiction_missing_status` |
+| `schema.duplicate_field` |
+| `schema.evidence_target_not_a_source` |
+| `schema.evidence_target_not_found` |
+| `schema.example_invalid_lang` |
+| `schema.example_invalid_sandbox` |
+| `schema.example_missing_lang` |
+| `schema.example_verified_requires_checks` |
+| `schema.example_verified_requires_sandbox` |
+| `schema.impacts_empty` |
+| `schema.impacts_invalid_path` |
+| `schema.invalid_status` |
+| `schema.missing_field` |
+| `schema.observation_invalid_observed_at` |
+| `schema.observation_invalid_sample_size` |
+| `schema.observation_invalid_status` |
+| `schema.observation_missing_status` |
+| `schema.policy_future_effective_at` |
+| `schema.policy_invalid_effective_at` |
+| `schema.policy_invalid_review_interval` |
+| `schema.policy_missing_approved_by` |
+| `schema.policy_missing_body` |
+| `schema.policy_missing_effective_at` |
+| `schema.policy_missing_owner` |
+| `schema.policy_missing_status` |
+| `schema.policy_review_overdue` |
+| `schema.procedure_body_must_start_with_ordered_list` |
+| `schema.procedure_missing_body` |
+| `schema.procedure_missing_status` |
+| `schema.question_answered_missing_resolved_by` |
+| `schema.question_missing_status` |
+| `schema.question_resolved_by_not_found` |
+| `schema.question_resolved_by_wrong_kind` |
+| `schema.question_unexpected_resolved_by` |
+| `schema.source_conflicting_path_and_url` |
+| `schema.source_invalid_kind` |
+| `schema.source_invalid_path` |
+| `schema.source_invalid_url` |
+| `schema.source_kind_target_mismatch` |
+| `schema.source_missing_kind` |
+| `schema.source_missing_path_or_url` |
+| `schema.task_invalid_due` |
+| `schema.task_invalid_status` |
+| `schema.task_missing_owner` |
+| `schema.task_missing_status` |
+| `schema.unknown_kind` |
+| `schema.unsupported_version` |
+| `search.artifact_missing` |
+| `search.deterministic_quality` |
+| `search.hash_drift` |
+| `search.invalid_filter` |
+| `search.invalid_scope` |
+| `search.model_mismatch` |
+| `task.overdue` |
+<!-- /registry:diagnostic-codes -->
+
+## 5. Action codes — owner `action`
+
+Shared row values for shipped rows: producer Action v2.0.0-alpha.19 (workflow annotations, check conclusions, receipt `reason_codes`); consumers are GitHub check/annotation readers and receipt consumers. Migration posture: wire-stable string — meaning change or removal requires a disposition row in §8.
+
+<!-- registry:action-codes -->
+| code | status | meaning |
+| --- | --- | --- |
+| `action.assessment_contract_failed` | shipped | assessment envelope violated its contract |
+| `action.assessment_not_evaluated` | shipped | assessment did not run for the change set |
+| `action.assessment_partial` | shipped | assessment completed with partial coverage |
+| `action.assessment_ref_failed` | shipped | assessment base/head ref resolution failed |
+| `action.baseline_contract_failed` | shipped | repository baseline envelope violated its contract |
+| `action.baseline_not_ready` | shipped | repository baseline not yet available for this head |
+| `action.baseline_unavailable` | shipped | repository baseline could not be produced |
+| `action.bootstrap_dirty` | shipped | bootstrap found a dirty working tree |
+| `action.install_failed` | shipped | toolchain/provider installation failed |
+| `action.invalid_input` | shipped | Action inputs invalid |
+| `action.knowledge_delivery_failed` | shipped | knowledge proposal delivery failed |
+| `action.knowledge_proposal_incomplete` | shipped | knowledge proposal set incomplete |
+| `action.knowledge_review_incomplete` | shipped | knowledge review incomplete |
+| `action.knowledge_sync_pending` | shipped | knowledge synchronization still pending |
+| `action.path_limit_exceeded` | shipped | changed-path limit exceeded |
+| `action.proposal_failed` | shipped | proposal creation failed |
+| `action.proposal_rejected` | shipped | proposal rejected by validation |
+| `action.provider_integrity_failed` | shipped | provider binary integrity verification failed |
+| `action.receipt_failed` | shipped | receipt finalization failed |
+| `action.semantic_review_failed` | shipped | semantic review failed; the single canonical Action semantic-failure reason code (§8) |
+| `action.structural_errors_changed` | shipped | structural errors in changed objects |
+| `action.structural_errors_full` | shipped | structural errors in the full graph |
+| `action.unsupported_event` | shipped | unsupported triggering event |
+<!-- /registry:action-codes -->
