@@ -9,6 +9,9 @@ use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::value_objects::approved_by::ApprovedBy;
 use crate::domain::value_objects::evidence::Evidence;
 use crate::domain::value_objects::rel_path::RelPath;
+use crate::domain::value_objects::visibility::{
+    VISIBILITY_CLOSED_SET_HELP, Visibility, parse_field_visibility,
+};
 use crate::domain::values::{Body, NonEmpty, trim_ascii_edges};
 
 pub(super) const IMPACTS_FIELD: &str = "impacts";
@@ -104,6 +107,42 @@ fn kind_field_keys(kind: BlockKind) -> &'static [&'static str] {
 /// Whether `key` is in `kind`'s closed field schema (E1.1.T3).
 pub(crate) fn is_allowed_field_key(kind: BlockKind, key: &str) -> bool {
     SHARED_FIELD_KEYS.contains(&key) || kind_field_keys(kind).contains(&key)
+}
+
+/// E1.1.T3 (ADR-0058): the closed-schema check for the Agent Patch surface.
+/// Unknown keys and invalid visibility values are refused at `--check`, so
+/// `--apply` can never write source that then fails `adoc check` with
+/// `schema.unknown_field` or `schema.visibility_invalid`. Mirrors
+/// `enforce_closed_schema` on the parse path.
+pub(crate) fn closed_schema_field_error(
+    kind: BlockKind,
+    key: &str,
+    value: &str,
+) -> Option<Diagnostic> {
+    if !is_allowed_field_key(kind, key) {
+        return Some(Diagnostic::error(
+            DiagnosticCode::SchemaUnknownField,
+            format!(
+                "unknown field `{key}` on `{}`; allowed fields: {}",
+                kind.as_str(),
+                allowed_field_keys(kind)
+            ),
+        ));
+    }
+    let invalid_visibility = match key {
+        VISIBILITY_FIELD => Visibility::try_new(value).is_err(),
+        FIELD_VISIBILITY_FIELD => parse_field_visibility(value).is_err(),
+        _ => false,
+    };
+    invalid_visibility.then(|| {
+        Diagnostic::error(
+            DiagnosticCode::SchemaVisibilityInvalid,
+            format!(
+                "invalid visibility `{value}` in `{key}`; visibility is one of: \
+                 {VISIBILITY_CLOSED_SET_HELP}"
+            ),
+        )
+    })
 }
 
 /// The sorted, comma-joined allowed field list for `kind`, rendered into

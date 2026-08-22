@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphIndex, GraphKnowledgeObjectNode, GraphRelationKind};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
-use crate::domain::knowledge_object::EVIDENCE_REF_FIELD;
 use crate::domain::knowledge_object::draft::{KnowledgeObjectDraft, validate_draft};
+use crate::domain::knowledge_object::{BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error};
 use crate::domain::obligation::ProofObligation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -280,6 +280,27 @@ impl PatchValidator<'_> {
                     target.as_str(),
                     format!("field `{key}` requires a non-empty value"),
                 ));
+                continue;
+            }
+            // E1.1.T3 (ADR-0058): the target kind's closed schema binds the
+            // patch surface too — an applied patch must never leave the
+            // working tree failing `adoc check`. Artifact kinds are
+            // build-produced, so an unparseable kind is a corrupt artifact
+            // and fails closed.
+            let Some(kind) = BlockKind::from_fence_word(&object.kind) else {
+                self.diagnostics.push(validation_error(
+                    target.as_str(),
+                    format!(
+                        "target kind `{}` is not a Knowledge Object kind; the artifact is \
+                         corrupt — run adoc build and re-propose",
+                        object.kind
+                    ),
+                ));
+                continue;
+            };
+            if let Some(diagnostic) = closed_schema_field_error(kind, &key, &value) {
+                self.diagnostics
+                    .push(diagnostic.with_object_id(target.as_str()));
                 continue;
             }
             // V5.8 TB5: when the field being updated is `evidence_ref`, resolve
