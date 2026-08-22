@@ -449,17 +449,23 @@ const PRECEDENCE_PIPELINE: &[&str] = &[
 /// the order is D38's substance.
 fn assert_pipeline_block(doc_name: &str, content: &str) {
     let lines: Vec<&str> = content.lines().map(str::trim).collect();
+    let blocks = lines
+        .windows(PRECEDENCE_PIPELINE.len())
+        .filter(|window| *window == PRECEDENCE_PIPELINE)
+        .count();
+    // Exactly one: zero is a reordered/inserted/missing stage; two or more
+    // means a stale verbatim copy could mask drift of the normative block.
     assert!(
-        lines
-            .windows(PRECEDENCE_PIPELINE.len())
-            .any(|window| window == PRECEDENCE_PIPELINE),
-        "{doc_name}: the precedence pipeline no longer appears as a verbatim \
-         contiguous block (stage reordered, inserted, or missing)"
+        blocks == 1,
+        "{doc_name}: expected exactly one verbatim contiguous block of the \
+         precedence pipeline, found {blocks}"
     );
 }
 
 /// The `### 5.1` section only, so the pin's label stays true: stages
 /// surviving elsewhere in the PRD while §5.1 is gutted must not satisfy it.
+/// ponytail: the slice ends at the next `## ` heading — a future `### 5.2`
+/// would widen it; tighten the end marker if section 5 ever grows one.
 fn prd_section_5_1() -> String {
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let prd_path = repo_root.join("docs/product/PRD-v1.1-amendment.md");
