@@ -31,6 +31,9 @@ use serde::Serialize;
 
 use super::graph::{GraphArtifactDocument, GraphNode, GraphRepositoryIdentity, GraphSourceBinding};
 use super::identity::ObjectId;
+use super::reconciliation::{
+    ReconciliationDecision, ReconciliationDecisionError, ReconciliationState,
+};
 
 /// Cloud workspace identifier — opaque to `adoc-core`. Blank or padded
 /// input is rejected: an empty workspace id would produce unqualified
@@ -268,6 +271,9 @@ pub(crate) struct ManagedWorkspace {
     minted_canonical_ids: u64,
     minted_version_ids: u64,
     minted_slot_ids: u64,
+    /// Append-only recorded reconciliation decision Governance Events
+    /// (E1.3): the sole mutation path for reconciliation state.
+    decisions: Vec<ReconciliationDecision>,
 }
 
 impl ManagedWorkspace {
@@ -278,7 +284,63 @@ impl ManagedWorkspace {
             minted_canonical_ids: 0,
             minted_version_ids: 0,
             minted_slot_ids: 0,
+            decisions: Vec::new(),
         }
+    }
+
+    /// The Managed Object a workspace canonical identity names, whichever
+    /// slot holds it. Provenance stays queryable through every decision —
+    /// no verb removes, rewrites, or re-homes a record (RT-03).
+    pub(crate) fn managed_object(
+        &self,
+        canonical: &WorkspaceCanonicalIdentity,
+    ) -> Option<&ManagedObjectRecord> {
+        self.repositories.values().find_map(|record| {
+            record
+                .objects
+                .values()
+                .find(|object| &object.canonical == canonical)
+        })
+    }
+
+    /// Record one reconciliation decision Governance Event. Fail closed:
+    /// both parties must exist in this workspace and be bound to their
+    /// exact latest managed version — a decision adjudicated against
+    /// content that has since changed never applies silently. Recording
+    /// appends to the log and touches no object or version record:
+    /// RT-03 preservation holds by construction.
+    pub(crate) fn record_decision(
+        &mut self,
+        decision: ReconciliationDecision,
+    ) -> Result<(), ReconciliationDecisionError> {
+        for bound in [decision.subject(), decision.counterpart()] {
+            let object = self
+                .managed_object(&bound.canonical)
+                .ok_or(ReconciliationDecisionError::UnknownParty)?;
+            let latest = object
+                .versions
+                .last()
+                // Unreachable: records only ever gain versions, starting
+                // with one at creation; kept typed, never unwrapped.
+                .ok_or(ReconciliationDecisionError::UnknownParty)?;
+            if latest.version_id != bound.version_id {
+                return Err(ReconciliationDecisionError::StaleVersionBinding);
+            }
+        }
+        self.decisions.push(decision);
+        Ok(())
+    }
+
+    /// The recorded decision history, in order — the replay input.
+    pub(crate) fn decisions(&self) -> &[ReconciliationDecision] {
+        &self.decisions
+    }
+
+    /// The derived reconciliation state: deterministic, wall-clock-free —
+    /// replaying [`ManagedWorkspace::decisions`] over the same import
+    /// history yields byte-identical state.
+    pub(crate) fn reconciliation_state(&self) -> ReconciliationState {
+        ReconciliationState::derive(&self.decisions)
     }
 
     /// Single-repo convenience: the record whose recorded identity equals
@@ -593,6 +655,9 @@ mod tests {
     use super::*;
     use crate::domain::graph::{
         GraphKnowledgeObjectNode, GraphNode, GraphRelations, GraphSourceBinding, GraphSourceSpan,
+    };
+    use crate::domain::reconciliation::{
+        DecisionParty, PolicyVersion, Principal, ReconciliationDecision, ReconciliationVerb,
     };
 
     /// Registered (planned) contract id governing the serialized candidate
@@ -1293,6 +1358,180 @@ mod tests {
             .repository(&repo)
             .expect("repo recorded on arrival");
         assert!(record.objects.is_empty());
+    }
+
+    // E1.3.T1 (MILESTONES §E1.3; RT-03): a keep-distinct decision is
+    // recorded as a Governance Event bound to exact version ID + policy
+    // version + principal, and replays from history to the identical
+    // resulting state. The record is `adoc.reconciliation_decision.v0`
+    // (registered planned); E4.2's `adoc.governance_event.v0` (cloud)
+    // will enclose it as the event payload.
+
+    /// Registered (planned) contract id governing the serialized decision
+    /// record shape pinned below.
+    const RECONCILIATION_DECISION_CONTRACT: &str = "adoc.reconciliation_decision.v0";
+
+    fn party(of: &ReconciliationParty) -> DecisionParty {
+        DecisionParty {
+            canonical: of.canonical.clone(),
+            version_id: of.version_id.clone(),
+        }
+    }
+
+    fn principal() -> Principal {
+        Principal::new("user:alex").expect("principal is non-blank")
+    }
+
+    fn policy() -> PolicyVersion {
+        PolicyVersion::new("reconciliation-policy/1").expect("policy version is non-blank")
+    }
+
+    /// Two repositories colliding on `billing.credits` — the import
+    /// history every replay test rebuilds identically.
+    fn collided_workspace() -> (ManagedWorkspace, ReconciliationCandidate) {
+        let mut workspace = workspace();
+        workspace
+            .import_artifact(&artifact(
+                local_repo("a/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.credits", "sha256:aaa")],
+            ))
+            .expect("import accepted");
+        let outcome = workspace
+            .import_artifact(&artifact(
+                local_repo("b/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.credits", "sha256:bbb")],
+            ))
+            .expect("import accepted");
+        let candidate = outcome.reconciliation_candidates[0].clone();
+        (workspace, candidate)
+    }
+
+    /// Exit test (E1.3): a keep-distinct decision bound to exact version
+    /// IDs, policy version, and principal is recorded as an event, and
+    /// replaying the recorded history over the same import history yields
+    /// a byte-identical reconciliation state — with both objects still
+    /// distinct.
+    #[test]
+    fn keep_distinct_decision_is_principal_bound_and_replays_to_identical_state() {
+        let (mut first_run, candidate) = collided_workspace();
+        let decision = ReconciliationDecision::new(
+            ReconciliationVerb::KeepDistinct,
+            party(&candidate.existing),
+            party(&candidate.incoming),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+        first_run
+            .record_decision(decision)
+            .expect("decision recorded");
+
+        let (mut replayed, _) = collided_workspace();
+        for event in first_run.decisions().to_vec() {
+            replayed.record_decision(event).expect("event replays");
+        }
+
+        assert_eq!(first_run, replayed, "replay must rebuild the workspace");
+        assert_eq!(
+            serde_json::to_vec(&first_run.reconciliation_state()).expect("state serializes"),
+            serde_json::to_vec(&replayed.reconciliation_state()).expect("state serializes"),
+            "replayed reconciliation state must be byte-identical"
+        );
+        assert_ne!(
+            candidate.existing.canonical, candidate.incoming.canonical,
+            "keep-distinct leaves both objects distinct"
+        );
+        assert_eq!(first_run.reconciliation_state().standing.len(), 1);
+    }
+
+    /// The serialized decision record the Cloud cut consumes under the
+    /// planned `adoc.reconciliation_decision.v0` registry row: closed verb
+    /// set, both parties bound by workspace canonical identity + exact
+    /// managed version id, non-optional principal and policy version, and
+    /// no wall-clock field anywhere (Cloud's enclosing governance event
+    /// owns occurrence time).
+    #[test]
+    fn reconciliation_decision_serialized_record_shape_is_pinned() {
+        let (_, candidate) = collided_workspace();
+        let decision = ReconciliationDecision::new(
+            ReconciliationVerb::KeepDistinct,
+            party(&candidate.existing),
+            party(&candidate.incoming),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+
+        let value = serde_json::to_value(&decision).expect("decision serializes");
+        assert_eq!(
+            value,
+            json!({
+                "verb": "keep_distinct",
+                "subject": {
+                    "canonical": {
+                        "workspace_id": "ws-acme",
+                        "canonical_id": "mo-1"
+                    },
+                    "version_id": "mv-1"
+                },
+                "counterpart": {
+                    "canonical": {
+                        "workspace_id": "ws-acme",
+                        "canonical_id": "mo-2"
+                    },
+                    "version_id": "mv-2"
+                },
+                "principal": "user:alex",
+                "policy_version": "reconciliation-policy/1"
+            }),
+            "the {RECONCILIATION_DECISION_CONTRACT} record shape drifted"
+        );
+    }
+
+    /// A later decision for the same pair supersedes the earlier one in
+    /// the derived state (append-only log, last decision stands), and the
+    /// full history stays recorded.
+    #[test]
+    fn later_decision_for_the_same_pair_stands_while_history_is_kept() {
+        let (mut workspace, candidate) = collided_workspace();
+        for verb in [
+            ReconciliationVerb::KeepDistinct,
+            ReconciliationVerb::LinkAlias,
+        ] {
+            let decision = ReconciliationDecision::new(
+                verb,
+                party(&candidate.existing),
+                party(&candidate.incoming),
+                principal(),
+                policy(),
+            )
+            .expect("two distinct parties");
+            workspace
+                .record_decision(decision)
+                .expect("decision recorded");
+        }
+
+        assert_eq!(workspace.decisions().len(), 2, "the log is append-only");
+        let state = workspace.reconciliation_state();
+        assert_eq!(state.standing.len(), 1);
+        assert_eq!(state.standing[0].verb(), ReconciliationVerb::LinkAlias);
+    }
+
+    /// The closed decision verb vocabulary on the wire — exactly the four
+    /// verbs MILESTONES §E1.3 names, snake_case, nothing else.
+    #[test]
+    fn decision_verbs_are_a_closed_wire_vocabulary() {
+        for (verb, wire) in [
+            (ReconciliationVerb::KeepDistinct, "keep_distinct"),
+            (ReconciliationVerb::LinkAlias, "link_alias"),
+            (ReconciliationVerb::Supersede, "supersede"),
+            (ReconciliationVerb::MergeRehome, "merge_rehome"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(verb).expect("verb serializes"),
+                json!(wire)
+            );
+        }
     }
 
     // E1.3 routing adjudication (PR #150 claim 5): CLI builds emit a

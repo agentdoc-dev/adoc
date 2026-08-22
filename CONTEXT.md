@@ -190,6 +190,14 @@ _Avoid_: global repository namespace, path-string repository key, repository ide
 The typed record (`adoc.reconciliation_candidate.v0`, registered planned) emitted when an imported **Object ID** collides with a **Managed Object** in another repository of the same workspace. Both objects stay distinct; the candidate names both parties by **Workspace Canonical Identity**, repository identity, latest **Managed Version ID**, and content hash. Deciding a candidate (keep distinct, link, supersede, merge) is a governed E1.3 action; matching hashes, titles, or similarity never produce one.
 _Avoid_: auto-merge, duplicate detector, similarity-based unification
 
+**Governance Event**:
+An append-only, principal-bound record of one governed transition, carrying the exact policy version and the exact object versions it decides (MILESTONES §E1.3; RT-03/RT-04). The Cloud wire family is `adoc.governance_event.v0` (E4.2); its first concrete payload is the **Reconciliation Decision**. A Governance Event can never be authored by model output alone — a principal is required at the type level.
+_Avoid_: model-created authority, mutable audit row, timestamped decision payload
+
+**Reconciliation Decision**:
+The typed record (`adoc.reconciliation_decision.v0`, registered planned; `ReconciliationDecision` in `adoc-core`) deciding a **Reconciliation Candidate** pair: a closed verb — keep distinct, link/alias, supersede, or merge/re-home — bound to both parties' **Workspace Canonical Identity** and exact **Managed Version ID**, a principal, and a policy version. Recording a decision is the only path that transitions a pair, appends to the workspace's decision log, and never rewrites or drops any managed version, Source Binding, or Source Assertion; replaying the log over the same import history yields byte-identical reconciliation state.
+_Avoid_: auto-merge, unprincipaled decision, decision as import side effect, destructive merge
+
 **Diagnostic Code**:
 A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`. Lives in code as the `DiagnosticCode` enum in `adoc-core`; emission sites accept the typed value rather than a free-form string.
 _Avoid_: numeric-only code, unstable message matching
