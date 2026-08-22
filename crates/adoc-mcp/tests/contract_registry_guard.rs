@@ -284,8 +284,9 @@ fn historical_envelope_rows_are_no_longer_emitted() {
     let resurrected: Vec<_> = historical.intersection(&emitted).collect();
     assert!(
         resurrected.is_empty(),
-        "historical envelope rows are emitted again — move them back to the \
-         shipped table: {resurrected:?}"
+        "historical envelope rows appear in crates/*/src again: {resurrected:?} — \
+         if the envelope genuinely ships again, register a new version; if a \
+         back-compat test cites the id, add it to the test-fixture table"
     );
 }
 
@@ -345,15 +346,24 @@ fn fixture_ids_are_registered_and_disjoint_from_real_rows() {
         fixtures.contains("adoc.search.v99"),
         "the rejected-version fixture id lost its registry row"
     );
+    // Historical ids are excluded from the collision set: a back-compat test
+    // in crates/*/src citing e.g. adoc.retrieval.v0 registers the id in the
+    // fixture table, which must not deadlock against the historical row.
     let real: BTreeSet<String> = ANCHORS
         .iter()
-        .filter(|anchor| **anchor != "registry:test-fixture-ids")
+        .filter(|anchor| {
+            !matches!(
+                **anchor,
+                "registry:test-fixture-ids" | "registry:envelopes-historical"
+            )
+        })
         .flat_map(|anchor| anchored_ids(&registry, anchor))
         .collect();
     let colliding: Vec<_> = fixtures.intersection(&real).collect();
     assert!(
         colliding.is_empty(),
-        "a test-fixture id may never collide with a real contract row: {colliding:?}"
+        "a test-fixture id may never collide with a shipped/planned/code row \
+         (historical ids are the deliberate exception for back-compat tests): {colliding:?}"
     );
 }
 
