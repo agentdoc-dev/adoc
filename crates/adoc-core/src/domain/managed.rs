@@ -624,4 +624,134 @@ mod tests {
         assert_eq!(object.versions[0].source_binding, expected);
         assert!(object.versions[0].source_assertions.is_empty());
     }
+
+    // E1.2.T2 negative fixtures (RT-03/D36): no auto-merge on ID, title,
+    // hash, or similarity. No similarity machinery exists in this crate —
+    // these fixtures prove the absence of any unification path: candidates
+    // arise from exact Object-ID collision alone, and even those never
+    // merge.
+
+    /// Exit test: the same semantic `content_hash` under two different
+    /// Object IDs stays two objects — no candidate, no merge. Two objects
+    /// can hash identically at all because ADR-0058 §2 keeps identity out
+    /// of the v6 hash payload (identity and semantic hash are separate K6
+    /// layers).
+    #[test]
+    fn same_content_hash_under_two_object_ids_stays_two_objects() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+
+        let outcome = workspace.import_artifact(&artifact(
+            repo.clone(),
+            vec![
+                knowledge_object("billing.credits", "sha256:same"),
+                knowledge_object("billing.refunds", "sha256:same"),
+            ],
+        ));
+
+        assert!(outcome.reconciliation_candidates.is_empty());
+        let objects = &workspace.repository(&repo).expect("repo recorded").objects;
+        assert_eq!(objects.len(), 2);
+        assert_ne!(
+            objects["billing.credits"].canonical, objects["billing.refunds"].canonical,
+            "equal hashes must never collapse two Object IDs into one identity"
+        );
+        assert_ne!(
+            objects["billing.credits"].versions[0].version_id,
+            objects["billing.refunds"].versions[0].version_id
+        );
+    }
+
+    /// Equal hashes across repositories without an ID collision produce
+    /// nothing: no candidate, no link, both objects retained.
+    #[test]
+    fn equal_hashes_across_repositories_without_id_collision_produce_nothing() {
+        let mut workspace = workspace();
+        let repo_a = local_repo("a/agentdoc.config.yaml");
+        let repo_b = local_repo("b/agentdoc.config.yaml");
+
+        workspace.import_artifact(&artifact(
+            repo_a.clone(),
+            vec![knowledge_object("billing.credits", "sha256:same")],
+        ));
+        let outcome = workspace.import_artifact(&artifact(
+            repo_b.clone(),
+            vec![knowledge_object("billing.refunds", "sha256:same")],
+        ));
+
+        assert!(outcome.reconciliation_candidates.is_empty());
+        assert_eq!(
+            workspace.repository(&repo_a).expect("repo a").objects.len(),
+            1
+        );
+        assert_eq!(
+            workspace.repository(&repo_b).expect("repo b").objects.len(),
+            1
+        );
+    }
+
+    /// Same title, same body, same hash — maximum surface similarity under
+    /// two different Object IDs — never unifies and emits no candidate.
+    #[test]
+    fn identical_titles_and_bodies_never_unify() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+        let mut first = knowledge_object("billing.credits", "sha256:same");
+        first
+            .fields
+            .insert("title".to_string(), "Credit policy".to_string());
+        let mut second = knowledge_object("billing.credit-rules", "sha256:same");
+        second
+            .fields
+            .insert("title".to_string(), "Credit policy".to_string());
+        assert_eq!(first.body, second.body);
+
+        let outcome = workspace.import_artifact(&artifact(repo.clone(), vec![first, second]));
+
+        assert!(outcome.reconciliation_candidates.is_empty());
+        let objects = &workspace.repository(&repo).expect("repo recorded").objects;
+        assert_eq!(objects.len(), 2);
+        assert_ne!(
+            objects["billing.credits"].canonical,
+            objects["billing.credit-rules"].canonical
+        );
+    }
+
+    /// Adversarial (MILESTONES §E1.2 acceptance): a crafted import
+    /// replaying an existing object's exact Object ID AND `content_hash`
+    /// from another repository — the most merge-tempting collision — is
+    /// retained distinct with a candidate only; hash equality confers no
+    /// unification.
+    #[test]
+    fn crafted_replay_of_id_and_hash_is_retained_distinct_candidate_only() {
+        let mut workspace = workspace();
+        let repo_a = local_repo("a/agentdoc.config.yaml");
+        let repo_b = local_repo("b/agentdoc.config.yaml");
+
+        workspace.import_artifact(&artifact(
+            repo_a.clone(),
+            vec![knowledge_object("billing.credits", "sha256:same")],
+        ));
+        let outcome = workspace.import_artifact(&artifact(
+            repo_b.clone(),
+            vec![knowledge_object("billing.credits", "sha256:same")],
+        ));
+
+        assert_eq!(outcome.reconciliation_candidates.len(), 1);
+        let candidate = &outcome.reconciliation_candidates[0];
+        assert_eq!(candidate.reason, ReconciliationReason::ObjectIdCollision);
+        assert_eq!(
+            candidate.existing.content_hash,
+            candidate.incoming.content_hash
+        );
+        assert_ne!(
+            candidate.existing.canonical, candidate.incoming.canonical,
+            "an identical hash must not let the replay adopt the existing identity"
+        );
+        let object_a = &workspace.repository(&repo_a).expect("repo a").objects["billing.credits"];
+        let object_b = &workspace.repository(&repo_b).expect("repo b").objects["billing.credits"];
+        assert_ne!(object_a.canonical, object_b.canonical);
+        assert_eq!(object_a.versions.len(), 1);
+        assert_eq!(object_b.versions.len(), 1);
+    }
 }
