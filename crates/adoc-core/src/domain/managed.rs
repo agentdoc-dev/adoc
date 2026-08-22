@@ -239,7 +239,7 @@ impl ManagedWorkspace {
     pub(crate) fn reserve_repository(
         &mut self,
         repository_identity: GraphRepositoryIdentity,
-    ) -> &ManagedRepositoryRecord {
+    ) -> &mut ManagedRepositoryRecord {
         self.repositories
             .entry(repository_identity.clone())
             .or_insert_with(|| ManagedRepositoryRecord {
@@ -319,13 +319,9 @@ impl ManagedWorkspace {
                 }
             };
             let version_id = self.mint_version_id();
-            let record = self
-                .repositories
-                .entry(artifact.repository_identity.clone())
-                .or_insert_with(|| ManagedRepositoryRecord {
-                    repository_identity: artifact.repository_identity.clone(),
-                    objects: BTreeMap::new(),
-                });
+            // Reserved before the loop; re-reserving binds to the existing
+            // record — this is the single construction path.
+            let record = self.reserve_repository(artifact.repository_identity.clone());
             let object =
                 record
                     .objects
