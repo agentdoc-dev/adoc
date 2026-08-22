@@ -198,6 +198,14 @@ _Avoid_: model-created authority, mutable audit row, timestamped decision payloa
 The typed record (`adoc.reconciliation_decision.v0`, registered planned; `ReconciliationDecision` in `adoc-core`) deciding a **Reconciliation Candidate** pair: a closed verb — keep distinct, link/alias, supersede, or merge/re-home — bound to both parties' **Workspace Canonical Identity** and exact **Managed Version ID**, a principal, and a policy version. The latest-version binding is a record-time admission gate: content that changed after adjudication leaves the recorded decision standing (re-review is post-V1, connector re-observation territory). Recording a decision is the only path that transitions a pair, appends to the workspace's decision log, and never rewrites or drops any managed version, Source Binding, or Source Assertion; replaying the log over the same import history yields byte-identical reconciliation state.
 _Avoid_: auto-merge, unprincipaled decision, decision as import side effect, destructive merge
 
+**Managed State Event**:
+The append-only record (`ManagedStateEvent` in `adoc-core`, E1.4) of one managed state change over one immutable content version, named by **Workspace Canonical Identity** plus exact **Managed Version ID** and carrying its event family, emitter, and policy version. A state-only transition never alters `content_hash` and never mints a content version (ADR-0057 invariant 2; RT-04). Wall-clock-free: event order (the ordinal) is the only notion of time, so replay is deterministic.
+_Avoid_: state row update, mutable status field, timestamped domain record, inferred transition
+
+**State Dimension**:
+One of the six separate managed state axes of KNOWLEDGE-MODEL §K4 — governance, verification, effectivity, freshness, integrity, per-connector synchronization — each a closed vocabulary modeled as its own enum in `adoc-core` (D07/D15). Dimensions are never conflated: approval is not verification, and no collapsed status field exists.
+_Avoid_: collapsed status field, approval implies verified, cross-dimension enum
+
 **Diagnostic Code**:
 A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`. Lives in code as the `DiagnosticCode` enum in `adoc-core`; emission sites accept the typed value rather than a free-form string.
 _Avoid_: numeric-only code, unstable message matching
