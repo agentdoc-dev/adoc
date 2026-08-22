@@ -281,6 +281,8 @@ pub(crate) enum ManagedStateEventError {
     InvalidConnector,
     #[error("event emitter must be non-blank without surrounding whitespace")]
     InvalidEmitter,
+    #[error("retention floor must protect at least one record")]
+    ZeroRetentionFloor,
 }
 
 /// The immutable content version a state event attaches to (ADR-0057
@@ -497,9 +499,23 @@ impl ManagedVersionState {
 /// Records inside that span cannot be deleted by any API — and in E1.4
 /// no delete path exists at all: sweeps only plan (execution is
 /// V10.7.3/E6.6), so the floor is enforced at the earliest possible
-/// surface.
+/// surface. Validated non-zero: a protected span always exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RetentionFloor(pub(crate) u64);
+pub(crate) struct RetentionFloor(u64);
+
+impl RetentionFloor {
+    /// A zero floor would protect nothing — every record including the
+    /// newest would be sweepable, disabling the policy minimum entirely.
+    /// Fail closed on the degenerate value, same posture as
+    /// [`ConnectorId`] and [`EventEmitter`].
+    pub(crate) fn new(records: u64) -> Result<Self, ManagedStateEventError> {
+        if records == 0 {
+            Err(ManagedStateEventError::ZeroRetentionFloor)
+        } else {
+            Ok(Self(records))
+        }
+    }
+}
 
 /// A validated — never executed — retention sweep: the ordinals below
 /// the floor-protected span. Deletion workflows above the floor arrive
@@ -961,6 +977,10 @@ mod tests {
         }
     }
 
+    fn floor(records: u64) -> RetentionFloor {
+        RetentionFloor::new(records).expect("non-zero")
+    }
+
     fn freshness_event(subject: StateEventSubject, state: FreshnessState) -> ManagedStateEvent {
         ManagedStateEvent {
             subject,
@@ -993,7 +1013,7 @@ mod tests {
         let before = workspace.clone();
 
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         store
             .append(
                 &mut sink,
@@ -1036,7 +1056,7 @@ mod tests {
             .expect("import accepted");
         let imported = &outcome.imported[0];
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         store
             .append(
                 &mut sink,
@@ -1244,7 +1264,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         store
             .append(
                 &mut sink,
@@ -1285,7 +1305,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         store
             .append(
                 &mut sink,
@@ -1317,7 +1337,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         let mut correction = freshness_event(subject, FreshnessState::Current);
         correction.corrects = Some(EventOrdinal(3));
 
@@ -1357,7 +1377,7 @@ mod tests {
             version_id: outcome.imported[0].version_id.clone(),
         };
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         store
             .append(
                 &mut sink,
@@ -1404,7 +1424,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         let sync =
             |connector: &str, state: SynchronizationState| ManagedStateChange::Synchronization {
                 connector: ConnectorId::new(connector).expect("non-blank"),
@@ -1464,7 +1484,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(3));
+        let mut store = ManagedStateEventStore::new(floor(3));
         for _ in 0..5 {
             store
                 .append(
@@ -1510,7 +1530,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(3));
+        let mut store = ManagedStateEventStore::new(floor(3));
         store
             .append(&mut sink, freshness_event(subject, FreshnessState::Stale))
             .expect("append accepted");
@@ -1556,7 +1576,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         let connector = ConnectorId::new("confluence").expect("non-blank");
         for change in [
             ManagedStateChange::Governance {
@@ -1603,7 +1623,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         store
             .append(
                 &mut sink,
@@ -1672,7 +1692,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         store
             .append(
                 &mut sink,
@@ -1719,7 +1739,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         store
             .append(
                 &mut sink,
@@ -1765,7 +1785,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         for (connector, state, required) in [
             ("confluence", SynchronizationState::InSync, true),
             ("github", SynchronizationState::SourceDiverged, false),
@@ -1820,7 +1840,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
 
         let error = store
             .append(
@@ -1897,6 +1917,18 @@ mod tests {
             diff.unknown,
             vec![("freshness".to_string(), "fresh".to_string())],
             "an entry outside the closed vocabularies must be flagged"
+        );
+    }
+
+    /// A zero retention floor would make the entire log sweepable — the
+    /// degenerate value is rejected at construction, so a floor that
+    /// protects nothing is unrepresentable (same fail-closed posture as
+    /// blank connectors and emitters).
+    #[test]
+    fn a_zero_retention_floor_is_rejected() {
+        assert_eq!(
+            RetentionFloor::new(0),
+            Err(ManagedStateEventError::ZeroRetentionFloor)
         );
     }
 
@@ -2010,7 +2042,7 @@ mod tests {
         let subject = subject_for(&mut workspace);
         let before = workspace.clone();
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         let changes = [
             ManagedStateChange::AuthorizationAffectingSourceChange {
                 connector: ConnectorId::new("confluence").expect("non-blank"),
@@ -2067,7 +2099,7 @@ mod tests {
         let mut workspace = workspace();
         let subject = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         let all_ten_families = [
             ManagedStateChange::Governance {
                 state: GovernanceState::Approved,
@@ -2177,7 +2209,7 @@ mod tests {
         let mut workspace = workspace();
         let subject_v1 = subject_for(&mut workspace);
         let mut sink = InMemoryAuditSink::default();
-        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut store = ManagedStateEventStore::new(floor(1));
         // record → deliver → approve, on the first managed version.
         for change in [
             ManagedStateChange::Governance {
