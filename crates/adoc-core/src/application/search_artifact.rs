@@ -426,7 +426,7 @@ mod tests {
 
         let search = parse(&build(&graph, &provider, None).json);
 
-        assert_eq!(search.schema_version, "adoc.search.v1");
+        assert_eq!(search.schema_version, "adoc.search.v2");
         let ids: Vec<&str> = search
             .embeddings
             .iter()
@@ -525,6 +525,48 @@ mod tests {
         assert!(
             search.embeddings.is_empty(),
             "a four-token paragraph sits under the minimum token threshold"
+        );
+    }
+
+    /// E1.1.T5 (ADR-0058): the v6 migration wave forces a full re-embed. A
+    /// prior `adoc.search.v1` cache is version-rejected and recomputed even
+    /// when the model header and every Embedding Composition still match —
+    /// the entry `content_hash` is composition-keyed, not graph-hash-keyed,
+    /// so without the version gate stale vectors would silently ride along.
+    #[test]
+    fn v1_search_cache_is_version_rejected_and_fully_recomputed() {
+        let graph = document(vec![GraphNode::KnowledgeObject(knowledge_object(
+            "billing.credits",
+        ))]);
+        let provider = DeterministicProvider::new(4);
+        let first = build(&graph, &provider, None);
+        assert_eq!(parse(&first.json).schema_version, "adoc.search.v2");
+
+        // Rewrite the fresh artifact as the prior release's v1 cache with a
+        // poisoned vector: composition hash and model header still match,
+        // so only the version gate stands between it and silent reuse.
+        let mut prior = parse(&first.json);
+        prior.schema_version = "adoc.search.v1".to_string();
+        prior.embeddings[0].vector = vec![9.0; 4];
+        let cache_dir = tempfile::tempdir().expect("temp dir can be created");
+        let cache_path = cache_dir.path().join("docs.search.json");
+        fs::write(
+            &cache_path,
+            prior.to_pretty_json().expect("prior cache serializes"),
+        )
+        .expect("cache artifact can be written");
+
+        let second = build(&graph, &provider, Some(&cache_path));
+
+        assert_eq!(
+            (second.cached_count, second.computed_count),
+            (0, 1),
+            "a v1 cache must be version-rejected and fully re-embedded"
+        );
+        assert_eq!(
+            parse(&second.json).embeddings[0].vector,
+            parse(&first.json).embeddings[0].vector,
+            "the vector is recomputed, never the poisoned v1 cache entry"
         );
     }
 }

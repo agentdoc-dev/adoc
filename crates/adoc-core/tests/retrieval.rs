@@ -63,7 +63,7 @@ fn load_session_from_objects_with_vectors(
     let graph_json = graph_json_from_objects(objects, Vec::new());
     let artifact = write_temp_artifact("hybrid-graph", &graph_json);
     let search_document = serde_json::json!({
-        "schema_version": "adoc.search.v1",
+        "schema_version": "adoc.search.v2",
         "model": {
             "id": "bge-small-en-v1.5",
             "provider": "fastembed",
@@ -2550,7 +2550,7 @@ fn load_prose_session_with_vectors(vectors: Vec<(&str, Vec<f32>)>) -> RetrievalS
         serde_json::to_string_pretty(&canonical).expect("prose fixture serializes canonically");
     let artifact = write_temp_artifact("prose-vectors-graph", &graph_json);
     let search_document = json!({
-        "schema_version": "adoc.search.v1",
+        "schema_version": "adoc.search.v2",
         "model": {
             "id": "bge-small-en-v1.5",
             "provider": "fastembed",

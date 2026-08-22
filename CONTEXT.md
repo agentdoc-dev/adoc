@@ -195,7 +195,7 @@ The V1 compiler outputs: `dist/docs.html`, `dist/docs.graph.json`, and optionall
 _Avoid_: SQLite graph artifact, RAG ndjson, separate diagnostics artifact
 
 **Search Artifact**:
-The V1 build output, `dist/docs.search.json`, with schema version `adoc.search.v1` since V1.7.2 (ADR-0040). Carries one `{ id, entry_kind, content_hash, vector }` entry per Knowledge Object and per indexed prose block (`entry_kind: "knowledge_object" | "prose"`), a `model: { id, provider, dim }` header, and a `graph_artifact_hash` for drift detection. Code blocks and prose under a minimum token threshold are not embedded; prose cache reuse is keyed by content hash and model, never by order-derived block id. The serialized JSON shape is public; the Rust DTO used to build or read it is internal to `adoc-core`.
+The V1 build output, `dist/docs.search.json`, with schema version `adoc.search.v2` since E1.1.T5 (ADR-0058; prose entries since V1.7.2, ADR-0040 — the v2 bump deliberately invalidates v1 embedding caches for the Graph Artifact v6 full re-embed). Carries one `{ id, entry_kind, content_hash, vector }` entry per Knowledge Object and per indexed prose block (`entry_kind: "knowledge_object" | "prose"`), a `model: { id, provider, dim }` header, and a `graph_artifact_hash` for drift detection. Code blocks and prose under a minimum token threshold are not embedded; prose cache reuse is keyed by content hash and model, never by order-derived block id. The serialized JSON shape is public; the Rust DTO used to build or read it is internal to `adoc-core`.
 _Avoid_: per-chunk embedding store, vectors embedded in `docs.graph.json`, binary sidecar in V1
 
 **Graph Artifact**:
@@ -243,7 +243,7 @@ A production-configurable, repeatable hash-based embedding provider selected wit
 _Avoid_: hidden debug-only provider, calling deterministic vectors semantic quality, model-header mismatch between build and query
 
 **Embedding Composition**:
-The canonical input string each embedded record is reduced to before embedding. Knowledge Objects: `{kind}: {body_plain_text}\n[id: {id}] [status: {status}] [owner: {owner}]`. Prose blocks (V1.7.2): `prose: {text}\n[page: {page_id}]`. Part of the `adoc.search.v1` contract; changing either formula requires a schema-version bump.
+The canonical input string each embedded record is reduced to before embedding. Knowledge Objects: `{kind}: {body_plain_text}\n[id: {id}] [status: {status}] [owner: {owner}]`. Prose blocks (V1.7.2): `prose: {text}\n[page: {page_id}]`. Part of the `adoc.search.v2` contract; changing either formula requires a schema-version bump.
 _Avoid_: per-field separate embeddings in V1, relations folded into embedding input, freeform composition
 
 **Hybrid Retrieval**:

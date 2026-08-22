@@ -392,7 +392,7 @@ mod prose_semantic {
         )
         .expect("search artifact is JSON");
 
-        assert_eq!(artifact["schema_version"], "adoc.search.v1");
+        assert_eq!(artifact["schema_version"], "adoc.search.v2");
         let embeddings = artifact["embeddings"].as_array().expect("embeddings array");
         assert!(
             embeddings

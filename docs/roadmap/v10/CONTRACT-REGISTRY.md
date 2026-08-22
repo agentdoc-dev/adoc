@@ -40,7 +40,7 @@ Producer for every row is the `adoc` release train (CLI, MCP server, and local g
 | `adoc.repository_baseline.v0` | shipped | adoc 0.3.4 | Action v2.0.0-alpha.19 | v0-additive; known registration-gap history — the original V10 inventory flagged it unregistered; true-up obligation tracked in [`DECISION-REGISTER.md`](DECISION-REGISTER.md) |
 | `adoc.retrieval.v1` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v1 additive; v0 is historical (see “Envelopes — historical”) |
 | `adoc.review.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
-| `adoc.search.v1` | shipped | adoc 0.3.4 | adoc 0.3.4 | v1 additive |
+| `adoc.search.v2` | shipped | adoc 0.4.0 | adoc 0.4.0 | exact-match reader; v1 rejected — the bump deliberately invalidates v1 embedding caches so the Graph Artifact v6 wave forces a full re-embed (E1.1.T5, ADR-0058); wire shape unchanged from v1 |
 | `adoc.stale.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 <!-- /registry:envelopes-shipped-adoc -->
 
@@ -60,6 +60,7 @@ Producer for every row is the `adoc` release train (CLI, MCP server, and local g
 | --- | --- | --- |
 | `adoc.graph.v5` | historical | superseded by `adoc.graph.v6` (E1.1, ADR-0058); production emission stopped; the v5 schema stays published at `docs/agent/v0/schema/graph-artifact.v5.json` for the historical record; rejection fixtures cite it from test scope only |
 | `adoc.retrieval.v0` | historical | superseded by `adoc.retrieval.v1`; the v0 schema stays published at `docs/agent/v0/schema/retrieval-envelope.v0.json` for readers of retained output |
+| `adoc.search.v1` | historical | superseded by `adoc.search.v2` (E1.1.T5, ADR-0058); production emission stopped; the wire shape is unchanged — the bump exists to invalidate v1 embedding caches for the v6 full re-embed; `docs/agent/v0/schema/search-artifact.json` is updated in place to v2 (unversioned filename) |
 <!-- /registry:envelopes-historical -->
 
 ## Test-fixture ids — never emitted

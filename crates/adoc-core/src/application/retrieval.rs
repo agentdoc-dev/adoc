@@ -1027,7 +1027,7 @@ mod tests {
 
     fn search_document(graph_artifact_hash: &str) -> SearchArtifactDocument {
         SearchArtifactDocument {
-            schema_version: "adoc.search.v1".to_string(),
+            schema_version: "adoc.search.v2".to_string(),
             model: SearchModelHeader {
                 id: "hash-v1".to_string(),
                 provider: "deterministic".to_string(),

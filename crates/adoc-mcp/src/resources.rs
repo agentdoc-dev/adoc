@@ -372,7 +372,7 @@ const RESOURCES: &[AgentResource] = &[
         uri: "adoc://agent/v0/schema/search-artifact.json",
         name: "schema-search-artifact-json",
         title: "Search Artifact JSON Schema",
-        description: "JSON Schema for adoc.search.v1, the dist/docs.search.json wire shape. The artifact itself is a build output, not an MCP resource.",
+        description: "JSON Schema for adoc.search.v2, the dist/docs.search.json wire shape. The artifact itself is a build output, not an MCP resource.",
         mime_type: JSON_SCHEMA,
         contents: include_str!("../../../docs/agent/v0/schema/search-artifact.json"),
     },
