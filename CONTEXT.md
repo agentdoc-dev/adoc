@@ -214,6 +214,10 @@ _Avoid_: status translation table that grants authority, implicit version fallba
 The typed input (`MappingAttestation`, E1.5) that authorizes a Lifecycle Mapping application to land its mapped target as **Managed State Event**s: a migration attestation, a source-control attestation, or a Cloud Governance Event (K5). Authority comes only from the presence of the typed value — its default absence cannot be forged — and without one the mapped target is advisory while applied governance stays `proposed`.
 _Avoid_: authored status as authority, implicit attestation, approval token in source text
 
+**Projection**:
+The export direction of the Lifecycle Mapping contract (E1.5): a versioned policy inside the same `adoc.lifecycle_mapping.v0` envelope rendering managed multi-dimension state back to a flat `.adoc` status word — total per kind (ordered rules over an unconditional fallback) and explicit about loss. Every application returns a machine-readable loss report naming each recorded dimension the word cannot carry back through the contract's own import mapping; the word `verified` renders only from recorded `verification: verified`, never from approval (K5/K10).
+_Avoid_: lossless export, silent narrowing, approval rendered as verified
+
 **Audit Sink**:
 The internal port (`AuditSink` in `adoc-core`, E1.4) where the managed state event store persists one audit record per transition, written before the event commits. A sink failure fails the owning operation with `audit.persistence_failed` — an unaudited committed transition cannot exist, and nothing silently succeeds (V10.4.6). The CI audit coverage guard diffs the state machines' transition sets against the audit emitter registry so every vocabulary state stays consciously wired. Distinct from the planned gate-level `gate.audit_persistence_failed` (E5.3).
 _Avoid_: best-effort audit, audit-optional append, tamper-resistant ledger claim
