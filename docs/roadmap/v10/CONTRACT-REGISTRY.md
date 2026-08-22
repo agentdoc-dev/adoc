@@ -20,7 +20,7 @@ Field vocabularies enclosed by an envelope (statuses, enum-valued fields) are go
 
 ## Envelopes — shipped, owner `adoc`
 
-Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and local gateway surfaces).
+Producer for every row is the `adoc` release train (CLI, MCP server, and local gateway surfaces); each row records its tested producer versions.
 
 <!-- registry:envelopes-shipped-adoc -->
 | id | status | producer (min–max tested) | consumers (min–max tested) | migration posture |
@@ -29,7 +29,7 @@ Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and l
 | `adoc.contradictions.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.diff.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.graph.traversal.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
-| `adoc.graph.v5` | shipped | adoc 0.3.4 | adoc 0.3.4; Action v2.0.0-alpha.19 | frozen at v5; `adoc.graph.v6` (E1.1) ships with deterministic v5→v6 migration fixtures |
+| `adoc.graph.v6` | shipped | adoc 0.4.0 | adoc 0.4.0 (CLI/MCP/local gateway surfaces) | exact-match reader; v5 rejected with `schema.unsupported_version` + rebuild guidance; migration is deterministic regeneration from source (ADR-0058) |
 | `adoc.impacted.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.mcp.command.v0` | shipped | adoc 0.3.4 | MCP agent clients (contract-tested at adoc 0.3.4) | v0-additive |
 | `adoc.migrate.report.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
@@ -58,6 +58,7 @@ Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and l
 <!-- registry:envelopes-historical -->
 | id | status | notes |
 | --- | --- | --- |
+| `adoc.graph.v5` | historical | superseded by `adoc.graph.v6` (E1.1, ADR-0058); production emission stopped; the v5 schema stays published at `docs/agent/v0/schema/graph-artifact.v5.json` for the historical record; rejection fixtures cite it from test scope only |
 | `adoc.retrieval.v0` | historical | superseded by `adoc.retrieval.v1`; the v0 schema stays published at `docs/agent/v0/schema/retrieval-envelope.v0.json` for readers of retained output |
 <!-- /registry:envelopes-historical -->
 
@@ -98,7 +99,6 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.proposal.v0` | cloud | E5.1 | canonical proposal record; includes the typed per-finding no-change disposition record (E5.3.T3) |
 | `adoc.approval.v0` | cloud | E5.2 | native approval bound to exact proposal digest, principal, policy version |
 | `adoc.gate_result.v0` | adoc | E5.3 | four-mode gate decision record carrying registered `gate.*` codes |
-| `adoc.graph.v6` | adoc | E1.1 | successor Graph Artifact separating governed semantic hash from source placement |
 <!-- /registry:envelopes-planned -->
 
 ## Diagnostic Codes — shipped, owner `adoc`

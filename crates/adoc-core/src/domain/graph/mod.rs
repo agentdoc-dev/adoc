@@ -120,7 +120,7 @@ impl GraphArtifactDocument {
 
 // `GraphKnowledgeObjectNode` is large by design (carries all graph-node fields
 // inline for zero-copy serde). Boxing here would add indirection on every graph
-// traversal; the size asymmetry is acceptable per the `adoc.graph.v5` contract.
+// traversal; the size asymmetry is acceptable per the `adoc.graph.v6` contract.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -227,7 +227,7 @@ impl ProseBlockKind {
 /// Carries the artifact-authored `GraphBlockNode` payload plus two derived
 /// fields: the variant discriminant (`kind`) and the nearest-ancestor-heading
 /// breadcrumb (`heading_context`), both computed at artifact-load time and
-/// never serialized back — `adoc.graph.v5` node shapes are untouched.
+/// never serialized back — `adoc.graph.v6` node shapes are untouched.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct GraphProseBlock {
     pub(crate) id: String,
@@ -961,7 +961,7 @@ mod tests {
 
     fn graph_document(content_hash: Option<&str>) -> GraphArtifactDocument {
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v5".to_string(),
+            schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: vec![
                 GraphNode::Page(GraphPageNode {
@@ -1080,7 +1080,7 @@ mod tests {
             })
             .collect();
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v5".to_string(),
+            schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes,
             edges: Vec::new(),
@@ -1115,7 +1115,7 @@ mod tests {
         })];
         all_nodes.extend(nodes);
         GraphArtifactDocument {
-            schema_version: "adoc.graph.v5".to_string(),
+            schema_version: "adoc.graph.v6".to_string(),
             repository_identity: Default::default(),
             nodes: all_nodes,
             edges: Vec::new(),

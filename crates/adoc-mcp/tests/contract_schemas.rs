@@ -103,7 +103,7 @@ fn validates_representative_serialized_agent_envelopes_against_contract_schemas(
             .expect("graph artifact reads"),
     )
     .expect("graph artifact parses");
-    assert_valid("graph-artifact.v5.json", &graph_artifact);
+    assert_valid("graph-artifact.v6.json", &graph_artifact);
 
     let retrieval = server
         .run_search(SearchParams {
@@ -918,8 +918,8 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "search-artifact.json",
         ),
         (
-            "adoc://agent/v0/schema/graph-artifact.v5.json",
-            "graph-artifact.v5.json",
+            "adoc://agent/v0/schema/graph-artifact.v6.json",
+            "graph-artifact.v6.json",
         ),
     ] {
         let result = server
@@ -1447,8 +1447,8 @@ fn retrieval_schema_ids_match_their_published_uris() {
             "adoc://agent/v0/schema/search-artifact.json",
         ),
         (
-            "graph-artifact.v5.json",
-            "adoc://agent/v0/schema/graph-artifact.v5.json",
+            "graph-artifact.v6.json",
+            "adoc://agent/v0/schema/graph-artifact.v6.json",
         ),
     ] {
         assert_eq!(
