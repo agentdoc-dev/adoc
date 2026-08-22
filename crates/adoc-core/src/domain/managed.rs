@@ -381,6 +381,18 @@ impl ManagedWorkspace {
         &self.decisions
     }
 
+    /// Replay one decision from a trusted recorded log. The admission
+    /// checks ([`ManagedWorkspace::record_decision`]: candidate pair,
+    /// latest-version binding, standing-merge conflicts) ran when the
+    /// decision entered the log; they are record-time gates, not
+    /// log-validity invariants — a decision recorded between two imports
+    /// must replay after those imports even though its binding is no
+    /// longer the latest. Never feed unvalidated input here: new
+    /// decisions go through [`ManagedWorkspace::record_decision`].
+    pub(crate) fn replay_decision(&mut self, decision: ReconciliationDecision) {
+        self.decisions.push(decision);
+    }
+
     /// The derived reconciliation state: deterministic, wall-clock-free —
     /// replaying [`ManagedWorkspace::decisions`] over the same import
     /// history yields byte-identical state.
@@ -1492,7 +1504,7 @@ mod tests {
 
         let (mut replayed, _) = collided_workspace();
         for event in first_run.decisions().to_vec() {
-            replayed.record_decision(event).expect("event replays");
+            replayed.replay_decision(event);
         }
 
         assert_eq!(first_run, replayed, "replay must rebuild the workspace");
@@ -1506,6 +1518,54 @@ mod tests {
             "keep-distinct leaves both objects distinct"
         );
         assert_eq!(first_run.reconciliation_state().standing.len(), 1);
+    }
+
+    /// A decision recorded between two imports of the same object stays
+    /// replayable: rebuilding the workspace as "all imports, then the
+    /// recorded log" must reach the identical state. Latest-version
+    /// binding is a record-time admission check, not a log-validity
+    /// invariant — replay trusts the log instead of re-running admission,
+    /// which would reject a decision that legitimately entered it.
+    #[test]
+    fn decision_recorded_between_imports_replays_from_the_trusted_log() {
+        let (mut first_run, candidate) = collided_workspace();
+        let decision = ReconciliationDecision::new(
+            ReconciliationVerb::KeepDistinct,
+            party(&candidate.existing),
+            party(&candidate.incoming),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+        first_run
+            .record_decision(decision)
+            .expect("decision recorded");
+        // A later import mints a newer version for the subject: the
+        // recorded decision's binding is no longer the latest.
+        first_run
+            .import_artifact(&artifact(
+                local_repo("a/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.credits", "sha256:aa2")],
+            ))
+            .expect("import accepted");
+
+        let (mut replayed, _) = collided_workspace();
+        replayed
+            .import_artifact(&artifact(
+                local_repo("a/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.credits", "sha256:aa2")],
+            ))
+            .expect("import accepted");
+        for event in first_run.decisions().to_vec() {
+            replayed.replay_decision(event);
+        }
+
+        assert_eq!(first_run, replayed, "replay must rebuild the workspace");
+        assert_eq!(
+            serde_json::to_vec(&first_run.reconciliation_state()).expect("state serializes"),
+            serde_json::to_vec(&replayed.reconciliation_state()).expect("state serializes"),
+            "replayed reconciliation state must be byte-identical"
+        );
     }
 
     /// The serialized decision record the Cloud cut consumes under the
