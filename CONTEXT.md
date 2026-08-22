@@ -215,7 +215,7 @@ The policy minimum span of most-recent managed state records that no API may del
 _Avoid_: handler-enforced append-only, record rewrite, silent sweep
 
 **Digest Chain**:
-The exact canonical bytes of every **Managed State Event** plus a `sha256:`-prefixed digest chaining each record to its predecessor, both stored at write time by the event store and carried on the audit record (E1.4.T5). Later export needs no extra data: the stored `(ordinal, bytes, digest)` triples alone reproduce every event and prove the log's order and integrity. All ten RT-04 event families — the six **State Dimensions** plus authorization-affecting source changes, declassification, migration, and deletion/tombstone — flow through the same chained append path.
+The exact canonical bytes of every **Managed State Event** plus a `sha256:`-prefixed digest chaining each record to its predecessor, both stored at write time by the event store and carried on the audit record (E1.4.T5). Later export needs no extra data: the stored `(ordinal, bytes, digest)` triples alone reproduce every event and detect any reordering or alteration of the recorded prefix (detection of accidental corruption, not tamper evidence — nothing is anchored outside the store). All ten RT-04 event families — the six **State Dimensions** plus authorization-affecting source changes, declassification, migration, and deletion/tombstone — flow through the same chained append path.
 _Avoid_: bytes re-derived at export, unchained audit rows, wall-clock timestamping
 
 **Replay Posture**:
