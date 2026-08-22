@@ -182,6 +182,10 @@ _Avoid_: content hash as version id, mutable version record, version id reuse
 The identity of one immutable Source Assertion extracted from a Source Artifact (K6 layer 4, K7; `SourceAssertionIdentity` in `adoc-core`). Only the identity layer exists today — the Source Record/Assertion store lands in E4.1. Carried per managed version so reconciliation preserves original provenance.
 _Avoid_: Source Binding synonym, assertion as Knowledge Object, mutable assertion
 
+**Managed Repository Record**:
+One imported repository inside a Cloud workspace (`ManagedRepositoryRecord` in `adoc-core`), keyed on the Graph Artifact's `repository_identity` — `{kind, config_path}` or explicit `null`, required since v5 (ADR-0049). The record is the binding slot: it can be reserved before the first artifact arrives (V10.3.2), and its Object IDs stay repository-local — the same ID in another repository is a different **Managed Object**, never silently merged.
+_Avoid_: global repository namespace, path-string repository key, cross-repository ID merge
+
 **Reconciliation Candidate**:
 The typed record (`adoc.reconciliation_candidate.v0`, registered planned) emitted when an imported **Object ID** collides with a **Managed Object** in another repository of the same workspace. Both objects stay distinct; the candidate names both parties by **Workspace Canonical Identity**, repository identity, latest **Managed Version ID**, and content hash. Deciding a candidate (keep distinct, link, supersede, merge) is a governed E1.3 action; matching hashes, titles, or similarity never produce one.
 _Avoid_: auto-merge, duplicate detector, similarity-based unification

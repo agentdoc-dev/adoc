@@ -212,6 +212,21 @@ impl ManagedWorkspace {
         self.repositories.get(repository_identity)
     }
 
+    /// V10.3.2: reserve the repository record — the binding slot — before
+    /// the first artifact arrives. Idempotent: a later reservation or
+    /// import binds to the existing record and never clears it.
+    pub(crate) fn reserve_repository(
+        &mut self,
+        repository_identity: GraphRepositoryIdentity,
+    ) -> &ManagedRepositoryRecord {
+        self.repositories
+            .entry(repository_identity.clone())
+            .or_insert_with(|| ManagedRepositoryRecord {
+                repository_identity,
+                objects: BTreeMap::new(),
+            })
+    }
+
     /// Import every Knowledge Object of a Graph Artifact into the
     /// artifact's repository record. Retains every object; a same-ID
     /// collision with another repository emits a [`ReconciliationCandidate`]
@@ -220,6 +235,9 @@ impl ManagedWorkspace {
         &mut self,
         artifact: &GraphArtifactDocument,
     ) -> ManagedImportOutcome {
+        // Arrival binds the slot even when the artifact carries no
+        // Knowledge Objects (E1.2.T4).
+        self.reserve_repository(artifact.repository_identity.clone());
         let mut imported = Vec::new();
         let mut reconciliation_candidates = Vec::new();
         for node in artifact
@@ -753,5 +771,94 @@ mod tests {
         assert_ne!(object_a.canonical, object_b.canonical);
         assert_eq!(object_a.versions.len(), 1);
         assert_eq!(object_b.versions.len(), 1);
+    }
+
+    // E1.2.T4: the managed repository record keys on the graph
+    // `repository_identity` ({kind, config_path} or explicit null,
+    // ADR-0049); the binding slot is reserved before the first artifact
+    // arrives (provenance V10.3.2); imported Object IDs stay
+    // repository-local.
+
+    /// V10.3.2: the binding slot — the keyed repository record — exists
+    /// before the first artifact arrives.
+    #[test]
+    fn reserved_repository_slot_exists_before_the_first_artifact() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+
+        workspace.reserve_repository(repo.clone());
+
+        let record = workspace.repository(&repo).expect("slot reserved");
+        assert_eq!(record.repository_identity, repo);
+        assert!(record.objects.is_empty());
+    }
+
+    /// The first import binds into the reserved record — reservation and
+    /// import key on the same repository identity, and re-reserving never
+    /// clears what an import recorded.
+    #[test]
+    fn import_binds_to_the_reserved_record_and_reserve_is_idempotent() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+        workspace.reserve_repository(repo.clone());
+        workspace.reserve_repository(repo.clone());
+
+        workspace.import_artifact(&artifact(
+            repo.clone(),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        ));
+        workspace.reserve_repository(repo.clone());
+
+        let record = workspace.repository(&repo).expect("repo recorded");
+        assert!(record.objects.contains_key("billing.credits"));
+    }
+
+    /// Importing an artifact with no Knowledge Objects still records the
+    /// repository: arrival binds the slot even when nothing is imported.
+    #[test]
+    fn import_without_knowledge_objects_still_records_the_repository() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+
+        let outcome = workspace.import_artifact(&artifact(repo.clone(), Vec::new()));
+
+        assert!(outcome.imported.is_empty());
+        let record = workspace
+            .repository(&repo)
+            .expect("repo recorded on arrival");
+        assert!(record.objects.is_empty());
+    }
+
+    /// Exit test: two imported repositories collide — `{kind, config_path}`
+    /// and explicit `null` are distinct keys, each retains its own object
+    /// under the shared Object ID, and the collision is a candidate, never
+    /// a silent same-ID merge across repositories.
+    #[test]
+    fn object_ids_stay_repository_local_across_null_and_project_keys() {
+        let mut workspace = workspace();
+        let project = local_repo("a/agentdoc.config.yaml");
+        let standalone = GraphRepositoryIdentity::standalone();
+
+        workspace.import_artifact(&artifact(
+            project.clone(),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        ));
+        let outcome = workspace.import_artifact(&artifact(
+            standalone.clone(),
+            vec![knowledge_object("billing.credits", "sha256:bbb")],
+        ));
+
+        assert_eq!(outcome.reconciliation_candidates.len(), 1);
+        let in_project = &workspace
+            .repository(&project)
+            .expect("project repo")
+            .objects["billing.credits"];
+        let in_standalone = &workspace
+            .repository(&standalone)
+            .expect("standalone repo")
+            .objects["billing.credits"];
+        assert_ne!(in_project.canonical, in_standalone.canonical);
+        assert_eq!(in_project.versions[0].content_hash, "sha256:aaa");
+        assert_eq!(in_standalone.versions[0].content_hash, "sha256:bbb");
     }
 }
