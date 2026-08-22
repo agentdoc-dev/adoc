@@ -239,6 +239,127 @@ Body with multibyte: \u{e9}\u{e9}\u{e9} \u{1f980}.
     );
 }
 
+/// E1.1.T3 (ADR-0058): the Agent Patch surface enforces the same closed
+/// per-kind schemas as `adoc check` — an unknown field key is refused at
+/// validation, so `--apply` can never write source that then fails strict
+/// check with `schema.unknown_field`.
+#[test]
+fn apply_refuses_update_fields_outside_the_kind_closed_schema() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": { "fields": { "onwer": "team-billing" } },
+            "reason": "E1.1 closed-schema patch gate test"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagnosticCode::SchemaUnknownField),
+        "diagnostics: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        PAGE_TEXT,
+        "refusal writes nothing"
+    );
+}
+
+/// E1.1.T3 (ADR-0058 §3): an invalid visibility value is refused at patch
+/// validation with `schema.visibility_invalid` — never spliced into source.
+#[test]
+fn apply_refuses_invalid_visibility_value_in_update_fields() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": { "fields": { "visibility": "secret" } },
+            "reason": "E1.1 closed-schema patch gate test"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagnosticCode::SchemaVisibilityInvalid),
+        "diagnostics: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        PAGE_TEXT,
+        "refusal writes nothing"
+    );
+}
+
+/// E1.1.T3 (ADR-0058): create_object drafts are held to the same closed
+/// per-kind schemas — an unknown field key refuses the create.
+#[test]
+fn apply_refuses_create_object_field_outside_the_kind_closed_schema() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+        .as_str()
+        .expect("anchor page_id")
+        .to_string();
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.ledger-claim",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Ledger commits settle credits.",
+                "fields": { "onwer": "team-billing" },
+                "placement": { "page_id": page_id, "after": "billing.credits" }
+            },
+            "reason": "E1.1 closed-schema patch gate test"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagnosticCode::SchemaUnknownField),
+        "diagnostics: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        PAGE_TEXT,
+        "refusal writes nothing"
+    );
+}
+
 /// E1.1.T2 (ADR-0058 §4): a position-only source edit leaves the v6
 /// governed-meaning hash unchanged, so the semantic drift gate passes — the
 /// Source Binding source-revision digest gate must refuse instead of
