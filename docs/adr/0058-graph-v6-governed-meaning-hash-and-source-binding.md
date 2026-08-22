@@ -36,7 +36,10 @@ patch/writeback safety needs exact placement tracked independently.
    remains fully observable through the serialized node and `contains`
    edges — it is simply no longer hash-bearing. `repository_identity` stays
    artifact-level and never enters object hashes (ADR-0049 §7 unchanged
-   there).
+   there). The Object ID is likewise not hash-bearing: identity is its own
+   K6 layer, not governed meaning, so two objects differing only by ID hash
+   identically (E1.2's same-hash-under-two-IDs fixture depends on this) and
+   an ID-only rename is not a semantic change.
 
 3. **Visibility is a closed, hash-included classification.** The authored
    vocabulary is exactly `public | internal | restricted`. Absence means

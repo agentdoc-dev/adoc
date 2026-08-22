@@ -286,6 +286,36 @@ fn graph_content_hash_is_stable_across_file_path_and_object_position() {
     }
 }
 
+/// K6 separates object identity from the semantic hash: the Object ID is the
+/// identity layer, not governed meaning, so two objects identical in
+/// everything but their ID share a `content_hash` (the E1.2.T2
+/// same-hash-under-two-IDs fixture depends on this being constructible) and
+/// an ID-only rename is not a semantic change.
+#[test]
+fn object_identity_is_not_hash_bearing() {
+    let source = concat!(
+        "# Graph @doc(team.graph)\n",
+        "\n",
+        "::claim billing.alpha\n",
+        "status: draft\n",
+        "--\n",
+        "Shared governed meaning.\n",
+        "::\n",
+        "\n",
+        "::claim billing.beta\n",
+        "status: draft\n",
+        "--\n",
+        "Shared governed meaning.\n",
+        "::\n",
+    );
+    let graph = build_graph_value(source);
+    assert_eq!(
+        object_hash(&graph, "billing.alpha"),
+        object_hash(&graph, "billing.beta"),
+        "two objects differing only by Object ID must hash identically"
+    );
+}
+
 /// E1.1.T2 acceptance (ADR-0058 §4): every Knowledge Object node carries a
 /// Source Binding — a separate, never-hashed member recording exact placement
 /// for the local filesystem connector — and a position-only move keeps

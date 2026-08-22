@@ -745,12 +745,13 @@ fn impacts_to_graph(impacts: &[crate::domain::value_objects::rel_path::RelPath])
 }
 
 /// ADR-0058 (`adoc.graph.v6`): the governed-meaning hash payload. Placement
-/// (`page_id`, `source_span`) is excluded, derived projections never enter,
-/// and every member serializes unconditionally — v6 is a clean canonical
-/// form with no v3–v5 byte-compat serialization exceptions.
+/// (`page_id`, `source_span`) and identity (`id` — the K6 identity layer,
+/// not governed meaning; E1.2's same-hash-under-two-IDs fixture depends on
+/// its exclusion) are excluded, derived projections never enter, and every
+/// member serializes unconditionally — v6 is a clean canonical form with no
+/// v3–v5 byte-compat serialization exceptions.
 #[derive(Serialize)]
 struct KnowledgeObjectHashPayload<'a> {
-    id: &'a str,
     kind: &'a str,
     status: &'a Option<String>,
     severity: &'a Option<String>,
@@ -776,7 +777,6 @@ struct KnowledgeObjectHashPayload<'a> {
 
 pub(crate) fn graph_knowledge_object_content_hash(node: &GraphKnowledgeObjectNode) -> String {
     let payload = KnowledgeObjectHashPayload {
-        id: &node.id,
         kind: &node.kind,
         status: &node.status,
         severity: &node.severity,
@@ -1765,7 +1765,6 @@ mod tests {
     fn hash_payload_excludes_placement_and_serializes_canonically() {
         let node = make_ko_node(None, None);
         let payload = KnowledgeObjectHashPayload {
-            id: &node.id,
             kind: &node.kind,
             status: &node.status,
             severity: &node.severity,
@@ -1786,6 +1785,10 @@ mod tests {
         assert!(
             !canonical.contains("page_id") && !canonical.contains("source_span"),
             "placement must be excluded from the hash payload: {canonical}"
+        );
+        assert!(
+            !canonical.contains("\"id\""),
+            "object identity must be excluded from the hash payload: {canonical}"
         );
         assert!(
             canonical.contains("\"severity\":null") && canonical.contains("\"trust\":null"),
