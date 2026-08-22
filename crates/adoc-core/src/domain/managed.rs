@@ -1396,6 +1396,142 @@ mod tests {
         assert_eq!(state.standing[0].verb(), ReconciliationVerb::LinkAlias);
     }
 
+    // E1.3.T2 (MILESTONES §E1.3; RT-03): link/alias and supersede
+    // decisions preserve every original Source Record/Assertion/Binding —
+    // at the E1.2 representation level: every ManagedVersionRecord with
+    // its Source Binding and Source Assertion list — with no observation
+    // rewritten or dropped.
+
+    fn bound_object(id: &str, hash: &str, path: &str, digest: &str) -> GraphKnowledgeObjectNode {
+        let mut node = knowledge_object(id, hash);
+        node.source_binding = Some(GraphSourceBinding {
+            connector: "local_fs".to_string(),
+            source: "team.page".to_string(),
+            revision: None,
+            path: path.to_string(),
+            anchor: id.to_string(),
+            source_revision_digest: digest.to_string(),
+        });
+        node
+    }
+
+    /// Two repositories colliding on `billing.credits`, every version
+    /// carrying its own Source Binding and two versions on the existing
+    /// side — the provenance a decision must preserve.
+    fn collided_workspace_with_bindings() -> (ManagedWorkspace, DecisionParty, DecisionParty) {
+        let mut workspace = workspace();
+        let repo_a = local_repo("a/agentdoc.config.yaml");
+        let repo_b = local_repo("b/agentdoc.config.yaml");
+        workspace
+            .import_artifact(&artifact(
+                repo_a.clone(),
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:aaa",
+                    "docs/team.adoc",
+                    "sha256:feed",
+                )],
+            ))
+            .expect("import accepted");
+        workspace
+            .import_artifact(&artifact(
+                repo_a,
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:aa2",
+                    "docs/team.adoc",
+                    "sha256:f00d",
+                )],
+            ))
+            .expect("import accepted");
+        let outcome = workspace
+            .import_artifact(&artifact(
+                repo_b,
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:bbb",
+                    "docs/other.adoc",
+                    "sha256:beef",
+                )],
+            ))
+            .expect("import accepted");
+        let candidate = &outcome.reconciliation_candidates[0];
+        let (subject, counterpart) = (party(&candidate.existing), party(&candidate.incoming));
+        (workspace, subject, counterpart)
+    }
+
+    /// RT-03 fixture shared by the link/alias and supersede tests: the
+    /// decision appends one Governance Event and changes nothing else —
+    /// every original version record, Source Binding, and (empty until
+    /// E4.1) Source Assertion list survives byte-for-byte, both parties
+    /// stay individually queryable, and the standing state records the
+    /// verb with its direction.
+    fn decision_preserves_every_original_record(verb: ReconciliationVerb) {
+        let (mut workspace, subject, counterpart) = collided_workspace_with_bindings();
+        let before = workspace.clone();
+        let decision = ReconciliationDecision::new(
+            verb,
+            subject.clone(),
+            counterpart.clone(),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+
+        workspace
+            .record_decision(decision)
+            .expect("decision recorded");
+
+        for repo in [
+            local_repo("a/agentdoc.config.yaml"),
+            local_repo("b/agentdoc.config.yaml"),
+        ] {
+            assert_eq!(
+                workspace.repository(&repo),
+                before.repository(&repo),
+                "a decision must not rewrite or drop any repository record"
+            );
+        }
+        let subject_object = workspace
+            .managed_object(&subject.canonical)
+            .expect("subject stays queryable");
+        assert_eq!(subject_object.versions.len(), 2);
+        assert!(
+            subject_object
+                .versions
+                .iter()
+                .all(|version| version.source_binding.is_some()),
+            "every original Source Binding survives the decision"
+        );
+        let counterpart_object = workspace
+            .managed_object(&counterpart.canonical)
+            .expect("counterpart stays queryable");
+        assert_eq!(counterpart_object.versions.len(), 1);
+        assert!(counterpart_object.versions[0].source_binding.is_some());
+
+        let state = workspace.reconciliation_state();
+        assert_eq!(state.standing.len(), 1);
+        assert_eq!(state.standing[0].verb(), verb);
+        assert_eq!(state.standing[0].subject(), &subject);
+        assert_eq!(state.standing[0].counterpart(), &counterpart);
+    }
+
+    /// E1.3.T2: linking an alias preserves every original record; the
+    /// counterpart becomes an alias of the subject in the standing state
+    /// only — no observation is rewritten or dropped.
+    #[test]
+    fn link_alias_decision_preserves_every_original_record() {
+        decision_preserves_every_original_record(ReconciliationVerb::LinkAlias);
+    }
+
+    /// E1.3.T2: superseding preserves every original record; the
+    /// superseded counterpart stays fully queryable with its provenance —
+    /// no observation is rewritten or dropped.
+    #[test]
+    fn supersede_decision_preserves_every_original_record() {
+        decision_preserves_every_original_record(ReconciliationVerb::Supersede);
+    }
+
     /// The closed decision verb vocabulary on the wire — exactly the four
     /// verbs MILESTONES §E1.3 names, snake_case, nothing else.
     #[test]
