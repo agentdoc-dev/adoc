@@ -12,12 +12,18 @@
 //!
 //! Managed import (RT-03, D36): matching Object IDs, titles, hashes, or
 //! semantic similarity never auto-merge. A same-ID collision across
-//! distinctly keyed repositories (see [`ManagedRepositoryRecord`] for what
-//! the graph identity does and does not distinguish) retains every object
-//! distinct and emits a typed [`ReconciliationCandidate`]
-//! (`adoc.reconciliation_candidate.v0`, registered planned in
-//! CONTRACT-REGISTRY.md); deciding a candidate is a governed E1.3 action,
-//! never an import side effect.
+//! repositories retains every object distinct and emits a typed
+//! [`ReconciliationCandidate`] (`adoc.reconciliation_candidate.v0`,
+//! registered planned in CONTRACT-REGISTRY.md); deciding a candidate is a
+//! governed E1.3 action, never an import side effect.
+//!
+//! Routing (E1.3, adjudication of PR #150 claim 5): repositories live in
+//! reserved binding slots keyed by [`RepositorySlotId`] handle, because the
+//! CLI's `repository_identity` is degenerate across physical repositories
+//! (see [`ManagedRepositoryRecord`] for what the graph identity does and
+//! does not distinguish). Import routes explicitly by slot handle;
+//! identity-equality lookup remains only as the single-repo convenience
+//! and fails closed when ambiguous.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -25,6 +31,10 @@ use serde::Serialize;
 
 use super::graph::{GraphArtifactDocument, GraphNode, GraphRepositoryIdentity, GraphSourceBinding};
 use super::identity::ObjectId;
+use super::reconciliation::{
+    DecisionParty, ReconciliationDecision, ReconciliationDecisionError, ReconciliationState,
+    ReconciliationVerb,
+};
 
 /// Cloud workspace identifier — opaque to `adoc-core`. Blank or padded
 /// input is rejected: an empty workspace id would produce unqualified
@@ -98,6 +108,12 @@ pub(crate) enum ManagedIdentityError {
     DuplicateObjectId,
     #[error("content hash must be `sha256:` followed by lowercase hex")]
     InvalidContentHash,
+    #[error("repository identity matches more than one reserved slot; route by slot handle")]
+    AmbiguousRepositoryIdentity,
+    #[error("repository slot handle is not reserved in this workspace")]
+    UnknownRepositorySlot,
+    #[error("artifact repository identity differs from the reserved slot's")]
+    RepositoryIdentityMismatch,
 }
 
 /// The published v6 wire grammar for `content_hash`
@@ -115,25 +131,31 @@ fn content_hash_matches_published_grammar(value: &str) -> bool {
     })
 }
 
-/// One managed repository inside a workspace, keyed on the graph
-/// `repository_identity` (`{kind, config_path}` or explicit `null` —
-/// required since v5, ADR-0049). The record is the binding slot (V10.3.2):
-/// it can exist before the first artifact arrives, and its Object IDs stay
-/// repository-local — the same ID in a distinctly keyed repository is a
-/// different Managed Object.
+/// The workspace-minted handle of one reserved binding slot (V10.3.2).
+/// The slot handle — not the graph `repository_identity` — is what managed
+/// import routes by: CLI builds emit a degenerate identity (every
+/// project-bound build carries `{local_project, "agentdoc.config.yaml"}`),
+/// so identity equality cannot distinguish two physical repositories in
+/// one workspace (E1.3 adjudication of PR #150 claim 5). Opaque and never
+/// reused, like the other minted ids.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct RepositorySlotId(String);
+
+/// One managed repository inside a workspace — the reserved binding slot
+/// (V10.3.2), keyed by its [`RepositorySlotId`] handle. It records the
+/// graph `repository_identity` (`{kind, config_path}` or explicit `null` —
+/// required since v5, ADR-0049) it was reserved for, can exist before the
+/// first artifact arrives, and its Object IDs stay repository-local — the
+/// same ID in another slot is a different Managed Object.
 ///
 /// The graph identity names the producing invocation family, not a
 /// workspace-unique repository: every project-bound build emits the
 /// constant `{local_project, "agentdoc.config.yaml"}`
-/// (`FsSourceProvider::repository_identity`, ADR-0049 §7), so two
-/// physical repositories importing under the producer identity are one
-/// record to this aggregate. Identity-equality keying is therefore the
-/// single-repository convenience only. E1.3 adds explicit routing for
-/// the multi-repository workspace — a caller-supplied repository key
-/// bound from the authenticated channel, never read from the artifact,
-/// with the reserved binding slot (V10.3.2) as the disambiguator (PR
-/// #150 adjudication); until then the artifact's declared identity *is*
-/// the key.
+/// (`FsSourceProvider::repository_identity`, ADR-0049 §7), so
+/// identity-equality keying distinguishes repositories only as far as the
+/// caller's identities do — that is why the slot handle, not the
+/// identity, is the key, and identity lookup is the single-repository
+/// convenience only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedRepositoryRecord {
     pub(crate) repository_identity: GraphRepositoryIdentity,
@@ -240,12 +262,16 @@ pub(crate) struct ImportedVersion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedWorkspace {
     workspace_id: WorkspaceId,
-    repositories: BTreeMap<GraphRepositoryIdentity, ManagedRepositoryRecord>,
-    // ponytail: workspace-local monotonic minting; both ids are opaque to
+    repositories: BTreeMap<RepositorySlotId, ManagedRepositoryRecord>,
+    // ponytail: workspace-local monotonic minting; all ids are opaque to
     // every consumer — Cloud storage mints its own scheme (the contract is
     // opacity and uniqueness, not the format).
     minted_canonical_ids: u64,
     minted_version_ids: u64,
+    minted_slot_ids: u64,
+    /// Append-only recorded reconciliation decision Governance Events
+    /// (E1.3): the sole mutation path for reconciliation state.
+    decisions: Vec<ReconciliationDecision>,
 }
 
 impl ManagedWorkspace {
@@ -255,36 +281,254 @@ impl ManagedWorkspace {
             repositories: BTreeMap::new(),
             minted_canonical_ids: 0,
             minted_version_ids: 0,
+            minted_slot_ids: 0,
+            decisions: Vec::new(),
         }
     }
 
+    /// The Managed Object a workspace canonical identity names, whichever
+    /// slot holds it. Provenance stays queryable through every decision —
+    /// no verb removes, rewrites, or re-homes a record (RT-03).
+    pub(crate) fn managed_object(
+        &self,
+        canonical: &WorkspaceCanonicalIdentity,
+    ) -> Option<&ManagedObjectRecord> {
+        self.repositories.values().find_map(|record| {
+            record
+                .objects
+                .values()
+                .find(|object| &object.canonical == canonical)
+        })
+    }
+
+    /// Record one reconciliation decision Governance Event. Fail closed:
+    /// both parties must exist in this workspace, be bound to their exact
+    /// latest managed version — a decision adjudicated against content
+    /// that has since changed never applies silently — and form a
+    /// Reconciliation Candidate pair: candidates arise from exact
+    /// Object-ID collision alone (RT-03), so two objects that never
+    /// collided are not a pair to adjudicate. Recording appends to the
+    /// log and touches no object or version record: RT-03 preservation
+    /// holds by construction.
+    pub(crate) fn record_decision(
+        &mut self,
+        decision: ReconciliationDecision,
+    ) -> Result<(), ReconciliationDecisionError> {
+        let subject = self.bound_party(decision.subject())?;
+        let counterpart = self.bound_party(decision.counterpart())?;
+        if subject.object_id != counterpart.object_id {
+            return Err(ReconciliationDecisionError::NotACandidatePair);
+        }
+        // A standing merge freezes its parties against conflicting
+        // decisions: a merged-away counterpart cannot be decided again
+        // under another pair (it would be re-homed into two survivors at
+        // once), and a surviving subject cannot itself be merged away (the
+        // chain would silently orphan its antecedents from the new
+        // survivor's single-level walk). Nested reconciliation policy is
+        // post-V1 (MILESTONES §E1.3 out of scope) — out-of-scope input is
+        // rejected, never half-modelled. Same-pair decisions stay exempt:
+        // the last decision for a pair stands.
+        // ponytail: full standing-state derive per record; index standing
+        // merges by party if the log grows hot.
+        let pair = decision.pair_key();
+        let state = self.reconciliation_state();
+        for standing in &state.standing {
+            if standing.verb() != ReconciliationVerb::MergeRehome || standing.pair_key() == pair {
+                continue;
+            }
+            let merged_away = &standing.counterpart().canonical;
+            if merged_away == &decision.subject().canonical
+                || merged_away == &decision.counterpart().canonical
+            {
+                return Err(ReconciliationDecisionError::PartyAlreadyMerged);
+            }
+            if decision.verb() == ReconciliationVerb::MergeRehome
+                && standing.subject().canonical == decision.counterpart().canonical
+            {
+                return Err(ReconciliationDecisionError::NestedMergeUnsupported);
+            }
+        }
+        self.decisions.push(decision);
+        Ok(())
+    }
+
+    /// Resolve one decision party fail-closed: the object must exist in
+    /// this workspace and the binding must be its exact latest version.
+    fn bound_party(
+        &self,
+        bound: &DecisionParty,
+    ) -> Result<&ManagedObjectRecord, ReconciliationDecisionError> {
+        let object = self
+            .managed_object(&bound.canonical)
+            .ok_or(ReconciliationDecisionError::UnknownParty)?;
+        let latest = object
+            .versions
+            .last()
+            // Unreachable: records only ever gain versions, starting
+            // with one at creation; kept typed, never unwrapped.
+            .ok_or(ReconciliationDecisionError::UnknownParty)?;
+        if latest.version_id != bound.version_id {
+            return Err(ReconciliationDecisionError::StaleVersionBinding);
+        }
+        Ok(object)
+    }
+
+    /// The recorded decision history, in order — the replay input.
+    pub(crate) fn decisions(&self) -> &[ReconciliationDecision] {
+        &self.decisions
+    }
+
+    /// Replay one decision from a trusted recorded log. The admission
+    /// checks ([`ManagedWorkspace::record_decision`]: candidate pair,
+    /// latest-version binding, standing-merge conflicts) ran when the
+    /// decision entered the log; they are record-time gates, not
+    /// log-validity invariants — a decision recorded between two imports
+    /// must replay after those imports even though its binding is no
+    /// longer the latest. Never feed unvalidated input here: new
+    /// decisions go through [`ManagedWorkspace::record_decision`].
+    pub(crate) fn replay_decision(&mut self, decision: ReconciliationDecision) {
+        self.decisions.push(decision);
+    }
+
+    /// The derived reconciliation state: deterministic, wall-clock-free —
+    /// replaying [`ManagedWorkspace::decisions`] over the same import
+    /// history yields byte-identical state.
+    pub(crate) fn reconciliation_state(&self) -> ReconciliationState {
+        ReconciliationState::derive(&self.decisions)
+    }
+
+    /// The canonical identities merged into `survivor` by standing
+    /// merge/re-home decisions (E1.3.T3). Directional — the survivor is
+    /// the decision's subject — and derived from the decision log alone:
+    /// no import, hash, or similarity ever creates a merged relation.
+    /// Each antecedent's full provenance stays queryable via
+    /// [`ManagedWorkspace::managed_object`] (RT-03).
+    pub(crate) fn merged_antecedents(
+        &self,
+        survivor: &WorkspaceCanonicalIdentity,
+    ) -> Vec<WorkspaceCanonicalIdentity> {
+        self.reconciliation_state()
+            .standing
+            .iter()
+            .filter(|decision| decision.verb() == ReconciliationVerb::MergeRehome)
+            .filter(|decision| &decision.subject().canonical == survivor)
+            .map(|decision| decision.counterpart().canonical.clone())
+            .collect()
+    }
+
+    /// Single-repo convenience: the record whose recorded identity equals
+    /// `repository_identity`. Absence (`Ok(None)`) and ambiguity are
+    /// distinct outcomes: once two slots share a (degenerate) identity the
+    /// lookup fails closed with
+    /// [`ManagedIdentityError::AmbiguousRepositoryIdentity`] instead of
+    /// answering `None` — "not imported yet" and "imported twice, route by
+    /// slot handle" must never read the same.
+    /// [`ManagedWorkspace::repository_slot`] is the authoritative accessor.
     pub(crate) fn repository(
         &self,
         repository_identity: &GraphRepositoryIdentity,
-    ) -> Option<&ManagedRepositoryRecord> {
-        self.repositories.get(repository_identity)
+    ) -> Result<Option<&ManagedRepositoryRecord>, ManagedIdentityError> {
+        let mut matches = self
+            .repositories
+            .values()
+            .filter(|record| &record.repository_identity == repository_identity);
+        match (matches.next(), matches.next()) {
+            (Some(record), None) => Ok(Some(record)),
+            (None, _) => Ok(None),
+            (Some(_), Some(_)) => Err(ManagedIdentityError::AmbiguousRepositoryIdentity),
+        }
     }
 
-    /// V10.3.2: reserve the repository record — the binding slot — before
-    /// the first artifact arrives. Idempotent: a later reservation or
-    /// import binds to the existing record and never clears it.
+    pub(crate) fn repository_slot(
+        &self,
+        slot: &RepositorySlotId,
+    ) -> Option<&ManagedRepositoryRecord> {
+        self.repositories.get(slot)
+    }
+
+    /// V10.3.2 single-repo convenience: reserve the binding slot for this
+    /// identity before the first artifact arrives. Idempotent by identity —
+    /// a later reservation or import binds to the existing slot and never
+    /// clears it. Once two slots share the identity the lookup is
+    /// ambiguous and fails closed: reserve each physical repository
+    /// explicitly via [`ManagedWorkspace::reserve_repository_slot`].
     pub(crate) fn reserve_repository(
         &mut self,
         repository_identity: GraphRepositoryIdentity,
-    ) -> &mut ManagedRepositoryRecord {
-        self.repositories
-            .entry(repository_identity.clone())
-            .or_insert_with(|| ManagedRepositoryRecord {
-                repository_identity,
-                objects: BTreeMap::new(),
-            })
+    ) -> Result<RepositorySlotId, ManagedIdentityError> {
+        let mut matches = self
+            .repositories
+            .iter()
+            .filter(|(_, record)| record.repository_identity == repository_identity)
+            .map(|(slot, _)| slot.clone());
+        match (matches.next(), matches.next()) {
+            (Some(slot), None) => Ok(slot),
+            (Some(_), Some(_)) => Err(ManagedIdentityError::AmbiguousRepositoryIdentity),
+            (None, _) => Ok(self.reserve_repository_slot(repository_identity)),
+        }
     }
 
-    /// Import every Knowledge Object of a Graph Artifact into the
-    /// artifact's repository record. Retains every object; a same-ID
-    /// collision with another repository emits a [`ReconciliationCandidate`]
-    /// and never merges, links, or re-homes anything.
-    ///
+    /// E1.3 (adjudication of PR #150 claim 5): explicitly reserve a fresh
+    /// binding slot for one physical repository. Always mints — this is
+    /// how two physical repositories with the same degenerate CLI identity
+    /// become two slots with distinct object registries.
+    pub(crate) fn reserve_repository_slot(
+        &mut self,
+        repository_identity: GraphRepositoryIdentity,
+    ) -> RepositorySlotId {
+        self.minted_slot_ids += 1;
+        let slot = RepositorySlotId(format!("slot-{}", self.minted_slot_ids));
+        self.repositories.insert(
+            slot.clone(),
+            ManagedRepositoryRecord {
+                repository_identity,
+                objects: BTreeMap::new(),
+            },
+        );
+        slot
+    }
+
+    /// Single-repo convenience: import into the slot whose recorded
+    /// identity equals the artifact's, reserving it on first arrival.
+    /// Fails closed with [`ManagedIdentityError::AmbiguousRepositoryIdentity`]
+    /// once two slots share the identity — degenerate CLI identities make
+    /// identity lookup unable to distinguish physical repositories, so
+    /// multi-repo workspaces route explicitly via
+    /// [`ManagedWorkspace::import_artifact_into`] (E1.3 adjudication of
+    /// PR #150 claim 5).
+    pub(crate) fn import_artifact(
+        &mut self,
+        artifact: &GraphArtifactDocument,
+    ) -> Result<ManagedImportOutcome, ManagedIdentityError> {
+        Self::validate_artifact_object_ids(artifact)?;
+        // Arrival binds the slot even when the artifact carries no
+        // Knowledge Objects (E1.2.T4) — but only after validation, so a
+        // rejected import binds nothing.
+        let slot = self.reserve_repository(artifact.repository_identity.clone())?;
+        self.import_validated(&slot, artifact)
+    }
+
+    /// E1.3 explicit routing: import into a previously reserved slot,
+    /// named by handle. The artifact's own `repository_identity` never
+    /// routes — but routing an artifact whose identity differs from the
+    /// slot's recorded one is rejected fail-closed rather than silently
+    /// re-labeled.
+    pub(crate) fn import_artifact_into(
+        &mut self,
+        slot: &RepositorySlotId,
+        artifact: &GraphArtifactDocument,
+    ) -> Result<ManagedImportOutcome, ManagedIdentityError> {
+        let record = self
+            .repositories
+            .get(slot)
+            .ok_or(ManagedIdentityError::UnknownRepositorySlot)?;
+        if record.repository_identity != artifact.repository_identity {
+            return Err(ManagedIdentityError::RepositoryIdentityMismatch);
+        }
+        Self::validate_artifact_object_ids(artifact)?;
+        self.import_validated(slot, artifact)
+    }
+
     /// Fail closed on crafted input (`GraphArtifactDocument` derives
     /// `Deserialize`, so callers cannot assume compiler-built documents): a
     /// blank, grammar-violating, or repeated Object ID — or a
@@ -301,20 +545,13 @@ impl ManagedWorkspace {
     /// malformed hash would be enshrined in an immutable version and
     /// compared for RT-04 unchanged-ness ever after.
     ///
-    /// Two deliberate boundaries: (1) unlike `GraphIndex::from_document`,
-    /// which degrades per node into diagnostics, one bad node rejects the
-    /// whole document — at this trust boundary a partial import would be
-    /// a silent drop; (2) the artifact's self-declared
-    /// `repository_identity` is taken as the record key, which
-    /// distinguishes repositories only as far as the caller's identities
-    /// do ([`ManagedRepositoryRecord`]) — E1.3 adds a caller-supplied
-    /// repository key so the record is bound from the authenticated
-    /// channel rather than the payload; until then the artifact's
-    /// declared identity *is* the key.
-    pub(crate) fn import_artifact(
-        &mut self,
+    /// Deliberate boundary: unlike `GraphIndex::from_document`, which
+    /// degrades per node into diagnostics, one bad node rejects the whole
+    /// document — at this trust boundary a partial import would be a
+    /// silent drop.
+    fn validate_artifact_object_ids(
         artifact: &GraphArtifactDocument,
-    ) -> Result<ManagedImportOutcome, ManagedIdentityError> {
+    ) -> Result<(), ManagedIdentityError> {
         let mut seen_ids = BTreeSet::new();
         for node in artifact
             .nodes
@@ -336,9 +573,18 @@ impl ManagedWorkspace {
                 return Err(ManagedIdentityError::InvalidContentHash);
             }
         }
-        // Arrival binds the slot even when the artifact carries no
-        // Knowledge Objects (E1.2.T4).
-        self.reserve_repository(artifact.repository_identity.clone());
+        Ok(())
+    }
+
+    /// Import every Knowledge Object of a validated Graph Artifact into
+    /// the reserved slot. Retains every object; a same-ID collision with
+    /// another slot emits a [`ReconciliationCandidate`] and never merges,
+    /// links, or re-homes anything.
+    fn import_validated(
+        &mut self,
+        slot: &RepositorySlotId,
+        artifact: &GraphArtifactDocument,
+    ) -> Result<ManagedImportOutcome, ManagedIdentityError> {
         let mut imported = Vec::new();
         let mut reconciliation_candidates = Vec::new();
         for node in artifact
@@ -348,7 +594,7 @@ impl ManagedWorkspace {
         {
             let known = self
                 .repositories
-                .get(&artifact.repository_identity)
+                .get(slot)
                 .and_then(|record| record.objects.get(&node.id))
                 .map(|object| {
                     let unchanged = object
@@ -362,19 +608,22 @@ impl ManagedWorkspace {
                 // content version, nothing minted.
                 Some((_, true)) => continue,
                 Some((canonical, false)) => (canonical, Vec::new()),
-                // First appearance of this Object ID in this repository:
-                // record same-ID parties from every other repository, then
-                // mint a fresh canonical identity — a colliding object's
-                // identity is never adopted.
+                // First appearance of this Object ID in this slot: record
+                // same-ID parties from every other slot, then mint a fresh
+                // canonical identity — a colliding object's identity is
+                // never adopted.
                 None => {
-                    let parties = self.colliding_parties(&artifact.repository_identity, &node.id);
+                    let parties = self.colliding_parties(slot, &node.id);
                     (self.mint_canonical_identity(), parties)
                 }
             };
             let version_id = self.mint_version_id();
-            // Reserved before the loop; re-reserving binds to the existing
-            // record — this is the single construction path.
-            let record = self.reserve_repository(artifact.repository_identity.clone());
+            let record = self
+                .repositories
+                .get_mut(slot)
+                // Unreachable: both entry points resolve or reserve the
+                // slot before delegating here; kept typed, never unwrapped.
+                .ok_or(ManagedIdentityError::UnknownRepositorySlot)?;
             let object =
                 record
                     .objects
@@ -415,25 +664,26 @@ impl ManagedWorkspace {
         })
     }
 
-    /// Same-ID parties in every other repository of this workspace. The
+    /// Same-ID parties in every other slot of this workspace — two slots
+    /// sharing a degenerate identity still collide with each other. The
     /// scan is exact-ID only: no hash, title, or similarity matching
     /// exists (RT-03/D36).
     fn colliding_parties(
         &self,
-        repository_identity: &GraphRepositoryIdentity,
+        slot: &RepositorySlotId,
         object_id: &str,
     ) -> Vec<ReconciliationParty> {
         self.repositories
             .iter()
-            .filter(|(key, _)| *key != repository_identity)
-            .filter_map(|(key, record)| {
+            .filter(|(key, _)| *key != slot)
+            .filter_map(|(_, record)| {
                 let object = record.objects.get(object_id)?;
                 // Non-empty by construction: records only ever gain
                 // versions, starting with one at creation.
                 let latest = object.versions.last()?;
                 Some(ReconciliationParty {
                     canonical: object.canonical.clone(),
-                    repository_identity: key.clone(),
+                    repository_identity: record.repository_identity.clone(),
                     version_id: latest.version_id.clone(),
                     content_hash: latest.content_hash.clone(),
                 })
@@ -468,6 +718,9 @@ mod tests {
     use super::*;
     use crate::domain::graph::{
         GraphKnowledgeObjectNode, GraphNode, GraphRelations, GraphSourceBinding, GraphSourceSpan,
+    };
+    use crate::domain::reconciliation::{
+        DecisionParty, PolicyVersion, Principal, ReconciliationDecision, ReconciliationVerb,
     };
 
     /// Registered (planned) contract id governing the serialized candidate
@@ -553,10 +806,12 @@ mod tests {
 
         let object_a = &workspace
             .repository(&repo_a)
+            .expect("identity unambiguous")
             .expect("repo a recorded")
             .objects["billing.credits"];
         let object_b = &workspace
             .repository(&repo_b)
+            .expect("identity unambiguous")
             .expect("repo b recorded")
             .objects["billing.credits"];
         assert_eq!(object_a.object_id, "billing.credits");
@@ -592,6 +847,7 @@ mod tests {
         );
         let object_b = &workspace
             .repository(&repo_b)
+            .expect("identity unambiguous")
             .expect("repo b recorded")
             .objects["billing.credits"];
         assert_eq!(object_b.versions.len(), 2);
@@ -671,8 +927,11 @@ mod tests {
             ))
             .expect("import accepted");
 
-        let object =
-            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        let object = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects["billing.credits"];
         assert_eq!(object.versions.len(), 2);
         assert_ne!(object.versions[0].version_id, object.versions[1].version_id);
         assert_eq!(first.imported[0].canonical, second.imported[0].canonical);
@@ -711,8 +970,11 @@ mod tests {
             .expect("import accepted");
 
         assert!(again.imported.is_empty());
-        let object =
-            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        let object = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects["billing.credits"];
         assert_eq!(object.versions.len(), 1);
         assert_eq!(
             object.versions[0].source_binding, original,
@@ -740,8 +1002,11 @@ mod tests {
 
         assert!(again.imported.is_empty());
         assert!(again.reconciliation_candidates.is_empty());
-        let object =
-            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        let object = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects["billing.credits"];
         assert_eq!(object.versions.len(), 1);
     }
 
@@ -808,8 +1073,9 @@ mod tests {
             ));
             assert_eq!(outcome, Err(ManagedIdentityError::BlankObjectId));
         }
-        assert!(
-            workspace.repository(&repo).is_none(),
+        assert_eq!(
+            workspace.repository(&repo),
+            Ok(None),
             "a rejected import must not bind the repository slot or mint anything"
         );
     }
@@ -835,8 +1101,9 @@ mod tests {
             ));
             assert_eq!(outcome, Err(ManagedIdentityError::DuplicateObjectId));
         }
-        assert!(
-            workspace.repository(&repo).is_none(),
+        assert_eq!(
+            workspace.repository(&repo),
+            Ok(None),
             "a rejected import must not bind the repository slot or mint anything"
         );
     }
@@ -868,8 +1135,9 @@ mod tests {
                 "{invalid:?} must be rejected"
             );
         }
-        assert!(
-            workspace.repository(&repo).is_none(),
+        assert_eq!(
+            workspace.repository(&repo),
+            Ok(None),
             "a rejected import must not bind the repository slot or mint anything"
         );
     }
@@ -909,8 +1177,9 @@ mod tests {
                 "{invalid:?} must be rejected"
             );
         }
-        assert!(
-            workspace.repository(&repo).is_none(),
+        assert_eq!(
+            workspace.repository(&repo),
+            Ok(None),
             "a rejected import must not bind the repository slot or mint anything"
         );
     }
@@ -953,8 +1222,11 @@ mod tests {
             .import_artifact(&artifact(repo.clone(), vec![node]))
             .expect("import accepted");
 
-        let object =
-            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        let object = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects["billing.credits"];
         assert_eq!(object.versions[0].source_binding, expected);
         assert!(object.versions[0].source_assertions.is_empty());
     }
@@ -986,7 +1258,11 @@ mod tests {
             .expect("import accepted");
 
         assert!(outcome.reconciliation_candidates.is_empty());
-        let objects = &workspace.repository(&repo).expect("repo recorded").objects;
+        let objects = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects;
         assert_eq!(objects.len(), 2);
         assert_ne!(
             objects["billing.credits"].canonical, objects["billing.refunds"].canonical,
@@ -1021,11 +1297,21 @@ mod tests {
 
         assert!(outcome.reconciliation_candidates.is_empty());
         assert_eq!(
-            workspace.repository(&repo_a).expect("repo a").objects.len(),
+            workspace
+                .repository(&repo_a)
+                .expect("identity unambiguous")
+                .expect("repo a")
+                .objects
+                .len(),
             1
         );
         assert_eq!(
-            workspace.repository(&repo_b).expect("repo b").objects.len(),
+            workspace
+                .repository(&repo_b)
+                .expect("identity unambiguous")
+                .expect("repo b")
+                .objects
+                .len(),
             1
         );
     }
@@ -1051,7 +1337,11 @@ mod tests {
             .expect("import accepted");
 
         assert!(outcome.reconciliation_candidates.is_empty());
-        let objects = &workspace.repository(&repo).expect("repo recorded").objects;
+        let objects = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects;
         assert_eq!(objects.len(), 2);
         assert_ne!(
             objects["billing.credits"].canonical,
@@ -1094,8 +1384,16 @@ mod tests {
             candidate.existing.canonical, candidate.incoming.canonical,
             "an identical hash must not let the replay adopt the existing identity"
         );
-        let object_a = &workspace.repository(&repo_a).expect("repo a").objects["billing.credits"];
-        let object_b = &workspace.repository(&repo_b).expect("repo b").objects["billing.credits"];
+        let object_a = &workspace
+            .repository(&repo_a)
+            .expect("identity unambiguous")
+            .expect("repo a")
+            .objects["billing.credits"];
+        let object_b = &workspace
+            .repository(&repo_b)
+            .expect("identity unambiguous")
+            .expect("repo b")
+            .objects["billing.credits"];
         assert_ne!(object_a.canonical, object_b.canonical);
         assert_eq!(object_a.versions.len(), 1);
         assert_eq!(object_b.versions.len(), 1);
@@ -1114,9 +1412,14 @@ mod tests {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
 
-        workspace.reserve_repository(repo.clone());
+        workspace
+            .reserve_repository(repo.clone())
+            .expect("identity unambiguous");
 
-        let record = workspace.repository(&repo).expect("slot reserved");
+        let record = workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("slot reserved");
         assert_eq!(record.repository_identity, repo);
         assert!(record.objects.is_empty());
     }
@@ -1128,8 +1431,13 @@ mod tests {
     fn import_binds_to_the_reserved_record_and_reserve_is_idempotent() {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
-        workspace.reserve_repository(repo.clone());
-        workspace.reserve_repository(repo.clone());
+        let first = workspace
+            .reserve_repository(repo.clone())
+            .expect("identity unambiguous");
+        let again = workspace
+            .reserve_repository(repo.clone())
+            .expect("identity unambiguous");
+        assert_eq!(first, again, "identity-idempotent reserve never forks");
 
         workspace
             .import_artifact(&artifact(
@@ -1137,9 +1445,14 @@ mod tests {
                 vec![knowledge_object("billing.credits", "sha256:aaa")],
             ))
             .expect("import accepted");
-        workspace.reserve_repository(repo.clone());
+        workspace
+            .reserve_repository(repo.clone())
+            .expect("identity unambiguous");
 
-        let record = workspace.repository(&repo).expect("repo recorded");
+        let record = workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded");
         assert!(record.objects.contains_key("billing.credits"));
     }
 
@@ -1157,8 +1470,887 @@ mod tests {
         assert!(outcome.imported.is_empty());
         let record = workspace
             .repository(&repo)
+            .expect("identity unambiguous")
             .expect("repo recorded on arrival");
         assert!(record.objects.is_empty());
+    }
+
+    // E1.3.T1 (MILESTONES §E1.3; RT-03): a keep-distinct decision is
+    // recorded as a Governance Event bound to exact version ID + policy
+    // version + principal, and replays from history to the identical
+    // resulting state. The record is `adoc.reconciliation_decision.v0`
+    // (registered planned); E4.2's `adoc.governance_event.v0` (cloud)
+    // will enclose it as the event payload.
+
+    /// Registered (planned) contract id governing the serialized decision
+    /// record shape pinned below.
+    const RECONCILIATION_DECISION_CONTRACT: &str = "adoc.reconciliation_decision.v0";
+
+    fn party(of: &ReconciliationParty) -> DecisionParty {
+        DecisionParty {
+            canonical: of.canonical.clone(),
+            version_id: of.version_id.clone(),
+        }
+    }
+
+    fn principal() -> Principal {
+        Principal::new("user:alex").expect("principal is non-blank")
+    }
+
+    fn policy() -> PolicyVersion {
+        PolicyVersion::new("reconciliation-policy/1").expect("policy version is non-blank")
+    }
+
+    /// Two repositories colliding on `billing.credits` — the import
+    /// history every replay test rebuilds identically.
+    fn collided_workspace() -> (ManagedWorkspace, ReconciliationCandidate) {
+        let mut workspace = workspace();
+        workspace
+            .import_artifact(&artifact(
+                local_repo("a/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.credits", "sha256:aaa")],
+            ))
+            .expect("import accepted");
+        let outcome = workspace
+            .import_artifact(&artifact(
+                local_repo("b/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.credits", "sha256:bbb")],
+            ))
+            .expect("import accepted");
+        let candidate = outcome.reconciliation_candidates[0].clone();
+        (workspace, candidate)
+    }
+
+    /// Exit test (E1.3): a keep-distinct decision bound to exact version
+    /// IDs, policy version, and principal is recorded as an event, and
+    /// replaying the recorded history over the same import history yields
+    /// a byte-identical reconciliation state — with both objects still
+    /// distinct.
+    #[test]
+    fn keep_distinct_decision_is_principal_bound_and_replays_to_identical_state() {
+        let (mut first_run, candidate) = collided_workspace();
+        let decision = ReconciliationDecision::new(
+            ReconciliationVerb::KeepDistinct,
+            party(&candidate.existing),
+            party(&candidate.incoming),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+        first_run
+            .record_decision(decision)
+            .expect("decision recorded");
+
+        let (mut replayed, _) = collided_workspace();
+        for event in first_run.decisions().to_vec() {
+            replayed.replay_decision(event);
+        }
+
+        assert_eq!(first_run, replayed, "replay must rebuild the workspace");
+        assert_eq!(
+            serde_json::to_vec(&first_run.reconciliation_state()).expect("state serializes"),
+            serde_json::to_vec(&replayed.reconciliation_state()).expect("state serializes"),
+            "replayed reconciliation state must be byte-identical"
+        );
+        assert_ne!(
+            candidate.existing.canonical, candidate.incoming.canonical,
+            "keep-distinct leaves both objects distinct"
+        );
+        assert_eq!(first_run.reconciliation_state().standing.len(), 1);
+    }
+
+    /// A decision recorded between two imports of the same object stays
+    /// replayable: rebuilding the workspace as "all imports, then the
+    /// recorded log" must reach the identical state. Latest-version
+    /// binding is a record-time admission check, not a log-validity
+    /// invariant — replay trusts the log instead of re-running admission,
+    /// which would reject a decision that legitimately entered it.
+    #[test]
+    fn decision_recorded_between_imports_replays_from_the_trusted_log() {
+        let (mut first_run, candidate) = collided_workspace();
+        let decision = ReconciliationDecision::new(
+            ReconciliationVerb::KeepDistinct,
+            party(&candidate.existing),
+            party(&candidate.incoming),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+        first_run
+            .record_decision(decision)
+            .expect("decision recorded");
+        // A later import mints a newer version for the subject: the
+        // recorded decision's binding is no longer the latest.
+        first_run
+            .import_artifact(&artifact(
+                local_repo("a/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.credits", "sha256:aa2")],
+            ))
+            .expect("import accepted");
+
+        let (mut replayed, _) = collided_workspace();
+        replayed
+            .import_artifact(&artifact(
+                local_repo("a/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.credits", "sha256:aa2")],
+            ))
+            .expect("import accepted");
+        for event in first_run.decisions().to_vec() {
+            replayed.replay_decision(event);
+        }
+
+        assert_eq!(first_run, replayed, "replay must rebuild the workspace");
+        assert_eq!(
+            serde_json::to_vec(&first_run.reconciliation_state()).expect("state serializes"),
+            serde_json::to_vec(&replayed.reconciliation_state()).expect("state serializes"),
+            "replayed reconciliation state must be byte-identical"
+        );
+    }
+
+    /// The serialized decision record the Cloud cut consumes under the
+    /// planned `adoc.reconciliation_decision.v0` registry row: closed verb
+    /// set, both parties bound by workspace canonical identity + exact
+    /// managed version id, non-optional principal and policy version, and
+    /// no wall-clock field anywhere (Cloud's enclosing governance event
+    /// owns occurrence time).
+    #[test]
+    fn reconciliation_decision_serialized_record_shape_is_pinned() {
+        let (_, candidate) = collided_workspace();
+        let decision = ReconciliationDecision::new(
+            ReconciliationVerb::KeepDistinct,
+            party(&candidate.existing),
+            party(&candidate.incoming),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+
+        let value = serde_json::to_value(&decision).expect("decision serializes");
+        assert_eq!(
+            value,
+            json!({
+                "verb": "keep_distinct",
+                "subject": {
+                    "canonical": {
+                        "workspace_id": "ws-acme",
+                        "canonical_id": "mo-1"
+                    },
+                    "version_id": "mv-1"
+                },
+                "counterpart": {
+                    "canonical": {
+                        "workspace_id": "ws-acme",
+                        "canonical_id": "mo-2"
+                    },
+                    "version_id": "mv-2"
+                },
+                "principal": "user:alex",
+                "policy_version": "reconciliation-policy/1"
+            }),
+            "the {RECONCILIATION_DECISION_CONTRACT} record shape drifted"
+        );
+    }
+
+    /// A later decision for the same pair supersedes the earlier one in
+    /// the derived state (append-only log, last decision stands), and the
+    /// full history stays recorded.
+    #[test]
+    fn later_decision_for_the_same_pair_stands_while_history_is_kept() {
+        let (mut workspace, candidate) = collided_workspace();
+        for verb in [
+            ReconciliationVerb::KeepDistinct,
+            ReconciliationVerb::LinkAlias,
+        ] {
+            let decision = ReconciliationDecision::new(
+                verb,
+                party(&candidate.existing),
+                party(&candidate.incoming),
+                principal(),
+                policy(),
+            )
+            .expect("two distinct parties");
+            workspace
+                .record_decision(decision)
+                .expect("decision recorded");
+        }
+
+        assert_eq!(workspace.decisions().len(), 2, "the log is append-only");
+        let state = workspace.reconciliation_state();
+        assert_eq!(state.standing.len(), 1);
+        assert_eq!(state.standing[0].verb(), ReconciliationVerb::LinkAlias);
+    }
+
+    // E1.3.T2 (MILESTONES §E1.3; RT-03): link/alias and supersede
+    // decisions preserve every original Source Record/Assertion/Binding —
+    // at the E1.2 representation level: every ManagedVersionRecord with
+    // its Source Binding and Source Assertion list — with no observation
+    // rewritten or dropped.
+
+    fn bound_object(id: &str, hash: &str, path: &str, digest: &str) -> GraphKnowledgeObjectNode {
+        let mut node = knowledge_object(id, hash);
+        node.source_binding = Some(GraphSourceBinding {
+            connector: "local_fs".to_string(),
+            source: "team.page".to_string(),
+            revision: None,
+            path: path.to_string(),
+            anchor: id.to_string(),
+            source_revision_digest: digest.to_string(),
+        });
+        node
+    }
+
+    /// Two repositories colliding on `billing.credits`, every version
+    /// carrying its own Source Binding and two versions on the existing
+    /// side — the provenance a decision must preserve.
+    fn collided_workspace_with_bindings() -> (ManagedWorkspace, DecisionParty, DecisionParty) {
+        let mut workspace = workspace();
+        let repo_a = local_repo("a/agentdoc.config.yaml");
+        let repo_b = local_repo("b/agentdoc.config.yaml");
+        workspace
+            .import_artifact(&artifact(
+                repo_a.clone(),
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:aaa",
+                    "docs/team.adoc",
+                    "sha256:feed",
+                )],
+            ))
+            .expect("import accepted");
+        workspace
+            .import_artifact(&artifact(
+                repo_a,
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:aa2",
+                    "docs/team.adoc",
+                    "sha256:f00d",
+                )],
+            ))
+            .expect("import accepted");
+        let outcome = workspace
+            .import_artifact(&artifact(
+                repo_b,
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:bbb",
+                    "docs/other.adoc",
+                    "sha256:beef",
+                )],
+            ))
+            .expect("import accepted");
+        let candidate = &outcome.reconciliation_candidates[0];
+        let (subject, counterpart) = (party(&candidate.existing), party(&candidate.incoming));
+        (workspace, subject, counterpart)
+    }
+
+    /// RT-03 fixture shared by the link/alias and supersede tests: the
+    /// decision appends one Governance Event and changes nothing else —
+    /// every original version record, Source Binding, and (empty until
+    /// E4.1) Source Assertion list survives byte-for-byte, both parties
+    /// stay individually queryable, and the standing state records the
+    /// verb with its direction.
+    fn decision_preserves_every_original_record(verb: ReconciliationVerb) {
+        let (mut workspace, subject, counterpart) = collided_workspace_with_bindings();
+        let before = workspace.clone();
+        let decision = ReconciliationDecision::new(
+            verb,
+            subject.clone(),
+            counterpart.clone(),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+
+        workspace
+            .record_decision(decision)
+            .expect("decision recorded");
+
+        for repo in [
+            local_repo("a/agentdoc.config.yaml"),
+            local_repo("b/agentdoc.config.yaml"),
+        ] {
+            assert_eq!(
+                workspace.repository(&repo),
+                before.repository(&repo),
+                "a decision must not rewrite or drop any repository record"
+            );
+        }
+        let subject_object = workspace
+            .managed_object(&subject.canonical)
+            .expect("subject stays queryable");
+        assert_eq!(subject_object.versions.len(), 2);
+        assert!(
+            subject_object
+                .versions
+                .iter()
+                .all(|version| version.source_binding.is_some()),
+            "every original Source Binding survives the decision"
+        );
+        let counterpart_object = workspace
+            .managed_object(&counterpart.canonical)
+            .expect("counterpart stays queryable");
+        assert_eq!(counterpart_object.versions.len(), 1);
+        assert!(counterpart_object.versions[0].source_binding.is_some());
+
+        let state = workspace.reconciliation_state();
+        assert_eq!(state.standing.len(), 1);
+        assert_eq!(state.standing[0].verb(), verb);
+        assert_eq!(state.standing[0].subject(), &subject);
+        assert_eq!(state.standing[0].counterpart(), &counterpart);
+    }
+
+    /// E1.3.T2: linking an alias preserves every original record; the
+    /// counterpart becomes an alias of the subject in the standing state
+    /// only — no observation is rewritten or dropped.
+    #[test]
+    fn link_alias_decision_preserves_every_original_record() {
+        decision_preserves_every_original_record(ReconciliationVerb::LinkAlias);
+    }
+
+    /// E1.3.T2: superseding preserves every original record; the
+    /// superseded counterpart stays fully queryable with its provenance —
+    /// no observation is rewritten or dropped.
+    #[test]
+    fn supersede_decision_preserves_every_original_record() {
+        decision_preserves_every_original_record(ReconciliationVerb::Supersede);
+    }
+
+    // E1.3.T3 (MILESTONES §E1.3; RT-03): merge/re-home is explicit. The
+    // ONLY path to merged state is a recorded principal-bound decision —
+    // matching ID, hash, title, or similarity yields candidates at most —
+    // and the provenance of both antecedents stays retained and
+    // queryable afterwards.
+
+    /// Exit + adversarial test: identical Object ID AND identical
+    /// `content_hash` across two repositories — the most merge-tempting
+    /// collision — yields a candidate only. No merged relation exists
+    /// until a recorded merge/re-home decision transitions the pair, and
+    /// afterwards both antecedents' full provenance remains queryable.
+    #[test]
+    fn merged_state_is_reachable_only_through_a_recorded_decision() {
+        let mut workspace = workspace();
+        let repo_a = local_repo("a/agentdoc.config.yaml");
+        let repo_b = local_repo("b/agentdoc.config.yaml");
+        workspace
+            .import_artifact(&artifact(
+                repo_a.clone(),
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:5a3e",
+                    "docs/team.adoc",
+                    "sha256:feed",
+                )],
+            ))
+            .expect("import accepted");
+        let outcome = workspace
+            .import_artifact(&artifact(
+                repo_b.clone(),
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:5a3e",
+                    "docs/other.adoc",
+                    "sha256:beef",
+                )],
+            ))
+            .expect("import accepted");
+
+        // Identical ID + hash: a candidate, never a merge — and no
+        // standing reconciliation relation of any kind.
+        assert_eq!(outcome.reconciliation_candidates.len(), 1);
+        let candidate = &outcome.reconciliation_candidates[0];
+        let survivor = party(&candidate.existing);
+        let antecedent = party(&candidate.incoming);
+        assert_ne!(survivor.canonical, antecedent.canonical);
+        assert!(workspace.reconciliation_state().standing.is_empty());
+        assert!(workspace.merged_antecedents(&survivor.canonical).is_empty());
+        assert!(
+            workspace
+                .merged_antecedents(&antecedent.canonical)
+                .is_empty()
+        );
+
+        let decision = ReconciliationDecision::new(
+            ReconciliationVerb::MergeRehome,
+            survivor.clone(),
+            antecedent.clone(),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+        workspace
+            .record_decision(decision)
+            .expect("decision recorded");
+
+        // The recorded decision is the merged state — directional, and
+        // derived only from the log.
+        let state = workspace.reconciliation_state();
+        assert_eq!(state.standing.len(), 1);
+        assert_eq!(state.standing[0].verb(), ReconciliationVerb::MergeRehome);
+        assert_eq!(
+            workspace.merged_antecedents(&survivor.canonical),
+            vec![antecedent.canonical.clone()]
+        );
+        assert!(
+            workspace
+                .merged_antecedents(&antecedent.canonical)
+                .is_empty(),
+            "merge direction must not invert"
+        );
+
+        // Provenance of both antecedents retained and queryable (RT-03).
+        for bound in [&survivor, &antecedent] {
+            let object = workspace
+                .managed_object(&bound.canonical)
+                .expect("antecedent stays queryable");
+            assert_eq!(object.versions.len(), 1);
+            assert!(object.versions[0].source_binding.is_some());
+        }
+        assert_eq!(
+            workspace
+                .repository(&repo_a)
+                .expect("identity unambiguous")
+                .expect("repo a retained")
+                .objects
+                .len(),
+            1
+        );
+        assert_eq!(
+            workspace
+                .repository(&repo_b)
+                .expect("identity unambiguous")
+                .expect("repo b retained")
+                .objects
+                .len(),
+            1
+        );
+    }
+
+    /// Stop-ship (MILESTONES §E1.3): a decision without principal, policy,
+    /// or a pair to adjudicate is unconstructible — the only constructor
+    /// takes typed non-optional bindings, and blank or padded authority
+    /// context fails closed at construction.
+    #[test]
+    fn unbound_authority_context_is_unconstructible() {
+        for invalid in ["", " \t", " user:alex", "user:alex "] {
+            assert_eq!(
+                Principal::new(invalid),
+                Err(ReconciliationDecisionError::InvalidPrincipal)
+            );
+            assert_eq!(
+                PolicyVersion::new(invalid),
+                Err(ReconciliationDecisionError::InvalidPolicyVersion)
+            );
+        }
+
+        let (_, subject, _) = collided_workspace_with_bindings();
+        assert_eq!(
+            ReconciliationDecision::new(
+                ReconciliationVerb::MergeRehome,
+                subject.clone(),
+                subject,
+                principal(),
+                policy(),
+            ),
+            Err(ReconciliationDecisionError::SelfDecision),
+            "one object is not a pair to adjudicate"
+        );
+    }
+
+    /// Recording fails closed on a party this workspace does not know —
+    /// including a canonical identity from another workspace — and on a
+    /// version binding that is no longer the party's latest: a decision
+    /// adjudicated against content that has since changed never applies
+    /// silently.
+    #[test]
+    fn recording_rejects_unknown_parties_and_stale_version_bindings() {
+        let (mut workspace, subject, counterpart) = collided_workspace_with_bindings();
+
+        let foreign = DecisionParty {
+            canonical: WorkspaceCanonicalIdentity {
+                workspace_id: WorkspaceId::new("ws-other").expect("non-blank"),
+                canonical_id: subject.canonical.canonical_id.clone(),
+            },
+            version_id: subject.version_id.clone(),
+        };
+        let decision = ReconciliationDecision::new(
+            ReconciliationVerb::MergeRehome,
+            subject.clone(),
+            foreign,
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+        assert_eq!(
+            workspace.record_decision(decision),
+            Err(ReconciliationDecisionError::UnknownParty),
+            "an equal opaque suffix in another workspace is not this party"
+        );
+
+        // A new version arrives for the subject: the old exact-version
+        // binding is stale and the decision must not apply.
+        workspace
+            .import_artifact(&artifact(
+                local_repo("a/agentdoc.config.yaml"),
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:aa3",
+                    "docs/team.adoc",
+                    "sha256:cafe",
+                )],
+            ))
+            .expect("import accepted");
+        let stale = ReconciliationDecision::new(
+            ReconciliationVerb::MergeRehome,
+            subject,
+            counterpart,
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+        assert_eq!(
+            workspace.record_decision(stale),
+            Err(ReconciliationDecisionError::StaleVersionBinding)
+        );
+        assert!(
+            workspace.decisions().is_empty(),
+            "a rejected decision must not enter the log"
+        );
+    }
+
+    /// Three repositories colliding on `billing.credits` — parties A, B,
+    /// C at their latest versions, every pair a candidate.
+    fn three_way_collision() -> (
+        ManagedWorkspace,
+        DecisionParty,
+        DecisionParty,
+        DecisionParty,
+    ) {
+        let mut workspace = workspace();
+        let mut parties = Vec::new();
+        for (repo, hash) in [
+            ("a/agentdoc.config.yaml", "sha256:aaa"),
+            ("b/agentdoc.config.yaml", "sha256:bbb"),
+            ("c/agentdoc.config.yaml", "sha256:ccc"),
+        ] {
+            let outcome = workspace
+                .import_artifact(&artifact(
+                    local_repo(repo),
+                    vec![knowledge_object("billing.credits", hash)],
+                ))
+                .expect("import accepted");
+            parties.push(DecisionParty {
+                canonical: outcome.imported[0].canonical.clone(),
+                version_id: outcome.imported[0].version_id.clone(),
+            });
+        }
+        let c = parties.pop().expect("three imports");
+        let b = parties.pop().expect("three imports");
+        let a = parties.pop().expect("three imports");
+        (workspace, a, b, c)
+    }
+
+    fn decide(
+        verb: ReconciliationVerb,
+        subject: &DecisionParty,
+        counterpart: &DecisionParty,
+    ) -> ReconciliationDecision {
+        ReconciliationDecision::new(
+            verb,
+            subject.clone(),
+            counterpart.clone(),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties")
+    }
+
+    /// A standing merge freezes its merged-away counterpart: once C is
+    /// merged into A, any decision naming C under a different pair —
+    /// merging it into B too, or re-deciding it under any verb — is
+    /// rejected fail-closed rather than deriving a state where C is
+    /// re-homed into two survivors at once. A later decision on the SAME
+    /// pair still supersedes (last decision stands), after which the
+    /// un-merged party is decidable again.
+    #[test]
+    fn recording_rejects_decisions_naming_a_merged_away_party() {
+        let (mut workspace, a, b, c) = three_way_collision();
+        workspace
+            .record_decision(decide(ReconciliationVerb::MergeRehome, &a, &c))
+            .expect("first merge stands");
+
+        assert_eq!(
+            workspace.record_decision(decide(ReconciliationVerb::MergeRehome, &b, &c)),
+            Err(ReconciliationDecisionError::PartyAlreadyMerged),
+            "one counterpart must not be re-homed into two survivors"
+        );
+        assert_eq!(
+            workspace.record_decision(decide(ReconciliationVerb::KeepDistinct, &c, &b)),
+            Err(ReconciliationDecisionError::PartyAlreadyMerged),
+            "a merged-away party is frozen for every verb"
+        );
+        assert_eq!(
+            workspace.merged_antecedents(&a.canonical),
+            vec![c.canonical.clone()]
+        );
+        assert!(workspace.merged_antecedents(&b.canonical).is_empty());
+
+        workspace
+            .record_decision(decide(ReconciliationVerb::KeepDistinct, &a, &c))
+            .expect("a same-pair decision supersedes the standing merge");
+        workspace
+            .record_decision(decide(ReconciliationVerb::MergeRehome, &b, &c))
+            .expect("an un-merged party is decidable again");
+        assert!(workspace.merged_antecedents(&a.canonical).is_empty());
+        assert_eq!(
+            workspace.merged_antecedents(&b.canonical),
+            vec![c.canonical.clone()]
+        );
+    }
+
+    /// Merging away a survivor that holds merged antecedents would chain
+    /// merges — nested reconciliation, out of scope for this slice
+    /// (MILESTONES §E1.3) — and the single-level antecedent walk would
+    /// silently lose the survivor's own antecedents. Rejected fail-closed;
+    /// a non-merge decision on the survivor stays legal.
+    #[test]
+    fn recording_rejects_a_merge_chain_into_a_standing_survivor() {
+        let (mut workspace, a, b, c) = three_way_collision();
+        workspace
+            .record_decision(decide(ReconciliationVerb::MergeRehome, &b, &c))
+            .expect("first merge stands");
+
+        assert_eq!(
+            workspace.record_decision(decide(ReconciliationVerb::MergeRehome, &a, &b)),
+            Err(ReconciliationDecisionError::NestedMergeUnsupported)
+        );
+        assert_eq!(
+            workspace.merged_antecedents(&b.canonical),
+            vec![c.canonical.clone()]
+        );
+        assert!(workspace.merged_antecedents(&a.canonical).is_empty());
+
+        workspace
+            .record_decision(decide(ReconciliationVerb::KeepDistinct, &a, &b))
+            .expect("a non-merge decision on the survivor stays legal");
+    }
+
+    /// One survivor absorbing several antecedents through separate
+    /// decisions is not a chain: merge C into A, then B into A — both
+    /// stand, deterministically ordered by pair key.
+    #[test]
+    fn one_survivor_may_absorb_multiple_antecedents() {
+        let (mut workspace, a, b, c) = three_way_collision();
+        workspace
+            .record_decision(decide(ReconciliationVerb::MergeRehome, &a, &c))
+            .expect("first merge stands");
+        workspace
+            .record_decision(decide(ReconciliationVerb::MergeRehome, &a, &b))
+            .expect("a survivor may absorb another antecedent");
+        assert_eq!(
+            workspace.merged_antecedents(&a.canonical),
+            vec![b.canonical.clone(), c.canonical.clone()]
+        );
+    }
+
+    /// A Reconciliation Decision decides a Reconciliation Candidate pair
+    /// (CONTEXT.md), and candidates arise from exact Object-ID collision
+    /// alone (RT-03): two objects that never collided are not a pair to
+    /// adjudicate, whatever the verb — recording fails closed instead of
+    /// letting any two known objects be linked, superseded, or merged.
+    #[test]
+    fn recording_rejects_parties_that_never_formed_a_candidate_pair() {
+        let mut workspace = workspace();
+        let first = workspace
+            .import_artifact(&artifact(
+                local_repo("a/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.credits", "sha256:aaa")],
+            ))
+            .expect("import accepted");
+        let second = workspace
+            .import_artifact(&artifact(
+                local_repo("b/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.refunds", "sha256:bbb")],
+            ))
+            .expect("import accepted");
+
+        let uncollided = |of: &ImportedVersion| DecisionParty {
+            canonical: of.canonical.clone(),
+            version_id: of.version_id.clone(),
+        };
+        for verb in [
+            ReconciliationVerb::KeepDistinct,
+            ReconciliationVerb::LinkAlias,
+            ReconciliationVerb::Supersede,
+            ReconciliationVerb::MergeRehome,
+        ] {
+            let decision = ReconciliationDecision::new(
+                verb,
+                uncollided(&first.imported[0]),
+                uncollided(&second.imported[0]),
+                principal(),
+                policy(),
+            )
+            .expect("two distinct parties");
+            assert_eq!(
+                workspace.record_decision(decision),
+                Err(ReconciliationDecisionError::NotACandidatePair)
+            );
+        }
+        assert!(
+            workspace.decisions().is_empty(),
+            "a rejected decision must not enter the log"
+        );
+    }
+
+    /// The closed decision verb vocabulary on the wire — exactly the four
+    /// verbs MILESTONES §E1.3 names, snake_case, nothing else.
+    #[test]
+    fn decision_verbs_are_a_closed_wire_vocabulary() {
+        for (verb, wire) in [
+            (ReconciliationVerb::KeepDistinct, "keep_distinct"),
+            (ReconciliationVerb::LinkAlias, "link_alias"),
+            (ReconciliationVerb::Supersede, "supersede"),
+            (ReconciliationVerb::MergeRehome, "merge_rehome"),
+        ] {
+            assert_eq!(
+                serde_json::to_value(verb).expect("verb serializes"),
+                json!(wire)
+            );
+        }
+    }
+
+    // E1.3 routing adjudication (PR #150 claim 5): CLI builds emit a
+    // degenerate `repository_identity` — every project-bound build carries
+    // `{local_project, "agentdoc.config.yaml"}` — so identity-equality
+    // lookup cannot distinguish two physical repositories in one
+    // workspace. The reserved binding slot (V10.3.2) is the disambiguator:
+    // import routes by slot handle; identity lookup stays only as the
+    // single-repo convenience.
+
+    /// Two physical repositories with the SAME degenerate identity, routed
+    /// to two reserved slots: distinct object registries, and a same-ID
+    /// import across them still produces a reconciliation candidate.
+    #[test]
+    fn two_slots_sharing_a_degenerate_identity_stay_distinct_and_reconcile() {
+        let mut workspace = workspace();
+        let degenerate = local_repo("agentdoc.config.yaml");
+        let slot_a = workspace.reserve_repository_slot(degenerate.clone());
+        let slot_b = workspace.reserve_repository_slot(degenerate.clone());
+        assert_ne!(slot_a, slot_b);
+
+        let first = workspace
+            .import_artifact_into(
+                &slot_a,
+                &artifact(
+                    degenerate.clone(),
+                    vec![knowledge_object("billing.credits", "sha256:aaa")],
+                ),
+            )
+            .expect("routed import accepted");
+        assert!(first.reconciliation_candidates.is_empty());
+
+        let second = workspace
+            .import_artifact_into(
+                &slot_b,
+                &artifact(
+                    degenerate.clone(),
+                    vec![knowledge_object("billing.credits", "sha256:bbb")],
+                ),
+            )
+            .expect("routed import accepted");
+
+        let object_a =
+            &workspace.repository_slot(&slot_a).expect("slot a").objects["billing.credits"];
+        let object_b =
+            &workspace.repository_slot(&slot_b).expect("slot b").objects["billing.credits"];
+        assert_ne!(
+            object_a.canonical, object_b.canonical,
+            "slots sharing an identity must keep distinct object registries"
+        );
+        assert_eq!(object_a.versions[0].content_hash, "sha256:aaa");
+        assert_eq!(object_b.versions[0].content_hash, "sha256:bbb");
+
+        assert_eq!(second.reconciliation_candidates.len(), 1);
+        let candidate = &second.reconciliation_candidates[0];
+        assert_eq!(candidate.reason, ReconciliationReason::ObjectIdCollision);
+        assert_eq!(candidate.existing.canonical, object_a.canonical);
+        assert_eq!(candidate.incoming.canonical, object_b.canonical);
+    }
+
+    /// Identity-equality lookup remains only for the single-repo case:
+    /// once two slots share the identity, identity-routed import is
+    /// ambiguous and fails closed instead of guessing a slot.
+    #[test]
+    fn identity_routed_import_fails_closed_when_two_slots_share_the_identity() {
+        let mut workspace = workspace();
+        let degenerate = local_repo("agentdoc.config.yaml");
+        let slot_a = workspace.reserve_repository_slot(degenerate.clone());
+        workspace.reserve_repository_slot(degenerate.clone());
+
+        let outcome = workspace.import_artifact(&artifact(
+            degenerate.clone(),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        ));
+
+        assert_eq!(
+            outcome,
+            Err(ManagedIdentityError::AmbiguousRepositoryIdentity)
+        );
+        assert_eq!(
+            workspace.repository(&degenerate),
+            Err(ManagedIdentityError::AmbiguousRepositoryIdentity),
+            "the read lookup distinguishes ambiguity from absence"
+        );
+        assert!(
+            workspace
+                .repository_slot(&slot_a)
+                .expect("slot reserved")
+                .objects
+                .is_empty(),
+            "an ambiguous import must not touch any slot"
+        );
+        assert!(
+            workspace.reserve_repository(degenerate).is_err(),
+            "identity-idempotent reservation is equally ambiguous"
+        );
+    }
+
+    /// Explicit routing fails closed on an unknown slot handle and on an
+    /// artifact whose identity differs from the slot's, with no state
+    /// change either way.
+    #[test]
+    fn routed_import_rejects_unknown_slot_and_identity_mismatch_without_state() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+        let slot = workspace.reserve_repository_slot(repo.clone());
+        let document = artifact(
+            repo.clone(),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        );
+
+        let unreserved = RepositorySlotId("slot-99".to_string());
+        assert_eq!(
+            workspace.import_artifact_into(&unreserved, &document),
+            Err(ManagedIdentityError::UnknownRepositorySlot)
+        );
+
+        let mismatched = artifact(
+            local_repo("b/agentdoc.config.yaml"),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        );
+        assert_eq!(
+            workspace.import_artifact_into(&slot, &mismatched),
+            Err(ManagedIdentityError::RepositoryIdentityMismatch)
+        );
+        assert!(
+            workspace
+                .repository_slot(&slot)
+                .expect("slot reserved")
+                .objects
+                .is_empty(),
+            "a rejected routed import must not mint anything"
+        );
     }
 
     /// Exit test: two imported repositories collide — `{kind, config_path}`
@@ -1187,10 +2379,12 @@ mod tests {
         assert_eq!(outcome.reconciliation_candidates.len(), 1);
         let in_project = &workspace
             .repository(&project)
+            .expect("identity unambiguous")
             .expect("project repo")
             .objects["billing.credits"];
         let in_standalone = &workspace
             .repository(&standalone)
+            .expect("identity unambiguous")
             .expect("standalone repo")
             .objects["billing.credits"];
         assert_ne!(in_project.canonical, in_standalone.canonical);
@@ -1206,9 +2400,11 @@ mod tests {
     /// one record here — the shared Object ID appends as a revision and
     /// no candidate is emitted. Identity-equality keying distinguishes
     /// repositories only as far as the caller's identities do
-    /// ([`ManagedRepositoryRecord`]); explicit routing to a reserved
-    /// binding slot (V10.3.2) is E1.3 scope, and the Cloud cut keys
-    /// uploads from its authenticated channel, never from the artifact.
+    /// ([`ManagedRepositoryRecord`]); distinct physical repositories
+    /// route explicitly via [`ManagedWorkspace::reserve_repository_slot`]
+    /// and [`ManagedWorkspace::import_artifact_into`], and the Cloud cut
+    /// keys uploads from its authenticated channel, never from the
+    /// artifact.
     #[test]
     fn identical_producer_identities_collapse_into_one_repository_record() {
         let mut workspace = workspace();
@@ -1233,6 +2429,7 @@ mod tests {
         );
         let object = &workspace
             .repository(&producer)
+            .expect("identity unambiguous")
             .expect("one record under the producer identity")
             .objects["billing.credits"];
         assert_eq!(

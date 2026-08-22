@@ -183,12 +183,20 @@ The identity of one immutable Source Assertion extracted from a Source Artifact 
 _Avoid_: Source Binding synonym, assertion as Knowledge Object, mutable assertion
 
 **Managed Repository Record**:
-One imported repository inside a Cloud workspace (`ManagedRepositoryRecord` in `adoc-core`), keyed on the Graph Artifact's `repository_identity` — `{kind, config_path}` or explicit `null`, required since v5 (ADR-0049). The record is the binding slot: it can be reserved before the first artifact arrives (V10.3.2), and its Object IDs stay repository-local — the same ID in a distinctly keyed repository is a different **Managed Object**, never silently merged. The graph identity names the producing invocation family, not a workspace-unique repository — every project-bound build emits the constant `{local_project, "agentdoc.config.yaml"}`, so identity-equality keying distinguishes repositories only as far as the caller's identities do; explicit routing of an import to a reserved binding slot keyed from the authenticated channel is E1.3.
-_Avoid_: global repository namespace, path-string repository key, cross-repository ID merge
+One imported repository inside a Cloud workspace (`ManagedRepositoryRecord` in `adoc-core`) — the reserved binding slot, keyed by a workspace-minted slot handle (`RepositorySlotId`) and recording the Graph Artifact's `repository_identity` — `{kind, config_path}` or explicit `null`, required since v5 (ADR-0049). Import routes by slot handle because the graph identity names the producing invocation family, not a workspace-unique repository — every project-bound build emits the constant `{local_project, "agentdoc.config.yaml"}`, degenerate across physical repositories; identity-equality lookup remains only as the single-repo convenience and fails closed when ambiguous. The slot can be reserved before the first artifact arrives (V10.3.2), and its Object IDs stay repository-local — the same ID in another slot is a different **Managed Object**, never silently merged.
+_Avoid_: global repository namespace, path-string repository key, repository identity as slot router, cross-repository ID merge
 
 **Reconciliation Candidate**:
 The typed record (`adoc.reconciliation_candidate.v0`, registered planned) emitted when an imported **Object ID** collides with a **Managed Object** in another repository of the same workspace. Both objects stay distinct; the candidate names both parties by **Workspace Canonical Identity**, repository identity, latest **Managed Version ID**, and content hash. Deciding a candidate (keep distinct, link, supersede, merge) is a governed E1.3 action; matching hashes, titles, or similarity never produce one.
 _Avoid_: auto-merge, duplicate detector, similarity-based unification
+
+**Governance Event**:
+An append-only, principal-bound record of one governed transition, carrying the exact policy version and the exact object versions it decides (MILESTONES §E1.3; RT-03/RT-04). The Cloud wire family is `adoc.governance_event.v0` (E4.2); its first concrete payload is the **Reconciliation Decision**. A Governance Event can never be authored by model output alone — a principal is required at the type level.
+_Avoid_: model-created authority, mutable audit row, timestamped decision payload
+
+**Reconciliation Decision**:
+The typed record (`adoc.reconciliation_decision.v0`, registered planned; `ReconciliationDecision` in `adoc-core`) deciding a **Reconciliation Candidate** pair: a closed verb — keep distinct, link/alias, supersede, or merge/re-home — bound to both parties' **Workspace Canonical Identity** and exact **Managed Version ID**, a principal, and a policy version. Recording a decision is the only path that transitions a pair, appends to the workspace's decision log, and never rewrites or drops any managed version, Source Binding, or Source Assertion; replaying the log over the same import history yields byte-identical reconciliation state.
+_Avoid_: auto-merge, unprincipaled decision, decision as import side effect, destructive merge
 
 **Diagnostic Code**:
 A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`. Lives in code as the `DiagnosticCode` enum in `adoc-core`; emission sites accept the typed value rather than a free-form string.

@@ -101,6 +101,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.approval.v0` | cloud | E5.2 | native approval bound to exact proposal digest, principal, policy version |
 | `adoc.gate_result.v0` | adoc | E5.3 | four-mode gate decision record carrying registered `gate.*` codes |
 | `adoc.reconciliation_candidate.v0` | adoc | E1.2 | typed same-Object-ID collision record (ADR-0057 invariant 1, RT-03/D36): names both parties by workspace canonical identity, repository identity, latest immutable version id, and content hash; reason vocabulary closed to `object_id_collision` — hash/title/similarity never produce a candidate and never merge; the record ships in `adoc-core` since E1.2.T1 with its serialized shape pinned in domain tests; moves to shipped when a surface emits it on the wire |
+| `adoc.reconciliation_decision.v0` | adoc | E1.3 | principal-bound reconciliation decision record (RT-03; MILESTONES §E1.3): closed verb set `keep_distinct` / `link_alias` / `supersede` / `merge_rehome`; binds subject and counterpart by workspace canonical identity plus exact managed version id and carries non-optional principal and policy version — a decision missing any binding is unconstructible in `adoc-core`, and recording rejects fail-closed: unknown parties, non-latest version bindings, parties that never formed a reconciliation candidate pair, and decisions conflicting with a standing merge (a merged-away party or a merge chain); no wall-clock field, so replaying the recorded decisions over the same import history yields byte-identical reconciliation state; ships in `adoc-core` since E1.3.T1 with its serialized shape pinned in domain tests; E4.2's `adoc.governance_event.v0` (cloud) will enclose it as the event payload; moves to shipped when a surface emits it on the wire |
 | `adoc.managed_object_identity.v0` | cloud | E1.2 | workspace-qualified managed Object identity record, served by the Cloud object-identities route since E1.2.T3 (payload: `schema_version`, `canonical_id`, `workspace_id`, `object_id`); the canonical identity is server-minted and never derived from the human-readable Object ID, so the same unqualified Object ID in two Workspaces stays unlinkable (RT-03; MILESTONES §E1.2 stop-ship); v0-additive; moves to shipped at Cloud's first versioned release |
 <!-- /registry:envelopes-planned -->
 
@@ -316,12 +317,13 @@ Contract codes for the four-mode gate evaluator (E5.3; check publication E5.4). 
 
 ## Cloud codes — owner `cloud`
 
-Operation labels of the private Cloud scaffold. The scaffold's `main` emits no wire code today (the E0.4 baseline: login/register tracers, workspaces table, creator/owner-only RLS); new Cloud wire codes register here before they ship — the row below pre-registers the label the in-flight identity-bootstrap work introduces.
+Operation labels of the private Cloud scaffold. The scaffold's `main` emits no wire code today (the E0.4 baseline: login/register tracers, workspaces table, creator/owner-only RLS); new Cloud wire codes register here before they ship — `workspace.bootstrap` pre-registers the label the in-flight identity-bootstrap work introduces, and `governance.decision_binding_missing` ships with the E1.3 reconciliation-decision route.
 
 <!-- registry:cloud-codes -->
 | code | status | meaning |
 | --- | --- | --- |
 | `workspace.bootstrap` | planned (in-flight scaffold work) | identity-bootstrap ledger operation label recorded when a workspace is created |
+| `governance.decision_binding_missing` | planned (E1.3, in-flight cloud cut) | Cloud reconciliation-decision route rejects a record whose subject/counterpart exact version binding or policy version is missing or padded (deny-by-default; MILESTONES §E1.3.T4); the principal binding is never client-supplied — the store binds the authenticated session, and absent authority context maps to the `insufficient_context` outcome value, envelope-governed vocabulary rather than a standalone code; E1.4 widens Cloud's contract-scan grep to the `governance.` family |
 <!-- /registry:cloud-codes -->
 
 ## Attestation codes — planned, owner `cloud`
