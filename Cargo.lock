@@ -37,6 +37,7 @@ dependencies = [
  "chrono",
  "dirs",
  "fastembed",
+ "jsonschema",
  "pulldown-cmark",
  "serde",
  "serde-saphyr",

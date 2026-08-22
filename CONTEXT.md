@@ -206,6 +206,14 @@ _Avoid_: state row update, mutable status field, timestamped domain record, infe
 One of the six separate managed state axes of KNOWLEDGE-MODEL §K4 — governance, verification, effectivity, freshness, integrity, per-connector synchronization — each a closed vocabulary modeled as its own enum in `adoc-core` (D07/D15). Dimensions are never conflated: approval is not verification, and no collapsed status field exists.
 _Avoid_: collapsed status field, approval implies verified, cross-dimension enum
 
+**Lifecycle Mapping**:
+The versioned `adoc.lifecycle_mapping.v0` contract (`LifecycleMappingContract` in `adoc-core`, E1.5) assigning managed meaning to each kind's released flat `.adoc` status vocabulary — a governance + effectivity target per authored word, with a machine-readable per-dimension loss declaration. Versions resolve exact-match (`schema.unsupported_version` otherwise); a rule change requires a version bump; standalone flat semantics never change (K1). Mapping alone never establishes authority, and no mapping rule can name a verification state.
+_Avoid_: status translation table that grants authority, implicit version fallback, mapping verified to verification
+
+**Attestation**:
+The typed input (`MappingAttestation`, E1.5) that authorizes a Lifecycle Mapping application to land its mapped target as **Managed State Event**s: a migration attestation, a source-control attestation, or a Cloud Governance Event (K5). Authority comes only from the presence of the typed value — its default absence cannot be forged — and without one the mapped target is advisory while applied governance stays `proposed`.
+_Avoid_: authored status as authority, implicit attestation, approval token in source text
+
 **Audit Sink**:
 The internal port (`AuditSink` in `adoc-core`, E1.4) where the managed state event store persists one audit record per transition, written before the event commits. A sink failure fails the owning operation with `audit.persistence_failed` — an unaudited committed transition cannot exist, and nothing silently succeeds (V10.4.6). The CI audit coverage guard diffs the state machines' transition sets against the audit emitter registry so every vocabulary state stays consciously wired. Distinct from the planned gate-level `gate.audit_persistence_failed` (E5.3).
 _Avoid_: best-effort audit, audit-optional append, tamper-resistant ledger claim
