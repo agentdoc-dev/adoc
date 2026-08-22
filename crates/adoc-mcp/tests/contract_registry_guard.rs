@@ -273,6 +273,25 @@ fn all_anchors_present() {
 }
 
 #[test]
+fn anchors_cover_every_registry_table() {
+    let registry = registry();
+    let found: BTreeSet<String> = support::doc_scan::structural_lines(&registry)
+        .filter_map(|(_, line)| {
+            line.trim()
+                .strip_prefix("<!-- registry:")
+                .and_then(|rest| rest.strip_suffix(" -->"))
+                .map(|name| format!("registry:{name}"))
+        })
+        .collect();
+    let declared: BTreeSet<String> = ANCHORS.iter().map(|anchor| anchor.to_string()).collect();
+    assert_eq!(
+        found, declared,
+        "{REGISTRY}: the anchors in the document and the ANCHORS list drifted — \
+         a table outside the list would be invisible to every id check"
+    );
+}
+
+#[test]
 fn shipped_adoc_envelope_rows_match_the_source_scan() {
     let registry = registry();
     let registered = anchored_ids(&registry, "registry:envelopes-shipped-adoc");
@@ -774,6 +793,61 @@ fn bot_attestation_family_has_one_documented_wrapper_mapping() {
     );
 }
 
+/// The annex section opened by `heading` (a `## …` line), up to the next
+/// `## ` heading or EOF. Loud when the heading is missing.
+fn annex_section<'doc>(doc: &'doc str, doc_name: &str, heading: &str) -> &'doc str {
+    let start = doc
+        .find(heading)
+        .unwrap_or_else(|| panic!("{doc_name} lost its `{heading}` section"));
+    let body = &doc[start + heading.len()..];
+    match body.find("\n## ") {
+        Some(end) => &body[..end],
+        None => body,
+    }
+}
+
+/// The fenced blocks inside one annex section, in document order, each as
+/// its non-empty trimmed lines. A simple open/close toggle is enough here:
+/// the K9 lists are bare ``` blocks with one term per line.
+fn fenced_lists_in(section: &str) -> Vec<Vec<String>> {
+    let mut blocks = Vec::new();
+    let mut current: Option<Vec<String>> = None;
+    for line in section.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") {
+            match current.take() {
+                Some(block) => blocks.push(block),
+                None => current = Some(Vec::new()),
+            }
+        } else if let Some(block) = current.as_mut() {
+            if !trimmed.is_empty() {
+                block.push(trimmed.to_string());
+            }
+        }
+    }
+    assert!(
+        current.is_none(),
+        "annex section ends inside a fence — the list is invisible past it"
+    );
+    blocks
+}
+
+/// K9's two fenced lists (retention classes, then replay postures), in
+/// document order.
+fn k9_fenced_lists() -> Vec<Vec<String>> {
+    let knowledge_model = read_repo_doc("docs/roadmap/v10/KNOWLEDGE-MODEL.md");
+    let section = annex_section(&knowledge_model, "KNOWLEDGE-MODEL.md", "## K9.");
+    let lists = fenced_lists_in(section);
+    assert_eq!(
+        lists.len(),
+        2,
+        "KNOWLEDGE-MODEL.md §K9 must carry exactly its two fenced lists \
+         (retention classes, replay postures), found {}",
+        lists.len()
+    );
+    lists
+}
+
 /// One closed vocabulary pinned exactly: registry rows equal the annex
 /// list, no additions and no losses (sets — document order is not checked).
 fn assert_vocabulary(anchor: &str, annex: &str, expected: &[&str]) {
@@ -791,44 +865,74 @@ fn untrusted_change_states_match_s8() {
     assert_vocabulary(
         "registry:untrusted-change-states",
         "SEMANTICS.md §S8",
-        &[
-            "not_required",
-            "awaiting_authorization",
-            "authorized",
-            "running",
-            "completed",
-            "denied",
-            "failed",
-            "expired_after_head_change",
-        ],
+        &STATES,
     );
+    // The annex itself must still carry every state — an S8 rename with an
+    // unchanged registry may not pass silently. (S8 lists the states in
+    // prose, so this is a citation check, not a list parse.)
+    let semantics = read_repo_doc("docs/roadmap/v10/SEMANTICS.md");
+    let section = annex_section(&semantics, "SEMANTICS.md", "## S8.");
+    for state in STATES {
+        assert!(
+            section.contains(&format!("`{state}`")),
+            "SEMANTICS.md §S8 no longer cites `{state}` — amend the registry \
+             and the annex together, never one alone"
+        );
+    }
 }
+
+const STATES: [&str; 8] = [
+    "not_required",
+    "awaiting_authorization",
+    "authorized",
+    "running",
+    "completed",
+    "denied",
+    "failed",
+    "expired_after_head_change",
+];
 
 #[test]
 fn retention_classes_match_k9() {
     assert_vocabulary(
         "registry:retention-classes",
         "KNOWLEDGE-MODEL.md §K9",
-        &[
-            "digest_only",
-            "bounded_evidence",
-            "exact_candidate_input",
-            "temporary_processing",
-            "full_source_snapshot",
-        ],
+        &RETENTION_CLASSES,
+    );
+    assert_eq!(
+        k9_fenced_lists()[0],
+        RETENTION_CLASSES,
+        "KNOWLEDGE-MODEL.md §K9's retention-class list drifted from the \
+         registry — amend both together, never one alone"
     );
 }
+
+const RETENTION_CLASSES: [&str; 5] = [
+    "digest_only",
+    "bounded_evidence",
+    "exact_candidate_input",
+    "temporary_processing",
+    "full_source_snapshot",
+];
 
 #[test]
 fn replay_postures_match_k9() {
     assert_vocabulary(
         "registry:replay-postures",
         "KNOWLEDGE-MODEL.md §K9",
-        &[
-            "fully_replayable",
-            "source_access_required",
-            "intentionally_non_replayable",
-            "no_longer_replayable_after_deletion",
-        ],
+        &REPLAY_POSTURES,
+    );
+    assert_eq!(
+        k9_fenced_lists()[1],
+        REPLAY_POSTURES,
+        "KNOWLEDGE-MODEL.md §K9's replay-posture list drifted from the \
+         registry — amend both together, never one alone"
     );
 }
+
+const REPLAY_POSTURES: [&str; 4] = [
+    "fully_replayable",
+    "source_access_required",
+    "intentionally_non_replayable",
+    "no_longer_replayable_after_deletion",
+];
