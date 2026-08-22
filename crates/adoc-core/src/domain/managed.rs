@@ -532,6 +532,27 @@ mod tests {
         assert_eq!(candidate.existing.repository_identity, repo_a);
         assert_eq!(candidate.incoming.canonical, object_b.canonical);
         assert_eq!(candidate.incoming.repository_identity, repo_b);
+
+        // Single-shot: the collision was announced on the ID's first
+        // appearance in repo b — a later revision of the still-colliding
+        // object mints a version but never re-announces the candidate
+        // (the caller persists it until decided, E1.2.T3/E1.3).
+        let third = workspace
+            .import_artifact(&artifact(
+                repo_b.clone(),
+                vec![knowledge_object("billing.credits", "sha256:ccc")],
+            ))
+            .expect("import accepted");
+        assert_eq!(third.imported.len(), 1);
+        assert!(
+            third.reconciliation_candidates.is_empty(),
+            "a candidate is emitted exactly once, not per revision"
+        );
+        let object_b = &workspace
+            .repository(&repo_b)
+            .expect("repo b recorded")
+            .objects["billing.credits"];
+        assert_eq!(object_b.versions.len(), 2);
     }
 
     /// The serialized record the Cloud cut consumes under the planned
