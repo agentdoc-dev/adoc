@@ -109,6 +109,8 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 
 Shared row values: producer `adoc` 0.4.0 (`adoc-core` `diagnostic_codes!` table, the single declaring source); consumers are every envelope embedding `Diagnostic` records (CLI/MCP surfaces at adoc 0.4.0, Action v2.0.0-alpha.19 report rendering). Migration posture for every row: wire-stable string — a meaning change or removal requires a row in “Dispositions”, never reuse.
 
+Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed` is the operation-level code the owning operation surfaces when a state transition's audit record cannot be persisted (E1.4.T4); the planned gate-level `gate.audit_persistence_failed` (E5.3, “Gate codes” below) is a distinct surface that consumes it. Both stay registered; neither is a respelling of the other.
+
 <!-- registry:diagnostic-codes -->
 | code |
 | --- |
@@ -122,6 +124,7 @@ Shared row values: producer `adoc` 0.4.0 (`adoc-core` `diagnostic_codes!` table,
 | `assessment.invalid_config_path` |
 | `assessment.ref_unresolved` |
 | `assessment.snapshot_failed` |
+| `audit.persistence_failed` |
 | `build.embeddings_cache_ignored` |
 | `build.embeddings_cached` |
 | `build.embeddings_skipped` |
@@ -312,7 +315,7 @@ Contract codes for the four-mode gate evaluator (E5.3; check publication E5.4). 
 | `gate.proposal_hash_mismatch` | planned | E5.3 | approval bound to a proposal digest that no longer matches |
 | `gate.approval_invalidated` | planned | E5.3 | semantic content change invalidated a prior approval |
 | `gate.cloud_unavailable` | planned | E5.3 | required Cloud decision input unavailable — blocks, never defaults |
-| `gate.audit_persistence_failed` | planned | E5.3 | decision audit record could not be persisted — blocks |
+| `gate.audit_persistence_failed` | planned | E5.3 | decision audit record could not be persisted — blocks; gate-level surface consuming the operation-level `audit.persistence_failed` (E1.4.T4), explicit mapping per the note above the diagnostic-codes table |
 | `gate.mode_unknown` | planned | E5.3 | unknown gate mode string is a configuration error, never a fallback |
 | `gate.check_publish_failed` | planned | E5.4 | required check could not publish; blocks by absence, recorded for diagnosability |
 <!-- /registry:gate-codes -->
