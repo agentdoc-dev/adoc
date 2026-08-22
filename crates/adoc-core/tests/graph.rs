@@ -286,6 +286,87 @@ fn graph_content_hash_is_stable_across_file_path_and_object_position() {
     }
 }
 
+/// E1.1.T2 acceptance (ADR-0058 §4): every Knowledge Object node carries a
+/// Source Binding — a separate, never-hashed member recording exact placement
+/// for the local filesystem connector — and a position-only move keeps
+/// `content_hash` stable while the binding tracks the new placement.
+#[test]
+fn source_binding_tracks_moves_while_content_hash_is_stable() {
+    let source = |prefix: &str| {
+        format!(
+            concat!(
+                "# Graph @doc(team.graph)\n",
+                "\n",
+                "{prefix}",
+                "::claim billing.credits\n",
+                "status: draft\n",
+                "--\n",
+                "Credits body.\n",
+                "::\n",
+            ),
+            prefix = prefix,
+        )
+    };
+    let build_at = |file: &str, source: &str| {
+        let workspace = TestWorkspace::new("graph-source-binding");
+        let source_path = workspace.write(file, source);
+        let result = adoc_core::build_workspace(BuildInput {
+            root: source_path,
+            embeddings: BuildEmbeddingMode::Skipped,
+            prior_search_artifact_path: None,
+        });
+        assert!(
+            !result.has_errors(),
+            "build should pass: {:?}",
+            result.diagnostics
+        );
+        serde_json::from_str::<Value>(&result.artifacts.expect("artifacts are produced").graph_json)
+            .expect("graph artifact is JSON")
+    };
+    let object_node = |graph: &Value| -> Value {
+        graph["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find(|node| node["type"] == "knowledge_object" && node["id"] == "billing.credits")
+            .expect("knowledge object node")
+            .clone()
+    };
+
+    let original = object_node(&build_at("graph.adoc", &source("")));
+    let moved = object_node(&build_at(
+        "moved/renamed.adoc",
+        &source("Intro prose shifts lines.\n\n"),
+    ));
+
+    for node in [&original, &moved] {
+        let binding = &node["source_binding"];
+        assert_eq!(binding["connector"], "local_fs");
+        assert_eq!(binding["source"], node["page_id"]);
+        assert_eq!(binding["anchor"], node["id"]);
+        assert_eq!(binding["path"], node["source_span"]["path"]);
+        assert!(
+            binding["source_revision_digest"]
+                .as_str()
+                .is_some_and(|digest| digest.starts_with("sha256:")),
+            "source_revision_digest is a sha256-prefixed digest: {binding}"
+        );
+    }
+    assert_eq!(
+        original["content_hash"], moved["content_hash"],
+        "the governed-meaning hash is stable across the move"
+    );
+    assert_ne!(
+        original["source_binding"]["path"], moved["source_binding"]["path"],
+        "the binding tracks the new path"
+    );
+    assert_ne!(
+        original["source_binding"]["source_revision_digest"],
+        moved["source_binding"]["source_revision_digest"],
+        "the binding tracks the new source revision"
+    );
+}
+
 /// E1.1.T1 acceptance: a one-word body edit changes exactly one hash.
 #[test]
 fn one_word_body_edit_changes_exactly_one_content_hash() {

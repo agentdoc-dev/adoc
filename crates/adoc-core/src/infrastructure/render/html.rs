@@ -1386,6 +1386,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("test page id is valid"),
             title: Some("Title".to_string()),
             source_path: PathBuf::from("guide.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::Heading(HeadingAst {
                     level: 1,
@@ -2026,6 +2027,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("test page id is valid"),
             title: None,
             source_path: PathBuf::from("guide.md"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::ThematicBreak(ThematicBreakAst {
                 source_text: "---".to_string(),
                 span,
@@ -2111,6 +2113,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("test page id"),
             title: None,
             source_path: PathBuf::from("guide.md"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::List(ListAst {
                 kind: ListKind::Unordered,
                 items: vec![
@@ -2155,6 +2158,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("test page id"),
             title: None,
             source_path: PathBuf::from("guide.md"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::List(ListAst {
                 kind: ListKind::Unordered,
                 items: vec![ListItem {
@@ -2219,6 +2223,7 @@ mod tests {
             id: PageId::from_string("team.guide").expect("test page id"),
             title: None,
             source_path: PathBuf::from("guide.md"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::List(ListAst {
                 kind: ListKind::Unordered,
                 items: vec![ListItem {
@@ -2299,6 +2304,7 @@ mod tests {
             id: PageId::from_string("docs.billing").expect("page id"),
             title: None,
             source_path: std::path::PathBuf::from("docs/billing.adoc"),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(
                 stale_claim,
             )))],
@@ -2333,6 +2339,7 @@ mod tests {
             id: PageId::from_string(format!("docs.{id}")).expect("page id"),
             title: None,
             source_path: std::path::PathBuf::from(format!("docs/{id}.adoc")),
+            source_digest: String::new(),
             blocks: vec![BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Task(
                 Task::try_new(
                     &format!("billing.{id}"),
@@ -2386,6 +2393,7 @@ mod tests {
             id: PageId::from_string("docs.auth").expect("page id"),
             title: None,
             source_path: std::path::PathBuf::from("docs/auth.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 make_claim(
                     "auth.a",
@@ -2467,6 +2475,7 @@ mod tests {
             id: PageId::from_string("docs.auth").expect("page id"),
             title: None,
             source_path: std::path::PathBuf::from("docs/auth.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(stale_claim))),
                 BlockAst::KnowledgeObject(Box::new(KnowledgeObject::Claim(plain_claim))),
@@ -2520,6 +2529,7 @@ mod tests {
             id: PageId::from_string("docs.auth").expect("page id"),
             title: None,
             source_path: std::path::PathBuf::from("docs/auth.adoc"),
+            source_digest: String::new(),
             blocks: vec![
                 make_claim(
                     "auth.a",

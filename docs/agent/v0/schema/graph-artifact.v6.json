@@ -66,6 +66,20 @@
       },
       "additionalProperties": false
     },
+    "sourceBinding": {
+      "type": "object",
+      "description": "ADR-0058 Source Binding: exact source placement recorded per Knowledge Object, serialized alongside the node and never part of content_hash. For the local filesystem connector (`local_fs`) the source is the containing page id, the path is the Logical Source Path, the anchor is the Object ID, and the source-revision digest is the sha256 of the source page bytes; there is no connector-native revision.",
+      "required": ["connector", "source", "path", "anchor", "source_revision_digest"],
+      "properties": {
+        "connector": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/logicalPath" },
+        "anchor": { "type": "string", "minLength": 1 },
+        "source_revision_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]+$" }
+      },
+      "additionalProperties": false
+    },
     "page": {
       "type": "object",
       "required": ["type", "id", "order", "source_path"],
@@ -117,7 +131,7 @@
     },
     "knowledgeObject": {
       "type": "object",
-      "required": ["type", "id", "kind", "content_hash", "body", "page_id", "source_span", "fields", "relations"],
+      "required": ["type", "id", "kind", "content_hash", "body", "page_id", "source_span", "source_binding", "fields", "relations"],
       "properties": {
         "type": { "const": "knowledge_object" },
         "id": { "type": "string", "minLength": 1 },
@@ -129,6 +143,7 @@
         "body": { "type": "string" },
         "page_id": { "type": "string", "minLength": 1 },
         "source_span": { "$ref": "#/$defs/sourceSpan" },
+        "source_binding": { "$ref": "#/$defs/sourceBinding" },
         "fields": { "type": "object", "additionalProperties": { "type": "string" } },
         "relations": { "$ref": "#/$defs/relations" },
         "impacts": { "type": "array", "items": { "type": "string" } },

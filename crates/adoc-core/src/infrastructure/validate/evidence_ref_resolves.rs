@@ -125,6 +125,7 @@ mod tests {
                 .expect("valid page id"),
             title: None,
             source_path: PathBuf::from(source_path),
+            source_digest: String::new(),
             blocks,
         }
     }

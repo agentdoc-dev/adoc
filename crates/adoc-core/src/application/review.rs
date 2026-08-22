@@ -845,6 +845,7 @@ mod tests {
                     line: 1,
                     column: 1,
                 },
+                source_binding: None,
                 fields: BTreeMap::new(),
                 relations: GraphRelations::default(),
                 impacts: Vec::new(),

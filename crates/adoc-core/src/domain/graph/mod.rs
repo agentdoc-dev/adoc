@@ -326,6 +326,13 @@ pub(crate) struct GraphKnowledgeObjectNode {
     pub(crate) body: String,
     pub(crate) page_id: String,
     pub(crate) source_span: GraphSourceSpan,
+    /// ADR-0058 §4 (E1.1.T2): exact source placement for this object —
+    /// serialized alongside the node, NEVER part of `content_hash`. Optional
+    /// on read so artifact-only fixtures without a binding still parse;
+    /// every built artifact emits it, and `adoc patch --apply` fails closed
+    /// when it is absent or stale.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) source_binding: Option<GraphSourceBinding>,
     pub(crate) fields: BTreeMap<String, String>,
     pub(crate) relations: GraphRelations,
     /// V3.3 opt-in source-path impact list. Repo-relative paths, sorted and
@@ -381,6 +388,25 @@ pub(crate) struct GraphSourceSpan {
     pub(crate) path: String,
     pub(crate) line: u32,
     pub(crate) column: u32,
+}
+
+/// ADR-0058 §4: the Source Binding — connector, source, revision,
+/// path-or-coordinate, anchor, and source-revision digest — recorded per
+/// Knowledge Object for provenance, writeback, patch safety, and
+/// stale-source detection. For the local filesystem connector the source is
+/// the containing page, the path is the Logical Source Path, the anchor is
+/// the Object ID (typed blocks are located by id, never by line), and the
+/// source-revision digest is the sha256 of the source page bytes; there is
+/// no connector-native revision.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub(crate) struct GraphSourceBinding {
+    pub(crate) connector: String,
+    pub(crate) source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) revision: Option<String>,
+    pub(crate) path: String,
+    pub(crate) anchor: String,
+    pub(crate) source_revision_digest: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
@@ -984,6 +1010,7 @@ mod tests {
                         line: 1,
                         column: 1,
                     },
+                    source_binding: None,
                     fields: BTreeMap::new(),
                     relations: GraphRelations::default(),
                     impacts: Vec::new(),

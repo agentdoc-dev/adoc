@@ -104,6 +104,7 @@ pub(crate) fn parse_markdown_page(source: &SourceFile) -> (PageAst, Vec<Diagnost
         id: page_id,
         title,
         source_path: source.logical_path.clone(),
+        source_digest: crate::application::hashing::sha256_prefixed(source.text.as_bytes()),
         blocks,
     };
     (page, diagnostics)

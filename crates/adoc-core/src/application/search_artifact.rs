@@ -357,6 +357,7 @@ mod tests {
             body: "Credits apply after successful payment.".to_string(),
             page_id: "guides.page".to_string(),
             source_span: span(1),
+            source_binding: None,
             fields: BTreeMap::new(),
             relations: GraphRelations::default(),
             impacts: Vec::new(),
