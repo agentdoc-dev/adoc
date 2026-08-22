@@ -2627,7 +2627,7 @@ fn semantic_search_returns_prose_records_ranked_by_cosine() {
 }
 
 /// V1.7.2: prose-only semantic search is un-gated now that prose vectors
-/// exist in adoc.search.v1.
+/// exist in adoc.search.v2.
 #[test]
 fn prose_only_semantic_search_returns_prose_without_scope_conflict() {
     let session = load_prose_session_with_vectors(vec![

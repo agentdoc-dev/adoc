@@ -1040,7 +1040,7 @@ fn adoc_search_rejects_conflicting_scope_arguments() {
     assert!(error.to_string().contains("mutually exclusive"));
 
     // V1.7.2: prose_only + semantic is no longer an argument conflict —
-    // prose vectors ship in adoc.search.v1. On this fixture (built with
+    // prose vectors ship in adoc.search.v2. On this fixture (built with
     // provider: none) it fails later, at the missing search artifact.
     let mut prose_semantic = mixed_mode_search_params("credits");
     prose_semantic.prose_only = true;
