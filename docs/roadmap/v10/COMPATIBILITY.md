@@ -102,3 +102,20 @@ NOT shipped at the baseline:
 
 The true-up decision/ADR is allocated in slice-start decision tracking as [`DECISION-REGISTER.md`](DECISION-REGISTER.md) obligation **O-01** — retroactive ADR, published schema, and parity test for `adoc.repository_baseline.v0`, owed at E4.6 slice start (provenance: V10.1.6, historical).
 <!-- /compat:true-up -->
+
+## Historical Cloud phase labels (E0.4.T3)
+
+Cloud's historical Phase 0 / Cloud 0.1–0.7 labels are implementation-history inputs (RT-02). They map into the release stages below and never appear as product release gates — the only release gates are the execution-map stage anchors and exit gates.
+
+<!-- compat:phase-map -->
+| historical label | historical scope (cloud ADR-0004) | maps into |
+| --- | --- | --- |
+| `Phase 0` | control-plane readiness: scaffold, auth tracers, workspaces, RLS, storage/worker spikes | baseline input to E2/E4 foundations; feeds Pilot Candidate (E7.7) |
+| `Cloud 0.1` | canonical PostgreSQL store, first Git adapter, minimum authorized promotion | E4.1–E4.3, E4.6 → Pilot Candidate |
+| `Cloud 0.2` | assessment | E5.1–E5.4 → Pilot Candidate |
+| `Cloud 0.3` | full governance: principals, membership, roles | E2.1–E2.4, E5.2–E5.3 → Pilot Candidate |
+| `Cloud 0.4` | retrieval | E6.1–E6.3 → Pilot Candidate |
+| `Cloud 0.5` | proposals/export | E8.2–E8.3, E6.6 export → RC/Beta |
+| `Cloud 0.6` | one evidence-gated non-Git adapter | post-V1 (P2) |
+| `Cloud 0.7` | beta evidence | E9 evidence program → GA |
+<!-- /compat:phase-map -->

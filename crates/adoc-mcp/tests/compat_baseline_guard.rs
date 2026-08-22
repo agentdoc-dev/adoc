@@ -322,6 +322,82 @@ fn seeded_alpha18_reversion_fires() {
     ));
 }
 
+/// True when a structural line mentions a historical Cloud phase label
+/// (`Phase 0`, `Cloud 0.<n>`).
+// ponytail: lexical guard — any line carrying "histor" passes, so a
+// deliberately misleading "historically-motivated gate" sentence would slip
+// through; upgrade to sentence-level parsing only if that ever happens.
+fn mentions_phase_label(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    let phase = lower.match_indices("phase 0").any(|(index, marker)| {
+        !lower
+            .as_bytes()
+            .get(index + marker.len())
+            .is_some_and(|byte| byte.is_ascii_digit())
+    });
+    let cloud = lower.match_indices("cloud 0.").any(|(index, marker)| {
+        lower
+            .as_bytes()
+            .get(index + marker.len())
+            .is_some_and(|byte| byte.is_ascii_digit())
+    });
+    phase || cloud
+}
+
+#[test]
+fn phase_labels_stay_historical_context_only() {
+    let compatibility = compatibility();
+    let map_block = anchored_block(&compatibility, COMPATIBILITY, "compat:phase-map");
+    let mut violations = Vec::new();
+    for (name, content) in v10_documents() {
+        for (number, line) in support::doc_scan::structural_lines(&content) {
+            let inside_phase_map = name.ends_with("COMPATIBILITY.md") && map_block.contains(line);
+            if mentions_phase_label(line)
+                && !inside_phase_map
+                && !line.to_lowercase().contains("histor")
+            {
+                violations.push(format!("{name}:{number}: {}", line.trim()));
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "historical Cloud phase labels used without historical context \
+         (RT-02: never a release gate):\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn seeded_phase_label_gate_fires() {
+    assert!(mentions_phase_label(
+        "Release gates on Cloud 0.3 completion."
+    ));
+    assert!(mentions_phase_label("Phase 0 must pass before GA."));
+    assert!(!mentions_phase_label("Cloud 0-day work"));
+}
+
+#[test]
+fn phase_map_covers_all_eight_labels() {
+    let compatibility = compatibility();
+    let block = anchored_block(&compatibility, COMPATIBILITY, "compat:phase-map");
+    for label in [
+        "`Phase 0`",
+        "`Cloud 0.1`",
+        "`Cloud 0.2`",
+        "`Cloud 0.3`",
+        "`Cloud 0.4`",
+        "`Cloud 0.5`",
+        "`Cloud 0.6`",
+        "`Cloud 0.7`",
+    ] {
+        assert!(
+            block.contains(label),
+            "{COMPATIBILITY}: phase map lost the {label} mapping row"
+        );
+    }
+}
+
 #[test]
 fn true_up_records_shipped_not_shipped_and_the_o01_allocation() {
     let compatibility = compatibility();
