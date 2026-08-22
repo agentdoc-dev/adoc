@@ -970,14 +970,19 @@ fn content_hash_diagnostic(node: &GraphKnowledgeObjectNode) -> Option<Diagnostic
         );
     }
 
-    let Some(suffix) = node.content_hash.strip_prefix("sha256:") else {
-        return Some(invalid_content_hash_diagnostic(node));
-    };
-    if suffix.trim().is_empty() {
+    if !content_hash_matches_grammar(&node.content_hash) {
         return Some(invalid_content_hash_diagnostic(node));
     }
 
     None
+}
+
+/// The single content-hash grammar shared by the graph loader (above) and
+/// managed import (`domain::managed`): `sha256:` with a non-empty suffix.
+pub(crate) fn content_hash_matches_grammar(value: &str) -> bool {
+    value
+        .strip_prefix("sha256:")
+        .is_some_and(|suffix| !suffix.trim().is_empty())
 }
 
 fn invalid_content_hash_diagnostic(node: &GraphKnowledgeObjectNode) -> Diagnostic {

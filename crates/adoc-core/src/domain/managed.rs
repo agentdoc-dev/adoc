@@ -21,7 +21,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
-use super::graph::{GraphArtifactDocument, GraphNode, GraphRepositoryIdentity, GraphSourceBinding};
+use super::graph::{
+    GraphArtifactDocument, GraphNode, GraphRepositoryIdentity, GraphSourceBinding,
+    content_hash_matches_grammar,
+};
 use super::identity::ObjectId;
 
 /// Cloud workspace identifier — opaque to `adoc-core`. Blank or padded
@@ -94,6 +97,8 @@ pub(crate) enum ManagedIdentityError {
     InvalidObjectId,
     #[error("object id appears more than once in one artifact")]
     DuplicateObjectId,
+    #[error("content hash must be `sha256:` with a non-empty suffix")]
+    InvalidContentHash,
 }
 
 /// One managed repository inside a workspace, keyed on the graph
@@ -255,14 +260,17 @@ impl ManagedWorkspace {
     ///
     /// Fail closed on crafted input (`GraphArtifactDocument` derives
     /// `Deserialize`, so callers cannot assume compiler-built documents): a
-    /// blank, grammar-violating, or repeated Object ID anywhere in the
+    /// blank, grammar-violating, or repeated Object ID — or a
+    /// `content_hash` outside the shared grammar — anywhere in the
     /// artifact rejects the whole import before any state changes. The
     /// graph loader enforces the same invariants (`id.invalid`,
-    /// `DiagnosticCode::IdDuplicateInArtifact`); a document handed to
-    /// import directly must not bypass them — a grammar-evading ID would
-    /// also evade the exact-ID collision detector, and a repeated ID would
-    /// silently unify into one record (the intra-artifact shape of the
-    /// merge RT-03/D36 forbids).
+    /// `DiagnosticCode::IdDuplicateInArtifact`, `io.artifact_malformed`);
+    /// a document handed to import directly must not bypass them — a
+    /// grammar-evading ID would also evade the exact-ID collision
+    /// detector, a repeated ID would silently unify into one record (the
+    /// intra-artifact shape of the merge RT-03/D36 forbids), and a
+    /// malformed hash would be enshrined in an immutable version and
+    /// compared for RT-04 unchanged-ness ever after.
     pub(crate) fn import_artifact(
         &mut self,
         artifact: &GraphArtifactDocument,
@@ -281,6 +289,9 @@ impl ManagedWorkspace {
             }
             if !seen_ids.insert(node.id.as_str()) {
                 return Err(ManagedIdentityError::DuplicateObjectId);
+            }
+            if !content_hash_matches_grammar(&node.content_hash) {
+                return Err(ManagedIdentityError::InvalidContentHash);
             }
         }
         // Arrival binds the slot even when the artifact carries no
@@ -791,6 +802,34 @@ mod tests {
             assert_eq!(
                 outcome,
                 Err(ManagedIdentityError::InvalidObjectId),
+                "{invalid:?} must be rejected"
+            );
+        }
+        assert!(
+            workspace.repository(&repo).is_none(),
+            "a rejected import must not bind the repository slot or mint anything"
+        );
+    }
+
+    /// A crafted artifact carrying a blank or malformed `content_hash`
+    /// would otherwise mint an immutable version around it, surface it in
+    /// reconciliation candidates, and treat every later observation of the
+    /// same malformed value as unchanged. The graph loader rejects these
+    /// documents (`content_hash_diagnostic`, `io.artifact_malformed`);
+    /// import fails closed the same way, before any state changes.
+    #[test]
+    fn malformed_content_hashes_on_import_are_rejected_without_partial_state() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+
+        for invalid in ["", "  ", "sha256:", "sha256:  ", "md5:abc"] {
+            let outcome = workspace.import_artifact(&artifact(
+                repo.clone(),
+                vec![knowledge_object("billing.credits", invalid)],
+            ));
+            assert_eq!(
+                outcome,
+                Err(ManagedIdentityError::InvalidContentHash),
                 "{invalid:?} must be rejected"
             );
         }
