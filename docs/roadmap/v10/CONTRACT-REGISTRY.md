@@ -12,13 +12,13 @@ No externally observable V1 wire code or contract exists outside this registry (
 
 The executable planning surface this registry governs is `docs/roadmap/v10`; preserved historical documents (non-executable per [`EXECUTION-MAP.md`](EXECUTION-MAP.md) §1) may cite retired codes as provenance without a row here.
 
-Field vocabularies enclosed by an envelope (statuses, enum-valued fields) are governed by that envelope's schema and registered through its row; vocabularies observable independently of a single envelope are registered explicitly in §9.
+Field vocabularies enclosed by an envelope (statuses, enum-valued fields) are governed by that envelope's schema and registered through its row; vocabularies observable independently of a single envelope are registered explicitly in the vocabulary sections at the end of this file.
 
-**Statuses:** `shipped` — emitted by a released surface; `planned` — reserved id with an owning E-slice (name adjustments before first implementation are registry edits at slice start); `historical` — no longer emitted, documentation retained; `removed` — never to be emitted again, carried as a disposition (§8).
+**Statuses:** `shipped` — emitted by a released surface; `planned` — reserved id with an owning E-slice (name adjustments before first implementation are registry edits at slice start); `historical` — no longer emitted, documentation retained; `removed` — never to be emitted again, carried as a disposition (see “Dispositions”).
 
 **Version cells** name the minimum–maximum tested producer/consumer releases; a single value means minimum = maximum. **v0-additive** as a migration posture means fields may be added JSON-optionally within the version and any breaking change requires a new registered version id.
 
-## 1. Envelopes — shipped, owner `adoc`
+## Envelopes — shipped, owner `adoc`
 
 Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and local gateway surfaces).
 
@@ -38,13 +38,13 @@ Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and l
 | `adoc.patch.v0` | shipped | adoc 0.3.4 (validator; input authored by agents) | adoc 0.3.4; Action v2.0.0-alpha.19 | v0-additive |
 | `adoc.project.status.v0` | shipped | adoc 0.3.4 | MCP agent clients (contract-tested at adoc 0.3.4) | v0-additive |
 | `adoc.repository_baseline.v0` | shipped | adoc 0.3.4 | Action v2.0.0-alpha.19 | v0-additive; known registration-gap history — the original V10 inventory flagged it unregistered; true-up obligation tracked in [`DECISION-REGISTER.md`](DECISION-REGISTER.md) |
-| `adoc.retrieval.v1` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v1 additive; v0 is historical (§3) |
+| `adoc.retrieval.v1` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v1 additive; v0 is historical (see “Envelopes — historical”) |
 | `adoc.review.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.search.v1` | shipped | adoc 0.3.4 | adoc 0.3.4 | v1 additive |
 | `adoc.stale.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 <!-- /registry:envelopes-shipped-adoc -->
 
-## 2. Envelopes — shipped, owner `action`
+## Envelopes — shipped, owner `action`
 
 <!-- registry:envelopes-shipped-action -->
 | id | status | producer (min–max tested) | consumers (min–max tested) | migration posture |
@@ -53,7 +53,7 @@ Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and l
 | `adoc.semantic_review.v0` | shipped | Action v2.0.0-alpha.19 (ADR-0052) | Action report surfaces v2.0.0-alpha.19 | v0-additive; deprecation only via the E8.6 machinery |
 <!-- /registry:envelopes-shipped-action -->
 
-## 3. Envelopes — historical
+## Envelopes — historical
 
 <!-- registry:envelopes-historical -->
 | id | status | notes |
@@ -71,9 +71,39 @@ Deliberately invalid version fixtures inside `#[cfg(test)]` modules in `crates/*
 | `adoc.search.v99` | fixture | rejected-version fixture for Search Artifact version gating |
 <!-- /registry:test-fixture-ids -->
 
-## 4. Diagnostic Codes — shipped, owner `adoc`
+## Envelopes and contracts — planned
 
-Shared row values: producer `adoc` 0.3.4 (`adoc-core` `diagnostic_codes!` table, the single declaring source); consumers are every envelope embedding `Diagnostic` records (CLI/MCP surfaces at adoc 0.3.4, Action v2.0.0-alpha.19 report rendering). Migration posture for every row: wire-stable string — a meaning change or removal requires a disposition row in §8, never reuse.
+Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owning repository and the E-slice that implements it; producer/consumer versions are recorded when the owning slice ships its first tested implementation. A name adjustment before first implementation is a registry edit at slice start, never an unregistered rename afterwards.
+
+<!-- registry:envelopes-planned -->
+| id | owner | planned by | notes |
+| --- | --- | --- | --- |
+| `adoc.semantic_context.v0` | adoc | E3.1 | exact revisions, deterministic digests, closed citation handles, coverage diagnostics |
+| `adoc.semantic_assessment.v0` | adoc | E3.2 | provider-neutral typed findings/citations/materiality |
+| `adoc.validation_receipt.v0` | adoc | E1.7 | digest-bound AgentDoc Validation Runtime receipt |
+| `adoc.lifecycle_mapping.v0` | adoc | E1.5 | versioned flat-status ↔ managed mapping/projection with explicit loss |
+| `adoc.source_record.v0` | adoc | E4.1 | immutable source observation |
+| `adoc.source_assertion.v0` | adoc | E4.1 | source assertion bound to its Source Record |
+| `adoc.source_acl_snapshot.v0` | adoc | E2.6 | historical ACL provenance, separate from freshness-bounded authorization |
+| `adoc.source_binding.v0` | adoc | E1.1 | exact source placement binding, independent of the semantic hash |
+| `adoc.sensitive_access.v0` | adoc | E6.3 | name held until a final registered successor (RT-08) |
+| `adoc.egress_policy.v0` | adoc | E6.6 | provenance RT-21: absent from the original V10 inventory |
+| `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record |
+| `adoc.work_request.v0` | adoc | E3.7 | versioned external work request with nonce/digest/expiry/workload identity |
+| `adoc.work_result.v0` | adoc | E3.7 | result binding with replay/idempotency state |
+| `adoc.migration_request.v0` | adoc | E7.1 | exact-revision standalone-to-Cloud migration request |
+| `adoc.migration_receipt.v0` | adoc | E7.1 | migration receipt with qualification policy outcome |
+| `adoc.connector_manifest.v0` | adoc | E4.5 | capability manifest bound to exact adapter version and publisher |
+| `adoc.governance_event.v0` | cloud | E4.2 | append-only governance transition record |
+| `adoc.proposal.v0` | cloud | E5.1 | canonical proposal record; includes the typed per-finding no-change disposition record (E5.3.T3) |
+| `adoc.approval.v0` | cloud | E5.2 | native approval bound to exact proposal digest, principal, policy version |
+| `adoc.gate_result.v0` | adoc | E5.3 | four-mode gate decision record carrying registered `gate.*` codes |
+| `adoc.graph.v6` | adoc | E1.1 | successor Graph Artifact separating governed semantic hash from source placement |
+<!-- /registry:envelopes-planned -->
+
+## Diagnostic Codes — shipped, owner `adoc`
+
+Shared row values: producer `adoc` 0.3.4 (`adoc-core` `diagnostic_codes!` table, the single declaring source); consumers are every envelope embedding `Diagnostic` records (CLI/MCP surfaces at adoc 0.3.4, Action v2.0.0-alpha.19 report rendering). Migration posture for every row: wire-stable string — a meaning change or removal requires a row in “Dispositions”, never reuse.
 
 <!-- registry:diagnostic-codes -->
 | code |
@@ -226,9 +256,9 @@ Shared row values: producer `adoc` 0.3.4 (`adoc-core` `diagnostic_codes!` table,
 | `task.overdue` |
 <!-- /registry:diagnostic-codes -->
 
-## 5. Action codes — owner `action`
+## Action codes — owner `action`
 
-Shared row values for shipped rows: producer Action v2.0.0-alpha.19 (workflow annotations, check conclusions, receipt `reason_codes`); consumers are GitHub check/annotation readers and receipt consumers. Migration posture: wire-stable string — meaning change or removal requires a disposition row in §8.
+Shared row values for shipped rows: producer Action v2.0.0-alpha.19 (workflow annotations, check conclusions, receipt `reason_codes`); consumers are GitHub check/annotation readers and receipt consumers. Migration posture: wire-stable string — meaning change or removal requires a row in “Dispositions”.
 
 <!-- registry:action-codes -->
 | code | status | meaning |
@@ -252,8 +282,26 @@ Shared row values for shipped rows: producer Action v2.0.0-alpha.19 (workflow an
 | `action.proposal_rejected` | shipped | proposal rejected by validation |
 | `action.provider_integrity_failed` | shipped | provider binary integrity verification failed |
 | `action.receipt_failed` | shipped | receipt finalization failed |
-| `action.semantic_review_failed` | shipped | semantic review failed; the single canonical Action semantic-failure reason code (§8) |
+| `action.semantic_review_failed` | shipped | semantic review failed; the single canonical Action semantic-failure reason code (see “Dispositions”) |
 | `action.structural_errors_changed` | shipped | structural errors in changed objects |
 | `action.structural_errors_full` | shipped | structural errors in the full graph |
 | `action.unsupported_event` | shipped | unsupported triggering event |
 <!-- /registry:action-codes -->
+
+## Gate codes — planned, owner `adoc`
+
+Contract codes for the four-mode gate evaluator (E5.3; check publication E5.4). The failure matrix is a closed 12-code set fixed red-first at E5.3 slice start; the rows here are the subset already named by the execution map and milestones — the remaining rows register as a registry edit in that slice, never ad hoc.
+
+<!-- registry:gate-codes -->
+| code | status | planned by | meaning |
+| --- | --- | --- | --- |
+| `gate.assessment_missing` | planned | E5.3 | `assessment_required` without a valid complete deterministic + semantic assessment |
+| `gate.semantic_invalid` | planned | E5.3 | semantic assessment present but invalid/incomplete |
+| `gate.proposal_missing` | planned | E5.3 | materially affected finding without a proposal or accepted no-change disposition |
+| `gate.proposal_hash_mismatch` | planned | E5.3 | approval bound to a proposal digest that no longer matches |
+| `gate.approval_invalidated` | planned | E5.3 | semantic content change invalidated a prior approval |
+| `gate.cloud_unavailable` | planned | E5.3 | required Cloud decision input unavailable — blocks, never defaults |
+| `gate.audit_persistence_failed` | planned | E5.3 | decision audit record could not be persisted — blocks |
+| `gate.mode_unknown` | planned | E5.3 | unknown gate mode string is a configuration error, never a fallback |
+| `gate.check_publish_failed` | planned | E5.4 | required check could not publish; blocks by absence, recorded for diagnosability |
+<!-- /registry:gate-codes -->

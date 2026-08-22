@@ -93,8 +93,10 @@ const ANCHORS: &[&str] = &[
     "registry:envelopes-shipped-action",
     "registry:envelopes-historical",
     "registry:test-fixture-ids",
+    "registry:envelopes-planned",
     "registry:diagnostic-codes",
     "registry:action-codes",
+    "registry:gate-codes",
 ];
 
 /// True for `adoc.<dotted lowercase path>.v<digits>` — the envelope
@@ -397,4 +399,65 @@ fn guard_fires_on_a_malformed_registry_row() {
         result.is_err(),
         "a data row whose first cell is not backticked must fail loudly, never drop silently"
     );
+}
+
+/// The execution map's E0.3 must-include list, resolved to registered ids.
+/// One entry per item in the map's sentence, in its order; the milestone's
+/// T2 planned set adds the remaining reserved names.
+const MUST_INCLUDE_IDS: &[&str] = &[
+    "adoc.semantic_context.v0",       // semantic context
+    "adoc.semantic_assessment.v0",    // semantic assessment
+    "adoc.validation_receipt.v0",     // validation receipt
+    "adoc.lifecycle_mapping.v0",      // lifecycle mapping
+    "adoc.source_record.v0",          // source record
+    "adoc.source_assertion.v0",       // source assertion
+    "adoc.source_acl_snapshot.v0",    // ACL snapshot
+    "adoc.source_binding.v0",         // source binding
+    "adoc.sensitive_access.v0",       // sensitive-access event (RT-08, RT-21)
+    "adoc.egress_policy.v0",          // egress policy (RT-21)
+    "adoc.authorization_decision.v0", // authorization decision
+    "adoc.work_request.v0",           // work request
+    "adoc.work_result.v0",            // work result
+    "adoc.migration_request.v0",      // migration request
+    "adoc.migration_receipt.v0",      // migration receipt
+    "adoc.connector_manifest.v0",     // connector capability manifest
+    "adoc.governance_event.v0",       // governance contract
+    "adoc.proposal.v0",               // proposal contract
+    "adoc.approval.v0",               // approval contract
+    "adoc.gate_result.v0",            // gate contract
+];
+
+#[test]
+fn must_include_contracts_are_registered() {
+    let registered = all_registered_ids(&registry());
+    let missing: Vec<_> = MUST_INCLUDE_IDS
+        .iter()
+        .filter(|id| !registered.contains(**id))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "EXECUTION-MAP §E0.3 must-include items without a registry row: {missing:?}"
+    );
+}
+
+#[test]
+fn planned_rows_name_exactly_one_owner_repo() {
+    let registry = registry();
+    let open = "<!-- registry:envelopes-planned -->";
+    let close = "<!-- /registry:envelopes-planned -->";
+    let start = registry.find(open).expect("planned anchor") + open.len();
+    let end = registry[start..].find(close).expect("planned close anchor") + start;
+    let mut data_rows = 0;
+    for line in registry[start..end].lines().map(str::trim) {
+        if !line.starts_with("| `") {
+            continue; // header/separator; malformed rows already fail anchored_ids
+        }
+        data_rows += 1;
+        let owner = line.split('|').nth(2).map(str::trim).unwrap_or_default();
+        assert!(
+            matches!(owner, "adoc" | "action" | "cloud"),
+            "planned row must name exactly one owner repo (adoc|action|cloud): {line:?}"
+        );
+    }
+    assert!(data_rows > 0, "the planned table lost its rows");
 }
