@@ -1,0 +1,627 @@
+//! Managed Object identity contract (E1.2; ADR-0057 invariant 1).
+//!
+//! KNOWLEDGE-MODEL §K6 separates five identity layers, each its own type:
+//!
+//! 1. workspace canonical identity — [`WorkspaceCanonicalIdentity`];
+//! 2. human-readable Object ID — the graph node `id` (authored as the
+//!    `ObjectId` grammar, `domain::identity`);
+//! 3. immutable managed version ID — [`ManagedVersionId`];
+//! 4. Source Assertion identity — [`SourceAssertionIdentity`] (the Source
+//!    Record/Assertion store itself is E4.1);
+//! 5. Source Binding — `GraphSourceBinding` (E1.1, ADR-0058 §4).
+//!
+//! Managed import (RT-03, D36): matching Object IDs, titles, hashes, or
+//! semantic similarity never auto-merge. A same-ID collision across
+//! repositories retains every object distinct and emits a typed
+//! [`ReconciliationCandidate`] (`adoc.reconciliation_candidate.v0`,
+//! registered planned in CONTRACT-REGISTRY.md); deciding a candidate is a
+//! governed E1.3 action, never an import side effect.
+
+use std::collections::BTreeMap;
+
+use serde::Serialize;
+
+use super::graph::{GraphArtifactDocument, GraphNode, GraphRepositoryIdentity, GraphSourceBinding};
+
+/// Cloud workspace identifier — opaque to `adoc-core`. Blank input is
+/// rejected: an empty workspace id would produce unqualified canonical
+/// identities, defeating the qualification that keeps identity unlinkable
+/// across workspaces (MILESTONES §E1.2 stop-ship).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(transparent)]
+pub(crate) struct WorkspaceId(String);
+
+impl WorkspaceId {
+    pub(crate) fn new(value: impl Into<String>) -> Result<Self, ManagedIdentityError> {
+        let value = value.into();
+        if value.trim().is_empty() {
+            Err(ManagedIdentityError::BlankWorkspaceId)
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+
+/// K6 layer 1: the workspace-qualified canonical identity of a Managed
+/// Object, stored separately from the human-readable Object ID (RT-03).
+/// Equality includes the workspace, so identities from different
+/// workspaces never compare equal even when their opaque suffix matches.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub(crate) struct WorkspaceCanonicalIdentity {
+    pub(crate) workspace_id: WorkspaceId,
+    pub(crate) canonical_id: String,
+}
+
+/// K6 layer 3: the unique immutable version ID every managed candidate or
+/// active version receives. Opaque, never reused, never derived from
+/// content — a semantic content change mints a new one (RT-04).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(transparent)]
+pub(crate) struct ManagedVersionId(String);
+
+/// K6 layer 4: the identity of one immutable Source Assertion (K7). Only
+/// the identity layer lands in E1.2 — the Source Record/Assertion store is
+/// E4.1. Blank identities fail closed.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(transparent)]
+pub(crate) struct SourceAssertionIdentity(String);
+
+impl SourceAssertionIdentity {
+    pub(crate) fn new(value: impl Into<String>) -> Result<Self, ManagedIdentityError> {
+        let value = value.into();
+        if value.trim().is_empty() {
+            Err(ManagedIdentityError::BlankSourceAssertionIdentity)
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum ManagedIdentityError {
+    #[error("workspace id must not be blank")]
+    BlankWorkspaceId,
+    #[error("source assertion identity must not be blank")]
+    BlankSourceAssertionIdentity,
+}
+
+/// One managed repository inside a workspace, keyed on the graph
+/// `repository_identity` (`{kind, config_path}` or explicit `null` —
+/// required since v5, ADR-0049). The record is the binding slot (V10.3.2):
+/// it can exist before the first artifact arrives, and its Object IDs stay
+/// repository-local — the same ID in another repository is a different
+/// Managed Object.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ManagedRepositoryRecord {
+    pub(crate) repository_identity: GraphRepositoryIdentity,
+    /// Managed Objects keyed by their repository-local Object ID.
+    pub(crate) objects: BTreeMap<String, ManagedObjectRecord>,
+}
+
+/// One Managed Object under one repository: a stable Object ID and
+/// workspace canonical identity over an append-only list of immutable
+/// versions. Never merged, rewritten, or re-homed by import.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ManagedObjectRecord {
+    pub(crate) canonical: WorkspaceCanonicalIdentity,
+    /// The human-readable Object ID — persists across revisions
+    /// (invariant: non-empty by construction, only created from graph node
+    /// ids observed on import).
+    pub(crate) object_id: String,
+    /// Append-only: every import that changes governed meaning appends an
+    /// immutable version; nothing is ever rewritten (RT-04).
+    pub(crate) versions: Vec<ManagedVersionRecord>,
+}
+
+/// One immutable managed version with its preserved provenance (RT-03:
+/// reconciliation preserves all original Source Records, Assertions, and
+/// Bindings).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ManagedVersionRecord {
+    pub(crate) version_id: ManagedVersionId,
+    pub(crate) content_hash: String,
+    /// The exact Source Binding observed at import time, when the artifact
+    /// carried one.
+    pub(crate) source_binding: Option<GraphSourceBinding>,
+    /// Contributing Source Assertions. Empty until the Source
+    /// Record/Assertion store lands (E4.1).
+    pub(crate) source_assertions: Vec<SourceAssertionIdentity>,
+}
+
+/// The typed reconciliation candidate (`adoc.reconciliation_candidate.v0`):
+/// emitted when an imported Object ID collides with a Managed Object in
+/// another repository of the same workspace. Both objects stay distinct —
+/// keep-distinct / link / supersede / merge decisions are governed E1.3
+/// actions with exact authority, policy, and version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ReconciliationCandidate {
+    /// The colliding human-readable Object ID (identical on both parties
+    /// by construction).
+    pub(crate) object_id: String,
+    pub(crate) reason: ReconciliationReason,
+    pub(crate) existing: ReconciliationParty,
+    pub(crate) incoming: ReconciliationParty,
+}
+
+/// Closed reason vocabulary. Only an exact Object-ID collision produces a
+/// candidate — hash equality, title equality, or semantic similarity never
+/// do (RT-03/D36), and no such detector exists anywhere in this crate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ReconciliationReason {
+    ObjectIdCollision,
+}
+
+/// One side of a reconciliation candidate, identified by its workspace
+/// canonical identity, repository, and latest immutable version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ReconciliationParty {
+    pub(crate) canonical: WorkspaceCanonicalIdentity,
+    pub(crate) repository_identity: GraphRepositoryIdentity,
+    pub(crate) version_id: ManagedVersionId,
+    pub(crate) content_hash: String,
+}
+
+/// What one [`ManagedWorkspace::import_artifact`] call did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ManagedImportOutcome {
+    /// One entry per version minted by this import. Unchanged governed
+    /// meaning mints nothing — a re-observation is not a new content
+    /// version (RT-04).
+    pub(crate) imported: Vec<ImportedVersion>,
+    pub(crate) reconciliation_candidates: Vec<ReconciliationCandidate>,
+}
+
+/// One minted version: the identity layers assigned to an imported object.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ImportedVersion {
+    pub(crate) object_id: String,
+    pub(crate) canonical: WorkspaceCanonicalIdentity,
+    pub(crate) version_id: ManagedVersionId,
+}
+
+/// The managed-import domain service: one Cloud workspace's managed
+/// repositories, objects, and versions, in memory. Durable storage is the
+/// Cloud cut (E1.2.T3); this aggregate is the executable identity
+/// contract the stacked E1 slices build on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ManagedWorkspace {
+    workspace_id: WorkspaceId,
+    repositories: BTreeMap<GraphRepositoryIdentity, ManagedRepositoryRecord>,
+    // ponytail: workspace-local monotonic minting; both ids are opaque to
+    // every consumer — Cloud storage mints its own scheme (the contract is
+    // opacity and uniqueness, not the format).
+    minted_canonical_ids: u64,
+    minted_version_ids: u64,
+}
+
+impl ManagedWorkspace {
+    pub(crate) fn new(workspace_id: WorkspaceId) -> Self {
+        Self {
+            workspace_id,
+            repositories: BTreeMap::new(),
+            minted_canonical_ids: 0,
+            minted_version_ids: 0,
+        }
+    }
+
+    pub(crate) fn repository(
+        &self,
+        repository_identity: &GraphRepositoryIdentity,
+    ) -> Option<&ManagedRepositoryRecord> {
+        self.repositories.get(repository_identity)
+    }
+
+    /// Import every Knowledge Object of a Graph Artifact into the
+    /// artifact's repository record. Retains every object; a same-ID
+    /// collision with another repository emits a [`ReconciliationCandidate`]
+    /// and never merges, links, or re-homes anything.
+    pub(crate) fn import_artifact(
+        &mut self,
+        artifact: &GraphArtifactDocument,
+    ) -> ManagedImportOutcome {
+        let mut imported = Vec::new();
+        let mut reconciliation_candidates = Vec::new();
+        for node in artifact
+            .nodes
+            .iter()
+            .filter_map(GraphNode::as_knowledge_object)
+        {
+            let known = self
+                .repositories
+                .get(&artifact.repository_identity)
+                .and_then(|record| record.objects.get(&node.id))
+                .map(|object| {
+                    let unchanged = object
+                        .versions
+                        .last()
+                        .is_some_and(|latest| latest.content_hash == node.content_hash);
+                    (object.canonical.clone(), unchanged)
+                });
+            let (canonical, colliding_parties) = match known {
+                // RT-04: unchanged governed meaning re-observed — no new
+                // content version, nothing minted.
+                Some((_, true)) => continue,
+                Some((canonical, false)) => (canonical, Vec::new()),
+                // First appearance of this Object ID in this repository:
+                // record same-ID parties from every other repository, then
+                // mint a fresh canonical identity — a colliding object's
+                // identity is never adopted.
+                None => {
+                    let parties = self.colliding_parties(&artifact.repository_identity, &node.id);
+                    (self.mint_canonical_identity(), parties)
+                }
+            };
+            let version_id = self.mint_version_id();
+            let record = self
+                .repositories
+                .entry(artifact.repository_identity.clone())
+                .or_insert_with(|| ManagedRepositoryRecord {
+                    repository_identity: artifact.repository_identity.clone(),
+                    objects: BTreeMap::new(),
+                });
+            let object =
+                record
+                    .objects
+                    .entry(node.id.clone())
+                    .or_insert_with(|| ManagedObjectRecord {
+                        canonical: canonical.clone(),
+                        object_id: node.id.clone(),
+                        versions: Vec::new(),
+                    });
+            object.versions.push(ManagedVersionRecord {
+                version_id: version_id.clone(),
+                content_hash: node.content_hash.clone(),
+                source_binding: node.source_binding.clone(),
+                source_assertions: Vec::new(),
+            });
+            for existing in colliding_parties {
+                reconciliation_candidates.push(ReconciliationCandidate {
+                    object_id: node.id.clone(),
+                    reason: ReconciliationReason::ObjectIdCollision,
+                    existing,
+                    incoming: ReconciliationParty {
+                        canonical: canonical.clone(),
+                        repository_identity: artifact.repository_identity.clone(),
+                        version_id: version_id.clone(),
+                        content_hash: node.content_hash.clone(),
+                    },
+                });
+            }
+            imported.push(ImportedVersion {
+                object_id: node.id.clone(),
+                canonical,
+                version_id,
+            });
+        }
+        ManagedImportOutcome {
+            imported,
+            reconciliation_candidates,
+        }
+    }
+
+    /// Same-ID parties in every other repository of this workspace. The
+    /// scan is exact-ID only: no hash, title, or similarity matching
+    /// exists (RT-03/D36).
+    fn colliding_parties(
+        &self,
+        repository_identity: &GraphRepositoryIdentity,
+        object_id: &str,
+    ) -> Vec<ReconciliationParty> {
+        self.repositories
+            .iter()
+            .filter(|(key, _)| *key != repository_identity)
+            .filter_map(|(key, record)| {
+                let object = record.objects.get(object_id)?;
+                // Non-empty by construction: records only ever gain
+                // versions, starting with one at creation.
+                let latest = object.versions.last()?;
+                Some(ReconciliationParty {
+                    canonical: object.canonical.clone(),
+                    repository_identity: key.clone(),
+                    version_id: latest.version_id.clone(),
+                    content_hash: latest.content_hash.clone(),
+                })
+            })
+            .collect()
+    }
+
+    fn mint_canonical_identity(&mut self) -> WorkspaceCanonicalIdentity {
+        self.minted_canonical_ids += 1;
+        WorkspaceCanonicalIdentity {
+            workspace_id: self.workspace_id.clone(),
+            canonical_id: format!("mo-{}", self.minted_canonical_ids),
+        }
+    }
+
+    fn mint_version_id(&mut self) -> ManagedVersionId {
+        self.minted_version_ids += 1;
+        ManagedVersionId(format!("mv-{}", self.minted_version_ids))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! E1.2.T1 exit tests (MILESTONES §E1.2; RED-TEAM-CLOSURE §RT-03;
+    //! DECISION-REGISTER §D36; ADR-0057 invariant 1): importing two Graph
+    //! Artifacts that carry the same Object ID retains both objects
+    //! distinct and emits a typed reconciliation candidate — never a merge.
+    use std::collections::BTreeMap;
+
+    use serde_json::json;
+
+    use super::*;
+    use crate::domain::graph::{
+        GraphKnowledgeObjectNode, GraphNode, GraphRelations, GraphSourceBinding, GraphSourceSpan,
+    };
+
+    /// Registered (planned) contract id governing the serialized candidate
+    /// record shape pinned below.
+    const RECONCILIATION_CANDIDATE_CONTRACT: &str = "adoc.reconciliation_candidate.v0";
+
+    fn workspace() -> ManagedWorkspace {
+        ManagedWorkspace::new(WorkspaceId::new("ws-acme").expect("workspace id is non-blank"))
+    }
+
+    fn local_repo(config_path: &str) -> GraphRepositoryIdentity {
+        GraphRepositoryIdentity::local_project(config_path.to_string())
+    }
+
+    fn knowledge_object(id: &str, content_hash: &str) -> GraphKnowledgeObjectNode {
+        GraphKnowledgeObjectNode {
+            id: id.to_string(),
+            kind: "claim".to_string(),
+            content_hash: content_hash.to_string(),
+            status: None,
+            severity: None,
+            trust: None,
+            body: "Credits apply after payment.".to_string(),
+            page_id: "team.page".to_string(),
+            source_span: GraphSourceSpan {
+                path: "docs/team.adoc".to_string(),
+                line: 1,
+                column: 1,
+            },
+            source_binding: None,
+            visibility: None,
+            field_visibility: None,
+            fields: BTreeMap::new(),
+            relations: GraphRelations::default(),
+            impacts: Vec::new(),
+            approved_by: Vec::new(),
+            allowed_actions: Vec::new(),
+            forbidden_actions: Vec::new(),
+            contradiction_claims: Vec::new(),
+            evidence: Vec::new(),
+            effective_status: None,
+            effective_reason: None,
+            evidence_quality: None,
+        }
+    }
+
+    fn artifact(
+        repository_identity: GraphRepositoryIdentity,
+        nodes: Vec<GraphKnowledgeObjectNode>,
+    ) -> GraphArtifactDocument {
+        GraphArtifactDocument {
+            schema_version: "adoc.graph.v6".to_string(),
+            repository_identity,
+            nodes: nodes.into_iter().map(GraphNode::KnowledgeObject).collect(),
+            edges: Vec::new(),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    /// Exit test: same Object ID in two repositories — both retained
+    /// distinct under fresh workspace canonical identities, one typed
+    /// reconciliation candidate emitted, never a merge (RT-03, D36).
+    #[test]
+    fn same_object_id_in_two_repositories_retains_both_and_emits_candidate() {
+        let mut workspace = workspace();
+        let repo_a = local_repo("a/agentdoc.config.yaml");
+        let repo_b = local_repo("b/agentdoc.config.yaml");
+
+        let first = workspace.import_artifact(&artifact(
+            repo_a.clone(),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        ));
+        assert!(first.reconciliation_candidates.is_empty());
+
+        let second = workspace.import_artifact(&artifact(
+            repo_b.clone(),
+            vec![knowledge_object("billing.credits", "sha256:bbb")],
+        ));
+
+        let object_a = &workspace
+            .repository(&repo_a)
+            .expect("repo a recorded")
+            .objects["billing.credits"];
+        let object_b = &workspace
+            .repository(&repo_b)
+            .expect("repo b recorded")
+            .objects["billing.credits"];
+        assert_eq!(object_a.object_id, "billing.credits");
+        assert_eq!(object_b.object_id, "billing.credits");
+        assert_ne!(
+            object_a.canonical, object_b.canonical,
+            "colliding Object IDs must never share a canonical identity"
+        );
+
+        assert_eq!(second.reconciliation_candidates.len(), 1);
+        let candidate = &second.reconciliation_candidates[0];
+        assert_eq!(candidate.object_id, "billing.credits");
+        assert_eq!(candidate.reason, ReconciliationReason::ObjectIdCollision);
+        assert_eq!(candidate.existing.canonical, object_a.canonical);
+        assert_eq!(candidate.existing.repository_identity, repo_a);
+        assert_eq!(candidate.incoming.canonical, object_b.canonical);
+        assert_eq!(candidate.incoming.repository_identity, repo_b);
+    }
+
+    /// The serialized record the Cloud cut consumes under the planned
+    /// `adoc.reconciliation_candidate.v0` registry row. Covers both
+    /// repository identity spellings: `{kind, config_path}` and explicit
+    /// `null` (standalone).
+    #[test]
+    fn reconciliation_candidate_serialized_record_shape_is_pinned() {
+        let mut workspace = workspace();
+        workspace.import_artifact(&artifact(
+            local_repo("a/agentdoc.config.yaml"),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        ));
+        let outcome = workspace.import_artifact(&artifact(
+            GraphRepositoryIdentity::standalone(),
+            vec![knowledge_object("billing.credits", "sha256:bbb")],
+        ));
+
+        let candidate = &outcome.reconciliation_candidates[0];
+        let value = serde_json::to_value(candidate).expect("candidate serializes");
+        assert_eq!(
+            value,
+            json!({
+                "object_id": "billing.credits",
+                "reason": "object_id_collision",
+                "existing": {
+                    "canonical": {
+                        "workspace_id": "ws-acme",
+                        "canonical_id": "mo-1"
+                    },
+                    "repository_identity": {
+                        "kind": "local_project",
+                        "config_path": "a/agentdoc.config.yaml"
+                    },
+                    "version_id": "mv-1",
+                    "content_hash": "sha256:aaa"
+                },
+                "incoming": {
+                    "canonical": {
+                        "workspace_id": "ws-acme",
+                        "canonical_id": "mo-2"
+                    },
+                    "repository_identity": null,
+                    "version_id": "mv-2",
+                    "content_hash": "sha256:bbb"
+                }
+            }),
+            "the {RECONCILIATION_CANDIDATE_CONTRACT} record shape drifted"
+        );
+    }
+
+    /// Acceptance: every managed candidate version receives a unique
+    /// immutable version ID while the Object ID and workspace canonical
+    /// identity stay stable across revisions.
+    #[test]
+    fn revisions_mint_unique_version_ids_under_a_stable_object_identity() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+
+        let first = workspace.import_artifact(&artifact(
+            repo.clone(),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        ));
+        let second = workspace.import_artifact(&artifact(
+            repo.clone(),
+            vec![knowledge_object("billing.credits", "sha256:ccc")],
+        ));
+
+        let object =
+            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        assert_eq!(object.versions.len(), 2);
+        assert_ne!(object.versions[0].version_id, object.versions[1].version_id);
+        assert_eq!(first.imported[0].canonical, second.imported[0].canonical);
+        assert_eq!(second.imported[0].object_id, "billing.credits");
+        assert!(second.reconciliation_candidates.is_empty());
+    }
+
+    /// RT-04: re-observing unchanged governed meaning is not a new content
+    /// version — nothing is minted.
+    #[test]
+    fn reimporting_unchanged_content_mints_no_new_version() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+        let document = artifact(
+            repo.clone(),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        );
+
+        workspace.import_artifact(&document);
+        let again = workspace.import_artifact(&document);
+
+        assert!(again.imported.is_empty());
+        assert!(again.reconciliation_candidates.is_empty());
+        let object =
+            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        assert_eq!(object.versions.len(), 1);
+    }
+
+    /// Stop-ship guard (MILESTONES §E1.2 acceptance): identity is
+    /// workspace-qualified — equal opaque suffixes in two workspaces never
+    /// compare equal, so an unqualified Object ID cannot link identities
+    /// across workspaces.
+    #[test]
+    fn canonical_identity_is_workspace_qualified() {
+        let mut workspace_a = ManagedWorkspace::new(WorkspaceId::new("ws-a").expect("non-blank"));
+        let mut workspace_b = ManagedWorkspace::new(WorkspaceId::new("ws-b").expect("non-blank"));
+        let repo = local_repo("a/agentdoc.config.yaml");
+        let document = artifact(
+            repo.clone(),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        );
+
+        let in_a = workspace_a.import_artifact(&document);
+        let in_b = workspace_b.import_artifact(&document);
+
+        assert_eq!(in_a.imported[0].canonical.canonical_id, "mo-1");
+        assert_eq!(in_b.imported[0].canonical.canonical_id, "mo-1");
+        assert_ne!(
+            in_a.imported[0].canonical, in_b.imported[0].canonical,
+            "workspace qualification must separate identical opaque suffixes"
+        );
+    }
+
+    /// A blank workspace id would produce unqualified canonical identities;
+    /// construction fails closed instead.
+    #[test]
+    fn blank_workspace_id_is_rejected() {
+        assert!(WorkspaceId::new("").is_err());
+        assert!(WorkspaceId::new(" \t").is_err());
+    }
+
+    /// The Source Assertion identity layer (K7) exists as its own type;
+    /// blank identities fail closed and the value serializes transparently.
+    #[test]
+    fn source_assertion_identity_is_typed_and_rejects_blank_values() {
+        assert!(SourceAssertionIdentity::new("  ").is_err());
+        let identity =
+            SourceAssertionIdentity::new("confluence:page-9:rev-4:assertion-2").expect("non-blank");
+        assert_eq!(
+            serde_json::to_value(&identity).expect("serializes"),
+            json!("confluence:page-9:rev-4:assertion-2")
+        );
+    }
+
+    /// RT-03: imported versions preserve their exact Source Binding; the
+    /// Source Assertion slot exists per version and stays empty until the
+    /// Source Record/Assertion store lands (E4.1).
+    #[test]
+    fn imported_versions_preserve_the_source_binding() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+        let mut node = knowledge_object("billing.credits", "sha256:aaa");
+        node.source_binding = Some(GraphSourceBinding {
+            connector: "local_fs".to_string(),
+            source: "team.page".to_string(),
+            revision: None,
+            path: "docs/team.adoc".to_string(),
+            anchor: "billing.credits".to_string(),
+            source_revision_digest: "sha256:feed".to_string(),
+        });
+        let expected = node.source_binding.clone();
+
+        workspace.import_artifact(&artifact(repo.clone(), vec![node]));
+
+        let object =
+            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        assert_eq!(object.versions[0].source_binding, expected);
+        assert!(object.versions[0].source_assertions.is_empty());
+    }
+}
