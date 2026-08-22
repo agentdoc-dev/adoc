@@ -388,7 +388,10 @@ pub(crate) struct EventOrdinal(pub(crate) u64);
 /// stored at write time, never re-derived (E1.4.T5) — the event's exact
 /// canonical bytes plus the chained digest. Later export needs no extra
 /// data: the `(ordinal, event_bytes, digest)` triples alone reproduce
-/// every event and prove the log's order and integrity.
+/// every event and detect any reordering or alteration of the recorded
+/// prefix. (Detection, not tamper evidence: a writer who can rewrite
+/// the store can recompute the suffix chain — anchoring a digest
+/// somewhere the writer cannot rewrite is a later slice's concern.)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct RecordedStateEvent {
     pub(crate) ordinal: EventOrdinal,
