@@ -886,7 +886,7 @@ impl ManagedStateEventStore {
         through: EventOrdinal,
     ) -> BTreeMap<StateEventSubject, ManagedVersionState> {
         let mut state: BTreeMap<StateEventSubject, ManagedVersionState> = BTreeMap::new();
-        for recorded in self.events.iter().filter(|r| r.ordinal <= through) {
+        for recorded in self.events.iter().take_while(|r| r.ordinal <= through) {
             state
                 .entry(recorded.event.subject.clone())
                 .or_insert_with(ManagedVersionState::all_gaps)
