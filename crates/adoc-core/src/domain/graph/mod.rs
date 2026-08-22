@@ -977,8 +977,13 @@ fn content_hash_diagnostic(node: &GraphKnowledgeObjectNode) -> Option<Diagnostic
     None
 }
 
-/// The single content-hash grammar shared by the graph loader (above) and
-/// managed import (`domain::managed`): `sha256:` with a non-empty suffix.
+/// Loader-side content-hash acceptance: `sha256:` with a non-empty suffix.
+/// Deliberately lenient — non-hex and whitespace-padded suffixes pass —
+/// because this acceptance is pinned wire behavior (the help text below
+/// promises exactly this shape). Managed import does not share it: at its
+/// trust boundary it enforces the full published v6 grammar
+/// `^sha256:[0-9a-f]+$` instead (`domain::managed`), so padded or non-hex
+/// spellings never reach an immutable managed version.
 pub(crate) fn content_hash_matches_grammar(value: &str) -> bool {
     value
         .strip_prefix("sha256:")
