@@ -214,6 +214,14 @@ _Avoid_: best-effort audit, audit-optional append, tamper-resistant ledger claim
 The policy minimum span of most-recent managed state records that no API may delete (V10.4.1, K9; `RetentionFloor` in `adoc-core`, expressed in recorded-event-order terms — no wall-clock exists in domain records). Append-only is enforced at the store layer: an in-place update attempt is `governance.record_conflict`, a sweep reaching into the protected span is `store.retention_floor_violation`, and corrections are new records referencing the corrected one. Deletion workflows above the floor arrive in E6.6.
 _Avoid_: handler-enforced append-only, record rewrite, silent sweep
 
+**Digest Chain**:
+The exact canonical bytes of every **Managed State Event** plus a `sha256:`-prefixed digest chaining each record to its predecessor, both stored at write time by the event store and carried on the audit record (E1.4.T5). Later export needs no extra data: the stored `(ordinal, bytes, digest)` triples alone reproduce every event and prove the log's order and integrity. All ten RT-04 event families — the six **State Dimensions** plus authorization-affecting source changes, declassification, migration, and deletion/tombstone — flow through the same chained append path.
+_Avoid_: bytes re-derived at export, unchained audit rows, wall-clock timestamping
+
+**Replay Posture**:
+The recorded K9 answer to whether a derivation can be reproduced — `fully_replayable`, `source_access_required`, `intentionally_non_replayable`, or `no_longer_replayable_after_deletion` (registered closed vocabulary, E0.3.T4; `ReplayPosture` in `adoc-core` since E1.4). A digest-only record is never fully replayable; deleting retained evidence appends a deletion/tombstone event recording the posture it leaves behind, never rewriting governance history.
+_Avoid_: implicit replayability, posture recomputed at read time, silent deletion
+
 **Diagnostic Code**:
 A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`. Lives in code as the `DiagnosticCode` enum in `adoc-core`; emission sites accept the typed value rather than a free-form string.
 _Avoid_: numeric-only code, unstable message matching

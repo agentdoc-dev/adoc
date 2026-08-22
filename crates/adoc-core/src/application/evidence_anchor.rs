@@ -9,9 +9,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::application::hashing::sha256_prefixed;
 use crate::domain::ast::{BlockAst, WorkspaceAst};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::domain::hashing::sha256_prefixed;
 use crate::domain::knowledge_object::KnowledgeObject;
 use crate::domain::ports::evidence_file::{EvidenceFileRead, EvidenceFileReader};
 use crate::domain::value_objects::anchor_hash::AnchorHash;

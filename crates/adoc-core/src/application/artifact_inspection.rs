@@ -2,10 +2,10 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::application::hashing::sha256_prefixed;
 use crate::domain::artifact::{SearchArtifactDocument, SearchModelHeader};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphArtifactDocument, GraphIndex, GraphNode};
+use crate::domain::hashing::sha256_prefixed;
 use crate::domain::ports::artifact_reader::ArtifactReader;
 use crate::infrastructure::artifact::{GraphJsonArtifact, SearchJsonArtifact};
 use crate::{EmbeddingProviderSelection, active_search_model_header_for};
