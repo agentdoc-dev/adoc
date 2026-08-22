@@ -183,7 +183,7 @@ The identity of one immutable Source Assertion extracted from a Source Artifact 
 _Avoid_: Source Binding synonym, assertion as Knowledge Object, mutable assertion
 
 **Managed Repository Record**:
-One imported repository inside a Cloud workspace (`ManagedRepositoryRecord` in `adoc-core`), keyed on the Graph Artifact's `repository_identity` — `{kind, config_path}` or explicit `null`, required since v5 (ADR-0049). The record is the binding slot: it can be reserved before the first artifact arrives (V10.3.2), and its Object IDs stay repository-local — the same ID in another repository is a different **Managed Object**, never silently merged.
+One imported repository inside a Cloud workspace (`ManagedRepositoryRecord` in `adoc-core`), keyed on the Graph Artifact's `repository_identity` — `{kind, config_path}` or explicit `null`, required since v5 (ADR-0049). The record is the binding slot: it can be reserved before the first artifact arrives (V10.3.2), and its Object IDs stay repository-local — the same ID in a distinctly keyed repository is a different **Managed Object**, never silently merged. The graph identity names the producing invocation family, not a workspace-unique repository — every project-bound build emits the constant `{local_project, "agentdoc.config.yaml"}`, so identity-equality keying distinguishes repositories only as far as the caller's identities do; explicit routing of an import to a reserved binding slot keyed from the authenticated channel is E1.3.
 _Avoid_: global repository namespace, path-string repository key, cross-repository ID merge
 
 **Reconciliation Candidate**:
