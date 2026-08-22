@@ -20,6 +20,8 @@
 //! recorded event order ([`EventOrdinal`]), so replaying the same log
 //! yields byte-identical state on every machine.
 
+use std::collections::BTreeMap;
+
 use serde::Serialize;
 
 use super::diagnostic::DiagnosticCode;
@@ -321,6 +323,90 @@ pub(crate) struct RecordedStateEvent {
     pub(crate) event: ManagedStateEvent,
 }
 
+/// One dimension of reconstructed managed state. [`RecordedDimension::Gap`]
+/// is the explicit marker for "no event recorded for this dimension at
+/// this T" — every record predating the introduction of an emitter for a
+/// dimension renders this gap, never an inferred, backfilled, or default
+/// state (E1.4.T3; RT-04). On the wire the marker is the literal string
+/// `"gap"`, unmistakable for any state value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RecordedDimension<S> {
+    Gap,
+    Recorded(S),
+}
+
+/// One connector's reconstructed synchronization state (§K4: always per
+/// connector, with the connector's `required_before_effective`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub(crate) struct ConnectorSyncRecord {
+    pub(crate) state: SynchronizationState,
+    pub(crate) required_before_effective: bool,
+}
+
+/// The reconstructed managed state of one immutable content version: the
+/// six §K4 dimensions, each independently recorded or an explicit gap.
+/// Derived — reproducible from the event log at any T and never
+/// authoritative (ADR-0057 invariant 2).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ManagedVersionState {
+    pub(crate) governance: RecordedDimension<GovernanceState>,
+    pub(crate) verification: RecordedDimension<VerificationState>,
+    pub(crate) effectivity: RecordedDimension<EffectivityState>,
+    pub(crate) freshness: RecordedDimension<FreshnessState>,
+    pub(crate) integrity: RecordedDimension<IntegrityState>,
+    pub(crate) synchronization: BTreeMap<ConnectorId, ConnectorSyncRecord>,
+}
+
+impl ManagedVersionState {
+    fn all_gaps() -> Self {
+        Self {
+            governance: RecordedDimension::Gap,
+            verification: RecordedDimension::Gap,
+            effectivity: RecordedDimension::Gap,
+            freshness: RecordedDimension::Gap,
+            integrity: RecordedDimension::Gap,
+            synchronization: BTreeMap::new(),
+        }
+    }
+
+    /// Apply one recorded change: set exactly the dimension it names.
+    /// No change ever touches another dimension — conflation is
+    /// unrepresentable (D07/D15).
+    fn apply(&mut self, change: &ManagedStateChange) {
+        match change {
+            ManagedStateChange::Governance { state } => {
+                self.governance = RecordedDimension::Recorded(*state);
+            }
+            ManagedStateChange::Verification { state } => {
+                self.verification = RecordedDimension::Recorded(*state);
+            }
+            ManagedStateChange::Effectivity { state } => {
+                self.effectivity = RecordedDimension::Recorded(*state);
+            }
+            ManagedStateChange::Freshness { state } => {
+                self.freshness = RecordedDimension::Recorded(*state);
+            }
+            ManagedStateChange::Integrity { state } => {
+                self.integrity = RecordedDimension::Recorded(*state);
+            }
+            ManagedStateChange::Synchronization {
+                connector,
+                state,
+                required_before_effective,
+            } => {
+                self.synchronization.insert(
+                    connector.clone(),
+                    ConnectorSyncRecord {
+                        state: *state,
+                        required_before_effective: *required_before_effective,
+                    },
+                );
+            }
+        }
+    }
+}
+
 /// The retention floor (V10.4.1/K9), in recorded-event-order terms: the
 /// count of most-recent records every sweep must leave fully retained.
 /// Records inside that span cannot be deleted by any API — and in E1.4
@@ -386,6 +472,12 @@ impl StateEventStoreError {
 pub(crate) struct ManagedStateEventStore {
     events: Vec<RecordedStateEvent>,
     retention_floor: RetentionFloor,
+    /// The derived current-state cache, maintained incrementally on
+    /// append. Allowed but NEVER authoritative (ADR-0057 invariant 2):
+    /// [`ManagedStateEventStore::reconstruct_through`] reproduces it
+    /// from the recorded events alone, and the domain tests pin the two
+    /// equal after every replay.
+    current: BTreeMap<StateEventSubject, ManagedVersionState>,
 }
 
 impl ManagedStateEventStore {
@@ -393,6 +485,7 @@ impl ManagedStateEventStore {
         Self {
             events: Vec::new(),
             retention_floor,
+            current: BTreeMap::new(),
         }
     }
 
@@ -413,6 +506,10 @@ impl ManagedStateEventStore {
         {
             return Err(StateEventStoreError::CorrectionTargetMissing { corrects });
         }
+        self.current
+            .entry(event.subject.clone())
+            .or_insert_with(ManagedVersionState::all_gaps)
+            .apply(&event.change);
         self.events.push(RecordedStateEvent { ordinal, event });
         Ok(ordinal)
     }
@@ -459,6 +556,33 @@ impl ManagedStateEventStore {
     /// The recorded events, in append order — the replay input.
     pub(crate) fn events(&self) -> &[RecordedStateEvent] {
         &self.events
+    }
+
+    /// The derived current-state cache. Never authoritative — always
+    /// reproducible via [`ManagedStateEventStore::reconstruct_through`].
+    pub(crate) fn current_state(&self) -> &BTreeMap<StateEventSubject, ManagedVersionState> {
+        &self.current
+    }
+
+    /// Historical current-state at time T, where T is an event ordinal:
+    /// replay the recorded events `0..=through`, in order, from the
+    /// immutable records alone. A correction applies at its own position
+    /// — history before it stands unrewritten, and no transition is ever
+    /// inferred or backfilled (RT-04). A T past the last recorded event
+    /// replays everything: nothing after the log's end exists to change
+    /// the answer.
+    pub(crate) fn reconstruct_through(
+        &self,
+        through: EventOrdinal,
+    ) -> BTreeMap<StateEventSubject, ManagedVersionState> {
+        let mut state: BTreeMap<StateEventSubject, ManagedVersionState> = BTreeMap::new();
+        for recorded in self.events.iter().filter(|r| r.ordinal <= through) {
+            state
+                .entry(recorded.event.subject.clone())
+                .or_insert_with(ManagedVersionState::all_gaps)
+                .apply(&recorded.event.change);
+        }
+        state
     }
 }
 
@@ -932,6 +1056,248 @@ mod tests {
                 protected_from: EventOrdinal(0),
             }
         );
+    }
+
+    // E1.4.T3 (MILESTONES §E1.4; ADR-0057 invariant 2): derived caches
+    // are allowed but never authoritative — historical current-state at
+    // time T reconstructs from the immutable versions, the recorded
+    // state events, and their recorded policy versions alone, where T is
+    // an event ordinal (no wall-clock exists in domain records).
+
+    fn event(
+        subject: &StateEventSubject,
+        change: ManagedStateChange,
+        emitter: &str,
+        policy: &str,
+    ) -> ManagedStateEvent {
+        ManagedStateEvent {
+            subject: subject.clone(),
+            change,
+            emitter: EventEmitter::new(emitter).expect("non-blank"),
+            policy_version: PolicyVersion::new(policy).expect("non-blank"),
+            corrects: None,
+        }
+    }
+
+    /// Exit test: replaying the full event log yields exactly the
+    /// derived current-state cache — the cache is reproducible, so it
+    /// can never drift into being the authority.
+    #[test]
+    fn full_replay_matches_the_derived_cache() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let connector = ConnectorId::new("confluence").expect("non-blank");
+        for change in [
+            ManagedStateChange::Governance {
+                state: GovernanceState::Proposed,
+            },
+            ManagedStateChange::Verification {
+                state: VerificationState::PartiallyVerified,
+            },
+            ManagedStateChange::Governance {
+                state: GovernanceState::Approved,
+            },
+            ManagedStateChange::Effectivity {
+                state: EffectivityState::Effective,
+            },
+            ManagedStateChange::Synchronization {
+                connector: connector.clone(),
+                state: SynchronizationState::PendingWriteback,
+                required_before_effective: false,
+            },
+            ManagedStateChange::Freshness {
+                state: FreshnessState::Stale,
+            },
+        ] {
+            store
+                .append(event(&subject, change, "cloud.governance", "policy-1"))
+                .expect("append accepted");
+        }
+
+        assert_eq!(
+            store.reconstruct_through(EventOrdinal(5)),
+            *store.current_state(),
+            "full replay must reproduce the derived cache exactly"
+        );
+    }
+
+    /// Historical current-state at time T: replay through a mid-log
+    /// ordinal renders the state exactly as it was recorded then —
+    /// later events are invisible, earlier ones stand.
+    #[test]
+    fn historical_state_at_an_event_ordinal_reconstructs_exactly() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        store
+            .append(event(
+                &subject,
+                ManagedStateChange::Governance {
+                    state: GovernanceState::Proposed,
+                },
+                "cloud.governance",
+                "policy-1",
+            ))
+            .expect("append accepted");
+        store
+            .append(event(
+                &subject,
+                ManagedStateChange::Freshness {
+                    state: FreshnessState::Stale,
+                },
+                "cloud.freshness_evaluator",
+                "policy-1",
+            ))
+            .expect("append accepted");
+        store
+            .append(event(
+                &subject,
+                ManagedStateChange::Governance {
+                    state: GovernanceState::Approved,
+                },
+                "cloud.governance",
+                "policy-2",
+            ))
+            .expect("append accepted");
+
+        let at_one = store.reconstruct_through(EventOrdinal(1));
+        let state = &at_one[&subject];
+        assert_eq!(
+            state.governance,
+            RecordedDimension::Recorded(GovernanceState::Proposed),
+            "the ordinal-2 approval must be invisible at T=1"
+        );
+        assert_eq!(
+            state.freshness,
+            RecordedDimension::Recorded(FreshnessState::Stale)
+        );
+
+        let now = store.reconstruct_through(EventOrdinal(2));
+        assert_eq!(
+            now[&subject].governance,
+            RecordedDimension::Recorded(GovernanceState::Approved)
+        );
+    }
+
+    /// Gap markers: a dimension with no recorded event — for example
+    /// every record predating the introduction of an emitter for that
+    /// dimension — renders an explicit gap, never an inferred or
+    /// backfilled transition and never a default state.
+    #[test]
+    fn unrecorded_dimensions_render_explicit_gap_markers() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        store
+            .append(event(
+                &subject,
+                ManagedStateChange::Freshness {
+                    state: FreshnessState::Current,
+                },
+                "cloud.freshness_evaluator",
+                "policy-1",
+            ))
+            .expect("append accepted");
+
+        let state = &store.current_state()[&subject];
+        assert_eq!(state.governance, RecordedDimension::Gap);
+        assert_eq!(state.verification, RecordedDimension::Gap);
+        assert_eq!(state.effectivity, RecordedDimension::Gap);
+        assert_eq!(state.integrity, RecordedDimension::Gap);
+        assert!(state.synchronization.is_empty());
+        assert_eq!(
+            state.freshness,
+            RecordedDimension::Recorded(FreshnessState::Current)
+        );
+
+        // The gap marker is explicit on the wire too — a consumer can
+        // never mistake "no event recorded" for a state value.
+        assert_eq!(
+            serde_json::to_value(state.governance).expect("serializes"),
+            json!("gap")
+        );
+        assert_eq!(
+            serde_json::to_value(state.freshness).expect("serializes"),
+            json!({ "recorded": "current" })
+        );
+    }
+
+    /// A correction applies at its own position in the recorded order —
+    /// reconstruction at a T before the correction still shows the
+    /// corrected record's state, because history is never rewritten and
+    /// transitions are never backfilled (RT-04).
+    #[test]
+    fn a_correction_applies_at_its_own_ordinal_never_retroactively() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        store
+            .append(event(
+                &subject,
+                ManagedStateChange::Freshness {
+                    state: FreshnessState::Stale,
+                },
+                "cloud.freshness_evaluator",
+                "policy-1",
+            ))
+            .expect("append accepted");
+        let mut correction = event(
+            &subject,
+            ManagedStateChange::Freshness {
+                state: FreshnessState::Current,
+            },
+            "cloud.freshness_evaluator",
+            "policy-1",
+        );
+        correction.corrects = Some(EventOrdinal(0));
+        store.append(correction).expect("correction appends");
+
+        assert_eq!(
+            store.reconstruct_through(EventOrdinal(0))[&subject].freshness,
+            RecordedDimension::Recorded(FreshnessState::Stale),
+            "history at T=0 keeps the uncorrected record — never rewritten"
+        );
+        assert_eq!(
+            store.current_state()[&subject].freshness,
+            RecordedDimension::Recorded(FreshnessState::Current)
+        );
+    }
+
+    /// Per-connector synchronization reconstructs per connector: two
+    /// connectors' states never collapse into one, and each carries its
+    /// own `required_before_effective`.
+    #[test]
+    fn synchronization_reconstructs_per_connector() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        for (connector, state, required) in [
+            ("confluence", SynchronizationState::InSync, true),
+            ("github", SynchronizationState::SourceDiverged, false),
+        ] {
+            store
+                .append(event(
+                    &subject,
+                    ManagedStateChange::Synchronization {
+                        connector: ConnectorId::new(connector).expect("non-blank"),
+                        state,
+                        required_before_effective: required,
+                    },
+                    "cloud.sync_observer",
+                    "policy-1",
+                ))
+                .expect("append accepted");
+        }
+
+        let sync = &store.current_state()[&subject].synchronization;
+        assert_eq!(sync.len(), 2);
+        let confluence = &sync[&ConnectorId::new("confluence").expect("non-blank")];
+        assert_eq!(confluence.state, SynchronizationState::InSync);
+        assert!(confluence.required_before_effective);
+        let github = &sync[&ConnectorId::new("github").expect("non-blank")];
+        assert_eq!(github.state, SynchronizationState::SourceDiverged);
+        assert!(!github.required_before_effective);
     }
 
     /// Blank or padded connector and emitter values fail closed — an
