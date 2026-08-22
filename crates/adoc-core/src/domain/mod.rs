@@ -7,10 +7,13 @@ pub(crate) mod hashing;
 pub(crate) mod identity;
 pub(crate) mod inline;
 pub(crate) mod knowledge_object;
-// E1.2/E1.3/E1.4: the managed identity, reconciliation, and managed
-// state contracts are consumed by their domain tests and the stacked E1
-// slices; no local adapter surface exists yet (Cloud is the adapter, in
-// its own repository), so the lib build allows dead_code here.
+// E1.2/E1.3/E1.4/E1.5: the managed identity, reconciliation, managed
+// state, and lifecycle mapping contracts are consumed by their domain
+// tests and the stacked E1 slices; no local adapter surface exists yet
+// (Cloud is the adapter, in its own repository), so the lib build allows
+// dead_code here.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) mod lifecycle_mapping;
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod managed;
 #[cfg_attr(not(test), allow(dead_code))]

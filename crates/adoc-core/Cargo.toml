@@ -25,6 +25,7 @@ thiserror = "2.0.17"
 url = "2"
 
 [dev-dependencies]
+jsonschema = "0.47.0"
 serial_test = "3"
 tempfile = "3"
 

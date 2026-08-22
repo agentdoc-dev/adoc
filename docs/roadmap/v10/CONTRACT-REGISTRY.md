@@ -31,6 +31,7 @@ Producer for every row is the `adoc` release train (CLI, MCP server, and local g
 | `adoc.graph.traversal.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.graph.v6` | shipped | adoc 0.4.0 | adoc 0.4.0 (CLI/MCP/local gateway surfaces) | exact-match reader; v5 rejected with `schema.unsupported_version` + rebuild guidance; migration is deterministic regeneration from source (ADR-0058) |
 | `adoc.impacted.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
+| `adoc.lifecycle_mapping.v0` | shipped | adoc 0.4.0 | adoc 0.4.0 (domain contract-tested; schema `adoc.lifecycle_mapping.v0.schema.json`); Cloud import consumer planned (E1.5.T3) | exact-match versions: an unknown recorded mapping/projection version is rejected with `schema.unsupported_version`; a rule change requires a version bump (the serialized version-1 contract is pinned in domain tests); historical applications replay under their recorded version; mapping alone never establishes authority and approval is never mapped to verification (KNOWLEDGE-MODEL §K5) |
 | `adoc.mcp.command.v0` | shipped | adoc 0.3.4 | MCP agent clients (contract-tested at adoc 0.3.4) | v0-additive |
 | `adoc.migrate.report.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.patch.apply.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4; Action v2.0.0-alpha.19 | v0-additive |
@@ -83,7 +84,6 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.semantic_context.v0` | adoc | E3.1 | exact revisions, deterministic digests, closed citation handles, coverage diagnostics |
 | `adoc.semantic_assessment.v0` | adoc | E3.2 | provider-neutral typed findings/citations/materiality |
 | `adoc.validation_receipt.v0` | adoc | E1.7 | digest-bound AgentDoc Validation Runtime receipt |
-| `adoc.lifecycle_mapping.v0` | adoc | E1.5 | versioned flat-status ↔ managed mapping/projection with explicit loss |
 | `adoc.source_record.v0` | adoc | E4.1 | immutable source observation |
 | `adoc.source_assertion.v0` | adoc | E4.1 | source assertion bound to its Source Record |
 | `adoc.source_acl_snapshot.v0` | adoc | E2.6 | historical ACL provenance, separate from freshness-bounded authorization |

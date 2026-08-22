@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.lifecycle_mapping.v0.schema.json",
+  "title": "AgentDoc Lifecycle Mapping Contract",
+  "description": "Versioned mapping between the flat `.adoc` authored status vocabularies and the six-dimension managed state (KNOWLEDGE-MODEL K4/K5). Consumed as data by the Cloud import path — never re-implemented. Mapping alone never establishes authority: applying a mapped target as state events requires a typed attestation (migration, source-control, or Cloud Governance Event); without one the target is advisory and governance stays proposed. Approval is never mapped to verification: mapping targets carry no verification member and every application lands verification unverified. Versions resolve exact-match; an unknown recorded version is rejected with `schema.unsupported_version`.",
+  "type": "object",
+  "required": ["schema_version", "mapping_version", "import_mapping", "loss_declaration"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.lifecycle_mapping.v0" },
+    "mapping_version": {
+      "description": "The rule-set version this document carries. Recorded per application; historical replays resolve the contract for exactly the recorded version. Any rule change ships as a new version.",
+      "type": "string",
+      "minLength": 1
+    },
+    "import_mapping": {
+      "description": "One entry per released Knowledge Object kind.",
+      "type": "object",
+      "minProperties": 15,
+      "additionalProperties": { "$ref": "#/$defs/kindImportMapping" }
+    },
+    "loss_declaration": {
+      "description": "Machine-readable per-dimension declaration of what the flat side cannot carry — one entry per K4 dimension, in K4 order.",
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": { "$ref": "#/$defs/dimensionLossDeclaration" }
+    }
+  },
+  "$defs": {
+    "mappedManagedState": {
+      "description": "The multi-dimension target of one flat word. Deliberately has no verification member: no flat word can name a managed verification state.",
+      "type": "object",
+      "required": ["governance", "effectivity"],
+      "additionalProperties": false,
+      "properties": {
+        "governance": { "enum": ["proposed", "approved", "rejected", "revoked"] },
+        "effectivity": { "enum": ["pending", "scheduled", "effective", "suspended", "expired"] }
+      }
+    },
+    "kindImportMapping": {
+      "type": "object",
+      "required": ["statuses", "absent"],
+      "additionalProperties": false,
+      "properties": {
+        "statuses": {
+          "description": "Exact authored-word rules over the kind's released flat vocabulary.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/mappedManagedState" }
+        },
+        "unlisted_status": {
+          "description": "Open-vocabulary fallback (claim). Absent for closed vocabularies: an unlisted word fails closed with `schema.invalid_status`.",
+          "$ref": "#/$defs/mappedManagedState"
+        },
+        "absent": {
+          "description": "The target when the kind authors no status.",
+          "$ref": "#/$defs/mappedManagedState"
+        }
+      }
+    },
+    "dimensionLossDeclaration": {
+      "type": "object",
+      "required": ["dimension", "carriage", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "dimension": {
+          "enum": ["governance", "verification", "effectivity", "freshness", "integrity", "synchronization"]
+        },
+        "carriage": {
+          "description": "none: no flat representation at all. partial: some distinctions carried, not all.",
+          "enum": ["none", "partial"]
+        },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
