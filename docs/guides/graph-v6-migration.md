@@ -34,7 +34,9 @@ with rebuild guidance in the diagnostic.
   member (connector, source, revision, path, anchor, source-revision digest) —
   provenance and patch safety, never hashed. `adoc patch --apply` refuses with
   `patch.source_binding_stale` when the source file changed since the build,
-  including position-only edits; rebuild and retry.
+  including position-only edits; rebuild and retry. A successful apply is
+  itself such a change: it staleness-es every other binding on that page, so
+  plan **one apply per page per build** and rebuild between applies.
 - **Closed per-kind schemas.** Unknown metadata keys are rejected with
   `schema.unknown_field` naming the key and the kind's allowed set.
 - **Visibility carriage.** Authored `visibility` (`public | internal |

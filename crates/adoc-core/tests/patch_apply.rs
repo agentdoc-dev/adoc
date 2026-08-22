@@ -599,6 +599,81 @@ fn create_apply_refuses_stale_anchor_source_binding_after_position_only_edit() {
     );
 }
 
+/// ADR-0058 §4 (deliberate coarseness pin): the binding digest is
+/// whole-page, so a successful `--apply` staleness-es every other binding on
+/// that page — a second apply against the same build must refuse with
+/// `patch.source_binding_stale` even though it targets a different object.
+/// One apply per page per build; rebuild between applies.
+#[test]
+fn second_apply_to_same_page_refuses_until_rebuild() {
+    const TWO_OBJECT_PAGE: &str = "\
+# Billing
+
+::claim billing.credits
+owner: team-billing
+status: draft
+--
+Original body line.
+::
+
+::claim billing.ledger
+status: draft
+--
+Ledger body line.
+::
+";
+    let workspace = Workspace::new(TWO_OBJECT_PAGE);
+    let artifact = workspace.build();
+    let credits_hash = workspace.content_hash(&artifact, "billing.credits");
+    let ledger_hash = workspace.content_hash(&artifact, "billing.ledger");
+
+    let first = workspace.apply(
+        &artifact,
+        replace_body_patch(&credits_hash, "Rewritten body."),
+    );
+    assert!(first.applied, "diagnostics: {:?}", first.diagnostics);
+
+    let second = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "replace_body",
+            "target": "billing.ledger",
+            "base_hash": ledger_hash,
+            "changes": { "body": "Rewritten ledger body." },
+            "reason": "E1.1 sequential-apply coarseness pin"
+        }),
+    );
+
+    assert!(!second.applied);
+    assert!(second.written_files.is_empty());
+    assert!(
+        second
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagnosticCode::PatchSourceBindingStale),
+        "diagnostics: {:?}",
+        second.diagnostics
+    );
+
+    // A rebuild refreshes every binding on the page; the same patch then
+    // applies once its base_hash is re-derived from the new artifact.
+    let rebuilt = workspace.build();
+    let ledger_hash = workspace.content_hash(&rebuilt, "billing.ledger");
+    let retried = workspace.apply(
+        &rebuilt,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "replace_body",
+            "target": "billing.ledger",
+            "base_hash": ledger_hash,
+            "changes": { "body": "Rewritten ledger body." },
+            "reason": "E1.1 sequential-apply coarseness pin"
+        }),
+    );
+    assert!(retried.applied, "diagnostics: {:?}", retried.diagnostics);
+}
+
 #[test]
 fn recompiling_unchanged_source_reproduces_artifact_content_hashes() {
     // Drift-gate soundness: apply's in-memory recompile must reproduce the
