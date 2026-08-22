@@ -119,8 +119,8 @@ fn content_hash_matches_published_grammar(value: &str) -> bool {
 /// `repository_identity` (`{kind, config_path}` or explicit `null` —
 /// required since v5, ADR-0049). The record is the binding slot (V10.3.2):
 /// it can exist before the first artifact arrives, and its Object IDs stay
-/// repository-local — the same ID in another repository is a different
-/// Managed Object.
+/// repository-local — the same ID in a distinctly keyed repository is a
+/// different Managed Object.
 ///
 /// The graph identity names the producing invocation family, not a
 /// workspace-unique repository: every project-bound build emits the
@@ -288,11 +288,13 @@ impl ManagedWorkspace {
     /// Fail closed on crafted input (`GraphArtifactDocument` derives
     /// `Deserialize`, so callers cannot assume compiler-built documents): a
     /// blank, grammar-violating, or repeated Object ID — or a
-    /// `content_hash` outside the shared grammar — anywhere in the
-    /// artifact rejects the whole import before any state changes. The
-    /// graph loader enforces the same invariants (`id.invalid`,
-    /// `DiagnosticCode::IdDuplicateInArtifact`, `io.artifact_malformed`);
-    /// a document handed to import directly must not bypass them — a
+    /// `content_hash` outside the published v6 wire grammar — anywhere in
+    /// the artifact rejects the whole import before any state changes.
+    /// The graph loader enforces the same ID invariants (`id.invalid`,
+    /// `DiagnosticCode::IdDuplicateInArtifact`); for `content_hash` it is
+    /// deliberately more lenient (see
+    /// `content_hash_matches_published_grammar`). A document handed to
+    /// import directly must not bypass this boundary — a
     /// grammar-evading ID would also evade the exact-ID collision
     /// detector, a repeated ID would silently unify into one record (the
     /// intra-artifact shape of the merge RT-03/D36 forbids), and a
