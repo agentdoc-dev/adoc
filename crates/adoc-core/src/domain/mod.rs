@@ -6,6 +6,11 @@ pub(crate) mod graph;
 pub(crate) mod identity;
 pub(crate) mod inline;
 pub(crate) mod knowledge_object;
+// E1.2: the managed identity contract is consumed by its domain tests and
+// the stacked E1 slices; no local adapter surface exists yet (Cloud is the
+// adapter, in its own repository), so the lib build allows dead_code here.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) mod managed;
 pub(crate) mod obligation;
 pub(crate) mod patch;
 pub(crate) mod ports;

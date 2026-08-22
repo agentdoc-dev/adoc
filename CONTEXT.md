@@ -170,6 +170,22 @@ _Avoid_: UUID-only ID, heading slug, arbitrary string
 A Knowledge Object under managed Cloud governance, carrying workspace-qualified canonical identity distinct from its human-readable **Object ID**, its immutable managed version ID, and its Source Binding (ADR-0057 invariant 1; EXECUTION-MAP E1.2). Matching IDs, titles, hashes, or semantic similarity across sources never auto-merge Managed Objects — collisions produce reconciliation candidates only.
 _Avoid_: global object namespace, auto-merged identity, cross-workspace object
 
+**Workspace Canonical Identity**:
+The workspace-qualified canonical identity of a **Managed Object** (K6 layer 1; `WorkspaceCanonicalIdentity` in `adoc-core`): a Cloud workspace id plus an opaque canonical id, stored separately from the human-readable **Object ID**. Equality includes the workspace, so identity is never linkable across workspaces by an unqualified Object ID.
+_Avoid_: Object ID as canonical key, cross-workspace identity linkage, content-derived canonical id
+
+**Managed Version ID**:
+The unique immutable identifier every managed candidate/active version receives (K6 layer 3; `ManagedVersionId` in `adoc-core`). A semantic content change mints a new one; a state-only transition or an unchanged re-observation never does (RT-04). Opaque and never reused.
+_Avoid_: content hash as version id, mutable version record, version id reuse
+
+**Source Assertion Identity**:
+The identity of one immutable Source Assertion extracted from a Source Artifact (K6 layer 4, K7; `SourceAssertionIdentity` in `adoc-core`). Only the identity layer exists today — the Source Record/Assertion store lands in E4.1. Carried per managed version so reconciliation preserves original provenance.
+_Avoid_: Source Binding synonym, assertion as Knowledge Object, mutable assertion
+
+**Reconciliation Candidate**:
+The typed record (`adoc.reconciliation_candidate.v0`, registered planned) emitted when an imported **Object ID** collides with a **Managed Object** in another repository of the same workspace. Both objects stay distinct; the candidate names both parties by **Workspace Canonical Identity**, repository identity, latest **Managed Version ID**, and content hash. Deciding a candidate (keep distinct, link, supersede, merge) is a governed E1.3 action; matching hashes, titles, or similarity never produce one.
+_Avoid_: auto-merge, duplicate detector, similarity-based unification
+
 **Diagnostic Code**:
 A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`. Lives in code as the `DiagnosticCode` enum in `adoc-core`; emission sites accept the typed value rather than a free-form string.
 _Avoid_: numeric-only code, unstable message matching

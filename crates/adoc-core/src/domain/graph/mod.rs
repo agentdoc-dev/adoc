@@ -77,7 +77,7 @@ pub(crate) struct GraphArtifactDocument {
     pub(crate) diagnostics: Vec<Diagnostic>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub(crate) struct GraphRepositoryIdentity(pub(crate) Option<RepositoryIdentity>);
 
@@ -97,7 +97,7 @@ impl Default for GraphRepositoryIdentity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum RepositoryIdentity {
     LocalProject { config_path: String },
