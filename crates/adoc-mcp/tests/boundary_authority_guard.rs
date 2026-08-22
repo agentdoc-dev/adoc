@@ -420,17 +420,35 @@ const PRECEDENCE_PIPELINE: &[&str] = &[
     "→ allow | deny | insufficient_context",
 ];
 
-/// Asserts every pipeline line appears — and in pipeline order. Plain
-/// `contains` per line would accept a reordered pipeline, and the order is
-/// D38's substance.
-fn assert_pipeline_in_order(doc_name: &str, content: &str) {
-    let mut tail = content;
-    for line in PRECEDENCE_PIPELINE {
-        let found = tail.find(line).unwrap_or_else(|| {
-            panic!("{doc_name}: precedence pipeline line missing or out of order: {line}")
-        });
-        tail = &tail[found + line.len()..];
-    }
+/// Asserts the pipeline appears as one contiguous block — trimmed lines,
+/// verbatim, in order. A per-line cursor walk would still accept a stage
+/// spliced between two canonical stages, or stages scattered in order
+/// across unrelated sections; contiguity is what "verbatim" promises, and
+/// the order is D38's substance.
+fn assert_pipeline_block(doc_name: &str, content: &str) {
+    let lines: Vec<&str> = content.lines().map(str::trim).collect();
+    assert!(
+        lines
+            .windows(PRECEDENCE_PIPELINE.len())
+            .any(|window| window == PRECEDENCE_PIPELINE),
+        "{doc_name}: the precedence pipeline no longer appears as a verbatim \
+         contiguous block (stage reordered, inserted, or missing)"
+    );
+}
+
+/// The `### 5.1` section only, so the pin's label stays true: stages
+/// surviving elsewhere in the PRD while §5.1 is gutted must not satisfy it.
+fn prd_section_5_1() -> String {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let prd_path = repo_root.join("docs/product/PRD-v1.1-amendment.md");
+    let prd = fs::read_to_string(&prd_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", prd_path.display()));
+    let start = prd
+        .find("### 5.1 Authorization precedence")
+        .unwrap_or_else(|| panic!("PRD v1.1 lost the `### 5.1 Authorization precedence` heading"));
+    let section = &prd[start..];
+    let end = section.find("\n## ").unwrap_or(section.len());
+    section[..end].to_string()
 }
 
 #[test]
@@ -439,13 +457,12 @@ fn adr_0057_pins_the_precedence_pipeline_verbatim() {
     // deny-by-default, the equal-or-more-specific deny tie-break, and
     // fail-closed consequential uncertainty (RT-05/D38 — never a
     // permissive default).
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let prd_path = repo_root.join("docs/product/PRD-v1.1-amendment.md");
-    let prd = fs::read_to_string(&prd_path)
-        .unwrap_or_else(|error| panic!("failed to read {}: {error}", prd_path.display()));
-    assert_pipeline_in_order("docs/product/PRD-v1.1-amendment.md §5.1", &prd);
+    assert_pipeline_block(
+        "docs/product/PRD-v1.1-amendment.md §5.1",
+        &prd_section_5_1(),
+    );
     let adr = adr_0057();
-    assert_pipeline_in_order("ADR-0057", &adr);
+    assert_pipeline_block("ADR-0057", &adr);
     for sentence in [
         "deny-by-default",
         "Hard deny wins.",
@@ -459,7 +476,8 @@ fn adr_0057_pins_the_precedence_pipeline_verbatim() {
 }
 
 #[test]
-fn pipeline_order_pin_rejects_a_reordered_pipeline() {
+#[should_panic(expected = "verbatim contiguous block")]
+fn pipeline_pin_rejects_a_reordered_pipeline() {
     // The audit fixture: swapping two stages must fail even though every
     // stage is still present as a substring.
     let reordered = "\
@@ -470,11 +488,7 @@ identity/session/grant freshness\n\
 → object/field/proposition visibility\n\
 → action-specific policy\n\
 → allow | deny | insufficient_context\n";
-    let result = std::panic::catch_unwind(|| assert_pipeline_in_order("fixture.md", reordered));
-    assert!(
-        result.is_err(),
-        "reordered pipeline must fail the order pin"
-    );
+    assert_pipeline_block("fixture.md", reordered);
 }
 
 #[test]
@@ -556,6 +570,25 @@ Authorization is deterministic and deny-by-default.\n";
         permissive_default_violations("fixture.md", clean),
         Vec::<String>::new()
     );
+}
+
+#[test]
+#[should_panic(expected = "verbatim contiguous block")]
+fn pipeline_pin_rejects_an_inserted_stage() {
+    // The review fixture: a stage spliced between two canonical stages
+    // must fail even though the canonical stages still appear in order
+    // (the per-line cursor walk this block matcher replaced stayed green
+    // here).
+    let inserted = "\
+identity/session/grant freshness\n\
+→ hard/system denies\n\
+→ model-suggested overrides\n\
+→ current source-ACL ceiling\n\
+→ scoped AgentDoc grants/denies\n\
+→ object/field/proposition visibility\n\
+→ action-specific policy\n\
+→ allow | deny | insufficient_context\n";
+    assert_pipeline_block("fixture.md", inserted);
 }
 
 #[test]
