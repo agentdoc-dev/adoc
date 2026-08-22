@@ -22,6 +22,7 @@
 
 use serde::Serialize;
 
+use super::diagnostic::DiagnosticCode;
 use super::managed::{ManagedVersionId, WorkspaceCanonicalIdentity};
 use super::reconciliation::PolicyVersion;
 
@@ -300,6 +301,10 @@ pub(crate) struct ManagedStateEvent {
     pub(crate) change: ManagedStateChange,
     pub(crate) emitter: EventEmitter,
     pub(crate) policy_version: PolicyVersion,
+    /// A correction is a NEW record referencing the corrected one
+    /// (V10.4.2): the referenced record stays byte-identical in the log
+    /// forever. `None` for ordinary events.
+    pub(crate) corrects: Option<EventOrdinal>,
 }
 
 /// The position of one recorded event in the append-only log — the only
@@ -316,19 +321,79 @@ pub(crate) struct RecordedStateEvent {
     pub(crate) event: ManagedStateEvent,
 }
 
+/// The retention floor (V10.4.1/K9), in recorded-event-order terms: the
+/// count of most-recent records every sweep must leave fully retained.
+/// Records inside that span cannot be deleted by any API — and in E1.4
+/// no delete path exists at all: sweeps only plan (execution is
+/// V10.7.3/E6.6), so the floor is enforced at the earliest possible
+/// surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RetentionFloor(pub(crate) u64);
+
+/// A validated — never executed — retention sweep: the ordinals below
+/// the floor-protected span. Deletion workflows above the floor arrive
+/// in E6.6 (V10.7.3) and will consume this plan; nothing in E1.4
+/// removes a record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RetentionSweepPlan {
+    pub(crate) sweepable: Vec<EventOrdinal>,
+}
+
+/// Why the append-only store rejected a write-shaped request. Every
+/// externally observable variant maps to a registered wire code via
+/// [`StateEventStoreError::diagnostic_code`] — fail closed, never a
+/// silent fallback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum StateEventStoreError {
+    #[error(
+        "ordinal {claimed:?} conflicts with the recorded log; records are append-only and only the next ordinal appends"
+    )]
+    RecordConflict { claimed: EventOrdinal },
+    #[error("correction references ordinal {corrects:?}, which the log does not carry")]
+    CorrectionTargetMissing { corrects: EventOrdinal },
+    #[error(
+        "sweep below {delete_below:?} reaches into the span protected by the retention floor (from {protected_from:?})"
+    )]
+    RetentionFloorViolation {
+        delete_below: EventOrdinal,
+        protected_from: EventOrdinal,
+    },
+}
+
+impl StateEventStoreError {
+    /// The registered wire code for this rejection. Both conflict shapes
+    /// — an occupied/future-ordinal write and a correction naming an
+    /// unrecorded target — are appends contradicting recorded history,
+    /// the `governance.record_conflict` family (V10.4.2).
+    pub(crate) fn diagnostic_code(&self) -> DiagnosticCode {
+        match self {
+            Self::RecordConflict { .. } | Self::CorrectionTargetMissing { .. } => {
+                DiagnosticCode::GovernanceRecordConflict
+            }
+            Self::RetentionFloorViolation { .. } => DiagnosticCode::StoreRetentionFloorViolation,
+        }
+    }
+}
+
 /// The append-only managed state event log. Appending is the ONLY
 /// mutation this type exposes — there is no update or delete method at
 /// all, so append-only holds at the store layer rather than by handler
-/// discipline (E1.4.T2 hardens this with conflict and retention-floor
-/// rejection codes).
+/// discipline. Write-shaped requests that contradict the recorded log
+/// fail closed: an in-place update attempt is
+/// `governance.record_conflict`, a sweep into the floor-protected span
+/// is `store.retention_floor_violation` (E1.4.T2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedStateEventStore {
     events: Vec<RecordedStateEvent>,
+    retention_floor: RetentionFloor,
 }
 
 impl ManagedStateEventStore {
-    pub(crate) fn new() -> Self {
-        Self { events: Vec::new() }
+    pub(crate) fn new(retention_floor: RetentionFloor) -> Self {
+        Self {
+            events: Vec::new(),
+            retention_floor,
+        }
     }
 
     /// Append one state event, assigning the next ordinal. Never touches
@@ -336,10 +401,59 @@ impl ManagedStateEventStore {
     /// version ID and `content_hash` unchanged and creates no content
     /// version (RT-04) — this store has no reference to the workspace's
     /// version records at all, so the invariant holds by construction.
-    pub(crate) fn append(&mut self, event: ManagedStateEvent) -> EventOrdinal {
+    /// A correction must reference a recorded ordinal; a dangling one
+    /// fails closed and appends nothing.
+    pub(crate) fn append(
+        &mut self,
+        event: ManagedStateEvent,
+    ) -> Result<EventOrdinal, StateEventStoreError> {
         let ordinal = EventOrdinal(self.events.len() as u64);
+        if let Some(corrects) = event.corrects
+            && corrects >= ordinal
+        {
+            return Err(StateEventStoreError::CorrectionTargetMissing { corrects });
+        }
         self.events.push(RecordedStateEvent { ordinal, event });
-        ordinal
+        Ok(ordinal)
+    }
+
+    /// Append claiming an exact ordinal — the optimistic-concurrency
+    /// entry point for replicating writers. A claimed ordinal the log
+    /// already carries is an in-place update attempt; one past the end
+    /// would leave a hole fabricating history. Both are the same
+    /// conflict, and nothing changes on rejection.
+    pub(crate) fn append_at(
+        &mut self,
+        claimed: EventOrdinal,
+        event: ManagedStateEvent,
+    ) -> Result<EventOrdinal, StateEventStoreError> {
+        if claimed != EventOrdinal(self.events.len() as u64) {
+            return Err(StateEventStoreError::RecordConflict { claimed });
+        }
+        self.append(event)
+    }
+
+    /// Validate a retention sweep request: delete every record with
+    /// ordinal strictly below `delete_below`. The floor-protected span —
+    /// the most recent [`RetentionFloor`] records, the whole log when it
+    /// is shorter — is never sweepable; a request reaching into it fails
+    /// closed. Planning never deletes: no delete path exists in E1.4 at
+    /// all (execution with sealed export is V10.7.3/E6.6).
+    pub(crate) fn plan_retention_sweep(
+        &self,
+        delete_below: EventOrdinal,
+    ) -> Result<RetentionSweepPlan, StateEventStoreError> {
+        let protected_from =
+            EventOrdinal((self.events.len() as u64).saturating_sub(self.retention_floor.0));
+        if delete_below > protected_from {
+            return Err(StateEventStoreError::RetentionFloorViolation {
+                delete_below,
+                protected_from,
+            });
+        }
+        Ok(RetentionSweepPlan {
+            sweepable: (0..delete_below.0).map(EventOrdinal).collect(),
+        })
     }
 
     /// The recorded events, in append order — the replay input.
@@ -420,6 +534,7 @@ mod tests {
             change: ManagedStateChange::Freshness { state },
             emitter: EventEmitter::new("cloud.freshness_evaluator").expect("non-blank"),
             policy_version: PolicyVersion::new("freshness-policy-1").expect("non-blank"),
+            corrects: None,
         }
     }
 
@@ -444,9 +559,13 @@ mod tests {
         };
         let before = workspace.clone();
 
-        let mut store = ManagedStateEventStore::new();
-        store.append(freshness_event(subject.clone(), FreshnessState::Current));
-        store.append(freshness_event(subject.clone(), FreshnessState::Stale));
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        store
+            .append(freshness_event(subject.clone(), FreshnessState::Current))
+            .expect("append accepted");
+        store
+            .append(freshness_event(subject.clone(), FreshnessState::Stale))
+            .expect("append accepted");
 
         assert_eq!(
             workspace, before,
@@ -475,14 +594,16 @@ mod tests {
             )]))
             .expect("import accepted");
         let imported = &outcome.imported[0];
-        let mut store = ManagedStateEventStore::new();
-        store.append(freshness_event(
-            StateEventSubject {
-                canonical: imported.canonical.clone(),
-                version_id: imported.version_id.clone(),
-            },
-            FreshnessState::Stale,
-        ));
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        store
+            .append(freshness_event(
+                StateEventSubject {
+                    canonical: imported.canonical.clone(),
+                    version_id: imported.version_id.clone(),
+                },
+                FreshnessState::Stale,
+            ))
+            .expect("append accepted");
 
         let value = serde_json::to_value(&store.events()[0]).expect("record serializes");
         assert_eq!(
@@ -499,7 +620,8 @@ mod tests {
                     },
                     "change": { "family": "freshness", "state": "stale" },
                     "emitter": "cloud.freshness_evaluator",
-                    "policy_version": "freshness-policy-1"
+                    "policy_version": "freshness-policy-1",
+                    "corrects": null
                 }
             }),
             "recorded state event shape drifted"
@@ -631,6 +753,185 @@ mod tests {
         for state in SynchronizationState::ALL {
             assert_eq!(wire(&state), state.as_str());
         }
+    }
+
+    // E1.4.T2 (MILESTONES §E1.4; V10.4.2 provenance): append-only is
+    // enforced at the store layer, not by handler discipline. The store
+    // type exposes no update or delete method at all; the adversarial
+    // paths below are the only write-shaped requests besides append, and
+    // both fail closed with registered wire codes.
+
+    fn subject_for(workspace: &mut ManagedWorkspace) -> StateEventSubject {
+        let outcome = workspace
+            .import_artifact(&artifact(vec![knowledge_object(
+                "billing.credits",
+                "sha256:aaa",
+            )]))
+            .expect("import accepted");
+        let imported = &outcome.imported[0];
+        StateEventSubject {
+            canonical: imported.canonical.clone(),
+            version_id: imported.version_id.clone(),
+        }
+    }
+
+    /// Acceptance (MILESTONES §E1.4): an in-place update attempt — a
+    /// write claiming an ordinal the log already carries — yields
+    /// `governance.record_conflict` and changes nothing. A claimed
+    /// ordinal past the end (a hole that would fabricate history) is the
+    /// same conflict.
+    #[test]
+    fn write_at_an_occupied_or_future_ordinal_is_a_record_conflict() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        store
+            .append(freshness_event(subject.clone(), FreshnessState::Current))
+            .expect("append accepted");
+        let before = store.clone();
+
+        for claimed in [EventOrdinal(0), EventOrdinal(2)] {
+            let outcome = store.append_at(
+                claimed,
+                freshness_event(subject.clone(), FreshnessState::Stale),
+            );
+            let error = outcome.expect_err("occupied or future ordinal must be rejected");
+            assert_eq!(error, StateEventStoreError::RecordConflict { claimed });
+            assert_eq!(
+                error.diagnostic_code().as_str(),
+                "governance.record_conflict"
+            );
+        }
+        assert_eq!(store, before, "a rejected write must change nothing");
+
+        store
+            .append_at(
+                EventOrdinal(1),
+                freshness_event(subject, FreshnessState::Stale),
+            )
+            .expect("the exact next ordinal appends");
+        assert_eq!(store.events().len(), 2);
+    }
+
+    /// Corrections are new records referencing the corrected one — the
+    /// corrected record itself stays byte-identical in the log.
+    #[test]
+    fn a_correction_appends_a_new_record_and_rewrites_nothing() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        store
+            .append(freshness_event(subject.clone(), FreshnessState::Stale))
+            .expect("append accepted");
+        let original = store.events()[0].clone();
+
+        let mut correction = freshness_event(subject, FreshnessState::Current);
+        correction.corrects = Some(EventOrdinal(0));
+        store.append(correction).expect("correction appends");
+
+        assert_eq!(store.events().len(), 2);
+        assert_eq!(
+            store.events()[0],
+            original,
+            "the corrected record is never rewritten"
+        );
+        assert_eq!(store.events()[1].event.corrects, Some(EventOrdinal(0)));
+    }
+
+    /// A correction referencing a record the log does not carry
+    /// contradicts recorded history and fails closed under the same
+    /// registered conflict code.
+    #[test]
+    fn a_correction_referencing_an_unrecorded_ordinal_is_rejected() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let mut correction = freshness_event(subject, FreshnessState::Current);
+        correction.corrects = Some(EventOrdinal(3));
+
+        let error = store
+            .append(correction)
+            .expect_err("a dangling correction must be rejected");
+        assert_eq!(
+            error,
+            StateEventStoreError::CorrectionTargetMissing {
+                corrects: EventOrdinal(3)
+            }
+        );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "governance.record_conflict"
+        );
+        assert!(store.events().is_empty(), "nothing may be appended");
+    }
+
+    /// Adversarial acceptance (MILESTONES §E1.4): a retention sweep
+    /// reaching one record into the floor-protected span — the
+    /// "floor-minus-one-day" case in recorded-event-order terms — is
+    /// rejected with `store.retention_floor_violation`. Sweeping is
+    /// plan-only in E1.4 either way: deletion workflows above the floor
+    /// are V10.7.3/E6.6, so no delete path exists at all yet.
+    #[test]
+    fn a_retention_sweep_into_the_protected_span_is_rejected() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut store = ManagedStateEventStore::new(RetentionFloor(3));
+        for _ in 0..5 {
+            store
+                .append(freshness_event(subject.clone(), FreshnessState::Stale))
+                .expect("append accepted");
+        }
+        let before = store.clone();
+
+        // Five records, floor 3: ordinals 2..=4 are protected. Asking to
+        // delete everything below ordinal 3 reaches one record inside.
+        let error = store
+            .plan_retention_sweep(EventOrdinal(3))
+            .expect_err("a sweep into the protected span must be rejected");
+        assert_eq!(
+            error,
+            StateEventStoreError::RetentionFloorViolation {
+                delete_below: EventOrdinal(3),
+                protected_from: EventOrdinal(2),
+            }
+        );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "store.retention_floor_violation"
+        );
+
+        let plan = store
+            .plan_retention_sweep(EventOrdinal(2))
+            .expect("a sweep below the protected span plans");
+        assert_eq!(plan.sweepable, vec![EventOrdinal(0), EventOrdinal(1)]);
+        assert_eq!(
+            store, before,
+            "planning deletes nothing — execution is a later slice (E6.6)"
+        );
+    }
+
+    /// With fewer records than the floor requires retained, every sweep
+    /// request is a violation — the floor never underflows into
+    /// permitting deletion of a short log.
+    #[test]
+    fn a_short_log_is_entirely_floor_protected() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut store = ManagedStateEventStore::new(RetentionFloor(3));
+        store
+            .append(freshness_event(subject, FreshnessState::Stale))
+            .expect("append accepted");
+
+        let error = store
+            .plan_retention_sweep(EventOrdinal(1))
+            .expect_err("the whole short log is protected");
+        assert_eq!(
+            error,
+            StateEventStoreError::RetentionFloorViolation {
+                delete_below: EventOrdinal(1),
+                protected_from: EventOrdinal(0),
+            }
+        );
     }
 
     /// Blank or padded connector and emitter values fail closed — an

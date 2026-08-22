@@ -206,6 +206,10 @@ _Avoid_: state row update, mutable status field, timestamped domain record, infe
 One of the six separate managed state axes of KNOWLEDGE-MODEL §K4 — governance, verification, effectivity, freshness, integrity, per-connector synchronization — each a closed vocabulary modeled as its own enum in `adoc-core` (D07/D15). Dimensions are never conflated: approval is not verification, and no collapsed status field exists.
 _Avoid_: collapsed status field, approval implies verified, cross-dimension enum
 
+**Retention Floor**:
+The policy minimum span of most-recent managed state records that no API may delete (V10.4.1, K9; `RetentionFloor` in `adoc-core`, expressed in recorded-event-order terms — no wall-clock exists in domain records). Append-only is enforced at the store layer: an in-place update attempt is `governance.record_conflict`, a sweep reaching into the protected span is `store.retention_floor_violation`, and corrections are new records referencing the corrected one. Deletion workflows above the floor arrive in E6.6.
+_Avoid_: handler-enforced append-only, record rewrite, silent sweep
+
 **Diagnostic Code**:
 A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`. Lives in code as the `DiagnosticCode` enum in `adoc-core`; emission sites accept the typed value rather than a free-form string.
 _Avoid_: numeric-only code, unstable message matching
