@@ -144,6 +144,15 @@
         "page_id": { "type": "string", "minLength": 1 },
         "source_span": { "$ref": "#/$defs/sourceSpan" },
         "source_binding": { "$ref": "#/$defs/sourceBinding" },
+        "visibility": {
+          "enum": ["public", "internal", "restricted"],
+          "description": "ADR-0058 authored visibility classification; hash-included when present. Absence means public and is not serialized."
+        },
+        "field_visibility": {
+          "type": "object",
+          "additionalProperties": { "enum": ["public", "internal", "restricted"] },
+          "description": "ADR-0058 optional per-field visibility map — carriage only (enforcement is a later release); hash-included when present."
+        },
         "fields": { "type": "object", "additionalProperties": { "type": "string" } },
         "relations": { "$ref": "#/$defs/relations" },
         "impacts": { "type": "array", "items": { "type": "string" } },

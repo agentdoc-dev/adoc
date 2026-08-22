@@ -358,6 +358,8 @@ mod tests {
             page_id: "guides.page".to_string(),
             source_span: span(1),
             source_binding: None,
+            visibility: None,
+            field_visibility: None,
             fields: BTreeMap::new(),
             relations: GraphRelations::default(),
             impacts: Vec::new(),

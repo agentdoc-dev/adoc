@@ -333,6 +333,17 @@ pub(crate) struct GraphKnowledgeObjectNode {
     /// when it is absent or stale.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) source_binding: Option<GraphSourceBinding>,
+    /// ADR-0058 §3 (E1.1.T3): the authored per-object visibility
+    /// classification, one of `public | internal | restricted`. An authored
+    /// value is serialized and hash-included; absence means `public` and is
+    /// neither serialized nor hashed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) visibility: Option<String>,
+    /// ADR-0058 §3 (E1.1.T3): the optional per-field visibility map —
+    /// carriage only (enforcement is E6), hash-included like every authored
+    /// classification. Absence is neither serialized nor hashed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) field_visibility: Option<BTreeMap<String, String>>,
     pub(crate) fields: BTreeMap<String, String>,
     pub(crate) relations: GraphRelations,
     /// V3.3 opt-in source-path impact list. Repo-relative paths, sorted and
@@ -1011,6 +1022,8 @@ mod tests {
                         column: 1,
                     },
                     source_binding: None,
+                    visibility: None,
+                    field_visibility: None,
                     fields: BTreeMap::new(),
                     relations: GraphRelations::default(),
                     impacts: Vec::new(),
