@@ -5,6 +5,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use sha2::Digest;
+
 use adoc_core::{
     BuildEmbeddingMode, BuildInput, DiagnosticCode, LocalProjectContext, PatchApplyInput,
     PatchApplyResult, build_project_workspace, parse_patch_from_value,
@@ -76,7 +78,7 @@ impl Workspace {
         artifact
     }
 
-    fn content_hash(&self, artifact: &Path, id: &str) -> String {
+    fn node(&self, artifact: &Path, id: &str) -> serde_json::Value {
         let document: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(artifact).expect("read artifact"))
                 .expect("artifact parses");
@@ -85,7 +87,13 @@ impl Workspace {
             .expect("nodes array")
             .iter()
             .find(|node| node["id"] == id && node["type"] == "knowledge_object")
-            .and_then(|node| node["content_hash"].as_str())
+            .expect("target knowledge_object node")
+            .clone()
+    }
+
+    fn content_hash(&self, artifact: &Path, id: &str) -> String {
+        self.node(artifact, id)["content_hash"]
+            .as_str()
             .expect("target node with content_hash")
             .to_string()
     }
@@ -265,6 +273,105 @@ fn apply_refuses_stale_source_binding_after_position_only_source_edit() {
         moved_on,
         "refusal writes nothing"
     );
+}
+
+/// The historical `adoc.graph.v5` source span shape, in v5 field order.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct V5SourceSpan {
+    path: String,
+    line: u32,
+    column: u32,
+}
+
+/// The historical `adoc.graph.v5` relations shape, in v5 field order.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct V5Relations {
+    depends_on: Vec<String>,
+    supersedes: Vec<String>,
+    related_to: Vec<String>,
+}
+
+/// The historical `adoc.graph.v5` `KnowledgeObjectHashPayload`, restricted
+/// to the members that serialized for this fixture's claim: v5 hashed
+/// placement (`page_id`, `source_span`) and omitted empty optional members
+/// (`severity`, `trust`, `impacts`, `approved_by`, `allowed_actions`,
+/// `forbidden_actions`, `contradiction_claims`, `evidence`) via
+/// `skip_serializing_if` for v3–v5 byte-compat — omission here mirrors that.
+#[derive(serde::Serialize)]
+struct V5HashPayload {
+    id: String,
+    kind: String,
+    status: Option<String>,
+    body: String,
+    page_id: String,
+    source_span: V5SourceSpan,
+    fields: std::collections::BTreeMap<String, String>,
+    relations: V5Relations,
+}
+
+/// Recompute the object's `content_hash` exactly as `adoc.graph.v5` did,
+/// from the v6 node's own placement members (still carried on the wire,
+/// just no longer hashed).
+fn v5_content_hash(node: &serde_json::Value) -> String {
+    let field = |name: &str| node[name].as_str().expect("string member").to_string();
+    let payload = V5HashPayload {
+        id: field("id"),
+        kind: field("kind"),
+        status: Some(field("status")),
+        body: field("body"),
+        page_id: field("page_id"),
+        source_span: serde_json::from_value(node["source_span"].clone())
+            .expect("source_span parses"),
+        fields: serde_json::from_value(node["fields"].clone()).expect("fields parse"),
+        relations: serde_json::from_value(node["relations"].clone()).expect("relations parse"),
+    };
+    let canonical = serde_json::to_vec(&payload).expect("v5 payload serializes");
+    let digest = sha2::Sha256::digest(&canonical);
+    let mut hash = String::from("sha256:");
+    for byte in digest {
+        hash.push_str(&format!("{byte:02x}"));
+    }
+    hash
+}
+
+/// E1.1.T4 (ADR-0058): Agent Patch `base_hash` re-derives from the v6 node.
+/// A `base_hash` carried over from a v5 artifact — whose payload hashed
+/// placement — fails loudly with `patch.base_hash_mismatch` and writes
+/// nothing; the v6 node's own `content_hash` validates and applies.
+#[test]
+fn v5_derived_base_hash_fails_loudly_and_v6_base_hash_validates() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let node = workspace.node(&artifact, "billing.credits");
+    let v6_hash = node["content_hash"]
+        .as_str()
+        .expect("v6 content_hash")
+        .to_string();
+    let v5_hash = v5_content_hash(&node);
+    assert_ne!(
+        v5_hash, v6_hash,
+        "the v6 re-scope must change the hash of a placement-bearing v5 payload"
+    );
+
+    let refused = workspace.apply(&artifact, replace_body_patch(&v5_hash, "Rewritten body."));
+    assert!(!refused.applied);
+    assert!(refused.written_files.is_empty());
+    assert!(
+        refused
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagnosticCode::PatchBaseHashMismatch),
+        "diagnostics: {:?}",
+        refused.diagnostics
+    );
+    assert_eq!(
+        fs::read(workspace.page_path()).expect("read"),
+        PAGE_TEXT.as_bytes(),
+        "refusal writes nothing"
+    );
+
+    let applied = workspace.apply(&artifact, replace_body_patch(&v6_hash, "Rewritten body."));
+    assert!(applied.applied, "diagnostics: {:?}", applied.diagnostics);
 }
 
 #[test]
