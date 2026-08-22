@@ -77,12 +77,17 @@ impl SourceAssertionIdentity {
     }
 }
 
+// Every identity layer rejects blank input the same way; the shared
+// `Blank` prefix is the vocabulary, not noise.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ManagedIdentityError {
     #[error("workspace id must not be blank")]
     BlankWorkspaceId,
     #[error("source assertion identity must not be blank")]
     BlankSourceAssertionIdentity,
+    #[error("object id must not be blank")]
+    BlankObjectId,
 }
 
 /// One managed repository inside a workspace, keyed on the graph
@@ -105,8 +110,8 @@ pub(crate) struct ManagedRepositoryRecord {
 pub(crate) struct ManagedObjectRecord {
     pub(crate) canonical: WorkspaceCanonicalIdentity,
     /// The human-readable Object ID — persists across revisions
-    /// (invariant: non-empty by construction, only created from graph node
-    /// ids observed on import).
+    /// (invariant: non-empty — [`ManagedWorkspace::import_artifact`]
+    /// rejects blank graph node ids before recording anything).
     pub(crate) object_id: String,
     /// Append-only: every import that changes governed meaning appends an
     /// immutable version; nothing is ever rewritten (RT-04).
@@ -230,11 +235,21 @@ impl ManagedWorkspace {
     /// Import every Knowledge Object of a Graph Artifact into the
     /// artifact's repository record. Retains every object; a same-ID
     /// collision with another repository emits a [`ReconciliationCandidate`]
-    /// and never merges, links, or re-homes anything.
+    /// and never merges, links, or re-homes anything. A blank Object ID
+    /// anywhere in the artifact rejects the whole import before any state
+    /// changes (fail closed — a keyed `""` object would be unaddressable).
     pub(crate) fn import_artifact(
         &mut self,
         artifact: &GraphArtifactDocument,
-    ) -> ManagedImportOutcome {
+    ) -> Result<ManagedImportOutcome, ManagedIdentityError> {
+        if artifact
+            .nodes
+            .iter()
+            .filter_map(GraphNode::as_knowledge_object)
+            .any(|node| node.id.trim().is_empty())
+        {
+            return Err(ManagedIdentityError::BlankObjectId);
+        }
         // Arrival binds the slot even when the artifact carries no
         // Knowledge Objects (E1.2.T4).
         self.reserve_repository(artifact.repository_identity.clone());
@@ -312,10 +327,10 @@ impl ManagedWorkspace {
                 version_id,
             });
         }
-        ManagedImportOutcome {
+        Ok(ManagedImportOutcome {
             imported,
             reconciliation_candidates,
-        }
+        })
     }
 
     /// Same-ID parties in every other repository of this workspace. The
@@ -439,16 +454,20 @@ mod tests {
         let repo_a = local_repo("a/agentdoc.config.yaml");
         let repo_b = local_repo("b/agentdoc.config.yaml");
 
-        let first = workspace.import_artifact(&artifact(
-            repo_a.clone(),
-            vec![knowledge_object("billing.credits", "sha256:aaa")],
-        ));
+        let first = workspace
+            .import_artifact(&artifact(
+                repo_a.clone(),
+                vec![knowledge_object("billing.credits", "sha256:aaa")],
+            ))
+            .expect("import accepted");
         assert!(first.reconciliation_candidates.is_empty());
 
-        let second = workspace.import_artifact(&artifact(
-            repo_b.clone(),
-            vec![knowledge_object("billing.credits", "sha256:bbb")],
-        ));
+        let second = workspace
+            .import_artifact(&artifact(
+                repo_b.clone(),
+                vec![knowledge_object("billing.credits", "sha256:bbb")],
+            ))
+            .expect("import accepted");
 
         let object_a = &workspace
             .repository(&repo_a)
@@ -482,14 +501,18 @@ mod tests {
     #[test]
     fn reconciliation_candidate_serialized_record_shape_is_pinned() {
         let mut workspace = workspace();
-        workspace.import_artifact(&artifact(
-            local_repo("a/agentdoc.config.yaml"),
-            vec![knowledge_object("billing.credits", "sha256:aaa")],
-        ));
-        let outcome = workspace.import_artifact(&artifact(
-            GraphRepositoryIdentity::standalone(),
-            vec![knowledge_object("billing.credits", "sha256:bbb")],
-        ));
+        workspace
+            .import_artifact(&artifact(
+                local_repo("a/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.credits", "sha256:aaa")],
+            ))
+            .expect("import accepted");
+        let outcome = workspace
+            .import_artifact(&artifact(
+                GraphRepositoryIdentity::standalone(),
+                vec![knowledge_object("billing.credits", "sha256:bbb")],
+            ))
+            .expect("import accepted");
 
         let candidate = &outcome.reconciliation_candidates[0];
         let value = serde_json::to_value(candidate).expect("candidate serializes");
@@ -532,14 +555,18 @@ mod tests {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
 
-        let first = workspace.import_artifact(&artifact(
-            repo.clone(),
-            vec![knowledge_object("billing.credits", "sha256:aaa")],
-        ));
-        let second = workspace.import_artifact(&artifact(
-            repo.clone(),
-            vec![knowledge_object("billing.credits", "sha256:ccc")],
-        ));
+        let first = workspace
+            .import_artifact(&artifact(
+                repo.clone(),
+                vec![knowledge_object("billing.credits", "sha256:aaa")],
+            ))
+            .expect("import accepted");
+        let second = workspace
+            .import_artifact(&artifact(
+                repo.clone(),
+                vec![knowledge_object("billing.credits", "sha256:ccc")],
+            ))
+            .expect("import accepted");
 
         let object =
             &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
@@ -561,8 +588,12 @@ mod tests {
             vec![knowledge_object("billing.credits", "sha256:aaa")],
         );
 
-        workspace.import_artifact(&document);
-        let again = workspace.import_artifact(&document);
+        workspace
+            .import_artifact(&document)
+            .expect("import accepted");
+        let again = workspace
+            .import_artifact(&document)
+            .expect("import accepted");
 
         assert!(again.imported.is_empty());
         assert!(again.reconciliation_candidates.is_empty());
@@ -585,8 +616,12 @@ mod tests {
             vec![knowledge_object("billing.credits", "sha256:aaa")],
         );
 
-        let in_a = workspace_a.import_artifact(&document);
-        let in_b = workspace_b.import_artifact(&document);
+        let in_a = workspace_a
+            .import_artifact(&document)
+            .expect("import accepted");
+        let in_b = workspace_b
+            .import_artifact(&document)
+            .expect("import accepted");
 
         assert_eq!(in_a.imported[0].canonical.canonical_id, "mo-1");
         assert_eq!(in_b.imported[0].canonical.canonical_id, "mo-1");
@@ -602,6 +637,32 @@ mod tests {
     fn blank_workspace_id_is_rejected() {
         assert!(WorkspaceId::new("").is_err());
         assert!(WorkspaceId::new(" \t").is_err());
+    }
+
+    /// A crafted artifact carrying a blank Object ID (empty or
+    /// whitespace-only — `GraphArtifactDocument` derives `Deserialize`, so
+    /// import callers cannot assume compiler-built input) is rejected
+    /// before any state changes: no slot bound, nothing minted (fail
+    /// closed, matching the Cloud store's non-empty check).
+    #[test]
+    fn blank_object_id_on_import_is_rejected_without_partial_state() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+
+        for blank in ["", "  "] {
+            let outcome = workspace.import_artifact(&artifact(
+                repo.clone(),
+                vec![
+                    knowledge_object("billing.credits", "sha256:aaa"),
+                    knowledge_object(blank, "sha256:bbb"),
+                ],
+            ));
+            assert_eq!(outcome, Err(ManagedIdentityError::BlankObjectId));
+        }
+        assert!(
+            workspace.repository(&repo).is_none(),
+            "a rejected import must not bind the repository slot or mint anything"
+        );
     }
 
     /// The Source Assertion identity layer (K7) exists as its own type;
@@ -635,7 +696,9 @@ mod tests {
         });
         let expected = node.source_binding.clone();
 
-        workspace.import_artifact(&artifact(repo.clone(), vec![node]));
+        workspace
+            .import_artifact(&artifact(repo.clone(), vec![node]))
+            .expect("import accepted");
 
         let object =
             &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
@@ -659,13 +722,15 @@ mod tests {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
 
-        let outcome = workspace.import_artifact(&artifact(
-            repo.clone(),
-            vec![
-                knowledge_object("billing.credits", "sha256:same"),
-                knowledge_object("billing.refunds", "sha256:same"),
-            ],
-        ));
+        let outcome = workspace
+            .import_artifact(&artifact(
+                repo.clone(),
+                vec![
+                    knowledge_object("billing.credits", "sha256:same"),
+                    knowledge_object("billing.refunds", "sha256:same"),
+                ],
+            ))
+            .expect("import accepted");
 
         assert!(outcome.reconciliation_candidates.is_empty());
         let objects = &workspace.repository(&repo).expect("repo recorded").objects;
@@ -688,14 +753,18 @@ mod tests {
         let repo_a = local_repo("a/agentdoc.config.yaml");
         let repo_b = local_repo("b/agentdoc.config.yaml");
 
-        workspace.import_artifact(&artifact(
-            repo_a.clone(),
-            vec![knowledge_object("billing.credits", "sha256:same")],
-        ));
-        let outcome = workspace.import_artifact(&artifact(
-            repo_b.clone(),
-            vec![knowledge_object("billing.refunds", "sha256:same")],
-        ));
+        workspace
+            .import_artifact(&artifact(
+                repo_a.clone(),
+                vec![knowledge_object("billing.credits", "sha256:same")],
+            ))
+            .expect("import accepted");
+        let outcome = workspace
+            .import_artifact(&artifact(
+                repo_b.clone(),
+                vec![knowledge_object("billing.refunds", "sha256:same")],
+            ))
+            .expect("import accepted");
 
         assert!(outcome.reconciliation_candidates.is_empty());
         assert_eq!(
@@ -724,7 +793,9 @@ mod tests {
             .insert("title".to_string(), "Credit policy".to_string());
         assert_eq!(first.body, second.body);
 
-        let outcome = workspace.import_artifact(&artifact(repo.clone(), vec![first, second]));
+        let outcome = workspace
+            .import_artifact(&artifact(repo.clone(), vec![first, second]))
+            .expect("import accepted");
 
         assert!(outcome.reconciliation_candidates.is_empty());
         let objects = &workspace.repository(&repo).expect("repo recorded").objects;
@@ -746,14 +817,18 @@ mod tests {
         let repo_a = local_repo("a/agentdoc.config.yaml");
         let repo_b = local_repo("b/agentdoc.config.yaml");
 
-        workspace.import_artifact(&artifact(
-            repo_a.clone(),
-            vec![knowledge_object("billing.credits", "sha256:same")],
-        ));
-        let outcome = workspace.import_artifact(&artifact(
-            repo_b.clone(),
-            vec![knowledge_object("billing.credits", "sha256:same")],
-        ));
+        workspace
+            .import_artifact(&artifact(
+                repo_a.clone(),
+                vec![knowledge_object("billing.credits", "sha256:same")],
+            ))
+            .expect("import accepted");
+        let outcome = workspace
+            .import_artifact(&artifact(
+                repo_b.clone(),
+                vec![knowledge_object("billing.credits", "sha256:same")],
+            ))
+            .expect("import accepted");
 
         assert_eq!(outcome.reconciliation_candidates.len(), 1);
         let candidate = &outcome.reconciliation_candidates[0];
@@ -803,10 +878,12 @@ mod tests {
         workspace.reserve_repository(repo.clone());
         workspace.reserve_repository(repo.clone());
 
-        workspace.import_artifact(&artifact(
-            repo.clone(),
-            vec![knowledge_object("billing.credits", "sha256:aaa")],
-        ));
+        workspace
+            .import_artifact(&artifact(
+                repo.clone(),
+                vec![knowledge_object("billing.credits", "sha256:aaa")],
+            ))
+            .expect("import accepted");
         workspace.reserve_repository(repo.clone());
 
         let record = workspace.repository(&repo).expect("repo recorded");
@@ -820,7 +897,9 @@ mod tests {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
 
-        let outcome = workspace.import_artifact(&artifact(repo.clone(), Vec::new()));
+        let outcome = workspace
+            .import_artifact(&artifact(repo.clone(), Vec::new()))
+            .expect("import accepted");
 
         assert!(outcome.imported.is_empty());
         let record = workspace
@@ -839,14 +918,18 @@ mod tests {
         let project = local_repo("a/agentdoc.config.yaml");
         let standalone = GraphRepositoryIdentity::standalone();
 
-        workspace.import_artifact(&artifact(
-            project.clone(),
-            vec![knowledge_object("billing.credits", "sha256:aaa")],
-        ));
-        let outcome = workspace.import_artifact(&artifact(
-            standalone.clone(),
-            vec![knowledge_object("billing.credits", "sha256:bbb")],
-        ));
+        workspace
+            .import_artifact(&artifact(
+                project.clone(),
+                vec![knowledge_object("billing.credits", "sha256:aaa")],
+            ))
+            .expect("import accepted");
+        let outcome = workspace
+            .import_artifact(&artifact(
+                standalone.clone(),
+                vec![knowledge_object("billing.credits", "sha256:bbb")],
+            ))
+            .expect("import accepted");
 
         assert_eq!(outcome.reconciliation_candidates.len(), 1);
         let in_project = &workspace
