@@ -476,6 +476,17 @@ pub(crate) struct ManagedVersionState {
     pub(crate) effectivity: RecordedDimension<EffectivityState>,
     pub(crate) freshness: RecordedDimension<FreshnessState>,
     pub(crate) integrity: RecordedDimension<IntegrityState>,
+    /// Per-connector (§K4): a connector appears exactly when a sync
+    /// observation was recorded for it — an absent key is that
+    /// connector's gap marker, and the empty map is the all-gap
+    /// rendering. Distinguishing "no connector configured" from "a
+    /// configured connector's emitter had not observed yet" requires
+    /// the configured-connector set, which does not exist in the domain
+    /// until connector bindings land (E4.1); rendering explicit
+    /// per-connector gaps for configured-but-unobserved connectors is
+    /// that slice's concern, seeded the same way
+    /// [`ManagedStateEventStore::reconstruct_through`] seeds the
+    /// immutable-version set.
     pub(crate) synchronization: BTreeMap<ConnectorId, ConnectorSyncRecord>,
 }
 
@@ -543,6 +554,16 @@ impl ManagedVersionState {
 /// no delete path exists at all: sweeps only plan (execution is
 /// V10.7.3/E6.6), so the floor is enforced at the earliest possible
 /// surface. Validated non-zero: a protected span always exists.
+///
+/// V10.4.1 phrases the policy floor as a minimum *period*. This event
+/// model is deliberately wall-clock-free (module doc): no record
+/// carries an age to evaluate, so the period floor binds where time
+/// exists — the durable store's rows and the E6.6 deletion execution,
+/// which owns translating its period policy into the `delete_below`
+/// ordinal it requests. This count floor is the domain's independent
+/// last-line guard beneath that translation, not the period
+/// enforcement itself: a caller-side translation error can never reach
+/// the newest records, whatever the event rate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RetentionFloor(u64);
 
