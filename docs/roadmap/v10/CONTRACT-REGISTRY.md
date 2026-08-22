@@ -308,6 +308,16 @@ Contract codes for the four-mode gate evaluator (E5.3; check publication E5.4). 
 | `gate.check_publish_failed` | planned | E5.4 | required check could not publish; blocks by absence, recorded for diagnosability |
 <!-- /registry:gate-codes -->
 
+## Cloud codes — owner `cloud`
+
+Operation labels of the private Cloud scaffold. The scaffold's `main` emits no wire code today (the E0.4 baseline: login/register tracers, workspaces table, creator/owner-only RLS); new Cloud wire codes register here before they ship — the row below pre-registers the label the in-flight identity-bootstrap work introduces.
+
+<!-- registry:cloud-codes -->
+| code | status | meaning |
+| --- | --- | --- |
+| `workspace.bootstrap` | planned (in-flight scaffold work) | identity-bootstrap ledger operation label recorded when a workspace is created |
+<!-- /registry:cloud-codes -->
+
 ## Attestation codes — planned, owner `cloud`
 
 The canonical bot-attestation code family root (RT-21, E0.3.T3). The Action never mints its own bot-attestation family: its check surface wraps this code via the registered `action.attestation_bot_rejected` row above. The E8.1 attestation record contract and the sibling codes (`attestation.binding_mismatch`, `attestation.requirements_unmet`) register at E8.1.T1 as a registry edit, flipping this row from planned to implemented rather than re-registering it.

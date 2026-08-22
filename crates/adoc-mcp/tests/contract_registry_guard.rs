@@ -97,6 +97,7 @@ const ANCHORS: &[&str] = &[
     "registry:diagnostic-codes",
     "registry:action-codes",
     "registry:gate-codes",
+    "registry:cloud-codes",
     "registry:attestation-codes",
     "registry:dispositions",
     "registry:untrusted-change-states",
