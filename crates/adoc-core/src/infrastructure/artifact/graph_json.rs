@@ -60,8 +60,9 @@ pub(crate) fn read_graph_artifact_document(
                 ),
             )
             .with_help(format!(
-                "Expected schema_version '{}'.",
-                SUPPORTED_GRAPH_SCHEMA_VERSION
+                "Expected schema_version '{}'. {}",
+                SUPPORTED_GRAPH_SCHEMA_VERSION,
+                DiagnosticCode::SchemaUnsupportedVersion.default_help()
             )),
         ]);
     }
