@@ -63,7 +63,7 @@ Producer for every row is the `adoc` 0.3.4 release train (CLI, MCP server, and l
 
 ## Test-fixture ids — never emitted
 
-Deliberately invalid version fixtures inside `#[cfg(test)]` modules in `crates/*/src`, proving rejected-version handling. The completeness scan subtracts exactly these rows and nothing else. A fixture row may also carry a historical id exercised by back-compat tests; a fixture id must never collide with a shipped or planned id (guard-enforced).
+Deliberately invalid version fixtures cited from test modules in `crates/*/src`, proving rejected-version handling. The completeness scan splits every file at its `#[cfg(test)] mod` boundary: production literals must match the shipped table exactly, and a fixture id emitted from production scope fails the scan. Back-compat tests citing a historical id need no fixture row — the historical table already registers the id — so a fixture id must never collide with any real contract row (guard-enforced).
 
 <!-- registry:test-fixture-ids -->
 | id | status | notes |
