@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.proof_obligation.v0.schema.json",
+  "title": "AgentDoc Stage-Bound Proof Obligation",
+  "description": "Typed, stateful, stage-bound proof obligation record (KNOWLEDGE-MODEL K8, D16), bound to the exact managed content version it constrains. Obligation states and required_at stages are registered closed vocabularies (CONTRACT-REGISTRY.md). Whether an obligation is informational or blocking at a stage/risk/action is classification-policy data (see $defs/classificationPolicy), never code. The stateless ProofObligation shape embedded in adoc.review.v0/adoc.patch.check.v0 is a separate, unchanged contract. No wall-clock exists anywhere in these records: time-bounds evaluate against an explicit event-ordinal input.",
+  "type": "object",
+  "required": ["schema_version", "obligation_id", "subject", "reason", "required_evidence", "required_at", "state"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.proof_obligation.v0" },
+    "obligation_id": { "type": "string", "minLength": 1 },
+    "subject": { "$ref": "#/$defs/subject" },
+    "reason": { "type": "string", "minLength": 1 },
+    "required_evidence": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "required_at": { "$ref": "#/$defs/stage" },
+    "risk": {
+      "description": "The producer's risk classification of the constrained change, matched against risk-scoped policy rules. Data, never authority.",
+      "type": "string",
+      "minLength": 1
+    },
+    "state": { "enum": ["open", "satisfied", "waived", "failed", "expired"] }
+  },
+  "$defs": {
+    "stage": { "enum": ["proposal_validation", "approval", "verification", "effectivity", "connector_synchronization", "agent_action"] },
+    "subject": {
+      "description": "The exact immutable content version the obligation constrains: workspace canonical identity plus managed version ID (E1.4) — never a bare Object ID.",
+      "type": "object",
+      "required": ["canonical", "version_id"],
+      "additionalProperties": false,
+      "properties": {
+        "canonical": {
+          "type": "object",
+          "required": ["workspace_id", "canonical_id"],
+          "additionalProperties": false,
+          "properties": {
+            "workspace_id": { "type": "string", "minLength": 1 },
+            "canonical_id": { "type": "string", "minLength": 1 }
+          }
+        },
+        "version_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "classificationPolicy": {
+      "description": "The K8 classification policy: informational vs blocking per stage/risk/action is data carried here. First matching rule wins; default_classification applies when none match.",
+      "type": "object",
+      "required": ["policy_version", "rules", "default_classification"],
+      "additionalProperties": false,
+      "properties": {
+        "policy_version": { "type": "string", "minLength": 1 },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/classificationRule" }
+        },
+        "default_classification": { "$ref": "#/$defs/classification" }
+      }
+    },
+    "classificationRule": {
+      "description": "One rule. risk and action are optional exact matchers - absent means any.",
+      "type": "object",
+      "required": ["stage", "classification"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": { "$ref": "#/$defs/stage" },
+        "risk": { "type": "string", "minLength": 1 },
+        "action": { "type": "string", "minLength": 1 },
+        "classification": { "$ref": "#/$defs/classification" }
+      }
+    },
+    "classification": { "enum": ["informational", "blocking"] }
+  }
+}

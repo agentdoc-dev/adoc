@@ -38,6 +38,7 @@ Producer for every row is the `adoc` release train (CLI, MCP server, and local g
 | `adoc.patch.check.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4; Action v2.0.0-alpha.19 | v0-additive |
 | `adoc.patch.v0` | shipped | adoc 0.3.4 (validator; input authored by agents) | adoc 0.3.4; Action v2.0.0-alpha.19 | v0-additive |
 | `adoc.project.status.v0` | shipped | adoc 0.3.4 | MCP agent clients (contract-tested at adoc 0.3.4) | v0-additive |
+| `adoc.proof_obligation.v0` | shipped | adoc 0.4.0 | adoc 0.4.0 (domain contract-tested; schema `adoc.proof_obligation.v0.schema.json`); Cloud approval surface — data-only consumer (E1.6.T4) | v0-additive; stage-bound stateful obligation record + waiver + classification policy (KNOWLEDGE-MODEL §K8, D16): obligation states and `required_at` stages are registered closed vocabularies (see “Proof obligation states” / “Proof obligation stages”); informational-vs-blocking per stage/risk/action is classification-policy data enclosed by this envelope; a waiver binds the exact obligation + version + principal + policy version and never converts unverified to verified — an expired waiver reopens its obligation as blocking; the stateless `ProofObligation` shape embedded in `adoc.review.v0`/`adoc.patch.check.v0` is a separate, unchanged contract related by a bridge constructor |
 | `adoc.repository_baseline.v0` | shipped | adoc 0.3.4 | Action v2.0.0-alpha.19 | v0-additive; known registration-gap history — the original V10 inventory flagged it unregistered; true-up obligation tracked in [`DECISION-REGISTER.md`](DECISION-REGISTER.md) |
 | `adoc.retrieval.v1` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v1 additive; v0 is historical (see “Envelopes — historical”) |
 | `adoc.review.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
@@ -430,3 +431,32 @@ The closed six-dimension managed state vocabularies ([`KNOWLEDGE-MODEL.md §K4`]
 | `synchronization.paused` |
 | `synchronization.not_applicable` |
 <!-- /registry:managed-state-dimensions -->
+
+## Proof obligation states — owner `adoc` contracts
+
+The closed K8 obligation-state vocabulary ([`KNOWLEDGE-MODEL.md §K8`](KNOWLEDGE-MODEL.md#k8-stage-aware-proof-obligations), E1.6), carried by `adoc.proof_obligation.v0`. `waived` is reachable only through an Obligation Waiver record — exact obligation/version/principal/policy bound, justified, and time-bounded where appropriate; a waiver never converts unverified to verified, and an expired waiver reopens its obligation as blocking. A new state is a registry edit plus a §K8 amendment, never an ad hoc string.
+
+<!-- registry:proof-obligation-states -->
+| state |
+| --- |
+| `open` |
+| `satisfied` |
+| `waived` |
+| `failed` |
+| `expired` |
+<!-- /registry:proof-obligation-states -->
+
+## Proof obligation stages — owner `adoc` contracts
+
+The closed K8 `required_at` stage vocabulary. Whether an obligation is informational or blocking at a stage/risk/action is classification-policy data enclosed by `adoc.proof_obligation.v0`, never code; `approval_required` blocks only obligations explicitly required before gate passage (§K8) — other obligations may block verification, effectivity, synchronization, or high-risk actions instead. A new stage is a registry edit plus a §K8 amendment, never an ad hoc string.
+
+<!-- registry:proof-obligation-stages -->
+| stage |
+| --- |
+| `proposal_validation` |
+| `approval` |
+| `verification` |
+| `effectivity` |
+| `connector_synchronization` |
+| `agent_action` |
+<!-- /registry:proof-obligation-stages -->
