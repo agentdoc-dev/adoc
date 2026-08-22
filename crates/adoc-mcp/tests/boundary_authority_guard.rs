@@ -66,6 +66,28 @@ const ALLOWED_PERMISSIVE_DEFAULT_LINES: &[(&str, &str)] = &[(
     "- Doc guard fails on a seeded fixture stating a permissive-default resolution.",
 )];
 
+/// The annex deference lines, pinned exactly like the allow-lists:
+/// rewriting one into different — or contradictory — deference fails the
+/// guard and forces re-review, never silent un-anchoring. Trailing
+/// hard-break spaces are trimmed by the comparison.
+const INVARIANT_AUTHORITY_LINES: &[(&str, &str)] = &[
+    (
+        "docs/roadmap/v10/AUTHORIZATION.md",
+        "**Invariant authority:** \
+         [ADR-0057](../../adr/0057-fix-four-managed-product-invariants.md) fixes the \
+         deterministic, deny-by-default authorization precedence (invariant 3, D38) \
+         \u{2014} this annex elaborates that order and never redefines it",
+    ),
+    (
+        "docs/roadmap/v10/KNOWLEDGE-MODEL.md",
+        "**Invariant authority:** \
+         [ADR-0057](../../adr/0057-fix-four-managed-product-invariants.md) fixes \
+         workspace-qualified Object identity (D36; K6) and append-only managed state \
+         over immutable content versions (D37; K4) \u{2014} this annex elaborates those \
+         invariants and never redefines them",
+    ),
+];
+
 /// Reads every current roadmap/annex doc as `(repo-relative name, content)`,
 /// sorted for deterministic failure output. Asserts the parser-health floor
 /// here so every real-tree guard inherits it: an empty or relocated
@@ -495,20 +517,18 @@ identity/session/grant freshness\n\
 fn annexes_cross_link_the_adr_0057_invariants() {
     // E0.2.T3: the authorization and knowledge-model annexes defer to
     // ADR-0057 explicitly, so no annex carries a competing precedence
-    // order. Removing a cross-link fails here. Reusing the scanned corpus
-    // inherits its fence-health floor.
+    // order. The deference lines are pinned exactly — a removed, rewritten,
+    // or contradictory line fails here, the same footing as the allow-list
+    // pins. Reusing the scanned corpus inherits its fence-health floor.
     let docs = roadmap_docs();
-    for annex in [
-        "docs/roadmap/v10/AUTHORIZATION.md",
-        "docs/roadmap/v10/KNOWLEDGE-MODEL.md",
-    ] {
+    for (annex, pinned) in INVARIANT_AUTHORITY_LINES {
         let (_, content) = docs
             .iter()
             .find(|(name, _)| name == annex)
             .unwrap_or_else(|| panic!("{annex} missing from the roadmap scan"));
         assert!(
-            structural_lines(content).any(|(_, line)| line.contains("ADR-0057")),
-            "{annex} must cross-link ADR-0057 as the invariant authority"
+            structural_lines(content).any(|(_, line)| line.trim() == *pinned),
+            "{annex} no longer carries the pinned invariant-authority line: {pinned}"
         );
     }
 }
