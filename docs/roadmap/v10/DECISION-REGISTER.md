@@ -17,6 +17,7 @@ The 2026-08-12 planning session produced D01–D35. The 2026-08-13 red-team prod
 - [`BOUNDARY-AMENDMENTS.md`](BOUNDARY-AMENDMENTS.md)
 - [`RED-TEAM-CLOSURE.md`](RED-TEAM-CLOSURE.md)
 - [`CONTRACT-REGISTRY.md`](CONTRACT-REGISTRY.md)
+- [`COMPATIBILITY.md`](COMPATIBILITY.md)
 
 ## D01–D09 — authorization, canonicality, gates
 

@@ -72,3 +72,33 @@ E8.5's GitLab CI component has no named home repository yet; its row covers the 
 | `E9.5` | adoc, action, cloud | cloud | adoc 0.3.4 (graph v5) · Action v2.0.0-alpha.19 · Cloud scaffold (pre-release) | cloud |
 | `E9.6` | adoc, action, cloud, web | web | adoc 0.3.4 (graph v5) · Action v2.0.0-alpha.19 · Cloud scaffold (pre-release) · web claims surface (unversioned) | web |
 <!-- /compat:slice-rows -->
+
+## Baseline true-up (E0.4.T2)
+
+<!-- compat:true-up -->
+Shipped at the baseline:
+
+- exact-SHA assessment,
+- PR assessment receipt,
+- Claude cited review/proposal,
+- patch validation,
+- comment/commit/follow-up-PR delivery,
+- Cloud login/register tracers,
+- workspaces table,
+- creator/owner-only RLS.
+
+NOT shipped at the baseline:
+
+- graph v6,
+- semantic context,
+- managed permissions,
+- Codex/generic executor,
+- Cloud gate sync,
+- canonical Knowledge Object tables,
+- membership,
+- proposals,
+- ingestion,
+- retrieval.
+
+The true-up decision/ADR is allocated in slice-start decision tracking as [`DECISION-REGISTER.md`](DECISION-REGISTER.md) obligation **O-01** — retroactive ADR, published schema, and parity test for `adoc.repository_baseline.v0`, owed at E4.6 slice start (provenance: V10.1.6, historical).
+<!-- /compat:true-up -->
