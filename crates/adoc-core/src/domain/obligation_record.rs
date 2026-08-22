@@ -38,9 +38,10 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use super::managed_state::StateEventSubject;
+use super::managed::ManagedVersionId;
+use super::managed_state::{EventOrdinal, StateEventSubject};
 use super::obligation::ProofObligation;
-use super::reconciliation::PolicyVersion;
+use super::reconciliation::{PolicyVersion, Principal};
 
 /// The registered contract id every serialized record carries.
 pub(crate) const PROOF_OBLIGATION_SCHEMA_VERSION: &str = "adoc.proof_obligation.v0";
@@ -263,6 +264,62 @@ impl ObligationPolicy {
     }
 }
 
+/// An Obligation Waiver (§K8): the permission-controlled discharge of
+/// one stage-bound obligation. Bound at the type level to the EXACT
+/// obligation, managed version, principal, and policy version — all
+/// non-optional — with a non-blank justification, and time-bounded
+/// where appropriate by an explicit event-ordinal expiry (never a wall
+/// clock). Fields are private and [`ObligationWaiver::new`] is the only
+/// constructor; like the E1.3 decision record, `Deserialize` is
+/// deliberately absent — never derive it, or unprincipaled waivers
+/// become constructible from bytes.
+///
+/// A waiver changes OBLIGATION state only ([`ObligationLedger::waive`]):
+/// it cannot name, let alone advance, any §K4 dimension — waiving a
+/// verification obligation leaves verification `unverified` by
+/// construction (MILESTONES §E1.6 exit gate).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ObligationWaiver {
+    obligation_id: ObligationId,
+    /// The exact managed version the waived obligation constrains — a
+    /// waiver never carries over to another version.
+    version_id: ManagedVersionId,
+    principal: Principal,
+    policy_version: PolicyVersion,
+    justification: String,
+    /// The last E1.4 event ordinal this waiver holds at; evaluated at an
+    /// explicit ordinal input (`at > expires_after` = expired). `None`:
+    /// not time-bounded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_after: Option<EventOrdinal>,
+}
+
+impl ObligationWaiver {
+    /// Construct a fully bound waiver. Rejects a blank justification —
+    /// an unjustified waiver must not exist (§K8).
+    pub(crate) fn new(
+        obligation_id: ObligationId,
+        version_id: ManagedVersionId,
+        principal: Principal,
+        policy_version: PolicyVersion,
+        justification: impl Into<String>,
+        expires_after: Option<EventOrdinal>,
+    ) -> Result<Self, ObligationError> {
+        let justification = justification.into();
+        if justification.trim().is_empty() {
+            return Err(ObligationError::InvalidJustification);
+        }
+        Ok(Self {
+            obligation_id,
+            version_id,
+            principal,
+            policy_version,
+            justification,
+            expires_after,
+        })
+    }
+}
+
 /// Why an obligation write was rejected — fail closed, never a silent
 /// fallback.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -271,6 +328,12 @@ pub(crate) enum ObligationError {
     InvalidObligationId,
     #[error("obligation reason must be non-blank")]
     InvalidReason,
+    #[error("waiver justification must be non-blank")]
+    InvalidJustification,
+    #[error("waiver names obligation {id:?} but is bound to a different managed version")]
+    WaiverBindingMismatch { id: ObligationId },
+    #[error("obligation {id:?} is not open; only an open obligation is waivable")]
+    NotWaivable { id: ObligationId },
     #[error("obligation {id:?} is already open in this ledger")]
     DuplicateObligation { id: ObligationId },
     #[error("obligation {id:?} is not recorded in this ledger")]
@@ -293,6 +356,9 @@ pub(crate) enum ObligationEvent {
     StateRecorded {
         obligation_id: ObligationId,
         state: ObligationState,
+    },
+    Waived {
+        waiver: ObligationWaiver,
     },
 }
 
@@ -361,6 +427,34 @@ impl ObligationLedger {
         Ok(())
     }
 
+    /// Append a waiver. Fail-closed validation against the recorded
+    /// ledger: the obligation must exist, the waiver must be bound to
+    /// that obligation's exact managed version, and only an `open`
+    /// obligation is waivable. Structurally this method appends to THIS
+    /// ledger and touches nothing else — the ledger holds no reference
+    /// to the E1.4 store or any §K4 dimension, so a waiver cannot
+    /// convert `unverified` to `verified` (MILESTONES §E1.6 exit gate).
+    pub(crate) fn waive(&mut self, waiver: ObligationWaiver) -> Result<(), ObligationError> {
+        let Some(record) = self.opened_record(&waiver.obligation_id) else {
+            return Err(ObligationError::UnknownObligation {
+                id: waiver.obligation_id.clone(),
+            });
+        };
+        if record.subject.version_id != waiver.version_id {
+            return Err(ObligationError::WaiverBindingMismatch {
+                id: waiver.obligation_id.clone(),
+            });
+        }
+        let standing_state = self.standing()[&waiver.obligation_id].state;
+        if standing_state != ObligationState::Open {
+            return Err(ObligationError::NotWaivable {
+                id: waiver.obligation_id.clone(),
+            });
+        }
+        self.events.push(ObligationEvent::Waived { waiver });
+        Ok(())
+    }
+
     fn opened_record(&self, id: &ObligationId) -> Option<&ProofObligationRecord> {
         self.events.iter().find_map(|event| match event {
             ObligationEvent::Opened { record } if record.obligation_id == *id => Some(record),
@@ -385,6 +479,11 @@ impl ObligationLedger {
                 } => {
                     if let Some(record) = standing.get_mut(obligation_id) {
                         record.state = *state;
+                    }
+                }
+                ObligationEvent::Waived { waiver } => {
+                    if let Some(record) = standing.get_mut(&waiver.obligation_id) {
+                        record.state = ObligationState::Waived;
                     }
                 }
             }
@@ -880,6 +979,193 @@ mod tests {
                 None,
             ),
             Err(ObligationError::InvalidReason)
+        );
+    }
+
+    // ---- E1.6.T2: principal-bound obligation waivers ----
+
+    fn waiver_for(
+        subject: &StateEventSubject,
+        expires_after: Option<EventOrdinal>,
+    ) -> ObligationWaiver {
+        ObligationWaiver::new(
+            obligation_id("ob-billing-credits-verification"),
+            subject.version_id.clone(),
+            Principal::new("compliance.lead").expect("non-blank"),
+            PolicyVersion::new("waiver-policy-3").expect("non-blank"),
+            "vendor audit accepted for this exact version",
+            expires_after,
+        )
+        .expect("valid waiver")
+    }
+
+    /// E1.6.T2 headline + exit gate (MILESTONES §E1.6 acceptance): waiving
+    /// a verification-stage obligation leaves verification `unverified` —
+    /// a waiver NEVER converts unverified→verified. Structurally the
+    /// waiver appends to the obligation ledger only (it has no reference
+    /// to the E1.4 store); observably the store's recorded events stay
+    /// byte-identical and its current verification state unchanged.
+    #[test]
+    fn waiving_a_verification_obligation_never_converts_unverified_to_verified() {
+        let subject = imported_subject();
+        let mut sink = InMemoryAuditSink::default();
+        let mut store = ManagedStateEventStore::new(floor(1));
+        store
+            .append(
+                &mut sink,
+                state_event(
+                    subject.clone(),
+                    ManagedStateChange::Verification {
+                        state: VerificationState::Unverified,
+                    },
+                ),
+            )
+            .expect("append accepted");
+        let recorded_before = store.events().to_vec();
+
+        let mut ledger = ObligationLedger::new();
+        ledger.open(open_record(&subject)).expect("opens");
+        ledger.waive(waiver_for(&subject, None)).expect("waives");
+
+        let id = obligation_id("ob-billing-credits-verification");
+        assert_eq!(ledger.standing()[&id].state, ObligationState::Waived);
+        assert_eq!(
+            store.current_state()[&subject].verification,
+            RecordedDimension::Recorded(VerificationState::Unverified),
+            "a waiver never converts unverified to verified"
+        );
+        assert_eq!(
+            store.events(),
+            recorded_before.as_slice(),
+            "waiver application must leave every recorded E1.4 event byte-identical"
+        );
+    }
+
+    /// Two real minted versions from one import — for exact-binding
+    /// tests needing a version the obligation is NOT bound to
+    /// (`ManagedVersionId` is workspace-minted, never fabricated).
+    fn imported_subjects() -> (StateEventSubject, StateEventSubject) {
+        let mut workspace =
+            ManagedWorkspace::new(WorkspaceId::new("ws-acme").expect("workspace id is non-blank"));
+        let outcome = workspace
+            .import_artifact(&artifact(vec![
+                knowledge_object("billing.credits", "sha256:aaa"),
+                knowledge_object("billing.tax", "sha256:bbb"),
+            ]))
+            .expect("import accepted");
+        let subject = |index: usize| StateEventSubject {
+            canonical: outcome.imported[index].canonical.clone(),
+            version_id: outcome.imported[index].version_id.clone(),
+        };
+        (subject(0), subject(1))
+    }
+
+    /// Waivers are permission-controlled, justified, and bound to the
+    /// exact obligation + version — every unbound or unjustified shape
+    /// fails closed.
+    #[test]
+    fn waivers_require_justification_and_exact_binding() {
+        let (subject, other_subject) = imported_subjects();
+        assert_eq!(
+            ObligationWaiver::new(
+                obligation_id("ob-billing-credits-verification"),
+                subject.version_id.clone(),
+                Principal::new("compliance.lead").expect("non-blank"),
+                PolicyVersion::new("waiver-policy-3").expect("non-blank"),
+                "   ",
+                None,
+            ),
+            Err(ObligationError::InvalidJustification)
+        );
+
+        let mut ledger = ObligationLedger::new();
+        ledger.open(open_record(&subject)).expect("opens");
+        let id = obligation_id("ob-billing-credits-verification");
+
+        let unknown = ObligationWaiver::new(
+            obligation_id("ob-unknown"),
+            subject.version_id.clone(),
+            Principal::new("compliance.lead").expect("non-blank"),
+            PolicyVersion::new("waiver-policy-3").expect("non-blank"),
+            "bound to nothing",
+            None,
+        )
+        .expect("valid waiver shape");
+        assert_eq!(
+            ledger.waive(unknown),
+            Err(ObligationError::UnknownObligation {
+                id: obligation_id("ob-unknown")
+            })
+        );
+
+        let wrong_version = ObligationWaiver::new(
+            id.clone(),
+            other_subject.version_id.clone(),
+            Principal::new("compliance.lead").expect("non-blank"),
+            PolicyVersion::new("waiver-policy-3").expect("non-blank"),
+            "bound to another version",
+            None,
+        )
+        .expect("valid waiver shape");
+        assert_eq!(
+            ledger.waive(wrong_version),
+            Err(ObligationError::WaiverBindingMismatch { id: id.clone() })
+        );
+
+        ledger
+            .record_state(&id, ObligationState::Satisfied)
+            .expect("satisfiable");
+        assert_eq!(
+            ledger.waive(waiver_for(&subject, None)),
+            Err(ObligationError::NotWaivable { id: id.clone() }),
+            "only an open obligation is waivable"
+        );
+    }
+
+    /// The serialized waiver the Cloud cut consumes: exact obligation +
+    /// version + principal + policy binding, a justification, and an
+    /// optional event-ordinal time-bound — no wall-clock anywhere.
+    #[test]
+    fn serialized_waiver_shape_is_pinned_and_validates() {
+        let subject = imported_subject();
+        let waiver = waiver_for(&subject, Some(EventOrdinal(5)));
+        let instance = serde_json::to_value(&waiver).expect("waiver serializes");
+        assert_eq!(
+            instance,
+            json!({
+                "obligation_id": "ob-billing-credits-verification",
+                "version_id": "mv-1",
+                "principal": "compliance.lead",
+                "policy_version": "waiver-policy-3",
+                "justification": "vendor audit accepted for this exact version",
+                "expires_after": 5
+            })
+        );
+        let unbounded = serde_json::to_value(waiver_for(&subject, None)).expect("serializes");
+        assert!(
+            unbounded.get("expires_after").is_none(),
+            "an unbounded waiver serializes no expiry field"
+        );
+
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/agent/v0/schema/adoc.proof_obligation.v0.schema.json");
+        let schema: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).expect("schema is readable"))
+                .expect("schema is json");
+        let waiver_schema = json!({
+            "$defs": schema["$defs"],
+            "$ref": "#/$defs/waiver"
+        });
+        let validator = jsonschema::validator_for(&waiver_schema).expect("subschema compiles");
+        let errors: Vec<String> = validator
+            .iter_errors(&instance)
+            .map(|error| error.to_string())
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "waiver schema validation failed:\n{}\ninstance:\n{}",
+            errors.join("\n"),
+            serde_json::to_string_pretty(&instance).expect("instance pretty prints")
         );
     }
 }

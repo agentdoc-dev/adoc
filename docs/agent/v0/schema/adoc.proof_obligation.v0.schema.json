@@ -69,6 +69,24 @@
         "classification": { "$ref": "#/$defs/classification" }
       }
     },
-    "classification": { "enum": ["informational", "blocking"] }
+    "classification": { "enum": ["informational", "blocking"] },
+    "waiver": {
+      "description": "An Obligation Waiver (K8): permission-controlled discharge of one obligation, bound to the exact obligation + managed version + principal + policy version, justified, and time-bounded where appropriate by an explicit event-ordinal expiry (no wall-clock). A waiver changes obligation state only - it never converts unverified to verified, and an expired waiver reopens its obligation as blocking.",
+      "type": "object",
+      "required": ["obligation_id", "version_id", "principal", "policy_version", "justification"],
+      "additionalProperties": false,
+      "properties": {
+        "obligation_id": { "type": "string", "minLength": 1 },
+        "version_id": { "type": "string", "minLength": 1 },
+        "principal": { "type": "string", "minLength": 1 },
+        "policy_version": { "type": "string", "minLength": 1 },
+        "justification": { "type": "string", "minLength": 1 },
+        "expires_after": {
+          "description": "The last E1.4 event ordinal the waiver holds at; evaluated against an explicit ordinal input. Absent: not time-bounded.",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
   }
 }
