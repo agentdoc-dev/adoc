@@ -394,3 +394,39 @@ The closed K9 replay-posture vocabulary. A digest-only record is never `fully_re
 | `intentionally_non_replayable` |
 | `no_longer_replayable_after_deletion` |
 <!-- /registry:replay-postures -->
+
+## Managed state dimensions — owner `adoc` contracts, recorded by `cloud`
+
+The closed six-dimension managed state vocabularies ([`KNOWLEDGE-MODEL.md §K4`](KNOWLEDGE-MODEL.md#k4-governance-effectivity-and-synchronization-are-separate), E1.4). Entries are dimension-qualified (`dimension.state`) so the six vocabularies stay separate in one table — dimensions are never conflated (D07/D15), and a value's spelling is scoped to its own dimension. Synchronization is always per connector, and every synchronization event also carries the boolean `required_before_effective` (§K4). A new value is a registry edit plus a §K4 amendment, never an ad hoc string.
+
+<!-- registry:managed-state-dimensions -->
+| dimension.state |
+| --- |
+| `governance.proposed` |
+| `governance.approved` |
+| `governance.rejected` |
+| `governance.revoked` |
+| `verification.unverified` |
+| `verification.partially_verified` |
+| `verification.verified` |
+| `verification.failed` |
+| `effectivity.pending` |
+| `effectivity.scheduled` |
+| `effectivity.effective` |
+| `effectivity.suspended` |
+| `effectivity.expired` |
+| `freshness.current` |
+| `freshness.needs_review` |
+| `freshness.stale` |
+| `integrity.clear` |
+| `integrity.potentially_conflicting` |
+| `integrity.contradicted` |
+| `synchronization.in_sync` |
+| `synchronization.pending_writeback` |
+| `synchronization.pending_external_approval` |
+| `synchronization.writeback_failed` |
+| `synchronization.source_ahead` |
+| `synchronization.source_diverged` |
+| `synchronization.paused` |
+| `synchronization.not_applicable` |
+<!-- /registry:managed-state-dimensions -->

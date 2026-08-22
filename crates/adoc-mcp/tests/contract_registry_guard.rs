@@ -96,6 +96,7 @@ const ANCHORS: &[&str] = &[
     "registry:untrusted-change-states",
     "registry:retention-classes",
     "registry:replay-postures",
+    "registry:managed-state-dimensions",
 ];
 
 /// True for `adoc.<dotted lowercase path>.v<digits>` — the envelope
@@ -957,4 +958,114 @@ const REPLAY_POSTURES: [&str; 4] = [
     "source_access_required",
     "intentionally_non_replayable",
     "no_longer_replayable_after_deletion",
+];
+
+/// The `dimension.state` pairs in KNOWLEDGE-MODEL §K4's fenced block:
+/// each top-level key opens a dimension, its `state:` line (plus bare
+/// continuation lines carrying only `|`-separated values) lists the
+/// closed vocabulary. The nested `<connector>:` key stays inside the
+/// synchronization dimension.
+fn k4_dimension_states() -> BTreeSet<String> {
+    let knowledge_model = read_repo_doc("docs/roadmap/v10/KNOWLEDGE-MODEL.md");
+    let section = annex_section(&knowledge_model, "KNOWLEDGE-MODEL.md", "## K4.");
+    assert!(
+        section.contains("required_before_effective: true | false"),
+        "KNOWLEDGE-MODEL.md §K4 lost the per-connector `required_before_effective` flag"
+    );
+    let lists = fenced_lists_in(section);
+    assert_eq!(
+        lists.len(),
+        1,
+        "KNOWLEDGE-MODEL.md §K4 must carry exactly its one fenced dimension block, found {}",
+        lists.len()
+    );
+
+    let mut pairs = BTreeSet::new();
+    let mut dimension: Option<String> = None;
+    let mut collecting = false;
+    for line in &lists[0] {
+        if let Some(values) = line.strip_prefix("state:") {
+            collecting = true;
+            extend_states(&mut pairs, dimension.as_deref(), values);
+        } else if let Some(name) = line.strip_suffix(':') {
+            collecting = false;
+            if name != "<connector>" {
+                dimension = Some(name.to_string());
+            }
+        } else if collecting && line.contains('|') && !line.contains(':') {
+            extend_states(&mut pairs, dimension.as_deref(), line);
+        } else {
+            collecting = false;
+        }
+    }
+    pairs
+}
+
+fn extend_states(pairs: &mut BTreeSet<String>, dimension: Option<&str>, values: &str) {
+    let dimension = dimension.expect("KNOWLEDGE-MODEL.md §K4: a `state:` line outside a dimension");
+    pairs.extend(
+        values
+            .split('|')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("{dimension}.{value}")),
+    );
+}
+
+/// The six-dimension managed state vocabularies (E1.4, decision D07/D15):
+/// registry rows, the pinned list here, and KNOWLEDGE-MODEL §K4's fenced
+/// block must agree exactly — a change anywhere is a registry edit plus a
+/// §K4 amendment, never one alone.
+#[test]
+fn managed_state_dimensions_match_k4() {
+    assert_vocabulary(
+        "registry:managed-state-dimensions",
+        "KNOWLEDGE-MODEL.md §K4",
+        &MANAGED_STATE_DIMENSIONS,
+    );
+    let expected: BTreeSet<String> = MANAGED_STATE_DIMENSIONS
+        .iter()
+        .map(|pair| pair.to_string())
+        .collect();
+    assert_eq!(
+        k4_dimension_states(),
+        expected,
+        "KNOWLEDGE-MODEL.md §K4's dimension block drifted from the registry — \
+         amend both together, never one alone"
+    );
+    assert!(
+        registry().contains("required_before_effective"),
+        "the registry's managed-state-dimensions section must carry the \
+         per-connector `required_before_effective` flag"
+    );
+}
+
+const MANAGED_STATE_DIMENSIONS: [&str; 27] = [
+    "governance.proposed",
+    "governance.approved",
+    "governance.rejected",
+    "governance.revoked",
+    "verification.unverified",
+    "verification.partially_verified",
+    "verification.verified",
+    "verification.failed",
+    "effectivity.pending",
+    "effectivity.scheduled",
+    "effectivity.effective",
+    "effectivity.suspended",
+    "effectivity.expired",
+    "freshness.current",
+    "freshness.needs_review",
+    "freshness.stale",
+    "integrity.clear",
+    "integrity.potentially_conflicting",
+    "integrity.contradicted",
+    "synchronization.in_sync",
+    "synchronization.pending_writeback",
+    "synchronization.pending_external_approval",
+    "synchronization.writeback_failed",
+    "synchronization.source_ahead",
+    "synchronization.source_diverged",
+    "synchronization.paused",
+    "synchronization.not_applicable",
 ];

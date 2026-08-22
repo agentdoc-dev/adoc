@@ -41,7 +41,7 @@ pub(crate) fn parse_page(source: &SourceFile) -> (PageAst, Vec<Diagnostic>) {
         id: PageId::untitled_fallback(),
         title: None,
         source_path: source.logical_path.clone(),
-        source_digest: crate::application::hashing::sha256_prefixed(source.text.as_bytes()),
+        source_digest: crate::domain::hashing::sha256_prefixed(source.text.as_bytes()),
         blocks: Vec::new(),
     };
     let mut diagnostics = Vec::new();
