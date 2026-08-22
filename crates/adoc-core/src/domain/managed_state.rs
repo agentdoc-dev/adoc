@@ -252,6 +252,12 @@ impl ConnectorId {
             Ok(Self(value))
         }
     }
+
+    /// The connector's exact recorded spelling (E1.5: named in export
+    /// loss reports).
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 /// The component that emitted a state event (a connector observer, the

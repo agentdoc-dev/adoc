@@ -34,7 +34,8 @@ use serde::Serialize;
 
 use super::diagnostic::DiagnosticCode;
 use super::managed_state::{
-    EffectivityState, GovernanceState, ManagedStateChange, VerificationState,
+    EffectivityState, GovernanceState, ManagedStateChange, ManagedVersionState, RecordedDimension,
+    VerificationState,
 };
 use super::reconciliation::{PolicyVersion, Principal};
 
@@ -45,6 +46,10 @@ pub(crate) const LIFECYCLE_MAPPING_SCHEMA_VERSION: &str = "adoc.lifecycle_mappin
 /// the serialized version-1 contract is pinned in the domain tests, so
 /// editing a rule under version "1" fails the pin by construction.
 const MAPPING_VERSION_1: &str = "1";
+
+/// The only projection rule set shipped so far — versioned independently
+/// of the import mapping, under the same pin discipline.
+const PROJECTION_VERSION_1: &str = "1";
 
 /// The multi-dimension target of one flat authored word. Deliberately
 /// carries NO verification field: no flat word — including the authored
@@ -103,6 +108,74 @@ pub(crate) struct LifecycleMappingContract {
     pub(crate) mapping_version: &'static str,
     pub(crate) import_mapping: BTreeMap<&'static str, KindImportMapping>,
     pub(crate) loss_declaration: Vec<DimensionLossDeclaration>,
+    pub(crate) projection: ProjectionPolicy,
+}
+
+/// The versioned export projection (E1.5.T2): managed multi-dimension
+/// state → flat `.adoc` status, inside the same envelope. Lossy by
+/// nature — every application returns a machine-readable loss report,
+/// never a silently narrowed word.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ProjectionPolicy {
+    pub(crate) projection_version: &'static str,
+    pub(crate) kinds: BTreeMap<&'static str, KindProjection>,
+}
+
+/// One kind's projection: ordered condition rules (first match wins) over
+/// an unconditional fallback, so projection is total by construction — no
+/// state can fail to render.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct KindProjection {
+    pub(crate) rules: Vec<ProjectionRule>,
+    /// The word rendered when no rule matches (gaps included). `None`:
+    /// the kind authors no status.
+    pub(crate) fallback: Option<&'static str>,
+}
+
+/// One projection rule: every present condition must hold on the RECORDED
+/// dimension (a gap never matches a condition). The `verified` word is
+/// only ever emitted by a rule requiring recorded
+/// `verification: verified` — pinned by a table-wide test, so approval
+/// cannot render as verification in any version.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub(crate) struct ProjectionRule {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) governance: Option<GovernanceState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) verification: Option<VerificationState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) effectivity: Option<EffectivityState>,
+    pub(crate) status: &'static str,
+}
+
+/// One export projection application: the flat word (or `null` for
+/// statusless kinds) plus the loss report — one entry per recorded
+/// dimension the projected word cannot carry back through this same
+/// contract's import mapping. Gaps produce no entries: nothing recorded,
+/// nothing dropped.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct FlatProjection {
+    /// Pinned per application, like the mapping version.
+    pub(crate) projection_version: String,
+    /// The mapping version the loss report's round-trip recovery ran
+    /// under.
+    pub(crate) mapping_version: String,
+    pub(crate) kind: String,
+    pub(crate) status: Option<String>,
+    pub(crate) loss_report: Vec<DimensionLoss>,
+}
+
+/// One dropped dimension, named machine-readably: what was recorded and
+/// what re-importing the projected word would recover (`None`: nothing —
+/// the dimension has no flat carriage at all).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct DimensionLoss {
+    pub(crate) dimension: &'static str,
+    /// Set only for the per-connector synchronization dimension.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) connector: Option<String>,
+    pub(crate) recorded: &'static str,
+    pub(crate) recovered: Option<&'static str>,
 }
 
 /// A typed attestation authorizing a mapping application to land its
@@ -177,6 +250,11 @@ pub(crate) enum LifecycleMappingError {
          {MAPPING_VERSION_1}); versions resolve exact-match and are never coerced"
     )]
     UnsupportedMappingVersion { recorded: String },
+    #[error(
+        "lifecycle projection version {recorded:?} is not supported (supported: \
+         {PROJECTION_VERSION_1}); versions resolve exact-match and are never coerced"
+    )]
+    UnsupportedProjectionVersion { recorded: String },
     #[error("kind {kind:?} has no lifecycle mapping entry")]
     UnknownKind { kind: String },
     #[error("authored status {status:?} is outside kind {kind:?}'s released flat vocabulary")]
@@ -186,7 +264,9 @@ pub(crate) enum LifecycleMappingError {
 impl LifecycleMappingError {
     pub(crate) fn diagnostic_code(&self) -> DiagnosticCode {
         match self {
-            Self::UnsupportedMappingVersion { .. } => DiagnosticCode::SchemaUnsupportedVersion,
+            Self::UnsupportedMappingVersion { .. } | Self::UnsupportedProjectionVersion { .. } => {
+                DiagnosticCode::SchemaUnsupportedVersion
+            }
             Self::UnknownKind { .. } => DiagnosticCode::SchemaUnknownKind,
             Self::UnmappedStatus { .. } => DiagnosticCode::SchemaInvalidStatus,
         }
@@ -203,6 +283,128 @@ impl LifecycleMappingContract {
                 recorded: recorded.to_string(),
             }),
         }
+    }
+
+    /// Resolve the contract for a recorded projection version — exact
+    /// match, fail closed on anything else (playbook decision 12).
+    pub(crate) fn for_projection_version(recorded: &str) -> Result<Self, LifecycleMappingError> {
+        match recorded {
+            PROJECTION_VERSION_1 => Ok(Self::version_1()),
+            _ => Err(LifecycleMappingError::UnsupportedProjectionVersion {
+                recorded: recorded.to_string(),
+            }),
+        }
+    }
+
+    /// Project one managed state to its flat `.adoc` status. Total for
+    /// every known kind (rules over an unconditional fallback), and
+    /// explicit about loss: the report names every recorded dimension the
+    /// projected word cannot carry back through this contract's own
+    /// import mapping — the round trip is computed, never asserted.
+    pub(crate) fn project_export(
+        &self,
+        kind: &str,
+        state: &ManagedVersionState,
+    ) -> Result<FlatProjection, LifecycleMappingError> {
+        let projection =
+            self.projection
+                .kinds
+                .get(kind)
+                .ok_or_else(|| LifecycleMappingError::UnknownKind {
+                    kind: kind.to_string(),
+                })?;
+        let status = projection
+            .rules
+            .iter()
+            .find(|rule| Self::rule_matches(rule, state))
+            .map(|rule| Some(rule.status))
+            .unwrap_or(projection.fallback);
+        // What re-importing the projected word recovers under this same
+        // contract; every recorded difference is a named loss.
+        let recovered = self.mapped_target(kind, status)?;
+
+        let mut loss_report = Vec::new();
+        if let RecordedDimension::Recorded(governance) = state.governance
+            && governance != recovered.governance
+        {
+            loss_report.push(DimensionLoss {
+                dimension: "governance",
+                connector: None,
+                recorded: governance.as_str(),
+                recovered: Some(recovered.governance.as_str()),
+            });
+        }
+        // Import always lands unverified (K5): any other recorded
+        // verification state is dropped — even when the projected word
+        // is `verified`.
+        if let RecordedDimension::Recorded(verification) = state.verification
+            && verification != VerificationState::Unverified
+        {
+            loss_report.push(DimensionLoss {
+                dimension: "verification",
+                connector: None,
+                recorded: verification.as_str(),
+                recovered: Some(VerificationState::Unverified.as_str()),
+            });
+        }
+        if let RecordedDimension::Recorded(effectivity) = state.effectivity
+            && effectivity != recovered.effectivity
+        {
+            loss_report.push(DimensionLoss {
+                dimension: "effectivity",
+                connector: None,
+                recorded: effectivity.as_str(),
+                recovered: Some(recovered.effectivity.as_str()),
+            });
+        }
+        if let RecordedDimension::Recorded(freshness) = state.freshness {
+            loss_report.push(DimensionLoss {
+                dimension: "freshness",
+                connector: None,
+                recorded: freshness.as_str(),
+                recovered: None,
+            });
+        }
+        if let RecordedDimension::Recorded(integrity) = state.integrity {
+            loss_report.push(DimensionLoss {
+                dimension: "integrity",
+                connector: None,
+                recorded: integrity.as_str(),
+                recovered: None,
+            });
+        }
+        for (connector, record) in &state.synchronization {
+            loss_report.push(DimensionLoss {
+                dimension: "synchronization",
+                connector: Some(connector.as_str().to_string()),
+                recorded: record.state.as_str(),
+                recovered: None,
+            });
+        }
+
+        Ok(FlatProjection {
+            projection_version: self.projection.projection_version.to_string(),
+            mapping_version: self.mapping_version.to_string(),
+            kind: kind.to_string(),
+            status: status.map(str::to_string),
+            loss_report,
+        })
+    }
+
+    /// Every present condition must hold on the recorded dimension; a
+    /// gap never matches a condition.
+    fn rule_matches(rule: &ProjectionRule, state: &ManagedVersionState) -> bool {
+        fn holds<S: PartialEq + Copy>(required: Option<S>, recorded: RecordedDimension<S>) -> bool {
+            match required {
+                None => true,
+                Some(required) => {
+                    matches!(recorded, RecordedDimension::Recorded(state) if state == required)
+                }
+            }
+        }
+        holds(rule.governance, state.governance)
+            && holds(rule.verification, state.verification)
+            && holds(rule.effectivity, state.effectivity)
     }
 
     /// Apply the import mapping to one imported object's authored
@@ -356,10 +558,132 @@ impl LifecycleMappingContract {
         .into_iter()
         .collect();
 
+        // Projection rules, first match wins over an unconditional
+        // fallback. The `verified` word always requires recorded
+        // verification:verified — approval alone renders a
+        // non-verification word.
+        let rule = |governance: Option<GovernanceState>,
+                    verification: Option<VerificationState>,
+                    effectivity: Option<EffectivityState>,
+                    status: &'static str| ProjectionRule {
+            governance,
+            verification,
+            effectivity,
+            status,
+        };
+        let adopted_rule = |status: &'static str| {
+            rule(
+                Some(GovernanceState::Approved),
+                None,
+                Some(EffectivityState::Effective),
+                status,
+            )
+        };
+        let verified_rule = rule(
+            Some(GovernanceState::Approved),
+            Some(VerificationState::Verified),
+            Some(EffectivityState::Effective),
+            "verified",
+        );
+        let statusless_projection = KindProjection {
+            rules: Vec::new(),
+            fallback: None,
+        };
+        let lifecycle_projection = KindProjection {
+            rules: vec![
+                verified_rule,
+                rule(
+                    Some(GovernanceState::Approved),
+                    None,
+                    Some(EffectivityState::Expired),
+                    "deprecated",
+                ),
+                rule(Some(GovernanceState::Revoked), None, None, "deprecated"),
+            ],
+            fallback: Some("draft"),
+        };
+        let kinds: BTreeMap<&'static str, KindProjection> = [
+            (
+                "claim",
+                KindProjection {
+                    rules: vec![verified_rule, adopted_rule("active")],
+                    fallback: Some("draft"),
+                },
+            ),
+            (
+                "decision",
+                KindProjection {
+                    rules: vec![adopted_rule("accepted")],
+                    fallback: Some("proposed"),
+                },
+            ),
+            (
+                "policy",
+                KindProjection {
+                    rules: vec![
+                        rule(Some(GovernanceState::Revoked), None, None, "revoked"),
+                        rule(
+                            Some(GovernanceState::Approved),
+                            None,
+                            Some(EffectivityState::Expired),
+                            "archived",
+                        ),
+                        adopted_rule("active"),
+                    ],
+                    fallback: Some("proposed"),
+                },
+            ),
+            ("example", lifecycle_projection.clone()),
+            ("procedure", lifecycle_projection.clone()),
+            ("api", lifecycle_projection),
+            (
+                "contradiction",
+                KindProjection {
+                    rules: vec![
+                        rule(Some(GovernanceState::Rejected), None, None, "dismissed"),
+                        adopted_rule("resolved"),
+                    ],
+                    fallback: Some("unresolved"),
+                },
+            ),
+            (
+                "observation",
+                KindProjection {
+                    rules: Vec::new(),
+                    fallback: Some("observed"),
+                },
+            ),
+            (
+                "question",
+                KindProjection {
+                    rules: vec![adopted_rule("answered")],
+                    fallback: Some("open"),
+                },
+            ),
+            (
+                "task",
+                KindProjection {
+                    rules: vec![adopted_rule("done")],
+                    fallback: Some("open"),
+                },
+            ),
+            ("glossary", statusless_projection.clone()),
+            ("source", statusless_projection.clone()),
+            ("warning", statusless_projection.clone()),
+            ("constraint", statusless_projection.clone()),
+            ("agent_instruction", statusless_projection),
+        ]
+        .into_iter()
+        .collect();
+
         Self {
             schema_version: LIFECYCLE_MAPPING_SCHEMA_VERSION,
             mapping_version: MAPPING_VERSION_1,
             import_mapping,
+            projection: ProjectionPolicy {
+                projection_version: PROJECTION_VERSION_1,
+                kinds,
+            },
             loss_declaration: vec![
                 DimensionLossDeclaration {
                     dimension: "governance",
@@ -428,9 +752,10 @@ mod tests {
     use crate::domain::knowledge_object::block_kind_names;
     use crate::domain::managed::{ManagedWorkspace, WorkspaceId};
     use crate::domain::managed_state::{
-        AuditRecord, AuditSink, AuditSinkError, EffectivityState, EventEmitter, GovernanceState,
-        ManagedStateChange, ManagedStateEvent, ManagedStateEventStore, RecordedDimension,
-        RetentionFloor, StateEventSubject, VerificationState,
+        AuditRecord, AuditSink, AuditSinkError, ConnectorId, ConnectorSyncRecord, EffectivityState,
+        EventEmitter, FreshnessState, GovernanceState, IntegrityState, ManagedStateChange,
+        ManagedStateEvent, ManagedStateEventStore, ManagedVersionState, RecordedDimension,
+        RetentionFloor, StateEventSubject, SynchronizationState, VerificationState,
     };
     use crate::domain::reconciliation::{PolicyVersion, Principal};
 
@@ -820,6 +1145,263 @@ mod tests {
         assert_eq!(value["loss_declaration"][1]["carriage"], json!("partial"));
     }
 
+    // ------------------------------------------------------------------
+    // E1.5.T2 — export projection (managed → flat) with explicit loss.
+    // ------------------------------------------------------------------
+
+    fn recorded_state(
+        governance: RecordedDimension<GovernanceState>,
+        verification: RecordedDimension<VerificationState>,
+        effectivity: RecordedDimension<EffectivityState>,
+    ) -> ManagedVersionState {
+        ManagedVersionState {
+            governance,
+            verification,
+            effectivity,
+            freshness: RecordedDimension::Gap,
+            integrity: RecordedDimension::Gap,
+            synchronization: BTreeMap::new(),
+        }
+    }
+
+    /// The T2 headline fixture (MILESTONES §E1.5): a full six-dimension
+    /// state round-trips through the flat projection and EVERY dropped
+    /// dimension is named machine-readably — all six §K4 names, the
+    /// verification drop included even though the projected word is not
+    /// `verified`.
+    #[test]
+    fn round_trip_export_names_every_dropped_dimension() {
+        let mut state = recorded_state(
+            RecordedDimension::Recorded(GovernanceState::Revoked),
+            RecordedDimension::Recorded(VerificationState::Verified),
+            RecordedDimension::Recorded(EffectivityState::Suspended),
+        );
+        state.freshness = RecordedDimension::Recorded(FreshnessState::Stale);
+        state.integrity = RecordedDimension::Recorded(IntegrityState::Contradicted);
+        state.synchronization.insert(
+            ConnectorId::new("jira").expect("non-blank"),
+            ConnectorSyncRecord {
+                state: SynchronizationState::SourceDiverged,
+                required_before_effective: false,
+            },
+        );
+
+        let projection = contract()
+            .project_export("example", &state)
+            .expect("projection applies");
+        assert_eq!(projection.status.as_deref(), Some("deprecated"));
+
+        let value = serde_json::to_value(&projection).expect("projection serializes");
+        assert_eq!(
+            value["loss_report"],
+            json!([
+                {
+                    "dimension": "governance",
+                    "recorded": "revoked",
+                    "recovered": "approved"
+                },
+                {
+                    "dimension": "verification",
+                    "recorded": "verified",
+                    "recovered": "unverified"
+                },
+                {
+                    "dimension": "effectivity",
+                    "recorded": "suspended",
+                    "recovered": "expired"
+                },
+                {
+                    "dimension": "freshness",
+                    "recorded": "stale",
+                    "recovered": null
+                },
+                {
+                    "dimension": "integrity",
+                    "recorded": "contradicted",
+                    "recovered": null
+                },
+                {
+                    "dimension": "synchronization",
+                    "connector": "jira",
+                    "recorded": "source_diverged",
+                    "recovered": null
+                }
+            ]),
+            "every dropped dimension must be named in the loss report"
+        );
+    }
+
+    /// The slice exit gate: a governance:approved + verification:unverified
+    /// object never exports a status implying verification — for any kind.
+    #[test]
+    fn approved_but_unverified_never_exports_a_verified_status() {
+        let contract = contract();
+        let state = recorded_state(
+            RecordedDimension::Recorded(GovernanceState::Approved),
+            RecordedDimension::Recorded(VerificationState::Unverified),
+            RecordedDimension::Recorded(EffectivityState::Effective),
+        );
+        for (kind, _) in flat_vocabularies() {
+            let projection = contract
+                .project_export(kind, &state)
+                .expect("projection applies");
+            assert_ne!(
+                projection.status.as_deref(),
+                Some("verified"),
+                "kind {kind}: approval must never render as verification"
+            );
+        }
+    }
+
+    /// By construction over the whole rule table (any version): a rule
+    /// rendering the word `verified` must require recorded
+    /// verification:verified — no other condition set may emit it.
+    #[test]
+    fn rendering_verified_requires_recorded_verification_in_every_rule() {
+        let contract = contract();
+        for (kind, projection) in &contract.projection.kinds {
+            for rule in &projection.rules {
+                if rule.status == "verified" {
+                    assert_eq!(
+                        rule.verification,
+                        Some(VerificationState::Verified),
+                        "kind {kind}: a rule rendering `verified` must require \
+                         recorded verification"
+                    );
+                }
+            }
+            assert_ne!(
+                projection.fallback,
+                Some("verified"),
+                "kind {kind}: the catch-all must never render `verified`"
+            );
+        }
+    }
+
+    /// The projection policy covers exactly the released kind set, like
+    /// the import mapping.
+    #[test]
+    fn the_projection_covers_every_released_kind_exactly() {
+        let contract = contract();
+        let projected: Vec<&str> = contract.projection.kinds.keys().copied().collect();
+        let mut released = block_kind_names();
+        released.sort_unstable();
+        assert_eq!(projected, released);
+    }
+
+    /// Every projected word round-trips through the same contract's
+    /// import mapping — the loss report's recovery comparison is total by
+    /// construction.
+    #[test]
+    fn every_projected_word_is_importable_under_the_same_contract() {
+        let contract = contract();
+        for (kind, projection) in &contract.projection.kinds {
+            for word in projection
+                .rules
+                .iter()
+                .map(|rule| Some(rule.status))
+                .chain(std::iter::once(projection.fallback))
+            {
+                contract
+                    .apply_import_mapping(kind, word, None)
+                    .unwrap_or_else(|error| {
+                        panic!("kind {kind} projected word {word:?} must import: {error}")
+                    });
+            }
+        }
+    }
+
+    /// A statusless kind projects `status: null`; recorded dimensions
+    /// still produce loss entries. A dimension nobody recorded (a gap)
+    /// is not a loss — nothing existed to drop.
+    #[test]
+    fn statusless_kinds_and_gaps_project_without_fabricating_loss() {
+        let contract = contract();
+        let projection = contract
+            .project_export(
+                "glossary",
+                &recorded_state(
+                    RecordedDimension::Recorded(GovernanceState::Approved),
+                    RecordedDimension::Gap,
+                    RecordedDimension::Gap,
+                ),
+            )
+            .expect("projection applies");
+        assert_eq!(projection.status, None);
+        assert_eq!(
+            projection
+                .loss_report
+                .iter()
+                .map(|entry| entry.dimension)
+                .collect::<Vec<_>>(),
+            ["governance"],
+            "only the recorded dimension is reported; gaps fabricate nothing"
+        );
+
+        let all_gaps = recorded_state(
+            RecordedDimension::Gap,
+            RecordedDimension::Gap,
+            RecordedDimension::Gap,
+        );
+        let projection = contract
+            .project_export("task", &all_gaps)
+            .expect("projection applies");
+        assert_eq!(projection.status.as_deref(), Some("open"));
+        assert!(projection.loss_report.is_empty());
+    }
+
+    /// Projection versions resolve exact-match too (playbook decision
+    /// 12) — unknown recorded versions fail closed with
+    /// `schema.unsupported_version`.
+    #[test]
+    fn unknown_projection_version_fails_exact_match_closed() {
+        for recorded in ["0", "2", "1.0", "v1", ""] {
+            let error = LifecycleMappingContract::for_projection_version(recorded)
+                .expect_err("unsupported version must fail closed");
+            assert_eq!(
+                error,
+                LifecycleMappingError::UnsupportedProjectionVersion {
+                    recorded: recorded.to_string(),
+                }
+            );
+            assert_eq!(
+                error.diagnostic_code(),
+                DiagnosticCode::SchemaUnsupportedVersion
+            );
+        }
+        assert_eq!(
+            LifecycleMappingContract::for_projection_version("1")
+                .expect("version 1 is supported")
+                .projection
+                .projection_version,
+            "1"
+        );
+    }
+
+    /// Historical replay: resolving the contract by a recorded version
+    /// and re-applying yields byte-identical records — the version is
+    /// pinned per application, so an already-recorded application never
+    /// changes meaning when newer rule sets ship.
+    #[test]
+    fn historical_applications_replay_identically_under_their_recorded_version() {
+        let recorded_mapping_version = "1";
+        let replay = |version: &str| {
+            LifecycleMappingContract::for_mapping_version(version)
+                .expect("recorded version resolves")
+                .apply_import_mapping("policy", Some("archived"), Some(migration_attestation()))
+                .expect("mapping applies")
+        };
+        let first = replay(recorded_mapping_version);
+        let second = replay(recorded_mapping_version);
+        assert_eq!(first, second);
+        assert_eq!(
+            serde_json::to_string(&first).expect("serializes"),
+            serde_json::to_string(&second).expect("serializes"),
+            "replay must be byte-identical"
+        );
+        assert_eq!(first.mapping_version, recorded_mapping_version);
+    }
+
     /// Serializer ↔ published-schema parity (E1.1 precedent): the
     /// serialized contract validates against
     /// `docs/agent/v0/schema/adoc.lifecycle_mapping.v0.schema.json`.
@@ -841,6 +1423,66 @@ mod tests {
             "adoc.lifecycle_mapping.v0 schema validation failed:\n{}\ninstance:\n{}",
             errors.join("\n"),
             serde_json::to_string_pretty(&instance).expect("instance pretty prints")
+        );
+
+        // The per-application projection output is part of the same
+        // envelope contract (playbook decision 12): validate a real
+        // application — the T2 headline fixture — against the schema's
+        // projectionOutput definition.
+        let mut state = recorded_state(
+            RecordedDimension::Recorded(GovernanceState::Revoked),
+            RecordedDimension::Recorded(VerificationState::Verified),
+            RecordedDimension::Recorded(EffectivityState::Suspended),
+        );
+        state.freshness = RecordedDimension::Recorded(FreshnessState::Stale);
+        state.integrity = RecordedDimension::Recorded(IntegrityState::Contradicted);
+        state.synchronization.insert(
+            ConnectorId::new("jira").expect("non-blank"),
+            ConnectorSyncRecord {
+                state: SynchronizationState::SourceDiverged,
+                required_before_effective: false,
+            },
+        );
+        let output = contract()
+            .project_export("example", &state)
+            .expect("projection applies");
+        let output_schema = json!({
+            "$defs": schema["$defs"],
+            "$ref": "#/$defs/projectionOutput"
+        });
+        let validator = jsonschema::validator_for(&output_schema).expect("subschema compiles");
+        let instance = serde_json::to_value(&output).expect("projection serializes");
+        let errors: Vec<String> = validator
+            .iter_errors(&instance)
+            .map(|error| error.to_string())
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "projectionOutput schema validation failed:\n{}\ninstance:\n{}",
+            errors.join("\n"),
+            serde_json::to_string_pretty(&instance).expect("instance pretty prints")
+        );
+    }
+
+    /// A rule change under version "1" is unshippable by construction:
+    /// this pin holds the exact serialized version-1 contract, so any
+    /// edit to the rule set fails here until it ships as a new version
+    /// with its own pin (MILESTONES §E1.5 acceptance).
+    #[test]
+    fn the_serialized_version_1_contract_is_pinned() {
+        let value = serde_json::to_value(contract()).expect("contract serializes");
+        let digest = crate::domain::hashing::sha256_prefixed(
+            serde_json::to_string(&value)
+                .expect("contract serializes to a string")
+                .as_bytes(),
+        );
+        assert_eq!(
+            digest,
+            "sha256:3ec1ba7565d9a0ed46a16c9c45006505470b0e556a3ceb33997e49dae9f6aa02",
+            "the version-1 rule set changed: a rule change requires a new \
+             mapping/projection version, never an in-place edit. Serialized \
+             contract:\n{}",
+            serde_json::to_string_pretty(&value).expect("contract pretty prints")
         );
     }
 }

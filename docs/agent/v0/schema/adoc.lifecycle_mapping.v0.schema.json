@@ -4,7 +4,7 @@
   "title": "AgentDoc Lifecycle Mapping Contract",
   "description": "Versioned mapping between the flat `.adoc` authored status vocabularies and the six-dimension managed state (KNOWLEDGE-MODEL K4/K5). Consumed as data by the Cloud import path — never re-implemented. Mapping alone never establishes authority: applying a mapped target as state events requires a typed attestation (migration, source-control, or Cloud Governance Event); without one the target is advisory and governance stays proposed. Approval is never mapped to verification: mapping targets carry no verification member and every application lands verification unverified. Versions resolve exact-match; an unknown recorded version is rejected with `schema.unsupported_version`.",
   "type": "object",
-  "required": ["schema_version", "mapping_version", "import_mapping", "loss_declaration"],
+  "required": ["schema_version", "mapping_version", "import_mapping", "loss_declaration", "projection"],
   "additionalProperties": false,
   "properties": {
     "schema_version": { "const": "adoc.lifecycle_mapping.v0" },
@@ -25,6 +25,20 @@
       "minItems": 6,
       "maxItems": 6,
       "items": { "$ref": "#/$defs/dimensionLossDeclaration" }
+    },
+    "projection": {
+      "description": "The versioned export projection: managed multi-dimension state to flat `.adoc` status. Lossy by nature; every application yields a projection output (see $defs/projectionOutput) whose loss report names every dropped dimension.",
+      "type": "object",
+      "required": ["projection_version", "kinds"],
+      "additionalProperties": false,
+      "properties": {
+        "projection_version": { "type": "string", "minLength": 1 },
+        "kinds": {
+          "type": "object",
+          "minProperties": 15,
+          "additionalProperties": { "$ref": "#/$defs/kindProjection" }
+        }
+      }
     }
   },
   "$defs": {
@@ -71,6 +85,69 @@
           "enum": ["none", "partial"]
         },
         "note": { "type": "string", "minLength": 1 }
+      }
+    },
+    "kindProjection": {
+      "description": "Ordered condition rules (first match wins) over an unconditional fallback, so projection is total. A rule rendering `verified` always requires recorded verification:verified — approval never renders as verification.",
+      "type": "object",
+      "required": ["rules", "fallback"],
+      "additionalProperties": false,
+      "properties": {
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/projectionRule" }
+        },
+        "fallback": {
+          "description": "The word rendered when no rule matches (gaps included); null for kinds that author no status.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "projectionRule": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "governance": { "enum": ["proposed", "approved", "rejected", "revoked"] },
+        "verification": { "enum": ["unverified", "partially_verified", "verified", "failed"] },
+        "effectivity": { "enum": ["pending", "scheduled", "effective", "suspended", "expired"] },
+        "status": { "type": "string", "minLength": 1 }
+      }
+    },
+    "projectionOutput": {
+      "description": "One export projection application: the flat word (null for statusless kinds) plus the loss report naming every recorded dimension the word cannot carry back through this contract's import mapping.",
+      "type": "object",
+      "required": ["projection_version", "mapping_version", "kind", "status", "loss_report"],
+      "additionalProperties": false,
+      "properties": {
+        "projection_version": { "type": "string", "minLength": 1 },
+        "mapping_version": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "status": { "type": ["string", "null"] },
+        "loss_report": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dimensionLoss" }
+        }
+      }
+    },
+    "dimensionLoss": {
+      "type": "object",
+      "required": ["dimension", "recorded", "recovered"],
+      "additionalProperties": false,
+      "properties": {
+        "dimension": {
+          "enum": ["governance", "verification", "effectivity", "freshness", "integrity", "synchronization"]
+        },
+        "connector": {
+          "description": "Present only for the per-connector synchronization dimension.",
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded": { "type": "string", "minLength": 1 },
+        "recovered": {
+          "description": "What re-importing the projected word recovers; null when the dimension has no flat carriage at all.",
+          "type": ["string", "null"]
+        }
       }
     }
   }
