@@ -286,6 +286,8 @@ Shared row values for shipped rows: producer Action v2.0.0-alpha.19 (workflow an
 | `action.structural_errors_changed` | shipped | structural errors in changed objects |
 | `action.structural_errors_full` | shipped | structural errors in the full graph |
 | `action.unsupported_event` | shipped | unsupported triggering event |
+| `action.cloud_sync_failed` | planned (E3.7) | Cloud hand-off upload failed; local assessment preserved and annotated, never failed retroactively |
+| `action.attestation_bot_rejected` | planned (E8.1) | Action check wrapper for the canonical Cloud code `attestation.bot_approver_rejected` — one documented mapping, no competing suffix |
 <!-- /registry:action-codes -->
 
 ## Gate codes — planned, owner `adoc`
@@ -305,3 +307,23 @@ Contract codes for the four-mode gate evaluator (E5.3; check publication E5.4). 
 | `gate.mode_unknown` | planned | E5.3 | unknown gate mode string is a configuration error, never a fallback |
 | `gate.check_publish_failed` | planned | E5.4 | required check could not publish; blocks by absence, recorded for diagnosability |
 <!-- /registry:gate-codes -->
+
+## Attestation codes — planned, owner `cloud`
+
+The canonical bot-attestation code family root (RT-21, E0.3.T3). The Action never mints its own bot-attestation family: its check surface wraps this code via the registered `action.attestation_bot_rejected` row above. The E8.1 attestation record contract and the sibling codes (`attestation.binding_mismatch`, `attestation.requirements_unmet`) register at E8.1.T1 as a registry edit, flipping this row from planned to implemented rather than re-registering it.
+
+<!-- registry:attestation-codes -->
+| code | status | planned by | meaning |
+| --- | --- | --- | --- |
+| `attestation.bot_approver_rejected` | planned | E8.1 | bot/service approver rejected by default for approval attestation |
+<!-- /registry:attestation-codes -->
+
+## Dispositions
+
+Codes resolved out of existence (RT-21). A disposition is permanent: the id is never reused with another meaning.
+
+<!-- registry:dispositions -->
+| code | disposition |
+| --- | --- |
+| `action.semantic_failed` | removed — appeared only in pre-V10 planning text and never shipped (no occurrence in Action v2.0.0-alpha.19 sources); the shipped registered code `action.semantic_review_failed` is the single canonical Action semantic-failure reason code, and any gate-matrix or planning reference resolves there |
+<!-- /registry:dispositions -->

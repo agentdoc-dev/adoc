@@ -97,6 +97,8 @@ const ANCHORS: &[&str] = &[
     "registry:diagnostic-codes",
     "registry:action-codes",
     "registry:gate-codes",
+    "registry:attestation-codes",
+    "registry:dispositions",
 ];
 
 /// True for `adoc.<dotted lowercase path>.v<digits>` — the envelope
@@ -460,4 +462,101 @@ fn planned_rows_name_exactly_one_owner_repo() {
         );
     }
     assert!(data_rows > 0, "the planned table lost its rows");
+}
+
+/// Backticked codes cited by the executable planning surface, one
+/// `(document, line, code)` per citation. Covers `gate.*`/`action.*` codes
+/// and envelope ids; `attestation.*` siblings are deliberately outside the
+/// net — E8.1.T1 registers them as a registry edit in that slice.
+fn cited_codes() -> Vec<(String, usize, String)> {
+    let dir = repo_root().join("docs/roadmap/v10");
+    let mut cited = Vec::new();
+    let mut entries: Vec<_> = fs::read_dir(&dir)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", dir.display()))
+        .map(|entry| entry.expect("directory entry").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "md"))
+        .collect();
+    entries.sort();
+    assert!(!entries.is_empty(), "no v10 planning documents found");
+    for path in entries {
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        if let Some(opener) = support::doc_scan::unclosed_fence(&content) {
+            panic!("{name}:{opener}: fence never closes — citations past it are invisible");
+        }
+        for (number, line) in support::doc_scan::structural_lines(&content) {
+            for span in line.split('`').skip(1).step_by(2) {
+                let is_reason_code = ["gate.", "action."].iter().any(|prefix| {
+                    span.strip_prefix(prefix).is_some_and(|rest| {
+                        !rest.is_empty() && rest.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+                    })
+                });
+                if is_reason_code || is_envelope_id(span) {
+                    cited.push((name.clone(), number, span.to_string()));
+                }
+            }
+        }
+    }
+    cited
+}
+
+#[test]
+fn cited_codes_resolve_to_registered_entries_only() {
+    let registered = all_registered_ids(&registry());
+    let unresolved: Vec<_> = cited_codes()
+        .into_iter()
+        .filter(|(_, _, code)| !registered.contains(code))
+        .map(|(name, number, code)| format!("{name}:{number}: `{code}`"))
+        .collect();
+    assert!(
+        unresolved.is_empty(),
+        "planning surfaces cite wire codes with no registry row (dispositions count as rows): \n{}",
+        unresolved.join("\n")
+    );
+}
+
+#[test]
+fn semantic_failed_has_exactly_one_disposition() {
+    let registry = registry();
+    let dispositions = anchored_ids(&registry, "registry:dispositions");
+    assert!(
+        dispositions.contains("action.semantic_failed"),
+        "action.semantic_failed lost its disposition row (RT-21: one canonical resolution)"
+    );
+    let row = registry
+        .lines()
+        .find(|line| line.starts_with("| `action.semantic_failed`"))
+        .expect("disposition row");
+    assert!(
+        row.contains("`action.semantic_review_failed`"),
+        "the disposition must name the surviving canonical code: {row:?}"
+    );
+    let action_codes = anchored_ids(&registry, "registry:action-codes");
+    assert!(
+        action_codes.contains("action.semantic_review_failed"),
+        "the surviving code must itself be a registered Action code"
+    );
+    assert!(
+        !action_codes.contains("action.semantic_failed"),
+        "a removed code may never also appear as a registered Action code"
+    );
+}
+
+#[test]
+fn bot_attestation_family_has_one_documented_wrapper_mapping() {
+    let registry = registry();
+    let attestation = anchored_ids(&registry, "registry:attestation-codes");
+    assert!(
+        attestation.contains("attestation.bot_approver_rejected"),
+        "the canonical bot-attestation family root must stay registered (RT-21)"
+    );
+    let wrapper_row = registry
+        .lines()
+        .find(|line| line.starts_with("| `action.attestation_bot_rejected`"))
+        .expect("the Action wrapper code row (E8.1.T3) is registered");
+    assert!(
+        wrapper_row.contains("`attestation.bot_approver_rejected`"),
+        "the Action wrapper row must document its mapping to the canonical code: {wrapper_row:?}"
+    );
 }
