@@ -99,6 +99,9 @@ const ANCHORS: &[&str] = &[
     "registry:gate-codes",
     "registry:attestation-codes",
     "registry:dispositions",
+    "registry:untrusted-change-states",
+    "registry:retention-classes",
+    "registry:replay-postures",
 ];
 
 /// True for `adoc.<dotted lowercase path>.v<digits>` — the envelope
@@ -558,5 +561,64 @@ fn bot_attestation_family_has_one_documented_wrapper_mapping() {
     assert!(
         wrapper_row.contains("`attestation.bot_approver_rejected`"),
         "the Action wrapper row must document its mapping to the canonical code: {wrapper_row:?}"
+    );
+}
+
+/// One closed vocabulary pinned exactly: registry rows = the annex list,
+/// in the S8/K9 order, no additions and no losses.
+fn assert_vocabulary(anchor: &str, annex: &str, expected: &[&str]) {
+    let registered = anchored_ids(&registry(), anchor);
+    let expected_set: BTreeSet<String> = expected.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        registered, expected_set,
+        "`{anchor}` drifted from the closed vocabulary in {annex} — \
+         a change there is a registry edit plus an annex amendment"
+    );
+}
+
+#[test]
+fn untrusted_change_states_match_s8() {
+    assert_vocabulary(
+        "registry:untrusted-change-states",
+        "SEMANTICS.md §S8",
+        &[
+            "not_required",
+            "awaiting_authorization",
+            "authorized",
+            "running",
+            "completed",
+            "denied",
+            "failed",
+            "expired_after_head_change",
+        ],
+    );
+}
+
+#[test]
+fn retention_classes_match_k9() {
+    assert_vocabulary(
+        "registry:retention-classes",
+        "KNOWLEDGE-MODEL.md §K9",
+        &[
+            "digest_only",
+            "bounded_evidence",
+            "exact_candidate_input",
+            "temporary_processing",
+            "full_source_snapshot",
+        ],
+    );
+}
+
+#[test]
+fn replay_postures_match_k9() {
+    assert_vocabulary(
+        "registry:replay-postures",
+        "KNOWLEDGE-MODEL.md §K9",
+        &[
+            "fully_replayable",
+            "source_access_required",
+            "intentionally_non_replayable",
+            "no_longer_replayable_after_deletion",
+        ],
     );
 }
