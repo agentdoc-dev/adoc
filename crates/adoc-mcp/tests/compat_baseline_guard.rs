@@ -53,6 +53,14 @@ fn anchored_span(doc: &str, doc_name: &str, anchor: &str) -> std::ops::Range<usi
         .find(&close)
         .unwrap_or_else(|| panic!("{doc_name} is missing the closing `{close}` anchor"))
         + start;
+    assert!(
+        doc[start..].find(&open).is_none(),
+        "{doc_name}: `{open}` appears more than once — lines in later blocks are invisible"
+    );
+    assert!(
+        doc[end + close.len()..].find(&close).is_none(),
+        "{doc_name}: `{close}` appears more than once — lines between the closes are invisible"
+    );
     start..end
 }
 
@@ -259,6 +267,13 @@ fn rows_name_owner_versions_and_owning_train() {
         );
         // Exact in both directions: an extra repo in the cell is the same
         // silent divergence from the map as a missing one.
+        for token in row.repos.split(',').map(str::trim) {
+            assert!(
+                DELIVERY_ORDER.contains(&token),
+                "{id}: repos cell names {token:?}, which the delivery order does not \
+                 know — an unknown party must fail, not vanish from the comparison"
+            );
+        }
         assert_eq!(
             repos_named(&row.repos),
             *repos,
