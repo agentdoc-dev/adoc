@@ -292,6 +292,35 @@ impl ManagedWorkspace {
         if subject.object_id != counterpart.object_id {
             return Err(ReconciliationDecisionError::NotACandidatePair);
         }
+        // A standing merge freezes its parties against conflicting
+        // decisions: a merged-away counterpart cannot be decided again
+        // under another pair (it would be re-homed into two survivors at
+        // once), and a surviving subject cannot itself be merged away (the
+        // chain would silently orphan its antecedents from the new
+        // survivor's single-level walk). Nested reconciliation policy is
+        // post-V1 (MILESTONES §E1.3 out of scope) — out-of-scope input is
+        // rejected, never half-modelled. Same-pair decisions stay exempt:
+        // the last decision for a pair stands.
+        // ponytail: full standing-state derive per record; index standing
+        // merges by party if the log grows hot.
+        let pair = decision.pair_key();
+        let state = self.reconciliation_state();
+        for standing in &state.standing {
+            if standing.verb() != ReconciliationVerb::MergeRehome || standing.pair_key() == pair {
+                continue;
+            }
+            let merged_away = &standing.counterpart().canonical;
+            if merged_away == &decision.subject().canonical
+                || merged_away == &decision.counterpart().canonical
+            {
+                return Err(ReconciliationDecisionError::PartyAlreadyMerged);
+            }
+            if decision.verb() == ReconciliationVerb::MergeRehome
+                && standing.subject().canonical == decision.counterpart().canonical
+            {
+                return Err(ReconciliationDecisionError::NestedMergeUnsupported);
+            }
+        }
         self.decisions.push(decision);
         Ok(())
     }
@@ -1764,6 +1793,141 @@ mod tests {
         assert!(
             workspace.decisions().is_empty(),
             "a rejected decision must not enter the log"
+        );
+    }
+
+    /// Three repositories colliding on `billing.credits` — parties A, B,
+    /// C at their latest versions, every pair a candidate.
+    fn three_way_collision() -> (
+        ManagedWorkspace,
+        DecisionParty,
+        DecisionParty,
+        DecisionParty,
+    ) {
+        let mut workspace = workspace();
+        let mut parties = Vec::new();
+        for (repo, hash) in [
+            ("a/agentdoc.config.yaml", "sha256:aaa"),
+            ("b/agentdoc.config.yaml", "sha256:bbb"),
+            ("c/agentdoc.config.yaml", "sha256:ccc"),
+        ] {
+            let outcome = workspace
+                .import_artifact(&artifact(
+                    local_repo(repo),
+                    vec![knowledge_object("billing.credits", hash)],
+                ))
+                .expect("import accepted");
+            parties.push(DecisionParty {
+                canonical: outcome.imported[0].canonical.clone(),
+                version_id: outcome.imported[0].version_id.clone(),
+            });
+        }
+        let c = parties.pop().expect("three imports");
+        let b = parties.pop().expect("three imports");
+        let a = parties.pop().expect("three imports");
+        (workspace, a, b, c)
+    }
+
+    fn decide(
+        verb: ReconciliationVerb,
+        subject: &DecisionParty,
+        counterpart: &DecisionParty,
+    ) -> ReconciliationDecision {
+        ReconciliationDecision::new(
+            verb,
+            subject.clone(),
+            counterpart.clone(),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties")
+    }
+
+    /// A standing merge freezes its merged-away counterpart: once C is
+    /// merged into A, any decision naming C under a different pair —
+    /// merging it into B too, or re-deciding it under any verb — is
+    /// rejected fail-closed rather than deriving a state where C is
+    /// re-homed into two survivors at once. A later decision on the SAME
+    /// pair still supersedes (last decision stands), after which the
+    /// un-merged party is decidable again.
+    #[test]
+    fn recording_rejects_decisions_naming_a_merged_away_party() {
+        let (mut workspace, a, b, c) = three_way_collision();
+        workspace
+            .record_decision(decide(ReconciliationVerb::MergeRehome, &a, &c))
+            .expect("first merge stands");
+
+        assert_eq!(
+            workspace.record_decision(decide(ReconciliationVerb::MergeRehome, &b, &c)),
+            Err(ReconciliationDecisionError::PartyAlreadyMerged),
+            "one counterpart must not be re-homed into two survivors"
+        );
+        assert_eq!(
+            workspace.record_decision(decide(ReconciliationVerb::KeepDistinct, &c, &b)),
+            Err(ReconciliationDecisionError::PartyAlreadyMerged),
+            "a merged-away party is frozen for every verb"
+        );
+        assert_eq!(
+            workspace.merged_antecedents(&a.canonical),
+            vec![c.canonical.clone()]
+        );
+        assert!(workspace.merged_antecedents(&b.canonical).is_empty());
+
+        workspace
+            .record_decision(decide(ReconciliationVerb::KeepDistinct, &a, &c))
+            .expect("a same-pair decision supersedes the standing merge");
+        workspace
+            .record_decision(decide(ReconciliationVerb::MergeRehome, &b, &c))
+            .expect("an un-merged party is decidable again");
+        assert!(workspace.merged_antecedents(&a.canonical).is_empty());
+        assert_eq!(
+            workspace.merged_antecedents(&b.canonical),
+            vec![c.canonical.clone()]
+        );
+    }
+
+    /// Merging away a survivor that holds merged antecedents would chain
+    /// merges — nested reconciliation, out of scope for this slice
+    /// (MILESTONES §E1.3) — and the single-level antecedent walk would
+    /// silently lose the survivor's own antecedents. Rejected fail-closed;
+    /// a non-merge decision on the survivor stays legal.
+    #[test]
+    fn recording_rejects_a_merge_chain_into_a_standing_survivor() {
+        let (mut workspace, a, b, c) = three_way_collision();
+        workspace
+            .record_decision(decide(ReconciliationVerb::MergeRehome, &b, &c))
+            .expect("first merge stands");
+
+        assert_eq!(
+            workspace.record_decision(decide(ReconciliationVerb::MergeRehome, &a, &b)),
+            Err(ReconciliationDecisionError::NestedMergeUnsupported)
+        );
+        assert_eq!(
+            workspace.merged_antecedents(&b.canonical),
+            vec![c.canonical.clone()]
+        );
+        assert!(workspace.merged_antecedents(&a.canonical).is_empty());
+
+        workspace
+            .record_decision(decide(ReconciliationVerb::KeepDistinct, &a, &b))
+            .expect("a non-merge decision on the survivor stays legal");
+    }
+
+    /// One survivor absorbing several antecedents through separate
+    /// decisions is not a chain: merge C into A, then B into A — both
+    /// stand, deterministically ordered by pair key.
+    #[test]
+    fn one_survivor_may_absorb_multiple_antecedents() {
+        let (mut workspace, a, b, c) = three_way_collision();
+        workspace
+            .record_decision(decide(ReconciliationVerb::MergeRehome, &a, &c))
+            .expect("first merge stands");
+        workspace
+            .record_decision(decide(ReconciliationVerb::MergeRehome, &a, &b))
+            .expect("a survivor may absorb another antecedent");
+        assert_eq!(
+            workspace.merged_antecedents(&a.canonical),
+            vec![b.canonical.clone(), c.canonical.clone()]
         );
     }
 
