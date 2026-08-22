@@ -101,6 +101,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.approval.v0` | cloud | E5.2 | native approval bound to exact proposal digest, principal, policy version |
 | `adoc.gate_result.v0` | adoc | E5.3 | four-mode gate decision record carrying registered `gate.*` codes |
 | `adoc.reconciliation_candidate.v0` | adoc | E1.2 | typed same-Object-ID collision record (ADR-0057 invariant 1, RT-03/D36): names both parties by workspace canonical identity, repository identity, latest immutable version id, and content hash; reason vocabulary closed to `object_id_collision` — hash/title/similarity never produce a candidate and never merge; the record ships in `adoc-core` since E1.2.T1 with its serialized shape pinned in domain tests; moves to shipped when a surface emits it on the wire |
+| `adoc.managed_object_identity.v0` | cloud | E1.2 | workspace-qualified managed Object identity record, served by the Cloud object-identities route since E1.2.T3 (payload: `schema_version`, `canonical_id`, `workspace_id`, `object_id`); the canonical identity is server-minted and never derived from the human-readable Object ID, so the same unqualified Object ID in two Workspaces stays unlinkable (RT-03; MILESTONES §E1.2 stop-ship); v0-additive; moves to shipped at Cloud's first versioned release |
 <!-- /registry:envelopes-planned -->
 
 ## Diagnostic Codes — shipped, owner `adoc`
