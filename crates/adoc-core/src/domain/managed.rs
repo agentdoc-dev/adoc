@@ -12,12 +12,18 @@
 //!
 //! Managed import (RT-03, D36): matching Object IDs, titles, hashes, or
 //! semantic similarity never auto-merge. A same-ID collision across
-//! distinctly keyed repositories (see [`ManagedRepositoryRecord`] for what
-//! the graph identity does and does not distinguish) retains every object
-//! distinct and emits a typed [`ReconciliationCandidate`]
-//! (`adoc.reconciliation_candidate.v0`, registered planned in
-//! CONTRACT-REGISTRY.md); deciding a candidate is a governed E1.3 action,
-//! never an import side effect.
+//! repositories retains every object distinct and emits a typed
+//! [`ReconciliationCandidate`] (`adoc.reconciliation_candidate.v0`,
+//! registered planned in CONTRACT-REGISTRY.md); deciding a candidate is a
+//! governed E1.3 action, never an import side effect.
+//!
+//! Routing (E1.3, adjudication of PR #150 claim 5): repositories live in
+//! reserved binding slots keyed by [`RepositorySlotId`] handle, because the
+//! CLI's `repository_identity` is degenerate across physical repositories
+//! (see [`ManagedRepositoryRecord`] for what the graph identity does and
+//! does not distinguish). Import routes explicitly by slot handle;
+//! identity-equality lookup remains only as the single-repo convenience
+//! and fails closed when ambiguous.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -98,6 +104,12 @@ pub(crate) enum ManagedIdentityError {
     DuplicateObjectId,
     #[error("content hash must be `sha256:` followed by lowercase hex")]
     InvalidContentHash,
+    #[error("repository identity matches more than one reserved slot; route by slot handle")]
+    AmbiguousRepositoryIdentity,
+    #[error("repository slot handle is not reserved in this workspace")]
+    UnknownRepositorySlot,
+    #[error("artifact repository identity differs from the reserved slot's")]
+    RepositoryIdentityMismatch,
 }
 
 /// The published v6 wire grammar for `content_hash`
@@ -115,25 +127,31 @@ fn content_hash_matches_published_grammar(value: &str) -> bool {
     })
 }
 
-/// One managed repository inside a workspace, keyed on the graph
-/// `repository_identity` (`{kind, config_path}` or explicit `null` —
-/// required since v5, ADR-0049). The record is the binding slot (V10.3.2):
-/// it can exist before the first artifact arrives, and its Object IDs stay
-/// repository-local — the same ID in a distinctly keyed repository is a
-/// different Managed Object.
+/// The workspace-minted handle of one reserved binding slot (V10.3.2).
+/// The slot handle — not the graph `repository_identity` — is what managed
+/// import routes by: CLI builds emit a degenerate identity (every
+/// project-bound build carries `{local_project, "agentdoc.config.yaml"}`),
+/// so identity equality cannot distinguish two physical repositories in
+/// one workspace (E1.3 adjudication of PR #150 claim 5). Opaque and never
+/// reused, like the other minted ids.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct RepositorySlotId(String);
+
+/// One managed repository inside a workspace — the reserved binding slot
+/// (V10.3.2), keyed by its [`RepositorySlotId`] handle. It records the
+/// graph `repository_identity` (`{kind, config_path}` or explicit `null` —
+/// required since v5, ADR-0049) it was reserved for, can exist before the
+/// first artifact arrives, and its Object IDs stay repository-local — the
+/// same ID in another slot is a different Managed Object.
 ///
 /// The graph identity names the producing invocation family, not a
 /// workspace-unique repository: every project-bound build emits the
 /// constant `{local_project, "agentdoc.config.yaml"}`
-/// (`FsSourceProvider::repository_identity`, ADR-0049 §7), so two
-/// physical repositories importing under the producer identity are one
-/// record to this aggregate. Identity-equality keying is therefore the
-/// single-repository convenience only. E1.3 adds explicit routing for
-/// the multi-repository workspace — a caller-supplied repository key
-/// bound from the authenticated channel, never read from the artifact,
-/// with the reserved binding slot (V10.3.2) as the disambiguator (PR
-/// #150 adjudication); until then the artifact's declared identity *is*
-/// the key.
+/// (`FsSourceProvider::repository_identity`, ADR-0049 §7), so
+/// identity-equality keying distinguishes repositories only as far as the
+/// caller's identities do — that is why the slot handle, not the
+/// identity, is the key, and identity lookup is the single-repository
+/// convenience only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedRepositoryRecord {
     pub(crate) repository_identity: GraphRepositoryIdentity,
@@ -243,12 +261,13 @@ pub(crate) struct ImportedVersion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedWorkspace {
     workspace_id: WorkspaceId,
-    repositories: BTreeMap<GraphRepositoryIdentity, ManagedRepositoryRecord>,
-    // ponytail: workspace-local monotonic minting; both ids are opaque to
+    repositories: BTreeMap<RepositorySlotId, ManagedRepositoryRecord>,
+    // ponytail: workspace-local monotonic minting; all ids are opaque to
     // every consumer — Cloud storage mints its own scheme (the contract is
     // opacity and uniqueness, not the format).
     minted_canonical_ids: u64,
     minted_version_ids: u64,
+    minted_slot_ids: u64,
 }
 
 impl ManagedWorkspace {
@@ -258,36 +277,119 @@ impl ManagedWorkspace {
             repositories: BTreeMap::new(),
             minted_canonical_ids: 0,
             minted_version_ids: 0,
+            minted_slot_ids: 0,
         }
     }
 
+    /// Single-repo convenience: the record whose recorded identity equals
+    /// `repository_identity`, iff exactly one slot matches. With two slots
+    /// sharing a (degenerate) identity the lookup is ambiguous and yields
+    /// `None` — [`ManagedWorkspace::repository_slot`] is the authoritative
+    /// accessor.
     pub(crate) fn repository(
         &self,
         repository_identity: &GraphRepositoryIdentity,
     ) -> Option<&ManagedRepositoryRecord> {
-        self.repositories.get(repository_identity)
+        let mut matches = self
+            .repositories
+            .values()
+            .filter(|record| &record.repository_identity == repository_identity);
+        match (matches.next(), matches.next()) {
+            (Some(record), None) => Some(record),
+            _ => None,
+        }
     }
 
-    /// V10.3.2: reserve the repository record — the binding slot — before
-    /// the first artifact arrives. Idempotent: a later reservation or
-    /// import binds to the existing record and never clears it.
+    pub(crate) fn repository_slot(
+        &self,
+        slot: &RepositorySlotId,
+    ) -> Option<&ManagedRepositoryRecord> {
+        self.repositories.get(slot)
+    }
+
+    /// V10.3.2 single-repo convenience: reserve the binding slot for this
+    /// identity before the first artifact arrives. Idempotent by identity —
+    /// a later reservation or import binds to the existing slot and never
+    /// clears it. Once two slots share the identity the lookup is
+    /// ambiguous and fails closed: reserve each physical repository
+    /// explicitly via [`ManagedWorkspace::reserve_repository_slot`].
     pub(crate) fn reserve_repository(
         &mut self,
         repository_identity: GraphRepositoryIdentity,
-    ) -> &mut ManagedRepositoryRecord {
-        self.repositories
-            .entry(repository_identity.clone())
-            .or_insert_with(|| ManagedRepositoryRecord {
-                repository_identity,
-                objects: BTreeMap::new(),
-            })
+    ) -> Result<RepositorySlotId, ManagedIdentityError> {
+        let mut matches = self
+            .repositories
+            .iter()
+            .filter(|(_, record)| record.repository_identity == repository_identity)
+            .map(|(slot, _)| slot.clone());
+        match (matches.next(), matches.next()) {
+            (Some(slot), None) => Ok(slot),
+            (Some(_), Some(_)) => Err(ManagedIdentityError::AmbiguousRepositoryIdentity),
+            (None, _) => Ok(self.reserve_repository_slot(repository_identity)),
+        }
     }
 
-    /// Import every Knowledge Object of a Graph Artifact into the
-    /// artifact's repository record. Retains every object; a same-ID
-    /// collision with another repository emits a [`ReconciliationCandidate`]
-    /// and never merges, links, or re-homes anything.
-    ///
+    /// E1.3 (adjudication of PR #150 claim 5): explicitly reserve a fresh
+    /// binding slot for one physical repository. Always mints — this is
+    /// how two physical repositories with the same degenerate CLI identity
+    /// become two slots with distinct object registries.
+    pub(crate) fn reserve_repository_slot(
+        &mut self,
+        repository_identity: GraphRepositoryIdentity,
+    ) -> RepositorySlotId {
+        self.minted_slot_ids += 1;
+        let slot = RepositorySlotId(format!("slot-{}", self.minted_slot_ids));
+        self.repositories.insert(
+            slot.clone(),
+            ManagedRepositoryRecord {
+                repository_identity,
+                objects: BTreeMap::new(),
+            },
+        );
+        slot
+    }
+
+    /// Single-repo convenience: import into the slot whose recorded
+    /// identity equals the artifact's, reserving it on first arrival.
+    /// Fails closed with [`ManagedIdentityError::AmbiguousRepositoryIdentity`]
+    /// once two slots share the identity — degenerate CLI identities make
+    /// identity lookup unable to distinguish physical repositories, so
+    /// multi-repo workspaces route explicitly via
+    /// [`ManagedWorkspace::import_artifact_into`] (E1.3 adjudication of
+    /// PR #150 claim 5).
+    pub(crate) fn import_artifact(
+        &mut self,
+        artifact: &GraphArtifactDocument,
+    ) -> Result<ManagedImportOutcome, ManagedIdentityError> {
+        Self::validate_artifact_object_ids(artifact)?;
+        // Arrival binds the slot even when the artifact carries no
+        // Knowledge Objects (E1.2.T4) — but only after validation, so a
+        // rejected import binds nothing.
+        let slot = self.reserve_repository(artifact.repository_identity.clone())?;
+        self.import_validated(&slot, artifact)
+    }
+
+    /// E1.3 explicit routing: import into a previously reserved slot,
+    /// named by handle. The artifact's own `repository_identity` never
+    /// routes — but routing an artifact whose identity differs from the
+    /// slot's recorded one is rejected fail-closed rather than silently
+    /// re-labeled.
+    pub(crate) fn import_artifact_into(
+        &mut self,
+        slot: &RepositorySlotId,
+        artifact: &GraphArtifactDocument,
+    ) -> Result<ManagedImportOutcome, ManagedIdentityError> {
+        let record = self
+            .repositories
+            .get(slot)
+            .ok_or(ManagedIdentityError::UnknownRepositorySlot)?;
+        if record.repository_identity != artifact.repository_identity {
+            return Err(ManagedIdentityError::RepositoryIdentityMismatch);
+        }
+        Self::validate_artifact_object_ids(artifact)?;
+        self.import_validated(slot, artifact)
+    }
+
     /// Fail closed on crafted input (`GraphArtifactDocument` derives
     /// `Deserialize`, so callers cannot assume compiler-built documents): a
     /// blank, grammar-violating, or repeated Object ID — or a
@@ -304,16 +406,10 @@ impl ManagedWorkspace {
     /// malformed hash would be enshrined in an immutable version and
     /// compared for RT-04 unchanged-ness ever after.
     ///
-    /// Two deliberate boundaries: (1) unlike `GraphIndex::from_document`,
+    /// Deliberate boundary: unlike `GraphIndex::from_document`,
     /// which degrades per node into diagnostics, one bad node rejects the
-    /// whole document — at this trust boundary a partial import would be
-    /// a silent drop; (2) the artifact's self-declared
-    /// `repository_identity` is taken as the record key, which
-    /// distinguishes repositories only as far as the caller's identities
-    /// do ([`ManagedRepositoryRecord`]) — E1.3 adds a caller-supplied
-    /// repository key so the record is bound from the authenticated
-    /// channel rather than the payload; until then the artifact's
-    /// declared identity *is* the key.
+    /// whole document — at this trust boundary a partial import would be a
+    /// silent drop.
     ///
     /// Two trust assumptions stay with the producer, deliberately —
     /// the fail-closed list above is NOT exhaustive verification:
@@ -328,10 +424,9 @@ impl ManagedWorkspace {
     /// crate-wide posture; `domain/review/object_diff.rs` makes the
     /// same assumption for change detection) — so unchanged-ness under
     /// RT-04 is exactly as trustworthy as the producer's hash.
-    pub(crate) fn import_artifact(
-        &mut self,
+    fn validate_artifact_object_ids(
         artifact: &GraphArtifactDocument,
-    ) -> Result<ManagedImportOutcome, ManagedIdentityError> {
+    ) -> Result<(), ManagedIdentityError> {
         let mut seen_ids = BTreeSet::new();
         for node in artifact
             .nodes
@@ -353,9 +448,18 @@ impl ManagedWorkspace {
                 return Err(ManagedIdentityError::InvalidContentHash);
             }
         }
-        // Arrival binds the slot even when the artifact carries no
-        // Knowledge Objects (E1.2.T4).
-        self.reserve_repository(artifact.repository_identity.clone());
+        Ok(())
+    }
+
+    /// Import every Knowledge Object of a validated Graph Artifact into
+    /// the reserved slot. Retains every object; a same-ID collision with
+    /// another slot emits a [`ReconciliationCandidate`] and never merges,
+    /// links, or re-homes anything.
+    fn import_validated(
+        &mut self,
+        slot: &RepositorySlotId,
+        artifact: &GraphArtifactDocument,
+    ) -> Result<ManagedImportOutcome, ManagedIdentityError> {
         let mut imported = Vec::new();
         let mut reconciliation_candidates = Vec::new();
         for node in artifact
@@ -365,7 +469,7 @@ impl ManagedWorkspace {
         {
             let known = self
                 .repositories
-                .get(&artifact.repository_identity)
+                .get(slot)
                 .and_then(|record| record.objects.get(&node.id))
                 .map(|object| {
                     let unchanged = object
@@ -379,19 +483,22 @@ impl ManagedWorkspace {
                 // content version, nothing minted.
                 Some((_, true)) => continue,
                 Some((canonical, false)) => (canonical, Vec::new()),
-                // First appearance of this Object ID in this repository:
-                // record same-ID parties from every other repository, then
-                // mint a fresh canonical identity — a colliding object's
-                // identity is never adopted.
+                // First appearance of this Object ID in this slot: record
+                // same-ID parties from every other slot, then mint a fresh
+                // canonical identity — a colliding object's identity is
+                // never adopted.
                 None => {
-                    let parties = self.colliding_parties(&artifact.repository_identity, &node.id);
+                    let parties = self.colliding_parties(slot, &node.id);
                     (self.mint_canonical_identity(), parties)
                 }
             };
             let version_id = self.mint_version_id();
-            // Reserved before the loop; re-reserving binds to the existing
-            // record — this is the single construction path.
-            let record = self.reserve_repository(artifact.repository_identity.clone());
+            let record = self
+                .repositories
+                .get_mut(slot)
+                // Unreachable: both entry points resolve or reserve the
+                // slot before delegating here; kept typed, never unwrapped.
+                .ok_or(ManagedIdentityError::UnknownRepositorySlot)?;
             let object =
                 record
                     .objects
@@ -432,25 +539,26 @@ impl ManagedWorkspace {
         })
     }
 
-    /// Same-ID parties in every other repository of this workspace. The
+    /// Same-ID parties in every other slot of this workspace — two slots
+    /// sharing a degenerate identity still collide with each other. The
     /// scan is exact-ID only: no hash, title, or similarity matching
     /// exists (RT-03/D36).
     fn colliding_parties(
         &self,
-        repository_identity: &GraphRepositoryIdentity,
+        slot: &RepositorySlotId,
         object_id: &str,
     ) -> Vec<ReconciliationParty> {
         self.repositories
             .iter()
-            .filter(|(key, _)| *key != repository_identity)
-            .filter_map(|(key, record)| {
+            .filter(|(key, _)| *key != slot)
+            .filter_map(|(_, record)| {
                 let object = record.objects.get(object_id)?;
                 // Non-empty by construction: records only ever gain
                 // versions, starting with one at creation.
                 let latest = object.versions.last()?;
                 Some(ReconciliationParty {
                     canonical: object.canonical.clone(),
-                    repository_identity: key.clone(),
+                    repository_identity: record.repository_identity.clone(),
                     version_id: latest.version_id.clone(),
                     content_hash: latest.content_hash.clone(),
                 })
@@ -1131,7 +1239,9 @@ mod tests {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
 
-        workspace.reserve_repository(repo.clone());
+        workspace
+            .reserve_repository(repo.clone())
+            .expect("identity unambiguous");
 
         let record = workspace.repository(&repo).expect("slot reserved");
         assert_eq!(record.repository_identity, repo);
@@ -1145,8 +1255,13 @@ mod tests {
     fn import_binds_to_the_reserved_record_and_reserve_is_idempotent() {
         let mut workspace = workspace();
         let repo = local_repo("a/agentdoc.config.yaml");
-        workspace.reserve_repository(repo.clone());
-        workspace.reserve_repository(repo.clone());
+        let first = workspace
+            .reserve_repository(repo.clone())
+            .expect("identity unambiguous");
+        let again = workspace
+            .reserve_repository(repo.clone())
+            .expect("identity unambiguous");
+        assert_eq!(first, again, "identity-idempotent reserve never forks");
 
         workspace
             .import_artifact(&artifact(
@@ -1154,7 +1269,9 @@ mod tests {
                 vec![knowledge_object("billing.credits", "sha256:aaa")],
             ))
             .expect("import accepted");
-        workspace.reserve_repository(repo.clone());
+        workspace
+            .reserve_repository(repo.clone())
+            .expect("identity unambiguous");
 
         let record = workspace.repository(&repo).expect("repo recorded");
         assert!(record.objects.contains_key("billing.credits"));
@@ -1176,6 +1293,134 @@ mod tests {
             .repository(&repo)
             .expect("repo recorded on arrival");
         assert!(record.objects.is_empty());
+    }
+
+    // E1.3 routing adjudication (PR #150 claim 5): CLI builds emit a
+    // degenerate `repository_identity` — every project-bound build carries
+    // `{local_project, "agentdoc.config.yaml"}` — so identity-equality
+    // lookup cannot distinguish two physical repositories in one
+    // workspace. The reserved binding slot (V10.3.2) is the disambiguator:
+    // import routes by slot handle; identity lookup stays only as the
+    // single-repo convenience.
+
+    /// Two physical repositories with the SAME degenerate identity, routed
+    /// to two reserved slots: distinct object registries, and a same-ID
+    /// import across them still produces a reconciliation candidate.
+    #[test]
+    fn two_slots_sharing_a_degenerate_identity_stay_distinct_and_reconcile() {
+        let mut workspace = workspace();
+        let degenerate = local_repo("agentdoc.config.yaml");
+        let slot_a = workspace.reserve_repository_slot(degenerate.clone());
+        let slot_b = workspace.reserve_repository_slot(degenerate.clone());
+        assert_ne!(slot_a, slot_b);
+
+        let first = workspace
+            .import_artifact_into(
+                &slot_a,
+                &artifact(
+                    degenerate.clone(),
+                    vec![knowledge_object("billing.credits", "sha256:aaa")],
+                ),
+            )
+            .expect("routed import accepted");
+        assert!(first.reconciliation_candidates.is_empty());
+
+        let second = workspace
+            .import_artifact_into(
+                &slot_b,
+                &artifact(
+                    degenerate.clone(),
+                    vec![knowledge_object("billing.credits", "sha256:bbb")],
+                ),
+            )
+            .expect("routed import accepted");
+
+        let object_a =
+            &workspace.repository_slot(&slot_a).expect("slot a").objects["billing.credits"];
+        let object_b =
+            &workspace.repository_slot(&slot_b).expect("slot b").objects["billing.credits"];
+        assert_ne!(
+            object_a.canonical, object_b.canonical,
+            "slots sharing an identity must keep distinct object registries"
+        );
+        assert_eq!(object_a.versions[0].content_hash, "sha256:aaa");
+        assert_eq!(object_b.versions[0].content_hash, "sha256:bbb");
+
+        assert_eq!(second.reconciliation_candidates.len(), 1);
+        let candidate = &second.reconciliation_candidates[0];
+        assert_eq!(candidate.reason, ReconciliationReason::ObjectIdCollision);
+        assert_eq!(candidate.existing.canonical, object_a.canonical);
+        assert_eq!(candidate.incoming.canonical, object_b.canonical);
+    }
+
+    /// Identity-equality lookup remains only for the single-repo case:
+    /// once two slots share the identity, identity-routed import is
+    /// ambiguous and fails closed instead of guessing a slot.
+    #[test]
+    fn identity_routed_import_fails_closed_when_two_slots_share_the_identity() {
+        let mut workspace = workspace();
+        let degenerate = local_repo("agentdoc.config.yaml");
+        let slot_a = workspace.reserve_repository_slot(degenerate.clone());
+        workspace.reserve_repository_slot(degenerate.clone());
+
+        let outcome = workspace.import_artifact(&artifact(
+            degenerate.clone(),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        ));
+
+        assert_eq!(
+            outcome,
+            Err(ManagedIdentityError::AmbiguousRepositoryIdentity)
+        );
+        assert!(
+            workspace
+                .repository_slot(&slot_a)
+                .expect("slot reserved")
+                .objects
+                .is_empty(),
+            "an ambiguous import must not touch any slot"
+        );
+        assert!(
+            workspace.reserve_repository(degenerate).is_err(),
+            "identity-idempotent reservation is equally ambiguous"
+        );
+    }
+
+    /// Explicit routing fails closed on an unknown slot handle and on an
+    /// artifact whose identity differs from the slot's, with no state
+    /// change either way.
+    #[test]
+    fn routed_import_rejects_unknown_slot_and_identity_mismatch_without_state() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+        let slot = workspace.reserve_repository_slot(repo.clone());
+        let document = artifact(
+            repo.clone(),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        );
+
+        let unreserved = RepositorySlotId("slot-99".to_string());
+        assert_eq!(
+            workspace.import_artifact_into(&unreserved, &document),
+            Err(ManagedIdentityError::UnknownRepositorySlot)
+        );
+
+        let mismatched = artifact(
+            local_repo("b/agentdoc.config.yaml"),
+            vec![knowledge_object("billing.credits", "sha256:aaa")],
+        );
+        assert_eq!(
+            workspace.import_artifact_into(&slot, &mismatched),
+            Err(ManagedIdentityError::RepositoryIdentityMismatch)
+        );
+        assert!(
+            workspace
+                .repository_slot(&slot)
+                .expect("slot reserved")
+                .objects
+                .is_empty(),
+            "a rejected routed import must not mint anything"
+        );
     }
 
     /// Exit test: two imported repositories collide — `{kind, config_path}`
