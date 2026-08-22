@@ -20,7 +20,7 @@
 //! recorded event order ([`EventOrdinal`]), so replaying the same log
 //! yields byte-identical state on every machine.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
@@ -670,13 +670,16 @@ pub(crate) const AUDIT_EMITTER_REGISTRY: &[AuditedTransition] = &{
     ]
 };
 
-/// The two directions the audit coverage guard checks: transitions the
-/// registry does not audit, and registry entries naming no known
-/// transition (stale or misspelled rows must not pass silently).
+/// What the audit coverage guard checks: transitions the registry does
+/// not audit, registry entries naming no known transition (stale or
+/// misspelled rows must not pass silently), and rows the registry
+/// carries more than once (a hand-maintenance slip is the exact failure
+/// the guard exists to catch, and a duplicate is never extra coverage).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AuditCoverageDiff {
     pub(crate) unaudited: Vec<(String, String)>,
     pub(crate) unknown: Vec<(String, String)>,
+    pub(crate) duplicates: Vec<(String, String)>,
 }
 
 /// Diff the six state machines' transition sets — every (dimension,
@@ -684,7 +687,7 @@ pub(crate) struct AuditCoverageDiff {
 /// an audit emitter registry. Pure so the guard can also prove that a
 /// deliberately unwired fixture fails.
 pub(crate) fn audit_coverage_diff(registry: &[AuditedTransition]) -> AuditCoverageDiff {
-    let mut complete: Vec<(String, String)> = Vec::new();
+    let mut complete: BTreeSet<(String, String)> = BTreeSet::new();
     complete.extend(
         GovernanceState::ALL
             .iter()
@@ -716,21 +719,18 @@ pub(crate) fn audit_coverage_diff(registry: &[AuditedTransition]) -> AuditCovera
             .map(|s| ("synchronization".to_string(), s.as_str().to_string())),
     );
 
-    let registered: Vec<(String, String)> = registry
-        .iter()
-        .map(|entry| (entry.dimension.to_string(), entry.state.to_string()))
-        .collect();
+    let mut registered: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut duplicates: Vec<(String, String)> = Vec::new();
+    for entry in registry {
+        let pair = (entry.dimension.to_string(), entry.state.to_string());
+        if !registered.insert(pair.clone()) {
+            duplicates.push(pair);
+        }
+    }
     AuditCoverageDiff {
-        unaudited: complete
-            .iter()
-            .filter(|pair| !registered.contains(pair))
-            .cloned()
-            .collect(),
-        unknown: registered
-            .iter()
-            .filter(|pair| !complete.contains(pair))
-            .cloned()
-            .collect(),
+        unaudited: complete.difference(&registered).cloned().collect(),
+        unknown: registered.difference(&complete).cloned().collect(),
+        duplicates,
     }
 }
 
@@ -1880,6 +1880,11 @@ mod tests {
             Vec::<(String, String)>::new(),
             "registry entries naming no known transition — stale or misspelled"
         );
+        assert_eq!(
+            diff.duplicates,
+            Vec::<(String, String)>::new(),
+            "duplicated registry rows — an editing slip, never extra coverage"
+        );
         for entry in AUDIT_EMITTER_REGISTRY {
             assert!(
                 !entry.emitter.trim().is_empty(),
@@ -1930,6 +1935,28 @@ mod tests {
             RetentionFloor::new(0),
             Err(ManagedStateEventError::ZeroRetentionFloor)
         );
+    }
+
+    /// A duplicated registry row is a hand-maintenance slip, never
+    /// extra coverage — membership checks alone surface it in neither
+    /// direction, so the diff reports duplicates explicitly and the CI
+    /// guard fails on them.
+    #[test]
+    fn a_duplicated_registry_row_fails_the_coverage_guard() {
+        let mut with_duplicate: Vec<AuditedTransition> = AUDIT_EMITTER_REGISTRY.to_vec();
+        with_duplicate.push(AuditedTransition {
+            dimension: "freshness",
+            state: "stale",
+            emitter: APPEND_EMITTER,
+        });
+        let diff = audit_coverage_diff(&with_duplicate);
+        assert_eq!(
+            diff.duplicates,
+            vec![("freshness".to_string(), "stale".to_string())],
+            "the duplicated row must surface"
+        );
+        assert!(diff.unaudited.is_empty(), "coverage itself is unaffected");
+        assert!(diff.unknown.is_empty(), "coverage itself is unaffected");
     }
 
     /// Blank or padded connector and emitter values fail closed — an
