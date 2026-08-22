@@ -16,12 +16,12 @@ use serde::Serialize;
 #[cfg(test)]
 use crate::application::compile::compile_with_provider;
 use crate::application::compile::compile_with_provider_for_date;
-use crate::application::hashing::sha256_prefixed;
 use crate::application::patch::{PatchCheckResult, check_patch_documents};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{
     GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode, GraphPageNode,
 };
+use crate::domain::hashing::sha256_prefixed;
 use crate::domain::obligation::ProofObligation;
 use crate::domain::patch::{PatchDocument, PatchIntent, PlacementHint};
 use crate::domain::ports::artifact_reader::ArtifactReader;

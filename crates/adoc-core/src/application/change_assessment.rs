@@ -8,9 +8,9 @@ use serde::Serialize;
 use crate::application::compile::{
     BuildArtifacts, CompileResult, compile_with_provider_anchored_for_date,
 };
-use crate::application::hashing::sha256_prefixed;
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphArtifactDocument, GraphKnowledgeObjectNode, GraphNode};
+use crate::domain::hashing::sha256_prefixed;
 use crate::domain::ports::changed_files::{ChangedFilesError, ChangedFilesProvider};
 use crate::domain::ports::snapshot_workspace::{
     SnapshotError, SnapshotSelector, SnapshotWorkspaceProvider,

@@ -109,6 +109,8 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 
 Shared row values: producer `adoc` 0.4.0 (`adoc-core` `diagnostic_codes!` table, the single declaring source); consumers are every envelope embedding `Diagnostic` records (CLI/MCP surfaces at adoc 0.4.0, Action v2.0.0-alpha.19 report rendering). Migration posture for every row: wire-stable string — a meaning change or removal requires a row in “Dispositions”, never reuse.
 
+Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed` is the operation-level code the owning operation surfaces when a state transition's audit record cannot be persisted (E1.4.T4); the planned gate-level `gate.audit_persistence_failed` (E5.3, “Gate codes” below) is a distinct surface that consumes it. Both stay registered; neither is a respelling of the other.
+
 <!-- registry:diagnostic-codes -->
 | code |
 | --- |
@@ -122,6 +124,7 @@ Shared row values: producer `adoc` 0.4.0 (`adoc-core` `diagnostic_codes!` table,
 | `assessment.invalid_config_path` |
 | `assessment.ref_unresolved` |
 | `assessment.snapshot_failed` |
+| `audit.persistence_failed` |
 | `build.embeddings_cache_ignored` |
 | `build.embeddings_cached` |
 | `build.embeddings_skipped` |
@@ -139,6 +142,7 @@ Shared row values: producer `adoc` 0.4.0 (`adoc-core` `diagnostic_codes!` table,
 | `evidence.hash_invalid` |
 | `evidence.hash_target_missing` |
 | `evidence.hash_unverifiable` |
+| `governance.record_conflict` |
 | `graph.object_not_found` |
 | `id.duplicate` |
 | `id.duplicate_in_artifact` |
@@ -260,6 +264,7 @@ Shared row values: producer `adoc` 0.4.0 (`adoc-core` `diagnostic_codes!` table,
 | `search.invalid_filter` |
 | `search.invalid_scope` |
 | `search.model_mismatch` |
+| `store.retention_floor_violation` |
 | `task.overdue` |
 <!-- /registry:diagnostic-codes -->
 
@@ -310,7 +315,7 @@ Contract codes for the four-mode gate evaluator (E5.3; check publication E5.4). 
 | `gate.proposal_hash_mismatch` | planned | E5.3 | approval bound to a proposal digest that no longer matches |
 | `gate.approval_invalidated` | planned | E5.3 | semantic content change invalidated a prior approval |
 | `gate.cloud_unavailable` | planned | E5.3 | required Cloud decision input unavailable — blocks, never defaults |
-| `gate.audit_persistence_failed` | planned | E5.3 | decision audit record could not be persisted — blocks |
+| `gate.audit_persistence_failed` | planned | E5.3 | decision audit record could not be persisted — blocks; gate-level surface consuming the operation-level `audit.persistence_failed` (E1.4.T4), explicit mapping per the note above the diagnostic-codes table |
 | `gate.mode_unknown` | planned | E5.3 | unknown gate mode string is a configuration error, never a fallback |
 | `gate.check_publish_failed` | planned | E5.4 | required check could not publish; blocks by absence, recorded for diagnosability |
 <!-- /registry:gate-codes -->
@@ -389,3 +394,39 @@ The closed K9 replay-posture vocabulary. A digest-only record is never `fully_re
 | `intentionally_non_replayable` |
 | `no_longer_replayable_after_deletion` |
 <!-- /registry:replay-postures -->
+
+## Managed state dimensions — owner `adoc` contracts, recorded by `cloud`
+
+The closed six-dimension managed state vocabularies ([`KNOWLEDGE-MODEL.md §K4`](KNOWLEDGE-MODEL.md#k4-governance-effectivity-and-synchronization-are-separate), E1.4). Entries are dimension-qualified (`dimension.state`) so the six vocabularies stay separate in one table — dimensions are never conflated (D07/D15), and a value's spelling is scoped to its own dimension. Synchronization is always per connector, and every synchronization event also carries the boolean `required_before_effective` (§K4). A new value is a registry edit plus a §K4 amendment, never an ad hoc string.
+
+<!-- registry:managed-state-dimensions -->
+| dimension.state |
+| --- |
+| `governance.proposed` |
+| `governance.approved` |
+| `governance.rejected` |
+| `governance.revoked` |
+| `verification.unverified` |
+| `verification.partially_verified` |
+| `verification.verified` |
+| `verification.failed` |
+| `effectivity.pending` |
+| `effectivity.scheduled` |
+| `effectivity.effective` |
+| `effectivity.suspended` |
+| `effectivity.expired` |
+| `freshness.current` |
+| `freshness.needs_review` |
+| `freshness.stale` |
+| `integrity.clear` |
+| `integrity.potentially_conflicting` |
+| `integrity.contradicted` |
+| `synchronization.in_sync` |
+| `synchronization.pending_writeback` |
+| `synchronization.pending_external_approval` |
+| `synchronization.writeback_failed` |
+| `synchronization.source_ahead` |
+| `synchronization.source_diverged` |
+| `synchronization.paused` |
+| `synchronization.not_applicable` |
+<!-- /registry:managed-state-dimensions -->

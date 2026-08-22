@@ -2,7 +2,7 @@
 //!
 //! The validated form of an Evidence Anchor: `sha256:` followed by exactly
 //! 64 lowercase hex characters — byte-identical to what
-//! `application::hashing::sha256_prefixed` emits, so `shasum -a 256`
+//! `domain::hashing::sha256_prefixed` emits, so `shasum -a 256`
 //! output is accepted verbatim.
 
 const PREFIX: &str = "sha256:";

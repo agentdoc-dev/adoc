@@ -198,6 +198,30 @@ _Avoid_: model-created authority, mutable audit row, timestamped decision payloa
 The typed record (`adoc.reconciliation_decision.v0`, registered planned; `ReconciliationDecision` in `adoc-core`) deciding a **Reconciliation Candidate** pair: a closed verb — keep distinct, link/alias, supersede, or merge/re-home — bound to both parties' **Workspace Canonical Identity** and exact **Managed Version ID**, a principal, and a policy version. Recording a decision is the only path that transitions a pair, appends to the workspace's decision log, and never rewrites or drops any managed version, Source Binding, or Source Assertion; replaying the log over the same import history yields byte-identical reconciliation state.
 _Avoid_: auto-merge, unprincipaled decision, decision as import side effect, destructive merge
 
+**Managed State Event**:
+The append-only record (`ManagedStateEvent` in `adoc-core`, E1.4) of one managed state change over one immutable content version, named by **Workspace Canonical Identity** plus exact **Managed Version ID** and carrying its event family, emitter, and policy version. A state-only transition never alters `content_hash` and never mints a content version (ADR-0057 invariant 2; RT-04). Wall-clock-free: event order (the ordinal) is the only notion of time, so replay is deterministic.
+_Avoid_: state row update, mutable status field, timestamped domain record, inferred transition
+
+**State Dimension**:
+One of the six separate managed state axes of KNOWLEDGE-MODEL §K4 — governance, verification, effectivity, freshness, integrity, per-connector synchronization — each a closed vocabulary modeled as its own enum in `adoc-core` (D07/D15). Dimensions are never conflated: approval is not verification, and no collapsed status field exists.
+_Avoid_: collapsed status field, approval implies verified, cross-dimension enum
+
+**Audit Sink**:
+The internal port (`AuditSink` in `adoc-core`, E1.4) where the managed state event store persists one audit record per transition, written before the event commits. A sink failure fails the owning operation with `audit.persistence_failed` — an unaudited committed transition cannot exist, and nothing silently succeeds (V10.4.6). The CI audit coverage guard diffs the state machines' transition sets against the audit emitter registry so every vocabulary state stays consciously wired. Distinct from the planned gate-level `gate.audit_persistence_failed` (E5.3).
+_Avoid_: best-effort audit, audit-optional append, tamper-resistant ledger claim
+
+**Retention Floor**:
+The policy minimum span of most-recent managed state records that no API may delete (V10.4.1, K9; `RetentionFloor` in `adoc-core`, expressed in recorded-event-order terms — no wall-clock exists in domain records). Append-only is enforced at the store layer: an in-place update attempt is `governance.record_conflict`, a sweep reaching into the protected span is `store.retention_floor_violation`, and corrections are new records referencing the corrected one. Deletion workflows above the floor arrive in E6.6.
+_Avoid_: handler-enforced append-only, record rewrite, silent sweep
+
+**Digest Chain**:
+The exact canonical bytes of every **Managed State Event** plus a `sha256:`-prefixed digest chaining each record to its predecessor, both stored at write time by the event store and carried on the audit record (E1.4.T5). Later export needs no extra data: the stored `(ordinal, bytes, digest)` triples alone reproduce every event and prove the log's order and integrity. All ten RT-04 event families — the six **State Dimensions** plus authorization-affecting source changes, declassification, migration, and deletion/tombstone — flow through the same chained append path.
+_Avoid_: bytes re-derived at export, unchained audit rows, wall-clock timestamping
+
+**Replay Posture**:
+The recorded K9 answer to whether a derivation can be reproduced — `fully_replayable`, `source_access_required`, `intentionally_non_replayable`, or `no_longer_replayable_after_deletion` (registered closed vocabulary, E0.3.T4; `ReplayPosture` in `adoc-core` since E1.4). A digest-only record is never fully replayable; deleting retained evidence appends a deletion/tombstone event recording the posture it leaves behind, never rewriting governance history.
+_Avoid_: implicit replayability, posture recomputed at read time, silent deletion
+
 **Diagnostic Code**:
 A grouped semantic identifier for a compiler diagnostic, such as `parse.raw_html` or `schema.missing_field`. Lives in code as the `DiagnosticCode` enum in `adoc-core`; emission sites accept the typed value rather than a free-form string.
 _Avoid_: numeric-only code, unstable message matching

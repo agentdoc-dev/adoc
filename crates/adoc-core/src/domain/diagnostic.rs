@@ -429,6 +429,27 @@ diagnostic_codes! {
     /// corpus (ADR-0043 §3). Run-level: one typed page refuses the run.
     MigrateExportTypedBlocksPresent = "migrate.export_typed_blocks_present" =>
         "Exclude pages containing typed blocks from the export root, or hand-convert them; `--export` never writes a lossy Markdown projection of typed knowledge.";
+    /// E1.4.T2 (V10.4.2): an append to the managed state event log
+    /// contradicts recorded history — an in-place update attempt at an
+    /// occupied ordinal, a claimed ordinal past the end, or a correction
+    /// referencing a record the log does not carry. Records are
+    /// append-only at the store layer.
+    GovernanceRecordConflict = "governance.record_conflict" =>
+        "Managed state records are append-only; append a correction referencing the corrected record instead of updating in place.";
+    /// E1.4.T2 (V10.4.2, K9): a retention sweep request reaches into the
+    /// span the retention floor protects. Records inside the floor
+    /// cannot be deleted by any API; deletion workflows above the floor
+    /// arrive in E6.6.
+    StoreRetentionFloorViolation = "store.retention_floor_violation" =>
+        "Narrow the sweep so every record inside the retention floor stays fully retained; deletion below the floor is never permitted.";
+    /// E1.4.T4 (V10.4.6): the audit sink could not persist a state
+    /// transition's audit record, so the owning operation failed instead
+    /// of succeeding unaudited. Operation-level; the planned gate-level
+    /// `gate.audit_persistence_failed` (E5.3) is a distinct registered
+    /// surface that consumes it — explicit mapping, never spelling
+    /// drift (RT-21).
+    AuditPersistenceFailed = "audit.persistence_failed" =>
+        "Restore audit record persistence and retry; the operation never succeeds while its audit record cannot be written.";
 }
 
 impl DiagnosticCode {
