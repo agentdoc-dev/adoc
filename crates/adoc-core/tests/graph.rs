@@ -454,6 +454,52 @@ fn visibility_classification_is_serialized_and_hash_included() {
     );
 }
 
+/// ADR-0058 §3: the scalar visibility lands on the wire canonicalized, like
+/// `field_visibility` already does. The parser strips at most one space
+/// after the colon, so `visibility:··internal` (two spaces) authors the
+/// value `" internal"` — the node must still carry the canonical `internal`
+/// (the published schema's closed `enum`) and hash identically to the
+/// single-space spelling.
+#[test]
+fn visibility_scalar_is_canonicalized_on_the_wire_and_in_the_hash() {
+    let source = |classification_line: &str| {
+        format!(
+            concat!(
+                "# Graph @doc(team.graph)\n",
+                "\n",
+                "::claim billing.credits\n",
+                "status: draft\n",
+                "{classification_line}",
+                "--\n",
+                "Credits body.\n",
+                "::\n",
+            ),
+            classification_line = classification_line,
+        )
+    };
+    let object_node = |graph: &Value| -> Value {
+        graph["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find(|node| node["type"] == "knowledge_object" && node["id"] == "billing.credits")
+            .expect("knowledge object node")
+            .clone()
+    };
+
+    let canonical = object_node(&build_graph_value(&source("visibility: internal\n")));
+    let padded = object_node(&build_graph_value(&source("visibility:  internal\n")));
+
+    assert_eq!(
+        padded["visibility"], "internal",
+        "authoring whitespace never reaches the wire"
+    );
+    assert_eq!(
+        canonical["content_hash"], padded["content_hash"],
+        "one governed meaning, one hash — spelling whitespace is not semantic"
+    );
+}
+
 /// E1.1.T3 (ADR-0058 §3): the optional per-field `field_visibility` map is
 /// carried as a typed member (carriage only — enforcement is E6) and is
 /// hash-included like every authored classification.
