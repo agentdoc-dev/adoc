@@ -454,6 +454,50 @@ fn visibility_classification_is_serialized_and_hash_included() {
     );
 }
 
+/// ADR-0058 §3 pins this asymmetry deliberately: absence means `public` by
+/// definition (unserialized, unhashed), while an AUTHORED `public` is an
+/// explicit governance act — typed, serialized, and hash-included like any
+/// other classification. Removing a redundant `visibility: public` line is
+/// therefore a recorded classification change, not a no-op.
+#[test]
+fn authored_public_visibility_is_serialized_and_hash_included() {
+    let source = |classification_line: &str| {
+        format!(
+            concat!(
+                "# Graph @doc(team.graph)\n",
+                "\n",
+                "::claim billing.credits\n",
+                "status: draft\n",
+                "{classification_line}",
+                "--\n",
+                "Credits body.\n",
+                "::\n",
+            ),
+            classification_line = classification_line,
+        )
+    };
+    let object_node = |graph: &Value| -> Value {
+        graph["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find(|node| node["type"] == "knowledge_object" && node["id"] == "billing.credits")
+            .expect("knowledge object node")
+            .clone()
+    };
+
+    let absent = object_node(&build_graph_value(&source("")));
+    let authored_public = object_node(&build_graph_value(&source("visibility: public\n")));
+
+    assert_eq!(absent.get("visibility"), None);
+    assert_eq!(authored_public["visibility"], "public");
+    assert_ne!(
+        absent["content_hash"], authored_public["content_hash"],
+        "an authored classification is hash-included even when its value \
+         matches the default (ADR-0058 §3)"
+    );
+}
+
 /// ADR-0058 §3: the scalar visibility lands on the wire canonicalized, like
 /// `field_visibility` already does. The parser strips at most one space
 /// after the colon, so `visibility:··internal` (two spaces) authors the
