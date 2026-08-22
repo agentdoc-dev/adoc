@@ -336,6 +336,28 @@ pub(crate) enum ManagedStateChange {
     },
 }
 
+impl ManagedStateChange {
+    /// True when `other` records the same state slot as `self`: the same
+    /// event family, and for the connector-carrying families the same
+    /// connector (§K4: synchronization state is addressed per connector,
+    /// so another connector is another slot). A correction must target
+    /// its own slot — anything else asserts a correction for history it
+    /// cannot advance.
+    pub(crate) fn same_state_slot(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Synchronization { connector: a, .. },
+                Self::Synchronization { connector: b, .. },
+            )
+            | (
+                Self::AuthorizationAffectingSourceChange { connector: a },
+                Self::AuthorizationAffectingSourceChange { connector: b },
+            ) => a == b,
+            _ => std::mem::discriminant(self) == std::mem::discriminant(other),
+        }
+    }
+}
+
 /// One managed state event: an append-only record of one state change
 /// over one immutable content version, carrying the emitting component
 /// and the exact policy version under which it was emitted (ADR-0057
@@ -501,6 +523,10 @@ pub(crate) enum StateEventStoreError {
     #[error("correction references ordinal {corrects:?}, which the log does not carry")]
     CorrectionTargetMissing { corrects: EventOrdinal },
     #[error(
+        "correction targets ordinal {corrects:?}, which records a different subject or state slot"
+    )]
+    CorrectionTargetMismatch { corrects: EventOrdinal },
+    #[error(
         "sweep below {delete_below:?} reaches into the span protected by the retention floor (from {protected_from:?})"
     )]
     RetentionFloorViolation {
@@ -514,19 +540,20 @@ pub(crate) enum StateEventStoreError {
 }
 
 impl StateEventStoreError {
-    /// The registered wire code for this rejection. Both conflict shapes
-    /// — an occupied/future-ordinal write and a correction naming an
-    /// unrecorded target — are appends contradicting recorded history,
-    /// the `governance.record_conflict` family (V10.4.2).
+    /// The registered wire code for this rejection. All three conflict
+    /// shapes — an occupied/future-ordinal write, a correction naming an
+    /// unrecorded target, and a correction naming a record of another
+    /// subject or state slot — are appends contradicting recorded
+    /// history, the `governance.record_conflict` family (V10.4.2).
     /// `audit.persistence_failed` is the operation-level code (E1.4);
     /// the gate-level `gate.audit_persistence_failed` (E5.3) is a
     /// distinct registered surface that consumes it — explicit mapping,
     /// never spelling drift (RT-21).
     pub(crate) fn diagnostic_code(&self) -> DiagnosticCode {
         match self {
-            Self::RecordConflict { .. } | Self::CorrectionTargetMissing { .. } => {
-                DiagnosticCode::GovernanceRecordConflict
-            }
+            Self::RecordConflict { .. }
+            | Self::CorrectionTargetMissing { .. }
+            | Self::CorrectionTargetMismatch { .. } => DiagnosticCode::GovernanceRecordConflict,
             Self::RetentionFloorViolation { .. } => DiagnosticCode::StoreRetentionFloorViolation,
             // Exact bytes at write time are part of the audit trail
             // (E1.4.T5): an event whose canonical bytes cannot be
@@ -724,8 +751,9 @@ impl ManagedStateEventStore {
     /// version ID and `content_hash` unchanged and creates no content
     /// version (RT-04) — this store has no reference to the workspace's
     /// version records at all, so the invariant holds by construction.
-    /// A correction must reference a recorded ordinal; a dangling one
-    /// fails closed and appends nothing.
+    /// A correction must reference a recorded ordinal carrying the same
+    /// subject and state slot; a dangling or mismatched one fails closed
+    /// and appends nothing.
     ///
     /// The transition's audit record is written to `sink` BEFORE the
     /// event commits: a sink failure aborts the whole append with
@@ -738,10 +766,16 @@ impl ManagedStateEventStore {
         event: ManagedStateEvent,
     ) -> Result<EventOrdinal, StateEventStoreError> {
         let ordinal = EventOrdinal(self.events.len() as u64);
-        if let Some(corrects) = event.corrects
-            && corrects >= ordinal
-        {
-            return Err(StateEventStoreError::CorrectionTargetMissing { corrects });
+        if let Some(corrects) = event.corrects {
+            let target = usize::try_from(corrects.0)
+                .ok()
+                .and_then(|index| self.events.get(index))
+                .ok_or(StateEventStoreError::CorrectionTargetMissing { corrects })?;
+            if target.event.subject != event.subject
+                || !target.event.change.same_state_slot(&event.change)
+            {
+                return Err(StateEventStoreError::CorrectionTargetMismatch { corrects });
+            }
         }
         // Exact bytes + chained digest, produced at write time (E1.4.T5)
         // — never re-derived later, so export needs no extra data.
@@ -1301,6 +1335,122 @@ mod tests {
             "governance.record_conflict"
         );
         assert!(store.events().is_empty(), "nothing may be appended");
+    }
+
+    /// A correction naming a record of another subject or another state
+    /// dimension contradicts the history it claims to correct: the
+    /// erroneous original would stay current while the log asserts a
+    /// correction exists for it. Both shapes fail closed under the same
+    /// registered conflict code, and nothing appends anywhere.
+    #[test]
+    fn a_correction_for_another_subject_or_dimension_is_rejected() {
+        let mut workspace = workspace();
+        let subject_a = subject_for(&mut workspace);
+        let outcome = workspace
+            .import_artifact(&artifact(vec![knowledge_object(
+                "billing.refunds",
+                "sha256:bbb",
+            )]))
+            .expect("import accepted");
+        let subject_b = StateEventSubject {
+            canonical: outcome.imported[0].canonical.clone(),
+            version_id: outcome.imported[0].version_id.clone(),
+        };
+        let mut sink = InMemoryAuditSink::default();
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        store
+            .append(
+                &mut sink,
+                freshness_event(subject_a.clone(), FreshnessState::Stale),
+            )
+            .expect("append accepted");
+        let before = store.clone();
+
+        let mut cross_subject = freshness_event(subject_b, FreshnessState::Current);
+        cross_subject.corrects = Some(EventOrdinal(0));
+        let mut cross_dimension = event(
+            &subject_a,
+            ManagedStateChange::Governance {
+                state: GovernanceState::Approved,
+            },
+            "cloud.governance",
+            "policy-1",
+        );
+        cross_dimension.corrects = Some(EventOrdinal(0));
+        for correction in [cross_subject, cross_dimension] {
+            let error = store
+                .append(&mut sink, correction)
+                .expect_err("a correction for another slot must be rejected");
+            assert_eq!(
+                error,
+                StateEventStoreError::CorrectionTargetMismatch {
+                    corrects: EventOrdinal(0)
+                }
+            );
+            assert_eq!(
+                error.diagnostic_code().as_str(),
+                "governance.record_conflict"
+            );
+        }
+        assert_eq!(store, before, "nothing may append");
+        assert_eq!(sink.records.len(), 1, "no audit record for a rejection");
+    }
+
+    /// §K4: synchronization state is addressed per connector, so another
+    /// connector is another state slot — a sync correction must name the
+    /// same connector as the record it corrects.
+    #[test]
+    fn a_sync_correction_for_another_connector_is_rejected() {
+        let mut workspace = workspace();
+        let subject = subject_for(&mut workspace);
+        let mut sink = InMemoryAuditSink::default();
+        let mut store = ManagedStateEventStore::new(RetentionFloor(1));
+        let sync =
+            |connector: &str, state: SynchronizationState| ManagedStateChange::Synchronization {
+                connector: ConnectorId::new(connector).expect("non-blank"),
+                state,
+                required_before_effective: false,
+            };
+        store
+            .append(
+                &mut sink,
+                event(
+                    &subject,
+                    sync("confluence", SynchronizationState::SourceAhead),
+                    "cloud.sync_observer",
+                    "sync-policy-1",
+                ),
+            )
+            .expect("append accepted");
+
+        let mut cross_connector = event(
+            &subject,
+            sync("jira", SynchronizationState::InSync),
+            "cloud.sync_observer",
+            "sync-policy-1",
+        );
+        cross_connector.corrects = Some(EventOrdinal(0));
+        let error = store
+            .append(&mut sink, cross_connector)
+            .expect_err("a sync correction for another connector must be rejected");
+        assert_eq!(
+            error,
+            StateEventStoreError::CorrectionTargetMismatch {
+                corrects: EventOrdinal(0)
+            }
+        );
+
+        let mut same_connector = event(
+            &subject,
+            sync("confluence", SynchronizationState::InSync),
+            "cloud.sync_observer",
+            "sync-policy-1",
+        );
+        same_connector.corrects = Some(EventOrdinal(0));
+        store
+            .append(&mut sink, same_connector)
+            .expect("a same-slot correction appends");
+        assert_eq!(store.events().len(), 2);
     }
 
     /// Adversarial acceptance (MILESTONES §E1.4): a retention sweep
