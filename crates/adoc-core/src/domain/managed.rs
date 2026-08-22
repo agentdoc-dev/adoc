@@ -17,11 +17,12 @@
 //! registered planned in CONTRACT-REGISTRY.md); deciding a candidate is a
 //! governed E1.3 action, never an import side effect.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
 use super::graph::{GraphArtifactDocument, GraphNode, GraphRepositoryIdentity, GraphSourceBinding};
+use super::identity::ObjectId;
 
 /// Cloud workspace identifier — opaque to `adoc-core`. Blank input is
 /// rejected: an empty workspace id would produce unqualified canonical
@@ -77,9 +78,6 @@ impl SourceAssertionIdentity {
     }
 }
 
-// Every identity layer rejects blank input the same way; the shared
-// `Blank` prefix is the vocabulary, not noise.
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ManagedIdentityError {
     #[error("workspace id must not be blank")]
@@ -88,6 +86,10 @@ pub(crate) enum ManagedIdentityError {
     BlankSourceAssertionIdentity,
     #[error("object id must not be blank")]
     BlankObjectId,
+    #[error("object id violates the Object ID grammar")]
+    InvalidObjectId,
+    #[error("object id appears more than once in one artifact")]
+    DuplicateObjectId,
 }
 
 /// One managed repository inside a workspace, keyed on the graph
@@ -235,20 +237,37 @@ impl ManagedWorkspace {
     /// Import every Knowledge Object of a Graph Artifact into the
     /// artifact's repository record. Retains every object; a same-ID
     /// collision with another repository emits a [`ReconciliationCandidate`]
-    /// and never merges, links, or re-homes anything. A blank Object ID
-    /// anywhere in the artifact rejects the whole import before any state
-    /// changes (fail closed — a keyed `""` object would be unaddressable).
+    /// and never merges, links, or re-homes anything.
+    ///
+    /// Fail closed on crafted input (`GraphArtifactDocument` derives
+    /// `Deserialize`, so callers cannot assume compiler-built documents): a
+    /// blank, grammar-violating, or repeated Object ID anywhere in the
+    /// artifact rejects the whole import before any state changes. The
+    /// graph loader enforces the same invariants (`id.invalid`,
+    /// `DiagnosticCode::IdDuplicateInArtifact`); a document handed to
+    /// import directly must not bypass them — a grammar-evading ID would
+    /// also evade the exact-ID collision detector, and a repeated ID would
+    /// silently unify into one record (the intra-artifact shape of the
+    /// merge RT-03/D36 forbids).
     pub(crate) fn import_artifact(
         &mut self,
         artifact: &GraphArtifactDocument,
     ) -> Result<ManagedImportOutcome, ManagedIdentityError> {
-        if artifact
+        let mut seen_ids = BTreeSet::new();
+        for node in artifact
             .nodes
             .iter()
             .filter_map(GraphNode::as_knowledge_object)
-            .any(|node| node.id.trim().is_empty())
         {
-            return Err(ManagedIdentityError::BlankObjectId);
+            if node.id.trim().is_empty() {
+                return Err(ManagedIdentityError::BlankObjectId);
+            }
+            if ObjectId::new(node.id.as_str()).is_err() {
+                return Err(ManagedIdentityError::InvalidObjectId);
+            }
+            if !seen_ids.insert(node.id.as_str()) {
+                return Err(ManagedIdentityError::DuplicateObjectId);
+            }
         }
         // Arrival binds the slot even when the artifact carries no
         // Knowledge Objects (E1.2.T4).
@@ -658,6 +677,66 @@ mod tests {
                 ],
             ));
             assert_eq!(outcome, Err(ManagedIdentityError::BlankObjectId));
+        }
+        assert!(
+            workspace.repository(&repo).is_none(),
+            "a rejected import must not bind the repository slot or mint anything"
+        );
+    }
+
+    /// A crafted artifact repeating an Object ID would otherwise mint two
+    /// versions in one import (differing hashes) or silently drop the
+    /// second occurrence (equal hashes) — the intra-artifact shape of the
+    /// auto-merge RT-03/D36 forbids. The graph loader already rejects the
+    /// document (`DiagnosticCode::IdDuplicateInArtifact`); import fails
+    /// closed the same way, before any state changes.
+    #[test]
+    fn duplicate_object_ids_in_one_artifact_are_rejected_without_partial_state() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+
+        for hashes in [["sha256:aaa", "sha256:bbb"], ["sha256:same", "sha256:same"]] {
+            let outcome = workspace.import_artifact(&artifact(
+                repo.clone(),
+                vec![
+                    knowledge_object("billing.credits", hashes[0]),
+                    knowledge_object("billing.credits", hashes[1]),
+                ],
+            ));
+            assert_eq!(outcome, Err(ManagedIdentityError::DuplicateObjectId));
+        }
+        assert!(
+            workspace.repository(&repo).is_none(),
+            "a rejected import must not bind the repository slot or mint anything"
+        );
+    }
+
+    /// Exact Object-ID equality is the only collision detector this module
+    /// has, so an ID evading the grammar evades reconciliation too:
+    /// `"billing.credits "` never collides with `"billing.credits"` yet
+    /// reads identically. Import enforces the same `ObjectId` grammar as
+    /// the graph loader (`id.invalid`) and fails closed.
+    #[test]
+    fn object_ids_violating_the_grammar_are_rejected_without_partial_state() {
+        let mut workspace = workspace();
+        let repo = local_repo("a/agentdoc.config.yaml");
+
+        for invalid in [
+            "billing.credits ",
+            " billing.credits",
+            "Billing.Credits",
+            "billing",
+            "billing.-credits",
+        ] {
+            let outcome = workspace.import_artifact(&artifact(
+                repo.clone(),
+                vec![knowledge_object(invalid, "sha256:aaa")],
+            ));
+            assert_eq!(
+                outcome,
+                Err(ManagedIdentityError::InvalidObjectId),
+                "{invalid:?} must be rejected"
+            );
         }
         assert!(
             workspace.repository(&repo).is_none(),
