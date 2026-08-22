@@ -195,9 +195,10 @@ fn criterion_closure_violations(doc_name: &str, content: &str) -> Vec<String> {
 /// One message per line stating a permissive-default authorization
 /// resolution — the ADR-0057 invariant-3 reintroduction signature.
 /// Hyphens normalize to spaces so compound forms (`permissive-default`,
-/// `allow-by-default`, `fail-open`) match; `never` or `no permissive
-/// default` on the same line marks the prohibition statements this rule
-/// exists to protect. `deny-by-default` normalizes to `deny by default`
+/// `allow-by-default`, `fail-open`) match. Prohibition markers are
+/// anchored phrases, not a bare `never`: an incidental `never` in an
+/// adjacent clause ("ACLs never widen; scopes default to allow") must not
+/// disarm the tripwire. `deny-by-default` normalizes to `deny by default`
 /// and matches no signature.
 fn permissive_default_violations(doc_name: &str, content: &str) -> Vec<String> {
     const SIGNATURES: &[&str] = &[
@@ -213,7 +214,13 @@ fn permissive_default_violations(doc_name: &str, content: &str) -> Vec<String> {
         "fail open",
         "fails open",
     ];
-    const PROHIBITION_MARKERS: &[&str] = &["never", "no permissive default"];
+    const PROHIBITION_MARKERS: &[&str] = &[
+        "never a permissive default",
+        "no permissive default",
+        "never fail open",
+        "never fails open",
+        "not allowed by default",
+    ];
     structural_lines(content)
         .filter_map(|(number, line)| {
             let lower = line.to_lowercase().replace('-', " ");
@@ -521,6 +528,8 @@ fn guard_fires_on_seeded_permissive_default() {
         "Grants are permissive by default.\n",
         "Absent policy rows imply an implicit allow.\n",
         "Visibility is open by default.\n",
+        "Source ACLs never widen AgentDoc authority; unmatched scopes default to allow.\n",
+        "Unmatched scopes default to allow and grants never expire.\n",
     ] {
         let violations = permissive_default_violations("fixture.md", line);
         assert_eq!(
@@ -535,11 +544,13 @@ fn guard_fires_on_seeded_permissive_default() {
         );
     }
     // The prohibition statements the rule protects pass on their own
-    // merits, as does the deny-side compound.
+    // merits, as do the deny-side compounds.
     let clean = "\
 Consequential uncertainty yields `deny` or typed `insufficient_context`, \
 never a permissive default.\n\
 Precedence matches RT-05/D38: no permissive default anywhere.\n\
+Forced audit-sink failure surfaces the code per policy cell, never fail-open.\n\
+Restricted fields are not allowed by default.\n\
 Authorization is deterministic and deny-by-default.\n";
     assert_eq!(
         permissive_default_violations("fixture.md", clean),
