@@ -32,7 +32,7 @@ use serde::Serialize;
 use super::graph::{GraphArtifactDocument, GraphNode, GraphRepositoryIdentity, GraphSourceBinding};
 use super::identity::ObjectId;
 use super::reconciliation::{
-    ReconciliationDecision, ReconciliationDecisionError, ReconciliationState,
+    ReconciliationDecision, ReconciliationDecisionError, ReconciliationState, ReconciliationVerb,
 };
 
 /// Cloud workspace identifier — opaque to `adoc-core`. Blank or padded
@@ -341,6 +341,25 @@ impl ManagedWorkspace {
     /// history yields byte-identical state.
     pub(crate) fn reconciliation_state(&self) -> ReconciliationState {
         ReconciliationState::derive(&self.decisions)
+    }
+
+    /// The canonical identities merged into `survivor` by standing
+    /// merge/re-home decisions (E1.3.T3). Directional — the survivor is
+    /// the decision's subject — and derived from the decision log alone:
+    /// no import, hash, or similarity ever creates a merged relation.
+    /// Each antecedent's full provenance stays queryable via
+    /// [`ManagedWorkspace::managed_object`] (RT-03).
+    pub(crate) fn merged_antecedents(
+        &self,
+        survivor: &WorkspaceCanonicalIdentity,
+    ) -> Vec<WorkspaceCanonicalIdentity> {
+        self.reconciliation_state()
+            .standing
+            .iter()
+            .filter(|decision| decision.verb() == ReconciliationVerb::MergeRehome)
+            .filter(|decision| &decision.subject().canonical == survivor)
+            .map(|decision| decision.counterpart().canonical.clone())
+            .collect()
     }
 
     /// Single-repo convenience: the record whose recorded identity equals
@@ -1651,6 +1670,206 @@ mod tests {
     #[test]
     fn supersede_decision_preserves_every_original_record() {
         decision_preserves_every_original_record(ReconciliationVerb::Supersede);
+    }
+
+    // E1.3.T3 (MILESTONES §E1.3; RT-03): merge/re-home is explicit. The
+    // ONLY path to merged state is a recorded principal-bound decision —
+    // matching ID, hash, title, or similarity yields candidates at most —
+    // and the provenance of both antecedents stays retained and
+    // queryable afterwards.
+
+    /// Exit + adversarial test: identical Object ID AND identical
+    /// `content_hash` across two repositories — the most merge-tempting
+    /// collision — yields a candidate only. No merged relation exists
+    /// until a recorded merge/re-home decision transitions the pair, and
+    /// afterwards both antecedents' full provenance remains queryable.
+    #[test]
+    fn merged_state_is_reachable_only_through_a_recorded_decision() {
+        let mut workspace = workspace();
+        let repo_a = local_repo("a/agentdoc.config.yaml");
+        let repo_b = local_repo("b/agentdoc.config.yaml");
+        workspace
+            .import_artifact(&artifact(
+                repo_a.clone(),
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:same",
+                    "docs/team.adoc",
+                    "sha256:feed",
+                )],
+            ))
+            .expect("import accepted");
+        let outcome = workspace
+            .import_artifact(&artifact(
+                repo_b.clone(),
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:same",
+                    "docs/other.adoc",
+                    "sha256:beef",
+                )],
+            ))
+            .expect("import accepted");
+
+        // Identical ID + hash: a candidate, never a merge — and no
+        // standing reconciliation relation of any kind.
+        assert_eq!(outcome.reconciliation_candidates.len(), 1);
+        let candidate = &outcome.reconciliation_candidates[0];
+        let survivor = party(&candidate.existing);
+        let antecedent = party(&candidate.incoming);
+        assert_ne!(survivor.canonical, antecedent.canonical);
+        assert!(workspace.reconciliation_state().standing.is_empty());
+        assert!(workspace.merged_antecedents(&survivor.canonical).is_empty());
+        assert!(
+            workspace
+                .merged_antecedents(&antecedent.canonical)
+                .is_empty()
+        );
+
+        let decision = ReconciliationDecision::new(
+            ReconciliationVerb::MergeRehome,
+            survivor.clone(),
+            antecedent.clone(),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+        workspace
+            .record_decision(decision)
+            .expect("decision recorded");
+
+        // The recorded decision is the merged state — directional, and
+        // derived only from the log.
+        let state = workspace.reconciliation_state();
+        assert_eq!(state.standing.len(), 1);
+        assert_eq!(state.standing[0].verb(), ReconciliationVerb::MergeRehome);
+        assert_eq!(
+            workspace.merged_antecedents(&survivor.canonical),
+            vec![antecedent.canonical.clone()]
+        );
+        assert!(
+            workspace
+                .merged_antecedents(&antecedent.canonical)
+                .is_empty(),
+            "merge direction must not invert"
+        );
+
+        // Provenance of both antecedents retained and queryable (RT-03).
+        for bound in [&survivor, &antecedent] {
+            let object = workspace
+                .managed_object(&bound.canonical)
+                .expect("antecedent stays queryable");
+            assert_eq!(object.versions.len(), 1);
+            assert!(object.versions[0].source_binding.is_some());
+        }
+        assert_eq!(
+            workspace
+                .repository(&repo_a)
+                .expect("repo a retained")
+                .objects
+                .len(),
+            1
+        );
+        assert_eq!(
+            workspace
+                .repository(&repo_b)
+                .expect("repo b retained")
+                .objects
+                .len(),
+            1
+        );
+    }
+
+    /// Stop-ship (MILESTONES §E1.3): a decision without principal, policy,
+    /// or a pair to adjudicate is unconstructible — the only constructor
+    /// takes typed non-optional bindings, and blank or padded authority
+    /// context fails closed at construction.
+    #[test]
+    fn unbound_authority_context_is_unconstructible() {
+        for invalid in ["", " \t", " user:alex", "user:alex "] {
+            assert_eq!(
+                Principal::new(invalid),
+                Err(ReconciliationDecisionError::InvalidPrincipal)
+            );
+            assert_eq!(
+                PolicyVersion::new(invalid),
+                Err(ReconciliationDecisionError::InvalidPolicyVersion)
+            );
+        }
+
+        let (_, subject, _) = collided_workspace_with_bindings();
+        assert_eq!(
+            ReconciliationDecision::new(
+                ReconciliationVerb::MergeRehome,
+                subject.clone(),
+                subject,
+                principal(),
+                policy(),
+            ),
+            Err(ReconciliationDecisionError::SelfDecision),
+            "one object is not a pair to adjudicate"
+        );
+    }
+
+    /// Recording fails closed on a party this workspace does not know —
+    /// including a canonical identity from another workspace — and on a
+    /// version binding that is no longer the party's latest: a decision
+    /// adjudicated against content that has since changed never applies
+    /// silently.
+    #[test]
+    fn recording_rejects_unknown_parties_and_stale_version_bindings() {
+        let (mut workspace, subject, counterpart) = collided_workspace_with_bindings();
+
+        let foreign = DecisionParty {
+            canonical: WorkspaceCanonicalIdentity {
+                workspace_id: WorkspaceId::new("ws-other").expect("non-blank"),
+                canonical_id: subject.canonical.canonical_id.clone(),
+            },
+            version_id: subject.version_id.clone(),
+        };
+        let decision = ReconciliationDecision::new(
+            ReconciliationVerb::MergeRehome,
+            subject.clone(),
+            foreign,
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+        assert_eq!(
+            workspace.record_decision(decision),
+            Err(ReconciliationDecisionError::UnknownParty),
+            "an equal opaque suffix in another workspace is not this party"
+        );
+
+        // A new version arrives for the subject: the old exact-version
+        // binding is stale and the decision must not apply.
+        workspace
+            .import_artifact(&artifact(
+                local_repo("a/agentdoc.config.yaml"),
+                vec![bound_object(
+                    "billing.credits",
+                    "sha256:aa3",
+                    "docs/team.adoc",
+                    "sha256:cafe",
+                )],
+            ))
+            .expect("import accepted");
+        let stale = ReconciliationDecision::new(
+            ReconciliationVerb::MergeRehome,
+            subject,
+            counterpart,
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+        assert_eq!(
+            workspace.record_decision(stale),
+            Err(ReconciliationDecisionError::StaleVersionBinding)
+        );
+        assert!(
+            workspace.decisions().is_empty(),
+            "a rejected decision must not enter the log"
+        );
     }
 
     /// The closed decision verb vocabulary on the wire — exactly the four
