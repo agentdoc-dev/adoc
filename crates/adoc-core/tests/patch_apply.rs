@@ -275,6 +275,58 @@ fn apply_refuses_stale_source_binding_after_position_only_source_edit() {
     );
 }
 
+/// E1.1.T2 (ADR-0058 §4): an artifact node without a Source Binding cannot
+/// prove its recorded placement is fresh — apply fails closed with the same
+/// stale-binding refusal instead of splicing on an unverifiable span.
+#[test]
+fn apply_refuses_when_artifact_node_has_no_source_binding() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    // Strip only the target node's source_binding member; content_hash,
+    // spans, and source stay valid, so every earlier gate still passes.
+    let mut document: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&artifact).expect("read artifact"))
+            .expect("artifact parses");
+    let node = document["nodes"]
+        .as_array_mut()
+        .expect("nodes array")
+        .iter_mut()
+        .find(|node| node["id"] == "billing.credits" && node["type"] == "knowledge_object")
+        .expect("target knowledge_object node");
+    assert!(
+        node.as_object_mut()
+            .expect("node object")
+            .remove("source_binding")
+            .is_some(),
+        "fixture must strip a binding the build actually emitted"
+    );
+    fs::write(
+        &artifact,
+        serde_json::to_string(&document).expect("serialize artifact"),
+    )
+    .expect("write artifact");
+
+    let result = workspace.apply(&artifact, replace_body_patch(&base_hash, "Rewritten body."));
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.code == DiagnosticCode::PatchSourceBindingStale),
+        "diagnostics: {:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        PAGE_TEXT,
+        "refusal writes nothing"
+    );
+}
+
 /// The historical `adoc.graph.v5` source span shape, in v5 field order.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct V5SourceSpan {
