@@ -390,21 +390,25 @@ impl ManagedWorkspace {
     }
 
     /// Single-repo convenience: the record whose recorded identity equals
-    /// `repository_identity`, iff exactly one slot matches. With two slots
-    /// sharing a (degenerate) identity the lookup is ambiguous and yields
-    /// `None` — [`ManagedWorkspace::repository_slot`] is the authoritative
-    /// accessor.
+    /// `repository_identity`. Absence (`Ok(None)`) and ambiguity are
+    /// distinct outcomes: once two slots share a (degenerate) identity the
+    /// lookup fails closed with
+    /// [`ManagedIdentityError::AmbiguousRepositoryIdentity`] instead of
+    /// answering `None` — "not imported yet" and "imported twice, route by
+    /// slot handle" must never read the same.
+    /// [`ManagedWorkspace::repository_slot`] is the authoritative accessor.
     pub(crate) fn repository(
         &self,
         repository_identity: &GraphRepositoryIdentity,
-    ) -> Option<&ManagedRepositoryRecord> {
+    ) -> Result<Option<&ManagedRepositoryRecord>, ManagedIdentityError> {
         let mut matches = self
             .repositories
             .values()
             .filter(|record| &record.repository_identity == repository_identity);
         match (matches.next(), matches.next()) {
-            (Some(record), None) => Some(record),
-            _ => None,
+            (Some(record), None) => Ok(Some(record)),
+            (None, _) => Ok(None),
+            (Some(_), Some(_)) => Err(ManagedIdentityError::AmbiguousRepositoryIdentity),
         }
     }
 
@@ -760,10 +764,12 @@ mod tests {
 
         let object_a = &workspace
             .repository(&repo_a)
+            .expect("identity unambiguous")
             .expect("repo a recorded")
             .objects["billing.credits"];
         let object_b = &workspace
             .repository(&repo_b)
+            .expect("identity unambiguous")
             .expect("repo b recorded")
             .objects["billing.credits"];
         assert_eq!(object_a.object_id, "billing.credits");
@@ -857,8 +863,11 @@ mod tests {
             ))
             .expect("import accepted");
 
-        let object =
-            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        let object = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects["billing.credits"];
         assert_eq!(object.versions.len(), 2);
         assert_ne!(object.versions[0].version_id, object.versions[1].version_id);
         assert_eq!(first.imported[0].canonical, second.imported[0].canonical);
@@ -897,8 +906,11 @@ mod tests {
             .expect("import accepted");
 
         assert!(again.imported.is_empty());
-        let object =
-            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        let object = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects["billing.credits"];
         assert_eq!(object.versions.len(), 1);
         assert_eq!(
             object.versions[0].source_binding, original,
@@ -926,8 +938,11 @@ mod tests {
 
         assert!(again.imported.is_empty());
         assert!(again.reconciliation_candidates.is_empty());
-        let object =
-            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        let object = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects["billing.credits"];
         assert_eq!(object.versions.len(), 1);
     }
 
@@ -994,8 +1009,9 @@ mod tests {
             ));
             assert_eq!(outcome, Err(ManagedIdentityError::BlankObjectId));
         }
-        assert!(
-            workspace.repository(&repo).is_none(),
+        assert_eq!(
+            workspace.repository(&repo),
+            Ok(None),
             "a rejected import must not bind the repository slot or mint anything"
         );
     }
@@ -1021,8 +1037,9 @@ mod tests {
             ));
             assert_eq!(outcome, Err(ManagedIdentityError::DuplicateObjectId));
         }
-        assert!(
-            workspace.repository(&repo).is_none(),
+        assert_eq!(
+            workspace.repository(&repo),
+            Ok(None),
             "a rejected import must not bind the repository slot or mint anything"
         );
     }
@@ -1054,8 +1071,9 @@ mod tests {
                 "{invalid:?} must be rejected"
             );
         }
-        assert!(
-            workspace.repository(&repo).is_none(),
+        assert_eq!(
+            workspace.repository(&repo),
+            Ok(None),
             "a rejected import must not bind the repository slot or mint anything"
         );
     }
@@ -1098,8 +1116,11 @@ mod tests {
             .import_artifact(&artifact(repo.clone(), vec![node]))
             .expect("import accepted");
 
-        let object =
-            &workspace.repository(&repo).expect("repo recorded").objects["billing.credits"];
+        let object = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects["billing.credits"];
         assert_eq!(object.versions[0].source_binding, expected);
         assert!(object.versions[0].source_assertions.is_empty());
     }
@@ -1131,7 +1152,11 @@ mod tests {
             .expect("import accepted");
 
         assert!(outcome.reconciliation_candidates.is_empty());
-        let objects = &workspace.repository(&repo).expect("repo recorded").objects;
+        let objects = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects;
         assert_eq!(objects.len(), 2);
         assert_ne!(
             objects["billing.credits"].canonical, objects["billing.refunds"].canonical,
@@ -1166,11 +1191,21 @@ mod tests {
 
         assert!(outcome.reconciliation_candidates.is_empty());
         assert_eq!(
-            workspace.repository(&repo_a).expect("repo a").objects.len(),
+            workspace
+                .repository(&repo_a)
+                .expect("identity unambiguous")
+                .expect("repo a")
+                .objects
+                .len(),
             1
         );
         assert_eq!(
-            workspace.repository(&repo_b).expect("repo b").objects.len(),
+            workspace
+                .repository(&repo_b)
+                .expect("identity unambiguous")
+                .expect("repo b")
+                .objects
+                .len(),
             1
         );
     }
@@ -1196,7 +1231,11 @@ mod tests {
             .expect("import accepted");
 
         assert!(outcome.reconciliation_candidates.is_empty());
-        let objects = &workspace.repository(&repo).expect("repo recorded").objects;
+        let objects = &workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded")
+            .objects;
         assert_eq!(objects.len(), 2);
         assert_ne!(
             objects["billing.credits"].canonical,
@@ -1239,8 +1278,16 @@ mod tests {
             candidate.existing.canonical, candidate.incoming.canonical,
             "an identical hash must not let the replay adopt the existing identity"
         );
-        let object_a = &workspace.repository(&repo_a).expect("repo a").objects["billing.credits"];
-        let object_b = &workspace.repository(&repo_b).expect("repo b").objects["billing.credits"];
+        let object_a = &workspace
+            .repository(&repo_a)
+            .expect("identity unambiguous")
+            .expect("repo a")
+            .objects["billing.credits"];
+        let object_b = &workspace
+            .repository(&repo_b)
+            .expect("identity unambiguous")
+            .expect("repo b")
+            .objects["billing.credits"];
         assert_ne!(object_a.canonical, object_b.canonical);
         assert_eq!(object_a.versions.len(), 1);
         assert_eq!(object_b.versions.len(), 1);
@@ -1263,7 +1310,10 @@ mod tests {
             .reserve_repository(repo.clone())
             .expect("identity unambiguous");
 
-        let record = workspace.repository(&repo).expect("slot reserved");
+        let record = workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("slot reserved");
         assert_eq!(record.repository_identity, repo);
         assert!(record.objects.is_empty());
     }
@@ -1293,7 +1343,10 @@ mod tests {
             .reserve_repository(repo.clone())
             .expect("identity unambiguous");
 
-        let record = workspace.repository(&repo).expect("repo recorded");
+        let record = workspace
+            .repository(&repo)
+            .expect("identity unambiguous")
+            .expect("repo recorded");
         assert!(record.objects.contains_key("billing.credits"));
     }
 
@@ -1311,6 +1364,7 @@ mod tests {
         assert!(outcome.imported.is_empty());
         let record = workspace
             .repository(&repo)
+            .expect("identity unambiguous")
             .expect("repo recorded on arrival");
         assert!(record.objects.is_empty());
     }
@@ -1749,6 +1803,7 @@ mod tests {
         assert_eq!(
             workspace
                 .repository(&repo_a)
+                .expect("identity unambiguous")
                 .expect("repo a retained")
                 .objects
                 .len(),
@@ -1757,6 +1812,7 @@ mod tests {
         assert_eq!(
             workspace
                 .repository(&repo_b)
+                .expect("identity unambiguous")
                 .expect("repo b retained")
                 .objects
                 .len(),
@@ -2135,6 +2191,11 @@ mod tests {
             outcome,
             Err(ManagedIdentityError::AmbiguousRepositoryIdentity)
         );
+        assert_eq!(
+            workspace.repository(&degenerate),
+            Err(ManagedIdentityError::AmbiguousRepositoryIdentity),
+            "the read lookup distinguishes ambiguity from absence"
+        );
         assert!(
             workspace
                 .repository_slot(&slot_a)
@@ -2212,10 +2273,12 @@ mod tests {
         assert_eq!(outcome.reconciliation_candidates.len(), 1);
         let in_project = &workspace
             .repository(&project)
+            .expect("identity unambiguous")
             .expect("project repo")
             .objects["billing.credits"];
         let in_standalone = &workspace
             .repository(&standalone)
+            .expect("identity unambiguous")
             .expect("standalone repo")
             .objects["billing.credits"];
         assert_ne!(in_project.canonical, in_standalone.canonical);
