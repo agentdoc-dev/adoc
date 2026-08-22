@@ -146,7 +146,7 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
         .expect("billing pilot search JSON is written");
     let search_json: Value =
         serde_json::from_str(&search_json_text).expect("search JSON is valid JSON");
-    assert_eq!(search_json["schema_version"], "adoc.search.v1");
+    assert_eq!(search_json["schema_version"], "adoc.search.v2");
     assert_eq!(search_json["model"]["id"], "hash-v1");
     assert_eq!(search_json["model"]["provider"], "deterministic");
     assert_eq!(search_json["model"]["dim"], 384);
@@ -165,7 +165,7 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
         embeddings
             .iter()
             .any(|entry| entry["entry_kind"] == "prose"),
-        "adoc.search.v1 should carry prose entries for the pilot's prose blocks"
+        "adoc.search.v2 should carry prose entries for the pilot's prose blocks"
     );
 
     let artifact_path = output_directory.join("docs.graph.json");
@@ -260,4 +260,53 @@ fn billing_pilot_checks_builds_and_exposes_useful_artifacts() {
             "object should expose source column for citations: {object}"
         );
     }
+}
+
+/// E1.1.T5 (ADR-0058): v5→v6 migration is deterministic regeneration from
+/// source. Building the committed pilot corpus — a corpus whose artifacts
+/// shipped as `adoc.graph.v5` before this wave — twice yields byte-identical
+/// v6 Graph and Search Artifacts under the deterministic embedding provider.
+#[test]
+fn billing_pilot_migration_rebuild_is_byte_identical_across_runs() {
+    let repo_root = repo_root();
+    let workspace = TestWorkspace::new("billing-pilot-migration");
+    let mut artifacts = Vec::new();
+
+    for run in ["first", "second"] {
+        let out = workspace.root.join(run);
+        let build_output = Command::new(env!("CARGO_BIN_EXE_adoc"))
+            .current_dir(&repo_root)
+            .env("ADOC_TEST_EMBEDDING_PROVIDER", "deterministic")
+            .args([
+                "build",
+                "examples/billing-pilot",
+                "--out",
+                out.to_str().expect("output directory path is utf-8"),
+            ])
+            .output()
+            .expect("adoc build runs");
+        assert!(
+            build_output.status.success(),
+            "expected billing pilot to build cleanly\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&build_output.stdout),
+            String::from_utf8_lossy(&build_output.stderr)
+        );
+        artifacts.push((
+            std::fs::read(out.join("docs.graph.json")).expect("graph artifact is written"),
+            std::fs::read(out.join("docs.search.json")).expect("search artifact is written"),
+        ));
+    }
+
+    assert_eq!(
+        artifacts[0].0, artifacts[1].0,
+        "repeated regeneration must reproduce the Graph Artifact byte-for-byte"
+    );
+    assert_eq!(
+        artifacts[0].1, artifacts[1].1,
+        "repeated regeneration must reproduce the Search Artifact byte-for-byte"
+    );
+    let graph: Value = serde_json::from_slice(&artifacts[0].0).expect("graph artifact parses");
+    assert_eq!(graph["schema_version"], "adoc.graph.v6");
+    let search: Value = serde_json::from_slice(&artifacts[0].1).expect("search artifact parses");
+    assert_eq!(search["schema_version"], "adoc.search.v2");
 }

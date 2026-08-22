@@ -1513,7 +1513,8 @@ fn v1_schema_anchors_the_prose_record_id_pattern() {
     }
 }
 
-/// V1.7.2 (ADR-0040): the adoc.search.v1 search artifact wire shape —
+/// The adoc.search.v2 search artifact wire shape (prose entries since V1.7.2,
+/// ADR-0040; v2 since E1.1.T5) —
 /// entry_kind-discriminated embeddings over Knowledge Objects and prose.
 /// The artifact is an internal build output (not an MCP resource), but its
 /// serialized JSON shape is public and contract-guarded like the envelopes.
@@ -1542,6 +1543,6 @@ fn validates_built_search_artifact_against_v1_contract_schema() {
         embeddings
             .iter()
             .any(|entry| entry["entry_kind"] == "prose"),
-        "the fixture .md paragraph must be embedded (adoc.search.v1)"
+        "the fixture .md paragraph must be embedded (adoc.search.v2)"
     );
 }

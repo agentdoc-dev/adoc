@@ -47,7 +47,7 @@ mod tests {
     #[test]
     fn search_artifact_serializes_with_v1_7_2_shape() {
         let artifact = SearchArtifactDocument {
-            schema_version: "adoc.search.v1".to_string(),
+            schema_version: "adoc.search.v2".to_string(),
             model: SearchModelHeader {
                 id: "bge-small-en-v1.5".to_string(),
                 provider: "fastembed".to_string(),
@@ -72,7 +72,7 @@ mod tests {
 
         let value = serde_json::to_value(&artifact).expect("search artifact serializes");
 
-        assert_eq!(value["schema_version"], "adoc.search.v1");
+        assert_eq!(value["schema_version"], "adoc.search.v2");
         assert_eq!(value["model"]["id"], "bge-small-en-v1.5");
         assert_eq!(value["model"]["provider"], "fastembed");
         assert_eq!(value["model"]["dim"], 384);

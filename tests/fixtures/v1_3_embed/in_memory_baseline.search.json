@@ -1,5 +1,5 @@
 {
-  "schema_version": "adoc.search.v1",
+  "schema_version": "adoc.search.v2",
   "model": {
     "id": "hash-v1",
     "provider": "deterministic",
