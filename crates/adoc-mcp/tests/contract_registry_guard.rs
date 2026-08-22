@@ -38,26 +38,11 @@ fn registry() -> String {
 /// header row, a separator row, a blank line, or a `| `id` |…` data row is
 /// legal — anything else fails loudly rather than silently dropping a row.
 fn anchored_ids(doc: &str, anchor: &str) -> BTreeSet<String> {
-    let open = format!("<!-- {anchor} -->");
-    let close = format!("<!-- /{anchor} -->");
-    let start = doc
-        .find(&open)
-        .unwrap_or_else(|| panic!("{REGISTRY} is missing the `{open}` anchor"))
-        + open.len();
-    let end = doc[start..]
-        .find(&close)
-        .unwrap_or_else(|| panic!("{REGISTRY} is missing the closing `{close}` anchor"))
-        + start;
-    // A duplicated anchor block (the classic bad merge-conflict resolution)
-    // would make every row in the later block invisible to the scan.
-    assert!(
-        doc[start..].find(&open).is_none(),
-        "{REGISTRY}: `{open}` appears more than once — rows in later blocks are invisible to the scan"
-    );
+    let block = support::doc_scan::anchored_block(doc, REGISTRY, anchor);
 
     let mut ids = BTreeSet::new();
     let mut saw_header = false;
-    for line in doc[start..end].lines().map(str::trim) {
+    for line in block.lines().map(str::trim) {
         if line.is_empty() {
             continue;
         }
@@ -514,12 +499,10 @@ fn must_include_contracts_are_registered() {
 #[test]
 fn planned_rows_name_exactly_one_owner_repo() {
     let registry = registry();
-    let open = "<!-- registry:envelopes-planned -->";
-    let close = "<!-- /registry:envelopes-planned -->";
-    let start = registry.find(open).expect("planned anchor") + open.len();
-    let end = registry[start..].find(close).expect("planned close anchor") + start;
+    let block =
+        support::doc_scan::anchored_block(&registry, REGISTRY, "registry:envelopes-planned");
     let mut data_rows = 0;
-    for line in registry[start..end].lines().map(str::trim) {
+    for line in block.lines().map(str::trim) {
         if !line.starts_with("| `") {
             continue; // header/separator; malformed rows already fail anchored_ids
         }

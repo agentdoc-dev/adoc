@@ -56,6 +56,31 @@ pub fn unclosed_fence(content: &str) -> Option<usize> {
     open.map(|(line, _, _)| line)
 }
 
+/// The span between `<!-- {anchor} -->` and `<!-- /{anchor} -->` in one
+/// document. Panics loudly (naming `doc_name`) on a missing open or close
+/// marker, and on a second open marker anywhere in the remainder — a
+/// duplicated anchor block (the classic bad merge-conflict resolution)
+/// would make every row in the later block invisible to any scan over the
+/// returned span. One implementation, so the guards' notion of "anchored
+/// block" can never drift apart. Used by `contract_registry_guard`.
+pub fn anchored_block<'a>(doc: &'a str, doc_name: &str, anchor: &str) -> &'a str {
+    let open = format!("<!-- {anchor} -->");
+    let close = format!("<!-- /{anchor} -->");
+    let start = doc
+        .find(&open)
+        .unwrap_or_else(|| panic!("{doc_name} is missing the `{open}` anchor"))
+        + open.len();
+    let end = doc[start..]
+        .find(&close)
+        .unwrap_or_else(|| panic!("{doc_name} is missing the closing `{close}` anchor"))
+        + start;
+    assert!(
+        doc[start..].find(&open).is_none(),
+        "{doc_name}: `{open}` appears more than once — rows in later blocks are invisible to the scan"
+    );
+    &doc[start..end]
+}
+
 /// `Some((fence char, run length))` when the line starts a ``` or ~~~ run of
 /// at least three; trailing text (an info string) is permitted here — whether
 /// it may close a fence is the caller's pairing decision.
