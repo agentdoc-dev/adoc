@@ -582,9 +582,8 @@ fn obligations_table_pins_o01() {
     }
     let block =
         support::doc_scan::anchored_block(&content, DECISION_REGISTER, "decisions:obligations");
-    let row = block
-        .lines()
-        .map(str::trim)
+    let row = support::doc_scan::structural_lines(block)
+        .map(|(_, line)| line.trim())
         .find(|line| {
             line.strip_prefix('|')
                 .and_then(|rest| rest.split('|').next())
@@ -608,6 +607,33 @@ fn obligations_table_pins_o01() {
         is_slice_start,
         "{DECISION_REGISTER}: O-01's \"Owed at\" cell must name an executable \
          `E<major>.<minor> slice start`, got {owed_at:?}"
+    );
+    let slice_id = owed_at.strip_suffix(" slice start").unwrap_or_default();
+    let map = read_repo_doc("docs/roadmap/v10/EXECUTION-MAP.md");
+    let heading = format!("## {slice_id} ");
+    assert!(
+        support::doc_scan::structural_lines(&map).any(|(_, line)| line.starts_with(&heading)),
+        "{DECISION_REGISTER}: O-01 is owed at {slice_id}, but the execution map \
+         has no such slice — the obligation points at nothing"
+    );
+}
+
+#[test]
+fn guard_fires_on_a_duplicated_close_marker() {
+    let broken = "\
+<!-- registry:dup-close -->\n\
+| id |\n\
+| --- |\n\
+| `adoc.kept.v0` |\n\
+<!-- /registry:dup-close -->\n\
+| `adoc.lost.v0` | shipped |\n\
+<!-- /registry:dup-close -->\n";
+    let result = std::panic::catch_unwind(|| {
+        support::doc_scan::anchored_block(broken, "fixture", "registry:dup-close").len()
+    });
+    assert!(
+        result.is_err(),
+        "a duplicated close marker orphans the rows between the closes — it must fail loudly"
     );
 }
 

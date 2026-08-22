@@ -78,6 +78,10 @@ pub fn anchored_block<'a>(doc: &'a str, doc_name: &str, anchor: &str) -> &'a str
         doc[start..].find(&open).is_none(),
         "{doc_name}: `{open}` appears more than once — rows in later blocks are invisible to the scan"
     );
+    assert!(
+        doc[end + close.len()..].find(&close).is_none(),
+        "{doc_name}: `{close}` appears more than once — rows between the closes are outside every scan"
+    );
     &doc[start..end]
 }
 
