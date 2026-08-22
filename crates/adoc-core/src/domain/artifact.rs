@@ -21,7 +21,7 @@ pub(crate) struct SearchModelHeader {
     pub(crate) dim: usize,
 }
 
-/// V1.7.2 (ADR-0040): the `adoc.search.v1` entry discriminator. A prose
+/// V1.7.2 (ADR-0040): the `adoc.search.v2` entry discriminator. A prose
 /// entry's `content_hash` is derived from its Embedding Composition, not
 /// from a graph node hash, and its cache reuse is keyed by that hash rather
 /// than by its order-derived block id.

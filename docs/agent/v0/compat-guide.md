@@ -44,4 +44,4 @@ Migration is a human onboarding act run through the CLI; there is no MCP migrate
 
 - Compatibility Mode never weakens Strict Mode for `.adoc` files. A project mixing `.adoc` and `.md` still fails on `.adoc` schema violations exactly as before.
 - The renderer escapes Quarantined HTML and drops unsafe `href`/`src` attributes. The graph artifact never carries interpreted HTML — only the source text on the wrapping prose block.
-- Since V1.7.1, prose blocks are lexically indexed and returned as `record_type: "prose"` search records; since V1.7.2, prose blocks also carry vectors in `adoc.search.v1`, so semantic and hybrid search rank them too. Prose remains orientation context, never citable knowledge.
+- Since V1.7.1, prose blocks are lexically indexed and returned as `record_type: "prose"` search records; since V1.7.2, prose blocks also carry vectors in the search artifact (`adoc.search.v2` since adoc 0.4.0), so semantic and hybrid search rank them too. Prose remains orientation context, never citable knowledge.
