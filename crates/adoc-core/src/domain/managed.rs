@@ -31,7 +31,8 @@ use serde::Serialize;
 use super::graph::{GraphArtifactDocument, GraphNode, GraphRepositoryIdentity, GraphSourceBinding};
 use super::identity::ObjectId;
 use super::reconciliation::{
-    ReconciliationDecision, ReconciliationDecisionError, ReconciliationState, ReconciliationVerb,
+    DecisionParty, ReconciliationDecision, ReconciliationDecisionError, ReconciliationState,
+    ReconciliationVerb,
 };
 
 /// Cloud workspace identifier — opaque to `adoc-core`. Blank or padded
@@ -274,31 +275,46 @@ impl ManagedWorkspace {
     }
 
     /// Record one reconciliation decision Governance Event. Fail closed:
-    /// both parties must exist in this workspace and be bound to their
-    /// exact latest managed version — a decision adjudicated against
-    /// content that has since changed never applies silently. Recording
-    /// appends to the log and touches no object or version record:
-    /// RT-03 preservation holds by construction.
+    /// both parties must exist in this workspace, be bound to their exact
+    /// latest managed version — a decision adjudicated against content
+    /// that has since changed never applies silently — and form a
+    /// Reconciliation Candidate pair: candidates arise from exact
+    /// Object-ID collision alone (RT-03), so two objects that never
+    /// collided are not a pair to adjudicate. Recording appends to the
+    /// log and touches no object or version record: RT-03 preservation
+    /// holds by construction.
     pub(crate) fn record_decision(
         &mut self,
         decision: ReconciliationDecision,
     ) -> Result<(), ReconciliationDecisionError> {
-        for bound in [decision.subject(), decision.counterpart()] {
-            let object = self
-                .managed_object(&bound.canonical)
-                .ok_or(ReconciliationDecisionError::UnknownParty)?;
-            let latest = object
-                .versions
-                .last()
-                // Unreachable: records only ever gain versions, starting
-                // with one at creation; kept typed, never unwrapped.
-                .ok_or(ReconciliationDecisionError::UnknownParty)?;
-            if latest.version_id != bound.version_id {
-                return Err(ReconciliationDecisionError::StaleVersionBinding);
-            }
+        let subject = self.bound_party(decision.subject())?;
+        let counterpart = self.bound_party(decision.counterpart())?;
+        if subject.object_id != counterpart.object_id {
+            return Err(ReconciliationDecisionError::NotACandidatePair);
         }
         self.decisions.push(decision);
         Ok(())
+    }
+
+    /// Resolve one decision party fail-closed: the object must exist in
+    /// this workspace and the binding must be its exact latest version.
+    fn bound_party(
+        &self,
+        bound: &DecisionParty,
+    ) -> Result<&ManagedObjectRecord, ReconciliationDecisionError> {
+        let object = self
+            .managed_object(&bound.canonical)
+            .ok_or(ReconciliationDecisionError::UnknownParty)?;
+        let latest = object
+            .versions
+            .last()
+            // Unreachable: records only ever gain versions, starting
+            // with one at creation; kept typed, never unwrapped.
+            .ok_or(ReconciliationDecisionError::UnknownParty)?;
+        if latest.version_id != bound.version_id {
+            return Err(ReconciliationDecisionError::StaleVersionBinding);
+        }
+        Ok(object)
     }
 
     /// The recorded decision history, in order — the replay input.
@@ -1745,6 +1761,56 @@ mod tests {
             workspace.record_decision(stale),
             Err(ReconciliationDecisionError::StaleVersionBinding)
         );
+        assert!(
+            workspace.decisions().is_empty(),
+            "a rejected decision must not enter the log"
+        );
+    }
+
+    /// A Reconciliation Decision decides a Reconciliation Candidate pair
+    /// (CONTEXT.md), and candidates arise from exact Object-ID collision
+    /// alone (RT-03): two objects that never collided are not a pair to
+    /// adjudicate, whatever the verb — recording fails closed instead of
+    /// letting any two known objects be linked, superseded, or merged.
+    #[test]
+    fn recording_rejects_parties_that_never_formed_a_candidate_pair() {
+        let mut workspace = workspace();
+        let first = workspace
+            .import_artifact(&artifact(
+                local_repo("a/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.credits", "sha256:aaa")],
+            ))
+            .expect("import accepted");
+        let second = workspace
+            .import_artifact(&artifact(
+                local_repo("b/agentdoc.config.yaml"),
+                vec![knowledge_object("billing.refunds", "sha256:bbb")],
+            ))
+            .expect("import accepted");
+
+        let uncollided = |of: &ImportedVersion| DecisionParty {
+            canonical: of.canonical.clone(),
+            version_id: of.version_id.clone(),
+        };
+        for verb in [
+            ReconciliationVerb::KeepDistinct,
+            ReconciliationVerb::LinkAlias,
+            ReconciliationVerb::Supersede,
+            ReconciliationVerb::MergeRehome,
+        ] {
+            let decision = ReconciliationDecision::new(
+                verb,
+                uncollided(&first.imported[0]),
+                uncollided(&second.imported[0]),
+                principal(),
+                policy(),
+            )
+            .expect("two distinct parties");
+            assert_eq!(
+                workspace.record_decision(decision),
+                Err(ReconciliationDecisionError::NotACandidatePair)
+            );
+        }
         assert!(
             workspace.decisions().is_empty(),
             "a rejected decision must not enter the log"
