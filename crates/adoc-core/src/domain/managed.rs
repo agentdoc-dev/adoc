@@ -24,10 +24,13 @@ use serde::Serialize;
 use super::graph::{GraphArtifactDocument, GraphNode, GraphRepositoryIdentity, GraphSourceBinding};
 use super::identity::ObjectId;
 
-/// Cloud workspace identifier — opaque to `adoc-core`. Blank input is
-/// rejected: an empty workspace id would produce unqualified canonical
-/// identities, defeating the qualification that keeps identity unlinkable
-/// across workspaces (MILESTONES §E1.2 stop-ship).
+/// Cloud workspace identifier — opaque to `adoc-core`. Blank or padded
+/// input is rejected: an empty workspace id would produce unqualified
+/// canonical identities, defeating the qualification that keeps identity
+/// unlinkable across workspaces (MILESTONES §E1.2 stop-ship), and a
+/// whitespace-padded one would be a second spelling of the same workspace
+/// that never compares equal. Never normalized — silently unifying two
+/// spellings is a merge nobody decided.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
 pub(crate) struct WorkspaceId(String);
@@ -35,8 +38,8 @@ pub(crate) struct WorkspaceId(String);
 impl WorkspaceId {
     pub(crate) fn new(value: impl Into<String>) -> Result<Self, ManagedIdentityError> {
         let value = value.into();
-        if value.trim().is_empty() {
-            Err(ManagedIdentityError::BlankWorkspaceId)
+        if value.is_empty() || value.trim() != value {
+            Err(ManagedIdentityError::InvalidWorkspaceId)
         } else {
             Ok(Self(value))
         }
@@ -62,7 +65,8 @@ pub(crate) struct ManagedVersionId(String);
 
 /// K6 layer 4: the identity of one immutable Source Assertion (K7). Only
 /// the identity layer lands in E1.2 — the Source Record/Assertion store is
-/// E4.1. Blank identities fail closed.
+/// E4.1. Blank or whitespace-padded identities fail closed (same posture
+/// as [`WorkspaceId`]: identity values are never normalized).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
 pub(crate) struct SourceAssertionIdentity(String);
@@ -70,8 +74,8 @@ pub(crate) struct SourceAssertionIdentity(String);
 impl SourceAssertionIdentity {
     pub(crate) fn new(value: impl Into<String>) -> Result<Self, ManagedIdentityError> {
         let value = value.into();
-        if value.trim().is_empty() {
-            Err(ManagedIdentityError::BlankSourceAssertionIdentity)
+        if value.is_empty() || value.trim() != value {
+            Err(ManagedIdentityError::InvalidSourceAssertionIdentity)
         } else {
             Ok(Self(value))
         }
@@ -80,10 +84,10 @@ impl SourceAssertionIdentity {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ManagedIdentityError {
-    #[error("workspace id must not be blank")]
-    BlankWorkspaceId,
-    #[error("source assertion identity must not be blank")]
-    BlankSourceAssertionIdentity,
+    #[error("workspace id must be non-blank without surrounding whitespace")]
+    InvalidWorkspaceId,
+    #[error("source assertion identity must be non-blank without surrounding whitespace")]
+    InvalidSourceAssertionIdentity,
     #[error("object id must not be blank")]
     BlankObjectId,
     #[error("object id violates the Object ID grammar")]
@@ -650,12 +654,18 @@ mod tests {
         );
     }
 
-    /// A blank workspace id would produce unqualified canonical identities;
-    /// construction fails closed instead.
+    /// A blank workspace id would produce unqualified canonical identities,
+    /// and a padded one would make `"ws-acme"` and `" ws-acme"` two
+    /// workspaces whose identities never compare equal — with the
+    /// whitespace shipping on the wire through the transparent payload.
+    /// Construction fails closed on both; it never normalizes (silently
+    /// unifying two spellings is a merge nobody decided).
     #[test]
-    fn blank_workspace_id_is_rejected() {
+    fn blank_or_padded_workspace_id_is_rejected() {
         assert!(WorkspaceId::new("").is_err());
         assert!(WorkspaceId::new(" \t").is_err());
+        assert!(WorkspaceId::new(" ws-acme").is_err());
+        assert!(WorkspaceId::new("ws-acme ").is_err());
     }
 
     /// A crafted artifact carrying a blank Object ID (empty or
@@ -745,10 +755,13 @@ mod tests {
     }
 
     /// The Source Assertion identity layer (K7) exists as its own type;
-    /// blank identities fail closed and the value serializes transparently.
+    /// blank and padded identities fail closed and the value serializes
+    /// transparently.
     #[test]
     fn source_assertion_identity_is_typed_and_rejects_blank_values() {
         assert!(SourceAssertionIdentity::new("  ").is_err());
+        assert!(SourceAssertionIdentity::new(" a:b").is_err());
+        assert!(SourceAssertionIdentity::new("a:b ").is_err());
         let identity =
             SourceAssertionIdentity::new("confluence:page-9:rev-4:assertion-2").expect("non-blank");
         assert_eq!(
