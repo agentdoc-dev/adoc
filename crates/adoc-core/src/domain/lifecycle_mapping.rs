@@ -1789,6 +1789,30 @@ mod tests {
             serde_json::to_string_pretty(&instance).expect("instance pretty prints")
         );
 
+        // The kind set is closed BY NAME (PR #153 review): a document
+        // that misspells or replaces a released kind must fail schema
+        // validation — a Cloud consumer must never accept a contract
+        // missing a released kind's mapping.
+        for section in ["import_mapping", "projection"] {
+            let mut misspelled = instance.clone();
+            let map = if section == "import_mapping" {
+                misspelled["import_mapping"]
+                    .as_object_mut()
+                    .expect("import_mapping is an object")
+            } else {
+                misspelled["projection"]["kinds"]
+                    .as_object_mut()
+                    .expect("projection.kinds is an object")
+            };
+            let entry = map.remove("policy").expect("policy entry exists");
+            map.insert("polciy".to_string(), entry);
+            assert!(
+                !validator.is_valid(&misspelled),
+                "{section}: a document replacing the released kind `policy` \
+                 with `polciy` must fail closed"
+            );
+        }
+
         // The per-application projection output is part of the same
         // envelope contract (playbook decision 12): validate a real
         // application — the T2 headline fixture — against the schema's
