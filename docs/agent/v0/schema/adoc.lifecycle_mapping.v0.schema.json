@@ -41,7 +41,15 @@
       "type": "array",
       "minItems": 6,
       "maxItems": 6,
-      "items": { "$ref": "#/$defs/dimensionLossDeclaration" }
+      "prefixItems": [
+        { "$ref": "#/$defs/dimensionLossDeclaration", "properties": { "dimension": { "const": "governance" } } },
+        { "$ref": "#/$defs/dimensionLossDeclaration", "properties": { "dimension": { "const": "verification" } } },
+        { "$ref": "#/$defs/dimensionLossDeclaration", "properties": { "dimension": { "const": "effectivity" } } },
+        { "$ref": "#/$defs/dimensionLossDeclaration", "properties": { "dimension": { "const": "freshness" } } },
+        { "$ref": "#/$defs/dimensionLossDeclaration", "properties": { "dimension": { "const": "integrity" } } },
+        { "$ref": "#/$defs/dimensionLossDeclaration", "properties": { "dimension": { "const": "synchronization" } } }
+      ],
+      "items": false
     },
     "projection": {
       "description": "The versioned export projection: managed multi-dimension state to flat `.adoc` status. Lossy by nature; every application yields a projection output (see $defs/projectionOutput) whose loss report names every dropped dimension.",
@@ -49,7 +57,11 @@
       "required": ["projection_version", "kinds"],
       "additionalProperties": false,
       "properties": {
-        "projection_version": { "type": "string", "minLength": 1 },
+        "projection_version": {
+          "description": "The projection rule-set version, recorded per application like mapping_version. The two versions advance in lockstep: each contract document pairs exactly one mapping version with one projection version, and a rule change on either side ships a new paired document bumping both — a document pairing versions that never shipped together is not a valid contract.",
+          "type": "string",
+          "minLength": 1
+        },
         "kinds": {
           "description": "Same closed kind set as import_mapping, by name.",
           "type": "object",
@@ -133,12 +145,14 @@
           "items": { "$ref": "#/$defs/projectionRule" }
         },
         "fallback": {
-          "description": "The word rendered when no rule matches (gaps included); null for kinds that author no status.",
-          "type": ["string", "null"]
+          "description": "The word rendered when no rule matches (gaps included); null for kinds that author no status. Never `verified`: the catch-all cannot render verification (K5).",
+          "type": ["string", "null"],
+          "not": { "const": "verified" }
         }
       }
     },
     "projectionRule": {
+      "description": "K5 is enforced structurally: a rule whose status is `verified` must require recorded verification:verified, so a document mapping approval onto the verified word fails validation.",
       "type": "object",
       "required": ["status"],
       "additionalProperties": false,
@@ -147,7 +161,9 @@
         "verification": { "enum": ["unverified", "partially_verified", "verified", "failed"] },
         "effectivity": { "enum": ["pending", "scheduled", "effective", "suspended", "expired"] },
         "status": { "type": "string", "minLength": 1 }
-      }
+      },
+      "if": { "properties": { "status": { "const": "verified" } }, "required": ["status"] },
+      "then": { "properties": { "verification": { "const": "verified" } }, "required": ["verification"] }
     },
     "projectionOutput": {
       "description": "One export projection application: the flat word (null for statusless kinds) plus the loss report naming every recorded dimension the word cannot carry back through this contract's import mapping.",
@@ -180,7 +196,7 @@
         },
         "recorded": { "type": "string", "minLength": 1 },
         "recovered": {
-          "description": "What re-importing the projected word recovers; null when the dimension has no flat carriage at all.",
+          "description": "What re-importing the projected word recovers; null when nothing is recovered — either the dimension has no flat carriage at all, or (verification) import never lands the dimension.",
           "type": ["string", "null"]
         }
       }

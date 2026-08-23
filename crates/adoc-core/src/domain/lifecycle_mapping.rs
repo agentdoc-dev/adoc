@@ -1813,6 +1813,37 @@ mod tests {
             );
         }
 
+        // The K5 rule is enforced by the schema itself (PR #153 review):
+        // a data-only consumer must reject a document whose projection
+        // renders `verified` without requiring recorded verification —
+        // via a rule or via the fallback.
+        let mut approval_as_verification = instance.clone();
+        approval_as_verification["projection"]["kinds"]["claim"]["rules"] = json!([
+            { "governance": "approved", "status": "verified" }
+        ]);
+        assert!(
+            !validator.is_valid(&approval_as_verification),
+            "a projection rule rendering `verified` without requiring recorded \
+             verification:verified must fail schema validation"
+        );
+        let mut verified_fallback = instance.clone();
+        verified_fallback["projection"]["kinds"]["task"]["fallback"] = json!("verified");
+        assert!(
+            !validator.is_valid(&verified_fallback),
+            "a `verified` fallback must fail schema validation"
+        );
+
+        // The loss declaration must name each §K4 dimension exactly once,
+        // in K4 order — six entries for one dimension must not validate.
+        let mut duplicated_dimension = instance.clone();
+        duplicated_dimension["loss_declaration"][1] =
+            duplicated_dimension["loss_declaration"][0].clone();
+        assert!(
+            !validator.is_valid(&duplicated_dimension),
+            "a loss declaration repeating a dimension (dropping another) must \
+             fail schema validation"
+        );
+
         // The per-application projection output is part of the same
         // envelope contract (playbook decision 12): validate a real
         // application — the T2 headline fixture — against the schema's
