@@ -22,8 +22,10 @@
 # recorded end-to-end.
 #
 # Usage:
-#   scripts/validation-runtime/run.sh pin   # build + record the pin
-#   scripts/validation-runtime/run.sh run   # verify pin, prove parity
+#   scripts/validation-runtime/run.sh pin          # build + record the pin
+#   scripts/validation-runtime/run.sh run          # verify pin, prove parity
+#   scripts/validation-runtime/run.sh regen-golden # rewrite the committed
+#       golden from a fresh run (e.g. after a version bump); review the diff
 #
 # ponytail: the pin is recorded per-build (`pin` at packaging time) until a
 # released binary artifact exists to pin at release time; the enforcement
@@ -107,7 +109,16 @@ case "$cmd" in
 
         echo "validation-runtime: pin verified, golden parity and determinism proven"
         ;;
+    regen-golden)
+        # Mechanical golden regeneration: the receipt embeds the binary's
+        # release version, so a version bump legitimately changes the
+        # golden. Regenerate here and review the diff — only expected
+        # fields (runtime.version) may move.
+        ensure_binary
+        emit_receipt "$GOLDEN_RECEIPT" "$GOLDEN_RUNTIME_DIGEST"
+        echo "validation-runtime: rewrote golden '$GOLDEN_RECEIPT' from $BIN; review the diff"
+        ;;
     *)
-        die "unknown command '$cmd' (expected 'pin' or 'run')"
+        die "unknown command '$cmd' (expected 'pin', 'run', or 'regen-golden')"
         ;;
 esac
