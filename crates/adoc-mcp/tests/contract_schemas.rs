@@ -1910,6 +1910,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
 
     let mut allow_with_empty_evaluation_time = decision.clone();
     allow_with_empty_evaluation_time["evaluation_time"] = json!("");
+    let mut allow_with_blank_evaluation_time = decision.clone();
+    allow_with_blank_evaluation_time["evaluation_time"] = json!("   ");
+
+    let mut direct_with_invalid_expiry = direct_human.clone();
+    direct_with_invalid_expiry["grants"][0]["expires_at"] = json!("never");
 
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision, true),
@@ -2207,6 +2212,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "allow with empty evaluation time",
             allow_with_empty_evaluation_time,
+            false,
+        ),
+        (
+            "allow with blank evaluation time",
+            allow_with_blank_evaluation_time,
+            false,
+        ),
+        (
+            "direct grant with invalid expiry",
+            direct_with_invalid_expiry,
             false,
         ),
     ] {
