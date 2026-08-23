@@ -1830,6 +1830,14 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut nonconsequential_identity_context = identity_context_missing.clone();
     nonconsequential_identity_context["consequential"] = json!(false);
     nonconsequential_identity_context["result"] = json!("deny");
+    let mut nonconsequential_identity_context_with_insufficient =
+        nonconsequential_identity_context.clone();
+    nonconsequential_identity_context_with_insufficient["result"] = json!("insufficient_context");
+
+    let mut expired_identity_with_later_reason = visibility_denied.clone();
+    expired_identity_with_later_reason["principal"]["freshness"] = json!("expired");
+    let mut missing_identity_with_later_reason = hard_deny.clone();
+    missing_identity_with_later_reason["principal"]["freshness"] = json!("insufficient_context");
 
     let mut no_grant_with_basis = denied.clone();
     no_grant_with_basis["basis"] = decision["basis"].clone();
@@ -1851,6 +1859,24 @@ fn authorization_decision_schema_pins_replay_bindings() {
     visibility_denied_without_deny_result["result"] = json!("insufficient_context");
     let mut action_policy_denied_without_deny_result = action_policy_denied.clone();
     action_policy_denied_without_deny_result["result"] = json!("insufficient_context");
+
+    let mut consequential_source_acl_unavailable_with_deny = insufficient.clone();
+    consequential_source_acl_unavailable_with_deny["result"] = json!("deny");
+    let mut nonconsequential_source_acl_unavailable = insufficient.clone();
+    nonconsequential_source_acl_unavailable["consequential"] = json!(false);
+    nonconsequential_source_acl_unavailable["result"] = json!("deny");
+
+    let mut consequential_visibility_unavailable_with_deny = visibility_unavailable.clone();
+    consequential_visibility_unavailable_with_deny["result"] = json!("deny");
+    let mut nonconsequential_visibility_unavailable = visibility_unavailable.clone();
+    nonconsequential_visibility_unavailable["consequential"] = json!(false);
+    nonconsequential_visibility_unavailable["result"] = json!("deny");
+
+    let mut consequential_action_unavailable_with_deny = action_policy_unavailable.clone();
+    consequential_action_unavailable_with_deny["result"] = json!("deny");
+    let mut nonconsequential_action_unavailable = action_policy_unavailable.clone();
+    nonconsequential_action_unavailable["consequential"] = json!(false);
+    nonconsequential_action_unavailable["result"] = json!("deny");
 
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision, true),
@@ -1915,6 +1941,21 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "nonconsequential identity-context reason matches input",
             nonconsequential_identity_context,
+            true,
+        ),
+        (
+            "nonconsequential source ACL unavailable denies",
+            nonconsequential_source_acl_unavailable,
+            true,
+        ),
+        (
+            "nonconsequential visibility unavailable denies",
+            nonconsequential_visibility_unavailable,
+            true,
+        ),
+        (
+            "nonconsequential action unavailable denies",
+            nonconsequential_action_unavailable,
             true,
         ),
         ("missing policy version", missing_policy_version, false),
@@ -2022,6 +2063,21 @@ fn authorization_decision_schema_pins_replay_bindings() {
             consequential_identity_context_with_deny,
             false,
         ),
+        (
+            "nonconsequential identity-context reason with insufficient result",
+            nonconsequential_identity_context_with_insufficient,
+            false,
+        ),
+        (
+            "expired identity with later-precedence reason",
+            expired_identity_with_later_reason,
+            false,
+        ),
+        (
+            "missing identity with later-precedence reason",
+            missing_identity_with_later_reason,
+            false,
+        ),
         ("no-grant reason with basis", no_grant_with_basis, false),
         (
             "no-grant reason without deny result",
@@ -2061,6 +2117,21 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "action-policy denied reason without deny result",
             action_policy_denied_without_deny_result,
+            false,
+        ),
+        (
+            "consequential source ACL unavailable with deny result",
+            consequential_source_acl_unavailable_with_deny,
+            false,
+        ),
+        (
+            "consequential visibility unavailable with deny result",
+            consequential_visibility_unavailable_with_deny,
+            false,
+        ),
+        (
+            "consequential action unavailable with deny result",
+            consequential_action_unavailable_with_deny,
             false,
         ),
     ] {
