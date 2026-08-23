@@ -318,28 +318,32 @@ fn validate_context_artifact(
         Err(_) => unreachable!("compile output graph_json is well-formed"),
     };
 
-    let artifact_hashes = knowledge_object_hashes(&document);
-    let recompiled_hashes = knowledge_object_hashes(&recompiled);
+    let artifact_objects = knowledge_objects(&document);
+    let recompiled_objects = knowledge_objects(&recompiled);
     let mut diagnostics = Vec::new();
-    for (id, artifact_hash) in &artifact_hashes {
-        match recompiled_hashes.get(id) {
+    for (id, artifact_object) in &artifact_objects {
+        match recompiled_objects.get(id) {
             None => diagnostics.push(drift_diagnostic(
                 artifact_path,
                 id,
                 "records a Knowledge Object the compiled source does not contain",
             )),
-            Some(recompiled_hash) if recompiled_hash != artifact_hash => {
+            // Full-node comparison, never hash strings alone: the
+            // recorded content_hash is the producer's own claim, so a
+            // forgery that tampers a governed field but replays the
+            // honest hash would compare the claim against itself.
+            Some(recompiled_object) if recompiled_object != artifact_object => {
                 diagnostics.push(drift_diagnostic(
                     artifact_path,
                     id,
-                    "records a content_hash that does not match the recompiled source",
+                    "records a Knowledge Object that does not match the recompiled source",
                 ));
             }
             Some(_) => {}
         }
     }
-    for id in recompiled_hashes.keys() {
-        if !artifact_hashes.contains_key(id) {
+    for id in recompiled_objects.keys() {
+        if !artifact_objects.contains_key(id) {
             diagnostics.push(drift_diagnostic(
                 artifact_path,
                 id,
@@ -347,17 +351,33 @@ fn validate_context_artifact(
             ));
         }
     }
+    // Prose nodes and edges are governed carriage too. Wholesale
+    // equality catches everything outside the per-object comparison;
+    // `diagnostics` and `repository_identity` stay outside the
+    // comparison — both can legitimately differ between the build and
+    // check contexts (e.g. build-only embedding notices).
+    if diagnostics.is_empty()
+        && (document.nodes != recompiled.nodes || document.edges != recompiled.edges)
+    {
+        diagnostics.push(Diagnostic::error(
+            DiagnosticCode::ValidationContextArtifactDrift,
+            format!(
+                "context artifact '{}' carries nodes or edges that do not match the recompiled source",
+                artifact_path.display()
+            ),
+        ));
+    }
     diagnostics
 }
 
-fn knowledge_object_hashes(document: &GraphArtifactDocument) -> BTreeMap<String, String> {
+fn knowledge_objects(
+    document: &GraphArtifactDocument,
+) -> BTreeMap<&str, &crate::domain::graph::GraphKnowledgeObjectNode> {
     document
         .nodes
         .iter()
         .filter_map(|node| match node {
-            GraphNode::KnowledgeObject(object) => {
-                Some((object.id.clone(), object.content_hash.clone()))
-            }
+            GraphNode::KnowledgeObject(object) => Some((object.id.as_str(), object)),
             _ => None,
         })
         .collect()
@@ -618,6 +638,88 @@ mod tests {
         let receipt_value: serde_json::Value =
             serde_json::from_str(&canonical).expect("receipt is json");
         assert_eq!(receipt_value["result"], "fail");
+    }
+
+    /// E1.7.T4 adversarial hardening: a forgery that tampers a governed
+    /// field but REPLAYS the honest content_hash string must still fail
+    /// closed — the drift check may never reduce to comparing the
+    /// producer's own hash claims against themselves.
+    #[test]
+    fn hash_preserving_governed_field_forgery_fails_closed() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let docs = workspace.path().join("docs");
+        write(&docs.join("index.adoc"), valid_source());
+        let honest = compiled_graph_json(&docs);
+        let mut value: serde_json::Value = serde_json::from_str(&honest).expect("json");
+        let node = value["nodes"]
+            .as_array_mut()
+            .expect("nodes array")
+            .iter_mut()
+            .find(|node| node["type"] == "knowledge_object")
+            .expect("fixture has a knowledge object");
+        assert_eq!(node["status"], "draft", "fixture authors status: draft");
+        node["status"] = serde_json::Value::from("approved");
+        let forged = serde_json::to_string(&value).expect("serializes");
+        assert!(
+            graph_v6_schema_accepts(&forged),
+            "the forged artifact must stay JSON-Schema-valid"
+        );
+        let artifact_path = workspace.path().join("dist/docs.graph.json");
+        write(&artifact_path, &forged);
+
+        let mut input = standalone_input(&docs);
+        input.context_artifact = Some(artifact_path);
+        let outcome = run_validation_runtime(input).expect("validation runs");
+
+        assert_eq!(outcome.receipt.result(), ValidationResult::Fail);
+        assert!(
+            outcome.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::ValidationContextArtifactDrift
+                    && diagnostic.severity == Severity::Error
+            }),
+            "a status forgery with an untouched content_hash must drift-fail, got: {:?}",
+            outcome.diagnostics
+        );
+    }
+
+    /// E1.7.T4 adversarial hardening: prose nodes and edges are governed
+    /// carriage too — a forgery outside the Knowledge Object set must not
+    /// pass just because every Knowledge Object matches.
+    #[test]
+    fn prose_node_forgery_fails_closed() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let docs = workspace.path().join("docs");
+        write(&docs.join("index.adoc"), valid_source());
+        let honest = compiled_graph_json(&docs);
+        let mut value: serde_json::Value = serde_json::from_str(&honest).expect("json");
+        let node = value["nodes"]
+            .as_array_mut()
+            .expect("nodes array")
+            .iter_mut()
+            .find(|node| node["type"] == "page")
+            .expect("fixture has a page node");
+        node["title"] = serde_json::Value::from("Refunds");
+        let forged = serde_json::to_string(&value).expect("serializes");
+        assert!(
+            graph_v6_schema_accepts(&forged),
+            "the forged artifact must stay JSON-Schema-valid"
+        );
+        let artifact_path = workspace.path().join("dist/docs.graph.json");
+        write(&artifact_path, &forged);
+
+        let mut input = standalone_input(&docs);
+        input.context_artifact = Some(artifact_path);
+        let outcome = run_validation_runtime(input).expect("validation runs");
+
+        assert_eq!(outcome.receipt.result(), ValidationResult::Fail);
+        assert!(
+            outcome.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::ValidationContextArtifactDrift
+                    && diagnostic.severity == Severity::Error
+            }),
+            "a prose-node forgery must drift-fail, got: {:?}",
+            outcome.diagnostics
+        );
     }
 
     /// E1.7.T4: unknown envelope versions reject exact-match — an older
