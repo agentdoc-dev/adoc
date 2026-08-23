@@ -306,13 +306,18 @@ impl ManagedWorkspace {
 
     /// Record one reconciliation decision Governance Event. Fail closed:
     /// both parties must exist in this workspace, be bound to their exact
-    /// latest managed version — a decision adjudicated against content
-    /// that has since changed never applies silently — and form a
-    /// Reconciliation Candidate pair: candidates arise from exact
-    /// Object-ID collision alone (RT-03), so two objects that never
-    /// collided are not a pair to adjudicate. Recording appends to the
-    /// log and touches no object or version record: RT-03 preservation
-    /// holds by construction.
+    /// latest managed version, and form a Reconciliation Candidate pair:
+    /// candidates arise from exact Object-ID collision alone (RT-03), so
+    /// two objects that never collided are not a pair to adjudicate. The
+    /// latest-version binding is a RECORD-TIME admission gate — a
+    /// decision adjudicated against content that had already changed
+    /// never enters the log silently. It is not a durable property of a
+    /// standing decision: a later import minting a new version for
+    /// either party leaves the decision fully standing, and post-decision
+    /// content change disturbs nothing — re-review/invalidation is out of
+    /// scope for this slice (connector re-observation territory, E8.3).
+    /// Recording appends to the log and touches no object or version
+    /// record: RT-03 preservation holds by construction.
     pub(crate) fn record_decision(
         &mut self,
         decision: ReconciliationDecision,
