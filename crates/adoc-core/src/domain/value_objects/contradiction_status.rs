@@ -30,6 +30,18 @@ pub(crate) enum ContradictionStatusError {
 }
 
 impl ContradictionStatus {
+    /// Every released variant, in declaration order. The lifecycle
+    /// mapping contract (E1.5) pins its word table to this accessor —
+    /// the exhaustive match makes a new variant a compile error here
+    /// until the contract decides its managed meaning.
+    #[cfg(test)]
+    pub(crate) fn all() -> [Self; 3] {
+        match Self::Unresolved {
+            Self::Unresolved | Self::Resolved | Self::Dismissed => {}
+        }
+        [Self::Unresolved, Self::Resolved, Self::Dismissed]
+    }
+
     /// Parse a contradiction status from a string slice. ASCII-trims, then
     /// matches the canonical lowercase set. Empty input yields
     /// [`ContradictionStatusError::Missing`]; any unrecognised spelling yields

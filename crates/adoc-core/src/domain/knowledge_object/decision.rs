@@ -380,6 +380,18 @@ pub(crate) enum DecisionStatus {
 }
 
 impl DecisionStatus {
+    /// Every released variant, in declaration order. The lifecycle
+    /// mapping contract (E1.5) pins its word table to this accessor —
+    /// the exhaustive match makes a new variant a compile error here
+    /// until the contract decides its managed meaning.
+    #[cfg(test)]
+    pub(crate) fn all() -> [Self; 2] {
+        match Self::Proposed {
+            Self::Proposed | Self::Accepted => {}
+        }
+        [Self::Proposed, Self::Accepted]
+    }
+
     pub(crate) fn try_new(value: &str) -> Result<Self, DecisionError> {
         let trimmed = trim_ascii_edges(value);
         if trimmed.is_empty() {

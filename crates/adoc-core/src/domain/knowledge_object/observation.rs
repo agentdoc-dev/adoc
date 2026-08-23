@@ -360,6 +360,18 @@ pub(crate) enum ObservationStatus {
 }
 
 impl ObservationStatus {
+    /// Every released variant, in declaration order. The lifecycle
+    /// mapping contract (E1.5) pins its word table to this accessor —
+    /// the exhaustive match makes a new variant a compile error here
+    /// until the contract decides its managed meaning.
+    #[cfg(test)]
+    pub(crate) fn all() -> [Self; 1] {
+        match Self::Observed {
+            Self::Observed => {}
+        }
+        [Self::Observed]
+    }
+
     pub(crate) fn try_new(value: &str) -> Result<Self, ObservationError> {
         match trim_ascii_edges(value) {
             "observed" => Ok(Self::Observed),

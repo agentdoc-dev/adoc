@@ -413,6 +413,18 @@ pub(crate) enum PolicyStatus {
 }
 
 impl PolicyStatus {
+    /// Every released variant, in declaration order. The lifecycle
+    /// mapping contract (E1.5) pins its word table to this accessor —
+    /// the exhaustive match makes a new variant a compile error here
+    /// until the contract decides its managed meaning.
+    #[cfg(test)]
+    pub(crate) fn all() -> [Self; 4] {
+        match Self::Proposed {
+            Self::Proposed | Self::Active | Self::Archived | Self::Revoked => {}
+        }
+        [Self::Proposed, Self::Active, Self::Archived, Self::Revoked]
+    }
+
     pub(crate) fn try_new(value: &str) -> Result<Self, PolicyError> {
         let trimmed = trim_ascii_edges(value);
         if trimmed.is_empty() {

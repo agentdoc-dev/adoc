@@ -1136,27 +1136,159 @@ mod tests {
         }
     }
 
-    /// The released flat vocabulary of every kind that authors a status
-    /// (brief §6; the kind aggregates are the source of truth and are
-    /// untouched by E1.5).
+    /// The released flat vocabulary of every kind, derived from the
+    /// contract's own word table — which
+    /// [`import_mapping_words_are_pinned_to_the_kind_status_enums`] pins
+    /// to the kind status enums both directions, so the kind aggregates
+    /// are the source of truth by construction. Claim's open vocabulary
+    /// contributes an arbitrary unlisted word as well.
     fn flat_vocabularies() -> Vec<(&'static str, Vec<&'static str>)> {
-        vec![
-            ("claim", vec!["verified", "draft", "anything-open"]),
-            ("decision", vec!["proposed", "accepted"]),
-            ("policy", vec!["proposed", "active", "archived", "revoked"]),
-            ("example", vec!["draft", "verified", "deprecated"]),
-            ("procedure", vec!["draft", "verified", "deprecated"]),
-            ("api", vec!["draft", "verified", "deprecated"]),
-            ("contradiction", vec!["unresolved", "resolved", "dismissed"]),
-            ("observation", vec!["observed"]),
-            ("question", vec!["open", "answered"]),
-            ("task", vec!["open", "done"]),
-            ("glossary", vec![]),
-            ("source", vec![]),
-            ("warning", vec![]),
-            ("constraint", vec![]),
-            ("agent_instruction", vec![]),
-        ]
+        let contract = contract();
+        contract
+            .import_mapping
+            .iter()
+            .map(|(kind, entry)| {
+                let mut words: Vec<&'static str> = entry.statuses.keys().copied().collect();
+                if entry.unlisted_status.is_some() {
+                    words.push("anything-open");
+                }
+                (*kind, words)
+            })
+            .collect()
+    }
+
+    /// Both directions of the released-vocabulary pin (PR #153 review):
+    /// every import-mapping word is accepted by the kind's own status
+    /// parser (a rename fails here), and every parser variant has an
+    /// import-mapping rule (an added word fails here) — the kind
+    /// aggregates are the source of truth by construction, not by
+    /// comment. The `all()` accessors carry exhaustive matches, so a new
+    /// enum variant cannot even compile without reaching this table.
+    #[test]
+    fn import_mapping_words_are_pinned_to_the_kind_status_enums() {
+        use crate::domain::knowledge_object::claim::ClaimStatus;
+        use crate::domain::knowledge_object::decision::DecisionStatus;
+        use crate::domain::knowledge_object::observation::ObservationStatus;
+        use crate::domain::knowledge_object::policy::PolicyStatus;
+        use crate::domain::knowledge_object::question::QuestionStatus;
+        use crate::domain::knowledge_object::task::TaskStatus;
+        use crate::domain::value_objects::contradiction_status::ContradictionStatus;
+        use crate::domain::value_objects::lifecycle_status::LifecycleStatus;
+
+        fn assert_pinned(
+            kind: &str,
+            words: &[String],
+            expected: Vec<String>,
+            parses: impl Fn(&str) -> bool,
+        ) {
+            for word in words {
+                assert!(
+                    parses(word),
+                    "kind {kind}: the kind's status parser rejects contract word {word:?}"
+                );
+            }
+            let mut expected = expected;
+            expected.sort_unstable();
+            assert_eq!(
+                words,
+                &expected[..],
+                "kind {kind}: the contract word table drifted from the kind's \
+                 status enum — amend the contract (new mapping version) together \
+                 with the vocabulary, never one alone"
+            );
+        }
+
+        let contract = contract();
+        for (kind, entry) in &contract.import_mapping {
+            let words: Vec<String> = entry.statuses.keys().map(|w| w.to_string()).collect();
+            match *kind {
+                // Open vocabulary: `verified` is the only exact-word
+                // rule; any other non-blank word parses and falls to the
+                // open-vocabulary floor.
+                "claim" => {
+                    assert!(
+                        entry.unlisted_status.is_some(),
+                        "claim keeps its open-vocabulary fallback"
+                    );
+                    assert_pinned(kind, &words, vec!["verified".to_string()], |w| {
+                        ClaimStatus::try_new(w).is_ok()
+                    });
+                }
+                "policy" => assert_pinned(
+                    kind,
+                    &words,
+                    PolicyStatus::all()
+                        .iter()
+                        .map(|s| s.as_str().to_string())
+                        .collect(),
+                    |w| PolicyStatus::try_new(w).is_ok(),
+                ),
+                "decision" => assert_pinned(
+                    kind,
+                    &words,
+                    DecisionStatus::all()
+                        .iter()
+                        .map(|s| s.as_str().to_string())
+                        .collect(),
+                    |w| DecisionStatus::try_new(w).is_ok(),
+                ),
+                "example" | "procedure" | "api" => assert_pinned(
+                    kind,
+                    &words,
+                    LifecycleStatus::all()
+                        .iter()
+                        .map(|s| s.as_str().to_string())
+                        .collect(),
+                    |w| LifecycleStatus::try_new(w).is_ok(),
+                ),
+                "contradiction" => assert_pinned(
+                    kind,
+                    &words,
+                    ContradictionStatus::all()
+                        .iter()
+                        .map(|s| s.as_str().to_string())
+                        .collect(),
+                    |w| ContradictionStatus::try_new(w).is_ok(),
+                ),
+                "observation" => assert_pinned(
+                    kind,
+                    &words,
+                    ObservationStatus::all()
+                        .iter()
+                        .map(|s| s.as_str().to_string())
+                        .collect(),
+                    |w| ObservationStatus::try_new(w).is_ok(),
+                ),
+                "question" => assert_pinned(
+                    kind,
+                    &words,
+                    QuestionStatus::all()
+                        .iter()
+                        .map(|s| s.as_str().to_string())
+                        .collect(),
+                    |w| QuestionStatus::try_new(w).is_ok(),
+                ),
+                "task" => assert_pinned(
+                    kind,
+                    &words,
+                    TaskStatus::all()
+                        .iter()
+                        .map(|s| s.as_str().to_string())
+                        .collect(),
+                    |w| TaskStatus::try_new(w).is_ok(),
+                ),
+                "glossary" | "source" | "warning" | "constraint" | "agent_instruction" => {
+                    assert!(
+                        words.is_empty() && entry.unlisted_status.is_none(),
+                        "statusless kind {kind} must carry no words and no open fallback"
+                    );
+                }
+                unknown => panic!(
+                    "kind {unknown} has no vocabulary pin — a new kind must be \
+                     added here alongside its contract entry"
+                ),
+            }
+        }
     }
 
     /// The contract covers exactly the released kind set — no kind
