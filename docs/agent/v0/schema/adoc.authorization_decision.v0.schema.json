@@ -154,15 +154,7 @@
           "visibility": { "enum": ["allow", "not_applicable"] },
           "action_policy": { "enum": ["allow", "not_applicable"] },
           "reason": { "const": "allowed" },
-          "basis": {
-            "allOf": [
-              { "$ref": "#/$defs/basis" },
-              {
-                "properties": { "effect": { "const": "allow" } },
-                "required": ["effect"]
-              }
-            ]
-          }
+          "basis": { "$ref": "#/$defs/allowBasis" }
         }
       }
     },
@@ -380,6 +372,7 @@
       "then": {
         "properties": {
           "visibility": { "const": "deny" },
+          "basis": { "$ref": "#/$defs/allowBasis" },
           "result": { "const": "deny" }
         }
       }
@@ -390,7 +383,10 @@
         "required": ["reason"]
       },
       "then": {
-        "properties": { "visibility": { "const": "insufficient_context" } },
+        "properties": {
+          "visibility": { "const": "insufficient_context" },
+          "basis": { "$ref": "#/$defs/allowBasis" }
+        },
         "allOf": [
           {
             "if": {
@@ -415,6 +411,7 @@
       "then": {
         "properties": {
           "action_policy": { "const": "deny" },
+          "basis": { "$ref": "#/$defs/allowBasis" },
           "result": { "const": "deny" }
         }
       }
@@ -426,7 +423,8 @@
       },
       "then": {
         "properties": {
-          "action_policy": { "const": "insufficient_context" }
+          "action_policy": { "const": "insufficient_context" },
+          "basis": { "$ref": "#/$defs/allowBasis" }
         },
         "allOf": [
           {
@@ -459,6 +457,15 @@
     "rfc3339Timestamp": {
       "type": "string",
       "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])[Tt](?:[01]\\d|2[0-3]):[0-5]\\d:(?:[0-5]\\d|60)(?:\\.\\d+)?(?:[Zz]|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$"
+    },
+    "allowBasis": {
+      "allOf": [
+        { "$ref": "#/$defs/basis" },
+        {
+          "properties": { "effect": { "const": "allow" } },
+          "required": ["effect"]
+        }
+      ]
     },
     "permission": {
       "type": "string",

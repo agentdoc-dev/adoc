@@ -1808,6 +1808,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     visibility_denied["reason"] = json!("visibility_denied");
     let mut false_visibility_denied_reason = visibility_denied.clone();
     false_visibility_denied_reason["visibility"] = json!("allow");
+    let mut visibility_denied_without_basis = visibility_denied.clone();
+    visibility_denied_without_basis["basis"] = json!(null);
 
     let mut visibility_unavailable = decision.clone();
     visibility_unavailable["visibility"] = json!("insufficient_context");
@@ -1815,6 +1817,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     visibility_unavailable["reason"] = json!("visibility_unavailable");
     let mut false_visibility_unavailable_reason = visibility_unavailable.clone();
     false_visibility_unavailable_reason["visibility"] = json!("allow");
+    let mut visibility_unavailable_without_basis = visibility_unavailable.clone();
+    visibility_unavailable_without_basis["basis"] = json!(null);
 
     let mut action_policy_denied = decision.clone();
     action_policy_denied["action_policy"] = json!("deny");
@@ -1822,6 +1826,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     action_policy_denied["reason"] = json!("action_policy_denied");
     let mut false_action_policy_denied_reason = action_policy_denied.clone();
     false_action_policy_denied_reason["action_policy"] = json!("allow");
+    let mut action_policy_denied_without_basis = action_policy_denied.clone();
+    action_policy_denied_without_basis["basis"] = json!(null);
 
     let mut action_policy_unavailable = decision.clone();
     action_policy_unavailable["action_policy"] = json!("insufficient_context");
@@ -1829,6 +1835,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     action_policy_unavailable["reason"] = json!("action_policy_unavailable");
     let mut false_action_policy_unavailable_reason = action_policy_unavailable.clone();
     false_action_policy_unavailable_reason["action_policy"] = json!("allow");
+    let mut action_policy_unavailable_without_basis = action_policy_unavailable.clone();
+    action_policy_unavailable_without_basis["basis"] = json!(null);
 
     let mut identity_expired = denied.clone();
     identity_expired["principal"]["freshness"] = json!("expired");
@@ -2150,8 +2158,18 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         (
+            "visibility denied reason without basis",
+            visibility_denied_without_basis,
+            false,
+        ),
+        (
             "false visibility unavailable reason",
             false_visibility_unavailable_reason,
+            false,
+        ),
+        (
+            "visibility unavailable reason without basis",
+            visibility_unavailable_without_basis,
             false,
         ),
         (
@@ -2160,8 +2178,18 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         (
+            "action-policy denied reason without basis",
+            action_policy_denied_without_basis,
+            false,
+        ),
+        (
             "false action-policy unavailable reason",
             false_action_policy_unavailable_reason,
+            false,
+        ),
+        (
+            "action-policy unavailable reason without basis",
+            action_policy_unavailable_without_basis,
             false,
         ),
         (
