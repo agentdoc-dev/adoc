@@ -966,10 +966,9 @@ mod tests {
             )]))
             .expect("import accepted");
         let imported = &outcome.imported[0];
-        let subject = StateEventSubject {
-            canonical: imported.canonical.clone(),
-            version_id: imported.version_id.clone(),
-        };
+        let subject =
+            StateEventSubject::bound(&workspace, &imported.canonical, &imported.version_id)
+                .expect("a minted pair binds");
 
         let application = contract()
             .apply_import_mapping("policy", Some("active"), None)
@@ -987,7 +986,7 @@ mod tests {
         assert_eq!(application.authority, MappingAuthority::Advisory);
 
         // …but without attestation nothing approved/effective is landed.
-        let mut store = ManagedStateEventStore::new(RetentionFloor(0));
+        let mut store = ManagedStateEventStore::new(RetentionFloor::new(1).expect("non-zero"));
         land(&mut store, &subject, &application);
         let state = &store.current_state()[&subject];
         assert_eq!(
@@ -1088,10 +1087,12 @@ mod tests {
                 "sha256:aaa",
             )]))
             .expect("import accepted");
-        let subject = StateEventSubject {
-            canonical: outcome.imported[0].canonical.clone(),
-            version_id: outcome.imported[0].version_id.clone(),
-        };
+        let subject = StateEventSubject::bound(
+            &workspace,
+            &outcome.imported[0].canonical,
+            &outcome.imported[0].version_id,
+        )
+        .expect("a minted pair binds");
         let mut store = ManagedStateEventStore::new(RetentionFloor::new(1).expect("non-zero"));
         let application = contract()
             .apply_import_mapping("policy", Some("active"), Some(migration_attestation()))
