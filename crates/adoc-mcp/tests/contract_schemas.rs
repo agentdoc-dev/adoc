@@ -921,6 +921,10 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "adoc://agent/v0/schema/graph-artifact.v6.json",
             "graph-artifact.v6.json",
         ),
+        (
+            "adoc://agent/v0/schema/adoc.lifecycle_mapping.v0.schema.json",
+            "adoc.lifecycle_mapping.v0.schema.json",
+        ),
     ] {
         let result = server
             .read_agent_resource(uri)
@@ -1449,6 +1453,10 @@ fn retrieval_schema_ids_match_their_published_uris() {
         (
             "graph-artifact.v6.json",
             "adoc://agent/v0/schema/graph-artifact.v6.json",
+        ),
+        (
+            "adoc.lifecycle_mapping.v0.schema.json",
+            "adoc://agent/v0/schema/adoc.lifecycle_mapping.v0.schema.json",
         ),
     ] {
         assert_eq!(
