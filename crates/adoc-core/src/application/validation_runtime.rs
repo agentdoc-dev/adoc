@@ -3,11 +3,19 @@
 //!
 //! All AgentDoc-domain validation runs through this pinned runtime; it
 //! returns the registered `adoc.validation_receipt.v0` envelope binding the
-//! exact runtime identity, every consumed input digest, the consumed
-//! contract versions, the closed `pass | fail` result, and a digest of the
-//! typed diagnostics. Receipts are deterministic: stable ordering, no
-//! wall-clock timestamps anywhere — lifecycle evaluation pins to an
-//! explicit `evaluation_date` input, never "today".
+//! exact runtime identity, the digest of every compiled source input and
+//! named validation-context input, the consumed contract versions, the
+//! closed `pass | fail` result, and a digest of the typed diagnostics.
+//! Receipts are deterministic: stable ordering, no wall-clock timestamps
+//! anywhere — lifecycle evaluation pins to an explicit `evaluation_date`
+//! input, never "today".
+//!
+//! Scope of the digest binding: Evidence Anchor reads (ADR-0048) sit
+//! OUTSIDE it. Anchor checking is advisory — every anchor diagnostic is a
+//! warning (`check_evidence_anchors` constructs warnings only), so anchor
+//! bytes can never flip `result`; they can shape warning diagnostics and
+//! therefore `diagnostics_digest`, and they are deliberately not digested
+//! into `inputs`. Digest-bound evidence is E4.1's Source Record surface.
 //!
 //! Validator-only construction (stop-ship, MILESTONES §E1.7): the fields of
 //! [`ValidationReceipt`] are private and [`run_validation_runtime`] is the
@@ -61,6 +69,8 @@ pub struct ValidationRuntimeInput {
     /// Project context when the root belongs to a configured project.
     pub project: Option<LocalProjectContext>,
     /// Evidence Anchor resolution root (ADR-0048), as check threads it.
+    /// Anchor reads are outside the receipt's digest binding — advisory
+    /// warnings only, never result-affecting (see the module docs).
     pub anchor_root: PathBuf,
     /// Explicit lifecycle evaluation date. Mandatory: receipts never read
     /// the wall clock.
