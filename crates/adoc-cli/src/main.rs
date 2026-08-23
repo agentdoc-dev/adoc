@@ -98,7 +98,19 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                             context_artifact,
                         )
                     }
-                    (_, _, as_of) => check(path, style.into(), as_of, resolved),
+                    // Unreachable while the clap `requires` wiring holds
+                    // (pinned by check_receipt_requires_as_of_and_runtime_binary_digest);
+                    // if that wiring is ever loosened, refuse loudly —
+                    // falling through to a plain check would exit 0 with
+                    // no receipt written, and a harness reading exit 0 as
+                    // "receipt produced" would consume a stale file.
+                    (Some(_), _, _) => {
+                        eprintln!(
+                            "error[cli.receipt] --receipt requires --as-of and --runtime-binary-digest; refusing to run a plain check in their place"
+                        );
+                        2
+                    }
+                    (None, _, as_of) => check(path, style.into(), as_of, resolved),
                 },
                 Commands::Migrate {
                     path,
