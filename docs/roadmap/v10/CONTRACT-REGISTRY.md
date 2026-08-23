@@ -89,7 +89,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.connector_acl_policy.v0` | adoc | E2.6 | activation-time ACL acquisition, freshness, refresh, revocation, outage, and cache/session invalidation declaration; contract-tested schema `adoc.connector_acl_policy.v0.schema.json` |
 | `adoc.source_record.v0` | adoc | E4.1 | immutable source observation |
 | `adoc.source_assertion.v0` | adoc | E4.1 | source assertion bound to its Source Record |
-| `adoc.source_acl_snapshot.v0` | adoc | E2.6 | historical ACL provenance, separate from freshness-bounded authorization |
+| `adoc.source_acl_snapshot.v0` | adoc | E2.6 | immutable historical ACL provenance only, separate from freshness-bounded authorization; contract-tested schema `adoc.source_acl_snapshot.v0.schema.json` |
 | `adoc.source_binding.v0` | adoc | E1.1 | exact source placement binding, independent of the semantic hash; carried since E1.1.T2 as the `source_binding` member of `adoc.graph.v6` Knowledge Object nodes (schema `graph-artifact.v6.json`), governed by that envelope's version — registered as a standalone envelope when a surface emits it outside the graph artifact |
 | `adoc.sensitive_access.v0` | adoc | E6.3 | name held until a final registered successor (RT-08) |
 | `adoc.egress_policy.v0` | adoc | E6.6 | provenance RT-21: absent from the original V10 inventory |
