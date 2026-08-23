@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.proof_obligation.v0.schema.json",
   "title": "AgentDoc Stage-Bound Proof Obligation",
-  "description": "Typed, stateful, stage-bound proof obligation record (KNOWLEDGE-MODEL K8, D16), bound to the exact managed content version it constrains. Obligation states and required_at stages are registered closed vocabularies (CONTRACT-REGISTRY.md). Whether an obligation is informational or blocking at a stage/risk/action is classification-policy data (see $defs/classificationPolicy), never code. The stateless ProofObligation shape embedded in adoc.review.v0/adoc.patch.check.v0 is a separate, unchanged contract. No wall-clock exists anywhere in these records: time-bounds evaluate against an explicit event-ordinal input.",
+  "description": "Typed, stateful, stage-bound proof obligation record (KNOWLEDGE-MODEL K8, D16), bound to the exact managed content version it constrains. Obligation states and required_at stages are registered closed vocabularies (CONTRACT-REGISTRY.md). Whether an obligation is informational or blocking at a stage/risk/action is classification-policy data (see $defs/classificationPolicy), never code. The root object is the obligation record alone; $defs/waiver and $defs/classificationPolicy are envelope-governed named subschemas the record never embeds - their carrier is the obligation ledger's event stream and the consumer-side store rows replaying it (validated by $ref against these $defs; the enclosing audit envelope is registered when the E1.4/E4.2 enclosure lands). Consequently a record whose state is 'waived' is interpretable only alongside its binding waiver: the record carries no expiry, so a consumer must evaluate the waiver's expires_after against the current event ordinal before treating the obligation as discharged - an expired waiver reopens it as blocking. The stateless ProofObligation shape embedded in adoc.review.v0/adoc.patch.check.v0 is a separate, unchanged contract. No wall-clock exists anywhere in these records: time-bounds evaluate against an explicit event-ordinal input.",
   "type": "object",
   "required": ["schema_version", "obligation_id", "subject", "reason", "required_evidence", "required_at", "state"],
   "additionalProperties": false,
@@ -44,7 +44,7 @@
       }
     },
     "classificationPolicy": {
-      "description": "The K8 classification policy: informational vs blocking per stage/risk/action is data carried here. First matching rule wins; default_classification applies when none match.",
+      "description": "The K8 classification policy: informational vs blocking per stage/risk/action is data carried here. First matching rule wins; default_classification applies when none match. Not a record property: carried beside the records by the ledger/consumer store and validated by $ref against this subschema.",
       "type": "object",
       "required": ["policy_version", "rules", "default_classification"],
       "additionalProperties": false,
@@ -71,7 +71,7 @@
     },
     "classification": { "enum": ["informational", "blocking"] },
     "waiver": {
-      "description": "An Obligation Waiver (K8): permission-controlled discharge of one obligation, bound to the exact obligation + workspace-qualified managed-version subject + principal + policy version, justified, and time-bounded where appropriate by an explicit event-ordinal expiry (no wall-clock). Managed version IDs are workspace-minted (mv-N recurs in every workspace), so the subject is the binding - never a bare version ID. A waiver changes obligation state only - it never converts unverified to verified, and an expired waiver reopens its obligation as blocking.",
+      "description": "An Obligation Waiver (K8): permission-controlled discharge of one obligation, bound to the exact obligation + workspace-qualified managed-version subject + principal + policy version, justified, and time-bounded where appropriate by an explicit event-ordinal expiry (no wall-clock). Managed version IDs are workspace-minted (mv-N recurs in every workspace), so the subject is the binding - never a bare version ID. A waiver changes obligation state only - it never converts unverified to verified, and an expired waiver reopens its obligation as blocking. Not a record property: carried as a ledger event beside its record, and required context for interpreting a record whose state is 'waived' (see the root description).",
       "type": "object",
       "required": ["obligation_id", "subject", "principal", "policy_version", "justification"],
       "additionalProperties": false,
