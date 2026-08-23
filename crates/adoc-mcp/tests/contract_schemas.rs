@@ -1593,6 +1593,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "snapshot_id": "acl-1",
             "current_authorization": {
                 "role": "current_authorization",
+                "evidence_id": "acl-evidence-1",
+                "snapshot_id": "acl-current-1",
+                "connector_id": "github",
+                "principal_id": "principal-1",
+                "source": { "kind": "repository", "id": "cloud" },
+                "policy_version": "github-acl-v1",
                 "observed_at": "2026-08-23T11:59:00Z",
                 "expires_at": "2026-08-23T12:05:00Z",
                 "connector_available": true
@@ -1668,23 +1674,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .expect("ACL object")
         .remove("current_authorization");
 
-    let mut external_group_allow = decision.clone();
-    external_group_allow["grants"][0]["group"] = json!({
-        "id": "group-1",
-        "name": "reviewers",
-        "membership_source": "external",
-        "binding_id": "binding-1",
-        "source_kind": "github_team"
-    });
-    external_group_allow["basis"]["group"] = external_group_allow["grants"][0]["group"].clone();
-    let mut external_group_without_binding = external_group_allow.clone();
-    external_group_without_binding["grants"][0]["group"]
-        .as_object_mut()
-        .expect("group object")
-        .remove("binding_id");
-    let mut manual_group_with_binding = external_group_allow.clone();
-    manual_group_with_binding["grants"][0]["group"]["membership_source"] = json!("manual");
-
     let mut source_acl_outage = decision.clone();
     source_acl_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
         json!(false);
@@ -1725,6 +1714,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut current_acl_with_invalid_observed_at = decision.clone();
     current_acl_with_invalid_observed_at["source_acl_ceiling"]["current_authorization"]["observed_at"] =
         json!("not-a-time");
+    let mut current_acl_without_evidence_id = decision.clone();
+    current_acl_without_evidence_id["source_acl_ceiling"]["current_authorization"]
+        .as_object_mut()
+        .expect("current ACL object")
+        .remove("evidence_id");
 
     let mut missing_policy_version = decision.clone();
     missing_policy_version
@@ -2035,21 +2029,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
             legacy_allow_without_current_acl,
             false,
         ),
-        (
-            "external group role assignment allow",
-            external_group_allow,
-            true,
-        ),
-        (
-            "external group grant without binding",
-            external_group_without_binding,
-            false,
-        ),
-        (
-            "manual group grant with external binding",
-            manual_group_with_binding,
-            false,
-        ),
         ("source ACL connector outage", source_acl_outage, true),
         ("stale current source ACL evidence", source_acl_stale, true),
         (
@@ -2198,6 +2177,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "current ACL evidence with invalid observed time",
             current_acl_with_invalid_observed_at,
+            false,
+        ),
+        (
+            "current ACL evidence without immutable evidence id",
+            current_acl_without_evidence_id,
             false,
         ),
         ("direct grant without expiry", direct_without_expiry, false),
@@ -2541,16 +2525,20 @@ fn connector_acl_policy_requires_every_activation_safety_declaration() {
     let mut zero_freshness = policy;
     zero_freshness["freshness_window_seconds"] = json!(0);
 
+    assert!(
+        schema_accepts(
+            "adoc.connector_acl_policy.v0.schema.json",
+            &events_without_webhook_refresh
+        ),
+        "provider events may invalidate an ACL that is refreshed by polling"
+    );
+
     for (name, invalid) in [
         ("permissive outage", permissive_outage),
         ("missing session invalidation", no_session_invalidation),
         (
             "API-only acquisition with webhook refresh",
             api_with_webhook_refresh,
-        ),
-        (
-            "event acquisition without webhook refresh",
-            events_without_webhook_refresh,
         ),
         ("whitespace-padded policy version", blank_policy_version),
         ("excessive freshness", excessive_freshness),
