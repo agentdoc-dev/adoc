@@ -1625,6 +1625,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "effect": "allow",
         "scope_match": { "workspace_id": "workspace-1" }
     });
+    let mut direct_human_with_multiline_reason = direct_human.clone();
+    direct_human_with_multiline_reason["grants"][0]["exceptional_reason"] =
+        json!("suspected breach\npayments pipeline");
     let mut expiring_role = decision.clone();
     expiring_role["grants"][0]["expires_at"] = json!("2026-08-24T12:00:00Z");
 
@@ -1927,6 +1930,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision, true),
         ("direct human grant", direct_human, true),
+        (
+            "direct human grant with multiline reason",
+            direct_human_with_multiline_reason,
+            true,
+        ),
         (
             "service direct grant without reason",
             service_direct_without_reason,

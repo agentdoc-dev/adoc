@@ -435,7 +435,7 @@
   "$defs": {
     "nonEmpty": {
       "type": "string",
-      "pattern": "^\\S(?:.*\\S)?$"
+      "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
     },
     "rfc3339Timestamp": {
       "type": "string",
