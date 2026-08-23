@@ -631,9 +631,10 @@ fn planned_rows_name_exactly_one_owner_repo() {
 }
 
 /// Backticked codes cited by the executable planning surface, one
-/// `(document, line, code)` per citation. Covers `gate.*`/`action.*` codes
-/// and envelope ids; `attestation.*` siblings are deliberately outside the
-/// net — E8.1.T1 registers them as a registry edit in that slice.
+/// `(document, line, code)` per citation. Covers `gate.*`/`action.*`/
+/// `workspace.*` codes and envelope ids; `attestation.*` siblings are
+/// deliberately outside the net — E8.1.T1 registers them as a registry edit
+/// in that slice.
 fn cited_codes() -> Vec<(String, usize, String)> {
     let dir = repo_root().join("docs/roadmap/v10");
     let mut cited = Vec::new();
@@ -653,12 +654,12 @@ fn cited_codes() -> Vec<(String, usize, String)> {
         }
         for (number, line) in support::doc_scan::structural_lines(&content) {
             for span in line.split('`').skip(1).step_by(2) {
-                let is_reason_code = ["gate.", "action."].iter().any(|prefix| {
+                let is_registered_code = ["gate.", "action.", "workspace."].iter().any(|prefix| {
                     span.strip_prefix(prefix).is_some_and(|rest| {
                         !rest.is_empty() && rest.chars().all(|c| c.is_ascii_lowercase() || c == '_')
                     })
                 });
-                if is_reason_code || is_envelope_id(span) {
+                if is_registered_code || is_envelope_id(span) {
                     cited.push((name.clone(), number, span.to_string()));
                 }
             }
