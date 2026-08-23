@@ -18,8 +18,10 @@
 //!   governance stays `proposed` (candidate floor).
 //! - **Approval is never mapped to verification.** A mapping rule's
 //!   target ([`MappedManagedState`]) has no verification field at all, so
-//!   no rule of any version can name one; every application lands
-//!   `verification: unverified` explicitly.
+//!   no rule of any version can name one; no application lands any
+//!   verification change — the dimension stays a gap until a
+//!   verification run records an outcome, and a replayed application can
+//!   never overwrite one.
 //!
 //! The mapping is versioned by `mapping_version`, resolved exact-match —
 //! an unknown recorded version fails closed with
@@ -55,7 +57,7 @@ const PROJECTION_VERSION_1: &str = "1";
 /// carries NO verification field: no flat word — including the authored
 /// word `verified` — can name a managed verification state in any mapping
 /// rule of any version. Verification requires a verification run, never a
-/// word (K5); every application lands `verification: unverified`.
+/// word (K5); no application lands any verification change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub(crate) struct MappedManagedState {
     pub(crate) governance: GovernanceState,
@@ -167,7 +169,8 @@ pub(crate) struct FlatProjection {
 
 /// One dropped dimension, named machine-readably: what was recorded and
 /// what re-importing the projected word would recover (`None`: nothing —
-/// the dimension has no flat carriage at all).
+/// either the dimension has no flat carriage at all, or, for
+/// verification, import never lands the dimension).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct DimensionLoss {
     pub(crate) dimension: &'static str,
@@ -233,9 +236,11 @@ pub(crate) struct MappingApplication {
     #[serde(flatten)]
     pub(crate) authority: MappingAuthority,
     /// The E1.4 state changes this application lands (append these to
-    /// the managed state event log). Without attestation: the candidate
-    /// floor. Always includes `verification: unverified` — approval is
-    /// never mapped to verification.
+    /// the managed state event log on FIRST import — re-application
+    /// policy is E7.2's concern). Without attestation: the candidate
+    /// floor. Never includes a verification change — approval is never
+    /// mapped to verification, and a recorded verification outcome
+    /// survives any replay.
     pub(crate) applied: Vec<ManagedStateChange>,
 }
 
@@ -334,17 +339,15 @@ impl LifecycleMappingContract {
                 recovered: Some(recovered.governance.as_str()),
             });
         }
-        // Import always lands unverified (K5): any other recorded
+        // Import never lands a verification change (K5): every recorded
         // verification state is dropped — even when the projected word
-        // is `verified`.
-        if let RecordedDimension::Recorded(verification) = state.verification
-            && verification != VerificationState::Unverified
-        {
+        // is `verified`, re-import recovers nothing for the dimension.
+        if let RecordedDimension::Recorded(verification) = state.verification {
             loss_report.push(DimensionLoss {
                 dimension: "verification",
                 connector: None,
                 recorded: verification.as_str(),
-                recovered: Some(VerificationState::Unverified.as_str()),
+                recovered: None,
             });
         }
         if let RecordedDimension::Recorded(effectivity) = state.effectivity
@@ -410,8 +413,15 @@ impl LifecycleMappingContract {
     /// Apply the import mapping to one imported object's authored
     /// status. The mapped target lands as E1.4 state changes ONLY when
     /// `attestation` is present; otherwise the application records the
-    /// target as advisory and lands the candidate floor. Verification
-    /// always lands `unverified` — with or without attestation.
+    /// target as advisory and lands the candidate floor. No application
+    /// ever lands a verification change — with or without attestation —
+    /// so the dimension stays a gap until a verification run records an
+    /// outcome, and a replayed application can never overwrite one.
+    ///
+    /// `applied` carries first-import initialization changes; whether and
+    /// how a mapping may be re-applied to an already-governed subject
+    /// (catch-up, rollback) is the migration slices' concern (E7.2), not
+    /// this contract's.
     pub(crate) fn apply_import_mapping(
         &self,
         kind: &str,
@@ -435,9 +445,6 @@ impl LifecycleMappingContract {
                 },
                 ManagedStateChange::Effectivity {
                     state: landed.effectivity,
-                },
-                ManagedStateChange::Verification {
-                    state: VerificationState::Unverified,
                 },
             ],
         })
@@ -695,9 +702,9 @@ impl LifecycleMappingContract {
                     dimension: "verification",
                     carriage: FlatCarriage::Partial,
                     note: "the authored word `verified` never maps to managed \
-                           verification — import always lands unverified; only a \
-                           recorded verification outcome may render `verified` on \
-                           export",
+                           verification — import lands no verification state at \
+                           all; only a recorded verification outcome may render \
+                           `verified` on export",
                 },
                 DimensionLossDeclaration {
                     dimension: "effectivity",
@@ -914,7 +921,8 @@ mod tests {
         );
         assert_eq!(
             state.verification,
-            RecordedDimension::Recorded(VerificationState::Unverified)
+            RecordedDimension::Gap,
+            "no verification state may be fabricated by an import"
         );
         assert!(
             !store.events().iter().any(|record| matches!(
@@ -923,14 +931,14 @@ mod tests {
                     state: GovernanceState::Approved
                 } | ManagedStateChange::Effectivity {
                     state: EffectivityState::Effective
-                }
+                } | ManagedStateChange::Verification { .. }
             )),
-            "no approved/effective event may exist anywhere in the log"
+            "no approved/effective/verification event may exist anywhere in the log"
         );
     }
 
     /// With a typed attestation the mapped target lands as E1.4 state
-    /// events — and verification still lands `unverified` (K5).
+    /// events — and still no verification change (K5).
     #[test]
     fn attested_application_lands_the_mapped_target() {
         // All three K5 attestation kinds grant authority equally.
@@ -961,19 +969,69 @@ mod tests {
                     ManagedStateChange::Effectivity {
                         state: EffectivityState::Effective
                     },
-                    ManagedStateChange::Verification {
-                        state: VerificationState::Unverified
-                    },
                 ]
             );
         }
     }
 
-    /// Every application — any kind, any word, attested or not — lands
-    /// exactly one verification change, and it is always `unverified`:
-    /// approval is never mapped to verification (K5, exit gate).
+    /// The PR-#153 review scenario: a real verification outcome recorded
+    /// after import survives a blind re-application of the mapping —
+    /// `applied` carries no verification change, so E1.4's gate-less
+    /// append cannot be handed a downgrade.
     #[test]
-    fn every_application_lands_verification_unverified() {
+    fn a_replayed_application_never_overwrites_a_recorded_verification_outcome() {
+        let mut workspace = ManagedWorkspace::new(WorkspaceId::new("ws-acme").expect("non-blank"));
+        let outcome = workspace
+            .import_artifact(&artifact(vec![knowledge_object(
+                "billing.refunds",
+                "policy",
+                Some("active"),
+                "sha256:aaa",
+            )]))
+            .expect("import accepted");
+        let subject = StateEventSubject {
+            canonical: outcome.imported[0].canonical.clone(),
+            version_id: outcome.imported[0].version_id.clone(),
+        };
+        let mut store = ManagedStateEventStore::new(RetentionFloor::new(1).expect("non-zero"));
+        let application = contract()
+            .apply_import_mapping("policy", Some("active"), Some(migration_attestation()))
+            .expect("mapping applies");
+        land(&mut store, &subject, &application);
+
+        // A verification run later records `verified`.
+        let mut sink = InMemoryAuditSink::default();
+        store
+            .append(
+                &mut sink,
+                ManagedStateEvent {
+                    subject: subject.clone(),
+                    change: ManagedStateChange::Verification {
+                        state: VerificationState::Verified,
+                    },
+                    emitter: EventEmitter::new("cloud.verification_runtime").expect("non-blank"),
+                    policy_version: PolicyVersion::new("verification-policy-1").expect("non-blank"),
+                    corrects: None,
+                },
+            )
+            .expect("append accepted");
+
+        // Blind replay of the same mapping application.
+        land(&mut store, &subject, &application);
+        assert_eq!(
+            store.current_state()[&subject].verification,
+            RecordedDimension::Recorded(VerificationState::Verified),
+            "a mapping replay must never destroy a recorded verification outcome"
+        );
+    }
+
+    /// Every application — any kind, any word, attested or not — lands
+    /// NO verification change at all: the mapped target type has no
+    /// verification member, so approval can never be mapped to
+    /// verification, and a replayed application can never overwrite a
+    /// recorded verification outcome (K5, exit gate).
+    #[test]
+    fn no_application_lands_a_verification_change() {
         let contract = contract();
         for (kind, words) in flat_vocabularies() {
             for status in words
@@ -985,18 +1043,14 @@ mod tests {
                     let application = contract
                         .apply_import_mapping(kind, status, attestation)
                         .expect("mapping applies");
-                    let verifications: Vec<_> = application
-                        .applied
-                        .iter()
-                        .filter(|change| matches!(change, ManagedStateChange::Verification { .. }))
-                        .collect();
-                    assert_eq!(
-                        verifications,
-                        vec![&ManagedStateChange::Verification {
-                            state: VerificationState::Unverified
-                        }],
-                        "kind {kind} status {status:?} must land exactly \
-                         verification:unverified"
+                    assert!(
+                        !application.applied.iter().any(|change| matches!(
+                            change,
+                            ManagedStateChange::Verification { .. }
+                        )),
+                        "kind {kind} status {status:?} must land no verification \
+                         change — a verification state comes only from a \
+                         verification run"
                     );
                 }
             }
@@ -1203,7 +1257,7 @@ mod tests {
                 {
                     "dimension": "verification",
                     "recorded": "verified",
-                    "recovered": "unverified"
+                    "recovered": null
                 },
                 {
                     "dimension": "effectivity",
@@ -1478,7 +1532,7 @@ mod tests {
         );
         assert_eq!(
             digest,
-            "sha256:3ec1ba7565d9a0ed46a16c9c45006505470b0e556a3ceb33997e49dae9f6aa02",
+            "sha256:54244b475d84ebe86dc714229a31d8ee5d7172fa1e99c65c1a246c8dd0d4a30b",
             "the version-1 rule set changed: a rule change requires a new \
              mapping/projection version, never an in-place edit. Serialized \
              contract:\n{}",
