@@ -86,6 +86,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | --- | --- | --- | --- |
 | `adoc.semantic_context.v0` | adoc | E3.1 | exact revisions, deterministic digests, closed citation handles, coverage diagnostics |
 | `adoc.semantic_assessment.v0` | adoc | E3.2 | provider-neutral typed findings/citations/materiality |
+| `adoc.connector_acl_policy.v0` | adoc | E2.6 | activation-time ACL acquisition, freshness, refresh, revocation, outage, and cache/session invalidation declaration; contract-tested schema `adoc.connector_acl_policy.v0.schema.json` |
 | `adoc.source_record.v0` | adoc | E4.1 | immutable source observation |
 | `adoc.source_assertion.v0` | adoc | E4.1 | source assertion bound to its Source Record |
 | `adoc.source_acl_snapshot.v0` | adoc | E2.6 | historical ACL provenance, separate from freshness-bounded authorization |
