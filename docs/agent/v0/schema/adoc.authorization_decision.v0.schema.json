@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
   "title": "AgentDoc Authorization Decision",
-  "description": "Replayable, source-neutral authorization decision for E2.2 and E2.4. The record carries the explicit evaluation time, policy version, complete scoped grant input, group provenance, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
+  "description": "Replayable, source-neutral authorization decision for E2.2 and E2.4. The record carries the explicit evaluation time, policy version, complete scoped grant input, group provenance, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns lower-gate precedence, grant applicability, scope matching, expiry evaluation, replay semantics, and marking every group-conferred grant and basis with group provenance. An absent group means the grant is principal-attributed.",
   "type": "object",
   "required": [
     "schema_version",
@@ -840,7 +840,7 @@
           "additionalProperties": false,
           "properties": {
             "id": { "$ref": "#/$defs/nonEmpty" },
-            "name": { "$ref": "#/$defs/nonEmptyText" },
+            "name": { "$ref": "#/$defs/nonEmpty" },
             "membership_source": { "const": "manual" }
           }
         },
@@ -857,7 +857,7 @@
           "additionalProperties": false,
           "properties": {
             "id": { "$ref": "#/$defs/nonEmpty" },
-            "name": { "$ref": "#/$defs/nonEmptyText" },
+            "name": { "$ref": "#/$defs/nonEmpty" },
             "membership_source": { "const": "external" },
             "binding_id": { "$ref": "#/$defs/nonEmpty" },
             "binding_mode": {
