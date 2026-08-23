@@ -27,6 +27,7 @@
       "enum": ["provider_api", "provider_events_and_api"]
     },
     "freshness_window_seconds": {
+      "description": "Positive maximum age for current authorization evidence, capped at seven days so activation cannot silently convert historical provenance into long-lived authority.",
       "type": "integer",
       "minimum": 1,
       "maximum": 604800
@@ -50,11 +51,22 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "acquisition": { "const": "provider_api" } },
+        "required": ["acquisition"]
+      },
+      "then": { "properties": { "refresh_mechanism": { "const": "poll" } } },
+      "else": {
+        "properties": { "refresh_mechanism": { "const": "webhook_and_poll" } }
+      }
+    }
+  ],
   "$defs": {
     "nonEmpty": {
       "type": "string",
-      "minLength": 1,
-      "pattern": "^[^\\r\\n\\u2028\\u2029]*\\S[^\\r\\n\\u2028\\u2029]*$"
+      "pattern": "^\\S(?:[^\\r\\n\\u2028\\u2029]*\\S)?$"
     }
   }
 }
