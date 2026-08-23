@@ -3,10 +3,10 @@ use std::path::PathBuf;
 
 use adoc_core::{GraphDirection, GraphRelationKind, SearchRecordScope};
 use adoc_local::{
-    BuildInput, BuildOutcome, CheckInput, CheckOutcome, GraphInput, GraphOutcome, InitOutcome,
-    LocalContext, LocalError, PatchCheckInput, PatchCheckOutcome, ProjectStatusInput,
-    ProjectStatusOutcome, ProjectStatusRefresh, SearchInput, SearchOutcome, UnrestrictedPathPolicy,
-    WhyInput, WhyOutcome,
+    BuildInput, BuildOutcome, CheckInput, CheckOutcome, CheckReceiptInput, CheckReceiptOutcome,
+    GraphInput, GraphOutcome, InitOutcome, LocalContext, LocalError, PatchCheckInput,
+    PatchCheckOutcome, ProjectStatusInput, ProjectStatusOutcome, ProjectStatusRefresh, SearchInput,
+    SearchOutcome, UnrestrictedPathPolicy, WhyInput, WhyOutcome,
 };
 
 type Ctx = LocalContext<UnrestrictedPathPolicy>;
@@ -19,6 +19,8 @@ type Ctx = LocalContext<UnrestrictedPathPolicy>;
 fn local_public_surface_is_method_oriented() {
     let _: fn(&Ctx) -> Result<InitOutcome, LocalError> = Ctx::init;
     let _: fn(&Ctx, CheckInput) -> Result<CheckOutcome, LocalError> = Ctx::check;
+    let _: fn(&Ctx, CheckReceiptInput) -> Result<CheckReceiptOutcome, LocalError> =
+        Ctx::check_receipt;
     let _: fn(&Ctx, BuildInput) -> Result<BuildOutcome, LocalError> = Ctx::build;
     let _: fn(&Ctx, WhyInput) -> Result<WhyOutcome, LocalError> = Ctx::why;
     let _: fn(&Ctx, GraphInput) -> Result<GraphOutcome, LocalError> = Ctx::graph;
@@ -32,6 +34,13 @@ fn local_public_surface_is_method_oriented() {
     let _: CheckInput = CheckInput {
         path: None,
         as_of: None,
+    };
+    let _: CheckReceiptInput = CheckReceiptInput {
+        path: None,
+        as_of: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date"),
+        runtime_version: "0.4.0".to_string(),
+        runtime_binary_digest:
+            "sha256:ca1bf018dc0b72ee1197d9d521d96d227cd3e54cc81528ea5f45776c99d95f4d".to_string(),
     };
     let _: BuildInput = BuildInput {
         path: None,

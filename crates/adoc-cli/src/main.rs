@@ -12,8 +12,8 @@ use crate::commands::{
     AssessChangesCommandInput, BaselineCommandInput, ContradictionsCommandInput, DiffCommandInput,
     GraphCommandInput, ImpactedByCommandInput, MigrateCommandInput, PatchCommandInput,
     ReviewCommandInput, SearchCommandInput, StaleCommandInput, assess_changes, baseline, build,
-    check, contradictions, diff, graph, impacted_by, init, migrate, patch, review, search_command,
-    stale, why,
+    check, check_receipt, contradictions, diff, graph, impacted_by, init, migrate, patch, review,
+    search_command, stale, why,
 };
 use crate::presentation::{ResolvedFormat, terminal};
 
@@ -68,9 +68,21 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
             }
             match cli.command {
                 Commands::Init => init(),
-                Commands::Check { path, style, as_of } => {
-                    check(path, style.into(), as_of, resolved)
-                }
+                Commands::Check {
+                    path,
+                    style,
+                    as_of,
+                    receipt,
+                    runtime_binary_digest,
+                } => match (receipt, runtime_binary_digest, as_of) {
+                    // clap `requires` guarantees the digest and --as-of
+                    // accompany --receipt; the triple is re-matched here so
+                    // the plain path never sees receipt state.
+                    (Some(receipt), Some(runtime_binary_digest), Some(as_of)) => {
+                        check_receipt(path, as_of, receipt, runtime_binary_digest)
+                    }
+                    (_, _, as_of) => check(path, style.into(), as_of, resolved),
+                },
                 Commands::Migrate {
                     path,
                     write,

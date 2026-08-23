@@ -27,7 +27,7 @@ pub(crate) use assess_changes::{
     AssessChangesCommandInput, BaselineCommandInput, assess_changes, baseline,
 };
 pub(crate) use build::build;
-pub(crate) use check::check;
+pub(crate) use check::{check, check_receipt};
 pub(crate) use contradictions::{ContradictionsCommandInput, contradictions};
 pub(crate) use diff::{DiffCommandInput, diff};
 pub(crate) use graph::{GraphCommandInput, graph};

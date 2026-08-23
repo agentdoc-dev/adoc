@@ -28,6 +28,15 @@ Examples:
   adoc check
   adoc check docs
   adoc check docs/refunds.adoc
+  adoc check --receipt receipt.json --as-of 2026-01-01 \\
+    --runtime-binary-digest sha256:<64 hex>
+
+--receipt runs the same validation and writes a digest-bound
+adoc.validation_receipt.v0 envelope (SEMANTICS S6). Receipts are
+deterministic — no wall-clock timestamps — so --receipt requires an
+explicit --as-of and the invoking harness's attested
+--runtime-binary-digest (a binary cannot hash itself; the harness
+verifies its pin before invoking, see scripts/validation-runtime/).
 ";
 const MIGRATE_LONG_HELP: &str = "\
 Default is a dry run: prints what would be migrated plus the migrate.*
@@ -358,6 +367,18 @@ pub(crate) enum Commands {
         /// Pin lifecycle evaluation to this UTC calendar date.
         #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_evaluation_date)]
         as_of: Option<chrono::NaiveDate>,
+        /// Write a digest-bound adoc.validation_receipt.v0 to this path.
+        #[arg(
+            long,
+            value_name = "PATH",
+            requires = "as_of",
+            requires = "runtime_binary_digest"
+        )]
+        receipt: Option<PathBuf>,
+        /// Harness-attested sha256 of the invoking adoc binary
+        /// (`sha256:<64 hex>`); recorded verbatim in the receipt.
+        #[arg(long, value_name = "DIGEST", requires = "receipt")]
+        runtime_binary_digest: Option<String>,
     },
     #[command(
         about = "Convert Markdown sources to prose-mode .adoc, or back with --export (dry-run by default).",

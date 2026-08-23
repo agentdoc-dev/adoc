@@ -1,0 +1,25 @@
+{
+  "schema_version": "adoc.validation_receipt.v0",
+  "runtime": {
+    "version": "0.4.0",
+    "binary_digest": "sha256:ca1bf018dc0b72ee1197d9d521d96d227cd3e54cc81528ea5f45776c99d95f4d"
+  },
+  "contract_versions": {
+    "graph": "adoc.graph.v6"
+  },
+  "evaluation_date": "2026-01-01",
+  "inputs": [
+    {
+      "path": "docs/index.adoc",
+      "digest": "sha256:045852fa8744fada1e43faf92dd6c078a746c9ead5eade0c8dbf9e7a7db79dfb"
+    }
+  ],
+  "context": [
+    {
+      "name": "config",
+      "digest": "sha256:8b3e2fa42eccfceb2d3f477bc26d14686a5e79a34e825c166bbcdfbd4adbb87d"
+    }
+  ],
+  "result": "pass",
+  "diagnostics_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+}

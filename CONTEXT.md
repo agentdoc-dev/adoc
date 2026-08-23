@@ -302,6 +302,14 @@ _Avoid_: validation error by default, approval, automated trust upgrade, hard-co
 A permission-controlled discharge record for one stage-bound **Proof Obligation** (`domain/obligation_record.rs`, part of the `adoc.proof_obligation.v0` contract): bound at the type level to the exact obligation, Managed Object version, principal, and policy version, with a non-blank justification, and time-bounded where appropriate by an explicit event-ordinal expiry — never a wall clock. Waiver application appends to the obligation ledger only and touches no K4 dimension, so a waiver cannot convert `unverified` to `verified`; an expired waiver reopens its obligation as blocking, and a stale waiver never authorizes.
 _Avoid_: waiver as verification, silent unverified-to-verified conversion, wall-clock expiry, blanket or unbound waivers
 
+**Validation Runtime**:
+The one authoritative execution surface for AgentDoc-domain validation (SEMANTICS §S6; `application/validation_runtime.rs`): a released, checksum-pinned `adoc` binary invoked identically from the local CLI, CI harness, and Cloud driver. Every run returns a **Validation Receipt**. Cloud TypeScript preflights transport concerns only — auth, binding, limits, JSON/version recognition, claimed digest, replay — and never duplicates parsing, semantic hashing, lifecycle/evidence/reference rules, obligations, or citation validation; a Cloud-side reimplementation of domain rules is a defect class, not an optimization.
+_Avoid_: Cloud-side domain validation, JSON Schema as domain authority, unpinned runtime invocation
+
+**Validation Receipt**:
+The digest-bound `adoc.validation_receipt.v0` envelope the **Validation Runtime** returns (`adoc check --receipt`): exact runtime version plus harness-attested binary digest, every consumed input digest by Logical Source Path, context digests, consumed contract versions (graph `adoc.graph.v6`), the closed `pass` / `fail` result, and a sha256 digest of the canonically serialized typed diagnostics. Deterministic by contract — stable ordering, no wall-clock timestamps, lifecycle pinned to the explicit `evaluation_date` input — so the same domain input yields byte-identical receipts across local, CI, and Cloud execution. Constructible only by the runtime: unvalidated receipt JSON has no core representation.
+_Avoid_: receipt with wall-clock timestamps, self-hashed binary digest, receipt deserialized into the typed envelope, receipt as approval
+
 **Embedding Provider**:
 The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the deterministic adapter is available for repeatable local/offline use.
 _Avoid_: hosted-only embedding pipeline, public plug-in registry, per-call API key configuration

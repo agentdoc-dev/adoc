@@ -1,0 +1,7 @@
+# Billing @doc(team.billing)
+
+::claim billing.ready
+status: draft
+--
+Billing docs are ready.
+::

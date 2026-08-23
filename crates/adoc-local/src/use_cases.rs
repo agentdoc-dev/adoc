@@ -71,6 +71,24 @@ pub struct CheckOutcome {
     pub exit_code: i32,
 }
 
+/// E1.7: receipt-mode check. `as_of` is mandatory (receipts never read the
+/// wall clock) and the runtime binary digest is the invoking harness's
+/// attested input — see `adoc_core::run_validation_runtime`.
+#[derive(Debug, Clone)]
+pub struct CheckReceiptInput {
+    pub path: Option<PathBuf>,
+    pub as_of: chrono::NaiveDate,
+    pub runtime_version: String,
+    pub runtime_binary_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CheckReceiptOutcome {
+    pub receipt: adoc_core::ValidationReceipt,
+    pub diagnostics: Vec<Diagnostic>,
+    pub exit_code: i32,
+}
+
 #[derive(Debug, Clone)]
 pub struct MigrateInput {
     pub path: Option<PathBuf>,
@@ -437,6 +455,14 @@ where
         check_with_context(self, input)
     }
 
+    #[tracing::instrument(name = "adoc.check_receipt", level = "info", skip_all)]
+    pub fn check_receipt(
+        &self,
+        input: CheckReceiptInput,
+    ) -> Result<CheckReceiptOutcome, LocalError> {
+        check_receipt_with_context(self, input)
+    }
+
     #[tracing::instrument(name = "adoc.migrate", level = "info", skip_all)]
     pub fn migrate(&self, input: MigrateInput) -> Result<MigrateOutcome, LocalError> {
         migrate_with_context(self, input)
@@ -539,19 +565,24 @@ where
     })
 }
 
-fn check_with_context<P>(
+/// The check pipeline's resolved compile target, shared by `check` and
+/// `check_receipt` so both validate exactly the same sources with the same
+/// Evidence Anchor root (ADR-0048).
+struct ResolvedCheckTarget {
+    path: PathBuf,
+    anchor_root: PathBuf,
+    project: Option<adoc_core::LocalProjectContext>,
+    config_path: Option<PathBuf>,
+}
+
+fn resolve_check_target<P>(
     context: &LocalContext<P>,
-    input: CheckInput,
-) -> Result<CheckOutcome, LocalError>
+    path: Option<&Path>,
+) -> Result<ResolvedCheckTarget, LocalError>
 where
     P: PathPolicy,
 {
-    let evaluation_date = input
-        .as_of
-        .unwrap_or_else(|| chrono::Utc::now().date_naive());
-    let path = input
-        .path
-        .as_deref()
+    let path = path
         .map(|path| context.path_policy().resolve_read_path(path))
         .transpose()?;
     // Check always discovers the config — even with an explicit path — so
@@ -569,16 +600,35 @@ where
     let project = config
         .as_ref()
         .and_then(|config| project_context_for_selected_path(config, &path));
-    let result = match project {
+    Ok(ResolvedCheckTarget {
+        path,
+        anchor_root,
+        project,
+        config_path: config.map(|config| config.path),
+    })
+}
+
+fn check_with_context<P>(
+    context: &LocalContext<P>,
+    input: CheckInput,
+) -> Result<CheckOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    let evaluation_date = input
+        .as_of
+        .unwrap_or_else(|| chrono::Utc::now().date_naive());
+    let target = resolve_check_target(context, input.path.as_deref())?;
+    let result = match target.project {
         Some(project) => compile_project_workspace_with_anchor_root_for_date(
-            CompileInput { root: path },
+            CompileInput { root: target.path },
             project,
-            anchor_root,
+            target.anchor_root,
             evaluation_date,
         ),
         None => compile_workspace_with_anchor_root_for_date(
-            CompileInput { root: path },
-            Some(anchor_root),
+            CompileInput { root: target.path },
+            Some(target.anchor_root),
             evaluation_date,
         ),
     };
@@ -586,6 +636,36 @@ where
 
     Ok(CheckOutcome {
         diagnostics: result.diagnostics,
+        exit_code,
+    })
+}
+
+fn check_receipt_with_context<P>(
+    context: &LocalContext<P>,
+    input: CheckReceiptInput,
+) -> Result<CheckReceiptOutcome, LocalError>
+where
+    P: PathPolicy,
+{
+    let target = resolve_check_target(context, input.path.as_deref())?;
+    let outcome = adoc_core::run_validation_runtime(adoc_core::ValidationRuntimeInput {
+        root: target.path,
+        project: target.project,
+        anchor_root: target.anchor_root,
+        evaluation_date: input.as_of,
+        runtime_version: input.runtime_version,
+        runtime_binary_digest: input.runtime_binary_digest,
+        config_path: target.config_path,
+    })
+    .map_err(|source| LocalError::ValidationRuntime { source })?;
+    let exit_code = match outcome.receipt.result() {
+        adoc_core::ValidationResult::Pass => 0,
+        adoc_core::ValidationResult::Fail => 1,
+    };
+
+    Ok(CheckReceiptOutcome {
+        receipt: outcome.receipt,
+        diagnostics: outcome.diagnostics,
         exit_code,
     })
 }
