@@ -1901,6 +1901,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     nonconsequential_invalid_time["result"] = json!("deny");
     let mut invalid_time_with_expired_identity = invalid_time.clone();
     invalid_time_with_expired_identity["principal"]["freshness"] = json!("expired");
+    let mut invalid_time_with_basis = invalid_time.clone();
+    invalid_time_with_basis["basis"] = decision["basis"].clone();
     let mut consequential_invalid_time_with_deny = invalid_time.clone();
     consequential_invalid_time_with_deny["result"] = json!("deny");
     let mut nonconsequential_invalid_time_with_insufficient = nonconsequential_invalid_time.clone();
@@ -2188,6 +2190,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             invalid_time_with_expired_identity,
             false,
         ),
+        ("invalid time with basis", invalid_time_with_basis, false),
         (
             "consequential invalid time with deny result",
             consequential_invalid_time_with_deny,
