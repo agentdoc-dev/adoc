@@ -1,9 +1,9 @@
 # Product V1 Contract and Wire-Code Registry
 
-**Status:** Accepted — canonical wire inventory (E0.3)  
-**Date:** 2026-08-22  
-**Registry version:** 1  
-**Authority:** [`EXECUTION-MAP.md`](EXECUTION-MAP.md) §E0.3 · corrections provenance [`RED-TEAM-CLOSURE.md §RT-21`](RED-TEAM-CLOSURE.md#rt-21--contract-inventory-corrections-from-original-pr-review)  
+**Status:** Accepted — canonical wire inventory (E0.3)
+**Date:** 2026-08-22
+**Registry version:** 1
+**Authority:** [`EXECUTION-MAP.md`](EXECUTION-MAP.md) §E0.3 · corrections provenance [`RED-TEAM-CLOSURE.md §RT-21`](RED-TEAM-CLOSURE.md#rt-21--contract-inventory-corrections-from-original-pr-review)
 **Guards:** `crates/adoc-mcp/tests/contract_registry_guard.rs` (`adoc`) and the completeness-scan CI referencing this file from `agentdoc-dev/action` and `agentdoc-dev/cloud` (E0.3.T5)
 
 ## Registry rule
@@ -44,6 +44,7 @@ Producer for every row is the `adoc` release train (CLI, MCP server, and local g
 | `adoc.review.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.search.v2` | shipped | adoc 0.4.0 | adoc 0.4.0 | exact-match reader; v1 rejected — the bump deliberately invalidates v1 embedding caches so the Graph Artifact v6 wave forces a full re-embed (E1.1.T5, ADR-0058); wire shape unchanged from v1 |
 | `adoc.stale.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
+| `adoc.validation_receipt.v0` | shipped | adoc 0.4.0 | adoc 0.4.0 (CLI receipt mode, contract-tested; schema `adoc.validation_receipt.v0.schema.json`); checksum-pinned CI harness and Cloud driver consume receipt bytes (E1.7.T2/T3) | v0-additive; digest-bound AgentDoc Validation Runtime receipt (SEMANTICS §S6): closed result vocabulary `pass` / `fail`; `diagnostics_digest` is the sha256-prefixed digest of the canonically serialized diagnostics array; deterministic — stable ordering, no wall-clock timestamps anywhere, lifecycle pinned to the explicit `evaluation_date` input; `runtime.binary_digest` is supplied by the invoking harness as an attested input (a binary cannot hash itself deterministically) after verifying the binary against its recorded pin; validator-only construction — the runtime is the only constructor path and unvalidated receipt JSON has no core representation (no `Deserialize`); the published JSON Schema is preflight/documentation only, never domain authority (ADR-0015) |
 <!-- /registry:envelopes-shipped-adoc -->
 
 ## Envelopes — shipped, owner `action`
@@ -84,7 +85,6 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | --- | --- | --- | --- |
 | `adoc.semantic_context.v0` | adoc | E3.1 | exact revisions, deterministic digests, closed citation handles, coverage diagnostics |
 | `adoc.semantic_assessment.v0` | adoc | E3.2 | provider-neutral typed findings/citations/materiality |
-| `adoc.validation_receipt.v0` | adoc | E1.7 | digest-bound AgentDoc Validation Runtime receipt |
 | `adoc.source_record.v0` | adoc | E4.1 | immutable source observation |
 | `adoc.source_assertion.v0` | adoc | E4.1 | source assertion bound to its Source Record |
 | `adoc.source_acl_snapshot.v0` | adoc | E2.6 | historical ACL provenance, separate from freshness-bounded authorization |

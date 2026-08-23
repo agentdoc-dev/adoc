@@ -8,7 +8,7 @@ use std::process::Command;
 
 use serde_json::Value;
 
-use support::{TestWorkspace, fixture_path};
+use support::{TestWorkspace, fixture_path, stderr, stdout};
 
 fn adoc_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_adoc"));
@@ -2965,5 +2965,136 @@ fn build_markdown_rejection_still_exits_two() {
     assert!(
         stderr.contains("error[cli.format]") && stderr.contains("`adoc check`"),
         "expected rejection naming the supported commands, got:\n{stderr}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// E1.7 — AgentDoc Validation Runtime: digest-bound validation receipts.
+// ---------------------------------------------------------------------------
+
+/// The documented harness-attested runtime binary digest used for golden
+/// parity runs: sha256 of the ASCII string `adoc-validation-runtime-golden`.
+/// The T2 harness (`scripts/validation-runtime/run.sh`) supplies the same
+/// constant for its golden run, so the direct library/CLI path and the
+/// packaged-binary path must produce byte-identical receipts.
+const GOLDEN_RUNTIME_DIGEST: &str =
+    "sha256:ca1bf018dc0b72ee1197d9d521d96d227cd3e54cc81528ea5f45776c99d95f4d";
+
+fn validation_runtime_path(relative: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/validation-runtime")
+        .join(relative)
+}
+
+/// E1.7.T1: the committed domain fixture through the local CLI yields the
+/// committed digest-bound `adoc.validation_receipt.v0` byte-for-byte. The
+/// same golden file anchors the T2 packaged-binary harness, which proves
+/// local-CLI/harness byte-identity (MILESTONES §E1.7 exit gate).
+#[test]
+fn check_receipt_emits_the_committed_golden_receipt_byte_for_byte() {
+    let out_dir = TestWorkspace::new("check-receipt-golden");
+    let receipt_path = out_dir.root.join("receipt.json");
+
+    let output = adoc_command()
+        .current_dir(validation_runtime_path("fixture"))
+        .args([
+            "check",
+            "--receipt",
+            receipt_path.to_str().expect("utf-8 receipt path"),
+            "--as-of",
+            "2026-01-01",
+            "--runtime-binary-digest",
+            GOLDEN_RUNTIME_DIGEST,
+        ])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(
+        output.status.success(),
+        "expected receipt check to pass\nstdout:\n{}\nstderr:\n{}",
+        stdout(&output),
+        stderr(&output)
+    );
+
+    let actual = fs::read_to_string(&receipt_path).expect("receipt is written");
+    let golden = fs::read_to_string(validation_runtime_path(
+        "golden/validation_receipt.golden.json",
+    ))
+    .expect("golden receipt is readable");
+    assert_eq!(actual, golden, "receipt diverged from the committed golden");
+}
+
+/// Receipts are deterministic: two invocations over the same input produce
+/// byte-identical files (stable ordering, no wall-clock timestamps).
+#[test]
+fn check_receipt_is_byte_identical_across_invocations() {
+    let out_dir = TestWorkspace::new("check-receipt-deterministic");
+    let first = out_dir.root.join("first.json");
+    let second = out_dir.root.join("second.json");
+
+    for path in [&first, &second] {
+        let output = adoc_command()
+            .current_dir(validation_runtime_path("fixture"))
+            .args([
+                "check",
+                "--receipt",
+                path.to_str().expect("utf-8 receipt path"),
+                "--as-of",
+                "2026-01-01",
+                "--runtime-binary-digest",
+                GOLDEN_RUNTIME_DIGEST,
+            ])
+            .output()
+            .expect("adoc check runs");
+        assert!(output.status.success(), "stderr:\n{}", stderr(&output));
+    }
+
+    assert_eq!(
+        fs::read(&first).expect("first receipt"),
+        fs::read(&second).expect("second receipt"),
+        "receipts must be byte-identical across invocations"
+    );
+}
+
+/// Receipt mode refuses wall-clock and unattested identity: `--receipt`
+/// requires an explicit `--as-of` and a harness-supplied
+/// `--runtime-binary-digest` (the binary cannot hash itself
+/// deterministically), and a malformed digest is a typed refusal.
+#[test]
+fn check_receipt_requires_as_of_and_runtime_binary_digest() {
+    let output = adoc_command()
+        .current_dir(validation_runtime_path("fixture"))
+        .args(["check", "--receipt", "receipt.json"])
+        .output()
+        .expect("adoc check runs");
+    assert_eq!(output.status.code(), Some(1), "clap requirement violation");
+    let requirement_error = stderr(&output);
+    assert!(
+        requirement_error.contains("--as-of")
+            && requirement_error.contains("--runtime-binary-digest"),
+        "expected the missing required arguments to be named, got:\n{requirement_error}"
+    );
+
+    let output = adoc_command()
+        .current_dir(validation_runtime_path("fixture"))
+        .args([
+            "check",
+            "--receipt",
+            "receipt.json",
+            "--as-of",
+            "2026-01-01",
+            "--runtime-binary-digest",
+            "sha256:not-hex",
+        ])
+        .output()
+        .expect("adoc check runs");
+    assert_ne!(
+        output.status.code(),
+        Some(0),
+        "malformed digest must refuse"
+    );
+    assert!(
+        !validation_runtime_path("fixture/receipt.json").exists(),
+        "no receipt may be written on refusal"
     );
 }

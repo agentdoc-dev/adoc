@@ -80,6 +80,12 @@ pub enum LocalError {
         #[source]
         source: adoc_core::ReviewError,
     },
+
+    #[error("error[validation.runtime_input] {source}")]
+    ValidationRuntime {
+        #[source]
+        source: adoc_core::ValidationRuntimeError,
+    },
 }
 
 fn format_removed_sources(removed: &[PathBuf]) -> String {

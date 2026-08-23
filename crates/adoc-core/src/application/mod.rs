@@ -14,6 +14,7 @@ pub(crate) mod review;
 pub(crate) mod review_envelope;
 pub(crate) mod search_artifact;
 pub(crate) mod signals;
+pub(crate) mod validation_runtime;
 
 /// The UTC calendar date used as `today` by clock-dependent derivations
 /// (compile-time lifecycle validation and the V6.1 read-time signal queries).

@@ -52,6 +52,10 @@ pub use application::signals::{
     ContradictionsEnvelope, IMPACTED_SCHEMA_VERSION, ImpactReason, ImpactedEnvelope,
     ImpactedRecord, STALE_SCHEMA_VERSION, StaleCategory, StaleEnvelope, StaleRecord,
 };
+pub use application::validation_runtime::{
+    ValidationReceipt, ValidationResult, ValidationRuntimeError, ValidationRuntimeInput,
+    ValidationRuntimeOutcome, run_validation_runtime,
+};
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 pub use domain::graph::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
