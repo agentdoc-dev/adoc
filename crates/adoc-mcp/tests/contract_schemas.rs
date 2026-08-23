@@ -1675,6 +1675,31 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .expect("grant object")
         .remove("exceptional_reason");
 
+    let mut service_direct_without_reason = direct_human.clone();
+    service_direct_without_reason["principal"]["type"] = json!("service");
+    service_direct_without_reason["grants"][0]
+        .as_object_mut()
+        .expect("grant object")
+        .remove("exceptional_reason");
+
+    let mut direct_deny = direct_human.clone();
+    direct_deny["grants"][0]["effect"] = json!("deny");
+    direct_deny["result"] = json!("deny");
+    direct_deny["reason"] = json!("explicit_deny");
+    direct_deny["basis"]["effect"] = json!("deny");
+
+    let mut direct_deny_without_expiry = direct_deny.clone();
+    direct_deny_without_expiry["grants"][0]
+        .as_object_mut()
+        .expect("grant object")
+        .remove("expires_at");
+
+    let mut human_direct_deny_without_reason = direct_deny.clone();
+    human_direct_deny_without_reason["grants"][0]
+        .as_object_mut()
+        .expect("grant object")
+        .remove("exceptional_reason");
+
     let mut direct_basis_with_role = decision.clone();
     direct_basis_with_role["basis"]["source"] = json!("direct_grant");
 
@@ -1718,13 +1743,123 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut allowed_reason_on_deny = denied.clone();
     allowed_reason_on_deny["reason"] = json!("allowed");
 
+    let mut no_policy_inputs = no_acl_ceiling.clone();
+    no_policy_inputs["visibility"] = json!("not_applicable");
+    no_policy_inputs["action_policy"] = json!("not_applicable");
+
+    let mut unknown_scope_member = decision.clone();
+    unknown_scope_member["resource"]["unknown"] = json!(true);
+
+    let mut allow_without_grants = decision.clone();
+    allow_without_grants["grants"] = json!([]);
+
+    let mut deny_basis_on_allow = decision.clone();
+    deny_basis_on_allow["basis"]["effect"] = json!("deny");
+
+    let mut deny_only_grants_on_allow = decision.clone();
+    deny_only_grants_on_allow["grants"][0]["effect"] = json!("deny");
+
+    let mut hard_deny = denied.clone();
+    hard_deny["hard_deny"] = json!(true);
+    hard_deny["reason"] = json!("hard_deny");
+    let mut false_hard_deny_reason = hard_deny.clone();
+    false_hard_deny_reason["hard_deny"] = json!(false);
+
+    let mut source_acl_denied = decision.clone();
+    source_acl_denied["source_acl_ceiling"]["result"] = json!("deny");
+    source_acl_denied["result"] = json!("deny");
+    source_acl_denied["reason"] = json!("source_acl_denied");
+    source_acl_denied["basis"] = json!(null);
+    let mut false_source_acl_denied_reason = source_acl_denied.clone();
+    false_source_acl_denied_reason["source_acl_ceiling"] = json!({
+        "required": false,
+        "result": "not_applicable"
+    });
+
+    let mut false_source_acl_unavailable_reason = insufficient.clone();
+    false_source_acl_unavailable_reason["source_acl_ceiling"] = json!({
+        "required": false,
+        "result": "not_applicable"
+    });
+
+    let mut visibility_denied = decision.clone();
+    visibility_denied["visibility"] = json!("deny");
+    visibility_denied["result"] = json!("deny");
+    visibility_denied["reason"] = json!("visibility_denied");
+    let mut false_visibility_denied_reason = visibility_denied.clone();
+    false_visibility_denied_reason["visibility"] = json!("allow");
+
+    let mut visibility_unavailable = decision.clone();
+    visibility_unavailable["visibility"] = json!("insufficient_context");
+    visibility_unavailable["result"] = json!("insufficient_context");
+    visibility_unavailable["reason"] = json!("visibility_unavailable");
+    let mut false_visibility_unavailable_reason = visibility_unavailable.clone();
+    false_visibility_unavailable_reason["visibility"] = json!("allow");
+
+    let mut action_policy_denied = decision.clone();
+    action_policy_denied["action_policy"] = json!("deny");
+    action_policy_denied["result"] = json!("deny");
+    action_policy_denied["reason"] = json!("action_policy_denied");
+    let mut false_action_policy_denied_reason = action_policy_denied.clone();
+    false_action_policy_denied_reason["action_policy"] = json!("allow");
+
+    let mut action_policy_unavailable = decision.clone();
+    action_policy_unavailable["action_policy"] = json!("insufficient_context");
+    action_policy_unavailable["result"] = json!("insufficient_context");
+    action_policy_unavailable["reason"] = json!("action_policy_unavailable");
+    let mut false_action_policy_unavailable_reason = action_policy_unavailable.clone();
+    false_action_policy_unavailable_reason["action_policy"] = json!("allow");
+
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision, true),
         ("direct human grant", direct_human, true),
+        (
+            "service direct grant without reason",
+            service_direct_without_reason,
+            true,
+        ),
+        ("time-bounded human direct deny", direct_deny, true),
+        (
+            "direct deny without expiry",
+            direct_deny_without_expiry,
+            false,
+        ),
+        (
+            "human direct deny without reason",
+            human_direct_deny_without_reason,
+            false,
+        ),
         ("expiring role assignment", expiring_role, true),
         ("optional ACL ceiling", no_acl_ceiling, true),
+        ("allow with no policy inputs", no_policy_inputs, true),
         ("deny without basis", denied, true),
         ("insufficient context without basis", insufficient, true),
+        ("hard-deny reason matches input", hard_deny, true),
+        (
+            "source ACL denied reason matches input",
+            source_acl_denied,
+            true,
+        ),
+        (
+            "visibility denied reason matches input",
+            visibility_denied,
+            true,
+        ),
+        (
+            "visibility unavailable reason matches input",
+            visibility_unavailable,
+            true,
+        ),
+        (
+            "action-policy denied reason matches input",
+            action_policy_denied,
+            true,
+        ),
+        (
+            "action-policy unavailable reason matches input",
+            action_policy_unavailable,
+            true,
+        ),
         ("missing policy version", missing_policy_version, false),
         ("unknown result", unknown_result, false),
         ("direct grant without expiry", direct_without_expiry, false),
@@ -1771,6 +1906,45 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ),
         ("allow without basis", allow_without_basis, false),
         ("allowed reason on deny", allowed_reason_on_deny, false),
+        ("unknown scope member", unknown_scope_member, false),
+        ("allow without grants", allow_without_grants, false),
+        ("deny basis on allow", deny_basis_on_allow, false),
+        (
+            "deny-only grants on allow",
+            deny_only_grants_on_allow,
+            false,
+        ),
+        ("false hard-deny reason", false_hard_deny_reason, false),
+        (
+            "false source ACL denied reason",
+            false_source_acl_denied_reason,
+            false,
+        ),
+        (
+            "false source ACL unavailable reason",
+            false_source_acl_unavailable_reason,
+            false,
+        ),
+        (
+            "false visibility denied reason",
+            false_visibility_denied_reason,
+            false,
+        ),
+        (
+            "false visibility unavailable reason",
+            false_visibility_unavailable_reason,
+            false,
+        ),
+        (
+            "false action-policy denied reason",
+            false_action_policy_denied_reason,
+            false,
+        ),
+        (
+            "false action-policy unavailable reason",
+            false_action_policy_unavailable_reason,
+            false,
+        ),
     ] {
         assert_eq!(
             schema_accepts("adoc.authorization_decision.v0.schema.json", &instance),

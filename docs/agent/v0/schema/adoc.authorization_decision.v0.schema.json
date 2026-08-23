@@ -103,6 +103,13 @@
             "required": ["freshness"]
           },
           "hard_deny": { "const": false },
+          "grants": {
+            "minItems": 1,
+            "contains": {
+              "properties": { "effect": { "const": "allow" } },
+              "required": ["effect"]
+            }
+          },
           "source_acl_ceiling": {
             "properties": {
               "result": { "enum": ["allow", "not_applicable"] }
@@ -112,7 +119,11 @@
           "visibility": { "enum": ["allow", "not_applicable"] },
           "action_policy": { "enum": ["allow", "not_applicable"] },
           "reason": { "const": "allowed" },
-          "basis": { "$ref": "#/$defs/basis" }
+          "basis": {
+            "$ref": "#/$defs/basis",
+            "properties": { "effect": { "const": "allow" } },
+            "required": ["effect"]
+          }
         }
       }
     },
@@ -123,6 +134,91 @@
       },
       "then": {
         "properties": { "result": { "const": "allow" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "hard_deny" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "hard_deny": { "const": true },
+          "result": { "const": "deny" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "source_acl_denied" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "source_acl_ceiling": {
+            "properties": { "result": { "const": "deny" } },
+            "required": ["result"]
+          },
+          "result": { "const": "deny" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "source_acl_unavailable" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "source_acl_ceiling": {
+            "properties": { "result": { "const": "insufficient_context" } },
+            "required": ["result"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "visibility_denied" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "visibility": { "const": "deny" },
+          "result": { "const": "deny" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "visibility_unavailable" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": { "visibility": { "const": "insufficient_context" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "action_policy_denied" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "action_policy": { "const": "deny" },
+          "result": { "const": "deny" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "action_policy_unavailable" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "action_policy": { "const": "insufficient_context" }
+        }
       }
     }
   ],
@@ -226,11 +322,14 @@
         "permission": { "$ref": "#/$defs/permission" },
         "scope": { "$ref": "#/$defs/scope" },
         "expires_at": {
-          "description": "Optional expiry for a role assignment and required expiry for a direct grant.",
+          "description": "Optional expiry for a role assignment and required expiry for every direct grant, regardless of effect.",
           "type": "string",
           "format": "date-time"
         },
-        "exceptional_reason": { "$ref": "#/$defs/nonEmpty" },
+        "exceptional_reason": {
+          "description": "Required for every human direct grant, regardless of effect.",
+          "$ref": "#/$defs/nonEmpty"
+        },
         "role": { "$ref": "#/$defs/role" }
       },
       "allOf": [
@@ -282,6 +381,7 @@
       ]
     },
     "basis": {
+      "description": "Denormalized winning-grant summary emitted by the trusted evaluator for audit display. Replay resolves grant_id against grants and recomputes the decision from the complete recorded inputs.",
       "type": "object",
       "required": ["grant_id", "source", "effect", "scope_match"],
       "additionalProperties": false,
