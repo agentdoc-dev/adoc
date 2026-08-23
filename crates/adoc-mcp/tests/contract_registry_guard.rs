@@ -90,6 +90,7 @@ const ANCHORS: &[&str] = &[
     "registry:diagnostic-codes",
     "registry:action-codes",
     "registry:gate-codes",
+    "registry:permission-primitives",
     "registry:cloud-codes",
     "registry:attestation-codes",
     "registry:dispositions",
@@ -628,6 +629,47 @@ fn planned_rows_name_exactly_one_owner_repo() {
         );
     }
     assert!(data_rows > 0, "the planned table lost its rows");
+}
+
+#[test]
+fn permission_primitives_match_the_e2_2_registry() {
+    let actual = anchored_ids(&registry(), "registry:permission-primitives");
+    let expected = [
+        "audit.export",
+        "audit.read",
+        "connector.configure",
+        "connector.create",
+        "connector.delete",
+        "connector.read",
+        "knowledge.declassify",
+        "knowledge.propose",
+        "knowledge.read",
+        "migration.approve",
+        "migration.execute",
+        "obligation.read",
+        "obligation.satisfy",
+        "obligation.waive",
+        "policy.manage",
+        "policy.read",
+        "proposal.approve",
+        "proposal.edit",
+        "proposal.read",
+        "proposal.reject",
+        "proposal.review",
+        "semantic_executor.configure",
+        "semantic_executor.qualify",
+        "semantic_executor.read",
+        "source.manage",
+        "source.read",
+        "source.sync",
+        "workspace.configure",
+        "workspace.manage_members",
+        "workspace.read",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    assert_eq!(actual, expected);
 }
 
 /// Backticked codes cited by the executable planning surface, one
