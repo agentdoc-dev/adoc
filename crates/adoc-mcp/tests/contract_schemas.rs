@@ -1778,6 +1778,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     hard_deny["reason"] = json!("hard_deny");
     let mut false_hard_deny_reason = hard_deny.clone();
     false_hard_deny_reason["hard_deny"] = json!(false);
+    let mut hard_deny_with_basis = hard_deny.clone();
+    hard_deny_with_basis["basis"] = decision["basis"].clone();
 
     let mut source_acl_denied = decision.clone();
     source_acl_denied["source_acl_ceiling"]["result"] = json!("deny");
@@ -1789,12 +1791,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "required": false,
         "result": "not_applicable"
     });
+    let mut source_acl_denied_with_basis = source_acl_denied.clone();
+    source_acl_denied_with_basis["basis"] = decision["basis"].clone();
 
     let mut false_source_acl_unavailable_reason = insufficient.clone();
     false_source_acl_unavailable_reason["source_acl_ceiling"] = json!({
         "required": false,
         "result": "not_applicable"
     });
+    let mut source_acl_unavailable_with_basis = insufficient.clone();
+    source_acl_unavailable_with_basis["basis"] = decision["basis"].clone();
 
     let mut visibility_denied = decision.clone();
     visibility_denied["visibility"] = json!("deny");
@@ -2117,14 +2123,25 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         ("false hard-deny reason", false_hard_deny_reason, false),
+        ("hard-deny reason with basis", hard_deny_with_basis, false),
         (
             "false source ACL denied reason",
             false_source_acl_denied_reason,
             false,
         ),
         (
+            "source ACL denied reason with basis",
+            source_acl_denied_with_basis,
+            false,
+        ),
+        (
             "false source ACL unavailable reason",
             false_source_acl_unavailable_reason,
+            false,
+        ),
+        (
+            "source ACL unavailable reason with basis",
+            source_acl_unavailable_with_basis,
             false,
         ),
         (
