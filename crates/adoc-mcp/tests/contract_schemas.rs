@@ -1892,7 +1892,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
 
     let mut invalid_time = denied.clone();
     invalid_time["principal"]["freshness"] = json!("current");
-    invalid_time["evaluation_time"] = json!("not-a-time");
+    invalid_time["evaluation_time"] = json!("");
     invalid_time["consequential"] = json!(true);
     invalid_time["result"] = json!("insufficient_context");
     invalid_time["reason"] = json!("evaluation_time_invalid");
@@ -1907,6 +1907,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
     consequential_invalid_time_with_deny["result"] = json!("deny");
     let mut nonconsequential_invalid_time_with_insufficient = nonconsequential_invalid_time.clone();
     nonconsequential_invalid_time_with_insufficient["result"] = json!("insufficient_context");
+
+    let mut allow_with_empty_evaluation_time = decision.clone();
+    allow_with_empty_evaluation_time["evaluation_time"] = json!("");
 
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision, true),
@@ -2199,6 +2202,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "nonconsequential invalid time with insufficient result",
             nonconsequential_invalid_time_with_insufficient,
+            false,
+        ),
+        (
+            "allow with empty evaluation time",
+            allow_with_empty_evaluation_time,
             false,
         ),
     ] {
