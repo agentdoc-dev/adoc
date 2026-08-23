@@ -374,6 +374,14 @@ pub(crate) enum ObligationError {
     DuplicateObligation { id: ObligationId },
     #[error("obligation {id:?} is not recorded in this ledger")]
     UnknownObligation { id: ObligationId },
+    #[error(
+        "obligation {id:?} already stands `{}` — a terminal state never transitions again",
+        standing.as_str()
+    )]
+    TerminalStateStanding {
+        id: ObligationId,
+        standing: ObligationState,
+    },
     #[error("an opened obligation record must start in the `open` state")]
     OpenedRecordNotOpen,
     #[error("`waived` is reachable only through a waiver record, never a bare state append")]
@@ -441,6 +449,20 @@ impl ObligationLedger {
     /// recordable transitions; `waived` requires a Waiver record
     /// (permission-controlled, E1.6.T2) and `open` is never re-appended —
     /// reopening is derived from waiver expiry, not authored.
+    ///
+    /// Source states fail closed: only a standing `open` or `waived`
+    /// obligation accepts a recorded transition. `satisfied`/`failed`/
+    /// `expired` are TERMINAL — `failed → satisfied` would upgrade a
+    /// recorded outcome with no evidence trail (V10.2.5: state events
+    /// never upgrade a recorded outcome), so a terminal state only exits
+    /// via a correcting append in the E1.4 `corrects` posture, which is
+    /// not this slice's. A standing `waived` obligation still records
+    /// `satisfied`/`failed`/`expired` — the documented recorded exits
+    /// from a waiver (see [`ObligationLedger::waive`]).
+    // ponytail: StateRecorded carries no principal/policy/evidence —
+    // attribution lands when ledger events are enclosed as E1.4/E4.2
+    // audit rows (see the ledger's ponytail note); the waiver, the only
+    // discharge with authority semantics, is fully bound already.
     pub(crate) fn record_state(
         &mut self,
         obligation_id: &ObligationId,
@@ -451,9 +473,22 @@ impl ObligationLedger {
             ObligationState::Open => return Err(ObligationError::ReopenNotRecordable),
             ObligationState::Satisfied | ObligationState::Failed | ObligationState::Expired => {}
         }
-        if self.opened_record(obligation_id).is_none() {
+        let Some(standing) = self
+            .standing()
+            .get(obligation_id)
+            .map(|record| record.state)
+        else {
             return Err(ObligationError::UnknownObligation {
                 id: obligation_id.clone(),
+            });
+        };
+        if matches!(
+            standing,
+            ObligationState::Satisfied | ObligationState::Failed | ObligationState::Expired
+        ) {
+            return Err(ObligationError::TerminalStateStanding {
+                id: obligation_id.clone(),
+                standing,
             });
         }
         self.events.push(ObligationEvent::StateRecorded {
@@ -1059,6 +1094,68 @@ mod tests {
             .expect("satisfied is a recordable transition");
         assert_eq!(ledger.standing()[&id].state, ObligationState::Satisfied);
         assert_eq!(ledger.events().len(), 2);
+    }
+
+    /// Terminal standing states never transition again (fail closed):
+    /// `failed → satisfied` would clear an approval blocker with no
+    /// evidence trail (V10.2.5: never upgrade a recorded outcome), and
+    /// `expired → satisfied` would resurrect a lapsed obligation. A
+    /// standing `waived` obligation still records `satisfied` — the
+    /// documented recorded exit from a waiver.
+    #[test]
+    fn terminal_states_never_transition_but_waived_still_exits() {
+        let subject = imported_subject();
+        let mut ledger = ObligationLedger::new();
+        for id in ["ob-failed", "ob-expired", "ob-waived"] {
+            ledger
+                .open(record(&subject, id, ObligationStage::Approval, None))
+                .expect("opens");
+        }
+        let policy = ObligationPolicy {
+            policy_version: policy_version(),
+            rules: Vec::new(),
+            default_classification: ObligationClassification::Blocking,
+        };
+
+        let failed = obligation_id("ob-failed");
+        ledger
+            .record_state(&failed, ObligationState::Failed)
+            .expect("records");
+        assert_eq!(
+            ledger.record_state(&failed, ObligationState::Satisfied),
+            Err(ObligationError::TerminalStateStanding {
+                id: failed.clone(),
+                standing: ObligationState::Failed,
+            }),
+            "a failed obligation is never quietly satisfied"
+        );
+        assert!(
+            ledger
+                .approval_blockers(&policy, EventOrdinal(1))
+                .contains(&failed),
+            "the failed gate obligation keeps blocking approval"
+        );
+
+        let expired = obligation_id("ob-expired");
+        ledger
+            .record_state(&expired, ObligationState::Expired)
+            .expect("records");
+        assert_eq!(
+            ledger.record_state(&expired, ObligationState::Satisfied),
+            Err(ObligationError::TerminalStateStanding {
+                id: expired.clone(),
+                standing: ObligationState::Expired,
+            })
+        );
+
+        let waived = obligation_id("ob-waived");
+        ledger
+            .waive(waiver(&subject, "ob-waived", None))
+            .expect("waives");
+        ledger
+            .record_state(&waived, ObligationState::Satisfied)
+            .expect("waived records its documented exits");
+        assert_eq!(ledger.standing()[&waived].state, ObligationState::Satisfied);
     }
 
     /// The two §K8 vocabularies are closed and wire-stable; serde and
