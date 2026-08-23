@@ -71,13 +71,13 @@
     },
     "classification": { "enum": ["informational", "blocking"] },
     "waiver": {
-      "description": "An Obligation Waiver (K8): permission-controlled discharge of one obligation, bound to the exact obligation + managed version + principal + policy version, justified, and time-bounded where appropriate by an explicit event-ordinal expiry (no wall-clock). A waiver changes obligation state only - it never converts unverified to verified, and an expired waiver reopens its obligation as blocking.",
+      "description": "An Obligation Waiver (K8): permission-controlled discharge of one obligation, bound to the exact obligation + workspace-qualified managed-version subject + principal + policy version, justified, and time-bounded where appropriate by an explicit event-ordinal expiry (no wall-clock). Managed version IDs are workspace-minted (mv-N recurs in every workspace), so the subject is the binding - never a bare version ID. A waiver changes obligation state only - it never converts unverified to verified, and an expired waiver reopens its obligation as blocking.",
       "type": "object",
-      "required": ["obligation_id", "version_id", "principal", "policy_version", "justification"],
+      "required": ["obligation_id", "subject", "principal", "policy_version", "justification"],
       "additionalProperties": false,
       "properties": {
         "obligation_id": { "type": "string", "minLength": 1 },
-        "version_id": { "type": "string", "minLength": 1 },
+        "subject": { "$ref": "#/$defs/subject" },
         "principal": { "type": "string", "minLength": 1 },
         "policy_version": { "type": "string", "minLength": 1 },
         "justification": { "type": "string", "minLength": 1 },
