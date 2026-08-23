@@ -28,6 +28,18 @@ pub(crate) enum LifecycleStatusError {
 }
 
 impl LifecycleStatus {
+    /// Every released variant, in declaration order. The lifecycle
+    /// mapping contract (E1.5) pins its word table to this accessor —
+    /// the exhaustive match makes a new variant a compile error here
+    /// until the contract decides its managed meaning.
+    #[cfg(test)]
+    pub(crate) fn all() -> [Self; 3] {
+        match Self::Draft {
+            Self::Draft | Self::Verified | Self::Deprecated => {}
+        }
+        [Self::Draft, Self::Verified, Self::Deprecated]
+    }
+
     pub(crate) fn try_new(value: &str) -> Result<Self, LifecycleStatusError> {
         let trimmed = trim_ascii_edges(value);
         if trimmed.is_empty() {
