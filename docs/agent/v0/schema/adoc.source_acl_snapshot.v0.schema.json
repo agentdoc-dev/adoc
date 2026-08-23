@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.source_acl_snapshot.v0.schema.json",
+  "title": "AgentDoc Historical Source ACL Snapshot",
+  "description": "Immutable historical ACL provenance retained with source-derived assertions. This envelope is never current authorization evidence: freshness, expiry, connector availability, and effective access are evaluated separately by Cloud under the connector ACL policy.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "connector_id",
+    "source",
+    "observed_at",
+    "acl_payload_digest",
+    "usage"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.source_acl_snapshot.v0" },
+    "snapshot_id": { "$ref": "#/$defs/nonEmpty" },
+    "connector_id": { "$ref": "#/$defs/nonEmpty" },
+    "source": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["repository", "project", "space", "channel"] },
+        "id": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "observed_at": { "type": "string", "format": "date-time" },
+    "acl_payload_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "usage": { "const": "historical_provenance" }
+  },
+  "$defs": {
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\r\\n\\u2028\\u2029]*\\S[^\\r\\n\\u2028\\u2029]*$"
+    }
+  }
+}

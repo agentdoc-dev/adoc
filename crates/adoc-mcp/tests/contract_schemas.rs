@@ -2418,3 +2418,38 @@ fn connector_acl_policy_requires_every_activation_safety_declaration() {
         ));
     }
 }
+
+#[test]
+fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
+    let snapshot = json!({
+        "schema_version": "adoc.source_acl_snapshot.v0",
+        "snapshot_id": "acl-snapshot-1",
+        "connector_id": "github-connector-1",
+        "source": { "kind": "repository", "id": "agentdoc-dev/cloud" },
+        "observed_at": "2026-08-24T12:00:00Z",
+        "acl_payload_digest": format!("sha256:{}", "a".repeat(64)),
+        "usage": "historical_provenance"
+    });
+
+    assert!(schema_accepts(
+        "adoc.source_acl_snapshot.v0.schema.json",
+        &snapshot
+    ));
+
+    let mut current_authority = snapshot.clone();
+    current_authority["usage"] = json!("current_authorization");
+    let mut expiring_snapshot = snapshot.clone();
+    expiring_snapshot["expires_at"] = json!("2026-08-24T12:05:00Z");
+    let mut missing_usage = snapshot;
+    missing_usage
+        .as_object_mut()
+        .expect("snapshot object")
+        .remove("usage");
+
+    for invalid in [current_authority, expiring_snapshot, missing_usage] {
+        assert!(!schema_accepts(
+            "adoc.source_acl_snapshot.v0.schema.json",
+            &invalid
+        ));
+    }
+}
