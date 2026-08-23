@@ -634,7 +634,8 @@ fn planned_rows_name_exactly_one_owner_repo() {
 /// `(document, line, code)` per citation. Covers `gate.*`/`action.*`/
 /// `workspace.*` codes and envelope ids; `attestation.*` siblings are
 /// deliberately outside the net — E8.1.T1 registers them as a registry edit
-/// in that slice.
+/// in that slice. `workspace.*` permission primitives belong under their own
+/// registry anchor, never `registry:cloud-codes`.
 fn cited_codes() -> Vec<(String, usize, String)> {
     let dir = repo_root().join("docs/roadmap/v10");
     let mut cited = Vec::new();
@@ -664,6 +665,12 @@ fn cited_codes() -> Vec<(String, usize, String)> {
                 }
             }
         }
+    }
+    for prefix in ["gate.", "action.", "workspace."] {
+        assert!(
+            cited.iter().any(|(_, _, code)| code.starts_with(prefix)),
+            "no `{prefix}*` citation found"
+        );
     }
     cited
 }
