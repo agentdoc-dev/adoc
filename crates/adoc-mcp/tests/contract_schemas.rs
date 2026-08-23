@@ -1590,7 +1590,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "source_acl_ceiling": {
             "required": true,
             "result": "allow",
-            "snapshot_id": "acl-1"
+            "snapshot_id": "acl-1",
+            "current_authorization": {
+                "role": "current_authorization",
+                "observed_at": "2026-08-23T11:59:00Z",
+                "expires_at": "2026-08-23T12:05:00Z",
+                "connector_available": true
+            }
         },
         "visibility": "allow",
         "action_policy": "allow",
@@ -1655,6 +1661,53 @@ fn authorization_decision_schema_pins_replay_bindings() {
     insufficient["result"] = json!("insufficient_context");
     insufficient["reason"] = json!("source_acl_unavailable");
     insufficient["basis"] = json!(null);
+
+    let mut legacy_allow_without_current_acl = decision.clone();
+    legacy_allow_without_current_acl["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("ACL object")
+        .remove("current_authorization");
+
+    let mut source_acl_outage = decision.clone();
+    source_acl_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
+        json!(false);
+    source_acl_outage["result"] = json!("insufficient_context");
+    source_acl_outage["reason"] = json!("source_acl_unavailable");
+    source_acl_outage["basis"] = json!(null);
+
+    let mut source_acl_stale = decision.clone();
+    source_acl_stale["source_acl_ceiling"]["current_authorization"]["expires_at"] =
+        json!("2026-08-23T12:00:00Z");
+    source_acl_stale["result"] = json!("deny");
+    source_acl_stale["reason"] = json!("source_acl_stale");
+    source_acl_stale["basis"] = json!(null);
+
+    let mut source_acl_invalidated = decision.clone();
+    source_acl_invalidated["source_acl_ceiling"]["current_authorization"]["invalidated_at"] =
+        json!("2026-08-23T11:59:30Z");
+    source_acl_invalidated["result"] = json!("deny");
+    source_acl_invalidated["reason"] = json!("source_acl_invalidated");
+    source_acl_invalidated["basis"] = json!(null);
+
+    let mut allow_during_source_acl_outage = decision.clone();
+    allow_during_source_acl_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
+        json!(false);
+    let mut allow_with_invalidated_source_acl = decision.clone();
+    allow_with_invalidated_source_acl["source_acl_ceiling"]["current_authorization"]["invalidated_at"] =
+        json!("2026-08-23T11:59:30Z");
+    let mut stale_reason_without_current_acl = source_acl_stale.clone();
+    stale_reason_without_current_acl["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("ACL object")
+        .remove("current_authorization");
+    let mut invalidated_reason_without_marker = source_acl_invalidated.clone();
+    invalidated_reason_without_marker["source_acl_ceiling"]["current_authorization"]
+        .as_object_mut()
+        .expect("current ACL object")
+        .remove("invalidated_at");
+    let mut current_acl_with_invalid_observed_at = decision.clone();
+    current_acl_with_invalid_observed_at["source_acl_ceiling"]["current_authorization"]["observed_at"] =
+        json!("not-a-time");
 
     let mut missing_policy_version = decision.clone();
     missing_policy_version
@@ -1960,6 +2013,18 @@ fn authorization_decision_schema_pins_replay_bindings() {
 
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision, true),
+        (
+            "legacy allow without current ACL evidence",
+            legacy_allow_without_current_acl,
+            true,
+        ),
+        ("source ACL connector outage", source_acl_outage, true),
+        ("stale current source ACL evidence", source_acl_stale, true),
+        (
+            "invalidated current source ACL evidence",
+            source_acl_invalidated,
+            true,
+        ),
         ("direct human grant", direct_human, true),
         (
             "direct human grant with multiline reason",
@@ -2078,6 +2143,31 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         ("unknown result", unknown_result, false),
+        (
+            "allow during source ACL outage",
+            allow_during_source_acl_outage,
+            false,
+        ),
+        (
+            "allow with invalidated source ACL evidence",
+            allow_with_invalidated_source_acl,
+            false,
+        ),
+        (
+            "stale reason without current ACL evidence",
+            stale_reason_without_current_acl,
+            false,
+        ),
+        (
+            "invalidated reason without invalidation marker",
+            invalidated_reason_without_marker,
+            false,
+        ),
+        (
+            "current ACL evidence with invalid observed time",
+            current_acl_with_invalid_observed_at,
+            false,
+        ),
         ("direct grant without expiry", direct_without_expiry, false),
         (
             "role assignment with exceptional reason",
@@ -2408,10 +2498,17 @@ fn connector_acl_policy_requires_every_activation_safety_declaration() {
     permissive_outage["connector_unavailable"] = json!("use_stale");
     let mut no_session_invalidation = policy.clone();
     no_session_invalidation["invalidation"]["active_access_sessions"] = json!(false);
+    let mut excessive_freshness = policy.clone();
+    excessive_freshness["freshness_window_seconds"] = json!(604801);
     let mut zero_freshness = policy;
     zero_freshness["freshness_window_seconds"] = json!(0);
 
-    for invalid in [permissive_outage, no_session_invalidation, zero_freshness] {
+    for invalid in [
+        permissive_outage,
+        no_session_invalidation,
+        excessive_freshness,
+        zero_freshness,
+    ] {
         assert!(!schema_accepts(
             "adoc.connector_acl_policy.v0.schema.json",
             &invalid

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
   "title": "AgentDoc Authorization Decision",
-  "description": "Replayable, source-neutral authorization decision for E2.2. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
+  "description": "Replayable, source-neutral authorization decision for E2.2 and the E2.6 source ACL ceiling. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns timestamp comparison, lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
   "type": "object",
   "required": [
     "schema_version",
@@ -53,6 +53,8 @@
         "evaluation_time_invalid",
         "hard_deny",
         "source_acl_denied",
+        "source_acl_stale",
+        "source_acl_invalidated",
         "source_acl_unavailable",
         "no_grant",
         "explicit_deny",
@@ -149,7 +151,23 @@
             "properties": {
               "result": { "enum": ["allow", "not_applicable"] }
             },
-            "required": ["result"]
+            "required": ["result"],
+            "allOf": [
+              {
+                "if": { "required": ["current_authorization"] },
+                "then": {
+                  "properties": {
+                    "current_authorization": {
+                      "properties": {
+                        "connector_available": { "const": true }
+                      },
+                      "required": ["connector_available"],
+                      "not": { "required": ["invalidated_at"] }
+                    }
+                  }
+                }
+              }
+            ]
           },
           "visibility": { "enum": ["allow", "not_applicable"] },
           "action_policy": { "enum": ["allow", "not_applicable"] },
@@ -337,14 +355,81 @@
     },
     {
       "if": {
+        "properties": { "reason": { "const": "source_acl_stale" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "source_acl_ceiling": {
+            "properties": {
+              "result": { "const": "allow" },
+              "current_authorization": {
+                "properties": {
+                  "connector_available": { "const": true }
+                },
+                "required": ["connector_available"],
+                "not": { "required": ["invalidated_at"] }
+              }
+            },
+            "required": ["result", "current_authorization"]
+          },
+          "basis": { "type": "null" },
+          "result": { "const": "deny" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "source_acl_invalidated" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "source_acl_ceiling": {
+            "properties": {
+              "result": { "const": "allow" },
+              "current_authorization": {
+                "properties": {
+                  "connector_available": { "const": true }
+                },
+                "required": ["connector_available", "invalidated_at"]
+              }
+            },
+            "required": ["result", "current_authorization"]
+          },
+          "basis": { "type": "null" },
+          "result": { "const": "deny" }
+        }
+      }
+    },
+    {
+      "if": {
         "properties": { "reason": { "const": "source_acl_unavailable" } },
         "required": ["reason"]
       },
       "then": {
         "properties": {
           "source_acl_ceiling": {
-            "properties": { "result": { "const": "insufficient_context" } },
-            "required": ["result"]
+            "anyOf": [
+              {
+                "properties": {
+                  "result": { "const": "insufficient_context" }
+                },
+                "required": ["result"]
+              },
+              {
+                "properties": {
+                  "result": { "const": "allow" },
+                  "current_authorization": {
+                    "properties": {
+                      "connector_available": { "const": false }
+                    },
+                    "required": ["connector_available"]
+                  }
+                },
+                "required": ["result", "current_authorization"]
+              }
+            ]
           },
           "basis": { "type": "null" }
         },
@@ -594,7 +679,10 @@
       "properties": {
         "required": { "type": "boolean" },
         "result": { "$ref": "#/$defs/policyInput" },
-        "snapshot_id": { "$ref": "#/$defs/nonEmpty" }
+        "snapshot_id": { "$ref": "#/$defs/nonEmpty" },
+        "current_authorization": {
+          "$ref": "#/$defs/currentSourceAclAuthorization"
+        }
       },
       "allOf": [
         {
@@ -617,6 +705,24 @@
           "then": { "required": ["snapshot_id"] }
         }
       ]
+    },
+    "currentSourceAclAuthorization": {
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only.",
+      "type": "object",
+      "required": [
+        "role",
+        "observed_at",
+        "expires_at",
+        "connector_available"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "role": { "const": "current_authorization" },
+        "observed_at": { "$ref": "#/$defs/rfc3339Timestamp" },
+        "expires_at": { "$ref": "#/$defs/rfc3339Timestamp" },
+        "connector_available": { "type": "boolean" },
+        "invalidated_at": { "$ref": "#/$defs/rfc3339Timestamp" }
+      }
     },
     "basis": {
       "description": "Denormalized winning-grant summary emitted by the trusted evaluator for audit display. Replay resolves grant_id against grants and recomputes the decision from the complete recorded inputs.",
