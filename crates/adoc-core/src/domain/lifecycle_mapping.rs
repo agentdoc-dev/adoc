@@ -181,11 +181,63 @@ pub(crate) struct DimensionLoss {
     pub(crate) recovered: Option<&'static str>,
 }
 
+/// Why an attestation payload failed construction. Construction-level
+/// only (same posture as [`Principal`]): a blank payload must never
+/// reach [`LifecycleMappingContract::apply_import_mapping`] looking like
+/// authority.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum AttestationError {
+    #[error("source-control revision must be non-blank without surrounding whitespace")]
+    InvalidRevision,
+    #[error("governance event id must be non-blank without surrounding whitespace")]
+    InvalidGovernanceEventId,
+}
+
+/// The reviewed source-control revision an attestation derives authority
+/// from. Non-blank without surrounding whitespace (same fail-closed
+/// posture as [`Principal`]); whether the revision EXISTS is E7.1's
+/// binding validation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub(crate) struct Revision(String);
+
+impl Revision {
+    pub(crate) fn new(value: impl Into<String>) -> Result<Self, AttestationError> {
+        let value = value.into();
+        if value.is_empty() || value.trim() != value {
+            Err(AttestationError::InvalidRevision)
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+
+/// The Cloud Governance Event an attestation references. Non-blank
+/// without surrounding whitespace (same fail-closed posture as
+/// [`Principal`]); whether the event RESOLVES is E4.2's binding
+/// validation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub(crate) struct GovernanceEventId(String);
+
+impl GovernanceEventId {
+    pub(crate) fn new(value: impl Into<String>) -> Result<Self, AttestationError> {
+        let value = value.into();
+        if value.is_empty() || value.trim() != value {
+            Err(AttestationError::InvalidGovernanceEventId)
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+
 /// A typed attestation authorizing a mapping application to land its
 /// mapped target (K5: migration attestation, source-control attestation,
 /// or Cloud Governance Event). Authority is granted by the PRESENCE of
 /// this typed value — the default absence (`None` at the application
-/// boundary) cannot be forged into authority by any authored content.
+/// boundary) cannot be forged into authority by any authored content,
+/// and every payload field is a non-blank value object, so an empty
+/// husk that merely looks like authority is unconstructible.
 /// Binding validation (principal authorization, revision existence,
 /// event resolution) is the migration/governance slices' concern
 /// (E7.1/E4.2); this contract only gates on the typed input.
@@ -202,11 +254,11 @@ pub(crate) enum MappingAttestation {
     /// Authority derived from the reviewed source-control revision.
     SourceControl {
         principal: Principal,
-        revision: String,
+        revision: Revision,
     },
     /// A Cloud Governance Event grants the state (E4.2's
     /// `adoc.governance_event.v0` will enclose the reference).
-    CloudGovernanceEvent { event_id: String },
+    CloudGovernanceEvent { event_id: GovernanceEventId },
 }
 
 /// Whether a mapping application carried authority.
@@ -946,10 +998,10 @@ mod tests {
             migration_attestation(),
             MappingAttestation::SourceControl {
                 principal: Principal::new("release-manager@acme").expect("non-blank"),
-                revision: "9c4f2ab".to_string(),
+                revision: Revision::new("9c4f2ab").expect("non-blank"),
             },
             MappingAttestation::CloudGovernanceEvent {
-                event_id: "ge-42".to_string(),
+                event_id: GovernanceEventId::new("ge-42").expect("non-blank"),
             },
         ];
         for attestation in attestations {
@@ -970,6 +1022,24 @@ mod tests {
                         state: EffectivityState::Effective
                     },
                 ]
+            );
+        }
+    }
+
+    /// K5's adversarial encoding from the PR-#153 review: an attestation
+    /// whose payload is blank — something that looks like authority but
+    /// is backed by nothing — must be unconstructible, matching the
+    /// non-blank posture of `Principal`/`PolicyVersion`/`EventEmitter`.
+    #[test]
+    fn blank_attestation_payloads_are_unconstructible() {
+        for blank in ["", " ", "  9c4f2ab", "9c4f2ab "] {
+            assert_eq!(
+                Revision::new(blank).expect_err("blank revision must be rejected"),
+                AttestationError::InvalidRevision
+            );
+            assert_eq!(
+                GovernanceEventId::new(blank).expect_err("blank event id must be rejected"),
+                AttestationError::InvalidGovernanceEventId
             );
         }
     }
