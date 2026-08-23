@@ -449,6 +449,17 @@ impl ObligationLedger {
     /// ledger and touches nothing else — the ledger holds no reference
     /// to the E1.4 store or any §K4 dimension, so a waiver cannot
     /// convert `unverified` to `verified` (MILESTONES §E1.6 exit gate).
+    ///
+    /// Waivability is judged against the RECORDED standing state, not
+    /// the derived assessment: once a waiver lapses the obligation is
+    /// assessed `open`+blocking, but its recorded state stays `waived`,
+    /// so a second waiver is `NotWaivable` — the only recorded exits are
+    /// `satisfied`/`failed`/`expired`. Fail closed: a lapsed waiver is
+    /// never quietly replaced by a fresh one.
+    // ponytail: no waiver-renewal path — deliberate ceiling; if policy
+    // ever wants renewable waivers, `waive` takes an evaluation ordinal
+    // and treats a lapsed last waiver as open (a new slice's decision,
+    // not this one's).
     pub(crate) fn waive(&mut self, waiver: ObligationWaiver) -> Result<(), ObligationError> {
         let Some(record) = self.opened_record(&waiver.obligation_id) else {
             return Err(ObligationError::UnknownObligation {
