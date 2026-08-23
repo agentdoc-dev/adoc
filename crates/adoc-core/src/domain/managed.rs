@@ -886,6 +886,7 @@ mod tests {
         );
         let object_b = &workspace
             .repository(&repo_b)
+            .expect("identity unambiguous")
             .expect("repo b recorded")
             .objects["billing.credits"];
         assert_eq!(object_b.versions.len(), 2);
@@ -1215,8 +1216,9 @@ mod tests {
                 "{invalid:?} must be rejected"
             );
         }
-        assert!(
-            workspace.repository(&repo).is_none(),
+        assert_eq!(
+            workspace.repository(&repo),
+            Ok(None),
             "a rejected import must not bind the repository slot or mint anything"
         );
     }
@@ -1910,7 +1912,7 @@ mod tests {
                 repo_a.clone(),
                 vec![bound_object(
                     "billing.credits",
-                    "sha256:same",
+                    "sha256:cafe",
                     "docs/team.adoc",
                     "sha256:feed",
                 )],
@@ -1921,7 +1923,7 @@ mod tests {
                 repo_b.clone(),
                 vec![bound_object(
                     "billing.credits",
-                    "sha256:same",
+                    "sha256:cafe",
                     "docs/other.adoc",
                     "sha256:beef",
                 )],
@@ -2500,6 +2502,7 @@ mod tests {
         );
         let object = &workspace
             .repository(&producer)
+            .expect("identity unambiguous")
             .expect("one record under the producer identity")
             .objects["billing.credits"];
         assert_eq!(
