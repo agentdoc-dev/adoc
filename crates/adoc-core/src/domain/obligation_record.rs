@@ -527,7 +527,18 @@ impl ObligationLedger {
                 id: waiver.obligation_id.clone(),
             });
         }
-        let standing_state = self.standing()[&waiver.obligation_id].state;
+        // Fail closed rather than index: the `opened_record` check above
+        // makes the key's presence provable today, but a panic path in
+        // library code outlives proofs.
+        let Some(standing_state) = self
+            .standing()
+            .get(&waiver.obligation_id)
+            .map(|record| record.state)
+        else {
+            return Err(ObligationError::UnknownObligation {
+                id: waiver.obligation_id.clone(),
+            });
+        };
         if standing_state != ObligationState::Open {
             return Err(ObligationError::NotWaivable {
                 id: waiver.obligation_id.clone(),
