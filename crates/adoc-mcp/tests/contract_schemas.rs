@@ -1915,6 +1915,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
 
     let mut direct_with_invalid_expiry = direct_human.clone();
     direct_with_invalid_expiry["grants"][0]["expires_at"] = json!("never");
+    let mut direct_with_rfc3339_edge_expiry = direct_human.clone();
+    direct_with_rfc3339_edge_expiry["grants"][0]["expires_at"] = json!("2026-12-31t23:59:60z");
 
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision, true),
@@ -2223,6 +2225,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "direct grant with invalid expiry",
             direct_with_invalid_expiry,
             false,
+        ),
+        (
+            "direct grant with RFC 3339 lowercase leap-second expiry",
+            direct_with_rfc3339_edge_expiry,
+            true,
         ),
     ] {
         assert_eq!(
