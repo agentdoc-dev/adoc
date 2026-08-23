@@ -28,16 +28,18 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
 use serde::Serialize;
 use thiserror::Error;
 
 use crate::application::compile::{LocalProjectContext, compile_with_provider_anchored_for_date};
-use crate::domain::diagnostic::{Diagnostic, Severity};
+use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
+use crate::domain::graph::{GraphArtifactDocument, GraphNode};
 use crate::domain::hashing::sha256_prefixed;
 use crate::domain::ports::source_provider::SourceProvider;
+use crate::infrastructure::artifact::graph_json::read_graph_artifact_document;
 use crate::infrastructure::source::evidence_fs::FsEvidenceFileReader;
 use crate::infrastructure::source::fs::FsSourceProvider;
 
@@ -69,6 +71,14 @@ pub struct ValidationRuntimeInput {
     pub runtime_binary_digest: String,
     /// Discovered project config file, digested as validation context.
     pub config_path: Option<PathBuf>,
+    /// Graph artifact to validate against the recompiled source
+    /// (E1.7.T4). Consumed exact-match: any `schema_version` other than
+    /// `adoc.graph.v6` is rejected with `schema.unsupported_version`, and
+    /// a schema-valid artifact whose governed-meaning content hashes do
+    /// not correspond to the source fails with
+    /// `validation.context_artifact_drift` — JSON Schema stays preflight
+    /// only (ADR-0015).
+    pub context_artifact: Option<PathBuf>,
 }
 
 /// A validation run: the digest-bound receipt plus the ordinary typed
@@ -188,10 +198,26 @@ pub fn run_validation_runtime(
         });
     }
 
+    if let Some(artifact_path) = &input.context_artifact {
+        context.push(NamedDigestEntry {
+            name: "context_artifact".to_string(),
+            digest: file_digest(artifact_path)?,
+        });
+    }
+
     let reader = FsEvidenceFileReader::new(input.anchor_root.clone());
     let compiled =
         compile_with_provider_anchored_for_date(&provider, &reader, input.evaluation_date);
-    let diagnostics = compiled.diagnostics;
+    let mut diagnostics = compiled.diagnostics;
+    if let Some(artifact_path) = &input.context_artifact {
+        diagnostics.extend(validate_context_artifact(
+            artifact_path,
+            compiled
+                .artifacts
+                .as_ref()
+                .map(|artifacts| artifacts.graph_json.as_str()),
+        ));
+    }
 
     let result = if diagnostics
         .iter()
@@ -256,6 +282,87 @@ fn file_digest(path: &PathBuf) -> Result<String, ValidationRuntimeError> {
     Ok(sha256_prefixed(&bytes))
 }
 
+/// E1.7.T4: domain validation of a context artifact against the recompiled
+/// source. `read_graph_artifact_document` enforces the exact-match version
+/// gate (`schema.unsupported_version` for v5 and v99 alike) and JSON shape;
+/// the governed-meaning comparison below is what JSON Schema can never
+/// see: every Knowledge Object's `content_hash` must equal the recompiled
+/// source's, and the object sets must coincide. When the source itself has
+/// errors the recompiled artifact does not exist and the run already
+/// fails, so only the version/shape gate applies.
+fn validate_context_artifact(
+    artifact_path: &Path,
+    recompiled_graph_json: Option<&str>,
+) -> Vec<Diagnostic> {
+    let document = match read_graph_artifact_document(artifact_path) {
+        Ok(document) => document,
+        Err(diagnostics) => return diagnostics,
+    };
+    let Some(recompiled_graph_json) = recompiled_graph_json else {
+        return Vec::new();
+    };
+    let recompiled: GraphArtifactDocument = match serde_json::from_str(recompiled_graph_json) {
+        Ok(recompiled) => recompiled,
+        // Compile-pipeline invariant: its own graph_json always parses.
+        Err(_) => unreachable!("compile output graph_json is well-formed"),
+    };
+
+    let artifact_hashes = knowledge_object_hashes(&document);
+    let recompiled_hashes = knowledge_object_hashes(&recompiled);
+    let mut diagnostics = Vec::new();
+    for (id, artifact_hash) in &artifact_hashes {
+        match recompiled_hashes.get(id) {
+            None => diagnostics.push(drift_diagnostic(
+                artifact_path,
+                id,
+                "records a Knowledge Object the compiled source does not contain",
+            )),
+            Some(recompiled_hash) if recompiled_hash != artifact_hash => {
+                diagnostics.push(drift_diagnostic(
+                    artifact_path,
+                    id,
+                    "records a content_hash that does not match the recompiled source",
+                ));
+            }
+            Some(_) => {}
+        }
+    }
+    for id in recompiled_hashes.keys() {
+        if !artifact_hashes.contains_key(id) {
+            diagnostics.push(drift_diagnostic(
+                artifact_path,
+                id,
+                "does not record a Knowledge Object the compiled source contains",
+            ));
+        }
+    }
+    diagnostics
+}
+
+fn knowledge_object_hashes(document: &GraphArtifactDocument) -> BTreeMap<String, String> {
+    document
+        .nodes
+        .iter()
+        .filter_map(|node| match node {
+            GraphNode::KnowledgeObject(object) => {
+                Some((object.id.clone(), object.content_hash.clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn drift_diagnostic(artifact_path: &Path, object_id: &str, detail: &str) -> Diagnostic {
+    Diagnostic::error(
+        DiagnosticCode::ValidationContextArtifactDrift,
+        format!(
+            "context artifact '{}' {detail} for `{object_id}`",
+            artifact_path.display()
+        ),
+    )
+    .with_object_id(object_id)
+}
+
 fn require_sha256_digest(digest: &str) -> Result<(), ValidationRuntimeError> {
     let hex = digest.strip_prefix("sha256:").unwrap_or_default();
     if hex.len() == 64
@@ -295,7 +402,36 @@ mod tests {
             runtime_version: "0.4.0".to_string(),
             runtime_binary_digest: TEST_DIGEST.to_string(),
             config_path: None,
+            context_artifact: None,
         }
+    }
+
+    /// Compile the workspace and return its graph artifact JSON — the
+    /// honest artifact a build of the same source would publish.
+    fn compiled_graph_json(root: &Path) -> String {
+        let compiled = crate::compile_workspace_for_date(
+            crate::CompileInput {
+                root: root.to_path_buf(),
+            },
+            NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date"),
+        );
+        compiled
+            .artifacts
+            .expect("clean fixture compiles artifacts")
+            .graph_json
+    }
+
+    fn graph_v6_schema_accepts(instance_json: &str) -> bool {
+        let schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/agent/v0/schema/graph-artifact.v6.json");
+        let schema: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(schema_path).expect("schema is readable"))
+                .expect("schema is json");
+        let instance: serde_json::Value =
+            serde_json::from_str(instance_json).expect("artifact is json");
+        jsonschema::validator_for(&schema)
+            .expect("schema compiles")
+            .is_valid(&instance)
     }
 
     fn valid_source() -> &'static str {
@@ -384,6 +520,123 @@ mod tests {
             "expected typed error diagnostics, got: {:?}",
             outcome.diagnostics
         );
+    }
+
+    /// E1.7.T4 baseline: an honest artifact of the same source passes; the
+    /// receipt records its digest as context and the consumed graph
+    /// contract version.
+    #[test]
+    fn matching_context_artifact_passes_and_is_digest_bound() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let docs = workspace.path().join("docs");
+        write(&docs.join("index.adoc"), valid_source());
+        let artifact_path = workspace.path().join("dist/docs.graph.json");
+        write(&artifact_path, &compiled_graph_json(&docs));
+
+        let mut input = standalone_input(&docs);
+        input.context_artifact = Some(artifact_path);
+        let outcome = run_validation_runtime(input).expect("validation runs");
+
+        assert_eq!(outcome.receipt.result(), ValidationResult::Pass);
+        let value: serde_json::Value =
+            serde_json::from_str(&outcome.receipt.to_canonical_json()).expect("receipt is json");
+        assert_eq!(value["context"][0]["name"], "context_artifact");
+        assert_eq!(value["contract_versions"]["graph"], "adoc.graph.v6");
+    }
+
+    /// E1.7.T4 stop-ship cut: a context artifact the published JSON Schema
+    /// ACCEPTS but whose governed-meaning content_hash does not correspond
+    /// to the source is rejected by the runtime with typed diagnostics,
+    /// and the receipt records the failure. JSON Schema stays
+    /// preflight/documentation only (ADR-0015): schema validity alone can
+    /// never make a payload domain-valid, and a preflight that accepted
+    /// this fixture would be overruled by this runtime.
+    #[test]
+    fn schema_valid_domain_invalid_context_artifact_fails_closed() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let docs = workspace.path().join("docs");
+        write(&docs.join("index.adoc"), valid_source());
+        let honest = compiled_graph_json(&docs);
+        let honest_value: serde_json::Value = serde_json::from_str(&honest).expect("json");
+        let real_hash = honest_value["nodes"]
+            .as_array()
+            .expect("nodes array")
+            .iter()
+            .find_map(|node| {
+                (node["type"] == "knowledge_object").then(|| {
+                    node["content_hash"]
+                        .as_str()
+                        .expect("content_hash string")
+                        .to_string()
+                })
+            })
+            .expect("fixture has a knowledge object");
+        let forged_hash = format!("sha256:{}", "0".repeat(64));
+        let forged = honest.replace(&real_hash, &forged_hash);
+        assert!(
+            graph_v6_schema_accepts(&forged),
+            "the forged artifact must stay JSON-Schema-valid — the cut proves schema \
+             validity is not domain validity"
+        );
+        let artifact_path = workspace.path().join("dist/docs.graph.json");
+        write(&artifact_path, &forged);
+
+        let mut input = standalone_input(&docs);
+        input.context_artifact = Some(artifact_path);
+        let outcome = run_validation_runtime(input).expect("validation runs");
+
+        assert_eq!(outcome.receipt.result(), ValidationResult::Fail);
+        assert!(
+            outcome.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::ValidationContextArtifactDrift
+                    && diagnostic.severity == Severity::Error
+            }),
+            "expected validation.context_artifact_drift, got: {:?}",
+            outcome.diagnostics
+        );
+        // The fail receipt is still a valid envelope of the published
+        // receipt schema (parity discipline covers both results).
+        let receipt_value: serde_json::Value =
+            serde_json::from_str(&outcome.receipt.to_canonical_json()).expect("receipt is json");
+        assert_eq!(receipt_value["result"], "fail");
+    }
+
+    /// E1.7.T4: unknown envelope versions reject exact-match — an older
+    /// v5 and an unknown v99 alike — with `schema.unsupported_version`;
+    /// the receipt records the failure and no drift comparison runs.
+    #[test]
+    fn unknown_context_artifact_version_rejects_exact_match() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let docs = workspace.path().join("docs");
+        write(&docs.join("index.adoc"), valid_source());
+        let honest = compiled_graph_json(&docs);
+
+        for version in ["adoc.graph.v5", "adoc.graph.v99"] {
+            let artifact_path = workspace.path().join("dist/docs.graph.json");
+            write(&artifact_path, &honest.replace("adoc.graph.v6", version));
+
+            let mut input = standalone_input(&docs);
+            input.context_artifact = Some(artifact_path);
+            let outcome = run_validation_runtime(input).expect("validation runs");
+
+            assert_eq!(outcome.receipt.result(), ValidationResult::Fail);
+            assert!(
+                outcome
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == DiagnosticCode::SchemaUnsupportedVersion),
+                "{version}: expected schema.unsupported_version, got: {:?}",
+                outcome.diagnostics
+            );
+            assert!(
+                !outcome
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code
+                        == DiagnosticCode::ValidationContextArtifactDrift),
+                "{version}: version gate must reject before any drift comparison"
+            );
+        }
     }
 
     /// The harness-attested digest is validated at the boundary: anything

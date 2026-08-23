@@ -74,13 +74,18 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     as_of,
                     receipt,
                     runtime_binary_digest,
+                    context_artifact,
                 } => match (receipt, runtime_binary_digest, as_of) {
                     // clap `requires` guarantees the digest and --as-of
                     // accompany --receipt; the triple is re-matched here so
                     // the plain path never sees receipt state.
-                    (Some(receipt), Some(runtime_binary_digest), Some(as_of)) => {
-                        check_receipt(path, as_of, receipt, runtime_binary_digest)
-                    }
+                    (Some(receipt), Some(runtime_binary_digest), Some(as_of)) => check_receipt(
+                        path,
+                        as_of,
+                        receipt,
+                        runtime_binary_digest,
+                        context_artifact,
+                    ),
                     (_, _, as_of) => check(path, style.into(), as_of, resolved),
                 },
                 Commands::Migrate {

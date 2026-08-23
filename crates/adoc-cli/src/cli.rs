@@ -379,6 +379,10 @@ pub(crate) enum Commands {
         /// (`sha256:<64 hex>`); recorded verbatim in the receipt.
         #[arg(long, value_name = "DIGEST", requires = "receipt")]
         runtime_binary_digest: Option<String>,
+        /// Graph artifact to validate against the recompiled source
+        /// (exact-match adoc.graph.v6; drift fails the receipt).
+        #[arg(long, value_name = "PATH", requires = "receipt")]
+        context_artifact: Option<PathBuf>,
     },
     #[command(
         about = "Convert Markdown sources to prose-mode .adoc, or back with --export (dry-run by default).",

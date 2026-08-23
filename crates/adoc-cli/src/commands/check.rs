@@ -57,6 +57,7 @@ pub(crate) fn check_receipt(
     as_of: chrono::NaiveDate,
     receipt_path: PathBuf,
     runtime_binary_digest: String,
+    context_artifact: Option<PathBuf>,
 ) -> i32 {
     let config_start = match current_dir() {
         Ok(path) => path,
@@ -69,6 +70,7 @@ pub(crate) fn check_receipt(
         as_of,
         runtime_version: env!("CARGO_PKG_VERSION").to_string(),
         runtime_binary_digest,
+        context_artifact,
     }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),
