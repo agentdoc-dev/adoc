@@ -14,10 +14,27 @@
       "minLength": 1
     },
     "import_mapping": {
-      "description": "One entry per released Knowledge Object kind.",
+      "description": "One entry per released Knowledge Object kind. The kind set is closed by name: every released kind is required and no other key is allowed, so a document that misspells or drops a kind fails closed instead of validating on property count.",
       "type": "object",
-      "minProperties": 15,
-      "additionalProperties": { "$ref": "#/$defs/kindImportMapping" }
+      "required": ["agent_instruction", "api", "claim", "constraint", "contradiction", "decision", "example", "glossary", "observation", "policy", "procedure", "question", "source", "task", "warning"],
+      "additionalProperties": false,
+      "properties": {
+        "agent_instruction": { "$ref": "#/$defs/kindImportMapping" },
+        "api": { "$ref": "#/$defs/kindImportMapping" },
+        "claim": { "$ref": "#/$defs/kindImportMapping" },
+        "constraint": { "$ref": "#/$defs/kindImportMapping" },
+        "contradiction": { "$ref": "#/$defs/kindImportMapping" },
+        "decision": { "$ref": "#/$defs/kindImportMapping" },
+        "example": { "$ref": "#/$defs/kindImportMapping" },
+        "glossary": { "$ref": "#/$defs/kindImportMapping" },
+        "observation": { "$ref": "#/$defs/kindImportMapping" },
+        "policy": { "$ref": "#/$defs/kindImportMapping" },
+        "procedure": { "$ref": "#/$defs/kindImportMapping" },
+        "question": { "$ref": "#/$defs/kindImportMapping" },
+        "source": { "$ref": "#/$defs/kindImportMapping" },
+        "task": { "$ref": "#/$defs/kindImportMapping" },
+        "warning": { "$ref": "#/$defs/kindImportMapping" }
+      }
     },
     "loss_declaration": {
       "description": "Machine-readable per-dimension declaration of what the flat side cannot carry — one entry per K4 dimension, in K4 order.",
@@ -34,9 +51,27 @@
       "properties": {
         "projection_version": { "type": "string", "minLength": 1 },
         "kinds": {
+          "description": "Same closed kind set as import_mapping, by name.",
           "type": "object",
-          "minProperties": 15,
-          "additionalProperties": { "$ref": "#/$defs/kindProjection" }
+          "required": ["agent_instruction", "api", "claim", "constraint", "contradiction", "decision", "example", "glossary", "observation", "policy", "procedure", "question", "source", "task", "warning"],
+          "additionalProperties": false,
+          "properties": {
+            "agent_instruction": { "$ref": "#/$defs/kindProjection" },
+            "api": { "$ref": "#/$defs/kindProjection" },
+            "claim": { "$ref": "#/$defs/kindProjection" },
+            "constraint": { "$ref": "#/$defs/kindProjection" },
+            "contradiction": { "$ref": "#/$defs/kindProjection" },
+            "decision": { "$ref": "#/$defs/kindProjection" },
+            "example": { "$ref": "#/$defs/kindProjection" },
+            "glossary": { "$ref": "#/$defs/kindProjection" },
+            "observation": { "$ref": "#/$defs/kindProjection" },
+            "policy": { "$ref": "#/$defs/kindProjection" },
+            "procedure": { "$ref": "#/$defs/kindProjection" },
+            "question": { "$ref": "#/$defs/kindProjection" },
+            "source": { "$ref": "#/$defs/kindProjection" },
+            "task": { "$ref": "#/$defs/kindProjection" },
+            "warning": { "$ref": "#/$defs/kindProjection" }
+          }
         }
       }
     }
