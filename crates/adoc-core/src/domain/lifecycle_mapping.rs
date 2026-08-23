@@ -49,8 +49,14 @@ pub(crate) const LIFECYCLE_MAPPING_SCHEMA_VERSION: &str = "adoc.lifecycle_mappin
 /// editing a rule under version "1" fails the pin by construction.
 const MAPPING_VERSION_1: &str = "1";
 
-/// The only projection rule set shipped so far — versioned independently
-/// of the import mapping, under the same pin discipline.
+/// The only projection rule set shipped so far. The mapping and
+/// projection versions are carried as separate envelope fields but
+/// advance in LOCKSTEP: each contract document pairs exactly one
+/// mapping version with one projection version, so a rule change on
+/// either side ships a new paired document (with its own byte pin) and
+/// bumps both versions. Independent movement would make single-version
+/// resolution ambiguous — if it is ever wanted, it ships as a
+/// paired-resolution contract change, not by bumping one field alone.
 const PROJECTION_VERSION_1: &str = "1";
 
 /// The multi-dimension target of one flat authored word. Deliberately
@@ -344,6 +350,9 @@ impl LifecycleMappingContract {
 
     /// Resolve the contract for a recorded projection version — exact
     /// match, fail closed on anything else (playbook decision 12).
+    /// Versions advance in lockstep (see [`PROJECTION_VERSION_1`]):
+    /// resolving by projection version yields the same paired document
+    /// as resolving by its mapping version.
     pub(crate) fn for_projection_version(recorded: &str) -> Result<Self, LifecycleMappingError> {
         match recorded {
             PROJECTION_VERSION_1 => Ok(Self::version_1()),
@@ -465,7 +474,10 @@ impl LifecycleMappingContract {
     /// Apply the import mapping to one imported object's authored
     /// status. The mapped target lands as E1.4 state changes ONLY when
     /// `attestation` is present; otherwise the application records the
-    /// target as advisory and lands the candidate floor. No application
+    /// target as advisory and lands the candidate floor — which REPLACES
+    /// the target in both directions (see [`CANDIDATE_FLOOR`]): an
+    /// unattested application discards restrictive targets like a
+    /// revocation as well as permissive ones. No application
     /// ever lands a verification change — with or without attestation —
     /// so the dimension stays a gap until a verification run records an
     /// outcome, and a replayed application can never overwrite one.
@@ -796,6 +808,14 @@ impl LifecycleMappingContract {
 
 /// The candidate floor every unattested application lands (K2 step 8):
 /// governance stays proposed, nothing becomes effective.
+///
+/// The floor REPLACES the mapped target rather than bounding it: an
+/// unattested application discards the target in both directions, so a
+/// restrictive authored word (`policy: revoked`, `contradiction:
+/// dismissed`) also lands as a proposed/pending candidate awaiting
+/// review — never as a landed revocation/rejection, which would itself
+/// be authored content acting with authority. The discarded target
+/// survives as the advisory [`MappingApplication::mapped`].
 const CANDIDATE_FLOOR: MappedManagedState = MappedManagedState {
     governance: GovernanceState::Proposed,
     effectivity: EffectivityState::Pending,
@@ -1669,6 +1689,56 @@ mod tests {
                 .projection
                 .projection_version,
             "1"
+        );
+    }
+
+    /// The mapping and projection versions advance in lockstep (PR #153
+    /// review): both resolvers yield the same paired document, so the
+    /// byte pin protects an unambiguous thing — a rule change on either
+    /// side ships a new paired document and bumps both versions.
+    #[test]
+    fn mapping_and_projection_versions_resolve_to_the_same_paired_document() {
+        let by_mapping =
+            LifecycleMappingContract::for_mapping_version("1").expect("version 1 resolves");
+        let by_projection =
+            LifecycleMappingContract::for_projection_version("1").expect("version 1 resolves");
+        assert_eq!(
+            by_mapping, by_projection,
+            "the two resolvers must return the same paired contract document"
+        );
+        assert_eq!(by_mapping.mapping_version, "1");
+        assert_eq!(by_mapping.projection.projection_version, "1");
+    }
+
+    /// The candidate floor replaces the mapped target in BOTH directions
+    /// (PR #153 review): an unattested import of an authored revocation
+    /// lands as a proposed/pending candidate — authored content never
+    /// lands a revocation with authority — while the advisory `mapped`
+    /// target preserves what the word means for the reviewer.
+    #[test]
+    fn unattested_applications_discard_restrictive_targets_too() {
+        let application = contract()
+            .apply_import_mapping("policy", Some("revoked"), None)
+            .expect("mapping applies");
+        assert_eq!(
+            application.mapped,
+            MappedManagedState {
+                governance: GovernanceState::Revoked,
+                effectivity: EffectivityState::Expired,
+            },
+            "the advisory target must preserve the authored meaning"
+        );
+        assert_eq!(
+            application.applied,
+            vec![
+                ManagedStateChange::Governance {
+                    state: GovernanceState::Proposed
+                },
+                ManagedStateChange::Effectivity {
+                    state: EffectivityState::Pending
+                },
+            ],
+            "an unattested revocation lands the candidate floor, not the target"
         );
     }
 
