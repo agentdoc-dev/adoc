@@ -182,6 +182,8 @@ agentdoc.cloud.egress_policy.v0
 agentdoc.connector_capabilities.v0
 ```
 
+`adoc.authorization_decision.v0` uses the shared `adoc` namespace because its contract is defined for both Cloud producers and AgentDoc consumers; the other operation contracts in this list are Cloud-private.
+
 Breaking changes create new operation-contract versions. Unknown versions fail closed.
 
 ## C8. Capability negotiation
