@@ -724,7 +724,7 @@
       "type": "object",
       "required": [
         "role",
-        "evidence_id",
+        "authorization_id",
         "snapshot_id",
         "connector_id",
         "principal_id",
@@ -737,7 +737,7 @@
       "additionalProperties": false,
       "properties": {
         "role": { "const": "current_authorization" },
-        "evidence_id": { "$ref": "#/$defs/nonEmpty" },
+        "authorization_id": { "$ref": "#/$defs/nonEmpty" },
         "snapshot_id": { "$ref": "#/$defs/nonEmpty" },
         "connector_id": { "$ref": "#/$defs/nonEmpty" },
         "principal_id": { "$ref": "#/$defs/nonEmpty" },
