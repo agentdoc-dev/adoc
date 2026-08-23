@@ -31,7 +31,7 @@
       "$ref": "#/$defs/scope"
     },
     "evaluation_time": {
-      "description": "Evaluator timestamp input. Schema validation pins the lexical RFC 3339 shape for every record except evaluation_time_invalid, which preserves unconstrained raw input for replay; calendar validity and instant comparison are evaluator-owned and fail closed.",
+      "description": "Evaluator timestamp input. Schema validation pins the lexical RFC 3339 shape after identity freshness passes; identity_expired, identity_context_missing, and evaluation_time_invalid preserve unconstrained raw input for replay. Calendar validity and instant comparison are evaluator-owned and fail closed.",
       "type": "string"
     },
     "consequential": { "type": "boolean" },
@@ -178,7 +178,15 @@
     {
       "if": {
         "properties": {
-          "reason": { "not": { "const": "evaluation_time_invalid" } }
+          "reason": {
+            "not": {
+              "enum": [
+                "identity_context_missing",
+                "identity_expired",
+                "evaluation_time_invalid"
+              ]
+            }
+          }
         },
         "required": ["reason"]
       },
@@ -199,6 +207,7 @@
             "properties": { "freshness": { "const": "expired" } },
             "required": ["freshness"]
           },
+          "basis": { "type": "null" },
           "result": { "const": "deny" }
         }
       }
@@ -217,7 +226,8 @@
               "freshness": { "const": "insufficient_context" }
             },
             "required": ["freshness"]
-          }
+          },
+          "basis": { "type": "null" }
         },
         "allOf": [
           {

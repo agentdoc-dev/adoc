@@ -1667,6 +1667,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
     multiline_workspace_id["resource"]["workspace_id"] = json!("workspace-1\nworkspace-2");
     let mut carriage_return_workspace_id = decision.clone();
     carriage_return_workspace_id["resource"]["workspace_id"] = json!("workspace-1\rworkspace-2");
+    let mut line_separator_workspace_id = decision.clone();
+    line_separator_workspace_id["resource"]["workspace_id"] =
+        json!("workspace-1\u{2028}workspace-2");
 
     let mut unknown_result = decision.clone();
     unknown_result["result"] = json!("maybe");
@@ -1828,6 +1831,10 @@ fn authorization_decision_schema_pins_replay_bindings() {
     false_identity_expired_reason["principal"]["freshness"] = json!("current");
     let mut identity_expired_without_deny_result = identity_expired.clone();
     identity_expired_without_deny_result["result"] = json!("insufficient_context");
+    let mut identity_expired_with_raw_evaluation_time = identity_expired.clone();
+    identity_expired_with_raw_evaluation_time["evaluation_time"] = json!("not-a-time");
+    let mut identity_expired_with_basis = identity_expired.clone();
+    identity_expired_with_basis["basis"] = decision["basis"].clone();
 
     let mut identity_context_missing = denied.clone();
     identity_context_missing["principal"]["freshness"] = json!("insufficient_context");
@@ -1844,6 +1851,10 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut nonconsequential_identity_context_with_insufficient =
         nonconsequential_identity_context.clone();
     nonconsequential_identity_context_with_insufficient["result"] = json!("insufficient_context");
+    let mut identity_context_missing_with_raw_evaluation_time = identity_context_missing.clone();
+    identity_context_missing_with_raw_evaluation_time["evaluation_time"] = json!("not-a-time");
+    let mut identity_context_missing_with_basis = identity_context_missing.clone();
+    identity_context_missing_with_basis["basis"] = decision["basis"].clone();
 
     let mut expired_identity_with_later_reason = visibility_denied.clone();
     expired_identity_with_later_reason["principal"]["freshness"] = json!("expired");
@@ -1999,8 +2010,18 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         (
+            "identity-expired reason preserves raw evaluation time",
+            identity_expired_with_raw_evaluation_time,
+            true,
+        ),
+        (
             "consequential identity-context reason matches input",
             identity_context_missing,
+            true,
+        ),
+        (
+            "identity-context reason preserves raw evaluation time",
+            identity_context_missing_with_raw_evaluation_time,
             true,
         ),
         (
@@ -2035,6 +2056,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "carriage-return workspace id",
             carriage_return_workspace_id,
+            false,
+        ),
+        (
+            "line-separator workspace id",
+            line_separator_workspace_id,
             false,
         ),
         ("unknown result", unknown_result, false),
@@ -2132,8 +2158,18 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         (
+            "identity-expired reason with basis",
+            identity_expired_with_basis,
+            false,
+        ),
+        (
             "false identity-context reason",
             false_identity_context_missing_reason,
+            false,
+        ),
+        (
+            "identity-context reason with basis",
+            identity_context_missing_with_basis,
             false,
         ),
         (
