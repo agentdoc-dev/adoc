@@ -368,11 +368,15 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_evaluation_date)]
         as_of: Option<chrono::NaiveDate>,
         /// Write a digest-bound adoc.validation_receipt.v0 to this path.
+        /// Receipt mode prints plain diagnostics only: an explicit
+        /// `--style` conflicts, and `--format markdown` is refused at
+        /// dispatch — never silently ignored.
         #[arg(
             long,
             value_name = "PATH",
             requires = "as_of",
-            requires = "runtime_binary_digest"
+            requires = "runtime_binary_digest",
+            conflicts_with = "style"
         )]
         receipt: Option<PathBuf>,
         /// Harness-attested sha256 of the invoking adoc binary

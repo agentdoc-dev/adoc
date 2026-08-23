@@ -79,13 +79,25 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     // clap `requires` guarantees the digest and --as-of
                     // accompany --receipt; the triple is re-matched here so
                     // the plain path never sees receipt state.
-                    (Some(receipt), Some(runtime_binary_digest), Some(as_of)) => check_receipt(
-                        path,
-                        as_of,
-                        receipt,
-                        runtime_binary_digest,
-                        context_artifact,
-                    ),
+                    (Some(receipt), Some(runtime_binary_digest), Some(as_of)) => {
+                        // Receipt mode writes the canonical envelope and
+                        // prints plain diagnostics; it has no markdown
+                        // presenter — refuse rather than silently fall
+                        // back (mirrors the command gate above).
+                        if resolved == ResolvedFormat::Markdown {
+                            eprintln!(
+                                "error[cli.format] --format markdown is not supported with --receipt; receipt mode prints plain diagnostics and writes the canonical envelope to the receipt path"
+                            );
+                            return 2;
+                        }
+                        check_receipt(
+                            path,
+                            as_of,
+                            receipt,
+                            runtime_binary_digest,
+                            context_artifact,
+                        )
+                    }
                     (_, _, as_of) => check(path, style.into(), as_of, resolved),
                 },
                 Commands::Migrate {
