@@ -662,10 +662,19 @@ impl LifecycleMappingContract {
             fallback: Some("draft"),
         };
         let kinds: BTreeMap<&'static str, KindProjection> = [
+            // Claim projects only claim's own released words: `verified`
+            // under recorded verification, else the `draft` fallback with
+            // the loss report naming every drop (approval included) —
+            // never an invented word like policy's `active`. NOTE: flat
+            // authoring couples `status: verified` to a claim
+            // verification block (`Claim::from_parts` rejects the word
+            // alone); the rule fires only when verification:verified is
+            // recorded, and rendering those companion fields from the
+            // recorded outcome is export tooling's job (E6.6).
             (
                 "claim",
                 KindProjection {
-                    rules: vec![verified_rule, adopted_rule("active")],
+                    rules: vec![verified_rule],
                     fallback: Some("draft"),
                 },
             ),
@@ -1435,6 +1444,35 @@ mod tests {
         }
     }
 
+    /// Claim projection words come from claim's own released vocabulary
+    /// (PR #153 review): every projected word parses as a claim status,
+    /// and no word outside the corpus vocabulary `verified`/`draft` is
+    /// invented — an approved-but-unverified claim falls to the `draft`
+    /// fallback with the loss report naming the drop, never to a word no
+    /// claim surface recognizes.
+    #[test]
+    fn claim_projection_only_uses_claims_own_released_words() {
+        let contract = contract();
+        let claim = &contract.projection.kinds["claim"];
+        for word in claim
+            .rules
+            .iter()
+            .map(|rule| rule.status)
+            .chain(claim.fallback)
+        {
+            crate::domain::knowledge_object::claim::ClaimStatus::try_new(word).unwrap_or_else(
+                |error| {
+                    panic!("claim projected word {word:?} must parse as a claim status: {error:?}")
+                },
+            );
+            assert!(
+                ["verified", "draft"].contains(&word),
+                "claim projection must not invent the word {word:?} — no claim \
+                 surface recognizes it"
+            );
+        }
+    }
+
     /// A statusless kind projects `status: null`; recorded dimensions
     /// still produce loss entries. A dimension nobody recorded (a gap)
     /// is not a loss — nothing existed to drop.
@@ -1602,7 +1640,7 @@ mod tests {
         );
         assert_eq!(
             digest,
-            "sha256:54244b475d84ebe86dc714229a31d8ee5d7172fa1e99c65c1a246c8dd0d4a30b",
+            "sha256:9a8dec7c1a548a4cc80b3384db6fa0f6f576913c960526ad07adfde1a3bca721",
             "the version-1 rule set changed: a rule change requires a new \
              mapping/projection version, never an in-place edit. Serialized \
              contract:\n{}",
