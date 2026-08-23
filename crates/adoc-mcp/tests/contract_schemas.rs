@@ -1609,8 +1609,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
         }
     });
 
-    assert_valid("adoc.authorization_decision.v0.schema.json", &decision);
-
     let mut direct_human = decision.clone();
     direct_human["grants"][0] = json!({
         "grant_id": "exceptional-human-grant",
@@ -1627,31 +1625,157 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "effect": "allow",
         "scope_match": { "workspace_id": "workspace-1" }
     });
-    assert_valid("adoc.authorization_decision.v0.schema.json", &direct_human);
+    let mut expiring_role = decision.clone();
+    expiring_role["grants"][0]["expires_at"] = json!("2026-08-24T12:00:00Z");
 
-    for invalid in [
-        {
-            let mut invalid = decision.clone();
-            invalid
-                .as_object_mut()
-                .expect("object")
-                .remove("policy_version");
-            invalid
-        },
-        {
-            let mut invalid = decision.clone();
-            invalid["result"] = json!("maybe");
-            invalid
-        },
-        {
-            let mut invalid = decision.clone();
-            invalid["grants"][0]["source"] = json!("direct_grant");
-            invalid
-        },
+    let mut no_acl_ceiling = decision.clone();
+    no_acl_ceiling["source_acl_ceiling"] = json!({
+        "required": false,
+        "result": "not_applicable"
+    });
+
+    let mut denied = no_acl_ceiling.clone();
+    denied["grants"] = json!([]);
+    denied["visibility"] = json!("not_applicable");
+    denied["action_policy"] = json!("not_applicable");
+    denied["result"] = json!("deny");
+    denied["reason"] = json!("no_grant");
+    denied["basis"] = json!(null);
+
+    let mut insufficient = decision.clone();
+    insufficient["source_acl_ceiling"] = json!({
+        "required": true,
+        "result": "insufficient_context"
+    });
+    insufficient["result"] = json!("insufficient_context");
+    insufficient["reason"] = json!("source_acl_unavailable");
+    insufficient["basis"] = json!(null);
+
+    let mut missing_policy_version = decision.clone();
+    missing_policy_version
+        .as_object_mut()
+        .expect("object")
+        .remove("policy_version");
+
+    let mut unknown_result = decision.clone();
+    unknown_result["result"] = json!("maybe");
+
+    let mut direct_without_expiry = decision.clone();
+    direct_without_expiry["grants"][0]["source"] = json!("direct_grant");
+
+    let mut role_with_exception = decision.clone();
+    role_with_exception["grants"][0]["exceptional_reason"] = json!("incident response");
+
+    let mut direct_with_role = direct_human.clone();
+    direct_with_role["grants"][0]["role"] = json!({ "id": "builtin:curator", "version": 1 });
+
+    let mut human_direct_without_reason = direct_human.clone();
+    human_direct_without_reason["grants"][0]
+        .as_object_mut()
+        .expect("grant object")
+        .remove("exceptional_reason");
+
+    let mut direct_basis_with_role = decision.clone();
+    direct_basis_with_role["basis"]["source"] = json!("direct_grant");
+
+    let mut role_basis_without_role = decision.clone();
+    role_basis_without_role["basis"]
+        .as_object_mut()
+        .expect("basis object")
+        .remove("role");
+
+    let mut unknown_permission = decision.clone();
+    unknown_permission["permission"] = json!("proposal.aprove");
+    unknown_permission["grants"][0]["permission"] = json!("proposal.aprove");
+
+    let mut optional_acl_allow = decision.clone();
+    optional_acl_allow["source_acl_ceiling"]["required"] = json!(false);
+
+    let mut acl_without_snapshot = decision.clone();
+    acl_without_snapshot["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("ACL object")
+        .remove("snapshot_id");
+
+    let mut hard_deny_allow = decision.clone();
+    hard_deny_allow["hard_deny"] = json!(true);
+
+    let mut stale_principal_allow = decision.clone();
+    stale_principal_allow["principal"]["freshness"] = json!("expired");
+
+    let mut denied_acl_allow = decision.clone();
+    denied_acl_allow["source_acl_ceiling"]["result"] = json!("deny");
+
+    let mut denied_visibility_allow = decision.clone();
+    denied_visibility_allow["visibility"] = json!("deny");
+
+    let mut uncertain_action_allow = decision.clone();
+    uncertain_action_allow["action_policy"] = json!("insufficient_context");
+
+    let mut allow_without_basis = decision.clone();
+    allow_without_basis["basis"] = json!(null);
+
+    let mut allowed_reason_on_deny = denied.clone();
+    allowed_reason_on_deny["reason"] = json!("allowed");
+
+    for (name, instance, expected_valid) in [
+        ("role assignment allow", decision, true),
+        ("direct human grant", direct_human, true),
+        ("expiring role assignment", expiring_role, true),
+        ("optional ACL ceiling", no_acl_ceiling, true),
+        ("deny without basis", denied, true),
+        ("insufficient context without basis", insufficient, true),
+        ("missing policy version", missing_policy_version, false),
+        ("unknown result", unknown_result, false),
+        ("direct grant without expiry", direct_without_expiry, false),
+        (
+            "role assignment with exceptional reason",
+            role_with_exception,
+            false,
+        ),
+        ("direct grant with role", direct_with_role, false),
+        (
+            "human direct grant without reason",
+            human_direct_without_reason,
+            false,
+        ),
+        (
+            "direct-grant basis with role",
+            direct_basis_with_role,
+            false,
+        ),
+        (
+            "role-assignment basis without role",
+            role_basis_without_role,
+            false,
+        ),
+        ("unregistered permission", unknown_permission, false),
+        ("optional ACL marked allow", optional_acl_allow, false),
+        ("ACL allow without snapshot", acl_without_snapshot, false),
+        ("hard deny recorded as allow", hard_deny_allow, false),
+        (
+            "stale principal recorded as allow",
+            stale_principal_allow,
+            false,
+        ),
+        ("denied ACL recorded as allow", denied_acl_allow, false),
+        (
+            "denied visibility recorded as allow",
+            denied_visibility_allow,
+            false,
+        ),
+        (
+            "uncertain action policy recorded as allow",
+            uncertain_action_allow,
+            false,
+        ),
+        ("allow without basis", allow_without_basis, false),
+        ("allowed reason on deny", allowed_reason_on_deny, false),
     ] {
-        assert!(
-            !schema_accepts("adoc.authorization_decision.v0.schema.json", &invalid),
-            "authorization decision schema accepted an invalid replay binding: {invalid}"
+        assert_eq!(
+            schema_accepts("adoc.authorization_decision.v0.schema.json", &instance),
+            expected_valid,
+            "authorization decision schema case failed: {name}\ninstance: {instance}"
         );
     }
 }

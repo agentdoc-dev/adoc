@@ -323,43 +323,43 @@ Contract codes for the four-mode gate evaluator (E5.3; check publication E5.4). 
 | `gate.check_publish_failed` | planned | E5.4 | required check could not publish; blocks by absence, recorded for diagnosability |
 <!-- /registry:gate-codes -->
 
-## Permission primitives — owner `cloud`
+## Permission primitives — planned, owner `cloud`
 
 The immutable version-1 permission vocabulary implemented by E2.2. Policy evaluates these primitives, never role names; changing a primitive's meaning requires a new registry version.
 
 <!-- registry:permission-primitives -->
-| permission | registry version | status |
-| --- | --- | --- |
-| `audit.export` | 1 | implemented (E2.2) |
-| `audit.read` | 1 | implemented (E2.2) |
-| `connector.configure` | 1 | implemented (E2.2) |
-| `connector.create` | 1 | implemented (E2.2) |
-| `connector.delete` | 1 | implemented (E2.2) |
-| `connector.read` | 1 | implemented (E2.2) |
-| `knowledge.declassify` | 1 | implemented (E2.2) |
-| `knowledge.propose` | 1 | implemented (E2.2) |
-| `knowledge.read` | 1 | implemented (E2.2) |
-| `migration.approve` | 1 | implemented (E2.2) |
-| `migration.execute` | 1 | implemented (E2.2) |
-| `obligation.read` | 1 | implemented (E2.2) |
-| `obligation.satisfy` | 1 | implemented (E2.2) |
-| `obligation.waive` | 1 | implemented (E2.2) |
-| `policy.manage` | 1 | implemented (E2.2) |
-| `policy.read` | 1 | implemented (E2.2) |
-| `proposal.approve` | 1 | implemented (E2.2) |
-| `proposal.edit` | 1 | implemented (E2.2) |
-| `proposal.read` | 1 | implemented (E2.2) |
-| `proposal.reject` | 1 | implemented (E2.2) |
-| `proposal.review` | 1 | implemented (E2.2) |
-| `semantic_executor.configure` | 1 | implemented (E2.2) |
-| `semantic_executor.qualify` | 1 | implemented (E2.2) |
-| `semantic_executor.read` | 1 | implemented (E2.2) |
-| `source.manage` | 1 | implemented (E2.2) |
-| `source.read` | 1 | implemented (E2.2) |
-| `source.sync` | 1 | implemented (E2.2) |
-| `workspace.configure` | 1 | implemented (E2.2) |
-| `workspace.manage_members` | 1 | implemented (E2.2) |
-| `workspace.read` | 1 | implemented (E2.2) |
+| permission | registry version | status | planned by |
+| --- | --- | --- | --- |
+| `audit.export` | 1 | planned | E2.2 |
+| `audit.read` | 1 | planned | E2.2 |
+| `connector.configure` | 1 | planned | E2.2 |
+| `connector.create` | 1 | planned | E2.2 |
+| `connector.delete` | 1 | planned | E2.2 |
+| `connector.read` | 1 | planned | E2.2 |
+| `knowledge.declassify` | 1 | planned | E2.2 |
+| `knowledge.propose` | 1 | planned | E2.2 |
+| `knowledge.read` | 1 | planned | E2.2 |
+| `migration.approve` | 1 | planned | E2.2 |
+| `migration.execute` | 1 | planned | E2.2 |
+| `obligation.read` | 1 | planned | E2.2 |
+| `obligation.satisfy` | 1 | planned | E2.2 |
+| `obligation.waive` | 1 | planned | E2.2 |
+| `policy.manage` | 1 | planned | E2.2 |
+| `policy.read` | 1 | planned | E2.2 |
+| `proposal.approve` | 1 | planned | E2.2 |
+| `proposal.edit` | 1 | planned | E2.2 |
+| `proposal.read` | 1 | planned | E2.2 |
+| `proposal.reject` | 1 | planned | E2.2 |
+| `proposal.review` | 1 | planned | E2.2 |
+| `semantic_executor.configure` | 1 | planned | E2.2 |
+| `semantic_executor.qualify` | 1 | planned | E2.2 |
+| `semantic_executor.read` | 1 | planned | E2.2 |
+| `source.manage` | 1 | planned | E2.2 |
+| `source.read` | 1 | planned | E2.2 |
+| `source.sync` | 1 | planned | E2.2 |
+| `workspace.configure` | 1 | planned | E2.2 |
+| `workspace.manage_members` | 1 | planned | E2.2 |
+| `workspace.read` | 1 | planned | E2.2 |
 <!-- /registry:permission-primitives -->
 
 ## Cloud codes — owner `cloud`

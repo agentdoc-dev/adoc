@@ -242,7 +242,7 @@ Replaces owner-only workspace RLS with workspace-scoped principals, one authoriz
 2. `E2.2.T2` — Scope hierarchy workspace → connector → source container → repo/project/space/channel → knowledge kind → object; failing test: explicit restriction at more-specific scope beats a broader allow.
 3. `E2.2.T3` — Versioned built-in role bundles (e.g. `builtin:curator` + `role_version`); failing grep-style guard: no role-name string comparison anywhere in policy code paths.
 4. `E2.2.T4` — Expiry + fail-closed: failing tests: expired grant denies; missing consequential input yields typed `insufficient_context`, never allow.
-5. `E2.2.T5` — `agentdoc.cloud.authorization_decision.v0` record with basis/`scope_match`/`source_acl_ceiling`/`policy_version`; failing test: decision replays to the same result under pinned `policy_version`, `scope_match` shows the winning most-specific scope.
+5. `E2.2.T5` — `adoc.authorization_decision.v0` record with basis/`scope_match`/`source_acl_ceiling`/`policy_version`; failing test: decision replays to the same result under pinned `policy_version`, `scope_match` shows the winning most-specific scope.
 6. `E2.2.T6` — Time-bounded direct grants (service/agent/workload + exceptional human only); failing test: evaluator denies after expiry; conformance suite wired as the single fixture set for UI/API/MCP/retrieval/governance callers.
 **Acceptance:**
 - Conformance suite implements ADR-0057 precedence order: freshness → hard denies → source-ACL ceiling → scoped grants/denies → field visibility → action policy → result (exit gate).
