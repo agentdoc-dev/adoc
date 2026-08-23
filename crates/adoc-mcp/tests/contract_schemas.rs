@@ -1668,6 +1668,23 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .expect("ACL object")
         .remove("current_authorization");
 
+    let mut external_group_allow = decision.clone();
+    external_group_allow["grants"][0]["group"] = json!({
+        "id": "group-1",
+        "name": "reviewers",
+        "membership_source": "external",
+        "binding_id": "binding-1",
+        "source_kind": "github_team"
+    });
+    external_group_allow["basis"]["group"] = external_group_allow["grants"][0]["group"].clone();
+    let mut external_group_without_binding = external_group_allow.clone();
+    external_group_without_binding["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("binding_id");
+    let mut manual_group_with_binding = external_group_allow.clone();
+    manual_group_with_binding["grants"][0]["group"]["membership_source"] = json!("manual");
+
     let mut source_acl_outage = decision.clone();
     source_acl_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
         json!(false);
@@ -2014,9 +2031,24 @@ fn authorization_decision_schema_pins_replay_bindings() {
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision, true),
         (
-            "legacy allow without current ACL evidence",
+            "required allow without current ACL evidence",
             legacy_allow_without_current_acl,
+            false,
+        ),
+        (
+            "external group role assignment allow",
+            external_group_allow,
             true,
+        ),
+        (
+            "external group grant without binding",
+            external_group_without_binding,
+            false,
+        ),
+        (
+            "manual group grant with external binding",
+            manual_group_with_binding,
+            false,
         ),
         ("source ACL connector outage", source_acl_outage, true),
         ("stale current source ACL evidence", source_acl_stale, true),
@@ -2459,7 +2491,7 @@ fn connector_acl_policy_requires_every_activation_safety_declaration() {
         "schema_version": "adoc.connector_acl_policy.v0",
         "connector_kind": "github",
         "policy_version": "github-acl-v1",
-        "acquisition": "provider_api",
+        "acquisition": "provider_events_and_api",
         "freshness_window_seconds": 300,
         "refresh_mechanism": "webhook_and_poll",
         "revocation_propagation": "immediate_on_observation",
@@ -2498,21 +2530,36 @@ fn connector_acl_policy_requires_every_activation_safety_declaration() {
     permissive_outage["connector_unavailable"] = json!("use_stale");
     let mut no_session_invalidation = policy.clone();
     no_session_invalidation["invalidation"]["active_access_sessions"] = json!(false);
+    let mut api_with_webhook_refresh = policy.clone();
+    api_with_webhook_refresh["acquisition"] = json!("provider_api");
+    let mut events_without_webhook_refresh = policy.clone();
+    events_without_webhook_refresh["refresh_mechanism"] = json!("poll");
+    let mut blank_policy_version = policy.clone();
+    blank_policy_version["policy_version"] = json!(" github-acl-v1");
     let mut excessive_freshness = policy.clone();
     excessive_freshness["freshness_window_seconds"] = json!(604801);
     let mut zero_freshness = policy;
     zero_freshness["freshness_window_seconds"] = json!(0);
 
-    for invalid in [
-        permissive_outage,
-        no_session_invalidation,
-        excessive_freshness,
-        zero_freshness,
+    for (name, invalid) in [
+        ("permissive outage", permissive_outage),
+        ("missing session invalidation", no_session_invalidation),
+        (
+            "API-only acquisition with webhook refresh",
+            api_with_webhook_refresh,
+        ),
+        (
+            "event acquisition without webhook refresh",
+            events_without_webhook_refresh,
+        ),
+        ("whitespace-padded policy version", blank_policy_version),
+        ("excessive freshness", excessive_freshness),
+        ("zero freshness", zero_freshness),
     ] {
-        assert!(!schema_accepts(
-            "adoc.connector_acl_policy.v0.schema.json",
-            &invalid
-        ));
+        assert!(
+            !schema_accepts("adoc.connector_acl_policy.v0.schema.json", &invalid),
+            "connector ACL policy schema accepted {name}: {invalid}"
+        );
     }
 }
 
@@ -2522,6 +2569,7 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
         "schema_version": "adoc.source_acl_snapshot.v0",
         "snapshot_id": "acl-snapshot-1",
         "connector_id": "github-connector-1",
+        "acl_policy_version": "github-acl-v1",
         "source": { "kind": "repository", "id": "agentdoc-dev/cloud" },
         "observed_at": "2026-08-24T12:00:00Z",
         "acl_payload_digest": format!("sha256:{}", "a".repeat(64)),
@@ -2537,16 +2585,35 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
     current_authority["usage"] = json!("current_authorization");
     let mut expiring_snapshot = snapshot.clone();
     expiring_snapshot["expires_at"] = json!("2026-08-24T12:05:00Z");
+    let mut missing_policy_version = snapshot.clone();
+    missing_policy_version
+        .as_object_mut()
+        .expect("snapshot object")
+        .remove("acl_policy_version");
+    let mut invalid_observed_at = snapshot.clone();
+    invalid_observed_at["observed_at"] = json!("not-a-time");
+    let mut whitespace_padded_connector_id = snapshot.clone();
+    whitespace_padded_connector_id["connector_id"] = json!(" github-connector-1");
     let mut missing_usage = snapshot;
     missing_usage
         .as_object_mut()
         .expect("snapshot object")
         .remove("usage");
 
-    for invalid in [current_authority, expiring_snapshot, missing_usage] {
-        assert!(!schema_accepts(
-            "adoc.source_acl_snapshot.v0.schema.json",
-            &invalid
-        ));
+    for (name, invalid) in [
+        ("current authority usage", current_authority),
+        ("expiry field", expiring_snapshot),
+        ("missing ACL policy version", missing_policy_version),
+        ("invalid observed timestamp", invalid_observed_at),
+        (
+            "whitespace-padded connector id",
+            whitespace_padded_connector_id,
+        ),
+        ("missing usage", missing_usage),
+    ] {
+        assert!(
+            !schema_accepts("adoc.source_acl_snapshot.v0.schema.json", &invalid),
+            "source ACL snapshot schema accepted {name}: {invalid}"
+        );
     }
 }

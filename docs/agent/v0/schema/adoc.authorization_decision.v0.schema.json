@@ -653,7 +653,8 @@
           "description": "Required for every human direct grant, regardless of effect.",
           "$ref": "#/$defs/nonEmptyText"
         },
-        "role": { "$ref": "#/$defs/role" }
+        "role": { "$ref": "#/$defs/role" },
+        "group": { "$ref": "#/$defs/groupGrantProvenance" }
       },
       "allOf": [
         {
@@ -679,7 +680,10 @@
       "properties": {
         "required": { "type": "boolean" },
         "result": { "$ref": "#/$defs/policyInput" },
-        "snapshot_id": { "$ref": "#/$defs/nonEmpty" },
+        "snapshot_id": {
+          "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance; current authorization is established independently by current_authorization.",
+          "$ref": "#/$defs/nonEmpty"
+        },
         "current_authorization": {
           "$ref": "#/$defs/currentSourceAclAuthorization"
         }
@@ -703,6 +707,16 @@
             "required": ["result"]
           },
           "then": { "required": ["snapshot_id"] }
+        },
+        {
+          "if": {
+            "properties": {
+              "required": { "const": true },
+              "result": { "const": "allow" }
+            },
+            "required": ["required", "result"]
+          },
+          "then": { "required": ["current_authorization"] }
         }
       ]
     },
@@ -734,7 +748,8 @@
         "source": { "enum": ["role_assignment", "direct_grant"] },
         "effect": { "enum": ["allow", "deny"] },
         "scope_match": { "$ref": "#/$defs/scope" },
-        "role": { "$ref": "#/$defs/role" }
+        "role": { "$ref": "#/$defs/role" },
+        "group": { "$ref": "#/$defs/groupGrantProvenance" }
       },
       "allOf": [
         {
@@ -744,6 +759,36 @@
           },
           "then": { "not": { "required": ["role"] } },
           "else": { "required": ["role"] }
+        }
+      ]
+    },
+    "groupGrantProvenance": {
+      "description": "Group path that conferred this grant. External membership binds the exact connector binding and source kind used to resolve it.",
+      "type": "object",
+      "required": ["id", "name", "membership_source"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmpty" },
+        "name": { "$ref": "#/$defs/nonEmpty" },
+        "membership_source": { "enum": ["manual", "external"] },
+        "binding_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_kind": { "$ref": "#/$defs/nonEmpty" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "membership_source": { "const": "external" } },
+            "required": ["membership_source"]
+          },
+          "then": { "required": ["binding_id", "source_kind"] },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["binding_id"] },
+                { "required": ["source_kind"] }
+              ]
+            }
+          }
         }
       ]
     }
