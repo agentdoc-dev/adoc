@@ -69,7 +69,11 @@ jobs:
       # packaged adoc binary produces the committed golden receipt
       # byte-for-byte (parity with the direct library path) on every push,
       # and that the pin gate fails closed — a tampered pin must refuse to
-      # invoke.
+      # invoke. Scope: the pin recorded here is over the binary this job
+      # just built (self-attesting), so this step proves the MECHANISM —
+      # verify-before-invoke and byte-identical receipts — not that the
+      # binary matches externally recorded provenance; release-time
+      # pinning owns that (see the ponytail note in run.sh).
       - name: Validation runtime harness parity
         run: |
           scripts/validation-runtime/run.sh pin
