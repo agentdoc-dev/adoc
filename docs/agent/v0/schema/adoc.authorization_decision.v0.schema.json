@@ -131,6 +131,7 @@
         "permission": { "$ref": "#/$defs/permission" },
         "scope": { "$ref": "#/$defs/scope" },
         "expires_at": { "type": "string", "format": "date-time" },
+        "exceptional_reason": { "$ref": "#/$defs/nonEmpty" },
         "role": { "$ref": "#/$defs/role" }
       },
       "allOf": [
@@ -139,8 +140,14 @@
             "properties": { "source": { "const": "direct_grant" } },
             "required": ["source"]
           },
-          "then": { "required": ["expires_at"] },
-          "else": { "required": ["role"] }
+          "then": {
+            "required": ["expires_at"],
+            "not": { "required": ["role"] }
+          },
+          "else": {
+            "required": ["role"],
+            "not": { "required": ["exceptional_reason"] }
+          }
         }
       ]
     },
