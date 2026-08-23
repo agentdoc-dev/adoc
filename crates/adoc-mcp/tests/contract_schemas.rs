@@ -1878,6 +1878,34 @@ fn authorization_decision_schema_pins_replay_bindings() {
     nonconsequential_action_unavailable["consequential"] = json!(false);
     nonconsequential_action_unavailable["result"] = json!("deny");
 
+    let mut nonconsequential_source_acl_unavailable_with_insufficient =
+        nonconsequential_source_acl_unavailable.clone();
+    nonconsequential_source_acl_unavailable_with_insufficient["result"] =
+        json!("insufficient_context");
+    let mut nonconsequential_visibility_unavailable_with_insufficient =
+        nonconsequential_visibility_unavailable.clone();
+    nonconsequential_visibility_unavailable_with_insufficient["result"] =
+        json!("insufficient_context");
+    let mut nonconsequential_action_unavailable_with_insufficient =
+        nonconsequential_action_unavailable.clone();
+    nonconsequential_action_unavailable_with_insufficient["result"] = json!("insufficient_context");
+
+    let mut invalid_time = denied.clone();
+    invalid_time["principal"]["freshness"] = json!("current");
+    invalid_time["evaluation_time"] = json!("not-a-time");
+    invalid_time["consequential"] = json!(true);
+    invalid_time["result"] = json!("insufficient_context");
+    invalid_time["reason"] = json!("evaluation_time_invalid");
+    let mut nonconsequential_invalid_time = invalid_time.clone();
+    nonconsequential_invalid_time["consequential"] = json!(false);
+    nonconsequential_invalid_time["result"] = json!("deny");
+    let mut invalid_time_with_expired_identity = invalid_time.clone();
+    invalid_time_with_expired_identity["principal"]["freshness"] = json!("expired");
+    let mut consequential_invalid_time_with_deny = invalid_time.clone();
+    consequential_invalid_time_with_deny["result"] = json!("deny");
+    let mut nonconsequential_invalid_time_with_insufficient = nonconsequential_invalid_time.clone();
+    nonconsequential_invalid_time_with_insufficient["result"] = json!("insufficient_context");
+
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision, true),
         ("direct human grant", direct_human, true),
@@ -1956,6 +1984,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "nonconsequential action unavailable denies",
             nonconsequential_action_unavailable,
+            true,
+        ),
+        ("consequential invalid time", invalid_time, true),
+        (
+            "nonconsequential invalid time",
+            nonconsequential_invalid_time,
             true,
         ),
         ("missing policy version", missing_policy_version, false),
@@ -2132,6 +2166,36 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "consequential action unavailable with deny result",
             consequential_action_unavailable_with_deny,
+            false,
+        ),
+        (
+            "nonconsequential source ACL unavailable with insufficient result",
+            nonconsequential_source_acl_unavailable_with_insufficient,
+            false,
+        ),
+        (
+            "nonconsequential visibility unavailable with insufficient result",
+            nonconsequential_visibility_unavailable_with_insufficient,
+            false,
+        ),
+        (
+            "nonconsequential action unavailable with insufficient result",
+            nonconsequential_action_unavailable_with_insufficient,
+            false,
+        ),
+        (
+            "invalid time with expired identity",
+            invalid_time_with_expired_identity,
+            false,
+        ),
+        (
+            "consequential invalid time with deny result",
+            consequential_invalid_time_with_deny,
+            false,
+        ),
+        (
+            "nonconsequential invalid time with insufficient result",
+            nonconsequential_invalid_time_with_insufficient,
             false,
         ),
     ] {

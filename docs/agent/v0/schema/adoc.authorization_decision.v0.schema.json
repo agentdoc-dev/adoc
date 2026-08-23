@@ -43,6 +43,7 @@
     "policy_version": { "$ref": "#/$defs/nonEmpty" },
     "result": { "$ref": "#/$defs/decision" },
     "reason": {
+      "description": "Evaluator outcome reason. evaluation_time_invalid is raised only after identity freshness passes; timestamp parsing itself is evaluator-owned because JSON Schema format is annotation-only for this contract.",
       "enum": [
         "identity_context_missing",
         "identity_expired",
@@ -228,6 +229,37 @@
           "basis": { "type": "null" },
           "result": { "const": "deny" }
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason": { "const": "evaluation_time_invalid" }
+        },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "principal": {
+            "properties": { "freshness": { "const": "current" } },
+            "required": ["freshness"]
+          },
+          "basis": { "type": "null" }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "consequential": { "const": true } },
+              "required": ["consequential"]
+            },
+            "then": {
+              "properties": { "result": { "const": "insufficient_context" } }
+            },
+            "else": {
+              "properties": { "result": { "const": "deny" } }
+            }
+          }
+        ]
       }
     },
     {
