@@ -359,6 +359,9 @@ impl<'a> State<'a> {
                     span,
                 });
             }
+            Tag::Superscript | Tag::Subscript => {
+                unreachable!("superscript and subscript parser options are disabled")
+            }
         }
     }
 
