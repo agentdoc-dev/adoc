@@ -325,15 +325,15 @@ Contract codes for the four-mode gate evaluator (E5.3; check publication E5.4). 
 
 ## Cloud codes — owner `cloud`
 
-Operation labels of the private Cloud scaffold. The scaffold's `main` emits no wire code today (the E0.4 baseline: login/register tracers, workspaces table, creator/owner-only RLS); new Cloud wire codes register here before they ship — `workspace.bootstrap` pre-registers the label the in-flight identity-bootstrap work introduces, and `governance.decision_binding_missing` ships with the E1.3 reconciliation-decision route.
+Operation labels and typed failure codes owned by the private Cloud service. New Cloud wire codes register here before they ship: `workspace.bootstrap` names the identity-bootstrap operation, the E2.1 `workspace.*` failures cover repository registration and tenant isolation, and `governance.decision_binding_missing` belongs to the E1.3 reconciliation-decision route.
 
 <!-- registry:cloud-codes -->
 | code | status | meaning |
 | --- | --- | --- |
 | `workspace.bootstrap` | planned (in-flight scaffold work) | identity-bootstrap ledger operation label recorded when a workspace is created |
-| `workspace.repository_limit_reached` | planned (E2.1) | repository registration would exceed the Workspace's configured repository limit |
+| `workspace.repository_limit_reached` | planned (E2.1) | repository registration would exceed the Workspace's repository limit |
 | `workspace.duplicate_repository` | planned (E2.1) | the same external repository is already registered in the Workspace |
-| `workspace.cross_tenant_denied` | planned (E2.1) | a Workspace-scoped operation is outside the authenticated principal's memberships; foreign and nonexistent targets remain indistinguishable |
+| `workspace.cross_tenant_denied` | planned (E2.1) | a Workspace-scoped operation is outside the authenticated principal's memberships; a nonexistent target emits this same code, so foreign and nonexistent targets remain indistinguishable to the caller |
 | `governance.decision_binding_missing` | planned (E1.3, in-flight cloud cut) | Cloud reconciliation-decision route rejects a record whose subject/counterpart exact version binding or policy version is missing or padded (deny-by-default; MILESTONES §E1.3.T4); the principal binding is never client-supplied — the store binds the authenticated session, and absent authority context maps to the `insufficient_context` outcome value, envelope-governed vocabulary rather than a standalone code; E1.4 widens Cloud's contract-scan grep to the `governance.` family |
 <!-- /registry:cloud-codes -->
 
