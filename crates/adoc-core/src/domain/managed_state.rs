@@ -951,20 +951,34 @@ impl ManagedStateEventStore {
         &self.events
     }
 
-    /// The derived current-state cache. Never authoritative — always
-    /// reproducible via [`ManagedStateEventStore::reconstruct_through`].
+    /// The derived current-state cache: exactly the subjects with at
+    /// least one recorded event. Never authoritative — reproducible via
+    /// [`ManagedStateEventStore::reconstruct_through`] seeded with this
+    /// map's own subject set (or no seed at all: replay inserts every
+    /// observed subject). A never-observed immutable version is ABSENT
+    /// here, not all-gaps — a caller must not read absence as "no such
+    /// version"; for the explicit gap rendering of never-observed
+    /// versions, reconstruct seeded with the immutable-version set.
     pub(crate) fn current_state(&self) -> &BTreeMap<StateEventSubject, ManagedVersionState> {
         &self.current
     }
 
     /// Historical current-state at time T, where T is an event ordinal:
     /// replay the recorded events `0..=through`, in order, from the
-    /// immutable records alone. `versions` is the immutable-version set
-    /// known at T — a reconstruction input in its own right (ADR-0057
-    /// invariant 2), because this store deliberately holds no reference
-    /// to the workspace's version records: a version predating every
-    /// state emitter has no event to replay, and it renders explicit
-    /// all-gap dimensions rather than silent absence. A correction
+    /// immutable records alone. `versions` seeds subjects that render
+    /// explicit all-gap dimensions rather than silent absence — a
+    /// reconstruction input in its own right (ADR-0057 invariant 2),
+    /// because this store deliberately holds no reference to the
+    /// workspace's version records: a version predating every state
+    /// emitter has no event to replay. The CALLER owns supplying the
+    /// set of versions that existed at T: version records and state
+    /// events share no ordering, so the domain cannot detect a
+    /// superset, and a seeded version minted only after T renders
+    /// all-gaps — fabricating its existence at T. Until versions and
+    /// events share an ordering, the full workspace set is a safe seed
+    /// only when `through` is at or past the last recorded ordinal;
+    /// for the derived cache, seed the cache's own subjects (or
+    /// nothing). A correction
     /// applies at its own position — history before it stands
     /// unrewritten, and no transition is ever inferred or backfilled
     /// (RT-04). A T past the last recorded event replays everything:
