@@ -1611,6 +1611,24 @@ fn authorization_decision_schema_pins_replay_bindings() {
 
     assert_valid("adoc.authorization_decision.v0.schema.json", &decision);
 
+    let mut direct_human = decision.clone();
+    direct_human["grants"][0] = json!({
+        "grant_id": "exceptional-human-grant",
+        "source": "direct_grant",
+        "effect": "allow",
+        "permission": "proposal.approve",
+        "scope": { "workspace_id": "workspace-1" },
+        "expires_at": "2026-08-24T12:00:00Z",
+        "exceptional_reason": "incident response"
+    });
+    direct_human["basis"] = json!({
+        "grant_id": "exceptional-human-grant",
+        "source": "direct_grant",
+        "effect": "allow",
+        "scope_match": { "workspace_id": "workspace-1" }
+    });
+    assert_valid("adoc.authorization_decision.v0.schema.json", &direct_human);
+
     for invalid in [
         {
             let mut invalid = decision.clone();
