@@ -177,6 +177,19 @@
     },
     {
       "if": {
+        "properties": {
+          "reason": { "not": { "const": "evaluation_time_invalid" } }
+        },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "evaluation_time": { "$ref": "#/$defs/nonEmpty" }
+        }
+      }
+    },
+    {
+      "if": {
         "properties": { "reason": { "const": "identity_expired" } },
         "required": ["reason"]
       },
