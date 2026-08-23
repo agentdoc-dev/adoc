@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
   "title": "AgentDoc Authorization Decision",
-  "description": "Replayable, source-neutral authorization decision for E2.2. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation is structural preflight; the Cloud evaluator owns authorization semantics.",
+  "description": "Replayable, source-neutral authorization decision for E2.2. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants; the Cloud evaluator owns dynamic authorization semantics.",
   "type": "object",
   "required": [
     "schema_version",
@@ -26,7 +26,10 @@
     "schema_version": { "const": "adoc.authorization_decision.v0" },
     "principal": { "$ref": "#/$defs/principal" },
     "permission": { "$ref": "#/$defs/permission" },
-    "resource": { "$ref": "#/$defs/scope" },
+    "resource": {
+      "description": "Complete scope of the resource being authorized.",
+      "$ref": "#/$defs/scope"
+    },
     "evaluation_time": { "type": "string", "format": "date-time" },
     "consequential": { "type": "boolean" },
     "hard_deny": { "type": "boolean" },
@@ -63,6 +66,66 @@
       ]
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "principal": {
+            "properties": { "type": { "const": "human" } },
+            "required": ["type"]
+          }
+        },
+        "required": ["principal"]
+      },
+      "then": {
+        "properties": {
+          "grants": {
+            "items": {
+              "if": {
+                "properties": { "source": { "const": "direct_grant" } },
+                "required": ["source"]
+              },
+              "then": { "required": ["exceptional_reason"] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "result": { "const": "allow" } },
+        "required": ["result"]
+      },
+      "then": {
+        "properties": {
+          "principal": {
+            "properties": { "freshness": { "const": "current" } },
+            "required": ["freshness"]
+          },
+          "hard_deny": { "const": false },
+          "source_acl_ceiling": {
+            "properties": {
+              "result": { "enum": ["allow", "not_applicable"] }
+            },
+            "required": ["result"]
+          },
+          "visibility": { "enum": ["allow", "not_applicable"] },
+          "action_policy": { "enum": ["allow", "not_applicable"] },
+          "reason": { "const": "allowed" },
+          "basis": { "$ref": "#/$defs/basis" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "allowed" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": { "result": { "const": "allow" } }
+      }
+    }
+  ],
   "$defs": {
     "nonEmpty": {
       "type": "string",
@@ -71,7 +134,38 @@
     },
     "permission": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+      "enum": [
+        "audit.export",
+        "audit.read",
+        "connector.configure",
+        "connector.create",
+        "connector.delete",
+        "connector.read",
+        "knowledge.declassify",
+        "knowledge.propose",
+        "knowledge.read",
+        "migration.approve",
+        "migration.execute",
+        "obligation.read",
+        "obligation.satisfy",
+        "obligation.waive",
+        "policy.manage",
+        "policy.read",
+        "proposal.approve",
+        "proposal.edit",
+        "proposal.read",
+        "proposal.reject",
+        "proposal.review",
+        "semantic_executor.configure",
+        "semantic_executor.qualify",
+        "semantic_executor.read",
+        "source.manage",
+        "source.read",
+        "source.sync",
+        "workspace.configure",
+        "workspace.manage_members",
+        "workspace.read"
+      ]
     },
     "decision": {
       "enum": ["allow", "deny", "insufficient_context"]
@@ -89,7 +183,8 @@
         "freshness": { "enum": ["current", "expired", "insufficient_context"] }
       }
     },
-    "resource": {
+    "sourceResource": {
+      "description": "Repository, project, space, or channel level within a scope.",
       "type": "object",
       "required": ["kind", "id"],
       "additionalProperties": false,
@@ -106,7 +201,7 @@
         "workspace_id": { "$ref": "#/$defs/nonEmpty" },
         "connector_id": { "$ref": "#/$defs/nonEmpty" },
         "source_container_id": { "$ref": "#/$defs/nonEmpty" },
-        "resource": { "$ref": "#/$defs/resource" },
+        "resource": { "$ref": "#/$defs/sourceResource" },
         "knowledge_kind": { "$ref": "#/$defs/nonEmpty" },
         "object_id": { "$ref": "#/$defs/nonEmpty" }
       }
@@ -130,7 +225,11 @@
         "effect": { "enum": ["allow", "deny"] },
         "permission": { "$ref": "#/$defs/permission" },
         "scope": { "$ref": "#/$defs/scope" },
-        "expires_at": { "type": "string", "format": "date-time" },
+        "expires_at": {
+          "description": "Optional expiry for a role assignment and required expiry for a direct grant.",
+          "type": "string",
+          "format": "date-time"
+        },
         "exceptional_reason": { "$ref": "#/$defs/nonEmpty" },
         "role": { "$ref": "#/$defs/role" }
       },
@@ -192,7 +291,17 @@
         "effect": { "enum": ["allow", "deny"] },
         "scope_match": { "$ref": "#/$defs/scope" },
         "role": { "$ref": "#/$defs/role" }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "source": { "const": "direct_grant" } },
+            "required": ["source"]
+          },
+          "then": { "not": { "required": ["role"] } },
+          "else": { "required": ["role"] }
+        }
+      ]
     }
   }
 }

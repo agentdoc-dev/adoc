@@ -175,7 +175,7 @@ agentdoc.cloud.work_result.v0
 agentdoc.cloud.gate_decision.v0
 agentdoc.cloud.proposal_command.v0
 agentdoc.cloud.approval_command.v0
-agentdoc.cloud.authorization_decision.v0
+adoc.authorization_decision.v0
 agentdoc.cloud.migration_request.v0
 agentdoc.cloud.migration_receipt.v0
 agentdoc.cloud.egress_policy.v0

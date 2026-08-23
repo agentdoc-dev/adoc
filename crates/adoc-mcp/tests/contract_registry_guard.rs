@@ -670,6 +670,23 @@ fn permission_primitives_match_the_e2_2_registry() {
     .map(str::to_owned)
     .collect();
     assert_eq!(actual, expected);
+
+    let schema: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
+    ))
+    .expect("authorization decision schema is json");
+    let schema_permissions = schema["$defs"]["permission"]["enum"]
+        .as_array()
+        .expect("authorization decision permission is an enum")
+        .iter()
+        .map(|permission| {
+            permission
+                .as_str()
+                .expect("permission enum values are strings")
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(actual, schema_permissions);
 }
 
 /// Backticked codes cited by the executable planning surface, one
