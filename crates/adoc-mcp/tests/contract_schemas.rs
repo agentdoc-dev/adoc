@@ -1681,6 +1681,51 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut expiring_role = decision.clone();
     expiring_role["grants"][0]["expires_at"] = json!("2026-08-24T12:00:00Z");
 
+    let external_group = json!({
+        "id": "group-1",
+        "name": "Curators",
+        "membership_source": "external",
+        "binding_id": "github-team-binding-1",
+        "binding_mode": "authoritative_sync",
+        "source_kind": "github_team"
+    });
+    let mut external_group_grant = decision.clone();
+    external_group_grant["grants"][0]["group"] = external_group.clone();
+    external_group_grant["basis"]["group"] = external_group;
+
+    let manual_group = json!({
+        "id": "group-2",
+        "name": "Incident responders",
+        "membership_source": "manual"
+    });
+    let mut manual_group_grant = decision.clone();
+    manual_group_grant["grants"][0]["group"] = manual_group.clone();
+    manual_group_grant["basis"]["group"] = manual_group;
+
+    let mut manual_group_direct_grant = direct_human.clone();
+    manual_group_direct_grant["grants"][0]["group"] =
+        manual_group_grant["grants"][0]["group"].clone();
+    manual_group_direct_grant["basis"]["group"] = manual_group_grant["basis"]["group"].clone();
+
+    let mut external_group_without_binding = external_group_grant.clone();
+    external_group_without_binding["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("binding_id");
+    let mut external_basis_without_mode = external_group_grant.clone();
+    external_basis_without_mode["basis"]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("binding_mode");
+    let mut suggestion_group_grant = external_group_grant.clone();
+    suggestion_group_grant["grants"][0]["group"]["binding_mode"] = json!("suggestion_only");
+    let mut disabled_group_basis = external_group_grant.clone();
+    disabled_group_basis["basis"]["group"]["binding_mode"] = json!("disabled");
+    let mut unknown_group_source = external_group_grant.clone();
+    unknown_group_source["grants"][0]["group"]["source_kind"] = json!("custom_directory");
+    let mut manual_group_with_binding = manual_group_grant.clone();
+    manual_group_with_binding["grants"][0]["group"]["binding_id"] = json!("github-team-binding-1");
+
     let mut no_acl_ceiling = decision.clone();
     no_acl_ceiling["source_acl_ceiling"] = json!({
         "required": false,
@@ -2467,6 +2512,27 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         ("expiring role assignment", expiring_role, true),
+        ("external group role assignment", external_group_grant, true),
+        ("manual group role assignment", manual_group_grant, true),
+        ("manual group direct grant", manual_group_direct_grant, true),
+        (
+            "external group without binding",
+            external_group_without_binding,
+            false,
+        ),
+        (
+            "external group basis without binding mode",
+            external_basis_without_mode,
+            false,
+        ),
+        ("suggestion-only group grant", suggestion_group_grant, false),
+        ("disabled group basis", disabled_group_basis, false),
+        ("unknown external group source", unknown_group_source, false),
+        (
+            "manual group with binding",
+            manual_group_with_binding,
+            false,
+        ),
         ("optional ACL ceiling", no_acl_ceiling, true),
         ("allow with no policy inputs", no_policy_inputs, true),
         ("deny without basis", denied, true),

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
   "title": "AgentDoc Authorization Decision",
-  "description": "Replayable, source-neutral authorization decision for E2.2. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
+  "description": "Replayable, source-neutral authorization decision for E2.2 and E2.4. The record carries the explicit evaluation time, policy version, complete scoped grant input, group provenance, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
   "type": "object",
   "required": [
     "schema_version",
@@ -831,6 +831,51 @@
         "version": { "type": "integer", "minimum": 1 }
       }
     },
+    "group": {
+      "description": "AgentDoc-owned group provenance. External membership may confer a grant only through an authoritative or additive binding; suggestion-only and disabled bindings never appear in an authorization basis.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["id", "name", "membership_source"],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/nonEmpty" },
+            "name": { "$ref": "#/$defs/nonEmptyText" },
+            "membership_source": { "const": "manual" }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "membership_source",
+            "binding_id",
+            "binding_mode",
+            "source_kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/nonEmpty" },
+            "name": { "$ref": "#/$defs/nonEmptyText" },
+            "membership_source": { "const": "external" },
+            "binding_id": { "$ref": "#/$defs/nonEmpty" },
+            "binding_mode": {
+              "enum": ["authoritative_sync", "additive_sync"]
+            },
+            "source_kind": {
+              "enum": [
+                "github_team",
+                "gitlab_group",
+                "slack_user_group",
+                "oidc_group",
+                "scim_group"
+              ]
+            }
+          }
+        }
+      ]
+    },
     "grant": {
       "type": "object",
       "required": ["grant_id", "source", "effect", "permission", "scope"],
@@ -849,7 +894,8 @@
           "description": "Required for every human direct grant, regardless of effect.",
           "$ref": "#/$defs/nonEmptyText"
         },
-        "role": { "$ref": "#/$defs/role" }
+        "role": { "$ref": "#/$defs/role" },
+        "group": { "$ref": "#/$defs/group" }
       },
       "allOf": [
         {
@@ -1089,7 +1135,8 @@
         "source": { "enum": ["role_assignment", "direct_grant"] },
         "effect": { "enum": ["allow", "deny"] },
         "scope_match": { "$ref": "#/$defs/scope" },
-        "role": { "$ref": "#/$defs/role" }
+        "role": { "$ref": "#/$defs/role" },
+        "group": { "$ref": "#/$defs/group" }
       },
       "allOf": [
         {
