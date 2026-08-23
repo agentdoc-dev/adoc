@@ -1656,6 +1656,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .as_object_mut()
         .expect("object")
         .remove("policy_version");
+    let mut blank_policy_version = decision.clone();
+    blank_policy_version["policy_version"] = json!("   ");
 
     let mut unknown_result = decision.clone();
     unknown_result["result"] = json!("maybe");
@@ -2009,6 +2011,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         ("missing policy version", missing_policy_version, false),
+        ("blank policy version", blank_policy_version, false),
         ("unknown result", unknown_result, false),
         ("direct grant without expiry", direct_without_expiry, false),
         (
