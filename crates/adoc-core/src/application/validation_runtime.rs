@@ -380,7 +380,6 @@ fn validate_context_artifact(
     for (id, artifact_object) in &artifact_objects {
         match recompiled_objects.get(id) {
             None => diagnostics.push(drift_diagnostic(
-                artifact_path,
                 id,
                 "records a Knowledge Object the compiled source does not contain",
             )),
@@ -390,7 +389,6 @@ fn validate_context_artifact(
             // honest hash would compare the claim against itself.
             Some(recompiled_object) if recompiled_object != artifact_object => {
                 diagnostics.push(drift_diagnostic(
-                    artifact_path,
                     id,
                     "records a Knowledge Object that does not match the recompiled source",
                 ));
@@ -401,7 +399,6 @@ fn validate_context_artifact(
     for id in recompiled_objects.keys() {
         if !artifact_objects.contains_key(id) {
             diagnostics.push(drift_diagnostic(
-                artifact_path,
                 id,
                 "does not record a Knowledge Object the compiled source contains",
             ));
@@ -417,10 +414,7 @@ fn validate_context_artifact(
     {
         diagnostics.push(Diagnostic::error(
             DiagnosticCode::ValidationContextArtifactDrift,
-            format!(
-                "context artifact '{}' carries nodes or edges that do not match the recompiled source",
-                artifact_path.display()
-            ),
+            "the context artifact carries nodes or edges that do not match the recompiled source",
         ));
     }
     diagnostics
@@ -439,13 +433,15 @@ fn knowledge_objects(
         .collect()
 }
 
-fn drift_diagnostic(artifact_path: &Path, object_id: &str, detail: &str) -> Diagnostic {
+/// Drift diagnostics deliberately carry no filesystem path: the message
+/// feeds `diagnostics_digest`, and the receipt must stay byte-identical
+/// across machines (the artifact is already identified by its digest in the
+/// receipt's `context`; a caller-facing path would be absolute under
+/// `ProjectRootPathPolicy`).
+fn drift_diagnostic(object_id: &str, detail: &str) -> Diagnostic {
     Diagnostic::error(
         DiagnosticCode::ValidationContextArtifactDrift,
-        format!(
-            "context artifact '{}' {detail} for `{object_id}`",
-            artifact_path.display()
-        ),
+        format!("the context artifact {detail} for `{object_id}`"),
     )
     .with_object_id(object_id)
 }
@@ -814,6 +810,46 @@ mod tests {
                 "{version}: version gate must reject before any drift comparison"
             );
         }
+    }
+
+    /// Fail-receipt portability: the unqualified determinism claim (module
+    /// docs, registry row) covers FAIL receipts too, so the same forgery
+    /// validated at two different absolute locations must produce
+    /// byte-identical receipts — no machine-specific path may leak into
+    /// `diagnostics_digest`.
+    #[test]
+    fn fail_receipts_are_byte_identical_across_artifact_locations() {
+        let receipt_at_fresh_location = || {
+            let workspace = tempfile::tempdir().expect("workspace");
+            let docs = workspace.path().join("docs");
+            write(&docs.join("index.adoc"), valid_source());
+            let mut value: serde_json::Value =
+                serde_json::from_str(&compiled_graph_json(&docs)).expect("json");
+            value["nodes"]
+                .as_array_mut()
+                .expect("nodes array")
+                .iter_mut()
+                .find(|node| node["type"] == "knowledge_object")
+                .expect("fixture has a knowledge object")["status"] =
+                serde_json::Value::from("approved");
+            let artifact_path = workspace.path().join("dist/docs.graph.json");
+            write(
+                &artifact_path,
+                &serde_json::to_string(&value).expect("serializes"),
+            );
+
+            let mut input = standalone_input(&docs);
+            input.context_artifact = Some(artifact_path);
+            let outcome = run_validation_runtime(input).expect("validation runs");
+            assert_eq!(outcome.receipt.result(), ValidationResult::Fail);
+            outcome.receipt.to_canonical_json()
+        };
+
+        assert_eq!(
+            receipt_at_fresh_location(),
+            receipt_at_fresh_location(),
+            "the same forgery at two absolute locations must yield byte-identical fail receipts"
+        );
     }
 
     /// A provider whose second read observes different content — the
