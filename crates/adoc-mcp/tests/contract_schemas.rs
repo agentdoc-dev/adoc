@@ -1593,7 +1593,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "snapshot_id": "acl-1",
             "current_authorization": {
                 "role": "current_authorization",
-                "evidence_id": "acl-evidence-1",
+                "authorization_id": "acl-authorization-1",
                 "snapshot_id": "acl-current-1",
                 "connector_id": "github",
                 "principal_id": "principal-1",
@@ -1714,11 +1714,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut current_acl_with_invalid_observed_at = decision.clone();
     current_acl_with_invalid_observed_at["source_acl_ceiling"]["current_authorization"]["observed_at"] =
         json!("not-a-time");
-    let mut current_acl_without_evidence_id = decision.clone();
-    current_acl_without_evidence_id["source_acl_ceiling"]["current_authorization"]
+    let mut current_acl_without_authorization_id = decision.clone();
+    current_acl_without_authorization_id["source_acl_ceiling"]["current_authorization"]
         .as_object_mut()
         .expect("current ACL object")
-        .remove("evidence_id");
+        .remove("authorization_id");
 
     let mut missing_policy_version = decision.clone();
     missing_policy_version
@@ -2180,8 +2180,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         (
-            "current ACL evidence without immutable evidence id",
-            current_acl_without_evidence_id,
+            "current ACL evidence without immutable authorization id",
+            current_acl_without_authorization_id,
             false,
         ),
         ("direct grant without expiry", direct_without_expiry, false),
