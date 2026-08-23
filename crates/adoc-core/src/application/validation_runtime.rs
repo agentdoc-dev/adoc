@@ -370,8 +370,16 @@ fn validate_context_artifact(
     };
     let recompiled: GraphArtifactDocument = match serde_json::from_str(recompiled_graph_json) {
         Ok(recompiled) => recompiled,
-        // Compile-pipeline invariant: its own graph_json always parses.
-        Err(_) => unreachable!("compile output graph_json is well-formed"),
+        // Cross-module invariant (compile.rs serialization ↔ graph/mod.rs
+        // deserialization): its own graph_json always parses today, but a
+        // future serde asymmetry must degrade to a typed fail-closed
+        // diagnostic — never a panic in the receipt path.
+        Err(error) => {
+            return vec![Diagnostic::error(
+                DiagnosticCode::IoArtifactMalformed,
+                format!("recompiled graph artifact is malformed: {error}"),
+            )];
+        }
     };
 
     let artifact_objects = knowledge_objects(&document);
@@ -810,6 +818,33 @@ mod tests {
                 "{version}: version gate must reject before any drift comparison"
             );
         }
+    }
+
+    /// The recompiled-graph parse invariant spans two modules (compile.rs
+    /// serialization, graph/mod.rs deserialization); if a future serde
+    /// asymmetry breaks it, the receipt path must fail CLOSED with a typed
+    /// diagnostic — never panic in the one path whose contract is typed
+    /// failure.
+    #[test]
+    fn malformed_recompiled_graph_json_degrades_to_a_typed_diagnostic() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let docs = workspace.path().join("docs");
+        write(&docs.join("index.adoc"), valid_source());
+        let honest = compiled_graph_json(&docs);
+
+        let diagnostics = validate_context_artifact(
+            Path::new("dist/docs.graph.json"),
+            honest.as_bytes(),
+            Some("not json"),
+        );
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == DiagnosticCode::IoArtifactMalformed
+                    && diagnostic.severity == Severity::Error
+            }),
+            "a malformed recompiled graph must fail closed with io.artifact_malformed, got: {diagnostics:?}"
+        );
     }
 
     /// Fail-receipt portability: the unqualified determinism claim (module
