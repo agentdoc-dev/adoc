@@ -65,6 +65,21 @@ jobs:
       - name: Build
         run: cargo build --workspace --locked
 
+      # E1.7.T2: the checksum-pinned Validation Runtime harness proves the
+      # packaged adoc binary produces the committed golden receipt
+      # byte-for-byte (parity with the direct library path) on every push,
+      # and that the pin gate fails closed — a tampered pin must refuse to
+      # invoke.
+      - name: Validation runtime harness parity
+        run: |
+          scripts/validation-runtime/run.sh pin
+          scripts/validation-runtime/run.sh run
+          printf '%064d\n' 0 > scripts/validation-runtime/adoc.sha256
+          if scripts/validation-runtime/run.sh run; then
+            echo "tampered pin was accepted — pin gate is broken" >&2
+            exit 1
+          fi
+
       - name: Build documentation
         run: cargo doc --workspace --no-deps --locked
 
