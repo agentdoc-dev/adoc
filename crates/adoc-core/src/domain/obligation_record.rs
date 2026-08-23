@@ -302,6 +302,15 @@ pub(crate) struct ObligationWaiver {
     /// workspace (E1.2: a bare identifier is never a managed subject).
     subject: StateEventSubject,
     principal: Principal,
+    /// The waiver-GRANTING policy version — replay/audit data naming the
+    /// authority the grant was made under. Distinct from the
+    /// classification [`ObligationPolicy`] evaluated at assessment, so
+    /// no comparison exists in this slice.
+    // ponytail: recorded, never consulted — a waiver outlives the policy
+    // that authorized it (the ordinal bound is its designed lifetime);
+    // re-evaluating standing waivers against an in-force waiver policy
+    // is a later slice's decision, taken with the E5.2/E5.3 approval
+    // and gate machinery, not silently here.
     policy_version: PolicyVersion,
     justification: String,
     /// The last E1.4 event ordinal this waiver holds at; evaluated at an
