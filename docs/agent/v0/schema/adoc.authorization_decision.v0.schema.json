@@ -345,8 +345,17 @@
       "then": {
         "properties": {
           "source_acl_ceiling": {
-            "properties": { "result": { "const": "deny" } },
-            "required": ["result"]
+            "properties": {
+              "result": { "const": "deny" },
+              "current_authorization": {
+                "properties": {
+                  "connector_available": { "const": true }
+                },
+                "required": ["connector_available"],
+                "not": { "required": ["invalidated_at"] }
+              }
+            },
+            "required": ["result", "current_authorization"]
           },
           "basis": { "type": "null" },
           "result": { "const": "deny" }
@@ -680,7 +689,7 @@
         "required": { "type": "boolean" },
         "result": { "$ref": "#/$defs/policyInput" },
         "snapshot_id": {
-          "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance; current authorization is established independently by current_authorization.",
+          "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance. It may retain the same ACL payload named by current_authorization.snapshot_id, but the snapshot never establishes current authorization by itself.",
           "$ref": "#/$defs/nonEmpty"
         },
         "current_authorization": {
@@ -711,7 +720,7 @@
           "if": {
             "properties": {
               "required": { "const": true },
-              "result": { "const": "allow" }
+              "result": { "enum": ["allow", "deny"] }
             },
             "required": ["required", "result"]
           },
@@ -720,16 +729,16 @@
       ]
     },
     "currentSourceAclAuthorization": {
-      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only.",
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. principal_id, connector_id, and source identify the subject of this evidence; equality with the decision principal and resource is evaluator-owned and fails closed.",
       "type": "object",
       "required": [
         "role",
-        "authorization_id",
+        "current_acl_id",
         "snapshot_id",
         "connector_id",
         "principal_id",
         "source",
-        "policy_version",
+        "acl_policy_version",
         "observed_at",
         "expires_at",
         "connector_available"
@@ -737,12 +746,21 @@
       "additionalProperties": false,
       "properties": {
         "role": { "const": "current_authorization" },
-        "authorization_id": { "$ref": "#/$defs/nonEmpty" },
-        "snapshot_id": { "$ref": "#/$defs/nonEmpty" },
+        "current_acl_id": {
+          "description": "Immutable identifier of this freshness-bounded current ACL authorization record.",
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "snapshot_id": {
+          "description": "Retained adoc.source_acl_snapshot.v0 record of the ACL payload from which this current evidence was computed. Its payload digest is audit provenance, not current evidence; the sibling source_acl_ceiling.snapshot_id names the historical snapshot consulted and need not match.",
+          "$ref": "#/$defs/nonEmpty"
+        },
         "connector_id": { "$ref": "#/$defs/nonEmpty" },
         "principal_id": { "$ref": "#/$defs/nonEmpty" },
         "source": { "$ref": "#/$defs/sourceResource" },
-        "policy_version": { "$ref": "#/$defs/nonEmpty" },
+        "acl_policy_version": {
+          "description": "Connector ACL policy version in force when this current evidence was observed. Matches acl_policy_version on the corresponding adoc.source_acl_snapshot.v0 record.",
+          "$ref": "#/$defs/nonEmpty"
+        },
         "observed_at": { "$ref": "#/$defs/rfc3339Timestamp" },
         "expires_at": { "$ref": "#/$defs/rfc3339Timestamp" },
         "connector_available": { "type": "boolean" },
