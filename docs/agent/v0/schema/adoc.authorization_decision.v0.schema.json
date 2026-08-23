@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
+  "title": "AgentDoc Authorization Decision",
+  "description": "Replayable, source-neutral authorization decision for E2.2. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation is structural preflight; the Cloud evaluator owns authorization semantics.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "principal",
+    "permission",
+    "resource",
+    "evaluation_time",
+    "consequential",
+    "hard_deny",
+    "grants",
+    "source_acl_ceiling",
+    "visibility",
+    "action_policy",
+    "policy_version",
+    "result",
+    "reason",
+    "basis"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.authorization_decision.v0" },
+    "principal": { "$ref": "#/$defs/principal" },
+    "permission": { "$ref": "#/$defs/permission" },
+    "resource": { "$ref": "#/$defs/scope" },
+    "evaluation_time": { "type": "string", "format": "date-time" },
+    "consequential": { "type": "boolean" },
+    "hard_deny": { "type": "boolean" },
+    "grants": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/grant" }
+    },
+    "source_acl_ceiling": { "$ref": "#/$defs/sourceAclCeiling" },
+    "visibility": { "$ref": "#/$defs/policyInput" },
+    "action_policy": { "$ref": "#/$defs/policyInput" },
+    "policy_version": { "$ref": "#/$defs/nonEmpty" },
+    "result": { "$ref": "#/$defs/decision" },
+    "reason": {
+      "enum": [
+        "identity_context_missing",
+        "identity_expired",
+        "evaluation_time_invalid",
+        "hard_deny",
+        "source_acl_denied",
+        "source_acl_unavailable",
+        "no_grant",
+        "explicit_deny",
+        "visibility_denied",
+        "visibility_unavailable",
+        "action_policy_denied",
+        "action_policy_unavailable",
+        "allowed"
+      ]
+    },
+    "basis": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/basis" }
+      ]
+    }
+  },
+  "$defs": {
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:.*\\S)?$"
+    },
+    "permission": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+    },
+    "decision": {
+      "enum": ["allow", "deny", "insufficient_context"]
+    },
+    "policyInput": {
+      "enum": ["allow", "deny", "insufficient_context", "not_applicable"]
+    },
+    "principal": {
+      "type": "object",
+      "required": ["id", "type", "freshness"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmpty" },
+        "type": { "enum": ["human", "service", "agent", "workload"] },
+        "freshness": { "enum": ["current", "expired", "insufficient_context"] }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["repository", "project", "space", "channel"] },
+        "id": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "required": ["workspace_id"],
+      "additionalProperties": false,
+      "properties": {
+        "workspace_id": { "$ref": "#/$defs/nonEmpty" },
+        "connector_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_container_id": { "$ref": "#/$defs/nonEmpty" },
+        "resource": { "$ref": "#/$defs/resource" },
+        "knowledge_kind": { "$ref": "#/$defs/nonEmpty" },
+        "object_id": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "role": {
+      "type": "object",
+      "required": ["id", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/nonEmpty" },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "grant": {
+      "type": "object",
+      "required": ["grant_id", "source", "effect", "permission", "scope"],
+      "additionalProperties": false,
+      "properties": {
+        "grant_id": { "$ref": "#/$defs/nonEmpty" },
+        "source": { "enum": ["role_assignment", "direct_grant"] },
+        "effect": { "enum": ["allow", "deny"] },
+        "permission": { "$ref": "#/$defs/permission" },
+        "scope": { "$ref": "#/$defs/scope" },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "role": { "$ref": "#/$defs/role" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "source": { "const": "direct_grant" } },
+            "required": ["source"]
+          },
+          "then": { "required": ["expires_at"] },
+          "else": { "required": ["role"] }
+        }
+      ]
+    },
+    "sourceAclCeiling": {
+      "type": "object",
+      "required": ["required", "result"],
+      "additionalProperties": false,
+      "properties": {
+        "required": { "type": "boolean" },
+        "result": { "$ref": "#/$defs/policyInput" },
+        "snapshot_id": { "$ref": "#/$defs/nonEmpty" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "required": { "const": false } },
+            "required": ["required"]
+          },
+          "then": { "properties": { "result": { "const": "not_applicable" } } },
+          "else": {
+            "properties": {
+              "result": { "enum": ["allow", "deny", "insufficient_context"] }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "result": { "enum": ["allow", "deny"] } },
+            "required": ["result"]
+          },
+          "then": { "required": ["snapshot_id"] }
+        }
+      ]
+    },
+    "basis": {
+      "type": "object",
+      "required": ["grant_id", "source", "effect", "scope_match"],
+      "additionalProperties": false,
+      "properties": {
+        "grant_id": { "$ref": "#/$defs/nonEmpty" },
+        "source": { "enum": ["role_assignment", "direct_grant"] },
+        "effect": { "enum": ["allow", "deny"] },
+        "scope_match": { "$ref": "#/$defs/scope" },
+        "role": { "$ref": "#/$defs/role" }
+      }
+    }
+  }
+}
