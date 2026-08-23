@@ -3099,6 +3099,72 @@ fn check_receipt_requires_as_of_and_runtime_binary_digest() {
     );
 }
 
+/// Receipt mode has no markdown presenter: `--format markdown` with
+/// `--receipt` is a typed refusal up front — never a silent fallback to
+/// plain text while the user asked for the PR-comment surface.
+#[test]
+fn check_receipt_refuses_format_markdown() {
+    let out_dir = TestWorkspace::new("check-receipt-markdown-refused");
+    let receipt_path = out_dir.root.join("receipt.json");
+    let output = adoc_command()
+        .current_dir(validation_runtime_path("fixture"))
+        .args([
+            "check",
+            "--format",
+            "markdown",
+            "--receipt",
+            receipt_path.to_str().expect("utf-8 receipt path"),
+            "--as-of",
+            "2026-01-01",
+            "--runtime-binary-digest",
+            GOLDEN_RUNTIME_DIGEST,
+        ])
+        .output()
+        .expect("adoc check runs");
+    assert_eq!(output.status.code(), Some(2), "typed refusal, not a run");
+    assert!(
+        stderr(&output).contains("error[cli.format]"),
+        "expected error[cli.format], got:\n{}",
+        stderr(&output)
+    );
+    assert!(
+        !receipt_path.exists(),
+        "no receipt may be written on refusal"
+    );
+}
+
+/// `--style` shapes the markdown layout receipt mode never renders:
+/// combining it with `--receipt` is a clap conflict, not a silently
+/// ignored flag.
+#[test]
+fn check_receipt_refuses_explicit_style() {
+    let output = adoc_command()
+        .current_dir(validation_runtime_path("fixture"))
+        .args([
+            "check",
+            "--style",
+            "table",
+            "--receipt",
+            "receipt.json",
+            "--as-of",
+            "2026-01-01",
+            "--runtime-binary-digest",
+            GOLDEN_RUNTIME_DIGEST,
+        ])
+        .output()
+        .expect("adoc check runs");
+    assert_ne!(output.status.code(), Some(0), "conflict must refuse");
+    let conflict_error = stderr(&output);
+    assert!(
+        conflict_error.contains("--style") && conflict_error.contains("--receipt"),
+        "expected the conflicting flags to be named, got:\n{conflict_error}"
+    );
+    assert!(
+        !validation_runtime_path("fixture/receipt.json").exists(),
+        "no receipt may be written on refusal"
+    );
+}
+
 /// E1.7.T4 end-to-end: a schema-valid but domain-invalid graph artifact
 /// handed to receipt-mode check as --context-artifact fails the run; the
 /// receipt records result fail. The runtime — not any JSON-Schema
