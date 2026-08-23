@@ -29,7 +29,7 @@ E8.5's GitLab CI component has no named home repository yet; its row covers the 
 | `E1.3` | adoc, cloud | adoc | adoc 0.3.4 (graph v5) · Cloud scaffold (pre-release) | cloud |
 | `E1.4` | adoc, cloud | adoc | adoc 0.4.0 (graph v6) · Cloud v0.1.0 (pre-release) | cloud |
 | `E1.5` | adoc, cloud | adoc | adoc 0.4.0 (graph v6, lifecycle mapping v1) · Cloud v0.1.0 (pre-release) | cloud |
-| `E1.6` | adoc, cloud | adoc | adoc 0.3.4 (graph v5) · Cloud scaffold (pre-release) | cloud |
+| `E1.6` | adoc, cloud | adoc | adoc 0.4.0 (graph v6, proof obligation v0) · Cloud v0.1.0 (pre-release) | cloud |
 | `E1.7` | adoc, cloud | adoc | adoc 0.3.4 (graph v5) · Cloud scaffold (pre-release) | cloud |
 | `E2.2` | adoc, cloud | adoc | adoc 0.3.4 (graph v5) · Cloud scaffold (pre-release) | cloud |
 | `E2.5` | action, cloud | cloud | Action v2.0.0-alpha.19 · Cloud scaffold (pre-release) | cloud |
