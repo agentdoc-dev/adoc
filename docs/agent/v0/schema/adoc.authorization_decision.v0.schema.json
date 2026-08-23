@@ -322,6 +322,7 @@
       "then": {
         "properties": {
           "hard_deny": { "const": true },
+          "basis": { "type": "null" },
           "result": { "const": "deny" }
         }
       }
@@ -337,6 +338,7 @@
             "properties": { "result": { "const": "deny" } },
             "required": ["result"]
           },
+          "basis": { "type": "null" },
           "result": { "const": "deny" }
         }
       }
@@ -351,7 +353,8 @@
           "source_acl_ceiling": {
             "properties": { "result": { "const": "insufficient_context" } },
             "required": ["result"]
-          }
+          },
+          "basis": { "type": "null" }
         },
         "allOf": [
           {
