@@ -143,21 +143,24 @@ impl ObligationId {
 /// version it constrains. Every record starts `open`
 /// ([`ProofObligationRecord::open`]); later states are ledger appends,
 /// and `waived` is reachable only through a Waiver record (E1.6.T2).
+/// Fields are private so the validating constructors are the only
+/// doors ([`ObligationWaiver`] posture) — contract parity is
+/// structural, never bypassable by struct literal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ProofObligationRecord {
-    pub(crate) schema_version: &'static str,
-    pub(crate) obligation_id: ObligationId,
+    schema_version: &'static str,
+    obligation_id: ObligationId,
     /// The exact immutable content version the obligation constrains
     /// (workspace canonical identity + managed version ID, E1.4).
-    pub(crate) subject: StateEventSubject,
-    pub(crate) reason: String,
-    pub(crate) required_evidence: Vec<String>,
-    pub(crate) required_at: ObligationStage,
+    subject: StateEventSubject,
+    reason: String,
+    required_evidence: Vec<String>,
+    required_at: ObligationStage,
     /// The producer's risk classification of the constrained change,
     /// matched against risk-scoped policy rules. Data, never authority.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) risk: Option<String>,
-    pub(crate) state: ObligationState,
+    risk: Option<String>,
+    state: ObligationState,
 }
 
 impl ProofObligationRecord {
@@ -243,12 +246,41 @@ pub(crate) struct ObligationPolicy {
 /// so a policy can already scope rules per action.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ObligationPolicyRule {
-    pub(crate) stage: ObligationStage,
+    stage: ObligationStage,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) risk: Option<String>,
+    risk: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) action: Option<String>,
-    pub(crate) classification: ObligationClassification,
+    action: Option<String>,
+    classification: ObligationClassification,
+}
+
+impl ObligationPolicyRule {
+    /// Construct a rule with validated matchers. A present-but-blank
+    /// `risk` or `action` fails closed — the published
+    /// `$defs/classificationRule` pins `minLength: 1` on both, and the
+    /// domain never constructs what the contract rejects. Fields are
+    /// private so this is the only door (the [`ObligationWaiver`]
+    /// posture).
+    pub(crate) fn new(
+        stage: ObligationStage,
+        risk: Option<String>,
+        action: Option<String>,
+        classification: ObligationClassification,
+    ) -> Result<Self, ObligationError> {
+        if [&risk, &action].into_iter().any(|matcher| {
+            matcher
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+        }) {
+            return Err(ObligationError::InvalidRuleMatcher);
+        }
+        Ok(Self {
+            stage,
+            risk,
+            action,
+            classification,
+        })
+    }
 }
 
 impl ObligationPolicy {
@@ -373,6 +405,8 @@ pub(crate) enum ObligationError {
     InvalidRequiredEvidence,
     #[error("an authored risk classification must be non-blank")]
     InvalidRisk,
+    #[error("a classification-rule matcher must be non-blank when present")]
+    InvalidRuleMatcher,
     #[error("waiver justification must be non-blank")]
     InvalidJustification,
     #[error("waiver names obligation {id:?} but is bound to a different managed-version subject")]
@@ -815,12 +849,13 @@ mod tests {
         action: Option<&str>,
         classification: ObligationClassification,
     ) -> ObligationPolicyRule {
-        ObligationPolicyRule {
+        ObligationPolicyRule::new(
             stage,
-            risk: risk.map(str::to_string),
-            action: action.map(str::to_string),
+            risk.map(str::to_string),
+            action.map(str::to_string),
             classification,
-        }
+        )
+        .expect("valid rule")
     }
 
     /// §K8's headline composite (the E1.6.T1 failing test): with real
@@ -1766,6 +1801,31 @@ mod tests {
                 id: obligation_id("ob-billing-credits-verification")
             }),
             "a waiver never crosses workspaces"
+        );
+    }
+
+    /// A present-but-blank rule matcher fails closed — the published
+    /// `$defs/classificationRule` pins `minLength: 1` on `risk` and
+    /// `action`, and the validating constructor is the only door.
+    #[test]
+    fn blank_rule_matchers_fail_closed() {
+        assert_eq!(
+            ObligationPolicyRule::new(
+                ObligationStage::Approval,
+                Some(String::new()),
+                None,
+                ObligationClassification::Blocking,
+            ),
+            Err(ObligationError::InvalidRuleMatcher)
+        );
+        assert_eq!(
+            ObligationPolicyRule::new(
+                ObligationStage::AgentAction,
+                None,
+                Some(" ".to_string()),
+                ObligationClassification::Blocking,
+            ),
+            Err(ObligationError::InvalidRuleMatcher)
         );
     }
 }
