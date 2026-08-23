@@ -36,10 +36,11 @@ use thiserror::Error;
 
 use crate::application::compile::{LocalProjectContext, compile_with_provider_anchored_for_date};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
-use crate::domain::graph::{GraphArtifactDocument, GraphNode};
+use crate::domain::graph::{GraphArtifactDocument, GraphNode, GraphRepositoryIdentity};
 use crate::domain::hashing::sha256_prefixed;
-use crate::domain::ports::source_provider::SourceProvider;
-use crate::infrastructure::artifact::graph_json::read_graph_artifact_document;
+use crate::domain::ports::source_provider::{SourceLoadError, SourceProvider};
+use crate::domain::source::SourceFile;
+use crate::infrastructure::artifact::graph_json::parse_graph_artifact_document;
 use crate::infrastructure::source::evidence_fs::FsEvidenceFileReader;
 use crate::infrastructure::source::fs::FsSourceProvider;
 
@@ -189,8 +190,6 @@ pub enum ValidationRuntimeError {
 pub fn run_validation_runtime(
     input: ValidationRuntimeInput,
 ) -> Result<ValidationRuntimeOutcome, ValidationRuntimeError> {
-    require_sha256_digest(&input.runtime_binary_digest)?;
-
     let provider = match &input.project {
         Some(project) => FsSourceProvider::for_project(
             input.root.clone(),
@@ -199,8 +198,23 @@ pub fn run_validation_runtime(
         ),
         None => FsSourceProvider::new(input.root.clone()),
     };
+    run_with_provider(&provider, input)
+}
 
-    let inputs = source_input_digests(&provider);
+/// The provider-generic body of [`run_validation_runtime`] — the test seam
+/// pinning that every input is read exactly once: the receipt's digests and
+/// the validated content come from the same read, so a file changing
+/// between "digest" and "validate" cannot yield a receipt attesting digests
+/// that were never validated.
+fn run_with_provider<P: SourceProvider>(
+    provider: &P,
+    input: ValidationRuntimeInput,
+) -> Result<ValidationRuntimeOutcome, ValidationRuntimeError> {
+    require_sha256_digest(&input.runtime_binary_digest)?;
+
+    // ONE source read serves both the digests and the compile below.
+    let sources = provider.load_sources();
+    let inputs = source_input_digests(&sources);
     let mut context = Vec::new();
     if let Some(config_path) = &input.config_path {
         context.push(NamedDigestEntry {
@@ -209,20 +223,36 @@ pub fn run_validation_runtime(
         });
     }
 
-    if let Some(artifact_path) = &input.context_artifact {
-        context.push(NamedDigestEntry {
-            name: "context_artifact".to_string(),
-            digest: file_digest(artifact_path)?,
-        });
-    }
+    // ONE artifact read: the same bytes are digested and validated.
+    let context_artifact_bytes = match &input.context_artifact {
+        Some(artifact_path) => {
+            let bytes = fs::read(artifact_path).map_err(|error| {
+                ValidationRuntimeError::ContextUnreadable {
+                    path: artifact_path.clone(),
+                    message: error.to_string(),
+                }
+            })?;
+            context.push(NamedDigestEntry {
+                name: "context_artifact".to_string(),
+                digest: sha256_prefixed(&bytes),
+            });
+            Some(bytes)
+        }
+        None => None,
+    };
 
+    let snapshot = SnapshotSourceProvider {
+        sources,
+        inner: provider,
+    };
     let reader = FsEvidenceFileReader::new(input.anchor_root.clone());
     let compiled =
-        compile_with_provider_anchored_for_date(&provider, &reader, input.evaluation_date);
+        compile_with_provider_anchored_for_date(&snapshot, &reader, input.evaluation_date);
     let mut diagnostics = compiled.diagnostics;
-    if let Some(artifact_path) = &input.context_artifact {
+    if let (Some(artifact_path), Some(bytes)) = (&input.context_artifact, &context_artifact_bytes) {
         diagnostics.extend(validate_context_artifact(
             artifact_path,
+            bytes,
             compiled
                 .artifacts
                 .as_ref()
@@ -267,13 +297,37 @@ pub fn run_validation_runtime(
     })
 }
 
-/// Digest every source the provider yields, keyed by Logical Source Path
-/// (portable, project-relative) in lexicographic order. Load failures carry
-/// no digest — the compile run reports them as typed diagnostics and the
-/// result fails closed.
-fn source_input_digests<P: SourceProvider>(provider: &P) -> Vec<DigestEntry> {
+/// The compile input pinned to the exact bytes the receipt digests: yields
+/// the one snapshot [`run_with_provider`] already read, so digesting and
+/// validating can never observe different filesystem states. Repository
+/// identity and `contains` stay with the real provider — only the source
+/// read is pinned.
+struct SnapshotSourceProvider<'a, P: SourceProvider> {
+    sources: Vec<Result<SourceFile, SourceLoadError>>,
+    inner: &'a P,
+}
+
+impl<P: SourceProvider> SourceProvider for SnapshotSourceProvider<'_, P> {
+    fn load_sources(&self) -> Vec<Result<SourceFile, SourceLoadError>> {
+        self.sources.clone()
+    }
+
+    fn repository_identity(&self) -> GraphRepositoryIdentity {
+        self.inner.repository_identity()
+    }
+
+    fn contains(&self, path: &Path) -> bool {
+        self.inner.contains(path)
+    }
+}
+
+/// Digest every loaded source, keyed by Logical Source Path (portable,
+/// project-relative) in lexicographic order. Load failures carry no digest —
+/// the compile run over the same snapshot reports them as typed diagnostics
+/// and the result fails closed.
+fn source_input_digests(sources: &[Result<SourceFile, SourceLoadError>]) -> Vec<DigestEntry> {
     let mut digests = BTreeMap::new();
-    for source in provider.load_sources().into_iter().flatten() {
+    for source in sources.iter().flatten() {
         digests.insert(
             source.logical_path.to_string_lossy().into_owned(),
             sha256_prefixed(source.text.as_bytes()),
@@ -294,18 +348,20 @@ fn file_digest(path: &PathBuf) -> Result<String, ValidationRuntimeError> {
 }
 
 /// E1.7.T4: domain validation of a context artifact against the recompiled
-/// source. `read_graph_artifact_document` enforces the exact-match version
-/// gate (`schema.unsupported_version` for v5 and v99 alike) and JSON shape;
-/// the governed-meaning comparison below is what JSON Schema can never
-/// see: every Knowledge Object's `content_hash` must equal the recompiled
-/// source's, and the object sets must coincide. When the source itself has
-/// errors the recompiled artifact does not exist and the run already
-/// fails, so only the version/shape gate applies.
+/// source. `contents` is the exact byte snapshot the receipt digested.
+/// `parse_graph_artifact_document` enforces the exact-match version gate
+/// (`schema.unsupported_version` for v5 and v99 alike) and JSON shape; the
+/// governed-meaning comparison below is what JSON Schema can never see:
+/// every Knowledge Object must equal the recompiled source's, and the node
+/// and edge sets must coincide. When the source itself has errors the
+/// recompiled artifact does not exist and the run already fails, so only
+/// the version/shape gate applies.
 fn validate_context_artifact(
     artifact_path: &Path,
+    contents: &[u8],
     recompiled_graph_json: Option<&str>,
 ) -> Vec<Diagnostic> {
-    let document = match read_graph_artifact_document(artifact_path) {
+    let document = match parse_graph_artifact_document(artifact_path, contents) {
         Ok(document) => document,
         Err(diagnostics) => return diagnostics,
     };
@@ -758,6 +814,64 @@ mod tests {
                 "{version}: version gate must reject before any drift comparison"
             );
         }
+    }
+
+    /// A provider whose second read observes different content — the
+    /// editor-save / concurrent-checkout race between "digest" and
+    /// "validate". The runtime must read exactly once, so the flip is
+    /// never observed.
+    struct FlipFlopProvider {
+        first: &'static str,
+        second: &'static str,
+        calls: std::cell::Cell<usize>,
+    }
+
+    impl SourceProvider for FlipFlopProvider {
+        fn load_sources(&self) -> Vec<Result<SourceFile, SourceLoadError>> {
+            let call = self.calls.get();
+            self.calls.set(call + 1);
+            let text = if call == 0 { self.first } else { self.second };
+            vec![Ok(SourceFile::new_with_identity_path(
+                PathBuf::from("index.adoc"),
+                text.to_string(),
+                PathBuf::from("index.adoc"),
+            ))]
+        }
+
+        fn contains(&self, _path: &Path) -> bool {
+            true
+        }
+    }
+
+    /// Exact-input binding (E1.7 exit gate): the digests in `inputs` and
+    /// the validated content come from the SAME read. A source that
+    /// changes between two hypothetical reads must not produce a receipt
+    /// attesting digests that were never validated — the runtime reads
+    /// once, so the flipped content is never observed.
+    #[test]
+    fn receipt_digests_bind_the_exact_content_that_was_validated() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let provider = FlipFlopProvider {
+            first: valid_source(),
+            second: "# Billing @doc(team.billing)\n\n::claim billing.ready\nstatus: draft\ndepends_on: [billing.missing]\n--\nBilling docs are ready.\n::\n",
+            calls: std::cell::Cell::new(0),
+        };
+        let outcome = run_with_provider(&provider, standalone_input(workspace.path()))
+            .expect("validation runs");
+
+        assert_eq!(
+            outcome.receipt.result(),
+            ValidationResult::Pass,
+            "the validated content must be the digested content, got: {:?}",
+            outcome.diagnostics
+        );
+        let value: serde_json::Value =
+            serde_json::from_str(&outcome.receipt.to_canonical_json()).expect("receipt is json");
+        assert_eq!(
+            value["inputs"][0]["digest"],
+            sha256_prefixed(valid_source().as_bytes()),
+            "inputs must digest the exact bytes the run validated"
+        );
     }
 
     /// The harness-attested digest is validated at the boundary: anything

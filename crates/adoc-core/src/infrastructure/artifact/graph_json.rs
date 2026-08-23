@@ -31,11 +31,21 @@ pub(crate) const SUPPORTED_GRAPH_SCHEMA_VERSION: &str = "adoc.graph.v6";
 pub(crate) fn read_graph_artifact_document(
     path: &Path,
 ) -> Result<GraphArtifactDocument, Vec<Diagnostic>> {
-    let contents = match fs::read_to_string(path) {
+    let contents = match fs::read(path) {
         Ok(contents) => contents,
         Err(error) => return Err(vec![read_error_diagnostic(path, error)]),
     };
-    let value = match serde_json::from_str::<serde_json::Value>(&contents) {
+    parse_graph_artifact_document(path, &contents)
+}
+
+/// Parse an already-read graph artifact byte snapshot; `path` names the
+/// origin in diagnostics only. The Validation Runtime digests and parses
+/// the SAME bytes (E1.7 exact-input binding), so no read happens here.
+pub(crate) fn parse_graph_artifact_document(
+    path: &Path,
+    contents: &[u8],
+) -> Result<GraphArtifactDocument, Vec<Diagnostic>> {
+    let value = match serde_json::from_slice::<serde_json::Value>(contents) {
         Ok(value) => value,
         Err(error) => {
             return Err(vec![
