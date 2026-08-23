@@ -2362,3 +2362,59 @@ fn authorization_decision_schema_pins_replay_bindings() {
         );
     }
 }
+
+#[test]
+fn connector_acl_policy_requires_every_activation_safety_declaration() {
+    let policy = json!({
+        "schema_version": "adoc.connector_acl_policy.v0",
+        "connector_kind": "github",
+        "policy_version": "github-acl-v1",
+        "acquisition": "provider_api",
+        "freshness_window_seconds": 300,
+        "refresh_mechanism": "webhook_and_poll",
+        "revocation_propagation": "immediate_on_observation",
+        "connector_unavailable": "fail_closed",
+        "invalidation": {
+            "acl_cache": true,
+            "active_access_sessions": true
+        }
+    });
+
+    assert!(schema_accepts(
+        "adoc.connector_acl_policy.v0.schema.json",
+        &policy
+    ));
+
+    for field in [
+        "acquisition",
+        "freshness_window_seconds",
+        "refresh_mechanism",
+        "revocation_propagation",
+        "connector_unavailable",
+        "invalidation",
+    ] {
+        let mut missing = policy.clone();
+        missing
+            .as_object_mut()
+            .expect("policy object")
+            .remove(field);
+        assert!(
+            !schema_accepts("adoc.connector_acl_policy.v0.schema.json", &missing),
+            "connector activation policy without {field} must be rejected"
+        );
+    }
+
+    let mut permissive_outage = policy.clone();
+    permissive_outage["connector_unavailable"] = json!("use_stale");
+    let mut no_session_invalidation = policy.clone();
+    no_session_invalidation["invalidation"]["active_access_sessions"] = json!(false);
+    let mut zero_freshness = policy;
+    zero_freshness["freshness_window_seconds"] = json!(0);
+
+    for invalid in [permissive_outage, no_session_invalidation, zero_freshness] {
+        assert!(!schema_accepts(
+            "adoc.connector_acl_policy.v0.schema.json",
+            &invalid
+        ));
+    }
+}

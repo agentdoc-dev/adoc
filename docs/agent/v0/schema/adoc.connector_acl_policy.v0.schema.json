@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.connector_acl_policy.v0.schema.json",
+  "title": "AgentDoc Connector ACL Policy",
+  "description": "Activation-time declaration for source ACL acquisition, freshness, refresh, revocation, outage, and invalidation behavior. V1 fails closed during connector outages and invalidates ACL caches and active access sessions immediately when a permission change is observed.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "connector_kind",
+    "policy_version",
+    "acquisition",
+    "freshness_window_seconds",
+    "refresh_mechanism",
+    "revocation_propagation",
+    "connector_unavailable",
+    "invalidation"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.connector_acl_policy.v0" },
+    "connector_kind": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "policy_version": { "$ref": "#/$defs/nonEmpty" },
+    "acquisition": {
+      "enum": ["provider_api", "provider_events_and_api"]
+    },
+    "freshness_window_seconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "refresh_mechanism": {
+      "enum": ["poll", "webhook_and_poll"]
+    },
+    "revocation_propagation": {
+      "const": "immediate_on_observation"
+    },
+    "connector_unavailable": {
+      "const": "fail_closed"
+    },
+    "invalidation": {
+      "type": "object",
+      "required": ["acl_cache", "active_access_sessions"],
+      "additionalProperties": false,
+      "properties": {
+        "acl_cache": { "const": true },
+        "active_access_sessions": { "const": true }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\r\\n\\u2028\\u2029]*\\S[^\\r\\n\\u2028\\u2029]*$"
+    }
+  }
+}
