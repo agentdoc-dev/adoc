@@ -80,6 +80,9 @@ pub struct CheckReceiptInput {
     pub as_of: chrono::NaiveDate,
     pub runtime_version: String,
     pub runtime_binary_digest: String,
+    /// Graph artifact validated against the recompiled source (exact-match
+    /// version gate + governed-meaning drift check, E1.7.T4).
+    pub context_artifact: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -648,6 +651,11 @@ where
     P: PathPolicy,
 {
     let target = resolve_check_target(context, input.path.as_deref())?;
+    let context_artifact = input
+        .context_artifact
+        .as_deref()
+        .map(|path| context.path_policy().resolve_read_path(path))
+        .transpose()?;
     let outcome = adoc_core::run_validation_runtime(adoc_core::ValidationRuntimeInput {
         root: target.path,
         project: target.project,
@@ -656,6 +664,7 @@ where
         runtime_version: input.runtime_version,
         runtime_binary_digest: input.runtime_binary_digest,
         config_path: target.config_path,
+        context_artifact,
     })
     .map_err(|source| LocalError::ValidationRuntime { source })?;
     let exit_code = match outcome.receipt.result() {

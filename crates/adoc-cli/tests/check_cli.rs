@@ -3098,3 +3098,77 @@ fn check_receipt_requires_as_of_and_runtime_binary_digest() {
         "no receipt may be written on refusal"
     );
 }
+
+/// E1.7.T4 end-to-end: a schema-valid but domain-invalid graph artifact
+/// handed to receipt-mode check as --context-artifact fails the run; the
+/// receipt records result fail. The runtime — not any JSON-Schema
+/// preflight — is the authority that rejects it (SEMANTICS S6).
+#[test]
+fn check_receipt_rejects_schema_valid_domain_invalid_context_artifact() {
+    let workspace = TestWorkspace::new("check-receipt-context-drift");
+    workspace.write(
+        "agentdoc.config.yaml",
+        "version: 1\nmode: strict\ndocs_path: docs\noutputs:\n  dir: dist\n",
+    );
+    workspace.write(
+        "docs/index.adoc",
+        "# Billing @doc(team.billing)\n\n::claim billing.ready\nstatus: draft\n--\nBilling docs are ready.\n::\n",
+    );
+
+    let build = adoc_command()
+        .current_dir(&workspace.root)
+        .args(["build", "docs", "--out", "dist", "--no-embeddings"])
+        .output()
+        .expect("adoc build runs");
+    assert!(build.status.success(), "stderr:\n{}", stderr(&build));
+
+    // Forge the governed-meaning hash while keeping the artifact
+    // JSON-Schema-valid (same sha256:<hex> grammar).
+    let artifact_path = workspace.root.join("dist/docs.graph.json");
+    let artifact = fs::read_to_string(&artifact_path).expect("artifact is readable");
+    let value: Value = serde_json::from_str(&artifact).expect("artifact is json");
+    let real_hash = value["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find_map(|node| {
+            (node["type"] == "knowledge_object")
+                .then(|| node["content_hash"].as_str().expect("hash").to_string())
+        })
+        .expect("knowledge object present");
+    let forged = artifact.replace(&real_hash, &format!("sha256:{}", "0".repeat(64)));
+    fs::write(&artifact_path, forged).expect("forged artifact writes");
+
+    let receipt_path = workspace.root.join("receipt.json");
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "check",
+            "--receipt",
+            receipt_path.to_str().expect("utf-8 receipt path"),
+            "--as-of",
+            "2026-01-01",
+            "--runtime-binary-digest",
+            GOLDEN_RUNTIME_DIGEST,
+            "--context-artifact",
+            "dist/docs.graph.json",
+        ])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "domain-invalid artifact must fail"
+    );
+    let receipt: Value =
+        serde_json::from_str(&fs::read_to_string(&receipt_path).expect("receipt is written"))
+            .expect("receipt is json");
+    assert_eq!(receipt["result"], "fail");
+    assert_eq!(receipt["context"][1]["name"], "context_artifact");
+    let diagnostics = stdout(&output);
+    assert!(
+        diagnostics.contains("validation.context_artifact_drift"),
+        "expected the typed drift code in the check output, got:\n{diagnostics}"
+    );
+}

@@ -450,6 +450,13 @@ diagnostic_codes! {
     /// drift (RT-21).
     AuditPersistenceFailed = "audit.persistence_failed" =>
         "Restore audit record persistence and retry; the operation never succeeds while its audit record cannot be written.";
+    /// E1.7.T4: a context artifact handed to the Validation Runtime is
+    /// JSON-Schema-valid but does not correspond to the recompiled source
+    /// — a Knowledge Object's governed-meaning `content_hash` differs, or
+    /// the object sets diverge. JSON Schema is preflight only (ADR-0015);
+    /// this domain check is what schema validation can never see.
+    ValidationContextArtifactDrift = "validation.context_artifact_drift" =>
+        "Rebuild the graph artifact from the source workspace with `adoc build`, then re-run validation.";
 }
 
 impl DiagnosticCode {

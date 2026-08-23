@@ -73,6 +73,7 @@ Deliberately invalid version fixtures cited from test modules in `crates/*/src`,
 <!-- registry:test-fixture-ids -->
 | id | status | notes |
 | --- | --- | --- |
+| `adoc.graph.v99` | fixture | rejected-version fixture proving the Validation Runtime's exact-match context-artifact gating (E1.7.T4): neither an older nor a newer unknown graph version is consumed |
 | `adoc.search.v99` | fixture | rejected-version fixture for Search Artifact version gating |
 <!-- /registry:test-fixture-ids -->
 
@@ -267,6 +268,7 @@ Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed
 | `search.model_mismatch` |
 | `store.retention_floor_violation` |
 | `task.overdue` |
+| `validation.context_artifact_drift` |
 <!-- /registry:diagnostic-codes -->
 
 ## Action codes — owner `action`
