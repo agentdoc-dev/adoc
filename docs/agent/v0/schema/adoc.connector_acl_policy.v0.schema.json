@@ -54,12 +54,15 @@
   "allOf": [
     {
       "if": {
-        "properties": { "acquisition": { "const": "provider_api" } },
-        "required": ["acquisition"]
+        "properties": {
+          "refresh_mechanism": { "const": "webhook_and_poll" }
+        },
+        "required": ["refresh_mechanism"]
       },
-      "then": { "properties": { "refresh_mechanism": { "const": "poll" } } },
-      "else": {
-        "properties": { "refresh_mechanism": { "const": "webhook_and_poll" } }
+      "then": {
+        "properties": {
+          "acquisition": { "const": "provider_events_and_api" }
+        }
       }
     }
   ],

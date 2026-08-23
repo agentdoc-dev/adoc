@@ -653,8 +653,7 @@
           "description": "Required for every human direct grant, regardless of effect.",
           "$ref": "#/$defs/nonEmptyText"
         },
-        "role": { "$ref": "#/$defs/role" },
-        "group": { "$ref": "#/$defs/groupGrantProvenance" }
+        "role": { "$ref": "#/$defs/role" }
       },
       "allOf": [
         {
@@ -725,6 +724,12 @@
       "type": "object",
       "required": [
         "role",
+        "evidence_id",
+        "snapshot_id",
+        "connector_id",
+        "principal_id",
+        "source",
+        "policy_version",
         "observed_at",
         "expires_at",
         "connector_available"
@@ -732,6 +737,12 @@
       "additionalProperties": false,
       "properties": {
         "role": { "const": "current_authorization" },
+        "evidence_id": { "$ref": "#/$defs/nonEmpty" },
+        "snapshot_id": { "$ref": "#/$defs/nonEmpty" },
+        "connector_id": { "$ref": "#/$defs/nonEmpty" },
+        "principal_id": { "$ref": "#/$defs/nonEmpty" },
+        "source": { "$ref": "#/$defs/sourceResource" },
+        "policy_version": { "$ref": "#/$defs/nonEmpty" },
         "observed_at": { "$ref": "#/$defs/rfc3339Timestamp" },
         "expires_at": { "$ref": "#/$defs/rfc3339Timestamp" },
         "connector_available": { "type": "boolean" },
@@ -748,8 +759,7 @@
         "source": { "enum": ["role_assignment", "direct_grant"] },
         "effect": { "enum": ["allow", "deny"] },
         "scope_match": { "$ref": "#/$defs/scope" },
-        "role": { "$ref": "#/$defs/role" },
-        "group": { "$ref": "#/$defs/groupGrantProvenance" }
+        "role": { "$ref": "#/$defs/role" }
       },
       "allOf": [
         {
@@ -759,36 +769,6 @@
           },
           "then": { "not": { "required": ["role"] } },
           "else": { "required": ["role"] }
-        }
-      ]
-    },
-    "groupGrantProvenance": {
-      "description": "Group path that conferred this grant. External membership binds the exact connector binding and source kind used to resolve it.",
-      "type": "object",
-      "required": ["id", "name", "membership_source"],
-      "additionalProperties": false,
-      "properties": {
-        "id": { "$ref": "#/$defs/nonEmpty" },
-        "name": { "$ref": "#/$defs/nonEmpty" },
-        "membership_source": { "enum": ["manual", "external"] },
-        "binding_id": { "$ref": "#/$defs/nonEmpty" },
-        "source_kind": { "$ref": "#/$defs/nonEmpty" }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": { "membership_source": { "const": "external" } },
-            "required": ["membership_source"]
-          },
-          "then": { "required": ["binding_id", "source_kind"] },
-          "else": {
-            "not": {
-              "anyOf": [
-                { "required": ["binding_id"] },
-                { "required": ["source_kind"] }
-              ]
-            }
-          }
         }
       ]
     }
