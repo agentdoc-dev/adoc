@@ -1912,9 +1912,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
     allow_with_empty_evaluation_time["evaluation_time"] = json!("");
     let mut allow_with_blank_evaluation_time = decision.clone();
     allow_with_blank_evaluation_time["evaluation_time"] = json!("   ");
+    let mut allow_with_invalid_evaluation_time = decision.clone();
+    allow_with_invalid_evaluation_time["evaluation_time"] = json!("not-a-time");
 
     let mut direct_with_invalid_expiry = direct_human.clone();
     direct_with_invalid_expiry["grants"][0]["expires_at"] = json!("never");
+    let mut direct_with_zoneless_expiry = direct_human.clone();
+    direct_with_zoneless_expiry["grants"][0]["expires_at"] = json!("2026-08-24T12:00:00");
     let mut direct_with_rfc3339_edge_expiry = direct_human.clone();
     direct_with_rfc3339_edge_expiry["grants"][0]["expires_at"] = json!("2026-12-31t23:59:60z");
 
@@ -2222,8 +2226,18 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         (
+            "allow with invalid evaluation time",
+            allow_with_invalid_evaluation_time,
+            false,
+        ),
+        (
             "direct grant with invalid expiry",
             direct_with_invalid_expiry,
+            false,
+        ),
+        (
+            "direct grant with zoneless expiry",
+            direct_with_zoneless_expiry,
             false,
         ),
         (

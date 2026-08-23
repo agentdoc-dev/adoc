@@ -184,7 +184,7 @@
       },
       "then": {
         "properties": {
-          "evaluation_time": { "$ref": "#/$defs/nonEmpty" }
+          "evaluation_time": { "$ref": "#/$defs/rfc3339Timestamp" }
         }
       }
     },
@@ -438,6 +438,10 @@
       "minLength": 1,
       "pattern": "^\\S(?:.*\\S)?$"
     },
+    "rfc3339Timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])[Tt](?:[01]\\d|2[0-3]):[0-5]\\d:(?:[0-5]\\d|60)(?:\\.\\d+)?(?:[Zz]|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$"
+    },
     "permission": {
       "type": "string",
       "enum": [
@@ -532,10 +536,8 @@
         "permission": { "$ref": "#/$defs/permission" },
         "scope": { "$ref": "#/$defs/scope" },
         "expires_at": {
-          "description": "Optional expiry for a role assignment and required expiry for every direct grant, regardless of effect.",
-          "type": "string",
-          "format": "date-time",
-          "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])[Tt](?:[01]\\d|2[0-3]):[0-5]\\d:(?:[0-5]\\d|60)(?:\\.\\d+)?(?:[Zz]|[+-](?:[01]\\d|2[0-3]):[0-5]\\d)$"
+          "description": "Optional expiry for a role assignment and required expiry for every direct grant, regardless of effect. The schema pins the lexical RFC 3339 shape; calendar validity and instant comparison are evaluator-owned and fail closed.",
+          "$ref": "#/$defs/rfc3339Timestamp"
         },
         "exceptional_reason": {
           "description": "Required for every human direct grant, regardless of effect.",
