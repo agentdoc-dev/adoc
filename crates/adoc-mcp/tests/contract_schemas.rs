@@ -1702,10 +1702,24 @@ fn authorization_decision_schema_pins_replay_bindings() {
     manual_group_grant["grants"][0]["group"] = manual_group.clone();
     manual_group_grant["basis"]["group"] = manual_group;
 
-    let mut manual_group_direct_grant = direct_human.clone();
-    manual_group_direct_grant["grants"][0]["group"] =
-        manual_group_grant["grants"][0]["group"].clone();
-    manual_group_direct_grant["basis"]["group"] = manual_group_grant["basis"]["group"].clone();
+    let mut manual_group_direct_grant = decision.clone();
+    manual_group_direct_grant["principal"]["type"] = json!("service");
+    manual_group_direct_grant["grants"][0] = json!({
+        "grant_id": "group-scoped-grant-1",
+        "source": "direct_grant",
+        "effect": "allow",
+        "permission": "proposal.approve",
+        "scope": { "workspace_id": "workspace-1" },
+        "expires_at": "2026-08-24T12:00:00Z",
+        "group": manual_group_grant["grants"][0]["group"].clone()
+    });
+    manual_group_direct_grant["basis"] = json!({
+        "grant_id": "group-scoped-grant-1",
+        "source": "direct_grant",
+        "effect": "allow",
+        "scope_match": { "workspace_id": "workspace-1" },
+        "group": manual_group_grant["basis"]["group"].clone()
+    });
 
     let mut external_group_without_binding = external_group_grant.clone();
     external_group_without_binding["grants"][0]["group"]
@@ -1717,6 +1731,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .as_object_mut()
         .expect("group object")
         .remove("binding_mode");
+    let mut external_group_without_source_kind = external_group_grant.clone();
+    external_group_without_source_kind["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("source_kind");
+    let mut multiline_group_name = manual_group_grant.clone();
+    multiline_group_name["grants"][0]["group"]["name"] = json!("Curators\nadmin");
     let mut suggestion_group_grant = external_group_grant.clone();
     suggestion_group_grant["grants"][0]["group"]["binding_mode"] = json!("suggestion_only");
     let mut disabled_group_basis = external_group_grant.clone();
@@ -2348,6 +2369,25 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut direct_with_rfc3339_edge_expiry = direct_human.clone();
     direct_with_rfc3339_edge_expiry["grants"][0]["expires_at"] = json!("2026-12-31t23:59:60z");
 
+    for mode in ["authoritative_sync", "additive_sync"] {
+        for source_kind in [
+            "github_team",
+            "gitlab_group",
+            "slack_user_group",
+            "oidc_group",
+            "scim_group",
+        ] {
+            let mut instance = external_group_grant.clone();
+            instance["grants"][0]["group"]["binding_mode"] = json!(mode);
+            instance["grants"][0]["group"]["source_kind"] = json!(source_kind);
+            instance["basis"]["group"] = instance["grants"][0]["group"].clone();
+            assert!(
+                schema_accepts("adoc.authorization_decision.v0.schema.json", &instance),
+                "external group mode {mode:?} and source {source_kind:?} must be valid"
+            );
+        }
+    }
+
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision.clone(), true),
         (
@@ -2525,6 +2565,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
             external_basis_without_mode,
             false,
         ),
+        (
+            "external group without source kind",
+            external_group_without_source_kind,
+            false,
+        ),
+        ("multiline group name", multiline_group_name, false),
         ("suggestion-only group grant", suggestion_group_grant, false),
         ("disabled group basis", disabled_group_basis, false),
         ("unknown external group source", unknown_group_source, false),

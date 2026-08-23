@@ -93,7 +93,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.source_binding.v0` | adoc | E1.1 | exact source placement binding, independent of the semantic hash; carried since E1.1.T2 as the `source_binding` member of `adoc.graph.v6` Knowledge Object nodes (schema `graph-artifact.v6.json`), governed by that envelope's version — registered as a standalone envelope when a surface emits it outside the graph artifact |
 | `adoc.sensitive_access.v0` | adoc | E6.3 | name held until a final registered successor (RT-08) |
 | `adoc.egress_policy.v0` | adoc | E6.6 | provenance RT-21: absent from the original V10 inventory |
-| `adoc.authorization_decision.v0` | adoc | E2.2, E2.4 | `allow`/`deny`/`insufficient_context` decision record with AgentDoc group and external-binding provenance |
+| `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record; extended at E2.4 with AgentDoc group and external-binding provenance |
 | `adoc.work_request.v0` | adoc | E3.7 | versioned external work request with nonce/digest/expiry/workload identity |
 | `adoc.work_result.v0` | adoc | E3.7 | result binding with replay/idempotency state |
 | `adoc.migration_request.v0` | adoc | E7.1 | exact-revision standalone-to-Cloud migration request |
@@ -362,6 +362,31 @@ The immutable version-1 permission vocabulary implemented by E2.2. Policy evalua
 | `workspace.manage_members` | 1 | planned | E2.2 |
 | `workspace.read` | 1 | planned | E2.2 |
 <!-- /registry:permission-primitives -->
+
+## Group grant binding modes — planned, owner `cloud`
+
+The E2.4 authorization-decision provenance vocabulary contains only modes that can confer a grant. `AUTHORIZATION.md` §A7 also defines `suggestion_only` and `disabled` as external-binding configuration modes; neither can appear in a winning grant or basis.
+
+<!-- registry:group-binding-modes -->
+| mode | status | planned by | meaning |
+| --- | --- | --- | --- |
+| `authoritative_sync` | planned | E2.4 | external membership is authoritative for the binding epoch |
+| `additive_sync` | planned | E2.4 | external membership adds to manual membership for the binding epoch |
+<!-- /registry:group-binding-modes -->
+
+## External group membership sources — planned, owner `cloud`
+
+The closed E2.4 source-kind vocabulary carried by an external AgentDoc-group membership in authorization provenance.
+
+<!-- registry:group-membership-sources -->
+| source kind | status | planned by | meaning |
+| --- | --- | --- | --- |
+| `github_team` | planned | E2.4 | GitHub team membership |
+| `gitlab_group` | planned | E2.4 | GitLab group membership |
+| `slack_user_group` | planned | E2.4 | Slack user-group membership |
+| `oidc_group` | planned | E2.4 | OIDC group claim membership |
+| `scim_group` | planned | E2.4 | SCIM group membership |
+<!-- /registry:group-membership-sources -->
 
 ## Cloud codes — owner `cloud`
 

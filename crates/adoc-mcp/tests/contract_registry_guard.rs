@@ -91,6 +91,8 @@ const ANCHORS: &[&str] = &[
     "registry:action-codes",
     "registry:gate-codes",
     "registry:permission-primitives",
+    "registry:group-binding-modes",
+    "registry:group-membership-sources",
     "registry:cloud-codes",
     "registry:attestation-codes",
     "registry:dispositions",
@@ -687,6 +689,38 @@ fn permission_primitives_match_the_e2_2_registry() {
         })
         .collect();
     assert_eq!(actual, schema_permissions);
+}
+
+#[test]
+fn group_vocabularies_match_the_e2_4_registry() {
+    let registry = registry();
+    let schema: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
+    ))
+    .expect("authorization decision schema is json");
+    let external_group = &schema["$defs"]["group"]["oneOf"][1]["properties"];
+    let schema_values = |name: &str| {
+        external_group[name]["enum"]
+            .as_array()
+            .unwrap_or_else(|| panic!("external group {name} is an enum"))
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .unwrap_or_else(|| panic!("external group {name} values are strings"))
+                    .to_owned()
+            })
+            .collect::<BTreeSet<_>>()
+    };
+
+    assert_eq!(
+        anchored_ids(&registry, "registry:group-binding-modes"),
+        schema_values("binding_mode")
+    );
+    assert_eq!(
+        anchored_ids(&registry, "registry:group-membership-sources"),
+        schema_values("source_kind")
+    );
 }
 
 /// Backticked codes cited by the executable planning surface, one
