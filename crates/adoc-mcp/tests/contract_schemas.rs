@@ -1593,12 +1593,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "snapshot_id": "acl-1",
             "current_authorization": {
                 "role": "current_authorization",
-                "authorization_id": "acl-authorization-1",
+                "current_acl_id": "acl-authorization-1",
                 "snapshot_id": "acl-current-1",
                 "connector_id": "github",
                 "principal_id": "principal-1",
                 "source": { "kind": "repository", "id": "cloud" },
-                "policy_version": "github-acl-v1",
+                "acl_policy_version": "github-acl-v1",
                 "observed_at": "2026-08-23T11:59:00Z",
                 "expires_at": "2026-08-23T12:05:00Z",
                 "connector_available": true
@@ -1714,12 +1714,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut current_acl_with_invalid_observed_at = decision.clone();
     current_acl_with_invalid_observed_at["source_acl_ceiling"]["current_authorization"]["observed_at"] =
         json!("not-a-time");
-    let mut current_acl_without_authorization_id = decision.clone();
-    current_acl_without_authorization_id["source_acl_ceiling"]["current_authorization"]
-        .as_object_mut()
-        .expect("current ACL object")
-        .remove("authorization_id");
-
     let mut missing_policy_version = decision.clone();
     missing_policy_version
         .as_object_mut()
@@ -1857,6 +1851,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     });
     let mut source_acl_denied_with_basis = source_acl_denied.clone();
     source_acl_denied_with_basis["basis"] = decision["basis"].clone();
+    let mut source_acl_denied_without_current_acl = source_acl_denied.clone();
+    source_acl_denied_without_current_acl["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("ACL object")
+        .remove("current_authorization");
 
     let mut false_source_acl_unavailable_reason = insufficient.clone();
     false_source_acl_unavailable_reason["source_acl_ceiling"] = json!({
@@ -2023,7 +2022,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
     direct_with_rfc3339_edge_expiry["grants"][0]["expires_at"] = json!("2026-12-31t23:59:60z");
 
     for (name, instance, expected_valid) in [
-        ("role assignment allow", decision, true),
+        ("role assignment allow", decision.clone(), true),
         (
             "required allow without current ACL evidence",
             legacy_allow_without_current_acl,
@@ -2179,11 +2178,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
             current_acl_with_invalid_observed_at,
             false,
         ),
-        (
-            "current ACL evidence without immutable authorization id",
-            current_acl_without_authorization_id,
-            false,
-        ),
         ("direct grant without expiry", direct_without_expiry, false),
         (
             "role assignment with exceptional reason",
@@ -2246,6 +2240,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "source ACL denied reason with basis",
             source_acl_denied_with_basis,
+            false,
+        ),
+        (
+            "source ACL denied without current ACL evidence",
+            source_acl_denied_without_current_acl,
             false,
         ),
         (
@@ -2465,6 +2464,29 @@ fn authorization_decision_schema_pins_replay_bindings() {
             schema_accepts("adoc.authorization_decision.v0.schema.json", &instance),
             expected_valid,
             "authorization decision schema case failed: {name}\ninstance: {instance}"
+        );
+    }
+
+    for field in [
+        "role",
+        "current_acl_id",
+        "snapshot_id",
+        "connector_id",
+        "principal_id",
+        "source",
+        "acl_policy_version",
+        "observed_at",
+        "expires_at",
+        "connector_available",
+    ] {
+        let mut missing = decision.clone();
+        missing["source_acl_ceiling"]["current_authorization"]
+            .as_object_mut()
+            .expect("current ACL object")
+            .remove(field);
+        assert!(
+            !schema_accepts("adoc.authorization_decision.v0.schema.json", &missing),
+            "current ACL evidence without {field} must be rejected"
         );
     }
 }
