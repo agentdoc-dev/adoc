@@ -817,10 +817,8 @@ mod tests {
             )]))
             .expect("import accepted");
         let imported = &outcome.imported[0];
-        StateEventSubject {
-            canonical: imported.canonical.clone(),
-            version_id: imported.version_id.clone(),
-        }
+        StateEventSubject::bound(&workspace, &imported.canonical, &imported.version_id)
+            .expect("an imported version binds")
     }
 
     fn state_event(subject: StateEventSubject, change: ManagedStateChange) -> ManagedStateEvent {
@@ -1378,9 +1376,13 @@ mod tests {
                 knowledge_object("billing.tax", "sha256:bbb"),
             ]))
             .expect("import accepted");
-        let subject = |index: usize| StateEventSubject {
-            canonical: outcome.imported[index].canonical.clone(),
-            version_id: outcome.imported[index].version_id.clone(),
+        let subject = |index: usize| {
+            StateEventSubject::bound(
+                &workspace,
+                &outcome.imported[index].canonical,
+                &outcome.imported[index].version_id,
+            )
+            .expect("an imported version binds")
         };
         (subject(0), subject(1))
     }
@@ -1846,7 +1848,7 @@ mod tests {
         }
         // No upgraded outcome: the historical answer at the old T is
         // unchanged, and approval touched governance only.
-        let historical = store.reconstruct_through(EventOrdinal(1));
+        let historical = store.reconstruct_through([subject.clone()], EventOrdinal(1));
         assert_eq!(
             historical[&subject].verification,
             RecordedDimension::Recorded(VerificationState::Unverified)
@@ -1871,10 +1873,12 @@ mod tests {
                 "sha256:ccc",
             )]))
             .expect("import accepted");
-        StateEventSubject {
-            canonical: outcome.imported[0].canonical.clone(),
-            version_id: outcome.imported[0].version_id.clone(),
-        }
+        StateEventSubject::bound(
+            &ws,
+            &outcome.imported[0].canonical,
+            &outcome.imported[0].version_id,
+        )
+        .expect("an imported version binds")
     }
 
     /// `ManagedVersionId` is workspace-minted (`mv-N` recurs in every
@@ -1885,8 +1889,13 @@ mod tests {
     fn waivers_from_another_workspace_fail_closed_despite_equal_version_ids() {
         let subject = imported_subject();
         let foreign = foreign_workspace_subject();
-        assert_eq!(subject.version_id, foreign.version_id, "both mint mv-1");
-        assert_ne!(subject.canonical, foreign.canonical);
+        let subject_json = serde_json::to_value(&subject).expect("subject serializes");
+        let foreign_json = serde_json::to_value(&foreign).expect("subject serializes");
+        assert_eq!(
+            subject_json["version_id"], foreign_json["version_id"],
+            "both mint mv-1"
+        );
+        assert_ne!(subject_json["canonical"], foreign_json["canonical"]);
         let mut ledger = ObligationLedger::new();
         ledger.open(open_record(&subject)).expect("opens");
         let cross = waiver_for(&foreign, None);
