@@ -318,6 +318,21 @@ impl ObligationWaiver {
             expires_after,
         })
     }
+
+    /// Whether this waiver has lapsed at the explicit evaluation ordinal
+    /// `at` — the only notion of time here (no wall clock).
+    pub(crate) fn is_expired(&self, at: EventOrdinal) -> bool {
+        self.expires_after.is_some_and(|bound| at > bound)
+    }
+}
+
+/// One obligation's effective assessment at an explicit evaluation
+/// ordinal: its state after waiver-expiry evaluation, and how it counts
+/// per the classification policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub(crate) struct ObligationAssessment {
+    pub(crate) state: ObligationState,
+    pub(crate) classification: ObligationClassification,
 }
 
 /// Why an obligation write was rejected — fail closed, never a silent
@@ -462,6 +477,88 @@ impl ObligationLedger {
         })
     }
 
+    /// The last appended waiver for one obligation. Present whenever the
+    /// standing state is `waived` — [`ObligationLedger::waive`] is the
+    /// only path to that state.
+    fn last_waiver(&self, id: &ObligationId) -> Option<&ObligationWaiver> {
+        self.events.iter().rev().find_map(|event| match event {
+            ObligationEvent::Waived { waiver } if waiver.obligation_id == *id => Some(waiver),
+            _ => None,
+        })
+    }
+
+    /// One obligation's effective assessment at the explicit evaluation
+    /// ordinal `at`. An expired waiver reopens its obligation as
+    /// BLOCKING regardless of policy — a stale waiver never authorizes
+    /// (MILESTONES §E1.6 adversarial acceptance); everything else takes
+    /// its classification from the policy DATA. The agent-action
+    /// `action` matcher is evaluated with no action here — action-scoped
+    /// enforcement is E6.1+.
+    pub(crate) fn assess(
+        &self,
+        id: &ObligationId,
+        policy: &ObligationPolicy,
+        at: EventOrdinal,
+    ) -> Result<ObligationAssessment, ObligationError> {
+        let record = self
+            .standing()
+            .remove(id)
+            .ok_or_else(|| ObligationError::UnknownObligation { id: id.clone() })?;
+        Ok(self.assess_record(&record, policy, at))
+    }
+
+    fn assess_record(
+        &self,
+        record: &ProofObligationRecord,
+        policy: &ObligationPolicy,
+        at: EventOrdinal,
+    ) -> ObligationAssessment {
+        if record.state == ObligationState::Waived
+            && self
+                .last_waiver(&record.obligation_id)
+                .is_some_and(|waiver| waiver.is_expired(at))
+        {
+            return ObligationAssessment {
+                state: ObligationState::Open,
+                classification: ObligationClassification::Blocking,
+            };
+        }
+        ObligationAssessment {
+            state: record.state,
+            classification: policy.classify(record.required_at, record.risk.as_deref(), None),
+        }
+    }
+
+    /// The obligations blocking the `approval_required` gate at `at`,
+    /// in deterministic id order: undischarged (a satisfied state or a
+    /// still-valid waiver discharges; `open`/`failed`/`expired` do not),
+    /// required at the approval gate stage, and classified blocking by
+    /// the policy data. §K8: `approval_required` blocks ONLY obligations
+    /// explicitly required before gate passage — every other obligation
+    /// may permit merge while the E1.4 store keeps reporting unverified,
+    /// pending effectivity, blocked synchronization, or high-risk
+    /// ineligibility for its own stage.
+    pub(crate) fn approval_blockers(
+        &self,
+        policy: &ObligationPolicy,
+        at: EventOrdinal,
+    ) -> Vec<ObligationId> {
+        self.standing()
+            .into_iter()
+            .filter_map(|(id, record)| {
+                let assessment = self.assess_record(&record, policy, at);
+                let discharged = matches!(
+                    assessment.state,
+                    ObligationState::Satisfied | ObligationState::Waived
+                );
+                (!discharged
+                    && record.required_at == ObligationStage::Approval
+                    && assessment.classification == ObligationClassification::Blocking)
+                    .then_some(id)
+            })
+            .collect()
+    }
+
     /// The standing obligations: each opened record with its current
     /// state replayed from the appends. The serialized form of a
     /// standing record is exactly the wire record at this point of the
@@ -510,9 +607,10 @@ mod tests {
     };
     use crate::domain::managed::{ManagedWorkspace, WorkspaceId};
     use crate::domain::managed_state::{
-        AuditRecord, AuditSink, AuditSinkError, EffectivityState, EventEmitter, GovernanceState,
-        ManagedStateChange, ManagedStateEvent, ManagedStateEventStore, RecordedDimension,
-        RetentionFloor, StateEventSubject, VerificationState,
+        AuditRecord, AuditSink, AuditSinkError, ConnectorId, EffectivityState, EventEmitter,
+        GovernanceState, ManagedStateChange, ManagedStateEvent, ManagedStateEventStore,
+        RecordedDimension, RetentionFloor, StateEventSubject, SynchronizationState,
+        VerificationState,
     };
     use crate::domain::obligation::ProofObligation;
     use crate::domain::reconciliation::PolicyVersion;
@@ -1166,6 +1264,283 @@ mod tests {
             "waiver schema validation failed:\n{}\ninstance:\n{}",
             errors.join("\n"),
             serde_json::to_string_pretty(&instance).expect("instance pretty prints")
+        );
+    }
+
+    // ---- E1.6.T3: waiver expiry reopens obligations as blocking ----
+
+    fn record(
+        subject: &StateEventSubject,
+        id: &str,
+        stage: ObligationStage,
+        risk: Option<&str>,
+    ) -> ProofObligationRecord {
+        ProofObligationRecord::open(
+            obligation_id(id),
+            subject.clone(),
+            "requires renewed evidence",
+            Vec::new(),
+            stage,
+            risk.map(str::to_string),
+        )
+        .expect("valid record")
+    }
+
+    fn waiver(
+        subject: &StateEventSubject,
+        id: &str,
+        expires_after: Option<EventOrdinal>,
+    ) -> ObligationWaiver {
+        ObligationWaiver::new(
+            obligation_id(id),
+            subject.version_id.clone(),
+            Principal::new("compliance.lead").expect("non-blank"),
+            PolicyVersion::new("waiver-policy-3").expect("non-blank"),
+            "vendor audit accepted for this exact version",
+            expires_after,
+        )
+        .expect("valid waiver")
+    }
+
+    fn informational_policy(rules: Vec<ObligationPolicyRule>) -> ObligationPolicy {
+        ObligationPolicy {
+            policy_version: policy_version(),
+            rules,
+            default_classification: ObligationClassification::Informational,
+        }
+    }
+
+    /// Adversarial exit (MILESTONES §E1.6 acceptance): an expired waiver
+    /// reopens its obligation as BLOCKING — even under a policy whose
+    /// data alone would classify it informational. A stale waiver never
+    /// authorizes; the reopened obligation fails closed.
+    #[test]
+    fn expired_waiver_reopens_its_obligation_as_blocking() {
+        let subject = imported_subject();
+        let id = obligation_id("ob-approval-attestation");
+        let mut ledger = ObligationLedger::new();
+        ledger
+            .open(record(
+                &subject,
+                "ob-approval-attestation",
+                ObligationStage::Approval,
+                None,
+            ))
+            .expect("opens");
+        ledger
+            .waive(waiver(
+                &subject,
+                "ob-approval-attestation",
+                Some(EventOrdinal(5)),
+            ))
+            .expect("waives");
+        let policy = informational_policy(Vec::new());
+
+        let held = ledger
+            .assess(&id, &policy, EventOrdinal(5))
+            .expect("assessed");
+        assert_eq!(held.state, ObligationState::Waived);
+        assert!(
+            ledger
+                .approval_blockers(&policy, EventOrdinal(5))
+                .is_empty()
+        );
+
+        let lapsed = ledger
+            .assess(&id, &policy, EventOrdinal(6))
+            .expect("assessed");
+        assert_eq!(lapsed.state, ObligationState::Open, "expiry reopens");
+        assert_eq!(
+            lapsed.classification,
+            ObligationClassification::Blocking,
+            "a stale waiver never authorizes — reopened obligations block regardless of policy"
+        );
+        assert_eq!(ledger.approval_blockers(&policy, EventOrdinal(6)), vec![id]);
+    }
+
+    /// §K8: `approval_required` blocks ONLY obligations explicitly
+    /// required before gate passage — one fixture branch per stage. All
+    /// other obligations may permit merge while the E1.4 store honestly
+    /// reports unverified / pending-effectivity / sync-blocked, and the
+    /// high-risk agent-action obligation stays for its own stage.
+    #[test]
+    fn approval_gate_blocks_only_gate_stage_blocking_obligations() {
+        let subject = imported_subject();
+        let mut sink = InMemoryAuditSink::default();
+        let mut store = ManagedStateEventStore::new(floor(1));
+        for change in [
+            ManagedStateChange::Verification {
+                state: VerificationState::Unverified,
+            },
+            ManagedStateChange::Effectivity {
+                state: EffectivityState::Pending,
+            },
+            ManagedStateChange::Synchronization {
+                connector: ConnectorId::new("jira").expect("non-blank"),
+                state: SynchronizationState::WritebackFailed,
+                required_before_effective: false,
+            },
+        ] {
+            store
+                .append(&mut sink, state_event(subject.clone(), change))
+                .expect("append accepted");
+        }
+
+        let mut ledger = ObligationLedger::new();
+        for (id, stage, risk) in [
+            ("ob-gate", ObligationStage::Approval, Some("high")),
+            ("ob-gate-note", ObligationStage::Approval, Some("low")),
+            ("ob-verify", ObligationStage::Verification, None),
+            ("ob-effect", ObligationStage::Effectivity, None),
+            ("ob-sync", ObligationStage::ConnectorSynchronization, None),
+            ("ob-agent", ObligationStage::AgentAction, Some("high")),
+        ] {
+            ledger
+                .open(record(&subject, id, stage, risk))
+                .expect("opens");
+        }
+        // Every stage has a blocking rule for its own gate — but only
+        // the APPROVAL-stage blocking obligation blocks approval_required.
+        let policy = informational_policy(vec![
+            rule(
+                ObligationStage::Approval,
+                Some("high"),
+                None,
+                ObligationClassification::Blocking,
+            ),
+            rule(
+                ObligationStage::Verification,
+                None,
+                None,
+                ObligationClassification::Blocking,
+            ),
+            rule(
+                ObligationStage::Effectivity,
+                None,
+                None,
+                ObligationClassification::Blocking,
+            ),
+            rule(
+                ObligationStage::ConnectorSynchronization,
+                None,
+                None,
+                ObligationClassification::Blocking,
+            ),
+            rule(
+                ObligationStage::AgentAction,
+                Some("high"),
+                None,
+                ObligationClassification::Blocking,
+            ),
+        ]);
+
+        assert_eq!(
+            ledger.approval_blockers(&policy, EventOrdinal(3)),
+            vec![obligation_id("ob-gate")],
+            "only the explicitly gate-stage blocking obligation blocks approval"
+        );
+        // The merge the other branches permit leaves state honest, never
+        // upgraded: unverified / pending-effectivity / sync-blocked stand.
+        let state = &store.current_state()[&subject];
+        assert_eq!(
+            state.verification,
+            RecordedDimension::Recorded(VerificationState::Unverified)
+        );
+        assert_eq!(
+            state.effectivity,
+            RecordedDimension::Recorded(EffectivityState::Pending)
+        );
+        assert_eq!(
+            state.synchronization[&ConnectorId::new("jira").expect("non-blank")].state,
+            SynchronizationState::WritebackFailed
+        );
+        // The high-risk agent-action obligation still blocks ITS stage.
+        assert_eq!(
+            ledger
+                .assess(&obligation_id("ob-agent"), &policy, EventOrdinal(3))
+                .expect("assessed")
+                .classification,
+            ObligationClassification::Blocking
+        );
+    }
+
+    /// V10.2.5 acceptance, tied to the E1.4 digest chain: state-only and
+    /// approval events never alter recorded envelope bytes and never
+    /// upgrade a recorded outcome — obligation activity included.
+    #[test]
+    fn state_only_and_approval_events_never_alter_recorded_bytes_or_outcomes() {
+        let subject = imported_subject();
+        let mut sink = InMemoryAuditSink::default();
+        let mut store = ManagedStateEventStore::new(floor(1));
+        for change in [
+            ManagedStateChange::Verification {
+                state: VerificationState::Unverified,
+            },
+            ManagedStateChange::Effectivity {
+                state: EffectivityState::Pending,
+            },
+        ] {
+            store
+                .append(&mut sink, state_event(subject.clone(), change))
+                .expect("append accepted");
+        }
+        let recorded: Vec<(String, String)> = store
+            .events()
+            .iter()
+            .map(|r| (r.event_bytes.clone(), r.digest.clone()))
+            .collect();
+
+        // An approval event plus a full round of obligation activity.
+        store
+            .append(
+                &mut sink,
+                state_event(
+                    subject.clone(),
+                    ManagedStateChange::Governance {
+                        state: GovernanceState::Approved,
+                    },
+                ),
+            )
+            .expect("append accepted");
+        let mut ledger = ObligationLedger::new();
+        ledger.open(open_record(&subject)).expect("opens");
+        ledger
+            .waive(waiver_for(&subject, Some(EventOrdinal(2))))
+            .expect("waives");
+        let policy = informational_policy(Vec::new());
+        let id = obligation_id("ob-billing-credits-verification");
+        ledger
+            .assess(&id, &policy, EventOrdinal(9))
+            .expect("assessed");
+
+        for (index, (event_bytes, digest)) in recorded.iter().enumerate() {
+            assert_eq!(
+                &store.events()[index].event_bytes,
+                event_bytes,
+                "recorded event bytes must stay byte-identical"
+            );
+            assert_eq!(
+                &store.events()[index].digest,
+                digest,
+                "the digest chain over the recorded prefix must stand"
+            );
+        }
+        // No upgraded outcome: the historical answer at the old T is
+        // unchanged, and approval touched governance only.
+        let historical = store.reconstruct_through(EventOrdinal(1));
+        assert_eq!(
+            historical[&subject].verification,
+            RecordedDimension::Recorded(VerificationState::Unverified)
+        );
+        let current = &store.current_state()[&subject];
+        assert_eq!(
+            current.governance,
+            RecordedDimension::Recorded(GovernanceState::Approved)
+        );
+        assert_eq!(
+            current.verification,
+            RecordedDimension::Recorded(VerificationState::Unverified),
+            "approval never upgrades a recorded verification outcome"
         );
     }
 }
