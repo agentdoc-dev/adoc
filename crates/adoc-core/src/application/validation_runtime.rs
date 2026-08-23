@@ -97,8 +97,19 @@ pub struct ValidationRuntimeOutcome {
 /// representation:
 ///
 /// ```compile_fail
-/// // Private fields: no literal construction outside the validator module.
-/// let receipt = adoc_core::ValidationReceipt {};
+/// // Private fields (E0451): no literal construction outside the validator
+/// // module. All eight fields are named so only field privacy can fail this
+/// // — a missing-fields E0063 could otherwise mask fields regressing to pub.
+/// let receipt = adoc_core::ValidationReceipt {
+///     schema_version: todo!(),
+///     runtime: todo!(),
+///     contract_versions: todo!(),
+///     evaluation_date: todo!(),
+///     inputs: todo!(),
+///     context: todo!(),
+///     result: todo!(),
+///     diagnostics_digest: todo!(),
+/// };
 /// ```
 ///
 /// ```compile_fail
@@ -448,9 +459,15 @@ mod tests {
 
         let outcome = run_validation_runtime(standalone_input(&workspace.path().join("docs")))
             .expect("validation runs");
-        let instance: serde_json::Value =
-            serde_json::from_str(&outcome.receipt.to_canonical_json()).expect("receipt is json");
+        assert_receipt_matches_published_schema(&outcome.receipt.to_canonical_json());
+    }
 
+    /// Parity discipline (ADR-0015) helper shared by the pass- and
+    /// fail-receipt tests: the serialized receipt validates against the
+    /// published `adoc.validation_receipt.v0` JSON Schema.
+    fn assert_receipt_matches_published_schema(receipt_json: &str) {
+        let instance: serde_json::Value =
+            serde_json::from_str(receipt_json).expect("receipt is json");
         let schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../docs/agent/v0/schema/adoc.validation_receipt.v0.schema.json");
         let schema: serde_json::Value =
@@ -596,8 +613,10 @@ mod tests {
         );
         // The fail receipt is still a valid envelope of the published
         // receipt schema (parity discipline covers both results).
+        let canonical = outcome.receipt.to_canonical_json();
+        assert_receipt_matches_published_schema(&canonical);
         let receipt_value: serde_json::Value =
-            serde_json::from_str(&outcome.receipt.to_canonical_json()).expect("receipt is json");
+            serde_json::from_str(&canonical).expect("receipt is json");
         assert_eq!(receipt_value["result"], "fail");
     }
 
