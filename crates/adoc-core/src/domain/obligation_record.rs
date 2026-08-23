@@ -1491,6 +1491,91 @@ mod tests {
         );
     }
 
+    /// The ledger's event stream is the published carrier for the
+    /// record, the waiver, and every state transition (see the schema
+    /// root description / registry row) — its serialized shape is pinned
+    /// like every other wire shape in this module: the `event` tag, the
+    /// three variant strings, and each payload's keys are contract
+    /// surface for the E1.6.T4 consumer, never changeable without a red
+    /// test.
+    #[test]
+    fn serialized_event_stream_shape_is_pinned() {
+        let subject = imported_subject();
+        let mut ledger = ObligationLedger::new();
+        ledger
+            .open(record(
+                &subject,
+                "ob-evidence",
+                ObligationStage::Verification,
+                None,
+            ))
+            .expect("opens");
+        ledger
+            .record_state(&obligation_id("ob-evidence"), ObligationState::Satisfied)
+            .expect("records");
+        ledger
+            .open(record(
+                &subject,
+                "ob-waived",
+                ObligationStage::Approval,
+                None,
+            ))
+            .expect("opens");
+        ledger
+            .waive(waiver(&subject, "ob-waived", Some(EventOrdinal(5))))
+            .expect("waives");
+
+        let subject_json = json!({
+            "canonical": { "workspace_id": "ws-acme", "canonical_id": "mo-1" },
+            "version_id": "mv-1"
+        });
+        assert_eq!(
+            serde_json::to_value(ledger.events()).expect("events serialize"),
+            json!([
+                {
+                    "event": "opened",
+                    "record": {
+                        "schema_version": "adoc.proof_obligation.v0",
+                        "obligation_id": "ob-evidence",
+                        "subject": subject_json,
+                        "reason": "requires renewed evidence",
+                        "required_evidence": [],
+                        "required_at": "verification",
+                        "state": "open"
+                    }
+                },
+                {
+                    "event": "state_recorded",
+                    "obligation_id": "ob-evidence",
+                    "state": "satisfied"
+                },
+                {
+                    "event": "opened",
+                    "record": {
+                        "schema_version": "adoc.proof_obligation.v0",
+                        "obligation_id": "ob-waived",
+                        "subject": subject_json,
+                        "reason": "requires renewed evidence",
+                        "required_evidence": [],
+                        "required_at": "approval",
+                        "state": "open"
+                    }
+                },
+                {
+                    "event": "waived",
+                    "waiver": {
+                        "obligation_id": "ob-waived",
+                        "subject": subject_json,
+                        "principal": "compliance.lead",
+                        "policy_version": "waiver-policy-3",
+                        "justification": "vendor audit accepted for this exact version",
+                        "expires_after": 5
+                    }
+                }
+            ])
+        );
+    }
+
     // ---- E1.6.T3: waiver expiry reopens obligations as blocking ----
 
     fn record(
