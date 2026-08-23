@@ -1661,6 +1661,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .remove("policy_version");
     let mut blank_policy_version = decision.clone();
     blank_policy_version["policy_version"] = json!("   ");
+    let mut multiline_workspace_id = decision.clone();
+    multiline_workspace_id["resource"]["workspace_id"] = json!("workspace-1\nworkspace-2");
 
     let mut unknown_result = decision.clone();
     unknown_result["result"] = json!("maybe");
@@ -2020,6 +2022,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ),
         ("missing policy version", missing_policy_version, false),
         ("blank policy version", blank_policy_version, false),
+        ("multiline workspace id", multiline_workspace_id, false),
         ("unknown result", unknown_result, false),
         ("direct grant without expiry", direct_without_expiry, false),
         (

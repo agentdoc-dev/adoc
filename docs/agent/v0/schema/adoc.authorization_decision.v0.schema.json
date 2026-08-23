@@ -434,6 +434,12 @@
   ],
   "$defs": {
     "nonEmpty": {
+      "description": "Single-line opaque identifier or version string.",
+      "type": "string",
+      "pattern": "^\\S(?:[^\\r\\n\\u2028\\u2029]*\\S)?$"
+    },
+    "nonEmptyText": {
+      "description": "Non-blank free-form text; may span lines.",
       "type": "string",
       "pattern": "^\\S(?:[\\s\\S]*\\S)?$"
     },
@@ -540,7 +546,7 @@
         },
         "exceptional_reason": {
           "description": "Required for every human direct grant, regardless of effect.",
-          "$ref": "#/$defs/nonEmpty"
+          "$ref": "#/$defs/nonEmptyText"
         },
         "role": { "$ref": "#/$defs/role" }
       },
