@@ -369,6 +369,16 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/adoc.migrate.report.v0.schema.json"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.lifecycle_mapping.v0.schema.json",
+        name: "schema-adoc-lifecycle-mapping-v0-json",
+        title: "Lifecycle Mapping JSON Schema",
+        description: "JSON Schema for adoc.lifecycle_mapping.v0, the versioned flat-status to managed-state mapping/projection contract Cloud consumes as data.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.lifecycle_mapping.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/search-artifact.json",
         name: "schema-search-artifact-json",
         title: "Search Artifact JSON Schema",
