@@ -38,7 +38,6 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use super::managed::ManagedVersionId;
 use super::managed_state::{EventOrdinal, StateEventSubject};
 use super::obligation::ProofObligation;
 use super::reconciliation::{PolicyVersion, Principal};
@@ -266,8 +265,9 @@ impl ObligationPolicy {
 
 /// An Obligation Waiver (§K8): the permission-controlled discharge of
 /// one stage-bound obligation. Bound at the type level to the EXACT
-/// obligation, managed version, principal, and policy version — all
-/// non-optional — with a non-blank justification, and time-bounded
+/// obligation, workspace-qualified managed-version subject, principal,
+/// and policy version — all non-optional — with a non-blank
+/// justification, and time-bounded
 /// where appropriate by an explicit event-ordinal expiry (never a wall
 /// clock). Fields are private and [`ObligationWaiver::new`] is the only
 /// constructor; like the E1.3 decision record, `Deserialize` is
@@ -281,9 +281,13 @@ impl ObligationPolicy {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ObligationWaiver {
     obligation_id: ObligationId,
-    /// The exact managed version the waived obligation constrains — a
-    /// waiver never carries over to another version.
-    version_id: ManagedVersionId,
+    /// The exact managed-version subject (workspace canonical identity
+    /// plus version ID) the waived obligation constrains — a waiver
+    /// never carries over to another version, and `ManagedVersionId`
+    /// alone is workspace-minted (`mv-N` recurs in every workspace), so
+    /// the subject is the only exact binding once the waiver leaves its
+    /// workspace (E1.2: a bare identifier is never a managed subject).
+    subject: StateEventSubject,
     principal: Principal,
     policy_version: PolicyVersion,
     justification: String,
@@ -299,7 +303,7 @@ impl ObligationWaiver {
     /// an unjustified waiver must not exist (§K8).
     pub(crate) fn new(
         obligation_id: ObligationId,
-        version_id: ManagedVersionId,
+        subject: StateEventSubject,
         principal: Principal,
         policy_version: PolicyVersion,
         justification: impl Into<String>,
@@ -311,7 +315,7 @@ impl ObligationWaiver {
         }
         Ok(Self {
             obligation_id,
-            version_id,
+            subject,
             principal,
             policy_version,
             justification,
@@ -345,7 +349,7 @@ pub(crate) enum ObligationError {
     InvalidReason,
     #[error("waiver justification must be non-blank")]
     InvalidJustification,
-    #[error("waiver names obligation {id:?} but is bound to a different managed version")]
+    #[error("waiver names obligation {id:?} but is bound to a different managed-version subject")]
     WaiverBindingMismatch { id: ObligationId },
     #[error("obligation {id:?} is not open; only an open obligation is waivable")]
     NotWaivable { id: ObligationId },
@@ -444,8 +448,8 @@ impl ObligationLedger {
 
     /// Append a waiver. Fail-closed validation against the recorded
     /// ledger: the obligation must exist, the waiver must be bound to
-    /// that obligation's exact managed version, and only an `open`
-    /// obligation is waivable. Structurally this method appends to THIS
+    /// that obligation's exact workspace-qualified managed-version
+    /// subject, and only an `open` obligation is waivable. Structurally this method appends to THIS
     /// ledger and touches nothing else — the ledger holds no reference
     /// to the E1.4 store or any §K4 dimension, so a waiver cannot
     /// convert `unverified` to `verified` (MILESTONES §E1.6 exit gate).
@@ -466,7 +470,7 @@ impl ObligationLedger {
                 id: waiver.obligation_id.clone(),
             });
         };
-        if record.subject.version_id != waiver.version_id {
+        if record.subject != waiver.subject {
             return Err(ObligationError::WaiverBindingMismatch {
                 id: waiver.obligation_id.clone(),
             });
@@ -1099,7 +1103,7 @@ mod tests {
     ) -> ObligationWaiver {
         ObligationWaiver::new(
             obligation_id("ob-billing-credits-verification"),
-            subject.version_id.clone(),
+            subject.clone(),
             Principal::new("compliance.lead").expect("non-blank"),
             PolicyVersion::new("waiver-policy-3").expect("non-blank"),
             "vendor audit accepted for this exact version",
@@ -1178,7 +1182,7 @@ mod tests {
         assert_eq!(
             ObligationWaiver::new(
                 obligation_id("ob-billing-credits-verification"),
-                subject.version_id.clone(),
+                subject.clone(),
                 Principal::new("compliance.lead").expect("non-blank"),
                 PolicyVersion::new("waiver-policy-3").expect("non-blank"),
                 "   ",
@@ -1193,7 +1197,7 @@ mod tests {
 
         let unknown = ObligationWaiver::new(
             obligation_id("ob-unknown"),
-            subject.version_id.clone(),
+            subject.clone(),
             Principal::new("compliance.lead").expect("non-blank"),
             PolicyVersion::new("waiver-policy-3").expect("non-blank"),
             "bound to nothing",
@@ -1209,7 +1213,7 @@ mod tests {
 
         let wrong_version = ObligationWaiver::new(
             id.clone(),
-            other_subject.version_id.clone(),
+            other_subject.clone(),
             Principal::new("compliance.lead").expect("non-blank"),
             PolicyVersion::new("waiver-policy-3").expect("non-blank"),
             "bound to another version",
@@ -1232,8 +1236,9 @@ mod tests {
     }
 
     /// The serialized waiver the Cloud cut consumes: exact obligation +
-    /// version + principal + policy binding, a justification, and an
-    /// optional event-ordinal time-bound — no wall-clock anywhere.
+    /// workspace-qualified managed-version subject + principal + policy
+    /// binding, a justification, and an optional event-ordinal
+    /// time-bound — no wall-clock anywhere.
     #[test]
     fn serialized_waiver_shape_is_pinned_and_validates() {
         let subject = imported_subject();
@@ -1243,7 +1248,13 @@ mod tests {
             instance,
             json!({
                 "obligation_id": "ob-billing-credits-verification",
-                "version_id": "mv-1",
+                "subject": {
+                    "canonical": {
+                        "workspace_id": "ws-acme",
+                        "canonical_id": "mo-1"
+                    },
+                    "version_id": "mv-1"
+                },
                 "principal": "compliance.lead",
                 "policy_version": "waiver-policy-3",
                 "justification": "vendor audit accepted for this exact version",
@@ -1304,7 +1315,7 @@ mod tests {
     ) -> ObligationWaiver {
         ObligationWaiver::new(
             obligation_id(id),
-            subject.version_id.clone(),
+            subject.clone(),
             Principal::new("compliance.lead").expect("non-blank"),
             PolicyVersion::new("waiver-policy-3").expect("non-blank"),
             "vendor audit accepted for this exact version",
@@ -1552,6 +1563,42 @@ mod tests {
             current.verification,
             RecordedDimension::Recorded(VerificationState::Unverified),
             "approval never upgrades a recorded verification outcome"
+        );
+    }
+
+    fn foreign_workspace_subject() -> StateEventSubject {
+        let mut ws = ManagedWorkspace::new(WorkspaceId::new("ws-other").expect("non-blank"));
+        let outcome = ws
+            .import_artifact(&artifact(vec![knowledge_object(
+                "other.claim",
+                "sha256:ccc",
+            )]))
+            .expect("import accepted");
+        StateEventSubject {
+            canonical: outcome.imported[0].canonical.clone(),
+            version_id: outcome.imported[0].version_id.clone(),
+        }
+    }
+
+    /// `ManagedVersionId` is workspace-minted (`mv-N` recurs in every
+    /// workspace), so exact binding must compare the whole
+    /// workspace-qualified subject: a waiver built against another
+    /// workspace's equal-numbered version fails closed.
+    #[test]
+    fn waivers_from_another_workspace_fail_closed_despite_equal_version_ids() {
+        let subject = imported_subject();
+        let foreign = foreign_workspace_subject();
+        assert_eq!(subject.version_id, foreign.version_id, "both mint mv-1");
+        assert_ne!(subject.canonical, foreign.canonical);
+        let mut ledger = ObligationLedger::new();
+        ledger.open(open_record(&subject)).expect("opens");
+        let cross = waiver_for(&foreign, None);
+        assert_eq!(
+            ledger.waive(cross),
+            Err(ObligationError::WaiverBindingMismatch {
+                id: obligation_id("ob-billing-credits-verification")
+            }),
+            "a waiver never crosses workspaces"
         );
     }
 }
