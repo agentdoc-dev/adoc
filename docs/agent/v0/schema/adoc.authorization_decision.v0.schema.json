@@ -31,7 +31,7 @@
       "$ref": "#/$defs/scope"
     },
     "evaluation_time": {
-      "description": "Raw evaluator timestamp input. The evaluator parses this value and records evaluation_time_invalid when it is unusable; schema validation preserves the invalid input for replay.",
+      "description": "Evaluator timestamp input. Schema validation pins the lexical RFC 3339 shape for every record except evaluation_time_invalid, which preserves unconstrained raw input for replay; calendar validity and instant comparison are evaluator-owned and fail closed.",
       "type": "string"
     },
     "consequential": { "type": "boolean" },
@@ -435,7 +435,6 @@
   "$defs": {
     "nonEmpty": {
       "type": "string",
-      "minLength": 1,
       "pattern": "^\\S(?:.*\\S)?$"
     },
     "rfc3339Timestamp": {
