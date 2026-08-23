@@ -162,6 +162,9 @@ pub(crate) struct ManagedObjectRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ManagedVersionRecord {
     pub(crate) version_id: ManagedVersionId,
+    /// The producer-declared v6 governed-meaning hash, trusted as
+    /// declared: grammar-checked at import, never re-derived from node
+    /// content (see [`ManagedWorkspace::import_artifact`]).
     pub(crate) content_hash: String,
     /// The exact Source Binding observed when this version was minted,
     /// when the artifact carried one. A same-hash re-observation with a
@@ -311,6 +314,20 @@ impl ManagedWorkspace {
     /// repository key so the record is bound from the authenticated
     /// channel rather than the payload; until then the artifact's
     /// declared identity *is* the key.
+    ///
+    /// Two trust assumptions stay with the producer, deliberately —
+    /// the fail-closed list above is NOT exhaustive verification:
+    /// (1) schema admission — the exact-match v6 loader
+    /// (`infrastructure/artifact/graph_json.rs`) is the only
+    /// deserialization path for external artifact JSON, and import never
+    /// re-checks `schema_version`, so a document deserialized around
+    /// that boundary could enshrine placement-bearing v5 hashes as
+    /// governed-meaning version keys; (2) the declared `content_hash`
+    /// is trusted as the authority on governed meaning —
+    /// grammar-checked, never re-derived from node content (the
+    /// crate-wide posture; `domain/review/object_diff.rs` makes the
+    /// same assumption for change detection) — so unchanged-ness under
+    /// RT-04 is exactly as trustworthy as the producer's hash.
     pub(crate) fn import_artifact(
         &mut self,
         artifact: &GraphArtifactDocument,
