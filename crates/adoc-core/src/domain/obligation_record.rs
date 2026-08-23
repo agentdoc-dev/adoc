@@ -161,8 +161,10 @@ pub(crate) struct ProofObligationRecord {
 }
 
 impl ProofObligationRecord {
-    /// Open a new stage-bound obligation. Rejects a blank reason — an
-    /// obligation that cannot say what it requires is unrecordable.
+    /// Open a new stage-bound obligation. Rejects a blank reason, a
+    /// blank required-evidence entry, and a blank risk — the published
+    /// schema requires each to be non-empty (`minLength: 1`), and the
+    /// domain must never construct what the contract rejects.
     pub(crate) fn open(
         obligation_id: ObligationId,
         subject: StateEventSubject,
@@ -174,6 +176,15 @@ impl ProofObligationRecord {
         let reason = reason.into();
         if reason.trim().is_empty() {
             return Err(ObligationError::InvalidReason);
+        }
+        if required_evidence
+            .iter()
+            .any(|entry| entry.trim().is_empty())
+        {
+            return Err(ObligationError::InvalidRequiredEvidence);
+        }
+        if risk.as_deref().is_some_and(|risk| risk.trim().is_empty()) {
+            return Err(ObligationError::InvalidRisk);
         }
         Ok(Self {
             schema_version: PROOF_OBLIGATION_SCHEMA_VERSION,
@@ -191,7 +202,9 @@ impl ProofObligationRecord {
     /// mutation). Reason and required evidence carry over; the caller
     /// supplies the workspace-qualified subject the legacy flat
     /// `object_id` cannot carry — a bare Object ID is never a managed
-    /// subject (E1.2) — and the stage the obligation binds to.
+    /// subject (E1.2) — and the stage the obligation binds to. A legacy
+    /// obligation carrying a blank evidence entry fails closed here —
+    /// the E1.2+ posture, never silently forwarded.
     pub(crate) fn from_legacy(
         legacy: &ProofObligation,
         obligation_id: ObligationId,
@@ -347,6 +360,10 @@ pub(crate) enum ObligationError {
     InvalidObligationId,
     #[error("obligation reason must be non-blank")]
     InvalidReason,
+    #[error("every required-evidence entry must be non-blank")]
+    InvalidRequiredEvidence,
+    #[error("an authored risk classification must be non-blank")]
+    InvalidRisk,
     #[error("waiver justification must be non-blank")]
     InvalidJustification,
     #[error("waiver names obligation {id:?} but is bound to a different managed-version subject")]
@@ -1071,7 +1088,9 @@ mod tests {
         }
     }
 
-    /// Blank identities and reasons fail closed.
+    /// Blank identities, reasons, evidence entries, and risks fail
+    /// closed — the published schema pins `minLength: 1` on each, and
+    /// the domain never constructs what the contract rejects.
     #[test]
     fn blank_inputs_fail_closed() {
         assert_eq!(
@@ -1082,16 +1101,47 @@ mod tests {
             ObligationId::new(""),
             Err(ObligationError::InvalidObligationId)
         );
-        assert_eq!(
+        let subject = imported_subject();
+        let open = |reason: &str, evidence: Vec<String>, risk: Option<String>| {
             ProofObligationRecord::open(
                 obligation_id("ob-1"),
-                imported_subject(),
-                "  ",
-                Vec::new(),
+                subject.clone(),
+                reason,
+                evidence,
                 ObligationStage::Approval,
-                None,
-            ),
+                risk,
+            )
+        };
+        assert_eq!(
+            open("  ", Vec::new(), None),
             Err(ObligationError::InvalidReason)
+        );
+        assert_eq!(
+            open("reason", vec![String::new()], None),
+            Err(ObligationError::InvalidRequiredEvidence)
+        );
+        assert_eq!(
+            open("reason", vec!["source".to_string(), " ".to_string()], None),
+            Err(ObligationError::InvalidRequiredEvidence)
+        );
+        assert_eq!(
+            open("reason", Vec::new(), Some(String::new())),
+            Err(ObligationError::InvalidRisk)
+        );
+        // The legacy bridge inherits the same fail-closed boundary.
+        let legacy = ProofObligation {
+            object_id: "billing.credits".to_string(),
+            reason: "stale verified claim".to_string(),
+            required_evidence: vec![String::new()],
+        };
+        assert_eq!(
+            ProofObligationRecord::from_legacy(
+                &legacy,
+                obligation_id("ob-1"),
+                subject,
+                ObligationStage::Verification,
+            ),
+            Err(ObligationError::InvalidRequiredEvidence)
         );
     }
 
