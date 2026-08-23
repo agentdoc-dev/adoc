@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
   "title": "AgentDoc Authorization Decision",
-  "description": "Replayable, source-neutral authorization decision for E2.2. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants; the Cloud evaluator owns dynamic authorization semantics.",
+  "description": "Replayable, source-neutral authorization decision for E2.2. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
   "type": "object",
   "required": [
     "schema_version",
@@ -88,6 +88,38 @@
               "then": { "required": ["exceptional_reason"] }
             }
           }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "principal": {
+            "properties": { "freshness": { "const": "expired" } },
+            "required": ["freshness"]
+          }
+        },
+        "required": ["principal"]
+      },
+      "then": {
+        "properties": { "reason": { "const": "identity_expired" } }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "principal": {
+            "properties": {
+              "freshness": { "const": "insufficient_context" }
+            },
+            "required": ["freshness"]
+          }
+        },
+        "required": ["principal"]
+      },
+      "then": {
+        "properties": {
+          "reason": { "const": "identity_context_missing" }
         }
       }
     },
@@ -262,7 +294,21 @@
             "properties": { "result": { "const": "insufficient_context" } },
             "required": ["result"]
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "consequential": { "const": true } },
+              "required": ["consequential"]
+            },
+            "then": {
+              "properties": { "result": { "const": "insufficient_context" } }
+            },
+            "else": {
+              "properties": { "result": { "const": "deny" } }
+            }
+          }
+        ]
       }
     },
     {
@@ -283,7 +329,21 @@
         "required": ["reason"]
       },
       "then": {
-        "properties": { "visibility": { "const": "insufficient_context" } }
+        "properties": { "visibility": { "const": "insufficient_context" } },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "consequential": { "const": true } },
+              "required": ["consequential"]
+            },
+            "then": {
+              "properties": { "result": { "const": "insufficient_context" } }
+            },
+            "else": {
+              "properties": { "result": { "const": "deny" } }
+            }
+          }
+        ]
       }
     },
     {
@@ -306,7 +366,21 @@
       "then": {
         "properties": {
           "action_policy": { "const": "insufficient_context" }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "consequential": { "const": true } },
+              "required": ["consequential"]
+            },
+            "then": {
+              "properties": { "result": { "const": "insufficient_context" } }
+            },
+            "else": {
+              "properties": { "result": { "const": "deny" } }
+            }
+          }
+        ]
       }
     }
   ],
