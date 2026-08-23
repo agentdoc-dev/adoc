@@ -1810,6 +1810,48 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut false_action_policy_unavailable_reason = action_policy_unavailable.clone();
     false_action_policy_unavailable_reason["action_policy"] = json!("allow");
 
+    let mut identity_expired = denied.clone();
+    identity_expired["principal"]["freshness"] = json!("expired");
+    identity_expired["reason"] = json!("identity_expired");
+    let mut false_identity_expired_reason = identity_expired.clone();
+    false_identity_expired_reason["principal"]["freshness"] = json!("current");
+    let mut identity_expired_without_deny_result = identity_expired.clone();
+    identity_expired_without_deny_result["result"] = json!("insufficient_context");
+
+    let mut identity_context_missing = denied.clone();
+    identity_context_missing["principal"]["freshness"] = json!("insufficient_context");
+    identity_context_missing["consequential"] = json!(true);
+    identity_context_missing["result"] = json!("insufficient_context");
+    identity_context_missing["reason"] = json!("identity_context_missing");
+    let mut false_identity_context_missing_reason = identity_context_missing.clone();
+    false_identity_context_missing_reason["principal"]["freshness"] = json!("current");
+    let mut consequential_identity_context_with_deny = identity_context_missing.clone();
+    consequential_identity_context_with_deny["result"] = json!("deny");
+    let mut nonconsequential_identity_context = identity_context_missing.clone();
+    nonconsequential_identity_context["consequential"] = json!(false);
+    nonconsequential_identity_context["result"] = json!("deny");
+
+    let mut no_grant_with_basis = denied.clone();
+    no_grant_with_basis["basis"] = decision["basis"].clone();
+    let mut no_grant_without_deny_result = denied.clone();
+    no_grant_without_deny_result["result"] = json!("insufficient_context");
+
+    let mut explicit_deny_without_deny_grant = direct_deny.clone();
+    explicit_deny_without_deny_grant["grants"][0]["effect"] = json!("allow");
+    let mut explicit_deny_with_allow_basis = direct_deny.clone();
+    explicit_deny_with_allow_basis["basis"]["effect"] = json!("allow");
+    let mut explicit_deny_without_deny_result = direct_deny.clone();
+    explicit_deny_without_deny_result["result"] = json!("insufficient_context");
+
+    let mut hard_deny_without_deny_result = hard_deny.clone();
+    hard_deny_without_deny_result["result"] = json!("insufficient_context");
+    let mut source_acl_denied_without_deny_result = source_acl_denied.clone();
+    source_acl_denied_without_deny_result["result"] = json!("insufficient_context");
+    let mut visibility_denied_without_deny_result = visibility_denied.clone();
+    visibility_denied_without_deny_result["result"] = json!("insufficient_context");
+    let mut action_policy_denied_without_deny_result = action_policy_denied.clone();
+    action_policy_denied_without_deny_result["result"] = json!("insufficient_context");
+
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision, true),
         ("direct human grant", direct_human, true),
@@ -1858,6 +1900,21 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "action-policy unavailable reason matches input",
             action_policy_unavailable,
+            true,
+        ),
+        (
+            "identity-expired reason matches input",
+            identity_expired,
+            true,
+        ),
+        (
+            "consequential identity-context reason matches input",
+            identity_context_missing,
+            true,
+        ),
+        (
+            "nonconsequential identity-context reason matches input",
+            nonconsequential_identity_context,
             true,
         ),
         ("missing policy version", missing_policy_version, false),
@@ -1943,6 +2000,67 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "false action-policy unavailable reason",
             false_action_policy_unavailable_reason,
+            false,
+        ),
+        (
+            "false identity-expired reason",
+            false_identity_expired_reason,
+            false,
+        ),
+        (
+            "identity-expired reason without deny result",
+            identity_expired_without_deny_result,
+            false,
+        ),
+        (
+            "false identity-context reason",
+            false_identity_context_missing_reason,
+            false,
+        ),
+        (
+            "consequential identity-context reason with deny result",
+            consequential_identity_context_with_deny,
+            false,
+        ),
+        ("no-grant reason with basis", no_grant_with_basis, false),
+        (
+            "no-grant reason without deny result",
+            no_grant_without_deny_result,
+            false,
+        ),
+        (
+            "explicit-deny reason without deny grant",
+            explicit_deny_without_deny_grant,
+            false,
+        ),
+        (
+            "explicit-deny reason with allow basis",
+            explicit_deny_with_allow_basis,
+            false,
+        ),
+        (
+            "explicit-deny reason without deny result",
+            explicit_deny_without_deny_result,
+            false,
+        ),
+        (
+            "hard-deny reason without deny result",
+            hard_deny_without_deny_result,
+            false,
+        ),
+        (
+            "source ACL denied reason without deny result",
+            source_acl_denied_without_deny_result,
+            false,
+        ),
+        (
+            "visibility denied reason without deny result",
+            visibility_denied_without_deny_result,
+            false,
+        ),
+        (
+            "action-policy denied reason without deny result",
+            action_policy_denied_without_deny_result,
             false,
         ),
     ] {
