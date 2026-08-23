@@ -104,7 +104,6 @@
           },
           "hard_deny": { "const": false },
           "grants": {
-            "minItems": 1,
             "contains": {
               "properties": { "effect": { "const": "allow" } },
               "required": ["effect"]
@@ -120,9 +119,13 @@
           "action_policy": { "enum": ["allow", "not_applicable"] },
           "reason": { "const": "allowed" },
           "basis": {
-            "$ref": "#/$defs/basis",
-            "properties": { "effect": { "const": "allow" } },
-            "required": ["effect"]
+            "allOf": [
+              { "$ref": "#/$defs/basis" },
+              {
+                "properties": { "effect": { "const": "allow" } },
+                "required": ["effect"]
+              }
+            ]
           }
         }
       }
@@ -134,6 +137,91 @@
       },
       "then": {
         "properties": { "result": { "const": "allow" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "identity_expired" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "principal": {
+            "properties": { "freshness": { "const": "expired" } },
+            "required": ["freshness"]
+          },
+          "result": { "const": "deny" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason": { "const": "identity_context_missing" }
+        },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "principal": {
+            "properties": {
+              "freshness": { "const": "insufficient_context" }
+            },
+            "required": ["freshness"]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "consequential": { "const": true } },
+              "required": ["consequential"]
+            },
+            "then": {
+              "properties": { "result": { "const": "insufficient_context" } }
+            },
+            "else": {
+              "properties": { "result": { "const": "deny" } }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "no_grant" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "basis": { "type": "null" },
+          "result": { "const": "deny" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "reason": { "const": "explicit_deny" } },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "grants": {
+            "contains": {
+              "properties": { "effect": { "const": "deny" } },
+              "required": ["effect"]
+            }
+          },
+          "basis": {
+            "allOf": [
+              { "$ref": "#/$defs/basis" },
+              {
+                "properties": { "effect": { "const": "deny" } },
+                "required": ["effect"]
+              }
+            ]
+          },
+          "result": { "const": "deny" }
+        }
       }
     },
     {
