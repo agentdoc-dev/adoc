@@ -186,7 +186,15 @@ impl ProofObligationRecord {
         {
             return Err(ObligationError::InvalidRequiredEvidence);
         }
-        if risk.as_deref().is_some_and(|risk| risk.trim().is_empty()) {
+        // `risk` is a MATCH KEY compared by exact equality in
+        // `ObligationPolicy::classify` — surrounding whitespace would
+        // silently miss its rule and fail OPEN into the default
+        // classification, so it is unrepresentable (the
+        // ObligationId/Principal/PolicyVersion posture).
+        if risk
+            .as_deref()
+            .is_some_and(|risk| risk.is_empty() || risk.trim() != risk)
+        {
             return Err(ObligationError::InvalidRisk);
         }
         Ok(Self {
@@ -255,12 +263,14 @@ pub(crate) struct ObligationPolicyRule {
 }
 
 impl ObligationPolicyRule {
-    /// Construct a rule with validated matchers. A present-but-blank
-    /// `risk` or `action` fails closed — the published
+    /// Construct a rule with validated matchers. A present-but-blank or
+    /// whitespace-padded `risk`/`action` fails closed: the published
     /// `$defs/classificationRule` pins `minLength: 1` on both, and the
-    /// domain never constructs what the contract rejects. Fields are
-    /// private so this is the only door (the [`ObligationWaiver`]
-    /// posture).
+    /// matchers are compared by exact equality in
+    /// [`ObligationPolicy::classify`] — a padded matcher would silently
+    /// never match and fail OPEN into the default classification.
+    /// Fields are private so this is the only door (the
+    /// [`ObligationWaiver`] posture).
     pub(crate) fn new(
         stage: ObligationStage,
         risk: Option<String>,
@@ -270,7 +280,7 @@ impl ObligationPolicyRule {
         if [&risk, &action].into_iter().any(|matcher| {
             matcher
                 .as_deref()
-                .is_some_and(|value| value.trim().is_empty())
+                .is_some_and(|value| value.is_empty() || value.trim() != value)
         }) {
             return Err(ObligationError::InvalidRuleMatcher);
         }
@@ -1908,6 +1918,43 @@ mod tests {
                 ObligationStage::AgentAction,
                 None,
                 Some(" ".to_string()),
+                ObligationClassification::Blocking,
+            ),
+            Err(ObligationError::InvalidRuleMatcher)
+        );
+    }
+
+    /// `risk` and the rule matchers are match keys compared by exact
+    /// equality — a whitespace-padded value would silently miss its
+    /// blocking rule and fall OPEN into the default classification, so
+    /// padded values are unrepresentable on both sides of the match.
+    #[test]
+    fn padded_match_keys_are_unrepresentable() {
+        assert_eq!(
+            ProofObligationRecord::open(
+                obligation_id("ob-1"),
+                imported_subject(),
+                "reason",
+                Vec::new(),
+                ObligationStage::AgentAction,
+                Some("high ".to_string()),
+            ),
+            Err(ObligationError::InvalidRisk)
+        );
+        assert_eq!(
+            ObligationPolicyRule::new(
+                ObligationStage::AgentAction,
+                Some(" high".to_string()),
+                None,
+                ObligationClassification::Blocking,
+            ),
+            Err(ObligationError::InvalidRuleMatcher)
+        );
+        assert_eq!(
+            ObligationPolicyRule::new(
+                ObligationStage::AgentAction,
+                None,
+                Some("writeback ".to_string()),
                 ObligationClassification::Blocking,
             ),
             Err(ObligationError::InvalidRuleMatcher)
