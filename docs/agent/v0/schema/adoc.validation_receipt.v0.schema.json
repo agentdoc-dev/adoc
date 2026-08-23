@@ -33,7 +33,7 @@
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
     },
     "inputs": {
-      "description": "Every consumed source input: Logical Source Path plus sha256 of its bytes, in lexicographic path order.",
+      "description": "Every compiled source input: Logical Source Path plus sha256 of its bytes, in lexicographic path order. Evidence Anchor reads are outside the digest binding: advisory warnings only, never result-affecting.",
       "type": "array",
       "items": {
         "type": "object",
