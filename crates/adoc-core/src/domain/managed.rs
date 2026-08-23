@@ -387,10 +387,27 @@ impl ManagedWorkspace {
     /// decision entered the log; they are record-time gates, not
     /// log-validity invariants — a decision recorded between two imports
     /// must replay after those imports even though its binding is no
-    /// longer the latest. Never feed unvalidated input here: new
-    /// decisions go through [`ManagedWorkspace::record_decision`].
-    pub(crate) fn replay_decision(&mut self, decision: ReconciliationDecision) {
+    /// longer the latest. Party EXISTENCE is the exception: RT-03
+    /// promises every decision party stays queryable through the
+    /// decision, a property of the log *plus* the import history it
+    /// replays over — so replaying a valid log against a mismatched
+    /// history (truncated rebuild, decisions restored ahead of their
+    /// imports, the wrong workspace) fails closed with
+    /// [`ReconciliationDecisionError::UnknownParty`] and appends
+    /// nothing, instead of deriving standing state whose canonicals
+    /// resolve to no managed object. Never feed unvalidated input here:
+    /// new decisions go through [`ManagedWorkspace::record_decision`].
+    pub(crate) fn replay_decision(
+        &mut self,
+        decision: ReconciliationDecision,
+    ) -> Result<(), ReconciliationDecisionError> {
+        for bound in [decision.subject(), decision.counterpart()] {
+            if self.managed_object(&bound.canonical).is_none() {
+                return Err(ReconciliationDecisionError::UnknownParty);
+            }
+        }
         self.decisions.push(decision);
+        Ok(())
     }
 
     /// The derived reconciliation state: deterministic, wall-clock-free —
@@ -1558,7 +1575,7 @@ mod tests {
 
         let (mut replayed, _) = collided_workspace();
         for event in first_run.decisions().to_vec() {
-            replayed.replay_decision(event);
+            replayed.replay_decision(event).expect("replay accepted");
         }
 
         assert_eq!(first_run, replayed, "replay must rebuild the workspace");
@@ -1611,7 +1628,7 @@ mod tests {
             ))
             .expect("import accepted");
         for event in first_run.decisions().to_vec() {
-            replayed.replay_decision(event);
+            replayed.replay_decision(event).expect("replay accepted");
         }
 
         assert_eq!(first_run, replayed, "replay must rebuild the workspace");
@@ -1619,6 +1636,42 @@ mod tests {
             serde_json::to_vec(&first_run.reconciliation_state()).expect("state serializes"),
             serde_json::to_vec(&replayed.reconciliation_state()).expect("state serializes"),
             "replayed reconciliation state must be byte-identical"
+        );
+    }
+
+    /// Replaying a legitimately recorded log against a MISMATCHED import
+    /// history — a truncated rebuild, decisions restored ahead of the
+    /// imports that produced them, the wrong workspace — must fail
+    /// closed: standing state naming canonicals that resolve to no
+    /// managed object would break RT-03's provenance-stays-queryable
+    /// promise silently. Party existence is a log-plus-history
+    /// invariant; only the latest-version comparison is record-time.
+    #[test]
+    fn replaying_against_a_mismatched_import_history_fails_closed() {
+        let (mut first_run, candidate) = collided_workspace();
+        let decision = ReconciliationDecision::new(
+            ReconciliationVerb::KeepDistinct,
+            party(&candidate.existing),
+            party(&candidate.incoming),
+            principal(),
+            policy(),
+        )
+        .expect("two distinct parties");
+        first_run
+            .record_decision(decision)
+            .expect("decision recorded");
+
+        // No imports replayed: neither party exists in this workspace.
+        let mut fresh =
+            ManagedWorkspace::new(WorkspaceId::new("ws-acme").expect("workspace id is non-blank"));
+        assert_eq!(
+            fresh.replay_decision(first_run.decisions()[0].clone()),
+            Err(ReconciliationDecisionError::UnknownParty),
+            "a decision whose parties are absent from the import history must not replay"
+        );
+        assert!(
+            fresh.decisions().is_empty(),
+            "nothing may be appended on rejection"
         );
     }
 
