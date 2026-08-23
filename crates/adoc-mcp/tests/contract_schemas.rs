@@ -1554,3 +1554,86 @@ fn validates_built_search_artifact_against_v1_contract_schema() {
         "the fixture .md paragraph must be embedded (adoc.search.v2)"
     );
 }
+
+#[test]
+fn authorization_decision_schema_pins_replay_bindings() {
+    let decision = json!({
+        "schema_version": "adoc.authorization_decision.v0",
+        "principal": {
+            "id": "principal-1",
+            "type": "human",
+            "freshness": "current"
+        },
+        "permission": "proposal.approve",
+        "resource": {
+            "workspace_id": "workspace-1",
+            "connector_id": "github",
+            "source_container_id": "agentdoc-dev",
+            "resource": { "kind": "repository", "id": "cloud" },
+            "knowledge_kind": "policy",
+            "object_id": "policy.refunds.enterprise"
+        },
+        "evaluation_time": "2026-08-23T12:00:00Z",
+        "consequential": true,
+        "hard_deny": false,
+        "grants": [{
+            "grant_id": "assignment-1",
+            "source": "role_assignment",
+            "effect": "allow",
+            "permission": "proposal.approve",
+            "scope": {
+                "workspace_id": "workspace-1",
+                "knowledge_kind": "policy"
+            },
+            "role": { "id": "builtin:curator", "version": 1 }
+        }],
+        "source_acl_ceiling": {
+            "required": true,
+            "result": "allow",
+            "snapshot_id": "acl-1"
+        },
+        "visibility": "allow",
+        "action_policy": "allow",
+        "policy_version": "authz-policy-v1",
+        "result": "allow",
+        "reason": "allowed",
+        "basis": {
+            "grant_id": "assignment-1",
+            "source": "role_assignment",
+            "effect": "allow",
+            "scope_match": {
+                "workspace_id": "workspace-1",
+                "knowledge_kind": "policy"
+            },
+            "role": { "id": "builtin:curator", "version": 1 }
+        }
+    });
+
+    assert_valid("adoc.authorization_decision.v0.schema.json", &decision);
+
+    for invalid in [
+        {
+            let mut invalid = decision.clone();
+            invalid
+                .as_object_mut()
+                .expect("object")
+                .remove("policy_version");
+            invalid
+        },
+        {
+            let mut invalid = decision.clone();
+            invalid["result"] = json!("maybe");
+            invalid
+        },
+        {
+            let mut invalid = decision.clone();
+            invalid["grants"][0]["source"] = json!("direct_grant");
+            invalid
+        },
+    ] {
+        assert!(
+            !schema_accepts("adoc.authorization_decision.v0.schema.json", &invalid),
+            "authorization decision schema accepted an invalid replay binding: {invalid}"
+        );
+    }
+}
