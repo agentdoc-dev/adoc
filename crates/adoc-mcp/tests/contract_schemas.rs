@@ -1506,6 +1506,16 @@ fn semantic_context_schema_accepts_the_envelope_and_rejects_unknown_fields() {
             "assessment_digest": digest,
             "knowledge_basis": { "kind": "graph_artifact", "digest": digest }
         },
+        "capability_policy": {
+            "version": "semantic-context-policy-v1",
+            "rules": [
+                { "reason": "permission", "outcome": "insufficient" },
+                { "reason": "retention", "outcome": "insufficient" },
+                { "reason": "source_outage", "outcome": "failed" },
+                { "reason": "truncation", "outcome": "insufficient" },
+                { "reason": "resource_limit", "outcome": "failed" }
+            ]
+        },
         "context_classes": [{
             "class_id": "changed_knowledge",
             "requirement": "required",
@@ -1567,6 +1577,7 @@ fn semantic_context_schema_accepts_the_envelope_and_rejects_unknown_fields() {
                 "truncated": false
             }
         ],
+        "unavailability": [],
         "coverage": [{
             "class_id": "changed_knowledge",
             "requirement": "required",
@@ -1574,6 +1585,8 @@ fn semantic_context_schema_accepts_the_envelope_and_rejects_unknown_fields() {
             "included_bytes": 100,
             "byte_budget": 4096,
             "truncated": false,
+            "unavailable_count": 0,
+            "reasons": [],
             "complete": true
         }],
         "outcome": "ready",

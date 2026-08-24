@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
+use super::diagnostic::DiagnosticCode;
 use super::hashing::sha256_prefixed;
 use super::identity::ObjectId;
 
@@ -42,6 +43,53 @@ pub struct ContextClass {
     pub class_id: String,
     pub requirement: ContextRequirement,
     pub byte_budget: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnavailabilityReason {
+    Permission,
+    Retention,
+    SourceOutage,
+    Truncation,
+    ResourceLimit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnavailabilityOutcome {
+    Insufficient,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapabilityPolicyRule {
+    pub reason: UnavailabilityReason,
+    pub outcome: UnavailabilityOutcome,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapabilityPolicy {
+    pub version: String,
+    pub rules: Vec<CapabilityPolicyRule>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextUnavailabilityKind {
+    Redaction,
+    Omission,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContextUnavailability {
+    pub record_id: String,
+    pub class_id: String,
+    pub kind: ContextUnavailabilityKind,
+    pub reason: UnavailabilityReason,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,8 +141,10 @@ pub struct SemanticContextInput {
     pub base_revision: ExactRevision,
     pub head_revision: ExactRevision,
     pub basis: SemanticContextBasis,
+    pub capability_policy: CapabilityPolicy,
     pub context_classes: Vec<ContextClass>,
     pub items: Vec<SemanticContextItem>,
+    pub unavailability: Vec<ContextUnavailability>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,6 +152,17 @@ pub struct SemanticContextInput {
 pub enum SemanticContextOutcome {
     Ready,
     Insufficient,
+    Failed,
+}
+
+impl SemanticContextOutcome {
+    pub fn diagnostic_code(self) -> Option<DiagnosticCode> {
+        match self {
+            Self::Ready => None,
+            Self::Insufficient => Some(DiagnosticCode::SemanticContextInsufficientContext),
+            Self::Failed => Some(DiagnosticCode::SemanticContextFailed),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -113,6 +174,8 @@ struct ContextCoverage {
     included_bytes: u64,
     byte_budget: u64,
     truncated: bool,
+    unavailable_count: u64,
+    reasons: Vec<UnavailabilityReason>,
     complete: bool,
 }
 
@@ -125,8 +188,10 @@ pub struct SemanticContext {
     base_revision: ExactRevision,
     head_revision: ExactRevision,
     basis: SemanticContextBasis,
+    capability_policy: CapabilityPolicy,
     context_classes: Vec<ContextClass>,
     items: Vec<SemanticContextItem>,
+    unavailability: Vec<ContextUnavailability>,
     coverage: Vec<ContextCoverage>,
     outcome: SemanticContextOutcome,
     context_digest: String,
@@ -141,8 +206,10 @@ struct DigestInput<'a> {
     base_revision: &'a ExactRevision,
     head_revision: &'a ExactRevision,
     basis: &'a SemanticContextBasis,
+    capability_policy: &'a CapabilityPolicy,
     context_classes: &'a [ContextClass],
     items: &'a [SemanticContextItem],
+    unavailability: &'a [ContextUnavailability],
     coverage: &'a [ContextCoverage],
     outcome: SemanticContextOutcome,
 }
@@ -157,8 +224,10 @@ struct SemanticContextDocument {
     base_revision: ExactRevision,
     head_revision: ExactRevision,
     basis: SemanticContextBasis,
+    capability_policy: CapabilityPolicy,
     context_classes: Vec<ContextClass>,
     items: Vec<SemanticContextItem>,
+    unavailability: Vec<ContextUnavailability>,
     coverage: Vec<ContextCoverage>,
     outcome: SemanticContextOutcome,
     context_digest: String,
@@ -188,10 +257,36 @@ pub enum SemanticContextError {
     ByteBudgetExceeded { class_id: String, byte_budget: u64 },
     #[error("semantic context coverage or outcome does not match its items")]
     DerivedStateMismatch,
+    #[error("capability policy must contain exactly one rule for every unavailability reason")]
+    InvalidCapabilityPolicy,
+    #[error("semantic context contains duplicate unavailability record id '{record_id}'")]
+    DuplicateUnavailabilityId { record_id: String },
     #[error("semantic context digest does not match its canonical content")]
     DigestMismatch,
     #[error("semantic context serialization failed: {message}")]
     Serialization { message: String },
+}
+
+impl SemanticContextError {
+    pub fn diagnostic_code(&self) -> DiagnosticCode {
+        match self {
+            Self::UnsupportedVersion { .. } => DiagnosticCode::SchemaUnsupportedVersion,
+            Self::DigestMismatch => DiagnosticCode::SemanticContextDigestMismatch,
+            Self::InvalidDocument { .. }
+            | Self::InvalidText { .. }
+            | Self::InvalidDigest { .. }
+            | Self::InvalidObjectId { .. }
+            | Self::DuplicateHandleId { .. }
+            | Self::DuplicateClassId { .. }
+            | Self::UnknownClass { .. }
+            | Self::InvalidByteBudget { .. }
+            | Self::ByteBudgetExceeded { .. }
+            | Self::DerivedStateMismatch
+            | Self::InvalidCapabilityPolicy
+            | Self::DuplicateUnavailabilityId { .. }
+            | Self::Serialization { .. } => DiagnosticCode::SemanticContextInvalidDocument,
+        }
+    }
 }
 
 impl SemanticContext {
@@ -234,6 +329,36 @@ pub fn build_semantic_context(
             require_digest("basis.knowledge_basis.digest", digest)?;
         }
     }
+    require_text(
+        "capability_policy.version",
+        &input.capability_policy.version,
+    )?;
+    input
+        .capability_policy
+        .rules
+        .sort_by_key(|rule| rule.reason);
+    let policy_reasons: BTreeSet<_> = input
+        .capability_policy
+        .rules
+        .iter()
+        .map(|rule| rule.reason)
+        .collect();
+    let all_reasons = BTreeSet::from([
+        UnavailabilityReason::Permission,
+        UnavailabilityReason::Retention,
+        UnavailabilityReason::SourceOutage,
+        UnavailabilityReason::Truncation,
+        UnavailabilityReason::ResourceLimit,
+    ]);
+    if input.capability_policy.rules.len() != all_reasons.len() || policy_reasons != all_reasons {
+        return Err(SemanticContextError::InvalidCapabilityPolicy);
+    }
+    let policy: BTreeMap<_, _> = input
+        .capability_policy
+        .rules
+        .iter()
+        .map(|rule| (rule.reason, rule.outcome))
+        .collect();
 
     input
         .context_classes
@@ -253,6 +378,8 @@ pub fn build_semantic_context(
             included_bytes: 0,
             byte_budget: class.byte_budget,
             truncated: false,
+            unavailable_count: 0,
+            reasons: Vec::new(),
             complete: false,
         };
         if coverage_by_class
@@ -303,6 +430,9 @@ pub fn build_semantic_context(
             })?;
         coverage.item_count += 1;
         coverage.truncated |= item.truncated;
+        if item.truncated {
+            coverage.reasons.push(UnavailabilityReason::Truncation);
+        }
         if coverage.included_bytes > coverage.byte_budget {
             return Err(SemanticContextError::ByteBudgetExceeded {
                 class_id: item.class_id.clone(),
@@ -341,19 +471,49 @@ pub fn build_semantic_context(
             }
         }
     }
+    input
+        .unavailability
+        .sort_by(|left, right| left.record_id.cmp(&right.record_id));
+    let mut unavailability_ids = BTreeSet::new();
+    for record in &input.unavailability {
+        require_text("unavailability[].record_id", &record.record_id)?;
+        require_text("unavailability[].class_id", &record.class_id)?;
+        if !unavailability_ids.insert(record.record_id.as_str()) {
+            return Err(SemanticContextError::DuplicateUnavailabilityId {
+                record_id: record.record_id.clone(),
+            });
+        }
+        let coverage = coverage_by_class.get_mut(&record.class_id).ok_or_else(|| {
+            SemanticContextError::UnknownClass {
+                handle_id: record.record_id.clone(),
+                class_id: record.class_id.clone(),
+            }
+        })?;
+        coverage.unavailable_count += 1;
+        coverage.reasons.push(record.reason);
+    }
 
     let mut coverage: Vec<_> = coverage_by_class.into_values().collect();
     for entry in &mut coverage {
-        entry.complete = entry.item_count > 0 && !entry.truncated;
+        entry.reasons.sort();
+        entry.reasons.dedup();
+        entry.complete = entry.item_count > 0 && !entry.truncated && entry.unavailable_count == 0;
     }
-    let outcome = if coverage
+    let mut outcome = SemanticContextOutcome::Ready;
+    for entry in coverage
         .iter()
-        .any(|entry| entry.requirement == ContextRequirement::Required && !entry.complete)
+        .filter(|entry| entry.requirement == ContextRequirement::Required && !entry.complete)
     {
-        SemanticContextOutcome::Insufficient
-    } else {
-        SemanticContextOutcome::Ready
-    };
+        outcome = SemanticContextOutcome::Insufficient;
+        if entry
+            .reasons
+            .iter()
+            .any(|reason| policy.get(reason).copied() == Some(UnavailabilityOutcome::Failed))
+        {
+            outcome = SemanticContextOutcome::Failed;
+            break;
+        }
+    }
 
     let evaluation_date = input.evaluation_date.format("%Y-%m-%d").to_string();
     let digest_input = DigestInput {
@@ -364,8 +524,10 @@ pub fn build_semantic_context(
         base_revision: &input.base_revision,
         head_revision: &input.head_revision,
         basis: &input.basis,
+        capability_policy: &input.capability_policy,
         context_classes: &input.context_classes,
         items: &input.items,
+        unavailability: &input.unavailability,
         coverage: &coverage,
         outcome,
     };
@@ -382,8 +544,10 @@ pub fn build_semantic_context(
         base_revision: input.base_revision,
         head_revision: input.head_revision,
         basis: input.basis,
+        capability_policy: input.capability_policy,
         context_classes: input.context_classes,
         items: input.items,
+        unavailability: input.unavailability,
         coverage,
         outcome,
         context_digest: sha256_prefixed(&canonical),
@@ -411,8 +575,10 @@ pub fn validate_semantic_context(bytes: &[u8]) -> Result<SemanticContext, Semant
         base_revision: document.base_revision,
         head_revision: document.head_revision,
         basis: document.basis,
+        capability_policy: document.capability_policy,
         context_classes: document.context_classes,
         items: document.items,
+        unavailability: document.unavailability,
     })?;
     if context.coverage != document.coverage || context.outcome != document.outcome {
         return Err(SemanticContextError::DerivedStateMismatch);
