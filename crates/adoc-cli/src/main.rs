@@ -124,7 +124,12 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                     assessment_digest,
                                 }),
                                 (None, None, None, None, None) => None,
-                                _ => unreachable!("clap requires the complete semantic basis"),
+                                _ => {
+                                    eprintln!(
+                                        "error[cli.semantic_context] --semantic-context requires all four exact revision flags and --semantic-assessment-digest; refusing to run with a partial validation basis"
+                                    );
+                                    return 2;
+                                }
                             },
                         )
                     }

@@ -462,7 +462,7 @@ diagnostic_codes! {
     SemanticContextDigestMismatch = "semantic_context.digest_mismatch" =>
         "Regenerate the semantic context; its canonical content no longer matches its recorded digest.";
     SemanticContextBasisMismatch = "semantic_context.basis_mismatch" =>
-        "Regenerate semantic context from the exact graph artifact or managed revision being validated.";
+        "Regenerate semantic context from the exact graph artifact or managed revision being validated, or supply the trusted expectations and citation projections the runtime validates against.";
     SemanticContextInsufficientContext = "semantic_context.insufficient_context" =>
         "Restore the required authorized context and regenerate the semantic context before relying on the assessment.";
     SemanticContextFailed = "semantic_context.failed" =>
