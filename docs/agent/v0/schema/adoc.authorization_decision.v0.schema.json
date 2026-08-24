@@ -100,6 +100,21 @@
     {
       "if": {
         "properties": {
+          "source_acl_ceiling": {
+            "required": ["current_authorization"]
+          }
+        },
+        "required": ["source_acl_ceiling"]
+      },
+      "then": {
+        "properties": {
+          "resource": { "required": ["connector_id", "resource"] }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "principal": {
             "properties": { "freshness": { "const": "expired" } },
             "required": ["freshness"]
@@ -728,11 +743,24 @@
             "required": ["required", "result"]
           },
           "then": { "required": ["current_authorization"] }
+        },
+        {
+          "if": {
+            "properties": {
+              "result": {
+                "not": { "enum": ["allow", "deny"] }
+              }
+            },
+            "required": ["result"]
+          },
+          "then": {
+            "not": { "required": ["current_authorization"] }
+          }
         }
       ]
     },
     "currentSourceAclAuthorization": {
-      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, and source must match the corresponding decision resource fields and referenced snapshot; acl_policy_version must match the referenced snapshot; principal_id must match the decision principal; snapshot_id and result must match their sibling source_acl_ceiling values when both are present. These equality checks are evaluator-owned and fail closed.",
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. Its presence requires connector_id and resource on the decision resource. workspace_id, connector_id, and source must match the corresponding decision resource fields and referenced snapshot; acl_policy_version must match the referenced snapshot; principal_id must match the decision principal; snapshot_id and result must match their sibling source_acl_ceiling values. These equality checks are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
@@ -756,7 +784,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "result": {
-          "description": "Provider verdict bound to this evidence record. It is a source-content readability and visibility ceiling shared across AgentDoc permissions, not a claim of provider write or administrative authority; the AgentDoc grant supplies operation authority. It must match source_acl_ceiling.result when both are present; equality is evaluator-owned and fails closed.",
+          "description": "Provider verdict bound to this evidence record. It is a source-content readability and visibility ceiling shared across AgentDoc permissions, not a claim of provider write or administrative authority; the AgentDoc grant supplies operation authority. It must match source_acl_ceiling.result; equality is evaluator-owned and fails closed.",
           "enum": ["allow", "deny"]
         },
         "snapshot_id": {

@@ -1595,6 +1595,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
                 "role": "current_authorization",
                 "current_acl_id": "acl-authorization-1",
                 "result": "allow",
+                // The evidence repeats the provider verdict. JSON Schema cannot
+                // compare sibling values; the evaluator rejects a mismatch.
                 // The current-evidence record repeats the decision snapshot so
                 // the evaluator can bind freshness to the exact ACL payload.
                 "snapshot_id": "acl-1",
@@ -1672,6 +1674,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
     insufficient["reason"] = json!("source_acl_unavailable");
     insufficient["basis"] = json!(null);
 
+    let mut insufficient_with_current_acl = decision.clone();
+    insufficient_with_current_acl["source_acl_ceiling"]["result"] = json!("insufficient_context");
+    insufficient_with_current_acl["result"] = json!("insufficient_context");
+    insufficient_with_current_acl["reason"] = json!("source_acl_unavailable");
+    insufficient_with_current_acl["basis"] = json!(null);
+
     let mut legacy_allow_without_current_acl = decision.clone();
     legacy_allow_without_current_acl["source_acl_ceiling"]
         .as_object_mut()
@@ -1701,10 +1709,26 @@ fn authorization_decision_schema_pins_replay_bindings() {
 
     let mut denying_source_acl_stale = source_acl_stale.clone();
     denying_source_acl_stale["source_acl_ceiling"]["result"] = json!("deny");
+    denying_source_acl_stale["source_acl_ceiling"]["current_authorization"]["result"] =
+        json!("deny");
     let mut denying_source_acl_invalidated = source_acl_invalidated.clone();
     denying_source_acl_invalidated["source_acl_ceiling"]["result"] = json!("deny");
+    denying_source_acl_invalidated["source_acl_ceiling"]["current_authorization"]["result"] =
+        json!("deny");
     let mut denying_source_acl_outage = source_acl_outage.clone();
     denying_source_acl_outage["source_acl_ceiling"]["result"] = json!("deny");
+    denying_source_acl_outage["source_acl_ceiling"]["current_authorization"]["result"] =
+        json!("deny");
+
+    let mut current_acl_without_source_scope = decision.clone();
+    current_acl_without_source_scope["resource"]
+        .as_object_mut()
+        .expect("resource scope")
+        .remove("connector_id");
+    current_acl_without_source_scope["resource"]
+        .as_object_mut()
+        .expect("resource scope")
+        .remove("resource");
 
     let mut allow_during_source_acl_outage = decision.clone();
     allow_during_source_acl_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
@@ -2046,6 +2070,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         ("source ACL connector outage", source_acl_outage, true),
+        (
+            "insufficient source ACL with current verdict evidence",
+            insufficient_with_current_acl,
+            false,
+        ),
         ("stale current source ACL evidence", source_acl_stale, true),
         (
             "invalidated current source ACL evidence",
@@ -2177,6 +2206,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         ("unknown result", unknown_result, false),
+        (
+            "current source ACL without source resource scope",
+            current_acl_without_source_scope,
+            false,
+        ),
         (
             "allow during source ACL outage",
             allow_during_source_acl_outage,
