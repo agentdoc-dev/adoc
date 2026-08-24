@@ -942,6 +942,10 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "adoc://agent/v0/schema/adoc.lifecycle_mapping.v0.schema.json",
             "adoc.lifecycle_mapping.v0.schema.json",
         ),
+        (
+            "adoc://agent/v0/schema/adoc.semantic_context.v0.schema.json",
+            "adoc.semantic_context.v0.schema.json",
+        ),
     ] {
         let result = server
             .read_agent_resource(uri)
@@ -1475,6 +1479,10 @@ fn retrieval_schema_ids_match_their_published_uris() {
             "adoc.lifecycle_mapping.v0.schema.json",
             "adoc://agent/v0/schema/adoc.lifecycle_mapping.v0.schema.json",
         ),
+        (
+            "adoc.semantic_context.v0.schema.json",
+            "adoc://agent/v0/schema/adoc.semantic_context.v0.schema.json",
+        ),
     ] {
         assert_eq!(
             schema(name)["$id"],
@@ -1482,6 +1490,41 @@ fn retrieval_schema_ids_match_their_published_uris() {
             "$id of {name} must match the URI it is published at"
         );
     }
+}
+
+#[test]
+fn semantic_context_schema_accepts_the_t1_envelope_and_rejects_unknown_fields() {
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let instance = json!({
+        "schema_version": "adoc.semantic_context.v0",
+        "evaluation_date": "2026-08-24",
+        "subject_revision": { "system": "git", "value": "subject-sha" },
+        "source_revision": { "system": "git", "value": "source-sha" },
+        "base_revision": { "system": "git", "value": "base-sha" },
+        "head_revision": { "system": "git", "value": "head-sha" },
+        "basis": {
+            "assessment_digest": digest,
+            "knowledge_basis": { "kind": "graph_artifact", "digest": digest }
+        },
+        "items": [{
+            "handle_id": "billing-ready",
+            "handle": {
+                "kind": "knowledge_object",
+                "object_id": "billing.ready",
+                "semantic_hash": digest
+            },
+            "content": { "body": "Billing is ready." }
+        }],
+        "context_digest": digest
+    });
+    assert_valid("adoc.semantic_context.v0.schema.json", &instance);
+
+    let mut unknown = instance;
+    unknown["unexpected"] = json!(true);
+    assert!(
+        !schema_accepts("adoc.semantic_context.v0.schema.json", &unknown),
+        "semantic context must reject unknown fields"
+    );
 }
 
 /// The frozen v0 schema must accept every envelope real v0 emitters produced,

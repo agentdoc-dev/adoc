@@ -310,6 +310,10 @@ _Avoid_: Cloud-side domain validation, JSON Schema as domain authority, unpinned
 The digest-bound `adoc.validation_receipt.v0` envelope the **Validation Runtime** returns (`adoc check --receipt`): exact runtime version plus harness-attested binary digest, every consumed input digest by Logical Source Path, context digests, consumed contract versions (graph `adoc.graph.v6`), the closed `pass` / `fail` result, and a sha256 digest of the canonically serialized typed diagnostics. Deterministic by contract — stable ordering, no wall-clock timestamps, lifecycle pinned to the explicit `evaluation_date` input — so the same domain input yields byte-identical receipts across local, CI, and Cloud execution. Constructible only by the runtime: unvalidated receipt JSON has no core representation.
 _Avoid_: receipt with wall-clock timestamps, self-hashed binary digest, receipt deserialized into the typed envelope, receipt as approval
 
+**Semantic Context**:
+The deterministic `adoc.semantic_context.v0` envelope supplied as inert data to a semantic executor: exact subject/source/base/head revisions, assessment and Graph Artifact or managed-revision basis digests, closed citation handles, completeness facts, and its canonical context digest. It records what authorized context was supplied; it does not retrieve context, authorize access, or grant model output authority.
+_Avoid_: prompt, RAG dump, open citation URL, context reconstructed by the validator, semantic assessment
+
 **Embedding Provider**:
 The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the deterministic adapter is available for repeatable local/offline use.
 _Avoid_: hosted-only embedding pipeline, public plug-in registry, per-call API key configuration

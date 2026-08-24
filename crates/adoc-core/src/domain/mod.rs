@@ -30,6 +30,7 @@ pub(crate) mod retrieval;
 pub(crate) mod review;
 pub(crate) mod rules;
 pub(crate) mod scan;
+pub(crate) mod semantic_context;
 pub(crate) mod services;
 pub(crate) mod source;
 pub(crate) mod source_edit;
