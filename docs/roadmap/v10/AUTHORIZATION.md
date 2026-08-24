@@ -200,7 +200,7 @@ At authorization evaluation, an active manual membership is recorded with its st
 
 External binding records, membership observations, and their source events or synchronization runs are retained for every decision that cites them, so those decisions remain replayable after the observed membership is revoked and after binding resync, reconfiguration, or disablement.
 
-External binding records retain their complete mode history, so replay can resolve the mode epoch in effect at each decision's evaluation time.
+External binding records retain their complete effective mode history, so replay can resolve the mode epoch in effect at each decision's evaluation time. A requested reconfiguration becomes an epoch only when it takes effect; a pending or failed reconfiguration never appears in that history.
 
 Reconfiguration to `suggestion_only` or `disabled` takes effect immediately. A binding-mode reconfiguration to a grant-conferring mode takes effect only when its resynchronization completes; until then the binding remains under the prior epoch. While deferred, the requested target mode and pending state are operator-visible, and a failed resynchronization is recorded and surfaced rather than retried silently. Completion starts the new epoch and records a fresh membership observation for every principal the source currently reports, with `observed_at` equal to that completion instant and epoch boundary; external membership confers grants again only from an observation recorded within that epoch.
 
