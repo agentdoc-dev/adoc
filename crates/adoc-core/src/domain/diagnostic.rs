@@ -467,6 +467,18 @@ diagnostic_codes! {
         "Restore the required authorized context and regenerate the semantic context before relying on the assessment.";
     SemanticContextFailed = "semantic_context.failed" =>
         "Resolve the capability-policy failure and regenerate the semantic context; the semantic run must not proceed.";
+    AssessmentSemanticSchemaInvalid = "assessment.semantic_schema_invalid" =>
+        "Regenerate the artifact as a valid adoc.semantic_assessment.v0 document; invalid output is failed, never partially accepted.";
+    AssessmentSemanticVersionUnsupported = "assessment.semantic_version_unsupported" =>
+        "Use the exact supported adoc.semantic_assessment.v0 schema version.";
+    AssessmentSemanticCitationInvalid = "assessment.semantic_citation_invalid" =>
+        "Regenerate the assessment with citations that resolve inside the exact supplied semantic context.";
+    AssessmentSemanticClassificationUnknown = "assessment.semantic_classification_unknown" =>
+        "Use one of: consistent, extends_existing_knowledge, contradicts_existing_knowledge, insufficient_evidence.";
+    AssessmentSemanticRevisionMismatch = "assessment.semantic_revision_mismatch" =>
+        "Regenerate the assessment for the semantic context's exact base and head revisions.";
+    AssessmentSemanticIdentityMissing = "assessment.semantic_identity_missing" =>
+        "Record non-empty provider and model identity in every semantic assessment, including structured human submissions.";
 }
 
 impl DiagnosticCode {
