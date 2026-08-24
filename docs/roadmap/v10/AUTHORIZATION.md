@@ -135,7 +135,7 @@ Semantic intelligence may suggest or escalate a visibility class but may never l
 
 ## A5. Stable AgentDoc principal with verified linked identities
 
-A human workspace principal can link verified external identities from GitHub, GitLab, OIDC/SAML, Slack, Atlassian, and future providers.
+A workspace principal can retain a verified external identity link for GitHub, GitLab, OIDC/SAML, Slack, Atlassian, and future providers. Human principals establish those links through the proof flows below; shared and bot provider identities use the same retained link record while mapping to service, workload, or agent principals.
 
 Linking requires one of:
 
@@ -151,7 +151,7 @@ Every action records both:
 - stable AgentDoc workspace principal;
 - exact external identity/session/workload used.
 
-Unlinking revokes future use but does not rewrite history. Shared/bot accounts map to service/workload/agent principals rather than human principals.
+Unlinking revokes future use but does not rewrite history. Shared/bot accounts map to service/workload/agent principals rather than human principals. A delegated workload uses the provider identity linked to the effective workload or service principal for source ACL checks; its human or service delegator remains independently attributable through the delegation chain.
 
 ## A6. Global account plus workspace-scoped principals
 
