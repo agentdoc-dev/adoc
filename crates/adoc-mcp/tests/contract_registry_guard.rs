@@ -721,20 +721,25 @@ fn group_vocabularies_match_the_e2_4_registry() {
     let registered_modes = anchored_ids(&registry, "registry:group-binding-modes");
     let authorization = read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md");
     let a7 = annex_section(&authorization, "AUTHORIZATION.md", "## A7.");
-    let lists = fenced_lists_in(a7);
-    assert_eq!(
-        lists.len(),
-        1,
-        "AUTHORIZATION.md §A7 must carry exactly one binding-mode list"
-    );
-    let authority_modes: BTreeSet<_> = lists[0].iter().cloned().collect();
+    let mode_list = fenced_lists_in(
+        a7.split_once("Membership binding modes:")
+            .expect("AUTHORIZATION.md §A7 labels its membership binding modes")
+            .1,
+    )
+    .into_iter()
+    .next()
+    .expect("AUTHORIZATION.md §A7 has a fenced membership binding-mode list");
+    let authority_modes: BTreeSet<_> = mode_list.iter().cloned().collect();
     assert_eq!(
         authority_modes.len(),
-        lists[0].len(),
+        mode_list.len(),
         "binding modes repeat"
     );
     assert!(!authority_modes.is_empty(), "binding modes are empty");
-    assert_eq!(registered_modes, authority_modes);
+    assert_eq!(
+        registered_modes, authority_modes,
+        "every §A7 binding mode needs a `registry:group-binding-modes` row, and vice versa"
+    );
 
     let mode_rows =
         support::doc_scan::anchored_block(&registry, REGISTRY, "registry:group-binding-modes");
