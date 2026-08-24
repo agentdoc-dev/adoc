@@ -2025,6 +2025,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     identity_context_missing["consequential"] = json!(true);
     identity_context_missing["result"] = json!("insufficient_context");
     identity_context_missing["reason"] = json!("identity_context_missing");
+    let mut hard_deny_with_missing_identity = identity_context_missing.clone();
+    hard_deny_with_missing_identity["hard_deny"] = json!(true);
     let mut false_identity_context_missing_reason = identity_context_missing.clone();
     false_identity_context_missing_reason["principal"]["freshness"] = json!("current");
     let mut consequential_identity_context_with_deny = identity_context_missing.clone();
@@ -2261,6 +2263,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "invalid evaluation time precedes hard deny",
             hard_deny_with_invalid_time,
+            true,
+        ),
+        (
+            "missing identity context precedes hard deny",
+            hard_deny_with_missing_identity,
             true,
         ),
         (
