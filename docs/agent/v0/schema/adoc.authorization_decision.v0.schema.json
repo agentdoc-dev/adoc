@@ -756,7 +756,7 @@
       }
     },
     "sourceResource": {
-      "description": "Repository, project, space, or channel level within a scope.",
+      "description": "Repository, project, space, or channel level within a scope. id is the bare source-local resource identifier; parent container context, when available, is carried separately by source_container_id on the containing scope.",
       "type": "object",
       "required": ["kind", "id"],
       "additionalProperties": false,
