@@ -942,6 +942,7 @@
               "$ref": "#/$defs/membershipObservation"
             },
             "source_kind": {
+              "description": "Closed source adapter kind for this membership. Replay resolves binding_id and fails closed unless this value equals the source kind recorded on the retained binding.",
               "enum": [
                 "github_team",
                 "gitlab_group",

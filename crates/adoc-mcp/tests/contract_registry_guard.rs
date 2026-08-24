@@ -864,6 +864,15 @@ fn group_retention_rules_match_the_e2_4_authority() {
             && a7.contains(observation_group_claim),
         "membership replay must reject observation substitution across bindings or groups"
     );
+    let source_kind_binding_claim = "source kind recorded on the retained binding";
+    assert!(
+        external_group_properties["source_kind"]["description"]
+            .as_str()
+            .expect("external source-kind replay is documented")
+            .contains(source_kind_binding_claim)
+            && a7.contains(source_kind_binding_claim),
+        "membership replay must reject source-kind substitution"
+    );
 
     let same_source_claim = "A connector membership observation resolves against exactly one retained source event or synchronization run";
     assert!(
@@ -909,6 +918,10 @@ fn group_retention_rules_match_the_e2_4_authority() {
     assert!(
         e2_4.contains(source_timing_claim),
         "the E2.4 exit gate must retain source timing endpoints"
+    );
+    assert!(
+        e2_4.contains(source_kind_binding_claim),
+        "E2.4.T2 must reject a source kind that differs from the retained binding"
     );
     assert!(
         e2_4.contains("does not equal the commit or completion instant of the event or run identified by that same"),
