@@ -867,7 +867,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
-          "description": "Instant this membership observation was recorded. An event-driven observation carries the instant the source event was observed; an observation produced by a resynchronization sweep carries the instant that run completed, which is the start of the epoch it records into.",
+          "description": "Instant this membership observation was recorded. An event-driven observation carries the instant the source event was observed; an observation produced by a resynchronization sweep carries the instant that run completed. For the resynchronization that completes a binding-mode reconfiguration, that instant is the new epoch's boundary; a resynchronization of an unreconfigured binding records into the epoch already in effect.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "member_present": { "const": true },
