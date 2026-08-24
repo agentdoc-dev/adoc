@@ -77,6 +77,7 @@
     },
     "capability_policy": {
       "type": "object",
+      "description": "Closed reason-to-outcome policy. A failed-mapped reason makes the whole semantic context failed even when its context class is optional; optionality suppresses only insufficient outcomes.",
       "required": ["version", "rules"],
       "additionalProperties": false,
       "properties": {

@@ -84,6 +84,11 @@ fn check_help_renders_the_semantic_context_example_as_shell_continuations() {
         r"adoc check --receipt receipt.json --as-of 2026-01-01 \
     --runtime-binary-digest sha256:<64 hex> \
     --context-artifact dist/docs.graph.json \
+    --semantic-subject-revision git=head-sha \
+    --semantic-source-revision git=head-sha \
+    --semantic-base-revision git=base-sha \
+    --semantic-head-revision git=head-sha \
+    --semantic-assessment-digest sha256:<64 hex> \
     --semantic-context semantic-context.json"
     ));
 }

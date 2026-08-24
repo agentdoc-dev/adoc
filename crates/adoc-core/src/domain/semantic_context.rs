@@ -177,9 +177,23 @@ pub struct SourceAssertionCitation {
     pub source_record_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SemanticContextExpectedBindings {
+    pub subject_revision: ExactRevision,
+    pub source_revision: ExactRevision,
+    pub base_revision: ExactRevision,
+    pub head_revision: ExactRevision,
+    pub assessment_digest: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct SemanticContextValidationBasis {
     pub evaluation_date: NaiveDate,
+    pub subject_revision: ExactRevision,
+    pub source_revision: ExactRevision,
+    pub base_revision: ExactRevision,
+    pub head_revision: ExactRevision,
+    pub assessment_digest: String,
     pub graph_artifact_digest: Option<String>,
     pub managed_revision_digest: Option<String>,
     pub graph_objects: Vec<GraphCitationObject>,
@@ -602,20 +616,22 @@ pub fn build_semantic_context(
         entry.reasons.dedup();
         entry.complete = entry.item_count > 0 && !entry.truncated && entry.unavailable_count == 0;
     }
-    let mut outcome = SemanticContextOutcome::Ready;
-    for entry in coverage
-        .iter()
-        .filter(|entry| entry.requirement == ContextRequirement::Required && !entry.complete)
-    {
-        outcome = SemanticContextOutcome::Insufficient;
-        if entry
+    let mut outcome = if coverage.iter().any(|entry| {
+        entry
             .reasons
             .iter()
             .any(|reason| policy.get(reason).copied() == Some(UnavailabilityOutcome::Failed))
-        {
-            outcome = SemanticContextOutcome::Failed;
-            break;
-        }
+    }) {
+        SemanticContextOutcome::Failed
+    } else {
+        SemanticContextOutcome::Ready
+    };
+    if outcome != SemanticContextOutcome::Failed
+        && coverage
+            .iter()
+            .any(|entry| entry.requirement == ContextRequirement::Required && !entry.complete)
+    {
+        outcome = SemanticContextOutcome::Insufficient;
     }
 
     let evaluation_date = input.evaluation_date.format("%Y-%m-%d").to_string();
@@ -723,6 +739,39 @@ pub fn validate_semantic_context(
             .to_string()
     {
         return Err(SemanticContextError::EvaluationDateMismatch);
+    }
+    for (name, actual, expected) in [
+        (
+            "subject revision",
+            &context.subject_revision,
+            &validation_basis.subject_revision,
+        ),
+        (
+            "source revision",
+            &context.source_revision,
+            &validation_basis.source_revision,
+        ),
+        (
+            "base revision",
+            &context.base_revision,
+            &validation_basis.base_revision,
+        ),
+        (
+            "head revision",
+            &context.head_revision,
+            &validation_basis.head_revision,
+        ),
+    ] {
+        if actual != expected {
+            return Err(SemanticContextError::BasisMismatch {
+                message: format!("{name} differs"),
+            });
+        }
+    }
+    if context.basis.assessment_digest != validation_basis.assessment_digest {
+        return Err(SemanticContextError::BasisMismatch {
+            message: "assessment digest differs".to_string(),
+        });
     }
     let (basis_name, expected_digest, digest) = match &context.basis.knowledge_basis {
         KnowledgeBasis::GraphArtifact { digest } => (

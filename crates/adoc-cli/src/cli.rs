@@ -33,6 +33,11 @@ Examples:
   adoc check --receipt receipt.json --as-of 2026-01-01 \\
     --runtime-binary-digest sha256:<64 hex> \\
     --context-artifact dist/docs.graph.json \\
+    --semantic-subject-revision git=head-sha \\
+    --semantic-source-revision git=head-sha \\
+    --semantic-base-revision git=base-sha \\
+    --semantic-head-revision git=head-sha \\
+    --semantic-assessment-digest sha256:<64 hex> \\
     --semantic-context semantic-context.json
 
 --receipt runs the same validation and writes a digest-bound
@@ -45,6 +50,8 @@ When --semantic-context is supplied, receipt mode validates its exact
 revision, digest, completeness, authorized scope, and closed citations.
 Graph-backed contexts require the exact --context-artifact. The local CLI
 has no managed-revision store, so managed-revision contexts fail closed.
+Diff-hunk and Source Assertion citations require E4.1 Source Record
+projections, which local receipt mode does not yet have, so they fail closed.
 ";
 const MIGRATE_LONG_HELP: &str = "\
 Default is a dry run: prints what would be migrated plus the migrate.*
@@ -219,6 +226,17 @@ fn parse_within_days(value: &str) -> Result<u32, String> {
 fn parse_evaluation_date(value: &str) -> Result<chrono::NaiveDate, String> {
     chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d")
         .map_err(|_| format!("expected a date like `2026-07-22`, got `{value}`"))
+}
+
+fn parse_exact_revision(value: &str) -> Result<adoc_core::ExactRevision, String> {
+    let (system, revision) = value
+        .split_once('=')
+        .filter(|(system, revision)| !system.trim().is_empty() && !revision.trim().is_empty())
+        .ok_or_else(|| format!("expected an exact revision like `git=head-sha`, got `{value}`"))?;
+    Ok(adoc_core::ExactRevision {
+        system: system.to_string(),
+        value: revision.to_string(),
+    })
 }
 
 /// The output format requested on the command line (`--format`).
@@ -397,8 +415,34 @@ pub(crate) enum Commands {
         context_artifact: Option<PathBuf>,
         /// Digest-bound adoc.semantic_context.v0 validated against --as-of
         /// and, when graph-backed, the same --context-artifact bytes.
-        #[arg(long, value_name = "PATH", requires = "receipt")]
+        #[arg(
+            long,
+            value_name = "PATH",
+            requires = "receipt",
+            requires_all = [
+                "semantic_subject_revision",
+                "semantic_source_revision",
+                "semantic_base_revision",
+                "semantic_head_revision",
+                "semantic_assessment_digest"
+            ]
+        )]
         semantic_context: Option<PathBuf>,
+        /// Trusted subject revision expected in --semantic-context.
+        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
+        semantic_subject_revision: Option<adoc_core::ExactRevision>,
+        /// Trusted source revision expected in --semantic-context.
+        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
+        semantic_source_revision: Option<adoc_core::ExactRevision>,
+        /// Trusted base revision expected in --semantic-context.
+        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
+        semantic_base_revision: Option<adoc_core::ExactRevision>,
+        /// Trusted head revision expected in --semantic-context.
+        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
+        semantic_head_revision: Option<adoc_core::ExactRevision>,
+        /// Trusted assessment digest expected in --semantic-context.
+        #[arg(long, value_name = "DIGEST", requires = "semantic_context")]
+        semantic_assessment_digest: Option<String>,
     },
     #[command(
         about = "Convert Markdown sources to prose-mode .adoc, or back with --export (dry-run by default).",

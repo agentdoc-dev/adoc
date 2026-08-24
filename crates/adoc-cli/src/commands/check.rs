@@ -59,6 +59,7 @@ pub(crate) fn check_receipt(
     runtime_binary_digest: String,
     context_artifact: Option<PathBuf>,
     semantic_context: Option<PathBuf>,
+    semantic_context_expectations: Option<adoc_core::SemanticContextExpectedBindings>,
 ) -> i32 {
     let config_start = match current_dir() {
         Ok(path) => path,
@@ -73,6 +74,7 @@ pub(crate) fn check_receipt(
         runtime_binary_digest,
         context_artifact,
         semantic_context,
+        semantic_context_expectations,
     }) {
         Ok(outcome) => outcome,
         Err(error) => return report(error.into()),

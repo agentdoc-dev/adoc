@@ -85,6 +85,8 @@ pub struct CheckReceiptInput {
     pub context_artifact: Option<PathBuf>,
     /// E3.1 semantic context validated and digest-bound by receipt mode.
     pub semantic_context: Option<PathBuf>,
+    /// Trusted exact bindings expected in the semantic context.
+    pub semantic_context_expectations: Option<adoc_core::SemanticContextExpectedBindings>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -673,6 +675,7 @@ where
         config_path: target.config_path,
         context_artifact,
         semantic_context,
+        semantic_context_expectations: input.semantic_context_expectations,
     })
     .map_err(|source| LocalError::ValidationRuntime { source })?;
     let exit_code = match outcome.receipt.result() {
