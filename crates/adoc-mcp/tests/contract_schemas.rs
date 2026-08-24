@@ -1687,7 +1687,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "membership_source": "external",
         "binding_id": "github-team-binding-1",
         "binding_mode": "authoritative_sync",
-        "source_kind": "github_team"
+        "source_kind": "github_team",
+        "binding_mode_effective_at": "2026-08-23T10:00:00Z",
+        "membership_observation": {
+            "id": "membership-observation-1",
+            "external_identity_link_id": "external-identity-link-1",
+            "source_event_id": "github-team-event-1",
+            "observed_at": "2026-08-23T11:00:00Z",
+            "member_present": true,
+            "nested": false
+        }
     });
     let mut external_group_grant = decision.clone();
     external_group_grant["grants"][0]["group"] = external_group.clone();
@@ -1696,7 +1705,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let manual_group = json!({
         "id": "group-2",
         "name": "Incident responders",
-        "membership_source": "manual"
+        "membership_source": "manual",
+        "membership_created_at": "2026-08-23T10:00:00Z"
     });
     let mut manual_group_grant = decision.clone();
     manual_group_grant["grants"][0]["group"] = manual_group.clone();
@@ -1736,6 +1746,25 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .as_object_mut()
         .expect("group object")
         .remove("source_kind");
+    let mut external_group_without_observation = external_group_grant.clone();
+    external_group_without_observation["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("membership_observation");
+    let mut external_group_without_mode_effectivity = external_group_grant.clone();
+    external_group_without_mode_effectivity["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("binding_mode_effective_at");
+    let mut absent_membership_observation = external_group_grant.clone();
+    absent_membership_observation["grants"][0]["group"]["membership_observation"]["member_present"] =
+        json!(false);
+    let mut nested_membership_observation = external_group_grant.clone();
+    nested_membership_observation["grants"][0]["group"]["membership_observation"]["nested"] =
+        json!(true);
+    let mut invalid_membership_observed_at = external_group_grant.clone();
+    invalid_membership_observed_at["grants"][0]["group"]["membership_observation"]["observed_at"] =
+        json!("not-a-time");
     let mut multiline_group_name = manual_group_grant.clone();
     multiline_group_name["grants"][0]["group"]["name"] = json!("Curators\nadmin");
     let mut suggestion_group_grant = external_group_grant.clone();
@@ -1746,6 +1775,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
     unknown_group_source["grants"][0]["group"]["source_kind"] = json!("custom_directory");
     let mut manual_group_with_binding = manual_group_grant.clone();
     manual_group_with_binding["grants"][0]["group"]["binding_id"] = json!("github-team-binding-1");
+    let mut basis_group_without_group_grant = decision.clone();
+    basis_group_without_group_grant["basis"]["group"] =
+        manual_group_grant["basis"]["group"].clone();
 
     let mut no_acl_ceiling = decision.clone();
     no_acl_ceiling["source_acl_ceiling"] = json!({
@@ -2579,6 +2611,31 @@ fn authorization_decision_schema_pins_replay_bindings() {
             external_group_without_source_kind,
             false,
         ),
+        (
+            "external group without membership observation",
+            external_group_without_observation,
+            false,
+        ),
+        (
+            "external group without binding mode effectivity",
+            external_group_without_mode_effectivity,
+            false,
+        ),
+        (
+            "absent external membership cannot confer a grant",
+            absent_membership_observation,
+            false,
+        ),
+        (
+            "nested external membership cannot confer a grant",
+            nested_membership_observation,
+            false,
+        ),
+        (
+            "external membership observation time is RFC 3339",
+            invalid_membership_observed_at,
+            false,
+        ),
         ("multiline group name", multiline_group_name, false),
         ("suggestion-only group grant", suggestion_group_grant, false),
         ("disabled group basis", disabled_group_basis, false),
@@ -2586,6 +2643,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "manual group with binding",
             manual_group_with_binding,
+            false,
+        ),
+        (
+            "basis cannot invent group provenance",
+            basis_group_without_group_grant,
             false,
         ),
         ("optional ACL ceiling", no_acl_ceiling, true),
