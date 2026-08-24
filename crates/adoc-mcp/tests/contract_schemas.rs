@@ -16,6 +16,20 @@ use adoc_mcp::{
 use serde_json::json;
 
 const CANONICAL_SOURCE_ACL_OBSERVED_AT: &str = "2026-08-23T11:59:00Z";
+const CANONICAL_EVALUATION_TIME: &str = "2026-08-23T12:00:00Z";
+const CANONICAL_SOURCE_ACL_EXPIRES_AT: &str = "2026-08-23T12:05:00Z";
+
+fn canonical_source_acl_join() -> serde_json::Value {
+    json!({
+        "snapshot_id": "acl-1",
+        "workspace_id": "workspace-1",
+        "connector_id": "github",
+        "source_container_id": "agentdoc-dev",
+        "source": { "kind": "repository", "id": "cloud" },
+        "acl_policy_version": "github-acl-v1",
+        "observed_at": CANONICAL_SOURCE_ACL_OBSERVED_AT
+    })
+}
 
 fn write(path: &Path, contents: &str) {
     if let Some(parent) = path.parent() {
@@ -1559,6 +1573,29 @@ fn validates_built_search_artifact_against_v1_contract_schema() {
 
 #[test]
 fn authorization_decision_schema_pins_replay_bindings() {
+    assert!(
+        CANONICAL_SOURCE_ACL_OBSERVED_AT < CANONICAL_EVALUATION_TIME
+            && CANONICAL_EVALUATION_TIME < CANONICAL_SOURCE_ACL_EXPIRES_AT,
+        "canonical ACL evidence must predate evaluation and remain fresh"
+    );
+    let mut current_authorization = canonical_source_acl_join();
+    current_authorization
+        .as_object_mut()
+        .expect("current authorization fixture is an object")
+        .extend(
+            json!({
+                "role": "current_authorization",
+                "current_acl_id": "acl-authorization-1",
+                "result": "allow",
+                "principal_id": "principal-1",
+                "external_identity_link_id": "external-identity-link-1",
+                "expires_at": CANONICAL_SOURCE_ACL_EXPIRES_AT,
+                "connector_available": true
+            })
+            .as_object()
+            .expect("current authorization fields are an object")
+            .clone(),
+        );
     let decision = json!({
         "schema_version": "adoc.authorization_decision.v0",
         "principal": {
@@ -1575,7 +1612,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "knowledge_kind": "policy",
             "object_id": "policy.refunds.enterprise"
         },
-        "evaluation_time": "2026-08-23T12:00:00Z",
+        "evaluation_time": CANONICAL_EVALUATION_TIME,
         "consequential": true,
         "hard_deny": false,
         "grants": [{
@@ -1598,24 +1635,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
                 "acl_policy_version": "github-acl-v1"
             },
             "snapshot_id": "acl-1",
-            "current_authorization": {
-                "role": "current_authorization",
-                "current_acl_id": "acl-authorization-1",
-                "result": "allow",
-                // The current-evidence record repeats the decision snapshot so
-                // the evaluator can bind freshness to the exact ACL payload.
-                "snapshot_id": "acl-1",
-                "workspace_id": "workspace-1",
-                "connector_id": "github",
-                "source_container_id": "agentdoc-dev",
-                "principal_id": "principal-1",
-                "external_identity_link_id": "external-identity-link-1",
-                "source": { "kind": "repository", "id": "cloud" },
-                "acl_policy_version": "github-acl-v1",
-                "observed_at": CANONICAL_SOURCE_ACL_OBSERVED_AT,
-                "expires_at": "2026-08-23T12:05:00Z",
-                "connector_available": true
-            }
+            "current_authorization": current_authorization
         },
         "visibility": "allow",
         "action_policy": "allow",
@@ -1633,12 +1653,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "role": { "id": "builtin:curator", "version": 1 }
         }
     });
-    assert_eq!(
-        decision["source_acl_ceiling"]["current_authorization"]["observed_at"],
-        CANONICAL_SOURCE_ACL_OBSERVED_AT,
-        "current authorization must retain the canonical snapshot observation instant"
-    );
-
     let mut direct_human = decision.clone();
     direct_human["grants"][0] = json!({
         "grant_id": "exceptional-human-grant",
@@ -3060,22 +3074,20 @@ fn connector_acl_policy_requires_every_activation_safety_declaration() {
 
 #[test]
 fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
-    let snapshot = json!({
-        "schema_version": "adoc.source_acl_snapshot.v0",
-        "snapshot_id": "acl-1",
-        "workspace_id": "workspace-1",
-        "connector_id": "github",
-        "source_container_id": "agentdoc-dev",
-        "acl_policy_version": "github-acl-v1",
-        "source": { "kind": "repository", "id": "cloud" },
-        "observed_at": CANONICAL_SOURCE_ACL_OBSERVED_AT,
-        "acl_payload_digest": format!("sha256:{}", "a".repeat(64)),
-        "usage": "historical_provenance"
-    });
-    assert_eq!(
-        snapshot["observed_at"], CANONICAL_SOURCE_ACL_OBSERVED_AT,
-        "snapshot and current authorization fixtures must share one freshness origin"
-    );
+    let mut snapshot = canonical_source_acl_join();
+    snapshot
+        .as_object_mut()
+        .expect("source ACL snapshot fixture is an object")
+        .extend(
+            json!({
+                "schema_version": "adoc.source_acl_snapshot.v0",
+                "acl_payload_digest": format!("sha256:{}", "a".repeat(64)),
+                "usage": "historical_provenance"
+            })
+            .as_object()
+            .expect("source ACL snapshot fields are an object")
+            .clone(),
+        );
 
     assert!(schema_accepts(
         "adoc.source_acl_snapshot.v0.schema.json",
