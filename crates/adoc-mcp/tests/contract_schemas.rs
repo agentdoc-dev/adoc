@@ -2419,12 +2419,28 @@ fn authorization_decision_schema_pins_replay_bindings() {
     direct_with_rfc3339_edge_expiry["grants"][0]["expires_at"] = json!("2026-12-31t23:59:60z");
 
     let authorization_schema = schema("adoc.authorization_decision.v0.schema.json");
+    let observed_at_description = authorization_schema["$defs"]["membershipObservation"]
+        ["properties"]["observed_at"]["description"]
+        .as_str()
+        .expect("membership observation time is documented");
+    assert!(
+        observed_at_description.contains("read at or before")
+            && observed_at_description.contains("overstate freshness"),
+        "resync completion time must conservatively describe observation freshness"
+    );
     let external_group_properties = &authorization_schema["$defs"]["group"]["oneOf"]
         .as_array()
         .expect("group is a oneOf")
         .iter()
         .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
         .expect("group has an external membership branch")["properties"];
+    assert!(
+        external_group_properties["binding_id"]["description"]
+            .as_str()
+            .expect("external binding replay is documented")
+            .contains("complete effective mode history"),
+        "replay must resolve only effective binding mode epochs"
+    );
     let binding_modes = external_group_properties["binding_mode"]["enum"]
         .as_array()
         .expect("external group binding_mode is an enum");
