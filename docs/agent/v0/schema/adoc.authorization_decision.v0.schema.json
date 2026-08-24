@@ -36,7 +36,7 @@
     },
     "consequential": { "type": "boolean" },
     "hard_deny": {
-      "description": "System-level deny observed ahead of the source ACL ceiling. True always forbids a top-level allow; unless identity_context_missing, identity_expired, or evaluation_time_invalid won earlier, it also forces reason hard_deny and a deny result. Conversely, reason hard_deny requires hard_deny true and a null basis.",
+      "description": "System-level deny observed ahead of the source ACL ceiling. True always forbids a top-level allow; unless identity_context_missing, identity_expired, or evaluation_time_invalid won earlier, it also forces reason hard_deny and a deny result. Conversely, reason hard_deny requires hard_deny true and a null basis. Because the hard-deny gate precedes the source ACL ceiling, reason hard_deny may win before an attempted required check and omit source_acl_ceiling.check_context.",
       "type": "boolean"
     },
     "grants": {
@@ -115,7 +115,8 @@
           },
           "source_acl_ceiling": {
             "properties": { "required": { "const": true } },
-            "required": ["required"]
+            "required": ["required"],
+            "not": { "required": ["current_authorization"] }
           }
         },
         "required": ["reason", "source_acl_ceiling"]
@@ -856,7 +857,7 @@
       ]
     },
     "sourceAclCheckContext": {
-      "description": "Immutable inline context for an attempted required source ACL check, retained even when no provider verdict is available. Resource and principal bindings come from the enclosing decision rather than being duplicated here. external_identity_link_id must name the effective decision principal's retained provider identity link at evaluation_time, and when current_authorization is present it is the same link and must additionally satisfy the continuous-resolution rule stated there; acl_policy_version must name the connector policy governing the attempt and match current_authorization when present. For delegated execution, the workload or service principal uses its own linked provider identity while the delegator remains in the separate delegation chain. These bindings are evaluator-owned and fail closed.",
+      "description": "Immutable inline context for an attempted required source ACL check. After the earlier identity, evaluation-time, and hard-deny gates pass, it is required when no current_authorization exists and carries the only retained provider-identity and policy bindings for that evidence-free attempt. Beside definitive current_authorization it is optional uniform attempt context; when present, external_identity_link_id and acl_policy_version must match that evidence. Resource and principal bindings come from the enclosing decision rather than being duplicated here. For delegated execution, the workload or service principal uses its own linked provider identity while the delegator remains in the separate delegation chain. These bindings are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
@@ -876,7 +877,7 @@
       "additionalProperties": false,
       "properties": {
         "required": {
-          "description": "Whether the decision resource required a source ACL check, independent of whether evaluation reached that gate. True requires connector_id, source_container_id, and resource on the decision resource and forces result to allow, deny, or insufficient_context. check_context is required once the identity, evaluation-time, and hard-deny gates pass; identity_context_missing, identity_expired, evaluation_time_invalid, or hard_deny may win before an attempt and omit it. A required allow or deny additionally requires current ACL evidence. False forces not_applicable and forbids check context and current ACL evidence; snapshot_id remains permitted as historical audit provenance because it never establishes current authorization by itself.",
+          "description": "Whether the decision resource required a source ACL check, independent of whether evaluation reached that gate. True requires connector_id, source_container_id, and resource on the decision resource and forces result to allow, deny, or insufficient_context. Once the identity, evaluation-time, and hard-deny gates pass, check_context is required only when no current_authorization exists; definitive current evidence may stand alone, while retained context remains optional uniform attempt context. identity_context_missing, identity_expired, evaluation_time_invalid, or hard_deny may win before an attempt and omit context. A required allow or deny additionally requires current ACL evidence. False forces not_applicable and forbids check context and current ACL evidence; snapshot_id remains permitted as historical audit provenance because it never establishes current authorization by itself.",
           "type": "boolean"
         },
         "result": {
@@ -884,7 +885,7 @@
           "$ref": "#/$defs/policyInput"
         },
         "check_context": {
-          "description": "Immutable provider-identity and policy bindings for the attempted required source ACL check; field bindings are defined by sourceAclCheckContext.",
+          "description": "Provider-identity and policy bindings for an evidence-free attempted required source ACL check, or optional uniform attempt context beside definitive current evidence; field bindings are defined by sourceAclCheckContext.",
           "$ref": "#/$defs/sourceAclCheckContext"
         },
         "snapshot_id": {
