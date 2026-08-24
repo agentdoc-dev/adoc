@@ -135,6 +135,7 @@ fn validation_basis() -> SemanticContextValidationBasis {
         ]
         .into_iter()
         .map(|handle| CitationContentProjection {
+            class_id: "changed_knowledge".to_string(),
             scope_ref: "repo:billing".to_string(),
             content_digest: semantic_context_content_digest(&match &handle {
                 CitationHandle::KnowledgeObject { object_id, .. } => {
@@ -254,10 +255,94 @@ fn citation_scope_must_match_its_trusted_projection() {
 
     let error = validate_semantic_context(context.as_bytes(), &basis)
         .expect_err("scope relabeling rejected");
+    assert!(error.to_string().contains("scope for handle 'handle-a'"));
     assert_eq!(
         error.diagnostic_code(),
         DiagnosticCode::SemanticContextBasisMismatch
     );
+}
+
+#[test]
+fn citation_class_must_match_its_trusted_projection() {
+    let context = build_semantic_context(input(vec![item(
+        "handle-a",
+        "billing.alpha",
+        ASSESSMENT_DIGEST,
+    )]))
+    .expect("context builds")
+    .to_canonical_json()
+    .expect("context serializes");
+    let mut basis = validation_basis();
+    basis.citation_contents[0].class_id = "related_knowledge".to_string();
+
+    let error = validate_semantic_context(context.as_bytes(), &basis)
+        .expect_err("class relabeling rejected");
+    assert!(error.to_string().contains("class for handle 'handle-a'"));
+    assert_eq!(
+        error.diagnostic_code(),
+        DiagnosticCode::SemanticContextBasisMismatch
+    );
+}
+
+#[test]
+fn validation_basis_reports_duplicate_authorized_scope_exactly() {
+    let context = build_semantic_context(input(Vec::new()))
+        .expect("context builds")
+        .to_canonical_json()
+        .expect("context serializes");
+    let mut basis = validation_basis();
+    basis.authorized_scope.push("repo:billing".to_string());
+
+    let error = validate_semantic_context(context.as_bytes(), &basis)
+        .expect_err("duplicate trusted scope rejected");
+    assert_eq!(
+        error.to_string(),
+        "semantic context basis does not match the supplied validation basis: authorized scope basis contains duplicates"
+    );
+}
+
+#[test]
+fn validation_basis_reports_invalid_capability_policy_exactly() {
+    let context = build_semantic_context(input(Vec::new()))
+        .expect("context builds")
+        .to_canonical_json()
+        .expect("context serializes");
+    let mut basis = validation_basis();
+    basis
+        .capability_policy
+        .rules
+        .push(basis.capability_policy.rules[0].clone());
+
+    let error = validate_semantic_context(context.as_bytes(), &basis)
+        .expect_err("invalid trusted policy rejected");
+    assert_eq!(
+        error.to_string(),
+        "semantic context basis does not match the supplied validation basis: capability policy basis is invalid"
+    );
+}
+
+#[test]
+fn semantic_context_validates_items_across_multiple_trusted_scopes() {
+    let mut beta = item("handle-b", "billing.beta", GRAPH_DIGEST);
+    beta.scope_ref = "repo:accounts".to_string();
+    let mut semantic_input = input(vec![
+        item("handle-a", "billing.alpha", ASSESSMENT_DIGEST),
+        beta,
+    ]);
+    semantic_input
+        .selection
+        .authorized_scope
+        .push("repo:accounts".to_string());
+    let context = build_semantic_context(semantic_input)
+        .expect("multi-scope context builds")
+        .to_canonical_json()
+        .expect("context serializes");
+    let mut basis = validation_basis();
+    basis.authorized_scope.push("repo:accounts".to_string());
+    basis.citation_contents[1].scope_ref = "repo:accounts".to_string();
+
+    validate_semantic_context(context.as_bytes(), &basis)
+        .expect("each citation validates against its trusted scope");
 }
 
 #[test]
@@ -472,6 +557,7 @@ fn semantic_context_round_trips_every_closed_citation_handle_kind() {
         .into_iter()
         .map(|handle| CitationContentProjection {
             handle,
+            class_id: "changed_knowledge".to_string(),
             scope_ref: "repo:billing".to_string(),
             content_digest: semantic_context_content_digest(&json!({"text": "inert context"})),
             truncated_content_digests: Vec::new(),
@@ -801,6 +887,7 @@ fn graph_backed_context_rejects_unresolved_source_binding_coordinates() {
             handle: CitationHandle::SourceBinding {
                 object_id: "billing.ready".to_string(),
             },
+            class_id: "changed_knowledge".to_string(),
             scope_ref: "repo:billing".to_string(),
             content_digest: semantic_context_content_digest(&json!({
                 "body": "context for billing.ready"

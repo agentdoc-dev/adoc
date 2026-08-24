@@ -91,6 +91,7 @@ fn check_help_renders_the_semantic_context_example_as_shell_continuations() {
     --semantic-assessment-digest sha256:<64 hex> \
     --semantic-required-class changed_source \
     --semantic-authorized-scope repo:billing \
+    --semantic-object-context $SEMANTIC_OBJECT_CONTEXT_JSON \
     --semantic-capability-policy $SEMANTIC_POLICY_JSON \
     --semantic-context semantic-context.json"
     ));

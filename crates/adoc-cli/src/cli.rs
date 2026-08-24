@@ -40,6 +40,7 @@ Examples:
     --semantic-assessment-digest sha256:<64 hex> \\
     --semantic-required-class changed_source \\
     --semantic-authorized-scope repo:billing \\
+    --semantic-object-context $SEMANTIC_OBJECT_CONTEXT_JSON \\
     --semantic-capability-policy $SEMANTIC_POLICY_JSON \\
     --semantic-context semantic-context.json
 
@@ -51,8 +52,9 @@ explicit --as-of and the invoking harness's attested
 verifies its pin before invoking, see scripts/validation-runtime/).
 When --semantic-context is supplied, receipt mode validates its exact
 revision, digest, completeness, authorized scope, and closed citations.
-The revision, assessment, required-class, authorized-scope, and capability-
-policy flags are trusted expectations; they are never inferred from context.
+The revision, assessment, required-class, authorized-scope, object-context,
+and capability-policy flags are trusted expectations; repeat scope and object-
+context flags as needed. They are never inferred from context.
 Graph-backed contexts require the exact --context-artifact. The local CLI
 has no managed-revision store, so managed-revision contexts fail closed.
 Diff-hunk and Source Assertion citations require E4.1 Source Record
@@ -261,6 +263,10 @@ fn parse_exact_revision(value: &str) -> Result<adoc_core::ExactRevision, String>
     Ok(revision)
 }
 
+fn parse_boxed_exact_revision(value: &str) -> Result<Box<adoc_core::ExactRevision>, String> {
+    parse_exact_revision(value).map(Box::new)
+}
+
 fn parse_sha256_digest(value: &str) -> Result<String, String> {
     if adoc_core::is_sha256_digest(value) {
         return Ok(value.to_string());
@@ -283,6 +289,25 @@ fn parse_capability_policy(value: &str) -> Result<Box<adoc_core::CapabilityPolic
     adoc_core::is_valid_capability_policy(&policy)
         .then(|| Box::new(policy))
         .ok_or_else(|| "expected one capability-policy rule for every closed reason".to_string())
+}
+
+fn parse_graph_object_context(
+    value: &str,
+) -> Result<adoc_core::GraphObjectContextExpectation, String> {
+    let context: adoc_core::GraphObjectContextExpectation =
+        serde_json::from_str(value).map_err(|_| {
+            "expected graph-object context JSON with object_id/class_id/scope_ref".to_string()
+        })?;
+    let valid = [
+        context.object_id.as_str(),
+        context.class_id.as_str(),
+        context.scope_ref.as_str(),
+    ]
+    .into_iter()
+    .all(adoc_core::is_semantic_context_text);
+    valid
+        .then_some(context)
+        .ok_or_else(|| "graph-object context fields must be non-blank semantic text".to_string())
 }
 
 /// The output format requested on the command line (`--format`).
@@ -473,6 +498,7 @@ pub(crate) enum Commands {
                 "semantic_assessment_digest",
                 "semantic_required_class",
                 "semantic_authorized_scope",
+                "semantic_object_context",
                 "semantic_capability_policy"
             ]
         )]
@@ -487,17 +513,20 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
         semantic_base_revision: Option<adoc_core::ExactRevision>,
         /// Trusted head revision expected in --semantic-context.
-        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
-        semantic_head_revision: Option<adoc_core::ExactRevision>,
+        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_boxed_exact_revision)]
+        semantic_head_revision: Option<Box<adoc_core::ExactRevision>>,
         /// Trusted assessment digest expected in --semantic-context.
         #[arg(long, value_name = "DIGEST", requires = "semantic_context", value_parser = parse_sha256_digest)]
         semantic_assessment_digest: Option<String>,
         /// Trusted required context class; repeat for each required class.
         #[arg(long, value_name = "CLASS_ID", requires = "semantic_context", value_parser = parse_semantic_text)]
         semantic_required_class: Vec<String>,
-        /// Trusted authorized scope for this local graph artifact.
+        /// Trusted authorized scope; repeat for each scope.
         #[arg(long, value_name = "SCOPE", requires = "semantic_context", value_parser = parse_semantic_text)]
-        semantic_authorized_scope: Option<String>,
+        semantic_authorized_scope: Vec<String>,
+        /// Trusted Object ID to context-class and scope mapping as JSON; repeat per object.
+        #[arg(long, value_name = "JSON", requires = "semantic_context", value_parser = parse_graph_object_context)]
+        semantic_object_context: Vec<adoc_core::GraphObjectContextExpectation>,
         /// Trusted complete capability policy as JSON.
         #[arg(long, value_name = "JSON", requires = "semantic_context", value_parser = parse_capability_policy)]
         semantic_capability_policy: Option<Box<adoc_core::CapabilityPolicy>>,

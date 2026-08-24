@@ -81,13 +81,13 @@ pub use domain::review::reviewer::{RequiredReviewer, required_reviewers};
 pub use domain::semantic_context::{
     CapabilityPolicy, CapabilityPolicyRule, CitationContentProjection, CitationHandle,
     ContextClass, ContextRequirement, ContextUnavailability, ContextUnavailabilityKind,
-    DiffHunkCitation, ExactRevision, GraphCitationObject, KnowledgeBasis,
-    SEMANTIC_CONTEXT_SCHEMA_VERSION, SemanticContext, SemanticContextBasis, SemanticContextError,
-    SemanticContextExpectedBindings, SemanticContextInput, SemanticContextItem,
-    SemanticContextOutcome, SemanticContextSelection, SemanticContextValidationBasis,
-    SourceAssertionCitation, UnavailabilityOutcome, UnavailabilityReason, build_semantic_context,
-    is_semantic_context_text, is_sha256_digest, is_valid_capability_policy,
-    semantic_context_content_digest, validate_semantic_context,
+    DiffHunkCitation, ExactRevision, GraphCitationObject, GraphObjectContextExpectation,
+    KnowledgeBasis, SEMANTIC_CONTEXT_SCHEMA_VERSION, SemanticContext, SemanticContextBasis,
+    SemanticContextError, SemanticContextExpectedBindings, SemanticContextInput,
+    SemanticContextItem, SemanticContextOutcome, SemanticContextSelection,
+    SemanticContextValidationBasis, SourceAssertionCitation, UnavailabilityOutcome,
+    UnavailabilityReason, build_semantic_context, is_semantic_context_text, is_sha256_digest,
+    is_valid_capability_policy, semantic_context_content_digest, validate_semantic_context,
 };
 pub use domain::services::suggest_typed_blocks::SuggestedTypedBlock;
 pub use domain::value_objects::rel_path::{RelPath, RelPathError};
