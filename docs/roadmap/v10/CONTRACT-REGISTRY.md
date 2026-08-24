@@ -386,7 +386,7 @@ The closed E2.4 `source_kind` vocabulary carried by an external AgentDoc-group m
 | `github_team` | planned | E2.4 | GitHub team membership |
 | `gitlab_group` | planned | E2.4 | GitLab group membership |
 | `slack_user_group` | planned | E2.4 | Slack user-group membership |
-| `oidc_group` | planned | E2.4 | group claim from a freshly issued and verified ID token; refreshes per principal at authentication with no out-of-band sweep, retains token issuance, validation/ingestion-commit, and session-expiry instants, and confers no later than the cited identity session's expiry |
+| `oidc_group` | planned | E2.4 | group claim from a freshly issued and verified ID token; refreshes per principal at authentication with no out-of-band sweep, retains token issuance, validation/ingestion-commit, and session-expiry instants, requires the decision principal to identify that exact session, and confers no later than the cited identity session's expiry |
 | `scim_group` | planned | E2.4 | SCIM group membership |
 <!-- /registry:group-source-kinds -->
 

@@ -2457,6 +2457,22 @@ fn authorization_decision_schema_pins_replay_bindings() {
             instance["grants"][0]["group"]["binding_mode"] = json!(mode);
             instance["grants"][0]["group"]["source_kind"] = json!(source_kind);
             instance["basis"]["group"] = instance["grants"][0]["group"].clone();
+            if source_kind == "oidc_group" {
+                assert!(
+                    !schema_accepts("adoc.authorization_decision.v0.schema.json", &instance),
+                    "claim-only OIDC must identify the exact evaluated identity session"
+                );
+                instance["principal"]["identity_session_id"] = json!("identity-session-1");
+                let mut service_instance = instance.clone();
+                service_instance["principal"]["type"] = json!("service");
+                assert!(
+                    !schema_accepts(
+                        "adoc.authorization_decision.v0.schema.json",
+                        &service_instance
+                    ),
+                    "claim-only OIDC must use a human identity session"
+                );
+            }
             assert!(
                 schema_accepts("adoc.authorization_decision.v0.schema.json", &instance),
                 "external group mode {mode:?} and source {source_kind:?} must be valid"

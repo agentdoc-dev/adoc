@@ -723,6 +723,34 @@
     {
       "if": {
         "properties": {
+          "grants": {
+            "contains": {
+              "properties": {
+                "group": {
+                  "properties": {
+                    "source_kind": { "const": "oidc_group" }
+                  },
+                  "required": ["source_kind"]
+                }
+              },
+              "required": ["group"]
+            }
+          }
+        },
+        "required": ["grants"]
+      },
+      "then": {
+        "properties": {
+          "principal": {
+            "properties": { "type": { "const": "human" } },
+            "required": ["type", "identity_session_id"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "basis": { "type": "object", "required": ["group"] }
         },
         "required": ["basis"]
@@ -805,6 +833,10 @@
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/$defs/nonEmpty" },
+        "identity_session_id": {
+          "description": "Exact E2.3 human identity session used at evaluation. Required for any claim-only oidc_group grant; it must equal the identity session retained by source_event_id, and replay fails closed on mismatch.",
+          "$ref": "#/$defs/nonEmpty"
+        },
         "type": { "enum": ["human", "service", "agent", "workload"] },
         "freshness": { "enum": ["current", "expired", "insufficient_context"] }
       }
@@ -875,7 +907,7 @@
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "effective_at": {
-          "description": "Instant this observation became eligible to confer grants. It must equal the ingestion-commit instant of the connector event, the completion instant of the synchronization run, or, for claim-only oidc_group, the authentication validation/ingestion-commit instant identified by source_event_id. For a sweep completing a binding-mode reconfiguration this equals the new epoch boundary; a routine sweep records into the epoch already in effect. A claim-only observation is bound to the exact cited identity session and may confer only during that session, no later than the cited identity session's expiry. observed_at must not follow effective_at, and effective_at must not follow evaluation_time; comparisons are evaluator-owned and fail closed.",
+          "description": "Instant this observation became eligible to confer grants. It must equal the ingestion-commit instant of the connector event, the completion instant of the synchronization run, or, for claim-only oidc_group, the authentication validation/ingestion-commit instant identified by source_event_id. For a sweep completing a binding-mode reconfiguration this equals the new epoch boundary; a routine sweep records into the epoch already in effect. For claim-only oidc_group, principal.identity_session_id must equal the identity session retained by source_event_id; the observation may confer only during that matching session, no later than the cited identity session's expiry. observed_at must not follow effective_at, and effective_at must not follow evaluation_time; comparisons are evaluator-owned and fail closed.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "member_present": { "const": true },
@@ -900,7 +932,7 @@
             "name": { "$ref": "#/$defs/nonEmpty" },
             "membership_source": { "const": "manual" },
             "membership_id": {
-              "description": "Stable identifier of the preserved manual-membership lifecycle record that conferred this grant. Replay verifies that it was created and not revoked at evaluation_time.",
+              "description": "Stable identifier of the preserved manual-membership lifecycle record that conferred this grant. Replay verifies that it belongs to the authorization envelope principal and enclosing group id, was created by evaluation_time, and was not then revoked; any mismatch fails closed.",
               "$ref": "#/$defs/nonEmpty"
             },
             "membership_created_at": {
