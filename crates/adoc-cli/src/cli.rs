@@ -40,7 +40,7 @@ Examples:
     --semantic-assessment-digest sha256:<64 hex> \\
     --semantic-selection-algorithm changed-only \\
     --semantic-selection-version 1 \\
-    --semantic-required-class changed_source \\
+    --semantic-context-class $SEMANTIC_CONTEXT_CLASS_JSON \\
     --semantic-authorized-scope repo:billing \\
     --semantic-object-context $SEMANTIC_OBJECT_CONTEXT_JSON \\
     --semantic-capability-policy $SEMANTIC_POLICY_JSON \\
@@ -54,7 +54,7 @@ explicit --as-of and the invoking harness's attested
 verifies its pin before invoking, see scripts/validation-runtime/).
 When --semantic-context is supplied, receipt mode validates its exact
 revision, digest, completeness, authorized scope, and closed citations.
-The revision, assessment, selection, required-class, authorized-scope, object-
+The revision, assessment, selection, context-class, authorized-scope, object-
 context, and capability-policy flags are trusted expectations; repeat scope
 and object-context flags as needed. They are never inferred from context.
 Object-context may be omitted for citation-free contexts; any included
@@ -314,6 +314,17 @@ fn parse_graph_object_context(
         .ok_or_else(|| "graph-object context fields must be non-blank semantic text".to_string())
 }
 
+fn parse_context_class(value: &str) -> Result<adoc_core::ContextClass, String> {
+    let class: adoc_core::ContextClass = serde_json::from_str(value).map_err(|_| {
+        "expected context-class JSON with class_id/requirement/byte_budget".to_string()
+    })?;
+    (adoc_core::is_semantic_context_text(&class.class_id) && class.byte_budget > 0)
+        .then_some(class)
+        .ok_or_else(|| {
+            "context class ID must be non-blank and byte budget must be positive".to_string()
+        })
+}
+
 /// The output format requested on the command line (`--format`).
 #[derive(Clone, Copy, Default, ValueEnum)]
 pub(crate) enum CliFormat {
@@ -502,7 +513,7 @@ pub(crate) enum Commands {
                 "semantic_assessment_digest",
                 "semantic_selection_algorithm",
                 "semantic_selection_version",
-                "semantic_required_class",
+                "semantic_context_class",
                 "semantic_authorized_scope",
                 "semantic_capability_policy"
             ]
@@ -530,9 +541,9 @@ pub(crate) enum Commands {
         /// Trusted selection version expected in --semantic-context.
         #[arg(long, value_name = "VERSION", requires = "semantic_context", value_parser = parse_semantic_text)]
         semantic_selection_version: Option<String>,
-        /// Trusted required context class; repeat for each required class.
-        #[arg(long, value_name = "CLASS_ID", requires = "semantic_context", value_parser = parse_semantic_text)]
-        semantic_required_class: Vec<String>,
+        /// Trusted complete context class as JSON; repeat for every required or optional class.
+        #[arg(long, value_name = "JSON", requires = "semantic_context", value_parser = parse_context_class)]
+        semantic_context_class: Vec<adoc_core::ContextClass>,
         /// Trusted authorized scope; repeat for each scope.
         #[arg(long, value_name = "SCOPE", requires = "semantic_context", value_parser = parse_semantic_text)]
         semantic_authorized_scope: Vec<String>,
@@ -540,7 +551,7 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "JSON", requires = "semantic_context", value_parser = parse_graph_object_context)]
         semantic_object_context: Vec<adoc_core::GraphObjectContextExpectation>,
         /// Trusted complete capability policy as JSON.
-        // Boxed for the same `Commands` enum-size reason as the selection and head payloads.
+        // Boxed for the same `Commands` enum-size reason as the base and head revision payloads.
         #[arg(long, value_name = "JSON", requires = "semantic_context", value_parser = parse_capability_policy)]
         semantic_capability_policy: Option<Box<adoc_core::CapabilityPolicy>>,
     },
@@ -805,7 +816,7 @@ pub(crate) enum Commands {
 mod tests {
     use clap::Parser;
 
-    use super::{Cli, parse_exact_revision, parse_sha256_digest};
+    use super::{Cli, parse_context_class, parse_exact_revision, parse_sha256_digest};
 
     #[test]
     fn semantic_binding_parsers_reject_values_no_valid_context_can_match() {
@@ -819,6 +830,19 @@ mod tests {
         assert_eq!(parse_sha256_digest(&digest), Ok(digest));
         for invalid in ["sha256:ABC", "sha256:abc", "not-a-digest"] {
             assert!(parse_sha256_digest(invalid).is_err(), "{invalid:?}");
+        }
+
+        assert!(
+            parse_context_class(
+                r#"{"class_id":"changed_source","requirement":"required","byte_budget":4096}"#
+            )
+            .is_ok()
+        );
+        for invalid in [
+            r#"{"class_id":"changed_source","requirement":"required","byte_budget":0}"#,
+            r#"{"class_id":"","requirement":"required","byte_budget":4096}"#,
+        ] {
+            assert!(parse_context_class(invalid).is_err(), "{invalid:?}");
         }
     }
 
@@ -851,8 +875,8 @@ mod tests {
             "changed-only",
             "--semantic-selection-version",
             "1",
-            "--semantic-required-class",
-            "changed_source",
+            "--semantic-context-class",
+            r#"{"class_id":"changed_source","requirement":"required","byte_budget":4096}"#,
             "--semantic-authorized-scope",
             "repo:billing",
             "--semantic-capability-policy",
