@@ -732,12 +732,13 @@
       ]
     },
     "currentSourceAclAuthorization": {
-      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. principal_id, connector_id, source, and snapshot_id identify the subject and payload of this evidence; equality with the decision principal, resource, and sibling source_acl_ceiling snapshot is evaluator-owned and fails closed.",
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, principal_id, connector_id, source, and snapshot_id identify the scope, subject, and payload of this evidence; equality with the decision principal, resource, and sibling source_acl_ceiling snapshot is evaluator-owned and fails closed.",
       "type": "object",
       "required": [
         "role",
         "current_acl_id",
         "snapshot_id",
+        "workspace_id",
         "connector_id",
         "principal_id",
         "source",
@@ -755,6 +756,10 @@
         },
         "snapshot_id": {
           "description": "Retained adoc.source_acl_snapshot.v0 record establishing which ACL payload was evaluated. Currency is established by expires_at, connector_available, and absence of invalidated_at, not by the payload digest. The sibling source_acl_ceiling.snapshot_id must match; equality is evaluator-owned and fails closed.",
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "workspace_id": {
+          "description": "Workspace in which this ACL evidence was observed. It must match resource.workspace_id; equality is evaluator-owned and fails closed.",
           "$ref": "#/$defs/nonEmpty"
         },
         "connector_id": { "$ref": "#/$defs/nonEmpty" },

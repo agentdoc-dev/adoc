@@ -1594,7 +1594,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "current_authorization": {
                 "role": "current_authorization",
                 "current_acl_id": "acl-authorization-1",
-                "snapshot_id": "acl-current-1",
+                "snapshot_id": "acl-1",
+                "workspace_id": "workspace-1",
                 "connector_id": "github",
                 "principal_id": "principal-1",
                 "source": { "kind": "repository", "id": "cloud" },
@@ -2501,6 +2502,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "role",
         "current_acl_id",
         "snapshot_id",
+        "workspace_id",
         "connector_id",
         "principal_id",
         "source",
