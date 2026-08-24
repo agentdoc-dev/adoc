@@ -1732,6 +1732,14 @@ fn authorization_decision_schema_pins_replay_bindings() {
     denying_source_acl_outage["source_acl_ceiling"]["current_authorization"]["result"] =
         json!("deny");
 
+    let mut invalidated_source_acl_during_outage = source_acl_invalidated.clone();
+    invalidated_source_acl_during_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
+        json!(false);
+    let mut unavailable_reason_with_invalidated_source_acl =
+        invalidated_source_acl_during_outage.clone();
+    unavailable_reason_with_invalidated_source_acl["result"] = json!("insufficient_context");
+    unavailable_reason_with_invalidated_source_acl["reason"] = json!("source_acl_unavailable");
+
     let mut explicit_deny_during_source_acl_outage = source_acl_outage.clone();
     explicit_deny_during_source_acl_outage["grants"][0]["effect"] = json!("deny");
     explicit_deny_during_source_acl_outage["result"] = json!("deny");
@@ -1928,6 +1936,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut source_acl_denied_with_invalidated_acl = source_acl_denied.clone();
     source_acl_denied_with_invalidated_acl["source_acl_ceiling"]["current_authorization"]["invalidated_at"] =
         json!("2026-08-23T11:59:30Z");
+    let mut explicit_deny_with_denied_source_acl = source_acl_denied.clone();
+    explicit_deny_with_denied_source_acl["grants"][0]["effect"] = json!("deny");
+    explicit_deny_with_denied_source_acl["reason"] = json!("explicit_deny");
+    explicit_deny_with_denied_source_acl["basis"] = decision["basis"].clone();
+    explicit_deny_with_denied_source_acl["basis"]["effect"] = json!("deny");
 
     let mut false_source_acl_unavailable_reason = insufficient.clone();
     false_source_acl_unavailable_reason["source_acl_ceiling"] = json!({
@@ -2078,6 +2091,17 @@ fn authorization_decision_schema_pins_replay_bindings() {
     consequential_invalid_time_with_deny["result"] = json!("deny");
     let mut nonconsequential_invalid_time_with_insufficient = nonconsequential_invalid_time.clone();
     nonconsequential_invalid_time_with_insufficient["result"] = json!("insufficient_context");
+    let mut invalid_time_with_source_acl_outage = source_acl_outage.clone();
+    invalid_time_with_source_acl_outage["evaluation_time"] = json!("");
+    invalid_time_with_source_acl_outage["reason"] = json!("evaluation_time_invalid");
+    let mut invalid_time_with_invalidated_source_acl = source_acl_invalidated.clone();
+    invalid_time_with_invalidated_source_acl["evaluation_time"] = json!("");
+    invalid_time_with_invalidated_source_acl["result"] = json!("insufficient_context");
+    invalid_time_with_invalidated_source_acl["reason"] = json!("evaluation_time_invalid");
+    let mut invalid_time_with_denied_source_acl = source_acl_denied.clone();
+    invalid_time_with_denied_source_acl["evaluation_time"] = json!("");
+    invalid_time_with_denied_source_acl["result"] = json!("insufficient_context");
+    invalid_time_with_denied_source_acl["reason"] = json!("evaluation_time_invalid");
 
     let mut allow_with_empty_evaluation_time = decision.clone();
     allow_with_empty_evaluation_time["evaluation_time"] = json!("");
@@ -2135,6 +2159,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ),
         ("denying source ACL outage", denying_source_acl_outage, true),
         (
+            "known source ACL invalidation outranks connector outage",
+            invalidated_source_acl_during_outage,
+            true,
+        ),
+        (
+            "connector outage cannot mask known source ACL invalidation",
+            unavailable_reason_with_invalidated_source_acl,
+            false,
+        ),
+        (
             "explicit deny cannot outrank source ACL outage",
             explicit_deny_during_source_acl_outage,
             false,
@@ -2142,6 +2176,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "explicit deny cannot outrank invalidated source ACL",
             explicit_deny_with_invalidated_source_acl,
+            false,
+        ),
+        (
+            "explicit deny cannot outrank denied source ACL",
+            explicit_deny_with_denied_source_acl,
             false,
         ),
         ("direct human grant", direct_human, true),
@@ -2243,6 +2282,21 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         ("consequential invalid time", invalid_time, true),
+        (
+            "invalid time outranks source ACL outage",
+            invalid_time_with_source_acl_outage,
+            true,
+        ),
+        (
+            "invalid time outranks source ACL invalidation",
+            invalid_time_with_invalidated_source_acl,
+            true,
+        ),
+        (
+            "invalid time outranks denied source ACL",
+            invalid_time_with_denied_source_acl,
+            true,
+        ),
         (
             "nonconsequential invalid time",
             nonconsequential_invalid_time,
