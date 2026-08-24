@@ -1768,6 +1768,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .as_object_mut()
         .expect("ACL ceiling")
         .remove("check_context");
+    let mut expired_and_policy_superseded = source_acl_policy_superseded.clone();
+    expired_and_policy_superseded["source_acl_ceiling"]["stale_cause"] = json!("expired");
+    expired_and_policy_superseded["source_acl_ceiling"]["current_authorization"]["expires_at"] =
+        json!("2026-08-23T12:00:00Z");
+    let mut false_stale_cause = decision.clone();
+    false_stale_cause["source_acl_ceiling"]["stale_cause"] = json!("expired");
 
     let mut source_acl_invalidated = decision.clone();
     source_acl_invalidated["source_acl_ceiling"]["current_authorization"]["invalidated_at"] =
@@ -2326,6 +2332,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "policy supersession without evaluation-time check context",
             supersession_without_check_context,
+            false,
+        ),
+        (
+            "expiry wins while retaining a superseding policy version",
+            expired_and_policy_superseded,
+            true,
+        ),
+        (
+            "non-stale outcome cannot carry a stale cause",
+            false_stale_cause,
             false,
         ),
         (
