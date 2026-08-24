@@ -389,6 +389,16 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.semantic_context_input.v0.schema.json",
+        name: "schema-adoc-semantic-context-input-v0-json",
+        title: "Semantic Context Producer Input JSON Schema",
+        description: "JSON Schema for adoc.semantic_context_input.v0; adoc-core derives coverage, outcome, and the canonical context digest.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.semantic_context_input.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.semantic_assessment.v0.schema.json",
         name: "schema-adoc-semantic-assessment-v0-json",
         title: "Semantic Assessment JSON Schema",
@@ -406,6 +416,26 @@ const RESOURCES: &[AgentResource] = &[
         mime_type: JSON_SCHEMA,
         contents: include_str!(
             "../../../docs/agent/v0/schema/adoc.executor_qualification.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.semantic_executor_request.v0.schema.json",
+        name: "schema-adoc-semantic-executor-request-v0-json",
+        title: "Semantic Executor Request JSON Schema",
+        description: "JSON Schema for the shared Claude, Codex, generic, local, and human semantic executor request.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.semantic_executor_request.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.semantic_executor_receipt.v0.schema.json",
+        name: "schema-adoc-semantic-executor-receipt-v0-json",
+        title: "Semantic Executor Receipt JSON Schema",
+        description: "JSON Schema for deterministic semantic adapter receipts and recorded failures.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.semantic_executor_receipt.v0.schema.json"
         ),
     },
     AgentResource {

@@ -1773,6 +1773,90 @@ fn executor_qualification_schema_accepts_model_and_human_records() {
     ));
 }
 
+#[test]
+fn semantic_executor_schemas_share_closed_adapter_and_receipt_shapes() {
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let input = json!({
+        "schema_version": "adoc.semantic_context_input.v0",
+        "evaluation_date": "2026-08-24",
+        "subject_revision": {"system": "git", "value": "head"},
+        "source_revision": {"system": "git", "value": "head"},
+        "base_revision": {"system": "git", "value": "base"},
+        "head_revision": {"system": "git", "value": "head"},
+        "basis": {},
+        "selection": {},
+        "capability_policy": {},
+        "context_classes": [],
+        "items": [],
+        "unavailability": []
+    });
+    assert_valid("adoc.semantic_context_input.v0.schema.json", &input);
+
+    let adapter = json!({
+        "kind": "codex",
+        "provider": "codex",
+        "model": "gpt-5.6-codex",
+        "endpoint_class": "public_provider",
+        "endpoint_id": "openai",
+        "executor_digest": digest,
+        "model_digest": digest,
+        "config_digest": digest
+    });
+    let mut request = json!({
+        "schema_version": "adoc.semantic_executor_request.v0",
+        "request_id": "request-1",
+        "capability": "code_change_assessment",
+        "adapter": adapter,
+        "task_digest": digest,
+        "prompt": {
+            "contract_version": "semantic-assessment-task-v1",
+            "digest": digest,
+            "instructions": "Return structured JSON."
+        },
+        "timeout_seconds": 600,
+        "context": {
+            "schema_version": "adoc.semantic_context.v0",
+            "context_digest": digest
+        }
+    });
+    assert_valid("adoc.semantic_executor_request.v0.schema.json", &request);
+    request["adapter"]["kind"] = json!("shell_magic");
+    assert!(!schema_accepts(
+        "adoc.semantic_executor_request.v0.schema.json",
+        &request
+    ));
+
+    let completed = json!({
+        "schema_version": "adoc.semantic_executor_receipt.v0",
+        "request_id": "request-1",
+        "request_digest": digest,
+        "capability": "code_change_assessment",
+        "adapter": {
+            "kind": "human",
+            "provider": "human",
+            "model": "authenticated-principal",
+            "endpoint_class": "human",
+            "endpoint_id": "human-structured",
+            "executor_digest": digest,
+            "model_digest": digest,
+            "config_digest": digest
+        },
+        "task_digest": digest,
+        "prompt_digest": digest,
+        "context_digest": digest,
+        "outcome": "completed",
+        "assessment_digest": digest
+    });
+    assert_valid("adoc.semantic_executor_receipt.v0.schema.json", &completed);
+
+    let mut invalid = completed;
+    invalid["failure_code"] = json!("executor.failed");
+    assert!(!schema_accepts(
+        "adoc.semantic_executor_receipt.v0.schema.json",
+        &invalid
+    ));
+}
+
 /// The frozen v0 schema must accept every envelope real v0 emitters produced,
 /// including the additive V6.5.3 `resolved_questions` field on `adoc why`
 /// records — otherwise the "v0 stays published forever" guarantee is hollow.
