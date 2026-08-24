@@ -97,6 +97,8 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::SemanticContextBasisMismatch;
     let _ = DiagnosticCode::SemanticContextInsufficientContext;
     let _ = DiagnosticCode::SemanticContextFailed;
+    let _: fn(&str) -> bool = adoc_core::is_semantic_context_text;
+    let _: fn(&str) -> bool = adoc_core::is_sha256_digest;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
     let _: &'static str = DiagnosticCode::ParseRawHtml.default_help();

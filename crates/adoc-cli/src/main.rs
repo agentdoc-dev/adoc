@@ -81,6 +81,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     semantic_base_revision,
                     semantic_head_revision,
                     semantic_assessment_digest,
+                    semantic_required_class,
                 } => match (receipt, runtime_binary_digest, as_of) {
                     // clap `requires` guarantees the digest and --as-of
                     // accompany --receipt; the triple is re-matched here so
@@ -109,6 +110,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                 semantic_base_revision,
                                 semantic_head_revision,
                                 semantic_assessment_digest,
+                                semantic_required_class,
                             ) {
                                 (
                                     Some(subject_revision),
@@ -116,17 +118,29 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                     Some(base_revision),
                                     Some(head_revision),
                                     Some(assessment_digest),
-                                ) => Some(adoc_core::SemanticContextExpectedBindings {
-                                    subject_revision,
-                                    source_revision,
-                                    base_revision,
-                                    head_revision,
-                                    assessment_digest,
-                                }),
-                                (None, None, None, None, None) => None,
+                                    required_context_classes,
+                                ) if !required_context_classes.is_empty() => {
+                                    Some(adoc_core::SemanticContextExpectedBindings {
+                                        subject_revision,
+                                        source_revision,
+                                        base_revision,
+                                        head_revision,
+                                        assessment_digest,
+                                        required_context_classes,
+                                    })
+                                }
+                                (None, None, None, None, None, required_context_classes)
+                                    if required_context_classes.is_empty() =>
+                                {
+                                    None
+                                }
+                                // Unreachable while the clap `requires_all` wiring holds
+                                // (pinned by semantic_context_requires_complete_validation_basis).
+                                // Refuse loudly if it is loosened: passing `None` would produce a
+                                // fail receipt that blames the context instead of the invocation.
                                 _ => {
                                     eprintln!(
-                                        "error[cli.semantic_context] --semantic-context requires all four exact revision flags and --semantic-assessment-digest; refusing to run with a partial validation basis"
+                                        "error[cli.semantic_context] --semantic-context requires all four exact revision flags, --semantic-assessment-digest, and at least one --semantic-required-class; refusing to run with a partial validation basis"
                                     );
                                     return 2;
                                 }

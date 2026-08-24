@@ -380,25 +380,64 @@ fn semantic_validation_basis(
     expectations: &crate::SemanticContextExpectedBindings,
 ) -> crate::SemanticContextValidationBasis {
     let graph_artifact_digest = graph_artifact_bytes.map(sha256_prefixed);
-    let graph_objects = graph_artifact_bytes
+    let (graph_objects, citation_contents) = graph_artifact_bytes
         // Parsing failures were already emitted by `validate_context_artifact`.
         // An empty projection keeps citation resolution fail-closed without
         // duplicating those artifact diagnostics.
         .and_then(|bytes| parse_graph_artifact_document(Path::new("context_artifact"), bytes).ok())
         .map(|document| {
-            document
-                .nodes
-                .into_iter()
-                .filter_map(|node| match node {
-                    GraphNode::KnowledgeObject(object) => Some(crate::GraphCitationObject {
-                        object_id: object.id,
-                        semantic_hash: object.content_hash,
-                        has_source_binding: object.source_binding.is_some(),
-                        evidence_count: object.evidence.len(),
-                    }),
-                    _ => None,
-                })
-                .collect()
+            let mut objects = Vec::new();
+            let mut contents = Vec::new();
+            for node in document.nodes {
+                let GraphNode::KnowledgeObject(object) = node else {
+                    continue;
+                };
+                let object_id = object.id;
+                let semantic_hash = object.content_hash;
+                contents.push(crate::CitationContentProjection {
+                    handle: crate::CitationHandle::KnowledgeObject {
+                        object_id: object_id.clone(),
+                        semantic_hash: semantic_hash.clone(),
+                    },
+                    content_digest: crate::semantic_context_content_digest(
+                        &serde_json::json!({ "body": object.body }),
+                    ),
+                });
+                if let Some(binding) = &object.source_binding {
+                    contents.push(crate::CitationContentProjection {
+                        handle: crate::CitationHandle::SourceBinding {
+                            object_id: object_id.clone(),
+                        },
+                        content_digest: crate::semantic_context_content_digest(
+                            &serde_json::to_value(binding).unwrap_or_else(|_| {
+                                unreachable!("GraphSourceBinding serialization is infallible")
+                            }),
+                        ),
+                    });
+                }
+                for (index, evidence) in object.evidence.iter().enumerate() {
+                    contents.push(crate::CitationContentProjection {
+                        handle: crate::CitationHandle::Evidence {
+                            object_id: object_id.clone(),
+                            evidence_index: u32::try_from(index).unwrap_or_else(|_| {
+                                unreachable!("graph evidence count is bounded by address space")
+                            }),
+                        },
+                        content_digest: crate::semantic_context_content_digest(
+                            &serde_json::to_value(evidence).unwrap_or_else(|_| {
+                                unreachable!("GraphEvidence serialization is infallible")
+                            }),
+                        ),
+                    });
+                }
+                objects.push(crate::GraphCitationObject {
+                    object_id,
+                    semantic_hash,
+                    has_source_binding: object.source_binding.is_some(),
+                    evidence_count: object.evidence.len(),
+                });
+            }
+            (objects, contents)
         })
         .unwrap_or_default();
     crate::SemanticContextValidationBasis {
@@ -408,6 +447,7 @@ fn semantic_validation_basis(
         base_revision: expectations.base_revision.clone(),
         head_revision: expectations.head_revision.clone(),
         assessment_digest: expectations.assessment_digest.clone(),
+        required_context_classes: expectations.required_context_classes.clone(),
         graph_artifact_digest,
         managed_revision_digest: None,
         graph_objects,
@@ -416,6 +456,7 @@ fn semantic_validation_basis(
         // to either handle kind fail closed until that wave supplies them.
         diff_hunks: Vec::new(),
         source_assertions: Vec::new(),
+        citation_contents,
     }
 }
 
@@ -577,12 +618,7 @@ fn drift_diagnostic(object_id: &str, detail: &str) -> Diagnostic {
 }
 
 fn require_sha256_digest(digest: &str) -> Result<(), ValidationRuntimeError> {
-    let hex = digest.strip_prefix("sha256:").unwrap_or_default();
-    if hex.len() == 64
-        && hex
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
+    if crate::is_sha256_digest(digest) {
         return Ok(());
     }
     Err(ValidationRuntimeError::InvalidRuntimeBinaryDigest {
@@ -672,6 +708,7 @@ mod tests {
                 value: "head-sha".to_string(),
             },
             assessment_digest: TEST_DIGEST.to_string(),
+            required_context_classes: vec!["changed_knowledge".to_string()],
         }
     }
 

@@ -38,6 +38,7 @@ Examples:
     --semantic-base-revision git=base-sha \\
     --semantic-head-revision git=head-sha \\
     --semantic-assessment-digest sha256:<64 hex> \\
+    --semantic-required-class changed_source \\
     --semantic-context semantic-context.json
 
 --receipt runs the same validation and writes a digest-bound
@@ -48,6 +49,8 @@ explicit --as-of and the invoking harness's attested
 verifies its pin before invoking, see scripts/validation-runtime/).
 When --semantic-context is supplied, receipt mode validates its exact
 revision, digest, completeness, authorized scope, and closed citations.
+The four revision flags, assessment digest, and repeatable required-class
+flag are trusted expectations; they are never inferred from the context.
 Graph-backed contexts require the exact --context-artifact. The local CLI
 has no managed-revision store, so managed-revision contexts fail closed.
 Diff-hunk and Source Assertion citations require E4.1 Source Record
@@ -229,30 +232,44 @@ fn parse_evaluation_date(value: &str) -> Result<chrono::NaiveDate, String> {
 }
 
 fn parse_exact_revision(value: &str) -> Result<adoc_core::ExactRevision, String> {
-    let valid_part =
-        |part: &str| !part.is_empty() && part.trim() == part && !part.chars().any(char::is_control);
-    let (system, revision) = value
-        .split_once('=')
-        .filter(|(system, revision)| valid_part(system) && valid_part(revision))
-        .ok_or_else(|| format!("expected an exact revision like `git=head-sha`, got `{value}`"))?;
-    Ok(adoc_core::ExactRevision {
-        system: system.to_string(),
-        value: revision.to_string(),
-    })
+    let error = || {
+        format!(
+            "expected an exact revision like `git=head-sha` or JSON with system/value, got `{value}`"
+        )
+    };
+    let revision = if value.starts_with('{') {
+        serde_json::from_str(value).map_err(|_| error())?
+    } else {
+        if value.bytes().filter(|byte| *byte == b'=').count() != 1 {
+            return Err(error());
+        }
+        let (system, value) = value.split_once('=').ok_or_else(error)?;
+        adoc_core::ExactRevision {
+            system: system.to_string(),
+            value: value.to_string(),
+        }
+    };
+    if !adoc_core::is_semantic_context_text(&revision.system)
+        || !adoc_core::is_semantic_context_text(&revision.value)
+    {
+        return Err(error());
+    }
+    Ok(revision)
 }
 
 fn parse_sha256_digest(value: &str) -> Result<String, String> {
-    let hex = value.strip_prefix("sha256:").unwrap_or_default();
-    if hex.len() == 64
-        && hex
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
+    if adoc_core::is_sha256_digest(value) {
         return Ok(value.to_string());
     }
     Err(format!(
         "expected a lowercase sha256 digest like `sha256:<64 hex>`, got `{value}`"
     ))
+}
+
+fn parse_required_context_class(value: &str) -> Result<String, String> {
+    adoc_core::is_semantic_context_text(value)
+        .then(|| value.to_string())
+        .ok_or_else(|| format!("expected a non-blank context class ID, got `{value}`"))
 }
 
 /// The output format requested on the command line (`--format`).
@@ -440,7 +457,8 @@ pub(crate) enum Commands {
                 "semantic_source_revision",
                 "semantic_base_revision",
                 "semantic_head_revision",
-                "semantic_assessment_digest"
+                "semantic_assessment_digest",
+                "semantic_required_class"
             ]
         )]
         semantic_context: Option<PathBuf>,
@@ -459,6 +477,9 @@ pub(crate) enum Commands {
         /// Trusted assessment digest expected in --semantic-context.
         #[arg(long, value_name = "DIGEST", requires = "semantic_context", value_parser = parse_sha256_digest)]
         semantic_assessment_digest: Option<String>,
+        /// Trusted required context class; repeat for each required class.
+        #[arg(long, value_name = "CLASS_ID", requires = "semantic_context", value_parser = parse_required_context_class)]
+        semantic_required_class: Vec<String>,
     },
     #[command(
         about = "Convert Markdown sources to prose-mode .adoc, or back with --export (dry-run by default).",
@@ -724,7 +745,8 @@ mod tests {
     #[test]
     fn semantic_binding_parsers_reject_values_no_valid_context_can_match() {
         assert!(parse_exact_revision("git=head-sha").is_ok());
-        for invalid in ["git= head-sha", " git=head-sha", "git=head\nsha"] {
+        assert!(parse_exact_revision(r#"{"system":"a=b","value":"c"}"#).is_ok());
+        for invalid in ["git= head-sha", " git=head-sha", "git=head\nsha", "a=b=c"] {
             assert!(parse_exact_revision(invalid).is_err(), "{invalid:?}");
         }
 

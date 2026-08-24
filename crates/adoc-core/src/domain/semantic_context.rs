@@ -178,12 +178,19 @@ pub struct SourceAssertionCitation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CitationContentProjection {
+    pub handle: CitationHandle,
+    pub content_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SemanticContextExpectedBindings {
     pub subject_revision: ExactRevision,
     pub source_revision: ExactRevision,
     pub base_revision: ExactRevision,
     pub head_revision: ExactRevision,
     pub assessment_digest: String,
+    pub required_context_classes: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -194,11 +201,13 @@ pub struct SemanticContextValidationBasis {
     pub base_revision: ExactRevision,
     pub head_revision: ExactRevision,
     pub assessment_digest: String,
+    pub required_context_classes: Vec<String>,
     pub graph_artifact_digest: Option<String>,
     pub managed_revision_digest: Option<String>,
     pub graph_objects: Vec<GraphCitationObject>,
     pub diff_hunks: Vec<DiffHunkCitation>,
     pub source_assertions: Vec<SourceAssertionCitation>,
+    pub citation_contents: Vec<CitationContentProjection>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -773,6 +782,27 @@ pub fn validate_semantic_context(
             message: "assessment digest differs".to_string(),
         });
     }
+    let expected_required: BTreeSet<_> = validation_basis
+        .required_context_classes
+        .iter()
+        .map(String::as_str)
+        .collect();
+    if expected_required.len() != validation_basis.required_context_classes.len() {
+        return Err(SemanticContextError::BasisMismatch {
+            message: "required context-class basis contains duplicates".to_string(),
+        });
+    }
+    let actual_required: BTreeSet<_> = context
+        .context_classes
+        .iter()
+        .filter(|class| class.requirement == ContextRequirement::Required)
+        .map(|class| class.class_id.as_str())
+        .collect();
+    if actual_required != expected_required {
+        return Err(SemanticContextError::BasisMismatch {
+            message: "required context classes differ".to_string(),
+        });
+    }
     let (basis_name, expected_digest, digest) = match &context.basis.knowledge_basis {
         KnowledgeBasis::GraphArtifact { digest } => (
             "graph artifact",
@@ -829,6 +859,22 @@ pub fn validate_semantic_context(
             message: "citation basis contains duplicate source assertions".to_string(),
         });
     }
+    let mut citation_contents = BTreeMap::new();
+    for projection in &validation_basis.citation_contents {
+        if !is_sha256_digest(&projection.content_digest) {
+            return Err(SemanticContextError::BasisMismatch {
+                message: "citation content projection contains an invalid digest".to_string(),
+            });
+        }
+        if citation_contents
+            .insert(&projection.handle, projection.content_digest.as_str())
+            .is_some()
+        {
+            return Err(SemanticContextError::BasisMismatch {
+                message: "citation content projection contains duplicate handles".to_string(),
+            });
+        }
+    }
     for item in &context.items {
         let resolves = match &item.handle {
             CitationHandle::KnowledgeObject {
@@ -856,7 +902,10 @@ pub fn validate_semantic_context(
             } => source_assertions
                 .contains(&(source_assertion_id.as_str(), source_record_id.as_str())),
         };
-        if !resolves {
+        let content_digest = semantic_context_content_digest(&item.content);
+        let content_resolves =
+            citation_contents.get(&item.handle).copied() == Some(content_digest.as_str());
+        if !resolves || !content_resolves {
             return Err(SemanticContextError::UnresolvedCitation {
                 handle_id: item.handle_id.clone(),
             });
@@ -884,7 +933,7 @@ fn validate_revision(field: &str, revision: &ExactRevision) -> Result<(), Semant
 }
 
 fn require_text(field: &str, value: &str) -> Result<(), SemanticContextError> {
-    if value.is_empty() || value.trim() != value || value.chars().any(char::is_control) {
+    if !is_semantic_context_text(value) {
         return Err(SemanticContextError::InvalidText {
             field: field.to_string(),
         });
@@ -893,15 +942,28 @@ fn require_text(field: &str, value: &str) -> Result<(), SemanticContextError> {
 }
 
 fn require_digest(field: &str, digest: &str) -> Result<(), SemanticContextError> {
-    let suffix = digest.strip_prefix("sha256:").unwrap_or_default();
-    if suffix.len() == 64
-        && suffix
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
+    if is_sha256_digest(digest) {
         return Ok(());
     }
     Err(SemanticContextError::InvalidDigest {
         field: field.to_string(),
     })
+}
+
+pub fn is_semantic_context_text(value: &str) -> bool {
+    !value.is_empty() && value.trim() == value && !value.chars().any(char::is_control)
+}
+
+pub fn is_sha256_digest(value: &str) -> bool {
+    let hex = value.strip_prefix("sha256:").unwrap_or_default();
+    hex.len() == 64
+        && hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+pub fn semantic_context_content_digest(content: &Value) -> String {
+    let bytes = serde_json::to_vec(content)
+        .unwrap_or_else(|_| unreachable!("serde_json::Value serialization is infallible"));
+    sha256_prefixed(&bytes)
 }
