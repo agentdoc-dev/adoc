@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
   "title": "AgentDoc Authorization Decision",
-  "description": "Replayable, source-neutral authorization decision for E2.2 and the E2.6 source ACL ceiling. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants plus top-level freshness and structurally observable current source-ACL precedence; the Cloud evaluator owns timestamp comparison, remaining lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
+  "description": "Replayable, source-neutral authorization decision for E2.2 and the E2.6 source ACL ceiling. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants plus top-level freshness, hard-deny precedence, and structurally observable current source-ACL precedence; the Cloud evaluator owns timestamp comparison, remaining lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
   "type": "object",
   "required": [
     "schema_version",
@@ -35,7 +35,10 @@
       "type": "string"
     },
     "consequential": { "type": "boolean" },
-    "hard_deny": { "type": "boolean" },
+    "hard_deny": {
+      "description": "System-level deny observed ahead of the source ACL ceiling. True forces reason hard_deny and a deny result; only identity_context_missing, identity_expired, and evaluation_time_invalid may precede it because those stages preserve raw evaluator input for replay.",
+      "type": "boolean"
+    },
     "grants": {
       "type": "array",
       "items": { "$ref": "#/$defs/grant" }
@@ -961,7 +964,7 @@
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "connector_available": {
-          "description": "Whether the connector was available when this evidence was evaluated. False forbids authorization from widening access.",
+          "description": "Whether the connector was available when this evidence was evaluated. False forbids authorization from widening access and, absent invalidated_at, requires reason source_acl_unavailable or source_acl_stale; a known invalidation remains source_acl_invalidated. Conversely, source_acl_unavailable over an allow or deny ceiling requires false.",
           "type": "boolean"
         },
         "invalidated_at": {

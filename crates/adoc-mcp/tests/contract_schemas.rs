@@ -1704,6 +1704,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
     source_acl_outage["result"] = json!("insufficient_context");
     source_acl_outage["reason"] = json!("source_acl_unavailable");
     source_acl_outage["basis"] = json!(null);
+    let mut available_connector_with_unavailable_reason = source_acl_outage.clone();
+    available_connector_with_unavailable_reason["source_acl_ceiling"]["current_authorization"]["connector_available"] =
+        json!(true);
 
     let mut source_acl_stale = decision.clone();
     source_acl_stale["source_acl_ceiling"]["current_authorization"]["expires_at"] =
@@ -1739,10 +1742,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
         invalidated_source_acl_during_outage.clone();
     unavailable_reason_with_invalidated_source_acl["result"] = json!("insufficient_context");
     unavailable_reason_with_invalidated_source_acl["reason"] = json!("source_acl_unavailable");
-    let mut hard_deny_masking_invalidated_source_acl =
-        unavailable_reason_with_invalidated_source_acl.clone();
-    hard_deny_masking_invalidated_source_acl["hard_deny"] = json!(true);
-
     let mut stale_source_acl_during_outage = source_acl_stale.clone();
     stale_source_acl_during_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
         json!(false);
@@ -1759,6 +1758,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
     explicit_deny_with_invalidated_source_acl["reason"] = json!("explicit_deny");
     explicit_deny_with_invalidated_source_acl["basis"] = decision["basis"].clone();
     explicit_deny_with_invalidated_source_acl["basis"]["effect"] = json!("deny");
+    let mut hard_deny_masking_invalidated_source_acl =
+        explicit_deny_with_invalidated_source_acl.clone();
+    hard_deny_masking_invalidated_source_acl["hard_deny"] = json!(true);
 
     for field in ["connector_id", "resource"] {
         let mut missing_source_scope = decision.clone();
@@ -2141,6 +2143,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "insufficient source ACL with current verdict evidence",
             insufficient_with_current_acl,
+            false,
+        ),
+        (
+            "available connector cannot claim source ACL unavailability",
+            available_connector_with_unavailable_reason,
             false,
         ),
         (
