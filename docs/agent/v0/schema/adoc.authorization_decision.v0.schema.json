@@ -867,7 +867,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
-          "description": "Instant this membership observation was recorded, which is a lower bound on its freshness rather than the instant membership was read. An event-driven observation carries the instant the source event was observed; an observation produced by a resynchronization sweep carries the instant that run completed, so no observation can precede the epoch its run records into. For the resynchronization that completes a binding-mode reconfiguration, that instant is the new epoch's boundary; a resynchronization of an unreconfigured binding records into the epoch already in effect.",
+          "description": "Instant this membership observation was recorded, which bounds the underlying read from above rather than naming it: membership was read at or before this instant, so the record can overstate freshness by the duration of the run that produced it and never understates it. An event-driven observation carries the instant the source event was observed; an observation produced by a resynchronization sweep carries the instant that run completed, so no observation can precede the epoch its run records into. For the resynchronization that completes a binding-mode reconfiguration, that instant is the new epoch's boundary; a resynchronization of an unreconfigured binding records into the epoch already in effect.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "member_present": { "const": true },
@@ -920,7 +920,7 @@
             "name": { "$ref": "#/$defs/nonEmpty" },
             "membership_source": { "const": "external" },
             "binding_id": {
-              "description": "Stable identifier of the preserved external-binding record and its complete mode history. Replay verifies binding_mode and binding_mode_effective_at against the retained epoch.",
+              "description": "Stable identifier of the preserved external-binding record and its complete effective mode history. Replay verifies binding_mode and binding_mode_effective_at against the retained epoch.",
               "$ref": "#/$defs/nonEmpty"
             },
             "binding_mode": {
