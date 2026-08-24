@@ -81,6 +81,28 @@ pub struct SemanticExecutorIdentity {
     pub model: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HumanReviewIndependence {
+    SelfAssessment,
+    Independent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HumanReview {
+    pub authority: HumanReviewAuthority,
+    pub reviewing_principal_id: String,
+    pub requesting_principal_id: String,
+    pub independence: HumanReviewIndependence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HumanReviewAuthority {
+    SemanticReview,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SemanticAssessmentScope {
@@ -107,6 +129,8 @@ pub struct SemanticAssessment {
     base_revision: ExactRevision,
     head_revision: ExactRevision,
     identity: SemanticExecutorIdentity,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    human_review: Option<HumanReview>,
     materiality_policy_version: String,
     scope: SemanticAssessmentScope,
     findings: Vec<SemanticFinding>,
@@ -120,6 +144,7 @@ struct RawSemanticAssessment {
     base_revision: ExactRevision,
     head_revision: ExactRevision,
     identity: Option<RawSemanticExecutorIdentity>,
+    human_review: Option<HumanReview>,
     materiality_policy_version: String,
     scope: SemanticAssessmentScope,
     findings: Vec<RawSemanticFinding>,
@@ -208,6 +233,10 @@ impl SemanticAssessment {
         &self.findings
     }
 
+    pub fn human_review(&self) -> Option<&HumanReview> {
+        self.human_review.as_ref()
+    }
+
     pub fn allows_no_change_required(&self) -> bool {
         !self.findings.is_empty()
             && self.findings.iter().all(|finding| {
@@ -272,6 +301,40 @@ pub fn validate_semantic_assessment(
     if !is_semantic_context_text(&provider) || !is_semantic_context_text(&model) {
         return Err(SemanticAssessmentError::IdentityMissing);
     }
+    let human_review = match (provider.as_str(), raw.human_review) {
+        ("human", Some(review)) => {
+            require_text(
+                "human_review.reviewing_principal_id",
+                &review.reviewing_principal_id,
+            )?;
+            require_text(
+                "human_review.requesting_principal_id",
+                &review.requesting_principal_id,
+            )?;
+            let derived = if review.reviewing_principal_id == review.requesting_principal_id {
+                HumanReviewIndependence::SelfAssessment
+            } else {
+                HumanReviewIndependence::Independent
+            };
+            if review.independence != derived {
+                return Err(invalid(
+                    "human_review independence does not match the recorded principals",
+                ));
+            }
+            Some(review)
+        }
+        ("human", None) => {
+            return Err(invalid(
+                "human assessment requires reviewing principal and independence facts",
+            ));
+        }
+        (_, Some(_)) => {
+            return Err(invalid(
+                "human_review facts are valid only for the human provider",
+            ));
+        }
+        (_, None) => None,
+    };
     if raw.findings.is_empty() {
         return Err(invalid(
             "semantic assessment must contain at least one finding",
@@ -494,6 +557,7 @@ pub fn validate_semantic_assessment(
         base_revision: raw.base_revision,
         head_revision: raw.head_revision,
         identity: SemanticExecutorIdentity { provider, model },
+        human_review,
         materiality_policy_version: MATERIALITY_POLICY_VERSION.to_string(),
         scope: SemanticAssessmentScope { handle_ids },
         findings,

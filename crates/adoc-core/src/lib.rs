@@ -85,10 +85,10 @@ pub use domain::review::object_change::ChangedObject;
 pub use domain::review::object_diff::ObjectDiff;
 pub use domain::review::reviewer::{RequiredReviewer, required_reviewers};
 pub use domain::semantic_assessment::{
-    AffectedObject, CandidateUpdate, MATERIALITY_POLICY_VERSION,
-    SEMANTIC_ASSESSMENT_SCHEMA_VERSION, SemanticAssessment, SemanticAssessmentError,
-    SemanticAssessmentScope, SemanticClassification, SemanticDisposition, SemanticExecutorIdentity,
-    SemanticFinding, SemanticMateriality, validate_semantic_assessment,
+    AffectedObject, CandidateUpdate, HumanReview, HumanReviewAuthority, HumanReviewIndependence,
+    MATERIALITY_POLICY_VERSION, SEMANTIC_ASSESSMENT_SCHEMA_VERSION, SemanticAssessment,
+    SemanticAssessmentError, SemanticAssessmentScope, SemanticClassification, SemanticDisposition,
+    SemanticExecutorIdentity, SemanticFinding, SemanticMateriality, validate_semantic_assessment,
 };
 pub use domain::semantic_context::{
     CapabilityPolicy, CapabilityPolicyRule, CitationContentProjection, CitationHandle,
