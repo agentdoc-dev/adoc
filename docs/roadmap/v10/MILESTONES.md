@@ -281,7 +281,7 @@ Replaces owner-only workspace RLS with workspace-scoped principals, one authoriz
 - Source team membership never directly implies an AgentDoc role — bindings supply membership observations only (exit gate).
 - `authoritative_sync` revocation removes derived membership (exit gate); `disabled` ignores observations entirely.
 - A grant may cite only the binding-mode epoch in effect at its evaluation time; an observation from a superseded epoch confers nothing (exit gate).
-- Restrictive binding modes take effect immediately; a change to a grant-conferring mode remains under the prior epoch until resync completes and records current source membership in the new epoch, with pending state and failure visible to operators (exit gate).
+- Reconfiguration to `suggestion_only` or `disabled` takes effect immediately; a change to a grant-conferring mode remains under the prior epoch until resync completes and records current source membership in the new epoch, with pending state and failure visible to operators (exit gate).
 - `suggestion_only` no-ops without human action; `additive_sync` never removes manual members.
 - Manual membership removal revokes future use while preserving the lifecycle record for historical replay (exit gate).
 - External binding records and complete mode histories, membership observations, and their source events or synchronization runs remain retained for every decision that cites them after observed-membership revocation, resync, reconfiguration, or disablement (exit gate).
