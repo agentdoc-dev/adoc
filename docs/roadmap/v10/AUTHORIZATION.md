@@ -202,7 +202,7 @@ External binding records, membership observations, and their source events are r
 
 External binding records retain their complete mode history, so replay can resolve the mode epoch in effect at each decision's evaluation time.
 
-A binding-mode reconfiguration starts a new epoch; external membership confers grants again only from the first observation recorded within that epoch.
+A binding-mode reconfiguration starts a new epoch and resynchronizes the binding, recording a fresh membership observation for every current member of the new epoch; external membership confers grants again only from the first observation recorded within that epoch.
 
 Nested-group behavior is not implemented accidentally; it requires a future explicit decision.
 
