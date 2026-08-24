@@ -907,7 +907,7 @@
           }
         },
         {
-          "description": "binding_mode and binding_mode_effective_at name the binding's mode epoch in effect at evaluation_time; membership_observation.effective_at must fall within that epoch and not follow evaluation_time. membership_observation.observed_at may precede the epoch while a transition sweep runs but must not follow effective_at. Those instant comparisons are evaluator-owned and fail closed.",
+          "description": "binding_mode and binding_mode_effective_at name the binding's mode epoch in effect at evaluation_time; membership_observation.effective_at must fall within that epoch and not follow evaluation_time. membership_observation.observed_at must fall within the event or synchronization run identified by membership_observation.source_event_id, so it may precede the epoch while a transition sweep runs but must not precede that run's start nor follow effective_at. Those instant comparisons are evaluator-owned and fail closed.",
           "type": "object",
           "required": [
             "id",
