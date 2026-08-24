@@ -880,7 +880,10 @@
       "properties": {
         "role": { "const": "attempted_check" },
         "external_identity_link_id": { "$ref": "#/$defs/nonEmpty" },
-        "acl_policy_version": { "$ref": "#/$defs/nonEmpty" }
+        "acl_policy_version": {
+          "description": "Connector ACL policy version governing this attempt. With the enclosing decision's resource.connector_id, which resolves the configured connector instance and kind, it identifies the retained adoc.connector_acl_policy.v0 record whose policy_version equals this value.",
+          "$ref": "#/$defs/nonEmpty"
+        }
       }
     },
     "sourceAclCeiling": {
@@ -1055,7 +1058,7 @@
         },
         "source": { "$ref": "#/$defs/sourceResource" },
         "acl_policy_version": {
-          "description": "Connector ACL policy version in force when this current evidence was observed. Together with connector_id, which resolves the configured connector instance and kind, it identifies the retained adoc.connector_acl_policy.v0 record. Evidence is stale when evaluation_time exceeds expires_at or when a different policy version governs at evaluation_time. A policy-version change invalidates even unexpired evidence and requires refresh. Observation-time/evaluation-time version binding and expiry-wins retention are defined by sourceAclCheckContext and source_acl_ceiling.stale_cause. This value must also match acl_policy_version on the corresponding adoc.source_acl_snapshot.v0 record. Equality, inequality, and temporal checks are evaluator-owned and fail closed.",
+          "description": "Connector ACL policy version in force when this current evidence was observed. Together with connector_id, which resolves the configured connector instance and kind, it identifies the retained adoc.connector_acl_policy.v0 record whose policy_version equals this value. Evidence is stale when evaluation_time exceeds expires_at or when a different policy version governs at evaluation_time. A policy-version change invalidates even unexpired evidence and requires refresh. Observation-time/evaluation-time version binding and expiry-wins retention are defined by sourceAclCheckContext and source_acl_ceiling.stale_cause. This value must also match acl_policy_version on the corresponding adoc.source_acl_snapshot.v0 record. Equality, inequality, and temporal checks are evaluator-owned and fail closed.",
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {

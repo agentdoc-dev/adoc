@@ -1606,10 +1606,17 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "knowledge_kind": "policy",
         "object_id": "policy.refunds.enterprise"
     });
+    let role_scope = json!({
+        "workspace_id": resource["workspace_id"].clone(),
+        "knowledge_kind": resource["knowledge_kind"].clone()
+    });
+    let direct_scope = json!({
+        "workspace_id": resource["workspace_id"].clone()
+    });
     let decision = json!({
         "schema_version": "adoc.authorization_decision.v0",
         "principal": {
-            "id": "principal-1",
+            "id": current_authorization["principal_id"].clone(),
             "type": "human",
             "freshness": "current"
         },
@@ -1623,10 +1630,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "source": "role_assignment",
             "effect": "allow",
             "permission": "proposal.approve",
-            "scope": {
-                "workspace_id": "workspace-1",
-                "knowledge_kind": "policy"
-            },
+            "scope": role_scope.clone(),
             "role": { "id": "builtin:curator", "version": 1 }
         }],
         "source_acl_ceiling": {
@@ -1634,10 +1638,10 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "result": "allow",
             "check_context": {
                 "role": "attempted_check",
-                "external_identity_link_id": "external-identity-link-1",
+                "external_identity_link_id": current_authorization["external_identity_link_id"].clone(),
                 "acl_policy_version": "github-acl-v1"
             },
-            "snapshot_id": "acl-1",
+            "snapshot_id": current_authorization["snapshot_id"].clone(),
             "current_authorization": current_authorization
         },
         "visibility": "allow",
@@ -1649,10 +1653,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "grant_id": "assignment-1",
             "source": "role_assignment",
             "effect": "allow",
-            "scope_match": {
-                "workspace_id": "workspace-1",
-                "knowledge_kind": "policy"
-            },
+            "scope_match": role_scope,
             "role": { "id": "builtin:curator", "version": 1 }
         }
     });
@@ -1662,7 +1663,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "source": "direct_grant",
         "effect": "allow",
         "permission": "proposal.approve",
-        "scope": { "workspace_id": "workspace-1" },
+        "scope": direct_scope.clone(),
         "expires_at": "2026-08-24T12:00:00Z",
         "exceptional_reason": "incident response"
     });
@@ -1670,7 +1671,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "grant_id": "exceptional-human-grant",
         "source": "direct_grant",
         "effect": "allow",
-        "scope_match": { "workspace_id": "workspace-1" }
+        "scope_match": direct_scope
     });
     let mut direct_human_with_multiline_reason = direct_human.clone();
     direct_human_with_multiline_reason["grants"][0]["exceptional_reason"] =
