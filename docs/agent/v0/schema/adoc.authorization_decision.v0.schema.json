@@ -366,11 +366,13 @@
                 "properties": {
                   "connector_available": { "const": false }
                 },
-                "required": ["connector_available"]
+                "required": ["connector_available"],
+                "not": { "required": ["invalidated_at"] }
               }
             },
             "required": ["current_authorization"]
-          }
+          },
+          "reason": { "not": { "const": "evaluation_time_invalid" } }
         },
         "required": ["principal", "hard_deny", "source_acl_ceiling"]
       },
@@ -389,19 +391,48 @@
           "source_acl_ceiling": {
             "properties": {
               "current_authorization": {
-                "properties": {
-                  "connector_available": { "const": true }
-                },
-                "required": ["connector_available", "invalidated_at"]
+                "required": ["invalidated_at"]
               }
             },
             "required": ["current_authorization"]
-          }
+          },
+          "reason": { "not": { "const": "evaluation_time_invalid" } }
         },
         "required": ["principal", "hard_deny", "source_acl_ceiling"]
       },
       "then": {
         "properties": { "reason": { "const": "source_acl_invalidated" } }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "principal": {
+            "properties": { "freshness": { "const": "current" } },
+            "required": ["freshness"]
+          },
+          "hard_deny": { "const": false },
+          "source_acl_ceiling": {
+            "properties": {
+              "result": { "const": "deny" },
+              "current_authorization": {
+                "properties": {
+                  "connector_available": { "const": true }
+                },
+                "required": ["connector_available"],
+                "not": { "required": ["invalidated_at"] }
+              }
+            },
+            "required": ["result", "current_authorization"]
+          },
+          "reason": { "not": { "const": "evaluation_time_invalid" } }
+        },
+        "required": ["principal", "hard_deny", "source_acl_ceiling"]
+      },
+      "then": {
+        "properties": {
+          "reason": { "enum": ["source_acl_denied", "source_acl_stale"] }
+        }
       }
     },
     {
@@ -465,10 +496,7 @@
             "properties": {
               "result": { "enum": ["allow", "deny"] },
               "current_authorization": {
-                "properties": {
-                  "connector_available": { "const": true }
-                },
-                "required": ["connector_available", "invalidated_at"]
+                "required": ["invalidated_at"]
               }
             },
             "required": ["result", "current_authorization"]
@@ -500,7 +528,8 @@
                     "properties": {
                       "connector_available": { "const": false }
                     },
-                    "required": ["connector_available"]
+                    "required": ["connector_available"],
+                    "not": { "required": ["invalidated_at"] }
                   }
                 },
                 "required": ["result", "current_authorization"]
@@ -893,7 +922,7 @@
           "type": "boolean"
         },
         "invalidated_at": {
-          "description": "Set when a revocation observation invalidated this evidence. Presence forbids a top-level allow and is required by reason source_acl_invalidated; source_acl_ceiling.result may still preserve the provider verdict observed before invalidation.",
+          "description": "Set when a revocation observation invalidated this evidence. Presence forbids a top-level allow and is required by reason source_acl_invalidated; source_acl_ceiling.result may still preserve the provider verdict observed before invalidation. An observed invalidation remains definitive when the connector later becomes unavailable.",
           "$ref": "#/$defs/rfc3339Timestamp"
         }
       }
