@@ -845,9 +845,26 @@ fn group_retention_rules_match_the_e2_4_authority() {
     assert!(
         fresh_until.contains("versioned freshness policy retained by the exact binding")
             && fresh_until.contains("evaluation_time does not exceed fresh_until")
-            && fresh_until.contains("connector unavailability cannot extend"),
+            && fresh_until.contains("connector unavailability cannot extend")
+            && fresh_until.contains("fresh_until must follow effective_at"),
         "membership freshness must be binding-owned, bounded, and fail closed"
     );
+    let freshness_history_claim = "complete effective membership-freshness policy history";
+    let scheduled_refresh_claim = "resynchronizes on a schedule shorter than its freshness window";
+    let distinct_policy_claim =
+        "membership-freshness policy is distinct from the connector source-ACL policy";
+    let failed_reenable_claim = "failed re-enable remains non-granting";
+    for claim in [
+        freshness_history_claim,
+        scheduled_refresh_claim,
+        distinct_policy_claim,
+        failed_reenable_claim,
+    ] {
+        assert!(
+            a7.contains(claim),
+            "AUTHORIZATION.md §A7 must define membership freshness lifecycle: {claim}"
+        );
+    }
     let effective_at = observation["effective_at"]["description"]
         .as_str()
         .expect("membership effective time is documented");
@@ -984,7 +1001,12 @@ fn group_retention_rules_match_the_e2_4_authority() {
         assert!(
             surface.contains("versioned freshness policy retained by the exact binding")
                 && surface.contains("evaluation_time` does not exceed `fresh_until")
-                && surface.contains("connector unavailability cannot extend"),
+                && surface.contains("connector unavailability cannot extend")
+                && surface.contains("fresh_until` must follow `effective_at")
+                && surface.contains(freshness_history_claim)
+                && surface.contains(scheduled_refresh_claim)
+                && surface.contains(distinct_policy_claim)
+                && surface.contains(failed_reenable_claim),
             "A7 and E2.4 must bound external membership freshness"
         );
     }

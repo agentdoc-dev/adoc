@@ -948,7 +948,7 @@
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "fresh_until": {
-          "description": "Immutable deadline derived from observed_at under the versioned freshness policy retained by the exact binding. Replay recomputes that deadline, caps oidc_group at the cited identity session's expiry, and fails closed unless evaluation_time does not exceed fresh_until; connector unavailability cannot extend it. observed_at must not follow fresh_until. Timestamp comparisons are evaluator-owned and fail closed.",
+          "description": "Immutable deadline derived from observed_at under the versioned freshness policy retained by the exact binding. Replay resolves the policy version in effect at observed_at, recomputes the deadline, caps oidc_group at the cited identity session's expiry, and fails closed unless evaluation_time does not exceed fresh_until; connector unavailability cannot extend it. observed_at must not follow fresh_until, and fresh_until must follow effective_at, so an observation is never expired before it becomes eligible. A binding whose synchronization run cannot complete before the deadline is rejected as a freshness-policy misconfiguration rather than emitting a silently inert observation. Timestamp comparisons are evaluator-owned and fail closed.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "member_present": { "const": true },
