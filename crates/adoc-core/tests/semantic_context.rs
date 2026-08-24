@@ -89,6 +89,8 @@ fn validation_basis() -> SemanticContextValidationBasis {
         head_revision: revision("head-sha"),
         assessment_digest: ASSESSMENT_DIGEST.to_string(),
         required_context_classes: vec!["changed_knowledge".to_string()],
+        authorized_scope: vec!["repo:billing".to_string()],
+        capability_policy: input(Vec::new()).capability_policy,
         graph_artifact_digest: Some(GRAPH_DIGEST.to_string()),
         managed_revision_digest: None,
         graph_objects: vec![
@@ -133,12 +135,14 @@ fn validation_basis() -> SemanticContextValidationBasis {
         ]
         .into_iter()
         .map(|handle| CitationContentProjection {
+            scope_ref: "repo:billing".to_string(),
             content_digest: semantic_context_content_digest(&match &handle {
                 CitationHandle::KnowledgeObject { object_id, .. } => {
                     json!({"body": format!("context for {object_id}")})
                 }
                 _ => json!({"text": "inert context"}),
             }),
+            truncated_content_digests: Vec::new(),
             handle,
         })
         .collect(),
@@ -194,6 +198,7 @@ fn semantic_context_rejects_content_not_bound_to_the_resolved_citation() {
 
     let error = validate_semantic_context(context.as_bytes(), &validation_basis())
         .expect_err("fabricated content rejected");
+    assert!(error.to_string().contains("content for handle 'handle-a'"));
     assert_eq!(
         error.diagnostic_code(),
         DiagnosticCode::SemanticContextBasisMismatch
@@ -228,6 +233,72 @@ fn semantic_context_cannot_omit_the_trusted_required_class_set() {
 
     let error = validate_semantic_context(context.as_bytes(), &validation_basis())
         .expect_err("trusted required classes cannot be omitted");
+    assert_eq!(
+        error.diagnostic_code(),
+        DiagnosticCode::SemanticContextBasisMismatch
+    );
+}
+
+#[test]
+fn citation_scope_must_match_its_trusted_projection() {
+    let context = build_semantic_context(input(vec![item(
+        "handle-a",
+        "billing.alpha",
+        ASSESSMENT_DIGEST,
+    )]))
+    .expect("context builds")
+    .to_canonical_json()
+    .expect("context serializes");
+    let mut basis = validation_basis();
+    basis.citation_contents[0].scope_ref = "repo:other".to_string();
+
+    let error = validate_semantic_context(context.as_bytes(), &basis)
+        .expect_err("scope relabeling rejected");
+    assert_eq!(
+        error.diagnostic_code(),
+        DiagnosticCode::SemanticContextBasisMismatch
+    );
+}
+
+#[test]
+fn producer_cannot_downgrade_the_trusted_capability_policy() {
+    let mut semantic_input = input(vec![item(
+        "required-item",
+        "billing.alpha",
+        ASSESSMENT_DIGEST,
+    )]);
+    semantic_input.context_classes.push(ContextClass {
+        class_id: "related_knowledge".to_string(),
+        requirement: ContextRequirement::Optional,
+        byte_budget: 1024,
+    });
+    semantic_input.unavailability.push(ContextUnavailability {
+        record_id: "optional-outage".to_string(),
+        class_id: "related_knowledge".to_string(),
+        kind: ContextUnavailabilityKind::Omission,
+        reason: UnavailabilityReason::SourceOutage,
+    });
+    let context = build_semantic_context(semantic_input)
+        .expect("producer-selected insufficient policy records ready")
+        .to_canonical_json()
+        .expect("context serializes");
+    let mut basis = validation_basis();
+    basis.capability_policy.rules = basis
+        .capability_policy
+        .rules
+        .into_iter()
+        .map(|rule| CapabilityPolicyRule {
+            reason: rule.reason,
+            outcome: if rule.reason == UnavailabilityReason::SourceOutage {
+                UnavailabilityOutcome::Failed
+            } else {
+                rule.outcome
+            },
+        })
+        .collect();
+
+    let error = validate_semantic_context(context.as_bytes(), &basis)
+        .expect_err("policy downgrade rejected");
     assert_eq!(
         error.diagnostic_code(),
         DiagnosticCode::SemanticContextBasisMismatch
@@ -401,7 +472,9 @@ fn semantic_context_round_trips_every_closed_citation_handle_kind() {
         .into_iter()
         .map(|handle| CitationContentProjection {
             handle,
+            scope_ref: "repo:billing".to_string(),
             content_digest: semantic_context_content_digest(&json!({"text": "inert context"})),
+            truncated_content_digests: Vec::new(),
         }),
     );
     let validated =
@@ -465,6 +538,7 @@ fn truncated_required_context_is_ineligible_for_no_change_required() {
     }];
     semantic_input.items[0].class_id = "changed_knowledge".to_string();
     semantic_input.items[0].truncated = true;
+    semantic_input.items[0].content = json!({"body": "short excerpt"});
 
     let context = build_semantic_context(semantic_input).expect("incomplete context is recordable");
 
@@ -476,6 +550,13 @@ fn truncated_required_context_is_ineligible_for_no_change_required() {
             .expect("serializes")
             .contains("\"complete\": false")
     );
+    let serialized = context.to_canonical_json().expect("serializes");
+    let mut basis = validation_basis();
+    basis.citation_contents[0].truncated_content_digests = vec![semantic_context_content_digest(
+        &json!({"body": "short excerpt"}),
+    )];
+    validate_semantic_context(serialized.as_bytes(), &basis)
+        .expect("trusted truncated variant validates as insufficient");
 }
 
 #[test]
@@ -704,6 +785,8 @@ fn graph_backed_context_rejects_unresolved_source_binding_coordinates() {
         head_revision: revision("head-sha"),
         assessment_digest: ASSESSMENT_DIGEST.to_string(),
         required_context_classes: vec!["changed_knowledge".to_string()],
+        authorized_scope: vec!["repo:billing".to_string()],
+        capability_policy: input(Vec::new()).capability_policy,
         graph_artifact_digest: Some(GRAPH_DIGEST.to_string()),
         managed_revision_digest: None,
         graph_objects: vec![GraphCitationObject {
@@ -718,9 +801,11 @@ fn graph_backed_context_rejects_unresolved_source_binding_coordinates() {
             handle: CitationHandle::SourceBinding {
                 object_id: "billing.ready".to_string(),
             },
+            scope_ref: "repo:billing".to_string(),
             content_digest: semantic_context_content_digest(&json!({
                 "body": "context for billing.ready"
             })),
+            truncated_content_digests: Vec::new(),
         }],
     };
 

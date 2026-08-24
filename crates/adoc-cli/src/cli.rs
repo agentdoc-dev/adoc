@@ -39,6 +39,8 @@ Examples:
     --semantic-head-revision git=head-sha \\
     --semantic-assessment-digest sha256:<64 hex> \\
     --semantic-required-class changed_source \\
+    --semantic-authorized-scope repo:billing \\
+    --semantic-capability-policy $SEMANTIC_POLICY_JSON \\
     --semantic-context semantic-context.json
 
 --receipt runs the same validation and writes a digest-bound
@@ -49,12 +51,14 @@ explicit --as-of and the invoking harness's attested
 verifies its pin before invoking, see scripts/validation-runtime/).
 When --semantic-context is supplied, receipt mode validates its exact
 revision, digest, completeness, authorized scope, and closed citations.
-The four revision flags, assessment digest, and repeatable required-class
-flag are trusted expectations; they are never inferred from the context.
+The revision, assessment, required-class, authorized-scope, and capability-
+policy flags are trusted expectations; they are never inferred from context.
 Graph-backed contexts require the exact --context-artifact. The local CLI
 has no managed-revision store, so managed-revision contexts fail closed.
 Diff-hunk and Source Assertion citations require E4.1 Source Record
 projections, which local receipt mode does not yet have, so they fail closed.
+Local graph projections permit no truncated content variants, so truncated
+items also fail closed here; domain callers may supply trusted variants.
 ";
 const MIGRATE_LONG_HELP: &str = "\
 Default is a dry run: prints what would be migrated plus the migrate.*
@@ -266,10 +270,19 @@ fn parse_sha256_digest(value: &str) -> Result<String, String> {
     ))
 }
 
-fn parse_required_context_class(value: &str) -> Result<String, String> {
+fn parse_semantic_text(value: &str) -> Result<String, String> {
     adoc_core::is_semantic_context_text(value)
         .then(|| value.to_string())
-        .ok_or_else(|| format!("expected a non-blank context class ID, got `{value}`"))
+        .ok_or_else(|| format!("expected non-blank semantic text, got `{value}`"))
+}
+
+fn parse_capability_policy(value: &str) -> Result<Box<adoc_core::CapabilityPolicy>, String> {
+    let mut policy: adoc_core::CapabilityPolicy = serde_json::from_str(value)
+        .map_err(|_| "expected a complete capability-policy JSON object".to_string())?;
+    policy.rules.sort_by_key(|rule| rule.reason);
+    adoc_core::is_valid_capability_policy(&policy)
+        .then(|| Box::new(policy))
+        .ok_or_else(|| "expected one capability-policy rule for every closed reason".to_string())
 }
 
 /// The output format requested on the command line (`--format`).
@@ -458,7 +471,9 @@ pub(crate) enum Commands {
                 "semantic_base_revision",
                 "semantic_head_revision",
                 "semantic_assessment_digest",
-                "semantic_required_class"
+                "semantic_required_class",
+                "semantic_authorized_scope",
+                "semantic_capability_policy"
             ]
         )]
         semantic_context: Option<PathBuf>,
@@ -478,8 +493,14 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "DIGEST", requires = "semantic_context", value_parser = parse_sha256_digest)]
         semantic_assessment_digest: Option<String>,
         /// Trusted required context class; repeat for each required class.
-        #[arg(long, value_name = "CLASS_ID", requires = "semantic_context", value_parser = parse_required_context_class)]
+        #[arg(long, value_name = "CLASS_ID", requires = "semantic_context", value_parser = parse_semantic_text)]
         semantic_required_class: Vec<String>,
+        /// Trusted authorized scope for this local graph artifact.
+        #[arg(long, value_name = "SCOPE", requires = "semantic_context", value_parser = parse_semantic_text)]
+        semantic_authorized_scope: Option<String>,
+        /// Trusted complete capability policy as JSON.
+        #[arg(long, value_name = "JSON", requires = "semantic_context", value_parser = parse_capability_policy)]
+        semantic_capability_policy: Option<Box<adoc_core::CapabilityPolicy>>,
     },
     #[command(
         about = "Convert Markdown sources to prose-mode .adoc, or back with --export (dry-run by default).",

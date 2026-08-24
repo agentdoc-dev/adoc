@@ -180,7 +180,9 @@ pub struct SourceAssertionCitation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CitationContentProjection {
     pub handle: CitationHandle,
+    pub scope_ref: String,
     pub content_digest: String,
+    pub truncated_content_digests: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -191,6 +193,8 @@ pub struct SemanticContextExpectedBindings {
     pub head_revision: ExactRevision,
     pub assessment_digest: String,
     pub required_context_classes: Vec<String>,
+    pub authorized_scope: String,
+    pub capability_policy: CapabilityPolicy,
 }
 
 #[derive(Debug, Clone)]
@@ -202,6 +206,8 @@ pub struct SemanticContextValidationBasis {
     pub head_revision: ExactRevision,
     pub assessment_digest: String,
     pub required_context_classes: Vec<String>,
+    pub authorized_scope: Vec<String>,
+    pub capability_policy: CapabilityPolicy,
     pub graph_artifact_digest: Option<String>,
     pub managed_revision_digest: Option<String>,
     pub graph_objects: Vec<GraphCitationObject>,
@@ -356,6 +362,10 @@ pub enum SemanticContextError {
     BasisMismatch { message: String },
     #[error("semantic context citation handle '{handle_id}' does not resolve in its exact basis")]
     UnresolvedCitation { handle_id: String },
+    #[error("semantic context citation scope for handle '{handle_id}' does not match its basis")]
+    CitationScopeMismatch { handle_id: String },
+    #[error("semantic context citation content for handle '{handle_id}' does not match its basis")]
+    CitationContentMismatch { handle_id: String },
     #[error("semantic context serialization failed: {message}")]
     Serialization { message: String },
 }
@@ -367,7 +377,9 @@ impl SemanticContextError {
             Self::DigestMismatch => DiagnosticCode::SemanticContextDigestMismatch,
             Self::EvaluationDateMismatch
             | Self::BasisMismatch { .. }
-            | Self::UnresolvedCitation { .. } => DiagnosticCode::SemanticContextBasisMismatch,
+            | Self::UnresolvedCitation { .. }
+            | Self::CitationScopeMismatch { .. }
+            | Self::CitationContentMismatch { .. } => DiagnosticCode::SemanticContextBasisMismatch,
             Self::InvalidDocument { .. }
             | Self::InvalidText { .. }
             | Self::InvalidDigest { .. }
@@ -448,28 +460,11 @@ pub fn build_semantic_context(
         .iter()
         .map(String::as_str)
         .collect();
-    require_text(
-        "capability_policy.version",
-        &input.capability_policy.version,
-    )?;
     input
         .capability_policy
         .rules
         .sort_by_key(|rule| rule.reason);
-    let policy_reasons: BTreeSet<_> = input
-        .capability_policy
-        .rules
-        .iter()
-        .map(|rule| rule.reason)
-        .collect();
-    let all_reasons = BTreeSet::from([
-        UnavailabilityReason::Permission,
-        UnavailabilityReason::Retention,
-        UnavailabilityReason::SourceOutage,
-        UnavailabilityReason::Truncation,
-        UnavailabilityReason::ResourceLimit,
-    ]);
-    if input.capability_policy.rules.len() != all_reasons.len() || policy_reasons != all_reasons {
+    if !is_valid_capability_policy(&input.capability_policy) {
         return Err(SemanticContextError::InvalidCapabilityPolicy);
     }
     let policy: BTreeMap<_, _> = input
@@ -803,6 +798,44 @@ pub fn validate_semantic_context(
             message: "required context classes differ".to_string(),
         });
     }
+    let expected_scope: BTreeSet<_> = validation_basis
+        .authorized_scope
+        .iter()
+        .map(String::as_str)
+        .collect();
+    if expected_scope.len() != validation_basis.authorized_scope.len()
+        || context
+            .selection
+            .authorized_scope
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+            != expected_scope
+    {
+        return Err(SemanticContextError::BasisMismatch {
+            message: "authorized scope differs".to_string(),
+        });
+    }
+    let expected_policy: BTreeMap<_, _> = validation_basis
+        .capability_policy
+        .rules
+        .iter()
+        .map(|rule| (rule.reason, rule.outcome))
+        .collect();
+    let actual_policy: BTreeMap<_, _> = context
+        .capability_policy
+        .rules
+        .iter()
+        .map(|rule| (rule.reason, rule.outcome))
+        .collect();
+    if !is_valid_capability_policy(&validation_basis.capability_policy)
+        || context.capability_policy.version != validation_basis.capability_policy.version
+        || actual_policy != expected_policy
+    {
+        return Err(SemanticContextError::BasisMismatch {
+            message: "capability policy differs".to_string(),
+        });
+    }
     let (basis_name, expected_digest, digest) = match &context.basis.knowledge_basis {
         KnowledgeBasis::GraphArtifact { digest } => (
             "graph artifact",
@@ -861,13 +894,24 @@ pub fn validate_semantic_context(
     }
     let mut citation_contents = BTreeMap::new();
     for projection in &validation_basis.citation_contents {
-        if !is_sha256_digest(&projection.content_digest) {
+        let truncated_digests: BTreeSet<_> = projection
+            .truncated_content_digests
+            .iter()
+            .map(String::as_str)
+            .collect();
+        if !is_semantic_context_text(&projection.scope_ref)
+            || !is_sha256_digest(&projection.content_digest)
+            || truncated_digests.len() != projection.truncated_content_digests.len()
+            || !truncated_digests
+                .iter()
+                .all(|digest| is_sha256_digest(digest))
+        {
             return Err(SemanticContextError::BasisMismatch {
-                message: "citation content projection contains an invalid digest".to_string(),
+                message: "citation content projection is invalid".to_string(),
             });
         }
         if citation_contents
-            .insert(&projection.handle, projection.content_digest.as_str())
+            .insert(&projection.handle, projection)
             .is_some()
         {
             return Err(SemanticContextError::BasisMismatch {
@@ -902,11 +946,33 @@ pub fn validate_semantic_context(
             } => source_assertions
                 .contains(&(source_assertion_id.as_str(), source_record_id.as_str())),
         };
-        let content_digest = semantic_context_content_digest(&item.content);
-        let content_resolves =
-            citation_contents.get(&item.handle).copied() == Some(content_digest.as_str());
-        if !resolves || !content_resolves {
+        if !resolves {
             return Err(SemanticContextError::UnresolvedCitation {
+                handle_id: item.handle_id.clone(),
+            });
+        }
+        let projection = citation_contents
+            .get(&item.handle)
+            .copied()
+            .ok_or_else(|| SemanticContextError::CitationContentMismatch {
+                handle_id: item.handle_id.clone(),
+            })?;
+        if projection.scope_ref != item.scope_ref {
+            return Err(SemanticContextError::CitationScopeMismatch {
+                handle_id: item.handle_id.clone(),
+            });
+        }
+        let content_digest = semantic_context_content_digest(&item.content);
+        let content_resolves = if item.truncated {
+            projection
+                .truncated_content_digests
+                .iter()
+                .any(|digest| digest == &content_digest)
+        } else {
+            projection.content_digest == content_digest
+        };
+        if !content_resolves {
+            return Err(SemanticContextError::CitationContentMismatch {
                 handle_id: item.handle_id.clone(),
             });
         }
@@ -960,6 +1026,20 @@ pub fn is_sha256_digest(value: &str) -> bool {
         && hex
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+pub fn is_valid_capability_policy(policy: &CapabilityPolicy) -> bool {
+    let reasons: BTreeSet<_> = policy.rules.iter().map(|rule| rule.reason).collect();
+    is_semantic_context_text(&policy.version)
+        && policy.rules.len() == 5
+        && reasons
+            == BTreeSet::from([
+                UnavailabilityReason::Permission,
+                UnavailabilityReason::Retention,
+                UnavailabilityReason::SourceOutage,
+                UnavailabilityReason::Truncation,
+                UnavailabilityReason::ResourceLimit,
+            ])
 }
 
 pub fn semantic_context_content_digest(content: &Value) -> String {

@@ -2979,6 +2979,7 @@ fn build_markdown_rejection_still_exits_two() {
 /// packaged-binary path must produce byte-identical receipts.
 const GOLDEN_RUNTIME_DIGEST: &str =
     "sha256:ca1bf018dc0b72ee1197d9d521d96d227cd3e54cc81528ea5f45776c99d95f4d";
+const SEMANTIC_POLICY_JSON: &str = r#"{"version":"semantic-context-policy-v1","rules":[{"reason":"permission","outcome":"insufficient"},{"reason":"retention","outcome":"insufficient"},{"reason":"source_outage","outcome":"insufficient"},{"reason":"truncation","outcome":"insufficient"},{"reason":"resource_limit","outcome":"insufficient"}]}"#;
 
 fn validation_runtime_path(relative: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -3145,6 +3146,10 @@ fn check_receipt_emits_the_semantic_context_golden_byte_for_byte() {
             &digest,
             "--semantic-required-class",
             "changed_source",
+            "--semantic-authorized-scope",
+            "repo:billing",
+            "--semantic-capability-policy",
+            SEMANTIC_POLICY_JSON,
             "--semantic-context",
             semantic_path.to_str().expect("utf-8 semantic context path"),
         ])
@@ -3204,9 +3209,51 @@ fn semantic_context_requires_complete_validation_basis() {
         "--semantic-base-revision",
         "--semantic-assessment-digest",
         "--semantic-required-class",
+        "--semantic-authorized-scope",
+        "--semantic-capability-policy",
     ] {
         assert!(error.contains(missing), "missing {missing} in:\n{error}");
     }
+}
+
+#[test]
+fn semantic_context_rejects_duplicate_required_class_flags() {
+    let output = adoc_command()
+        .current_dir(validation_runtime_path("fixture"))
+        .args([
+            "check",
+            "--receipt",
+            "receipt.json",
+            "--as-of",
+            "2026-01-01",
+            "--runtime-binary-digest",
+            GOLDEN_RUNTIME_DIGEST,
+            "--semantic-context",
+            "semantic-context.json",
+            "--semantic-subject-revision",
+            "git=head-sha",
+            "--semantic-source-revision",
+            "git=head-sha",
+            "--semantic-base-revision",
+            "git=base-sha",
+            "--semantic-head-revision",
+            "git=head-sha",
+            "--semantic-assessment-digest",
+            GOLDEN_RUNTIME_DIGEST,
+            "--semantic-required-class",
+            "changed_source",
+            "--semantic-required-class",
+            "changed_source",
+            "--semantic-authorized-scope",
+            "repo:billing",
+            "--semantic-capability-policy",
+            SEMANTIC_POLICY_JSON,
+        ])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr(&output).contains("must not repeat a class ID"));
 }
 
 /// Receipts are deterministic: two invocations over the same input produce

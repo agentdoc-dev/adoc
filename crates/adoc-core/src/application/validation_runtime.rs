@@ -380,6 +380,7 @@ fn semantic_validation_basis(
     expectations: &crate::SemanticContextExpectedBindings,
 ) -> crate::SemanticContextValidationBasis {
     let graph_artifact_digest = graph_artifact_bytes.map(sha256_prefixed);
+    let local_scope = expectations.authorized_scope.clone();
     let (graph_objects, citation_contents) = graph_artifact_bytes
         // Parsing failures were already emitted by `validate_context_artifact`.
         // An empty projection keeps citation resolution fail-closed without
@@ -399,20 +400,24 @@ fn semantic_validation_basis(
                         object_id: object_id.clone(),
                         semantic_hash: semantic_hash.clone(),
                     },
+                    scope_ref: local_scope.clone(),
                     content_digest: crate::semantic_context_content_digest(
                         &serde_json::json!({ "body": object.body }),
                     ),
+                    truncated_content_digests: Vec::new(),
                 });
                 if let Some(binding) = &object.source_binding {
                     contents.push(crate::CitationContentProjection {
                         handle: crate::CitationHandle::SourceBinding {
                             object_id: object_id.clone(),
                         },
+                        scope_ref: local_scope.clone(),
                         content_digest: crate::semantic_context_content_digest(
                             &serde_json::to_value(binding).unwrap_or_else(|_| {
                                 unreachable!("GraphSourceBinding serialization is infallible")
                             }),
                         ),
+                        truncated_content_digests: Vec::new(),
                     });
                 }
                 for (index, evidence) in object.evidence.iter().enumerate() {
@@ -423,11 +428,13 @@ fn semantic_validation_basis(
                                 unreachable!("graph evidence count is bounded by address space")
                             }),
                         },
+                        scope_ref: local_scope.clone(),
                         content_digest: crate::semantic_context_content_digest(
                             &serde_json::to_value(evidence).unwrap_or_else(|_| {
                                 unreachable!("GraphEvidence serialization is infallible")
                             }),
                         ),
+                        truncated_content_digests: Vec::new(),
                     });
                 }
                 objects.push(crate::GraphCitationObject {
@@ -448,6 +455,8 @@ fn semantic_validation_basis(
         head_revision: expectations.head_revision.clone(),
         assessment_digest: expectations.assessment_digest.clone(),
         required_context_classes: expectations.required_context_classes.clone(),
+        authorized_scope: vec![expectations.authorized_scope.clone()],
+        capability_policy: expectations.capability_policy.clone(),
         graph_artifact_digest,
         managed_revision_digest: None,
         graph_objects,
@@ -709,6 +718,23 @@ mod tests {
             },
             assessment_digest: TEST_DIGEST.to_string(),
             required_context_classes: vec!["changed_knowledge".to_string()],
+            authorized_scope: "repo:billing".to_string(),
+            capability_policy: crate::CapabilityPolicy {
+                version: "semantic-context-policy-v1".to_string(),
+                rules: [
+                    crate::UnavailabilityReason::Permission,
+                    crate::UnavailabilityReason::Retention,
+                    crate::UnavailabilityReason::SourceOutage,
+                    crate::UnavailabilityReason::Truncation,
+                    crate::UnavailabilityReason::ResourceLimit,
+                ]
+                .into_iter()
+                .map(|reason| crate::CapabilityPolicyRule {
+                    reason,
+                    outcome: crate::UnavailabilityOutcome::Insufficient,
+                })
+                .collect(),
+            },
         }
     }
 

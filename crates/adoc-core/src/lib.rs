@@ -86,8 +86,8 @@ pub use domain::semantic_context::{
     SemanticContextExpectedBindings, SemanticContextInput, SemanticContextItem,
     SemanticContextOutcome, SemanticContextSelection, SemanticContextValidationBasis,
     SourceAssertionCitation, UnavailabilityOutcome, UnavailabilityReason, build_semantic_context,
-    is_semantic_context_text, is_sha256_digest, semantic_context_content_digest,
-    validate_semantic_context,
+    is_semantic_context_text, is_sha256_digest, is_valid_capability_policy,
+    semantic_context_content_digest, validate_semantic_context,
 };
 pub use domain::services::suggest_typed_blocks::SuggestedTypedBlock;
 pub use domain::value_objects::rel_path::{RelPath, RelPathError};
