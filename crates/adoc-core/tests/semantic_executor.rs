@@ -110,7 +110,7 @@ fn request(adapter: &str, provider: &str, model: &str) -> Value {
 }
 
 fn assessment(context_digest: &str, provider: &str, model: &str) -> Value {
-    json!({
+    let mut document = json!({
         "schema_version": "adoc.semantic_assessment.v0",
         "context_digest": context_digest,
         "base_revision": {"system": "git", "value": "base-sha"},
@@ -133,7 +133,16 @@ fn assessment(context_digest: &str, provider: &str, model: &str) -> Value {
             "unresolved_questions": [],
             "explanation": "The change extends durable billing behavior."
         }]
-    })
+    });
+    if provider == "human" {
+        document["human_review"] = json!({
+            "authority": "semantic_review",
+            "reviewing_principal_id": "principal:reviewer",
+            "requesting_principal_id": "principal:author",
+            "independence": "independent"
+        });
+    }
+    document
 }
 
 #[test]
