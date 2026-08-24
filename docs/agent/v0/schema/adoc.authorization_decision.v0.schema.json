@@ -899,7 +899,7 @@
           }
         },
         {
-          "description": "observed_at and binding_mode_effective_at must not follow evaluation_time, and observed_at must not precede the binding-mode epoch; those instant comparisons are evaluator-owned and fail closed.",
+          "description": "binding_mode and binding_mode_effective_at name the binding's mode epoch in effect at evaluation_time; observed_at must fall within that epoch, so it must neither precede binding_mode_effective_at nor follow evaluation_time. Those instant comparisons are evaluator-owned and fail closed.",
           "type": "object",
           "required": [
             "id",
