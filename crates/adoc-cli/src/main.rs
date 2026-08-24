@@ -308,9 +308,16 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                 Commands::SemanticExecutor {
                     request,
                     assessment,
+                    failure_code,
                     receipt,
                     validated_assessment,
-                } => semantic_executor(request, assessment, receipt, validated_assessment),
+                } => semantic_executor(
+                    request,
+                    assessment,
+                    failure_code,
+                    receipt,
+                    validated_assessment,
+                ),
                 Commands::Patch {
                     check,
                     apply,

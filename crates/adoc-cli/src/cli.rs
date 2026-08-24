@@ -723,6 +723,9 @@ pub(crate) enum Commands {
         request: PathBuf,
         #[arg(long, value_name = "ASSESSMENT_JSON")]
         assessment: PathBuf,
+        /// Record an adapter/process failure without accepting assessment bytes.
+        #[arg(long, value_name = "FAILURE_CODE", value_parser = parse_semantic_text)]
+        failure_code: Option<String>,
         #[arg(long, value_name = "RECEIPT_JSON")]
         receipt: PathBuf,
         #[arg(long, value_name = "VALIDATED_ASSESSMENT_JSON")]

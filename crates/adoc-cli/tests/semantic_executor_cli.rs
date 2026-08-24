@@ -181,4 +181,27 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
     assert!(failed.contains("\"outcome\": \"failed\""));
     assert!(failed.contains("assessment.semantic_citation_invalid"));
     assert!(!workspace.root.join("never-written.json").exists());
+
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "semantic-executor",
+            "--request",
+            "request.json",
+            "--assessment",
+            "assessment.json",
+            "--failure-code",
+            "provider_timeout",
+            "--receipt",
+            "timeout.json",
+            "--validated-assessment",
+            "never-timeout.json",
+        ])
+        .output()
+        .expect("executor failure command runs");
+    assert_eq!(output.status.code(), Some(2));
+    let timeout =
+        std::fs::read_to_string(workspace.root.join("timeout.json")).expect("timeout receipt");
+    assert!(timeout.contains("\"failure_code\": \"provider_timeout\""));
+    assert!(!workspace.root.join("never-timeout.json").exists());
 }
