@@ -303,12 +303,13 @@ Replaces owner-only workspace RLS with workspace-scoped principals, one authoriz
 **Read first:** [RED-TEAM-CLOSURE.md RT-07](RED-TEAM-CLOSURE.md#rt-07--acl-freshness-and-revocation) · [PRD v1.1 §7](../../product/PRD-v1.1-amendment.md#7-source-acl-freshness-and-sensitive-retrieval) · [AUTHORIZATION.md §A3](AUTHORIZATION.md#a3-source-system-permissions-are-an-access-ceiling)
 **Tracer bullets:**
 1. `E2.6.T1` — Connector ACL policy declaration contract in `adoc` (acquisition, freshness window, refresh mechanism, revocation propagation, connector-unavailable behavior, invalidation); failing test: connector without a declaration is rejected at activation.
-2. `E2.6.T2` — Separate the two snapshot roles: immutable historical Source ACL Snapshot retained on each Source Assertion vs freshness-bounded current-authorization input; failing test: stale snapshot offered as required current evidence denies.
+2. `E2.6.T2` — Separate the two snapshot roles: immutable historical Source ACL Snapshot retained on each Source Assertion vs freshness-bounded current-authorization input; a decision retaining any historical snapshot also retains its connector/container/source scope. Current evidence records whether staleness came from expiry or, while unexpired, policy supersession; the latter retains both the observation-time evidence version and the different evaluation-time governing version. Failing tests: stale snapshot offered as required current evidence denies; scoped provenance and policy supersession replay from recorded inputs.
 3. `E2.6.T3` — Wire the source-ACL ceiling into the E2.2 evaluator; failing fixture: connector outage on a required current ACL check → fail closed, not stale-allow.
 4. `E2.6.T4` — Revocation propagation: the invalidation contract/hook plus failing test: permission change invalidates affected caches and active access sessions that exist at E2 time per policy; embeddings/retrieval index entries extend this suite in E6.3.T4 once that machinery exists.
 **Acceptance:**
 - Connector declares refresh/expiry/revocation/outage policy before activation (exit gate).
 - Stale/expired required ACL evidence can never widen access (exit gate, stop-ship: stale-ACL widening).
+- Historical snapshots retained on decisions remain bound to connector/container/source scope, and unexpired evidence invalidated by policy supersession records the superseding evaluation-time policy version (exit gate).
 - Permission change invalidates affected caches/indexes (exit gate); embeddings/retrieval indexes ride the E6.3.T4 extension of this suite; revocation suspends derived AgentDoc visibility.
 - Adversarial fixture: connector outage + restricted content request → typed fail-closed unless an explicit documented continuity policy for that risk class permits, and that use is receipted.
 - Historical ACL provenance on Source Assertions stays immutable and is never consulted as current authorization.

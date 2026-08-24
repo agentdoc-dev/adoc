@@ -99,6 +99,8 @@ Consequences:
 - Source read/write/admin status does not automatically grant proposal approval, workspace administration, policy administration, declassification, or audit access.
 - Source-access revocation suspends corresponding derived AgentDoc visibility.
 - ACL synchronization, mapping, revocation, and authorization decisions are versioned and auditable.
+- A decision retaining a historical ACL snapshot also retains the connector, source container, and source resource scope needed to bind that snapshot, even when no current source ACL check was required.
+- Current ACL evidence records one stale cause. Expiry wins when the evidence is expired; otherwise a policy-version change records `policy_superseded`, with the evidence version from observation and the different governing version at evaluation time, so replay can recompute the failure.
 - Knowledge authored directly in AgentDoc is governed by AgentDoc authorization policy rather than an unrelated connector ACL.
 
 ## A4. Provenance-aware field/proposition visibility
