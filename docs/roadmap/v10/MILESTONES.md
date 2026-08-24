@@ -281,6 +281,7 @@ Replaces owner-only workspace RLS with workspace-scoped principals, one authoriz
 - Source team membership never directly implies an AgentDoc role — bindings supply membership observations only (exit gate).
 - `authoritative_sync` revocation removes derived membership (exit gate); `disabled` ignores observations entirely.
 - `suggestion_only` no-ops without human action; `additive_sync` never removes manual members.
+- Manual membership removal revokes future use while preserving the lifecycle record for historical replay (exit gate).
 - Adversarial fixture: crafted nested-group observation grants nothing.
 **Out of scope:** nested groups (needs a separate decision), SCIM group sync (P4), membership sources beyond the decided set (GitHub team, GitLab group, Slack user group, OIDC/SCIM group).
 
