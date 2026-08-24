@@ -3002,7 +3002,7 @@ fn connector_acl_policy_requires_every_activation_safety_declaration() {
         "connector_kind": "github",
         "policy_version": "github-acl-v1",
         "acquisition": "provider_events_and_api",
-        "freshness_window_seconds": 300,
+        "freshness_window_seconds": 360,
         "refresh_mechanism": "webhook_and_poll",
         "revocation_propagation": "immediate_on_observation",
         "connector_unavailable": "fail_closed",
@@ -3012,6 +3012,11 @@ fn connector_acl_policy_requires_every_activation_safety_declaration() {
         }
     });
 
+    assert_eq!(
+        policy["freshness_window_seconds"],
+        json!(360),
+        "canonical ACL policy must produce the canonical evidence expiry"
+    );
     assert!(schema_accepts(
         "adoc.connector_acl_policy.v0.schema.json",
         &policy
