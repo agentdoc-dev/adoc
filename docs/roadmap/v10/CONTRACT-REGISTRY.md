@@ -363,22 +363,24 @@ The immutable version-1 permission vocabulary implemented by E2.2. Policy evalua
 | `workspace.read` | 1 | planned | E2.2 |
 <!-- /registry:permission-primitives -->
 
-## Group grant binding modes — planned, owner `cloud`
+## External group binding modes — planned, owner `cloud`
 
-The E2.4 authorization-decision provenance vocabulary contains only modes that can confer a grant. `AUTHORIZATION.md` §A7 also defines `suggestion_only` and `disabled` as external-binding configuration modes; neither can appear in a winning grant or basis.
+The complete E2.4 external-binding state vocabulary from `AUTHORIZATION.md` §A7. Only rows marked `yes` can confer a grant and therefore appear in authorization-decision provenance.
 
 <!-- registry:group-binding-modes -->
-| mode | status | planned by | meaning |
-| --- | --- | --- | --- |
-| `authoritative_sync` | planned | E2.4 | external membership is authoritative for the binding epoch |
-| `additive_sync` | planned | E2.4 | external membership adds to manual membership for the binding epoch |
+| mode | status | planned by | confers grant | meaning |
+| --- | --- | --- | --- | --- |
+| `authoritative_sync` | planned | E2.4 | yes | external membership is authoritative for the binding epoch |
+| `additive_sync` | planned | E2.4 | yes | external membership adds to manual membership for the binding epoch |
+| `suggestion_only` | planned | E2.4 | no | external membership is advisory and never grants authorization |
+| `disabled` | planned | E2.4 | no | the binding is inactive and never grants authorization |
 <!-- /registry:group-binding-modes -->
 
-## External group membership sources — planned, owner `cloud`
+## External group source kinds — planned, owner `cloud`
 
-The closed E2.4 source-kind vocabulary carried by an external AgentDoc-group membership in authorization provenance.
+The closed E2.4 `source_kind` vocabulary carried by an external AgentDoc-group membership in authorization provenance. The sibling `membership_source` discriminator (`manual` / `external`) is structural and governed by the `adoc.authorization_decision.v0` row. `MILESTONES.md` §E2.4 names the OIDC/SCIM category; the contract records its two protocol-specific values separately. `scim_group` is registered for provenance while SCIM sync remains deferred to P4, and a future enterprise-directory adapter requires a new registered value.
 
-<!-- registry:group-membership-sources -->
+<!-- registry:group-source-kinds -->
 | source kind | status | planned by | meaning |
 | --- | --- | --- | --- |
 | `github_team` | planned | E2.4 | GitHub team membership |
@@ -386,7 +388,7 @@ The closed E2.4 source-kind vocabulary carried by an external AgentDoc-group mem
 | `slack_user_group` | planned | E2.4 | Slack user-group membership |
 | `oidc_group` | planned | E2.4 | OIDC group claim membership |
 | `scim_group` | planned | E2.4 | SCIM group membership |
-<!-- /registry:group-membership-sources -->
+<!-- /registry:group-source-kinds -->
 
 ## Cloud codes — owner `cloud`
 
