@@ -758,7 +758,7 @@
       }
     },
     "sourceResource": {
-      "description": "Repository, project, space, or channel level within a scope. id is the bare source-local resource identifier; parent container context, when available, is carried separately by source_container_id on the containing scope.",
+      "description": "Repository, project, space, or channel level within a scope. id is the bare source-local resource identifier; parent container context is carried separately by source_container_id on the containing scope, required on any decision resource with source_acl_ceiling.required true and optional on grant scopes.",
       "type": "object",
       "required": ["kind", "id"],
       "additionalProperties": false,
@@ -774,7 +774,10 @@
       "properties": {
         "workspace_id": { "$ref": "#/$defs/nonEmpty" },
         "connector_id": { "$ref": "#/$defs/nonEmpty" },
-        "source_container_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_container_id": {
+          "description": "Provider-owned parent container identifier for a bare source resource id. When the provider exposes no intermediate container, this is the provider-owned tenant or account identifier for the connector.",
+          "$ref": "#/$defs/nonEmpty"
+        },
         "resource": { "$ref": "#/$defs/sourceResource" },
         "knowledge_kind": { "$ref": "#/$defs/nonEmpty" },
         "object_id": { "$ref": "#/$defs/nonEmpty" }
@@ -832,7 +835,7 @@
       "additionalProperties": false,
       "properties": {
         "required": {
-          "description": "Whether a source ACL check was required for this decision. True requires connector_id, source_container_id, and resource on the decision resource, so a required check always names the exact source resource evaluated, and forces result to allow, deny, or insufficient_context; a required allow or deny additionally requires current ACL evidence carrying the same source identity. False forces not_applicable and forbids current ACL evidence.",
+          "description": "Whether a source ACL check was required for this decision. True requires connector_id, source_container_id, and resource on the decision resource, so a required check always names the exact source resource evaluated, and forces result to allow, deny, or insufficient_context; a required allow or deny additionally requires current ACL evidence. False forces not_applicable and forbids current ACL evidence.",
           "type": "boolean"
         },
         "result": {
@@ -920,7 +923,7 @@
       ]
     },
     "currentSourceAclAuthorization": {
-      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, source_container_id, and source must match the corresponding decision resource fields and referenced snapshot; acl_policy_version must match the referenced snapshot; principal_id must match the decision principal; snapshot_id and result must match their sibling source_acl_ceiling values. Result equality is schema-enforced; the remaining equality checks are evaluator-owned and fail closed.",
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, source_container_id, and source must match the corresponding decision resource fields and referenced snapshot; acl_policy_version must match the referenced snapshot; principal_id must match the decision principal; external_identity_link_id must identify the retained link for the exact provider identity evaluated; snapshot_id and result must match their sibling source_acl_ceiling values. Result equality is schema-enforced; the remaining equality checks are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
@@ -931,6 +934,7 @@
         "connector_id",
         "source_container_id",
         "principal_id",
+        "external_identity_link_id",
         "source",
         "acl_policy_version",
         "observed_at",
@@ -958,10 +962,14 @@
         },
         "connector_id": { "$ref": "#/$defs/nonEmpty" },
         "source_container_id": {
-          "description": "Parent source container for the bare source id. It must match both resource.source_container_id and the referenced snapshot; equality is evaluator-owned and fails closed.",
+          "description": "Provider-owned parent container for the bare source id, or the provider-owned tenant or account identifier when no intermediate container exists. It must match both resource.source_container_id and the referenced snapshot; equality is evaluator-owned and fails closed.",
           "$ref": "#/$defs/nonEmpty"
         },
         "principal_id": { "$ref": "#/$defs/nonEmpty" },
+        "external_identity_link_id": {
+          "description": "Immutable retained identity-link record for the exact provider identity whose ACL was evaluated. It must resolve principal_id at evaluation_time; equality and temporal validity are evaluator-owned and fail closed.",
+          "$ref": "#/$defs/nonEmpty"
+        },
         "source": { "$ref": "#/$defs/sourceResource" },
         "acl_policy_version": {
           "description": "Connector ACL policy version in force when this current evidence was observed. It must match acl_policy_version on the corresponding adoc.source_acl_snapshot.v0 record; equality is evaluator-owned and fails closed.",
