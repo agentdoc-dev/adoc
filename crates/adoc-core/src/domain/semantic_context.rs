@@ -165,11 +165,26 @@ pub struct GraphCitationObject {
     pub evidence_count: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiffHunkCitation {
+    pub changed_source_id: String,
+    pub hunk_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceAssertionCitation {
+    pub source_assertion_id: String,
+    pub source_record_id: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct SemanticContextValidationBasis {
     pub evaluation_date: NaiveDate,
     pub graph_artifact_digest: Option<String>,
+    pub managed_revision_digest: Option<String>,
     pub graph_objects: Vec<GraphCitationObject>,
+    pub diff_hunks: Vec<DiffHunkCitation>,
+    pub source_assertions: Vec<SourceAssertionCitation>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,6 +196,14 @@ pub enum SemanticContextOutcome {
 }
 
 impl SemanticContextOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::Insufficient => "insufficient",
+            Self::Failed => "failed",
+        }
+    }
+
     pub fn diagnostic_code(self) -> Option<DiagnosticCode> {
         match self {
             Self::Ready => None,
@@ -286,6 +309,12 @@ pub enum SemanticContextError {
     },
     #[error("semantic context item '{handle_id}' references unknown class '{class_id}'")]
     UnknownClass { handle_id: String, class_id: String },
+    #[error(
+        "semantic context unavailability record '{record_id}' references unknown class '{class_id}'"
+    )]
+    UnknownUnavailabilityClass { record_id: String, class_id: String },
+    #[error("semantic context {field} must use canonical order")]
+    NonCanonicalOrder { field: String },
     #[error("semantic context class '{class_id}' must have a positive byte budget")]
     InvalidByteBudget { class_id: String },
     #[error("semantic context class '{class_id}' exceeds its {byte_budget}-byte budget")]
@@ -325,6 +354,8 @@ impl SemanticContextError {
             | Self::DuplicateAuthorizedScope { .. }
             | Self::UnauthorizedScope { .. }
             | Self::UnknownClass { .. }
+            | Self::UnknownUnavailabilityClass { .. }
+            | Self::NonCanonicalOrder { .. }
             | Self::InvalidByteBudget { .. }
             | Self::ByteBudgetExceeded { .. }
             | Self::DerivedStateMismatch
@@ -556,8 +587,8 @@ pub fn build_semantic_context(
             });
         }
         let coverage = coverage_by_class.get_mut(&record.class_id).ok_or_else(|| {
-            SemanticContextError::UnknownClass {
-                handle_id: record.record_id.clone(),
+            SemanticContextError::UnknownUnavailabilityClass {
+                record_id: record.record_id.clone(),
                 class_id: record.class_id.clone(),
             }
         })?;
@@ -641,6 +672,27 @@ pub fn validate_semantic_context(
             version: document.schema_version,
         });
     }
+    require_canonical_order(
+        "selection.authorized_scope",
+        &document.selection.authorized_scope,
+        |left, right| left <= right,
+    )?;
+    require_canonical_order(
+        "capability_policy.rules",
+        &document.capability_policy.rules,
+        |left, right| left.reason <= right.reason,
+    )?;
+    require_canonical_order(
+        "context_classes",
+        &document.context_classes,
+        |left, right| left.class_id <= right.class_id,
+    )?;
+    require_canonical_order("items", &document.items, |left, right| {
+        left.handle_id <= right.handle_id
+    })?;
+    require_canonical_order("unavailability", &document.unavailability, |left, right| {
+        left.record_id <= right.record_id
+    })?;
     let evaluation_date = NaiveDate::parse_from_str(&document.evaluation_date, "%Y-%m-%d")
         .map_err(|_| SemanticContextError::InvalidText {
             field: "evaluation_date".to_string(),
@@ -672,47 +724,109 @@ pub fn validate_semantic_context(
     {
         return Err(SemanticContextError::EvaluationDateMismatch);
     }
-    if let KnowledgeBasis::GraphArtifact { digest } = &context.basis.knowledge_basis {
-        if validation_basis.graph_artifact_digest.as_deref() != Some(digest.as_str()) {
+    let (basis_name, expected_digest, digest) = match &context.basis.knowledge_basis {
+        KnowledgeBasis::GraphArtifact { digest } => (
+            "graph artifact",
+            validation_basis.graph_artifact_digest.as_deref(),
+            digest,
+        ),
+        KnowledgeBasis::ManagedRevision { digest } => (
+            "managed revision",
+            validation_basis.managed_revision_digest.as_deref(),
+            digest,
+        ),
+    };
+    if expected_digest != Some(digest.as_str()) {
+        return Err(SemanticContextError::BasisMismatch {
+            message: format!("{basis_name} digest differs"),
+        });
+    }
+
+    let mut objects = BTreeMap::new();
+    for object in &validation_basis.graph_objects {
+        if objects.insert(object.object_id.as_str(), object).is_some() {
             return Err(SemanticContextError::BasisMismatch {
-                message: "graph artifact digest differs".to_string(),
+                message: "citation basis contains duplicate Object IDs".to_string(),
             });
         }
-        let mut objects = BTreeMap::new();
-        for object in &validation_basis.graph_objects {
-            if objects.insert(object.object_id.as_str(), object).is_some() {
-                return Err(SemanticContextError::BasisMismatch {
-                    message: "graph basis contains duplicate Object IDs".to_string(),
-                });
-            }
-        }
-        for item in &context.items {
-            let resolves = match &item.handle {
-                CitationHandle::KnowledgeObject {
-                    object_id,
-                    semantic_hash,
-                } => objects
-                    .get(object_id.as_str())
-                    .is_some_and(|object| object.semantic_hash == *semantic_hash),
-                CitationHandle::SourceBinding { object_id } => objects
-                    .get(object_id.as_str())
-                    .is_some_and(|object| object.has_source_binding),
-                CitationHandle::Evidence {
-                    object_id,
-                    evidence_index,
-                } => objects
-                    .get(object_id.as_str())
-                    .is_some_and(|object| (*evidence_index as usize) < object.evidence_count),
-                CitationHandle::DiffHunk { .. } | CitationHandle::SourceAssertion { .. } => true,
-            };
-            if !resolves {
-                return Err(SemanticContextError::UnresolvedCitation {
-                    handle_id: item.handle_id.clone(),
-                });
-            }
+    }
+    let diff_hunks: BTreeSet<_> = validation_basis
+        .diff_hunks
+        .iter()
+        .map(|citation| {
+            (
+                citation.changed_source_id.as_str(),
+                citation.hunk_digest.as_str(),
+            )
+        })
+        .collect();
+    if diff_hunks.len() != validation_basis.diff_hunks.len() {
+        return Err(SemanticContextError::BasisMismatch {
+            message: "citation basis contains duplicate diff hunks".to_string(),
+        });
+    }
+    let source_assertions: BTreeSet<_> = validation_basis
+        .source_assertions
+        .iter()
+        .map(|citation| {
+            (
+                citation.source_assertion_id.as_str(),
+                citation.source_record_id.as_str(),
+            )
+        })
+        .collect();
+    if source_assertions.len() != validation_basis.source_assertions.len() {
+        return Err(SemanticContextError::BasisMismatch {
+            message: "citation basis contains duplicate source assertions".to_string(),
+        });
+    }
+    for item in &context.items {
+        let resolves = match &item.handle {
+            CitationHandle::KnowledgeObject {
+                object_id,
+                semantic_hash,
+            } => objects
+                .get(object_id.as_str())
+                .is_some_and(|object| object.semantic_hash == *semantic_hash),
+            CitationHandle::SourceBinding { object_id } => objects
+                .get(object_id.as_str())
+                .is_some_and(|object| object.has_source_binding),
+            CitationHandle::Evidence {
+                object_id,
+                evidence_index,
+            } => objects
+                .get(object_id.as_str())
+                .is_some_and(|object| (*evidence_index as usize) < object.evidence_count),
+            CitationHandle::DiffHunk {
+                changed_source_id,
+                hunk_digest,
+            } => diff_hunks.contains(&(changed_source_id.as_str(), hunk_digest.as_str())),
+            CitationHandle::SourceAssertion {
+                source_assertion_id,
+                source_record_id,
+            } => source_assertions
+                .contains(&(source_assertion_id.as_str(), source_record_id.as_str())),
+        };
+        if !resolves {
+            return Err(SemanticContextError::UnresolvedCitation {
+                handle_id: item.handle_id.clone(),
+            });
         }
     }
     Ok(context)
+}
+
+fn require_canonical_order<T>(
+    field: &str,
+    values: &[T],
+    in_order: impl Fn(&T, &T) -> bool,
+) -> Result<(), SemanticContextError> {
+    if values.windows(2).all(|pair| in_order(&pair[0], &pair[1])) {
+        return Ok(());
+    }
+    Err(SemanticContextError::NonCanonicalOrder {
+        field: field.to_string(),
+    })
 }
 
 fn validate_revision(field: &str, revision: &ExactRevision) -> Result<(), SemanticContextError> {

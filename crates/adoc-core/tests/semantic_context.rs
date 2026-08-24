@@ -1,10 +1,10 @@
 use adoc_core::{
     CapabilityPolicy, CapabilityPolicyRule, CitationHandle, ContextClass, ContextRequirement,
-    ContextUnavailability, ContextUnavailabilityKind, DiagnosticCode, ExactRevision,
-    GraphCitationObject, KnowledgeBasis, SemanticContextBasis, SemanticContextInput,
+    ContextUnavailability, ContextUnavailabilityKind, DiagnosticCode, DiffHunkCitation,
+    ExactRevision, GraphCitationObject, KnowledgeBasis, SemanticContextBasis, SemanticContextInput,
     SemanticContextItem, SemanticContextOutcome, SemanticContextSelection,
-    SemanticContextValidationBasis, UnavailabilityOutcome, UnavailabilityReason,
-    build_semantic_context, validate_semantic_context,
+    SemanticContextValidationBasis, SourceAssertionCitation, UnavailabilityOutcome,
+    UnavailabilityReason, build_semantic_context, validate_semantic_context,
 };
 use chrono::NaiveDate;
 use serde_json::json;
@@ -83,6 +83,7 @@ fn validation_basis() -> SemanticContextValidationBasis {
     SemanticContextValidationBasis {
         evaluation_date: NaiveDate::from_ymd_opt(2026, 8, 24).expect("valid date"),
         graph_artifact_digest: Some(GRAPH_DIGEST.to_string()),
+        managed_revision_digest: None,
         graph_objects: vec![
             GraphCitationObject {
                 object_id: "billing.alpha".to_string(),
@@ -97,6 +98,14 @@ fn validation_basis() -> SemanticContextValidationBasis {
                 evidence_count: 1,
             },
         ],
+        diff_hunks: vec![DiffHunkCitation {
+            changed_source_id: "docs/billing.adoc".to_string(),
+            hunk_digest: ASSESSMENT_DIGEST.to_string(),
+        }],
+        source_assertions: vec![SourceAssertionCitation {
+            source_assertion_id: "assertion-1".to_string(),
+            source_record_id: "record-1".to_string(),
+        }],
     }
 }
 
@@ -177,6 +186,43 @@ fn semantic_context_rejects_unknown_contract_versions_exactly() {
 }
 
 #[test]
+fn managed_revision_context_requires_its_exact_digest_and_citation_projection() {
+    let mut semantic_input = input(vec![item(
+        "managed-object",
+        "billing.alpha",
+        ASSESSMENT_DIGEST,
+    )]);
+    semantic_input.basis.knowledge_basis = KnowledgeBasis::ManagedRevision {
+        digest: ASSESSMENT_DIGEST.to_string(),
+    };
+    let serialized = build_semantic_context(semantic_input)
+        .expect("managed context builds")
+        .to_canonical_json()
+        .expect("serializes");
+    let mut basis = validation_basis();
+    basis.graph_artifact_digest = None;
+
+    let missing = validate_semantic_context(serialized.as_bytes(), &basis)
+        .expect_err("missing managed basis rejected");
+    assert_eq!(
+        missing.diagnostic_code(),
+        DiagnosticCode::SemanticContextBasisMismatch
+    );
+
+    basis.managed_revision_digest = Some(GRAPH_DIGEST.to_string());
+    let mismatched = validate_semantic_context(serialized.as_bytes(), &basis)
+        .expect_err("mismatched managed basis rejected");
+    assert_eq!(
+        mismatched.diagnostic_code(),
+        DiagnosticCode::SemanticContextBasisMismatch
+    );
+
+    basis.managed_revision_digest = Some(ASSESSMENT_DIGEST.to_string());
+    validate_semantic_context(serialized.as_bytes(), &basis)
+        .expect("matching managed basis and citation projection validate");
+}
+
+#[test]
 fn semantic_context_round_trips_every_closed_citation_handle_kind() {
     let handles = vec![
         CitationHandle::DiffHunk {
@@ -231,6 +277,40 @@ fn semantic_context_round_trips_every_closed_citation_handle_kind() {
         "evidence",
     ] {
         assert!(serialized.contains(&format!("\"kind\": \"{kind}\"")));
+    }
+}
+
+#[test]
+fn diff_hunk_and_source_assertion_handles_must_exist_in_the_exact_projection() {
+    for handle in [
+        CitationHandle::DiffHunk {
+            changed_source_id: "docs/invented.adoc".to_string(),
+            hunk_digest: ASSESSMENT_DIGEST.to_string(),
+        },
+        CitationHandle::SourceAssertion {
+            source_assertion_id: "invented-assertion".to_string(),
+            source_record_id: "invented-record".to_string(),
+        },
+    ] {
+        let item = SemanticContextItem {
+            handle_id: "invented".to_string(),
+            class_id: "changed_knowledge".to_string(),
+            scope_ref: "repo:billing".to_string(),
+            handle,
+            content: json!({"text": "untrusted context"}),
+            truncated: false,
+        };
+        let serialized = build_semantic_context(input(vec![item]))
+            .expect("context builds")
+            .to_canonical_json()
+            .expect("serializes");
+
+        let error = validate_semantic_context(serialized.as_bytes(), &validation_basis())
+            .expect_err("invented citation rejected");
+        assert_eq!(
+            error.diagnostic_code(),
+            DiagnosticCode::SemanticContextBasisMismatch
+        );
     }
 }
 
@@ -355,7 +435,30 @@ fn every_required_unavailability_reason_obeys_the_capability_policy() {
 }
 
 #[test]
+fn unknown_unavailability_class_names_the_record_not_an_item() {
+    let mut semantic_input = input(vec![item("handle-a", "billing.alpha", ASSESSMENT_DIGEST)]);
+    semantic_input.unavailability = vec![ContextUnavailability {
+        record_id: "unavailable-7".to_string(),
+        class_id: "missing-class".to_string(),
+        kind: ContextUnavailabilityKind::Omission,
+        reason: UnavailabilityReason::Permission,
+    }];
+
+    let error = build_semantic_context(semantic_input).expect_err("unknown class rejected");
+    assert_eq!(
+        error.to_string(),
+        "semantic context unavailability record 'unavailable-7' references unknown class 'missing-class'"
+    );
+}
+
+#[test]
 fn semantic_context_outcomes_map_to_stable_diagnostics() {
+    assert_eq!(SemanticContextOutcome::Ready.as_str(), "ready");
+    assert_eq!(
+        SemanticContextOutcome::Insufficient.as_str(),
+        "insufficient"
+    );
+    assert_eq!(SemanticContextOutcome::Failed.as_str(), "failed");
     assert_eq!(
         SemanticContextOutcome::Insufficient.diagnostic_code(),
         Some(DiagnosticCode::SemanticContextInsufficientContext)
@@ -390,6 +493,23 @@ fn semantic_context_sorts_authorized_scope_and_rejects_items_outside_it() {
 }
 
 #[test]
+fn semantic_context_validator_rejects_noncanonical_input_order() {
+    let context = build_semantic_context(input(vec![
+        item("handle-b", "billing.beta", GRAPH_DIGEST),
+        item("handle-a", "billing.alpha", ASSESSMENT_DIGEST),
+    ]))
+    .expect("context builds");
+    let mut document: serde_json::Value =
+        serde_json::from_str(&context.to_canonical_json().expect("serializes")).expect("json");
+    document["items"].as_array_mut().expect("items").swap(0, 1);
+    let shuffled = serde_json::to_vec(&document).expect("serializes");
+
+    let error = validate_semantic_context(&shuffled, &validation_basis())
+        .expect_err("noncanonical order rejected");
+    assert!(error.to_string().contains("items must use canonical order"));
+}
+
+#[test]
 fn graph_backed_context_rejects_unresolved_source_binding_coordinates() {
     let mut binding = item("binding", "billing.ready", ASSESSMENT_DIGEST);
     binding.handle = CitationHandle::SourceBinding {
@@ -400,12 +520,15 @@ fn graph_backed_context_rejects_unresolved_source_binding_coordinates() {
     let basis = SemanticContextValidationBasis {
         evaluation_date: NaiveDate::from_ymd_opt(2026, 8, 24).expect("valid date"),
         graph_artifact_digest: Some(GRAPH_DIGEST.to_string()),
+        managed_revision_digest: None,
         graph_objects: vec![GraphCitationObject {
             object_id: "billing.ready".to_string(),
             semantic_hash: ASSESSMENT_DIGEST.to_string(),
             has_source_binding: false,
             evidence_count: 0,
         }],
+        diff_hunks: Vec::new(),
+        source_assertions: Vec::new(),
     };
 
     let error = validate_semantic_context(serialized.as_bytes(), &basis)
