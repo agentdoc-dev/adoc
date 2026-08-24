@@ -1898,11 +1898,52 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut no_grant_with_no_membership_facts = denied.clone();
     no_grant_with_no_membership_facts["membership_evidence"] = json!("current");
     no_grant_with_no_membership_facts["membership_absence_evidence"] = json!([]);
+    let external_unavailability_evidence = json!([{
+        "group_id": "group-1",
+        "membership_source": "external",
+        "binding_id": "github-team-binding-1",
+        "source_kind": "github_team",
+        "external_identity_link_id": "external-identity-link-1",
+        "state": "connector_read_failed",
+        "state_record_id": "membership-read-failure-1"
+    }]);
     let mut membership_evidence_unavailable = denied.clone();
     membership_evidence_unavailable["consequential"] = json!(true);
     membership_evidence_unavailable["result"] = json!("insufficient_context");
     membership_evidence_unavailable["reason"] = json!("membership_evidence_unavailable");
     membership_evidence_unavailable["membership_evidence"] = json!("insufficient_context");
+    membership_evidence_unavailable["membership_unavailability_evidence"] =
+        external_unavailability_evidence.clone();
+    let mut manual_membership_evidence_unavailable = membership_evidence_unavailable.clone();
+    manual_membership_evidence_unavailable["membership_unavailability_evidence"] = json!([{
+        "group_id": "group-2",
+        "membership_source": "manual",
+        "state": "lifecycle_unavailable",
+        "state_record_id": "manual-membership-read-failure-1"
+    }]);
+    let mut membership_evidence_unavailable_without_provenance =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_provenance
+        .as_object_mut()
+        .expect("decision object")
+        .remove("membership_unavailability_evidence");
+    let mut membership_evidence_unavailable_with_empty_provenance =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_with_empty_provenance["membership_unavailability_evidence"] =
+        json!([]);
+    let mut resolved_membership_with_unavailability = decision.clone();
+    resolved_membership_with_unavailability["membership_unavailability_evidence"] =
+        external_unavailability_evidence.clone();
+    let mut membership_evidence_unavailable_without_state_record =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_state_record["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("unavailability evidence object")
+        .remove("state_record_id");
+    let mut membership_evidence_unavailable_with_unknown_state =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_with_unknown_state["membership_unavailability_evidence"][0]["state"] =
+        json!("silent_retry");
     let mut mixed_group_membership_evidence_unavailable = membership_evidence_unavailable.clone();
     mixed_group_membership_evidence_unavailable["grants"] = external_group_grant["grants"].clone();
     mixed_group_membership_evidence_unavailable["grants"][0]["permission"] =
@@ -1931,6 +1972,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut no_grant_with_unavailable_membership_evidence = denied.clone();
     no_grant_with_unavailable_membership_evidence["membership_evidence"] =
         json!("insufficient_context");
+    no_grant_with_unavailable_membership_evidence["membership_unavailability_evidence"] =
+        external_unavailability_evidence.clone();
 
     let mut insufficient = decision.clone();
     insufficient["source_acl_ceiling"] = json!({
@@ -2200,13 +2243,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
     direct_deny["result"] = json!("deny");
     direct_deny["reason"] = json!("explicit_deny");
     direct_deny["basis"]["effect"] = json!("deny");
-    let mut explicit_deny_with_unresolved_membership = direct_deny.clone();
-    explicit_deny_with_unresolved_membership["grants"]
-        .as_array_mut()
-        .expect("grants array")
-        .push(external_group_grant["grants"][0].clone());
-    explicit_deny_with_unresolved_membership["membership_evidence"] = json!("insufficient_context");
-
     let mut direct_deny_without_expiry = direct_deny.clone();
     direct_deny_without_expiry["grants"][0]
         .as_object_mut()
@@ -2336,13 +2372,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
     });
     let mut source_acl_denied_with_basis = source_acl_denied.clone();
     source_acl_denied_with_basis["basis"] = decision["basis"].clone();
-    let mut hard_deny_with_unresolved_membership = hard_deny.clone();
-    hard_deny_with_unresolved_membership["grants"] = external_group_grant["grants"].clone();
-    hard_deny_with_unresolved_membership["membership_evidence"] = json!("insufficient_context");
-    let mut source_acl_denied_with_unresolved_membership = source_acl_denied.clone();
-    source_acl_denied_with_unresolved_membership["grants"] = external_group_grant["grants"].clone();
-    source_acl_denied_with_unresolved_membership["membership_evidence"] =
-        json!("insufficient_context");
     let mut false_source_acl_unavailable_reason = insufficient.clone();
     false_source_acl_unavailable_reason["source_acl_ceiling"] = json!({
         "required": false,
@@ -2361,6 +2390,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     visibility_denied["reason"] = json!("visibility_denied");
     let mut unresolved_membership_at_visibility_gate = external_group_grant.clone();
     unresolved_membership_at_visibility_gate["membership_evidence"] = json!("insufficient_context");
+    unresolved_membership_at_visibility_gate["membership_unavailability_evidence"] =
+        external_unavailability_evidence.clone();
     unresolved_membership_at_visibility_gate["visibility"] = json!("deny");
     unresolved_membership_at_visibility_gate["result"] = json!("deny");
     unresolved_membership_at_visibility_gate["reason"] = json!("visibility_denied");
@@ -2534,6 +2565,32 @@ fn authorization_decision_schema_pins_replay_bindings() {
     invalid_time_with_denied_source_acl["evaluation_time"] = json!("");
     invalid_time_with_denied_source_acl["result"] = json!("insufficient_context");
     invalid_time_with_denied_source_acl["reason"] = json!("evaluation_time_invalid");
+
+    for (reason, base) in [
+        ("identity_context_missing", &identity_context_missing),
+        ("identity_expired", &identity_expired),
+        ("evaluation_time_invalid", &invalid_time),
+        ("hard_deny", &hard_deny),
+        ("source_acl_denied", &source_acl_denied),
+        ("source_acl_unavailable", &insufficient),
+        ("explicit_deny", &direct_deny),
+    ] {
+        let mut unresolved = base.clone();
+        if reason == "explicit_deny" {
+            unresolved["grants"]
+                .as_array_mut()
+                .expect("grants array")
+                .push(external_group_grant["grants"][0].clone());
+        } else {
+            unresolved["grants"] = external_group_grant["grants"].clone();
+        }
+        unresolved["membership_evidence"] = json!("insufficient_context");
+        unresolved["membership_unavailability_evidence"] = external_unavailability_evidence.clone();
+        assert!(
+            schema_accepts("adoc.authorization_decision.v0.schema.json", &unresolved),
+            "reason {reason:?} must retain precedence over unresolved membership"
+        );
+    }
 
     let mut allow_with_empty_evaluation_time = decision.clone();
     allow_with_empty_evaluation_time["evaluation_time"] = json!("");
@@ -2776,11 +2833,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ),
         ("time-bounded human direct deny", direct_deny, true),
         (
-            "explicit deny retains precedence over unresolved membership",
-            explicit_deny_with_unresolved_membership,
-            true,
-        ),
-        (
             "direct deny without expiry",
             direct_deny_without_expiry,
             false,
@@ -2927,6 +2979,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         (
+            "manual membership evidence unavailable",
+            manual_membership_evidence_unavailable,
+            true,
+        ),
+        (
             "membership evidence unavailable with another resolved group",
             mixed_group_membership_evidence_unavailable,
             true,
@@ -2959,18 +3016,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         (
-            "hard deny retains precedence over unresolved membership",
-            hard_deny_with_unresolved_membership,
-            true,
-        ),
-        (
             "source ACL denied reason matches input",
             source_acl_denied,
-            true,
-        ),
-        (
-            "source ACL deny retains precedence over unresolved membership",
-            source_acl_denied_with_unresolved_membership,
             true,
         ),
         (
@@ -3331,6 +3378,31 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "membership-evidence-unavailable reason with current status",
             membership_evidence_unavailable_with_current_input,
+            false,
+        ),
+        (
+            "unavailable membership without retained provenance",
+            membership_evidence_unavailable_without_provenance,
+            false,
+        ),
+        (
+            "unavailable membership with empty retained provenance",
+            membership_evidence_unavailable_with_empty_provenance,
+            false,
+        ),
+        (
+            "resolved membership cannot carry unavailability provenance",
+            resolved_membership_with_unavailability,
+            false,
+        ),
+        (
+            "unavailable membership without a retained state record",
+            membership_evidence_unavailable_without_state_record,
+            false,
+        ),
+        (
+            "unavailable membership with an unknown state",
+            membership_evidence_unavailable_with_unknown_state,
             false,
         ),
         (

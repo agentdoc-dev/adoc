@@ -692,6 +692,61 @@ fn permission_primitives_match_the_e2_2_registry() {
 }
 
 #[test]
+fn membership_unavailability_precedence_classifies_every_reason() {
+    let schema: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
+    ))
+    .expect("authorization decision schema is json");
+    let precedence =
+        schema["allOf"]
+            .as_array()
+            .expect("authorization decision allOf")
+            .iter()
+            .find(|branch| {
+                branch["if"]["properties"]["membership_evidence"]["const"] == "insufficient_context"
+                    && branch["if"]["properties"]["reason"]["not"]["enum"].is_array()
+            })
+            .expect("unavailable membership reason-precedence branch")["if"]["properties"]["reason"]
+            ["not"]["enum"]
+            .as_array()
+            .expect("precedence reasons are an enum")
+            .iter()
+            .map(|reason| reason.as_str().expect("reason is a string").to_owned())
+            .collect::<BTreeSet<_>>();
+    let downstream = [
+        "membership_evidence_unavailable",
+        "no_grant",
+        "visibility_denied",
+        "visibility_unavailable",
+        "action_policy_denied",
+        "action_policy_unavailable",
+        "allowed",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect::<BTreeSet<_>>();
+    let reasons = schema["properties"]["reason"]["enum"]
+        .as_array()
+        .expect("decision reasons are an enum")
+        .iter()
+        .map(|reason| reason.as_str().expect("reason is a string").to_owned())
+        .collect::<BTreeSet<_>>();
+
+    assert!(
+        precedence.is_disjoint(&downstream),
+        "a reason cannot sit on both sides of the scoped-grants stage"
+    );
+    assert_eq!(
+        precedence
+            .union(&downstream)
+            .cloned()
+            .collect::<BTreeSet<_>>(),
+        reasons,
+        "every reason must be classified relative to the scoped-grants stage"
+    );
+}
+
+#[test]
 fn group_vocabularies_match_the_e2_4_registry() {
     let registry = registry();
     let schema: serde_json::Value = serde_json::from_str(&read_repo_doc(
@@ -854,11 +909,15 @@ fn group_retention_rules_match_the_e2_4_authority() {
         .expect("membership freshness deadline is documented");
     assert!(
         fresh_until.contains("versioned freshness policy retained by the exact binding")
-            && fresh_until.contains("requires fresh_until to equal that recomputation")
-            && fresh_until.contains("evaluation_time does not exceed fresh_until")
+            && fresh_until
+                .contains("requires fresh_until to equal the historical-version recomputation")
+            && fresh_until.contains("shorter of fresh_until")
+            && fresh_until
+                .contains("shortened policy therefore caps existing observations immediately")
             && fresh_until.contains("connector unavailability cannot extend")
-            && fresh_until.contains("fresh_until must follow effective_at"),
-        "membership freshness must be binding-owned, bounded, and fail closed"
+            && fresh_until.contains("effective deadline must follow effective_at")
+            && fresh_until.contains("retained fresh_until must follow effective_at"),
+        "membership freshness must be binding-owned, tightening-aware, bounded, and fail closed"
     );
     let freshness_history_claim = "complete effective membership-freshness policy history";
     let scheduled_refresh_claim =
@@ -871,6 +930,37 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "complete effective group-name history, each version recording its effective instant";
     let membership_absence_claim =
         "`no_grant` with `current` retains `membership_absence_evidence`";
+    let membership_unavailability_claim =
+        "`insufficient_context` status retains `membership_unavailability_evidence`";
+    let unavailability = &schema["properties"]["membership_unavailability_evidence"];
+    assert_eq!(unavailability["minItems"], 1);
+    assert_eq!(
+        unavailability["items"]["$ref"],
+        "#/$defs/membershipUnavailabilityEvidence"
+    );
+    let unavailable_external = schema["$defs"]["membershipUnavailabilityEvidence"]["oneOf"]
+        .as_array()
+        .expect("membership unavailability evidence is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
+        .expect("membership unavailability evidence has an external branch");
+    for field in [
+        "group_id",
+        "binding_id",
+        "source_kind",
+        "external_identity_link_id",
+        "state",
+        "state_record_id",
+    ] {
+        assert!(
+            unavailable_external["required"]
+                .as_array()
+                .expect("external unavailability required fields")
+                .iter()
+                .any(|required| required == field),
+            "external unavailability must retain {field}"
+        );
+    }
     let effective_at = observation["effective_at"]["description"]
         .as_str()
         .expect("membership effective time is documented");
@@ -963,35 +1053,43 @@ fn group_retention_rules_match_the_e2_4_authority() {
             && a7.contains(source_subject_claim),
         "membership replay must bind source evidence to the binding and observed principal"
     );
-    let delayed_positive_claim = "delayed or reordered positive event";
+    let event_polarity_claim = "polarity only triggers";
+    let positive_absence_claim =
+        "positive event whose read confirms absence records a negative observation";
     assert!(
         observation["observed_at"]["description"]
             .as_str()
             .expect("membership observation time is documented")
-            .contains(delayed_positive_claim)
-            && a7.contains(delayed_positive_claim),
-        "positive events must not supersede revocation without a current-state read"
-    );
-    let delayed_negative_claim = "delayed or reordered removal event";
-    let negative_confirmation_claim = "negative observation only after that read confirms absence";
-    let stale_removal_claim = "removal event whose read still shows membership";
-    assert!(
-        observation["observed_at"]["description"]
-            .as_str()
-            .expect("membership observation time is documented")
-            .contains(delayed_negative_claim)
+            .contains(event_polarity_claim)
             && observation["observed_at"]["description"]
                 .as_str()
                 .expect("membership observation polarity is documented")
-                .contains(negative_confirmation_claim)
+                .contains(positive_absence_claim)
+            && a7.contains(event_polarity_claim)
+            && a7.contains(positive_absence_claim),
+        "current-state reads, not event polarity, must determine membership observations"
+    );
+    let removal_membership_claim =
+        "removal event whose read still shows membership records a positive observation";
+    let contradiction_claim = "contradiction is retained and operator-visible";
+    let resync_bound_claim = "next scheduled resynchronization bounds revocation propagation";
+    assert!(
+        observation["observed_at"]["description"]
+            .as_str()
+            .expect("membership observation time is documented")
+            .contains(removal_membership_claim)
             && observation["observed_at"]["description"]
                 .as_str()
-                .expect("stale removal suppression is documented")
-                .contains(stale_removal_claim)
-            && a7.contains(delayed_negative_claim)
-            && a7.contains(negative_confirmation_claim)
-            && a7.contains(stale_removal_claim),
-        "negative events must not fabricate absence without a current-state read"
+                .expect("event contradiction retention is documented")
+                .contains(contradiction_claim)
+            && observation["observed_at"]["description"]
+                .as_str()
+                .expect("revocation propagation bound is documented")
+                .contains(resync_bound_claim)
+            && a7.contains(removal_membership_claim)
+            && a7.contains(contradiction_claim)
+            && a7.contains(resync_bound_claim),
+        "contradicted removals must remain replayable, visible, and propagation-bounded"
     );
     let transition_latitude_claim = "transition sweep that opened the epoch";
     assert!(
@@ -1025,12 +1123,12 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "the E2.4 exit gate must retain source timing endpoints"
     );
     assert!(
-        e2_4.contains(delayed_negative_claim),
-        "the E2.4 exit gate must require current-state confirmation of negative events"
-    );
-    assert!(
-        e2_4.contains(negative_confirmation_claim) && e2_4.contains(stale_removal_claim),
-        "the E2.4 exit gate must distinguish confirmed absence from stale removal"
+        e2_4.contains(event_polarity_claim)
+            && e2_4.contains(positive_absence_claim)
+            && e2_4.contains(removal_membership_claim)
+            && e2_4.contains(contradiction_claim)
+            && e2_4.contains(resync_bound_claim),
+        "the E2.4 exit gate must make current state authoritative and bound contradictions"
     );
     let empty_absence_claim = "necessary but not sufficient condition for an empty array";
     assert!(
@@ -1051,9 +1149,10 @@ fn group_retention_rules_match_the_e2_4_authority() {
         for claim in [
             "versioned freshness policy retained by the exact binding",
             "requires `fresh_until` to equal that recomputation",
-            "`evaluation_time` does not exceed `fresh_until`",
+            "shorter of retained `fresh_until`",
+            "shorter policy caps existing observations immediately",
             "connector unavailability cannot extend",
-            "`fresh_until` must follow `effective_at`",
+            "effective deadline must follow `effective_at`",
             freshness_history_claim,
             scheduled_refresh_claim,
             distinct_policy_claim,
@@ -1061,6 +1160,7 @@ fn group_retention_rules_match_the_e2_4_authority() {
             membership_unavailable_claim,
             group_name_history_claim,
             membership_absence_claim,
+            membership_unavailability_claim,
         ] {
             assert!(
                 surface.contains(claim),
@@ -1085,10 +1185,6 @@ fn group_retention_rules_match_the_e2_4_authority() {
     assert!(
         e2_4.contains("does not equal the commit or completion instant of the event or run identified by that same"),
         "E2.4.T2 must reject an observation made effective by a different event or run"
-    );
-    assert!(
-        e2_4.contains(delayed_positive_claim),
-        "E2.4.T2 must reject delayed positive membership events"
     );
     assert!(
         e2_4.contains(transition_latitude_claim),
