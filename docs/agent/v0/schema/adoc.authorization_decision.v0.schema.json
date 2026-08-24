@@ -45,11 +45,11 @@
       "items": { "$ref": "#/$defs/grant" }
     },
     "membership_evidence": {
-      "description": "Required scoped-grants-stage input status. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established; not_applicable means no membership input could affect the scoped grants. A group-bearing grant requires current or insufficient_context and therefore forbids not_applicable. no_grant with current requires immutable membership_absence_evidence; an empty array records that the stage ran with every relevant membership present but no applicable permission grant. no_grant with not_applicable forbids the field. membership_evidence_unavailable requires insufficient_context, so replay can distinguish uncertainty from confirmed absence.",
+      "description": "Required scoped-grants-stage input status. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established and requires reason membership_evidence_unavailable; not_applicable means no membership input could affect the scoped grants. A group-bearing grant requires current or insufficient_context and therefore forbids not_applicable. no_grant with current requires immutable membership_absence_evidence; an empty array records that present memberships are retained by group-bearing grants but none grants the requested permission. no_grant with not_applicable forbids the field.",
       "enum": ["current", "insufficient_context", "not_applicable"]
     },
     "membership_absence_evidence": {
-      "description": "Exact retained negative membership facts used by a current no_grant decision. The required array contains every relevant manual group or grant-conferring external binding whose confirmed absence affected scoped-grant evaluation; it is empty when all relevant membership facts were established present but none of their grants covered the permission. Evaluator-owned completeness checks fail closed. Manual entries replay against retained membership lifecycle history for the envelope principal and group at evaluation_time. External entries retain the exact negative observation, binding epoch, identity link, and source event or run.",
+      "description": "Exact retained negative membership facts used by a current no_grant decision. The required array contains every relevant manual group or grant-conferring external binding whose confirmed absence affected scoped-grant evaluation; it is empty only when present memberships are retained by group-bearing grants but none grants the requested permission. Evaluator-owned completeness checks fail closed. Manual entries replay against retained membership lifecycle history for the envelope principal and group at evaluation_time. External entries retain the exact negative observation, binding epoch, identity link, and source event or run.",
       "type": "array",
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/membershipAbsenceEvidence" }
@@ -359,6 +359,19 @@
     {
       "if": {
         "properties": {
+          "membership_evidence": { "const": "insufficient_context" }
+        },
+        "required": ["membership_evidence"]
+      },
+      "then": {
+        "properties": {
+          "reason": { "const": "membership_evidence_unavailable" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "reason": { "const": "membership_evidence_unavailable" }
         },
         "required": ["reason"]
@@ -403,7 +416,20 @@
               "properties": { "membership_evidence": { "const": "current" } },
               "required": ["membership_evidence"]
             },
-            "then": { "required": ["membership_absence_evidence"] },
+            "then": {
+              "required": ["membership_absence_evidence"],
+              "if": {
+                "properties": {
+                  "grants": { "contains": { "required": ["group"] } }
+                },
+                "required": ["grants"]
+              },
+              "else": {
+                "properties": {
+                  "membership_absence_evidence": { "minItems": 1 }
+                }
+              }
+            },
             "else": {
               "not": { "required": ["membership_absence_evidence"] }
             }
@@ -1027,7 +1053,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
-          "description": "Source evidence time used for membership freshness. An event-driven positive observation carries the current-state source read time prompted by its event, never the webhook delivery time; a delayed or reordered positive event that the current-state read no longer confirms produces no positive observation. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership. For claim-only oidc_group, observed_at is the token issuance instant retained by source_event_id; validation of that freshly issued token at authentication is the current-state read.",
+          "description": "Source evidence time used for membership freshness. An event-driven positive observation carries the current-state source read time prompted by its event, never the webhook delivery time; a delayed or reordered positive event that the current-state read no longer confirms produces no positive observation. A delayed or reordered removal event that the current-state read no longer confirms produces no negative observation. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership. For claim-only oidc_group, observed_at is the token issuance instant retained by source_event_id; validation of that freshly issued token at authentication is the current-state read.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "effective_at": {
