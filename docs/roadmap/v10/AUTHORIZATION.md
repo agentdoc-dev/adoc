@@ -154,7 +154,9 @@ Every action records both:
 - stable AgentDoc workspace principal;
 - exact external identity/session/workload used.
 
-Unlinking revokes future use but does not rewrite history. Shared/bot accounts map to service/workload/agent principals rather than human principals. A delegated workload uses the provider identity linked to the effective workload or service principal for source ACL checks; its human or service delegator remains independently attributable through the delegation chain.
+Unlinking revokes future use but does not rewrite history. Shared/bot accounts map to service/workload/agent principals rather than human principals.
+
+A delegated workload uses the provider identity linked to the effective workload or service principal for source ACL checks; its human or service delegator remains independently attributable through the delegation chain.
 
 ## A6. Global account plus workspace-scoped principals
 
