@@ -134,9 +134,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                     mut authorized_scope,
                                     mut graph_object_contexts,
                                     Some(capability_policy),
-                                ) if !context_classes.is_empty()
-                                    && !authorized_scope.is_empty() =>
-                                {
+                                ) if !context_classes.is_empty() => {
                                     context_classes
                                         .sort_by(|left, right| left.class_id.cmp(&right.class_id));
                                     if context_classes

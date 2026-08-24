@@ -3044,15 +3044,6 @@ fn check_receipt_emits_the_semantic_context_golden_byte_for_byte() {
         .output()
         .expect("adoc build runs");
     assert!(build.status.success(), "stderr:\n{}", stderr(&build));
-    let graph: Value =
-        serde_json::from_str(&fs::read_to_string(&graph_path).expect("graph artifact is readable"))
-            .expect("graph artifact is json");
-    let object = graph["nodes"]
-        .as_array()
-        .expect("nodes")
-        .iter()
-        .find(|node| node["id"] == "billing.ready")
-        .expect("billing object");
     let digest = format!("sha256:{}", "a".repeat(64));
     let semantic_context = adoc_core::build_semantic_context(adoc_core::SemanticContextInput {
         evaluation_date: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date"),
@@ -3082,7 +3073,7 @@ fn check_receipt_emits_the_semantic_context_golden_byte_for_byte() {
         selection: adoc_core::SemanticContextSelection {
             algorithm: "changed-only".to_string(),
             version: "1".to_string(),
-            authorized_scope: vec!["repo:billing".to_string()],
+            authorized_scope: Vec::new(),
         },
         capability_policy: adoc_core::CapabilityPolicy {
             version: "semantic-context-policy-v1".to_string(),
@@ -3105,22 +3096,7 @@ fn check_receipt_emits_the_semantic_context_golden_byte_for_byte() {
             requirement: adoc_core::ContextRequirement::Optional,
             byte_budget: 4096,
         }],
-        items: vec![adoc_core::SemanticContextItem {
-            handle_id: "billing-ready".to_string(),
-            class_id: "changed_source".to_string(),
-            scope_ref: "repo:billing".to_string(),
-            handle: adoc_core::CitationHandle::KnowledgeObject {
-                object_id: "billing.ready".to_string(),
-                semantic_hash: object["content_hash"]
-                    .as_str()
-                    .expect("content hash")
-                    .to_string(),
-            },
-            content: serde_json::json!({
-                "body": object["body"].as_str().expect("object body")
-            }),
-            truncated: false,
-        }],
+        items: Vec::new(),
         unavailability: Vec::new(),
     })
     .expect("semantic context builds")
@@ -3156,10 +3132,6 @@ fn check_receipt_emits_the_semantic_context_golden_byte_for_byte() {
             "1",
             "--semantic-context-class",
             OPTIONAL_SEMANTIC_CONTEXT_CLASS_JSON,
-            "--semantic-authorized-scope",
-            "repo:billing",
-            "--semantic-object-context",
-            SEMANTIC_OBJECT_CONTEXT_JSON,
             "--semantic-capability-policy",
             SEMANTIC_POLICY_JSON,
             "--semantic-context",
@@ -3223,7 +3195,6 @@ fn semantic_context_requires_complete_validation_basis() {
         "--semantic-selection-algorithm",
         "--semantic-selection-version",
         "--semantic-context-class",
-        "--semantic-authorized-scope",
         "--semantic-capability-policy",
     ] {
         assert!(error.contains(missing), "missing {missing} in:\n{error}");

@@ -56,7 +56,8 @@ When --semantic-context is supplied, receipt mode validates its exact
 revision, digest, completeness, authorized scope, and closed citations.
 The revision, assessment, selection, context-class, authorized-scope, object-
 context, and capability-policy flags are trusted expectations; repeat scope
-and object-context flags as needed. They are never inferred from context.
+and object-context flags as needed. Scope may be omitted when none is
+authorized. Trusted expectations are never inferred from context.
 Object-context may be omitted for citation-free contexts; any included
 citation without a trusted mapping fails closed.
 Graph-backed contexts require the exact --context-artifact. The local CLI
@@ -514,7 +515,6 @@ pub(crate) enum Commands {
                 "semantic_selection_algorithm",
                 "semantic_selection_version",
                 "semantic_context_class",
-                "semantic_authorized_scope",
                 "semantic_capability_policy"
             ]
         )]
