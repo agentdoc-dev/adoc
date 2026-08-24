@@ -866,7 +866,10 @@
           "description": "Immutable upstream connector event or synchronization run that carried this membership observation, retained so replay can re-derive the observation from source. A resynchronization sweep records one identifier for the run and cites it from every observation it produces.",
           "$ref": "#/$defs/nonEmpty"
         },
-        "observed_at": { "$ref": "#/$defs/rfc3339Timestamp" },
+        "observed_at": {
+          "description": "Instant this membership observation was recorded. An event-driven observation carries the instant the source event was observed; an observation produced by a resynchronization sweep carries the instant that run completed, which is the start of the epoch it records into.",
+          "$ref": "#/$defs/rfc3339Timestamp"
+        },
         "member_present": { "const": true },
         "nested": { "const": false }
       }

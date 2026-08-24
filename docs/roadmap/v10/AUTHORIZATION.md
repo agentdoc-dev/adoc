@@ -202,7 +202,7 @@ External binding records, membership observations, and their source events or sy
 
 External binding records retain their complete mode history, so replay can resolve the mode epoch in effect at each decision's evaluation time.
 
-Reconfiguration to `suggestion_only` or `disabled` takes effect immediately. A binding-mode reconfiguration between grant-conferring modes takes effect only when its resynchronization completes; until then the binding remains under the prior epoch. Completion starts the new epoch and records a fresh membership observation for every principal the source currently reports, with `observed_at` at or after the epoch boundary; external membership confers grants again only from an observation recorded within that epoch.
+Reconfiguration to `suggestion_only` or `disabled` takes effect immediately. A binding-mode reconfiguration to a grant-conferring mode takes effect only when its resynchronization completes; until then the binding remains under the prior epoch. Completion starts the new epoch and records a fresh membership observation for every principal the source currently reports, with `observed_at` at or after the epoch boundary; external membership confers grants again only from an observation recorded within that epoch.
 
 Nested-group behavior is not implemented accidentally; it requires a future explicit decision.
 
