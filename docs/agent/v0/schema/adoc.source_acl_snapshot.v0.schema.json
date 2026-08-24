@@ -30,7 +30,7 @@
       "$ref": "#/$defs/nonEmpty"
     },
     "acl_policy_version": {
-      "description": "Version of the adoc.connector_acl_policy.v0 record active when this historical snapshot was observed. It supplies the freshness_window_seconds from which expires_at is derived on current ACL evidence citing this snapshot, and must match acl_policy_version on that evidence; equality is evaluator-owned and fails closed.",
+      "description": "Version of the adoc.connector_acl_policy.v0 record active when this historical snapshot was observed. Together with connector_id, which resolves the configured connector instance and kind, it identifies that retained policy record. It supplies the freshness_window_seconds from which expires_at is derived on current ACL evidence citing this snapshot, and must match acl_policy_version on that evidence; equality is evaluator-owned and fails closed.",
       "$ref": "#/$defs/nonEmpty"
     },
     "source": {

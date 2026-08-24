@@ -16,6 +16,7 @@ use adoc_mcp::{
 use serde_json::json;
 
 const CANONICAL_SOURCE_ACL_OBSERVED_AT: &str = "2026-08-23T11:59:00Z";
+const CANONICAL_SOURCE_ACL_EXPIRED_AT: &str = "2026-08-23T11:59:30Z";
 const CANONICAL_EVALUATION_TIME: &str = "2026-08-23T12:00:00Z";
 const CANONICAL_SOURCE_ACL_EXPIRES_AT: &str = "2026-08-23T12:05:00Z";
 
@@ -1574,7 +1575,8 @@ fn validates_built_search_artifact_against_v1_contract_schema() {
 #[test]
 fn authorization_decision_schema_pins_replay_bindings() {
     assert!(
-        CANONICAL_SOURCE_ACL_OBSERVED_AT < CANONICAL_EVALUATION_TIME
+        CANONICAL_SOURCE_ACL_OBSERVED_AT < CANONICAL_SOURCE_ACL_EXPIRED_AT
+            && CANONICAL_SOURCE_ACL_EXPIRED_AT < CANONICAL_EVALUATION_TIME
             && CANONICAL_EVALUATION_TIME < CANONICAL_SOURCE_ACL_EXPIRES_AT,
         "canonical ACL evidence must predate evaluation and remain fresh"
     );
@@ -1596,6 +1598,14 @@ fn authorization_decision_schema_pins_replay_bindings() {
             .expect("current authorization fields are an object")
             .clone(),
         );
+    let resource = json!({
+        "workspace_id": current_authorization["workspace_id"].clone(),
+        "connector_id": current_authorization["connector_id"].clone(),
+        "source_container_id": current_authorization["source_container_id"].clone(),
+        "resource": current_authorization["source"].clone(),
+        "knowledge_kind": "policy",
+        "object_id": "policy.refunds.enterprise"
+    });
     let decision = json!({
         "schema_version": "adoc.authorization_decision.v0",
         "principal": {
@@ -1604,14 +1614,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "freshness": "current"
         },
         "permission": "proposal.approve",
-        "resource": {
-            "workspace_id": "workspace-1",
-            "connector_id": "github",
-            "source_container_id": "agentdoc-dev",
-            "resource": { "kind": "repository", "id": "cloud" },
-            "knowledge_kind": "policy",
-            "object_id": "policy.refunds.enterprise"
-        },
+        "resource": resource,
         "evaluation_time": CANONICAL_EVALUATION_TIME,
         "consequential": true,
         "hard_deny": false,
@@ -1762,7 +1765,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
 
     let mut source_acl_stale = decision.clone();
     source_acl_stale["source_acl_ceiling"]["current_authorization"]["expires_at"] =
-        json!("2026-08-23T11:59:30Z");
+        json!(CANONICAL_SOURCE_ACL_EXPIRED_AT);
     source_acl_stale["source_acl_ceiling"]["stale_cause"] = json!("expired");
     source_acl_stale["result"] = json!("deny");
     source_acl_stale["reason"] = json!("source_acl_stale");
@@ -1804,7 +1807,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut expired_and_policy_superseded = source_acl_policy_superseded.clone();
     expired_and_policy_superseded["source_acl_ceiling"]["stale_cause"] = json!("expired");
     expired_and_policy_superseded["source_acl_ceiling"]["current_authorization"]["expires_at"] =
-        json!("2026-08-23T11:59:30Z");
+        json!(CANONICAL_SOURCE_ACL_EXPIRED_AT);
     assert_ne!(
         expired_and_policy_superseded["source_acl_ceiling"]["current_authorization"]["acl_policy_version"],
         expired_and_policy_superseded["source_acl_ceiling"]["check_context"]["acl_policy_version"],
@@ -1815,7 +1818,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
 
     let mut source_acl_invalidated = decision.clone();
     source_acl_invalidated["source_acl_ceiling"]["current_authorization"]["invalidated_at"] =
-        json!("2026-08-23T11:59:30Z");
+        json!(CANONICAL_SOURCE_ACL_EXPIRED_AT);
     source_acl_invalidated["result"] = json!("deny");
     source_acl_invalidated["reason"] = json!("source_acl_invalidated");
     source_acl_invalidated["basis"] = json!(null);
@@ -1907,7 +1910,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
         json!(false);
     let mut allow_with_invalidated_source_acl = decision.clone();
     allow_with_invalidated_source_acl["source_acl_ceiling"]["current_authorization"]["invalidated_at"] =
-        json!("2026-08-23T11:59:30Z");
+        json!(CANONICAL_SOURCE_ACL_EXPIRED_AT);
     let mut stale_reason_without_current_acl = source_acl_stale.clone();
     stale_reason_without_current_acl["source_acl_ceiling"]
         .as_object_mut()
@@ -2090,7 +2093,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
         json!(false);
     let mut source_acl_denied_with_invalidated_acl = source_acl_denied.clone();
     source_acl_denied_with_invalidated_acl["source_acl_ceiling"]["current_authorization"]["invalidated_at"] =
-        json!("2026-08-23T11:59:30Z");
+        json!(CANONICAL_SOURCE_ACL_EXPIRED_AT);
     let mut explicit_deny_with_denied_source_acl = source_acl_denied.clone();
     explicit_deny_with_denied_source_acl["grants"][0]["effect"] = json!("deny");
     explicit_deny_with_denied_source_acl["reason"] = json!("explicit_deny");
