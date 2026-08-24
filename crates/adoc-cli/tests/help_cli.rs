@@ -89,6 +89,8 @@ fn check_help_renders_the_semantic_context_example_as_shell_continuations() {
     --semantic-base-revision git=base-sha \
     --semantic-head-revision git=head-sha \
     --semantic-assessment-digest sha256:<64 hex> \
+    --semantic-selection-algorithm changed-only \
+    --semantic-selection-version 1 \
     --semantic-required-class changed_source \
     --semantic-authorized-scope repo:billing \
     --semantic-object-context $SEMANTIC_OBJECT_CONTEXT_JSON \

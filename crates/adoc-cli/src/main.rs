@@ -81,6 +81,8 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     semantic_base_revision,
                     semantic_head_revision,
                     semantic_assessment_digest,
+                    semantic_selection_algorithm,
+                    semantic_selection_version,
                     semantic_required_class,
                     semantic_authorized_scope,
                     semantic_object_context,
@@ -110,9 +112,11 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                             match (
                                 semantic_subject_revision,
                                 semantic_source_revision,
-                                semantic_base_revision,
+                                semantic_base_revision.map(|revision| *revision),
                                 semantic_head_revision.map(|revision| *revision),
                                 semantic_assessment_digest,
+                                semantic_selection_algorithm,
+                                semantic_selection_version,
                                 semantic_required_class,
                                 semantic_authorized_scope,
                                 semantic_object_context,
@@ -124,13 +128,14 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                     Some(base_revision),
                                     Some(head_revision),
                                     Some(assessment_digest),
+                                    Some(selection_algorithm),
+                                    Some(selection_version),
                                     mut required_context_classes,
                                     mut authorized_scope,
                                     mut graph_object_contexts,
                                     Some(capability_policy),
                                 ) if !required_context_classes.is_empty()
-                                    && !authorized_scope.is_empty()
-                                    && !graph_object_contexts.is_empty() =>
+                                    && !authorized_scope.is_empty() =>
                                 {
                                     required_context_classes.sort();
                                     if required_context_classes
@@ -175,6 +180,8 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                         base_revision,
                                         head_revision,
                                         assessment_digest,
+                                        selection_algorithm,
+                                        selection_version,
                                         required_context_classes,
                                         authorized_scope,
                                         capability_policy: *capability_policy,
@@ -187,13 +194,14 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                     None,
                                     None,
                                     None,
+                                    None,
+                                    None,
                                     required_context_classes,
                                     authorized_scope,
-                                    graph_object_contexts,
+                                    _graph_object_contexts,
                                     None,
                                 ) if required_context_classes.is_empty()
-                                    && authorized_scope.is_empty()
-                                    && graph_object_contexts.is_empty() =>
+                                    && authorized_scope.is_empty() =>
                                 {
                                     None
                                 }
@@ -203,7 +211,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                 // fail receipt that blames the context instead of the invocation.
                                 _ => {
                                     eprintln!(
-                                        "error[cli.semantic_context] --semantic-context requires all trusted revision, assessment, required-class, authorized-scope, object-context, and capability-policy inputs; refusing to run with a partial validation basis"
+                                        "error[cli.semantic_context] --semantic-context requires all trusted revision, assessment, selection, required-class, authorized-scope, and capability-policy inputs; refusing to run with a partial validation basis"
                                     );
                                     return 2;
                                 }

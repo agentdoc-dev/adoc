@@ -88,6 +88,8 @@ fn validation_basis() -> SemanticContextValidationBasis {
         base_revision: revision("base-sha"),
         head_revision: revision("head-sha"),
         assessment_digest: ASSESSMENT_DIGEST.to_string(),
+        selection_algorithm: "changed-only".to_string(),
+        selection_version: "1".to_string(),
         required_context_classes: vec!["changed_knowledge".to_string()],
         authorized_scope: vec!["repo:billing".to_string()],
         capability_policy: input(Vec::new()).capability_policy,
@@ -147,6 +149,28 @@ fn validation_basis() -> SemanticContextValidationBasis {
             handle,
         })
         .collect(),
+    }
+}
+
+#[test]
+fn semantic_context_rejects_untrusted_selection_identity() {
+    let context = build_semantic_context(input(Vec::new()))
+        .expect("context builds")
+        .to_canonical_json()
+        .expect("context serializes");
+
+    let mut algorithm = validation_basis();
+    algorithm.selection_algorithm = "producer-selected".to_string();
+    let mut version = validation_basis();
+    version.selection_version = "other-version".to_string();
+
+    for (basis, expected) in [
+        (algorithm, "selection algorithm differs"),
+        (version, "selection version differs"),
+    ] {
+        let error = validate_semantic_context(context.as_bytes(), &basis)
+            .expect_err("untrusted selection identity rejected");
+        assert!(error.to_string().contains(expected));
     }
 }
 
@@ -870,6 +894,8 @@ fn graph_backed_context_rejects_unresolved_source_binding_coordinates() {
         base_revision: revision("base-sha"),
         head_revision: revision("head-sha"),
         assessment_digest: ASSESSMENT_DIGEST.to_string(),
+        selection_algorithm: "changed-only".to_string(),
+        selection_version: "1".to_string(),
         required_context_classes: vec!["changed_knowledge".to_string()],
         authorized_scope: vec!["repo:billing".to_string()],
         capability_policy: input(Vec::new()).capability_policy,

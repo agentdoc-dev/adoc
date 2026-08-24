@@ -485,6 +485,8 @@ fn semantic_validation_basis(
         base_revision: expectations.base_revision.clone(),
         head_revision: expectations.head_revision.clone(),
         assessment_digest: expectations.assessment_digest.clone(),
+        selection_algorithm: expectations.selection_algorithm.clone(),
+        selection_version: expectations.selection_version.clone(),
         required_context_classes: expectations.required_context_classes.clone(),
         authorized_scope: expectations.authorized_scope.clone(),
         capability_policy: expectations.capability_policy.clone(),
@@ -748,6 +750,8 @@ mod tests {
                 value: "head-sha".to_string(),
             },
             assessment_digest: TEST_DIGEST.to_string(),
+            selection_algorithm: "changed-only".to_string(),
+            selection_version: "1".to_string(),
             required_context_classes: vec!["changed_knowledge".to_string()],
             authorized_scope: vec!["repo:billing".to_string()],
             capability_policy: crate::CapabilityPolicy {
@@ -821,17 +825,21 @@ mod tests {
                 requirement: crate::ContextRequirement::Required,
                 byte_budget: 4096,
             }],
-            items: vec![crate::SemanticContextItem {
-                handle_id: "billing-ready".to_string(),
-                class_id: "changed_knowledge".to_string(),
-                scope_ref: "repo:billing".to_string(),
-                handle: crate::CitationHandle::KnowledgeObject {
-                    object_id: object.id.clone(),
-                    semantic_hash: object.content_hash.clone(),
-                },
-                content: serde_json::json!({ "body": object.body }),
-                truncated: false,
-            }],
+            items: unavailable_reason
+                .is_none()
+                .then(|| crate::SemanticContextItem {
+                    handle_id: "billing-ready".to_string(),
+                    class_id: "changed_knowledge".to_string(),
+                    scope_ref: "repo:billing".to_string(),
+                    handle: crate::CitationHandle::KnowledgeObject {
+                        object_id: object.id.clone(),
+                        semantic_hash: object.content_hash.clone(),
+                    },
+                    content: serde_json::json!({ "body": object.body }),
+                    truncated: false,
+                })
+                .into_iter()
+                .collect(),
             unavailability: unavailable_reason
                 .map(|reason| crate::ContextUnavailability {
                     record_id: "unavailable-1".to_string(),
@@ -1119,7 +1127,9 @@ mod tests {
         let mut input = standalone_input(&docs);
         input.context_artifact = Some(graph_path);
         input.semantic_context = Some(semantic_path);
-        input.semantic_context_expectations = Some(semantic_expectations());
+        let mut expectations = semantic_expectations();
+        expectations.graph_object_contexts.clear();
+        input.semantic_context_expectations = Some(expectations);
         let outcome = run_validation_runtime(input).expect("validation runs");
 
         assert_eq!(outcome.receipt.result(), ValidationResult::Fail);
