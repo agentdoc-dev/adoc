@@ -797,12 +797,13 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
     ))
     .expect("authorization decision schema is json");
-    let external_group = &schema["$defs"]["group"]["oneOf"]
+    let external_group = schema["$defs"]["group"]["oneOf"]
         .as_array()
         .expect("group is a oneOf")
         .iter()
         .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
-        .expect("group has an external membership branch")["properties"];
+        .expect("group has an external membership branch");
+    let external_group_properties = &external_group["properties"];
     let authorization = read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md");
     let a7 = annex_section(&authorization, "AUTHORIZATION.md", "## A7.");
     let effective_history_claim = "complete effective mode history";
@@ -811,7 +812,7 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "AUTHORIZATION.md §A7 must retain only effective binding mode epochs"
     );
     assert!(
-        external_group["binding_id"]["description"]
+        external_group_properties["binding_id"]["description"]
             .as_str()
             .expect("external binding replay is documented")
             .contains(effective_history_claim),
@@ -839,6 +840,30 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "source_event_id must resolve to retained run endpoints"
     );
 
+    let same_source_claim = "A membership observation resolves against exactly one retained source event or synchronization run";
+    assert!(
+        a7.contains(same_source_claim),
+        "AUTHORIZATION.md §A7 must bind both observation times to one source record"
+    );
+    let delayed_positive_claim = "delayed or reordered positive event";
+    assert!(
+        observation["observed_at"]["description"]
+            .as_str()
+            .expect("membership observation time is documented")
+            .contains(delayed_positive_claim)
+            && a7.contains(delayed_positive_claim),
+        "positive events must not supersede revocation without a current-state read"
+    );
+    let transition_latitude_claim = "transition sweep that opened the epoch";
+    assert!(
+        external_group["description"]
+            .as_str()
+            .expect("external membership epoch rules are documented")
+            .contains(transition_latitude_claim)
+            && a7.contains(transition_latitude_claim),
+        "only the epoch-opening sweep may carry a pre-epoch observation"
+    );
+
     let source_timing_claim = "each retained source event carrying its observed and ingestion-commit instants and each retained synchronization run carrying its start and completion instants";
     assert!(
         a7.contains(source_timing_claim),
@@ -863,6 +888,14 @@ fn group_retention_rules_match_the_e2_4_authority() {
     assert!(
         e2_4.contains("does not equal the commit or completion instant of the event or run identified by that same"),
         "E2.4.T2 must reject an observation made effective by a different event or run"
+    );
+    assert!(
+        e2_4.contains(delayed_positive_claim),
+        "E2.4.T2 must reject delayed positive membership events"
+    );
+    assert!(
+        e2_4.contains(transition_latitude_claim),
+        "E2.4.T2 must reject routine sweeps that cross an epoch boundary"
     );
 }
 
