@@ -1695,6 +1695,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
     source_acl_invalidated["reason"] = json!("source_acl_invalidated");
     source_acl_invalidated["basis"] = json!(null);
 
+    let mut denying_source_acl_stale = source_acl_stale.clone();
+    denying_source_acl_stale["source_acl_ceiling"]["result"] = json!("deny");
+    let mut denying_source_acl_invalidated = source_acl_invalidated.clone();
+    denying_source_acl_invalidated["source_acl_ceiling"]["result"] = json!("deny");
+    let mut denying_source_acl_outage = source_acl_outage.clone();
+    denying_source_acl_outage["source_acl_ceiling"]["result"] = json!("deny");
+
     let mut allow_during_source_acl_outage = decision.clone();
     allow_during_source_acl_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
         json!(false);
@@ -1856,6 +1863,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .as_object_mut()
         .expect("ACL object")
         .remove("current_authorization");
+    let mut source_acl_denied_during_outage = source_acl_denied.clone();
+    source_acl_denied_during_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
+        json!(false);
+    let mut source_acl_denied_with_invalidated_acl = source_acl_denied.clone();
+    source_acl_denied_with_invalidated_acl["source_acl_ceiling"]["current_authorization"]["invalidated_at"] =
+        json!("2026-08-23T11:59:30Z");
 
     let mut false_source_acl_unavailable_reason = insufficient.clone();
     false_source_acl_unavailable_reason["source_acl_ceiling"] = json!({
@@ -2035,6 +2048,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
             source_acl_invalidated,
             true,
         ),
+        ("denying source ACL stale", denying_source_acl_stale, true),
+        (
+            "denying source ACL invalidated",
+            denying_source_acl_invalidated,
+            true,
+        ),
+        ("denying source ACL outage", denying_source_acl_outage, true),
         ("direct human grant", direct_human, true),
         (
             "direct human grant with multiline reason",
@@ -2245,6 +2265,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "source ACL denied without current ACL evidence",
             source_acl_denied_without_current_acl,
+            false,
+        ),
+        (
+            "source ACL denied during outage",
+            source_acl_denied_during_outage,
+            false,
+        ),
+        (
+            "source ACL denied with invalidated ACL",
+            source_acl_denied_with_invalidated_acl,
             false,
         ),
         (
