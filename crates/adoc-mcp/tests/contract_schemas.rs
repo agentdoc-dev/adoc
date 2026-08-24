@@ -1836,6 +1836,23 @@ fn authorization_decision_schema_pins_replay_bindings() {
     denied["result"] = json!("deny");
     denied["reason"] = json!("no_grant");
     denied["basis"] = json!(null);
+    let mut membership_evidence_unavailable = denied.clone();
+    membership_evidence_unavailable["consequential"] = json!(true);
+    membership_evidence_unavailable["result"] = json!("insufficient_context");
+    membership_evidence_unavailable["reason"] = json!("membership_evidence_unavailable");
+    let mut nonconsequential_membership_evidence_unavailable =
+        membership_evidence_unavailable.clone();
+    nonconsequential_membership_evidence_unavailable["consequential"] = json!(false);
+    nonconsequential_membership_evidence_unavailable["result"] = json!("deny");
+    let mut membership_evidence_unavailable_with_basis = membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_with_basis["basis"] = decision["basis"].clone();
+    let mut consequential_membership_evidence_unavailable_with_deny =
+        membership_evidence_unavailable.clone();
+    consequential_membership_evidence_unavailable_with_deny["result"] = json!("deny");
+    let mut nonconsequential_membership_evidence_unavailable_with_insufficient =
+        nonconsequential_membership_evidence_unavailable.clone();
+    nonconsequential_membership_evidence_unavailable_with_insufficient["result"] =
+        json!("insufficient_context");
 
     let mut insufficient = decision.clone();
     insufficient["source_acl_ceiling"] = json!({
@@ -2774,6 +2791,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ("optional ACL ceiling", no_acl_ceiling, true),
         ("allow with no policy inputs", no_policy_inputs, true),
         ("deny without basis", denied, true),
+        (
+            "consequential membership evidence unavailable",
+            membership_evidence_unavailable,
+            true,
+        ),
+        (
+            "nonconsequential membership evidence unavailable",
+            nonconsequential_membership_evidence_unavailable,
+            true,
+        ),
         ("insufficient context without basis", insufficient, true),
         ("hard-deny reason matches input", hard_deny, true),
         (
@@ -3134,6 +3161,21 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "no-grant reason without deny result",
             no_grant_without_deny_result,
+            false,
+        ),
+        (
+            "membership-evidence-unavailable reason with basis",
+            membership_evidence_unavailable_with_basis,
+            false,
+        ),
+        (
+            "consequential membership evidence unavailable with deny result",
+            consequential_membership_evidence_unavailable_with_deny,
+            false,
+        ),
+        (
+            "nonconsequential membership evidence unavailable with insufficient result",
+            nonconsequential_membership_evidence_unavailable_with_insufficient,
             false,
         ),
         (
