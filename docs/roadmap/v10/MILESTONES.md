@@ -309,6 +309,7 @@ Replaces owner-only workspace RLS with workspace-scoped principals, one authoriz
 **Acceptance:**
 - Connector declares refresh/expiry/revocation/outage policy before activation (exit gate).
 - Stale/expired required ACL evidence can never widen access (exit gate, stop-ship: stale-ACL widening).
+- Current ACL evidence `observed_at` must equal the referenced snapshot's `observed_at`, and `expires_at` is derived from that immutable snapshot observation instant under the retained connector policy, so a later authorization record cannot refresh historical ACL data (exit gate).
 - Historical snapshots retained on decisions remain bound to connector/container/source scope. Any evidence invalidated by policy supersession retains the superseding evaluation-time policy version, including expired evidence where expiry wins as the recorded stale cause, so replay distinguishes supersession from unchanged-policy expiry (exit gate).
 - Permission change invalidates affected caches/indexes (exit gate); embeddings/retrieval indexes ride the E6.3.T4 extension of this suite; revocation suspends derived AgentDoc visibility.
 - Adversarial fixture: connector outage + restricted content request → typed fail-closed unless an explicit documented continuity policy for that risk class permits, and that use is receipted.

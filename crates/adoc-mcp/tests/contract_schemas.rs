@@ -1773,8 +1773,10 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .as_object_mut()
         .expect("ACL ceiling")
         .remove("check_context");
-    let mut expired_stale_without_check_context = source_acl_stale.clone();
-    expired_stale_without_check_context["source_acl_ceiling"]
+    // A changed-policy expired record has this same JSON shape; only the
+    // sourceAclCheckContext evaluator obligation forbids omitting its context.
+    let mut unchanged_policy_expiry_without_check_context = source_acl_stale.clone();
+    unchanged_policy_expiry_without_check_context["source_acl_ceiling"]
         .as_object_mut()
         .expect("ACL ceiling")
         .remove("check_context");
@@ -2350,8 +2352,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         (
-            "expired stale evidence has no structural context requirement",
-            expired_stale_without_check_context,
+            "unchanged-policy expiry has no structural context requirement",
+            unchanged_policy_expiry_without_check_context,
             true,
         ),
         (

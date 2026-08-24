@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.source_acl_snapshot.v0.schema.json",
   "title": "AgentDoc Historical Source ACL Snapshot",
-  "description": "Immutable historical ACL provenance retained with source-derived assertions. This envelope is never current authorization evidence: freshness, expiry, connector availability, and effective access are evaluated separately by Cloud under the connector ACL policy. snapshot_id, workspace_id, connector_id, source_container_id, source, and acl_policy_version must match the corresponding current ACL evidence and decision resource fields that cite this snapshot. These equalities are evaluator-owned and fail closed.",
+  "description": "Immutable historical ACL provenance retained with source-derived assertions. This envelope is never current authorization evidence: freshness, expiry, connector availability, and effective access are evaluated separately by Cloud under the connector ACL policy. snapshot_id, workspace_id, connector_id, source_container_id, source, acl_policy_version, and observed_at must match the corresponding current ACL evidence and decision resource fields that cite this snapshot. These equalities are evaluator-owned and fail closed.",
   "type": "object",
   "required": [
     "schema_version",
