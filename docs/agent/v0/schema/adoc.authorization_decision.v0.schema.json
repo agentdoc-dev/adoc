@@ -964,7 +964,7 @@
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "connector_available": {
-          "description": "Whether the connector was available when this evidence was evaluated. False forbids authorization from widening access and, absent invalidated_at, requires reason source_acl_unavailable or source_acl_stale; a known invalidation remains source_acl_invalidated. Conversely, source_acl_unavailable over an allow or deny ceiling requires false.",
+          "description": "Whether the connector was available when this evidence was evaluated. False forbids authorization from widening access. After identity freshness, evaluation-time, and hard-deny stages pass, false without invalidated_at requires reason source_acl_unavailable or source_acl_stale; a known invalidation remains source_acl_invalidated. Conversely, source_acl_unavailable over an allow or deny ceiling requires false.",
           "type": "boolean"
         },
         "invalidated_at": {
