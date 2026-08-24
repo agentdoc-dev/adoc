@@ -78,6 +78,11 @@ pub use domain::review::impact::{ImpactReasonKind, ImpactedObject, compute_impac
 pub use domain::review::object_change::ChangedObject;
 pub use domain::review::object_diff::ObjectDiff;
 pub use domain::review::reviewer::{RequiredReviewer, required_reviewers};
+pub use domain::semantic_assessment::{
+    AffectedObject, CandidateUpdate, SEMANTIC_ASSESSMENT_SCHEMA_VERSION, SemanticAssessment,
+    SemanticAssessmentError, SemanticAssessmentScope, SemanticClassification, SemanticDisposition,
+    SemanticExecutorIdentity, SemanticFinding, validate_semantic_assessment,
+};
 pub use domain::semantic_context::{
     CapabilityPolicy, CapabilityPolicyRule, CitationContentProjection, CitationHandle,
     ContextClass, ContextRequirement, ContextUnavailability, ContextUnavailabilityKind,

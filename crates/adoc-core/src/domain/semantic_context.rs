@@ -440,6 +440,21 @@ impl SemanticContext {
     pub fn allows_no_change_required(&self) -> bool {
         self.outcome == SemanticContextOutcome::Ready
     }
+
+    pub(crate) fn base_revision(&self) -> &ExactRevision {
+        &self.base_revision
+    }
+
+    pub(crate) fn head_revision(&self) -> &ExactRevision {
+        &self.head_revision
+    }
+
+    pub(crate) fn citation_handle(&self, handle_id: &str) -> Option<&CitationHandle> {
+        self.items
+            .iter()
+            .find(|item| item.handle_id == handle_id)
+            .map(|item| &item.handle)
+    }
 }
 
 pub fn build_semantic_context(
