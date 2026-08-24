@@ -1840,6 +1840,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
     membership_evidence_unavailable["consequential"] = json!(true);
     membership_evidence_unavailable["result"] = json!("insufficient_context");
     membership_evidence_unavailable["reason"] = json!("membership_evidence_unavailable");
+    membership_evidence_unavailable["membership_evidence"] = json!("insufficient_context");
     let mut nonconsequential_membership_evidence_unavailable =
         membership_evidence_unavailable.clone();
     nonconsequential_membership_evidence_unavailable["consequential"] = json!(false);
@@ -1852,6 +1853,17 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut nonconsequential_membership_evidence_unavailable_with_insufficient =
         nonconsequential_membership_evidence_unavailable.clone();
     nonconsequential_membership_evidence_unavailable_with_insufficient["result"] =
+        json!("insufficient_context");
+    let mut membership_evidence_unavailable_without_input = membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_input
+        .as_object_mut()
+        .expect("decision object")
+        .remove("membership_evidence");
+    let mut membership_evidence_unavailable_with_current_input =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_with_current_input["membership_evidence"] = json!("current");
+    let mut no_grant_with_unavailable_membership_evidence = denied.clone();
+    no_grant_with_unavailable_membership_evidence["membership_evidence"] =
         json!("insufficient_context");
 
     let mut insufficient = decision.clone();
@@ -3166,6 +3178,21 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "membership-evidence-unavailable reason with basis",
             membership_evidence_unavailable_with_basis,
+            false,
+        ),
+        (
+            "membership-evidence-unavailable reason without status input",
+            membership_evidence_unavailable_without_input,
+            false,
+        ),
+        (
+            "membership-evidence-unavailable reason with current status",
+            membership_evidence_unavailable_with_current_input,
+            false,
+        ),
+        (
+            "no-grant reason with unavailable membership evidence",
+            no_grant_with_unavailable_membership_evidence,
             false,
         ),
         (
