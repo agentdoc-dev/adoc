@@ -1594,6 +1594,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "current_authorization": {
                 "role": "current_authorization",
                 "current_acl_id": "acl-authorization-1",
+                // The current-evidence record repeats the decision snapshot so
+                // the evaluator can bind freshness to the exact ACL payload.
                 "snapshot_id": "acl-1",
                 "workspace_id": "workspace-1",
                 "connector_id": "github",
