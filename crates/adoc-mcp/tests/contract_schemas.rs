@@ -1773,7 +1773,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
                 "adoc.authorization_decision.v0.schema.json",
                 &missing_source_scope
             ),
-            "current ACL evidence with a decision resource missing {field} must be rejected"
+            "required ACL check with a decision resource missing {field} must be rejected"
         );
     }
     for field in ["connector_id", "resource"] {
