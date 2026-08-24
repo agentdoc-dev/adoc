@@ -1717,6 +1717,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .as_object_mut()
         .expect("ACL object")
         .remove("current_authorization");
+    let mut definitive_source_acl_evidence_without_context = decision.clone();
+    definitive_source_acl_evidence_without_context["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("ACL object")
+        .remove("check_context");
 
     let mut source_acl_outage = decision.clone();
     source_acl_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
@@ -1968,6 +1973,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "required": true,
         "result": "insufficient_context"
     });
+    let mut hard_deny_with_source_acl_evidence_only = hard_deny.clone();
+    hard_deny_with_source_acl_evidence_only["source_acl_ceiling"] =
+        decision["source_acl_ceiling"].clone();
+    hard_deny_with_source_acl_evidence_only["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("source ACL ceiling")
+        .remove("check_context");
     let mut hard_deny_with_expired_identity = hard_deny.clone();
     hard_deny_with_expired_identity["principal"]["freshness"] = json!("expired");
     hard_deny_with_expired_identity["reason"] = json!("identity_expired");
@@ -2220,6 +2232,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             legacy_allow_without_current_acl,
             false,
         ),
+        (
+            "definitive source ACL evidence may stand without attempt context",
+            definitive_source_acl_evidence_without_context,
+            true,
+        ),
         ("source ACL connector outage", source_acl_outage, true),
         (
             "insufficient source ACL with current verdict evidence",
@@ -2414,6 +2431,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "hard deny may win before a required source ACL attempt",
             hard_deny_before_required_acl,
+            true,
+        ),
+        (
+            "hard deny may retain definitive source ACL evidence without attempt context",
+            hard_deny_with_source_acl_evidence_only,
             true,
         ),
         (
