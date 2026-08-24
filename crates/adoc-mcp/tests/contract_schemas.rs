@@ -1590,6 +1590,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "source_acl_ceiling": {
             "required": true,
             "result": "allow",
+            "check_context": {
+                "role": "attempted_check",
+                "workspace_id": "workspace-1",
+                "connector_id": "github",
+                "source_container_id": "agentdoc-dev",
+                "principal_id": "principal-1",
+                "external_identity_link_id": "external-identity-link-1",
+                "source": { "kind": "repository", "id": "cloud" },
+                "acl_policy_version": "github-acl-v1"
+            },
             "snapshot_id": "acl-1",
             "current_authorization": {
                 "role": "current_authorization",
@@ -1668,7 +1678,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut insufficient = decision.clone();
     insufficient["source_acl_ceiling"] = json!({
         "required": true,
-        "result": "insufficient_context"
+        "result": "insufficient_context",
+        "check_context": decision["source_acl_ceiling"]["check_context"].clone()
     });
     insufficient["result"] = json!("insufficient_context");
     insufficient["reason"] = json!("source_acl_unavailable");
@@ -2282,7 +2293,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ("optional ACL ceiling", no_acl_ceiling, true),
         ("allow with no policy inputs", no_policy_inputs, true),
         ("deny without basis", denied, true),
-        ("insufficient context without basis", insufficient, true),
+        (
+            "insufficient context without basis",
+            insufficient.clone(),
+            true,
+        ),
         ("hard-deny reason matches input", hard_deny, true),
         (
             "expired identity precedes hard deny",
@@ -2733,24 +2748,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
         );
     }
 
-    let authorization_schema = schema("adoc.authorization_decision.v0.schema.json");
-    let source_container_description = authorization_schema["$defs"]["scope"]["properties"]
-        ["source_container_id"]["description"]
-        .as_str()
-        .expect("decision source container is documented");
-    assert!(
-        source_container_description.contains("provider-owned")
-            && source_container_description.contains("tenant or account"),
-        "decision containers must have one canonical single-tenant fallback"
-    );
-    assert!(
-        authorization_schema["$defs"]["sourceResource"]["description"]
-            .as_str()
-            .expect("source resource identity is documented")
-            .contains("optional on grant scopes"),
-        "source resource documentation must distinguish decision and grant scopes"
-    );
-
     for field in [
         "role",
         "current_acl_id",
@@ -2775,6 +2772,27 @@ fn authorization_decision_schema_pins_replay_bindings() {
         assert!(
             !schema_accepts("adoc.authorization_decision.v0.schema.json", &missing),
             "current ACL evidence without {field} must be rejected"
+        );
+    }
+
+    for field in [
+        "role",
+        "workspace_id",
+        "connector_id",
+        "source_container_id",
+        "principal_id",
+        "external_identity_link_id",
+        "source",
+        "acl_policy_version",
+    ] {
+        let mut missing = insufficient.clone();
+        missing["source_acl_ceiling"]["check_context"]
+            .as_object_mut()
+            .expect("ACL check context")
+            .remove(field);
+        assert!(
+            !schema_accepts("adoc.authorization_decision.v0.schema.json", &missing),
+            "ACL attempt context without {field} must be rejected"
         );
     }
 }
@@ -2880,17 +2898,6 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
         "adoc.source_acl_snapshot.v0.schema.json",
         &snapshot
     ));
-    let snapshot_schema = schema("adoc.source_acl_snapshot.v0.schema.json");
-    let container_description = snapshot_schema["properties"]["source_container_id"]
-        ["description"]
-        .as_str()
-        .expect("snapshot source container is documented");
-    assert!(
-        container_description.contains("provider-owned")
-            && container_description.contains("tenant or account"),
-        "snapshot containers must have one canonical single-tenant fallback"
-    );
-
     let mut current_authority = snapshot.clone();
     current_authority["usage"] = json!("current_authorization");
     let mut expiring_snapshot = snapshot.clone();

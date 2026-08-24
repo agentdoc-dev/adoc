@@ -93,7 +93,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.source_binding.v0` | adoc | E1.1 | exact source placement binding, independent of the semantic hash; carried since E1.1.T2 as the `source_binding` member of `adoc.graph.v6` Knowledge Object nodes (schema `graph-artifact.v6.json`), governed by that envelope's version — registered as a standalone envelope when a surface emits it outside the graph artifact |
 | `adoc.sensitive_access.v0` | adoc | E6.3 | name held until a final registered successor (RT-08) |
 | `adoc.egress_policy.v0` | adoc | E6.6 | provenance RT-21: absent from the original V10 inventory |
-| `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record; extended at E2.6 with contract-tested freshness-bounded source ACL evidence |
+| `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record; extended at E2.6 with contract-tested freshness-bounded source ACL evidence; `external_identity_link_id` resolves to the immutable Cloud E2.3 identity-link record for the provider identity evaluated |
 | `adoc.work_request.v0` | adoc | E3.7 | versioned external work request with nonce/digest/expiry/workload identity |
 | `adoc.work_result.v0` | adoc | E3.7 | result binding with replay/idempotency state |
 | `adoc.migration_request.v0` | adoc | E7.1 | exact-revision standalone-to-Cloud migration request |

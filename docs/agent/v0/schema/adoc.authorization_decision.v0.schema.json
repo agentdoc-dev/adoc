@@ -758,7 +758,7 @@
       }
     },
     "sourceResource": {
-      "description": "Repository, project, space, or channel level within a scope. id is the bare source-local resource identifier; parent container context is carried separately by source_container_id on the containing scope, required on any decision resource with source_acl_ceiling.required true and optional on grant scopes.",
+      "description": "Repository, project, space, or channel level within a scope. id is the bare source-local resource identifier; parent container context is carried separately by source_container_id — required on a decision resource with source_acl_ceiling.required true and on current ACL evidence, optional on a decision resource with no required check and on grant scopes.",
       "type": "object",
       "required": ["kind", "id"],
       "additionalProperties": false,
@@ -829,18 +829,46 @@
         }
       ]
     },
+    "sourceAclCheckContext": {
+      "description": "Immutable context for an attempted required source ACL check, retained even when no provider verdict is available. workspace_id, connector_id, source_container_id, and source must match the decision resource; principal_id must match the effective decision principal; external_identity_link_id must name that principal's retained provider identity link at evaluation_time; acl_policy_version must name the connector policy governing the attempt. For delegated execution, the workload or service principal uses its own linked provider identity while the delegator remains in the separate delegation chain. These bindings are evaluator-owned and fail closed.",
+      "type": "object",
+      "required": [
+        "role",
+        "workspace_id",
+        "connector_id",
+        "source_container_id",
+        "principal_id",
+        "external_identity_link_id",
+        "source",
+        "acl_policy_version"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "role": { "const": "attempted_check" },
+        "workspace_id": { "$ref": "#/$defs/nonEmpty" },
+        "connector_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_container_id": { "$ref": "#/$defs/nonEmpty" },
+        "principal_id": { "$ref": "#/$defs/nonEmpty" },
+        "external_identity_link_id": { "$ref": "#/$defs/nonEmpty" },
+        "source": { "$ref": "#/$defs/sourceResource" },
+        "acl_policy_version": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
     "sourceAclCeiling": {
       "type": "object",
       "required": ["required", "result"],
       "additionalProperties": false,
       "properties": {
         "required": {
-          "description": "Whether a source ACL check was required for this decision. True requires connector_id, source_container_id, and resource on the decision resource, so a required check always names the exact source resource evaluated, and forces result to allow, deny, or insufficient_context; a required allow or deny additionally requires current ACL evidence. False forces not_applicable and forbids current ACL evidence.",
+          "description": "Whether a source ACL check was required for this decision. True requires connector_id, source_container_id, and resource on the decision resource plus check_context for the attempted check, and forces result to allow, deny, or insufficient_context; a required allow or deny additionally requires current ACL evidence. False forces not_applicable and forbids check context and current ACL evidence.",
           "type": "boolean"
         },
         "result": {
           "description": "Provider ACL verdict when one was observed, including evidence later found stale, invalidated, or unavailable; insufficient_context means no definitive provider verdict was available, while not_applicable means no source ACL check was required. The decision reason records freshness and availability precedence.",
           "$ref": "#/$defs/policyInput"
+        },
+        "check_context": {
+          "$ref": "#/$defs/sourceAclCheckContext"
         },
         "snapshot_id": {
           "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance. current_authorization repeats the snapshot bound to its independently stored evidence record so the evaluator can prove freshness applies to this exact consulted payload. Both snapshot_id values must match; equality is evaluator-owned and fails closed. The snapshot never establishes current authorization by itself.",
@@ -857,11 +885,20 @@
             "properties": { "required": { "const": false } },
             "required": ["required"]
           },
-          "then": { "properties": { "result": { "const": "not_applicable" } } },
+          "then": {
+            "properties": { "result": { "const": "not_applicable" } },
+            "not": {
+              "anyOf": [
+                { "required": ["check_context"] },
+                { "required": ["current_authorization"] }
+              ]
+            }
+          },
           "else": {
             "properties": {
               "result": { "enum": ["allow", "deny", "insufficient_context"] }
-            }
+            },
+            "required": ["check_context"]
           }
         },
         {
@@ -923,7 +960,7 @@
       ]
     },
     "currentSourceAclAuthorization": {
-      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, source_container_id, and source must match the corresponding decision resource fields and referenced snapshot; acl_policy_version must match the referenced snapshot; principal_id must match the decision principal; external_identity_link_id must identify the retained link for the exact provider identity evaluated; snapshot_id and result must match their sibling source_acl_ceiling values. Result equality is schema-enforced; the remaining equality checks are evaluator-owned and fail closed.",
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, source_container_id, source, acl_policy_version, principal_id, and external_identity_link_id must match check_context and their corresponding decision resource or snapshot fields; the retained identity link must resolve principal_id continuously from observed_at through evaluation_time so evidence observed before linking or after revocation can never widen access; snapshot_id and result must match their sibling source_acl_ceiling values. Result equality is schema-enforced; the remaining equality and temporal checks are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
@@ -967,7 +1004,7 @@
         },
         "principal_id": { "$ref": "#/$defs/nonEmpty" },
         "external_identity_link_id": {
-          "description": "Immutable retained identity-link record for the exact provider identity whose ACL was evaluated. It must resolve principal_id at evaluation_time; equality and temporal validity are evaluator-owned and fail closed.",
+          "description": "Immutable retained identity-link record for the exact provider identity whose ACL was evaluated. It must resolve principal_id continuously from observed_at through evaluation_time; equality and temporal validity are evaluator-owned and fail closed.",
           "$ref": "#/$defs/nonEmpty"
         },
         "source": { "$ref": "#/$defs/sourceResource" },
