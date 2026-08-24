@@ -198,6 +198,8 @@ Roles/scoped grants attach to AgentDoc groups. Revocation from an authoritative 
 
 At authorization evaluation, an active manual membership is recorded with its stable membership identifier and creation time. Replay resolves that identifier against its preserved lifecycle record and verifies that the membership was created and not revoked at the decision evaluation time. Manual membership removal revokes future use and preserves the membership record so past decisions remain replayable. When both manual and external membership confer the same group grant, the evaluator records the independently durable manual provenance.
 
+External membership observations and their source events are retained for every decision that cites them, so those decisions remain replayable after binding resync, reconfiguration, or disablement.
+
 Nested-group behavior is not implemented accidentally; it requires a future explicit decision.
 
 ## A8. Authorization decision record
