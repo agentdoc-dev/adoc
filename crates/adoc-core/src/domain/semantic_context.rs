@@ -3,7 +3,7 @@
 //! Construction and validation live in the domain: adapters may supply
 //! bytes, but cannot bypass revision, digest, identity, or ordering rules.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,21 @@ pub struct ExactRevision {
 pub struct SemanticContextBasis {
     pub assessment_digest: String,
     pub knowledge_basis: KnowledgeBasis,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextRequirement {
+    Required,
+    Optional,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ContextClass {
+    pub class_id: String,
+    pub requirement: ContextRequirement,
+    pub byte_budget: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,8 +79,10 @@ pub enum CitationHandle {
 #[serde(deny_unknown_fields)]
 pub struct SemanticContextItem {
     pub handle_id: String,
+    pub class_id: String,
     pub handle: CitationHandle,
     pub content: Value,
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -76,7 +93,27 @@ pub struct SemanticContextInput {
     pub base_revision: ExactRevision,
     pub head_revision: ExactRevision,
     pub basis: SemanticContextBasis,
+    pub context_classes: Vec<ContextClass>,
     pub items: Vec<SemanticContextItem>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SemanticContextOutcome {
+    Ready,
+    Insufficient,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ContextCoverage {
+    class_id: String,
+    requirement: ContextRequirement,
+    item_count: u64,
+    included_bytes: u64,
+    byte_budget: u64,
+    truncated: bool,
+    complete: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -88,7 +125,10 @@ pub struct SemanticContext {
     base_revision: ExactRevision,
     head_revision: ExactRevision,
     basis: SemanticContextBasis,
+    context_classes: Vec<ContextClass>,
     items: Vec<SemanticContextItem>,
+    coverage: Vec<ContextCoverage>,
+    outcome: SemanticContextOutcome,
     context_digest: String,
 }
 
@@ -101,7 +141,10 @@ struct DigestInput<'a> {
     base_revision: &'a ExactRevision,
     head_revision: &'a ExactRevision,
     basis: &'a SemanticContextBasis,
+    context_classes: &'a [ContextClass],
     items: &'a [SemanticContextItem],
+    coverage: &'a [ContextCoverage],
+    outcome: SemanticContextOutcome,
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,7 +157,10 @@ struct SemanticContextDocument {
     base_revision: ExactRevision,
     head_revision: ExactRevision,
     basis: SemanticContextBasis,
+    context_classes: Vec<ContextClass>,
     items: Vec<SemanticContextItem>,
+    coverage: Vec<ContextCoverage>,
+    outcome: SemanticContextOutcome,
     context_digest: String,
 }
 
@@ -132,6 +178,16 @@ pub enum SemanticContextError {
     InvalidObjectId { handle_id: String },
     #[error("semantic context contains duplicate handle id '{handle_id}'")]
     DuplicateHandleId { handle_id: String },
+    #[error("semantic context contains duplicate class id '{class_id}'")]
+    DuplicateClassId { class_id: String },
+    #[error("semantic context item '{handle_id}' references unknown class '{class_id}'")]
+    UnknownClass { handle_id: String, class_id: String },
+    #[error("semantic context class '{class_id}' must have a positive byte budget")]
+    InvalidByteBudget { class_id: String },
+    #[error("semantic context class '{class_id}' exceeds its {byte_budget}-byte budget")]
+    ByteBudgetExceeded { class_id: String, byte_budget: u64 },
+    #[error("semantic context coverage or outcome does not match its items")]
+    DerivedStateMismatch,
     #[error("semantic context digest does not match its canonical content")]
     DigestMismatch,
     #[error("semantic context serialization failed: {message}")]
@@ -151,6 +207,14 @@ impl SemanticContext {
 
     pub fn context_digest(&self) -> &str {
         &self.context_digest
+    }
+
+    pub fn outcome(&self) -> SemanticContextOutcome {
+        self.outcome
+    }
+
+    pub fn allows_no_change_required(&self) -> bool {
+        self.outcome == SemanticContextOutcome::Ready
     }
 }
 
@@ -172,14 +236,77 @@ pub fn build_semantic_context(
     }
 
     input
+        .context_classes
+        .sort_by(|left, right| left.class_id.cmp(&right.class_id));
+    let mut coverage_by_class = BTreeMap::new();
+    for class in &input.context_classes {
+        require_text("context_classes[].class_id", &class.class_id)?;
+        if class.byte_budget == 0 {
+            return Err(SemanticContextError::InvalidByteBudget {
+                class_id: class.class_id.clone(),
+            });
+        }
+        let coverage = ContextCoverage {
+            class_id: class.class_id.clone(),
+            requirement: class.requirement,
+            item_count: 0,
+            included_bytes: 0,
+            byte_budget: class.byte_budget,
+            truncated: false,
+            complete: false,
+        };
+        if coverage_by_class
+            .insert(class.class_id.clone(), coverage)
+            .is_some()
+        {
+            return Err(SemanticContextError::DuplicateClassId {
+                class_id: class.class_id.clone(),
+            });
+        }
+    }
+
+    input
         .items
         .sort_by(|left, right| left.handle_id.cmp(&right.handle_id));
     let mut handle_ids = BTreeSet::new();
     for item in &input.items {
         require_text("items[].handle_id", &item.handle_id)?;
+        require_text("items[].class_id", &item.class_id)?;
         if !handle_ids.insert(item.handle_id.as_str()) {
             return Err(SemanticContextError::DuplicateHandleId {
                 handle_id: item.handle_id.clone(),
+            });
+        }
+        let coverage = coverage_by_class.get_mut(&item.class_id).ok_or_else(|| {
+            SemanticContextError::UnknownClass {
+                handle_id: item.handle_id.clone(),
+                class_id: item.class_id.clone(),
+            }
+        })?;
+        let content_bytes = serde_json::to_vec(&item.content).map_err(|error| {
+            SemanticContextError::Serialization {
+                message: error.to_string(),
+            }
+        })?;
+        let content_len = u64::try_from(content_bytes.len()).map_err(|_| {
+            SemanticContextError::ByteBudgetExceeded {
+                class_id: item.class_id.clone(),
+                byte_budget: coverage.byte_budget,
+            }
+        })?;
+        coverage.included_bytes = coverage
+            .included_bytes
+            .checked_add(content_len)
+            .ok_or_else(|| SemanticContextError::ByteBudgetExceeded {
+                class_id: item.class_id.clone(),
+                byte_budget: coverage.byte_budget,
+            })?;
+        coverage.item_count += 1;
+        coverage.truncated |= item.truncated;
+        if coverage.included_bytes > coverage.byte_budget {
+            return Err(SemanticContextError::ByteBudgetExceeded {
+                class_id: item.class_id.clone(),
+                byte_budget: coverage.byte_budget,
             });
         }
         match &item.handle {
@@ -215,6 +342,19 @@ pub fn build_semantic_context(
         }
     }
 
+    let mut coverage: Vec<_> = coverage_by_class.into_values().collect();
+    for entry in &mut coverage {
+        entry.complete = entry.item_count > 0 && !entry.truncated;
+    }
+    let outcome = if coverage
+        .iter()
+        .any(|entry| entry.requirement == ContextRequirement::Required && !entry.complete)
+    {
+        SemanticContextOutcome::Insufficient
+    } else {
+        SemanticContextOutcome::Ready
+    };
+
     let evaluation_date = input.evaluation_date.format("%Y-%m-%d").to_string();
     let digest_input = DigestInput {
         schema_version: SEMANTIC_CONTEXT_SCHEMA_VERSION,
@@ -224,7 +364,10 @@ pub fn build_semantic_context(
         base_revision: &input.base_revision,
         head_revision: &input.head_revision,
         basis: &input.basis,
+        context_classes: &input.context_classes,
         items: &input.items,
+        coverage: &coverage,
+        outcome,
     };
     let canonical =
         serde_json::to_vec(&digest_input).map_err(|error| SemanticContextError::Serialization {
@@ -239,7 +382,10 @@ pub fn build_semantic_context(
         base_revision: input.base_revision,
         head_revision: input.head_revision,
         basis: input.basis,
+        context_classes: input.context_classes,
         items: input.items,
+        coverage,
+        outcome,
         context_digest: sha256_prefixed(&canonical),
     })
 }
@@ -265,8 +411,12 @@ pub fn validate_semantic_context(bytes: &[u8]) -> Result<SemanticContext, Semant
         base_revision: document.base_revision,
         head_revision: document.head_revision,
         basis: document.basis,
+        context_classes: document.context_classes,
         items: document.items,
     })?;
+    if context.coverage != document.coverage || context.outcome != document.outcome {
+        return Err(SemanticContextError::DerivedStateMismatch);
+    }
     if context.context_digest != document.context_digest {
         return Err(SemanticContextError::DigestMismatch);
     }
