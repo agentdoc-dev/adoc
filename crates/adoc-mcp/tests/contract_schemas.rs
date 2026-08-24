@@ -1713,6 +1713,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
     insufficient["result"] = json!("insufficient_context");
     insufficient["reason"] = json!("source_acl_unavailable");
     insufficient["basis"] = json!(null);
+    let insufficient_check_context = insufficient.clone();
     let mut required_check_without_context = insufficient.clone();
     required_check_without_context["source_acl_ceiling"]
         .as_object_mut()
@@ -2078,13 +2079,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
     source_acl_denied["result"] = json!("deny");
     source_acl_denied["reason"] = json!("source_acl_denied");
     source_acl_denied["basis"] = json!(null);
-    let mut false_source_acl_denied_reason = source_acl_denied.clone();
-    false_source_acl_denied_reason["source_acl_ceiling"] = json!({
-        "required": false,
-        "result": "not_applicable"
-    });
-    let mut source_acl_denied_with_basis = source_acl_denied.clone();
-    source_acl_denied_with_basis["basis"] = decision["basis"].clone();
     let mut source_acl_denied_without_current_acl = source_acl_denied.clone();
     source_acl_denied_without_current_acl["source_acl_ceiling"]
         .as_object_mut()
@@ -2101,7 +2095,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
     explicit_deny_with_denied_source_acl["reason"] = json!("explicit_deny");
     explicit_deny_with_denied_source_acl["basis"] = decision["basis"].clone();
     explicit_deny_with_denied_source_acl["basis"]["effect"] = json!("deny");
-
+    let mut false_source_acl_denied_reason = source_acl_denied.clone();
+    false_source_acl_denied_reason["source_acl_ceiling"] = json!({
+        "required": false,
+        "result": "not_applicable"
+    });
+    let mut source_acl_denied_with_basis = source_acl_denied.clone();
+    source_acl_denied_with_basis["basis"] = decision["basis"].clone();
     let mut false_source_acl_unavailable_reason = insufficient.clone();
     false_source_acl_unavailable_reason["source_acl_ceiling"] = json!({
         "required": false,
@@ -2470,11 +2470,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ("optional ACL ceiling", no_acl_ceiling, true),
         ("allow with no policy inputs", no_policy_inputs, true),
         ("deny without basis", denied, true),
-        (
-            "insufficient context without basis",
-            insufficient.clone(),
-            true,
-        ),
+        ("insufficient context without basis", insufficient, true),
         ("hard-deny reason matches input", hard_deny, true),
         (
             "expired identity precedes hard deny",
@@ -2983,7 +2979,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
     }
 
     for field in ["role", "external_identity_link_id", "acl_policy_version"] {
-        let mut missing = insufficient.clone();
+        let mut missing = insufficient_check_context.clone();
         missing["source_acl_ceiling"]["check_context"]
             .as_object_mut()
             .expect("ACL check context")

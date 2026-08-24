@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
   "title": "AgentDoc Authorization Decision",
-  "description": "Replayable, source-neutral authorization decision for E2.2 and the E2.6 source ACL ceiling. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants plus top-level freshness, hard-deny precedence, and structurally observable current source-ACL precedence; the Cloud evaluator owns timestamp comparison, remaining lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
+  "description": "Replayable, source-neutral authorization decision for E2.2. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
   "type": "object",
   "required": [
     "schema_version",
@@ -49,7 +49,7 @@
     "policy_version": { "$ref": "#/$defs/nonEmpty" },
     "result": { "$ref": "#/$defs/decision" },
     "reason": {
-      "description": "Evaluator outcome reason. evaluation_time_invalid is raised only after identity freshness passes; timestamp parsing itself is evaluator-owned so an invalid raw input remains recordable for replay. source_acl_stale records exactly one source_acl_ceiling.stale_cause: expired when evaluation_time exceeded expires_at, otherwise policy_superseded when the governing policy version changed.",
+      "description": "Evaluator outcome reason. evaluation_time_invalid is raised only after identity freshness passes; timestamp parsing itself is evaluator-owned so an invalid raw input remains recordable for replay.",
       "enum": [
         "identity_context_missing",
         "identity_expired",
