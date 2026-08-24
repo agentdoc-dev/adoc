@@ -392,6 +392,8 @@
                 "evaluation_time_invalid",
                 "hard_deny",
                 "source_acl_denied",
+                "source_acl_stale",
+                "source_acl_invalidated",
                 "source_acl_unavailable",
                 "explicit_deny"
               ]
