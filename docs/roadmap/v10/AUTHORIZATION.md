@@ -100,6 +100,7 @@ Consequences:
 - Source-access revocation suspends corresponding derived AgentDoc visibility.
 - ACL synchronization, mapping, revocation, and authorization decisions are versioned and auditable.
 - A decision retaining a historical ACL snapshot also retains the connector, source container, and source resource scope needed to bind that snapshot, even when no current source ACL check was required.
+- Current ACL evidence `observed_at` must equal the referenced snapshot's `observed_at`, and `expires_at` is derived from that immutable snapshot observation instant under the retained connector policy. Creating a later authorization record therefore cannot refresh historical ACL data.
 - Current ACL evidence records one stale cause. Expiry wins when the evidence is expired; if policy also changed, the evaluator still retains the different evaluation-time governing version so replay distinguishes supersession from unchanged-policy expiry. Otherwise a policy-version change records `policy_superseded`, with the evidence version from observation and the different governing version at evaluation time, so replay can recompute the failure.
 - Knowledge authored directly in AgentDoc is governed by AgentDoc authorization policy rather than an unrelated connector ACL.
 

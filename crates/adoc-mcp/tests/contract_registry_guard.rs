@@ -572,6 +572,46 @@ fn comment_lines_do_not_scan_as_emissions() {
     );
 }
 
+#[test]
+fn source_acl_freshness_starts_at_snapshot_observation() {
+    let decision: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
+    ))
+    .expect("authorization decision schema is JSON");
+    let snapshot: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/adoc.source_acl_snapshot.v0.schema.json",
+    ))
+    .expect("source ACL snapshot schema is JSON");
+    let current = &decision["$defs"]["currentSourceAclAuthorization"];
+    let current_description = current["description"]
+        .as_str()
+        .expect("current ACL authorization is documented");
+    let observation_claim = "observed_at must equal the referenced snapshot's observed_at";
+    let expiry_claim = "expires_at is derived from that immutable snapshot observation instant";
+    assert!(
+        current_description.contains(observation_claim)
+            && current_description.contains(expiry_claim),
+        "current ACL evidence must not refresh an old snapshot"
+    );
+    assert!(
+        snapshot["description"]
+            .as_str()
+            .expect("source ACL snapshot is documented")
+            .contains("observed_at"),
+        "the historical snapshot contract must participate in the observation-time join"
+    );
+    for authority in [
+        read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md"),
+        read_repo_doc("docs/roadmap/v10/MILESTONES.md"),
+    ] {
+        let authority = authority.replace('`', "");
+        assert!(
+            authority.contains(observation_claim) && authority.contains(expiry_claim),
+            "E2.6 authority must pin the immutable freshness origin"
+        );
+    }
+}
+
 /// The execution map's E0.3 must-include list, resolved to registered ids.
 /// One entry per item in the map's sentence, in its order; the milestone's
 /// T2 planned set adds the remaining reserved names.
