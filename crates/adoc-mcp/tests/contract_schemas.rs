@@ -1793,6 +1793,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut optional_acl_without_source_scope = no_acl_ceiling.clone();
     optional_acl_without_source_scope["resource"] = json!({
         "workspace_id": "workspace-1",
+        "knowledge_kind": "policy",
         "object_id": "policy.refunds.enterprise"
     });
     assert!(
