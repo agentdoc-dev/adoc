@@ -1594,6 +1594,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "current_authorization": {
                 "role": "current_authorization",
                 "current_acl_id": "acl-authorization-1",
+                "result": "allow",
                 // The current-evidence record repeats the decision snapshot so
                 // the evaluator can bind freshness to the exact ACL payload.
                 "snapshot_id": "acl-1",
@@ -2503,6 +2504,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
     for field in [
         "role",
         "current_acl_id",
+        "result",
         "snapshot_id",
         "workspace_id",
         "connector_id",
@@ -2612,6 +2614,7 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
     let snapshot = json!({
         "schema_version": "adoc.source_acl_snapshot.v0",
         "snapshot_id": "acl-snapshot-1",
+        "workspace_id": "workspace-1",
         "connector_id": "github-connector-1",
         "acl_policy_version": "github-acl-v1",
         "source": { "kind": "repository", "id": "agentdoc-dev/cloud" },
@@ -2634,6 +2637,11 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
         .as_object_mut()
         .expect("snapshot object")
         .remove("acl_policy_version");
+    let mut missing_workspace_id = snapshot.clone();
+    missing_workspace_id
+        .as_object_mut()
+        .expect("snapshot object")
+        .remove("workspace_id");
     let mut invalid_observed_at = snapshot.clone();
     invalid_observed_at["observed_at"] = json!("not-a-time");
     let mut whitespace_padded_connector_id = snapshot.clone();
@@ -2648,6 +2656,7 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
         ("current authority usage", current_authority),
         ("expiry field", expiring_snapshot),
         ("missing ACL policy version", missing_policy_version),
+        ("missing workspace id", missing_workspace_id),
         ("invalid observed timestamp", invalid_observed_at),
         (
             "whitespace-padded connector id",
