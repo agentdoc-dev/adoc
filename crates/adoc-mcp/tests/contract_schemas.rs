@@ -1687,12 +1687,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "result": "not_applicable"
     });
     let mut optional_acl_with_snapshot = no_acl_ceiling.clone();
-    optional_acl_with_snapshot["source_acl_ceiling"]["snapshot_id"] = json!("acl-1");
+    optional_acl_with_snapshot["source_acl_ceiling"]["snapshot_id"] =
+        decision["source_acl_ceiling"]["snapshot_id"].clone();
     let mut optional_snapshot_without_source_scope = optional_acl_with_snapshot.clone();
     optional_snapshot_without_source_scope["resource"] = json!({
-        "workspace_id": "workspace-1",
-        "knowledge_kind": "policy",
-        "object_id": "policy.refunds.enterprise"
+        "workspace_id": decision["resource"]["workspace_id"].clone(),
+        "knowledge_kind": decision["resource"]["knowledge_kind"].clone(),
+        "object_id": decision["resource"]["object_id"].clone()
     });
 
     let mut denied = no_acl_ceiling.clone();
@@ -1894,9 +1895,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
     }
     let mut optional_acl_without_source_scope = no_acl_ceiling.clone();
     optional_acl_without_source_scope["resource"] = json!({
-        "workspace_id": "workspace-1",
-        "knowledge_kind": "policy",
-        "object_id": "policy.refunds.enterprise"
+        "workspace_id": decision["resource"]["workspace_id"].clone(),
+        "knowledge_kind": decision["resource"]["knowledge_kind"].clone(),
+        "object_id": decision["resource"]["object_id"].clone()
     });
     assert!(
         schema_accepts(
