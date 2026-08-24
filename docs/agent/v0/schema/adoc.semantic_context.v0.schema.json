@@ -113,6 +113,7 @@
     },
     "items": {
       "type": "array",
+      "description": "Closed citations whose content is validated against the canonical content digest in the caller-supplied citation projection.",
       "items": {
         "type": "object",
         "required": ["handle_id", "class_id", "scope_ref", "handle", "content", "truncated"],
