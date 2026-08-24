@@ -704,10 +704,16 @@ fn group_vocabularies_match_the_e2_4_registry() {
         .iter()
         .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
         .expect("group has an external membership branch")["properties"];
+    let external_absence = &schema["$defs"]["membershipAbsenceEvidence"]["oneOf"]
+        .as_array()
+        .expect("membership absence evidence is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
+        .expect("membership absence evidence has an external branch")["properties"];
     let schema_values = |name: &str| {
-        external_group[name]["enum"]
+        schema["$defs"][name]["enum"]
             .as_array()
-            .unwrap_or_else(|| panic!("external group {name} is an enum"))
+            .unwrap_or_else(|| panic!("shared {name} is an enum"))
             .iter()
             .map(|value| {
                 value
@@ -784,10 +790,14 @@ fn group_vocabularies_match_the_e2_4_registry() {
             value => panic!("binding mode {mode:?} has invalid confers-grant value {value:?}"),
         }
     }
-    assert_eq!(grant_conferring_modes, schema_values("binding_mode"));
+    for properties in [external_group, external_absence] {
+        assert_eq!(properties["binding_mode"]["$ref"], "#/$defs/bindingMode");
+        assert_eq!(properties["source_kind"]["$ref"], "#/$defs/sourceKind");
+    }
+    assert_eq!(grant_conferring_modes, schema_values("bindingMode"));
     assert_eq!(
         anchored_ids(&registry, "registry:group-source-kinds"),
-        schema_values("source_kind")
+        schema_values("sourceKind")
     );
 }
 
@@ -918,7 +928,7 @@ fn group_retention_rules_match_the_e2_4_authority() {
     );
     let source_kind_binding_claim = "source kind recorded on the retained binding";
     assert!(
-        external_group_properties["source_kind"]["description"]
+        schema["$defs"]["sourceKind"]["description"]
             .as_str()
             .expect("external source-kind replay is documented")
             .contains(source_kind_binding_claim)

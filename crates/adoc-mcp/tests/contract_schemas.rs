@@ -1890,11 +1890,20 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ["member_present"] = json!(true);
     let mut no_grant_not_applicable_with_absence = no_grant_with_external_absence.clone();
     no_grant_not_applicable_with_absence["membership_evidence"] = json!("not_applicable");
+    let mut no_grant_with_group_but_no_absence = denied.clone();
+    no_grant_with_group_but_no_absence["grants"] = external_group_grant["grants"].clone();
+    no_grant_with_group_but_no_absence["grants"][0]["permission"] = json!("workspace.read");
+    no_grant_with_group_but_no_absence["membership_evidence"] = json!("current");
+    no_grant_with_group_but_no_absence["membership_absence_evidence"] = json!([]);
     let mut membership_evidence_unavailable = denied.clone();
     membership_evidence_unavailable["consequential"] = json!(true);
     membership_evidence_unavailable["result"] = json!("insufficient_context");
     membership_evidence_unavailable["reason"] = json!("membership_evidence_unavailable");
     membership_evidence_unavailable["membership_evidence"] = json!("insufficient_context");
+    let mut mixed_group_membership_evidence_unavailable = membership_evidence_unavailable.clone();
+    mixed_group_membership_evidence_unavailable["grants"] = external_group_grant["grants"].clone();
+    mixed_group_membership_evidence_unavailable["grants"][0]["permission"] =
+        json!("workspace.read");
     let mut nonconsequential_membership_evidence_unavailable =
         membership_evidence_unavailable.clone();
     nonconsequential_membership_evidence_unavailable["consequential"] = json!(false);
@@ -2529,24 +2538,23 @@ fn authorization_decision_schema_pins_replay_bindings() {
             && observed_at_description.contains("sweep start"),
         "membership freshness must use the source read time or a conservative bound"
     );
-    let external_group_properties = &authorization_schema["$defs"]["group"]["oneOf"]
+    let binding_modes = authorization_schema["$defs"]["bindingMode"]["enum"]
         .as_array()
-        .expect("group is a oneOf")
-        .iter()
-        .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
-        .expect("group has an external membership branch")["properties"];
-    let binding_modes = external_group_properties["binding_mode"]["enum"]
+        .expect("shared bindingMode is an enum");
+    let source_kinds = authorization_schema["$defs"]["sourceKind"]["enum"]
         .as_array()
-        .expect("external group binding_mode is an enum");
-    let source_kinds = external_group_properties["source_kind"]["enum"]
-        .as_array()
-        .expect("external group source_kind is an enum");
+        .expect("shared sourceKind is an enum");
     let mut nonhuman_identity_session = decision.clone();
     nonhuman_identity_session["principal"]["type"] = json!("service");
     nonhuman_identity_session["principal"]["identity_session_id"] = json!("identity-session-1");
 
     let mut oidc_basis_without_session = external_group_grant.clone();
     oidc_basis_without_session["basis"]["group"]["source_kind"] = json!("oidc_group");
+    let mut oidc_absence_without_session = no_grant_with_external_absence.clone();
+    oidc_absence_without_session["membership_absence_evidence"][0]["source_kind"] =
+        json!("oidc_group");
+    let mut oidc_absence_with_session = oidc_absence_without_session.clone();
+    oidc_absence_with_session["principal"]["identity_session_id"] = json!("identity-session-1");
 
     for mode in binding_modes {
         let mode = mode.as_str().expect("binding modes are strings");
@@ -2878,13 +2886,28 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         (
+            "no grant with a resolved group but no absent membership",
+            no_grant_with_group_but_no_absence,
+            true,
+        ),
+        (
             "consequential membership evidence unavailable",
             membership_evidence_unavailable,
             true,
         ),
         (
+            "membership evidence unavailable with another resolved group",
+            mixed_group_membership_evidence_unavailable,
+            true,
+        ),
+        (
             "nonconsequential membership evidence unavailable",
             nonconsequential_membership_evidence_unavailable,
+            true,
+        ),
+        (
+            "OIDC absence evidence bound to an identity session",
+            oidc_absence_with_session,
             true,
         ),
         ("insufficient context without basis", insufficient, true),
@@ -3282,6 +3305,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "not-applicable no-grant cannot carry absence evidence",
             no_grant_not_applicable_with_absence,
+            false,
+        ),
+        (
+            "OIDC absence evidence without an identity session",
+            oidc_absence_without_session,
             false,
         ),
         (

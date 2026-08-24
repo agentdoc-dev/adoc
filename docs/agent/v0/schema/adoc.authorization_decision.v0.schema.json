@@ -45,13 +45,12 @@
       "items": { "$ref": "#/$defs/grant" }
     },
     "membership_evidence": {
-      "description": "Required scoped-grants-stage input status. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established; not_applicable means no membership input could affect the scoped grants. A group-bearing grant requires current. no_grant with current requires immutable membership_absence_evidence, while no_grant with not_applicable forbids it. membership_evidence_unavailable requires insufficient_context, so replay can distinguish uncertainty from confirmed absence.",
+      "description": "Required scoped-grants-stage input status. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established; not_applicable means no membership input could affect the scoped grants. A group-bearing grant requires current or insufficient_context and therefore forbids not_applicable. no_grant with current requires immutable membership_absence_evidence; an empty array records that the stage ran with every relevant membership present but no applicable permission grant. no_grant with not_applicable forbids the field. membership_evidence_unavailable requires insufficient_context, so replay can distinguish uncertainty from confirmed absence.",
       "enum": ["current", "insufficient_context", "not_applicable"]
     },
     "membership_absence_evidence": {
-      "description": "Exact retained negative membership facts used by a current no_grant decision. The array contains every relevant manual group or grant-conferring external binding whose confirmed absence affected scoped-grant evaluation; evaluator-owned completeness checks fail closed. Manual entries replay against retained membership lifecycle history for the envelope principal and group at evaluation_time. External entries retain the exact negative observation, binding epoch, identity link, and source event or run.",
+      "description": "Exact retained negative membership facts used by a current no_grant decision. The required array contains every relevant manual group or grant-conferring external binding whose confirmed absence affected scoped-grant evaluation; it is empty when all relevant membership facts were established present but none of their grants covered the permission. Evaluator-owned completeness checks fail closed. Manual entries replay against retained membership lifecycle history for the envelope principal and group at evaluation_time. External entries retain the exact negative observation, binding epoch, identity link, and source event or run.",
       "type": "array",
-      "minItems": 1,
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/membershipAbsenceEvidence" }
     },
@@ -100,7 +99,7 @@
       },
       "then": {
         "properties": {
-          "membership_evidence": { "const": "current" }
+          "membership_evidence": { "enum": ["current", "insufficient_context"] }
         }
       }
     },
@@ -848,6 +847,19 @@
               }
             },
             "required": ["basis"]
+          },
+          {
+            "properties": {
+              "membership_absence_evidence": {
+                "contains": {
+                  "properties": {
+                    "source_kind": { "const": "oidc_group" }
+                  },
+                  "required": ["source_kind"]
+                }
+              }
+            },
+            "required": ["membership_absence_evidence"]
           }
         ]
       },
@@ -945,7 +957,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/nonEmpty" },
         "identity_session_id": {
-          "description": "Exact E2.3 human identity session used at evaluation. The oidc_group source kind is claim-only in V1 and valid only for a human principal; nonhuman principals must omit this field. Required for any oidc_group grant or winning basis; it must equal the identity session retained by source_event_id, and replay fails closed on mismatch.",
+          "description": "Exact E2.3 human identity session used at evaluation. The oidc_group source kind is claim-only in V1 and valid only for a human principal; nonhuman principals must omit this field. Required for any positive or negative oidc_group observation carried by a grant, winning basis, or membership_absence_evidence; it must equal the identity session retained by source_event_id, and replay fails closed on mismatch.",
           "$ref": "#/$defs/nonEmpty"
         },
         "type": { "enum": ["human", "service", "agent", "workload"] },
@@ -1030,6 +1042,20 @@
         "nested": { "const": false }
       }
     },
+    "bindingMode": {
+      "description": "Grant-conferring binding mode in effect at evaluation_time. Replay resolves binding_id against the retained complete effective mode history and fails closed unless this value names that epoch.",
+      "enum": ["authoritative_sync", "additive_sync"]
+    },
+    "sourceKind": {
+      "description": "Closed source adapter kind for this membership. Replay resolves binding_id and fails closed unless this value equals the source kind recorded on the retained binding.",
+      "enum": [
+        "github_team",
+        "gitlab_group",
+        "slack_user_group",
+        "oidc_group",
+        "scim_group"
+      ]
+    },
     "membershipAbsenceEvidence": {
       "description": "Immutable confirmed-absence provenance for one relevant group membership input.",
       "oneOf": [
@@ -1068,20 +1094,14 @@
               "$ref": "#/$defs/nonEmpty"
             },
             "membership_source": { "const": "external" },
-            "binding_id": { "$ref": "#/$defs/nonEmpty" },
-            "binding_mode": {
-              "enum": ["authoritative_sync", "additive_sync"]
+            "binding_id": {
+              "description": "Stable identifier of the preserved external-binding record and its complete effective mode history.",
+              "$ref": "#/$defs/nonEmpty"
             },
-            "source_kind": {
-              "enum": [
-                "github_team",
-                "gitlab_group",
-                "slack_user_group",
-                "oidc_group",
-                "scim_group"
-              ]
-            },
+            "binding_mode": { "$ref": "#/$defs/bindingMode" },
+            "source_kind": { "$ref": "#/$defs/sourceKind" },
             "binding_mode_effective_at": {
+              "description": "Start of the retained binding-mode epoch in effect at evaluation_time and containing the negative observation.",
               "$ref": "#/$defs/rfc3339Timestamp"
             },
             "membership_observation": {
@@ -1152,9 +1172,7 @@
               "description": "Stable identifier of the preserved external-binding record and its complete effective mode history. Replay verifies binding_mode and binding_mode_effective_at against the retained epoch.",
               "$ref": "#/$defs/nonEmpty"
             },
-            "binding_mode": {
-              "enum": ["authoritative_sync", "additive_sync"]
-            },
+            "binding_mode": { "$ref": "#/$defs/bindingMode" },
             "binding_mode_effective_at": {
               "description": "Start of the binding-mode epoch in effect at evaluation_time. membership_observation.effective_at must fall within that same epoch before the observation can confer this grant.",
               "$ref": "#/$defs/rfc3339Timestamp"
@@ -1168,16 +1186,7 @@
                 }
               ]
             },
-            "source_kind": {
-              "description": "Closed source adapter kind for this membership. Replay resolves binding_id and fails closed unless this value equals the source kind recorded on the retained binding.",
-              "enum": [
-                "github_team",
-                "gitlab_group",
-                "slack_user_group",
-                "oidc_group",
-                "scim_group"
-              ]
-            }
+            "source_kind": { "$ref": "#/$defs/sourceKind" }
           }
         }
       ]
