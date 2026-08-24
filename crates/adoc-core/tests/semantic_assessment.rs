@@ -1,8 +1,9 @@
 use adoc_core::{
     CapabilityPolicy, CapabilityPolicyRule, CitationHandle, ContextClass, ContextRequirement,
-    DiagnosticCode, ExactRevision, KnowledgeBasis, SemanticContext, SemanticContextBasis,
-    SemanticContextInput, SemanticContextItem, SemanticContextSelection, UnavailabilityOutcome,
-    UnavailabilityReason, build_semantic_context, validate_semantic_assessment,
+    ContextUnavailability, ContextUnavailabilityKind, DiagnosticCode, ExactRevision,
+    KnowledgeBasis, SemanticContext, SemanticContextBasis, SemanticContextInput,
+    SemanticContextItem, SemanticContextSelection, UnavailabilityOutcome, UnavailabilityReason,
+    build_semantic_context, validate_semantic_assessment,
 };
 use chrono::NaiveDate;
 use serde_json::json;
@@ -19,8 +20,8 @@ fn revision(value: &str) -> ExactRevision {
     }
 }
 
-fn context() -> SemanticContext {
-    build_semantic_context(SemanticContextInput {
+fn context_input() -> SemanticContextInput {
+    SemanticContextInput {
         evaluation_date: NaiveDate::from_ymd_opt(2026, 8, 24).expect("valid date"),
         subject_revision: revision("head-sha"),
         source_revision: revision("head-sha"),
@@ -83,8 +84,11 @@ fn context() -> SemanticContext {
             },
         ],
         unavailability: Vec::new(),
-    })
-    .expect("semantic context builds")
+    }
+}
+
+fn context() -> SemanticContext {
+    build_semantic_context(context_input()).expect("semantic context builds")
 }
 
 fn assessment_json(context: &SemanticContext) -> serde_json::Value {
@@ -164,4 +168,82 @@ fn semantic_assessment_rejects_anonymous_output() {
             DiagnosticCode::AssessmentSemanticIdentityMissing
         );
     }
+}
+
+#[test]
+fn semantic_assessment_rejects_every_citation_outside_the_exact_context() {
+    let context = context();
+    let mut fabricated_handle = assessment_json(&context);
+    fabricated_handle["scope"]["handle_ids"] = json!(["fabricated-hunk", "object-a"]);
+    fabricated_handle["findings"][0]["citations"] = json!(["fabricated-hunk", "object-a"]);
+
+    let mut fabricated_object = assessment_json(&context);
+    fabricated_object["findings"][0]["affected_objects"][0]["object_id"] =
+        json!("billing.fabricated");
+
+    let mut wrong_context = assessment_json(&context);
+    wrong_context["context_digest"] = json!(ASSESSMENT_DIGEST);
+
+    for document in [fabricated_handle, fabricated_object, wrong_context] {
+        let error = validate_semantic_assessment(
+            serde_json::to_vec(&document)
+                .expect("fixture serializes")
+                .as_slice(),
+            &context,
+        )
+        .expect_err("citation outside exact context is rejected");
+
+        assert_eq!(
+            error.diagnostic_code(),
+            DiagnosticCode::AssessmentSemanticCitationInvalid
+        );
+    }
+}
+
+#[test]
+fn semantic_assessment_rejects_a_different_revision_identity() {
+    let context = context();
+
+    for field in ["base_revision", "head_revision"] {
+        let mut document = assessment_json(&context);
+        document[field]["value"] = json!("other-sha");
+        let error = validate_semantic_assessment(
+            serde_json::to_vec(&document)
+                .expect("fixture serializes")
+                .as_slice(),
+            &context,
+        )
+        .expect_err("mismatched revision is rejected");
+
+        assert_eq!(
+            error.diagnostic_code(),
+            DiagnosticCode::AssessmentSemanticRevisionMismatch
+        );
+    }
+}
+
+#[test]
+fn semantic_assessment_rejects_context_with_required_omissions() {
+    let mut input = context_input();
+    input.items.retain(|item| item.handle_id != "object-a");
+    input.unavailability.push(ContextUnavailability {
+        record_id: "redacted-object-a".to_string(),
+        class_id: "changed_knowledge".to_string(),
+        kind: ContextUnavailabilityKind::Redaction,
+        reason: UnavailabilityReason::Permission,
+    });
+    let context = build_semantic_context(input).expect("incomplete context is recorded");
+
+    let error = validate_semantic_assessment(
+        serde_json::to_vec(&assessment_json(&context))
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect_err("required omissions make the assessment invalid");
+
+    assert_eq!(
+        error.diagnostic_code(),
+        DiagnosticCode::AssessmentSemanticCitationInvalid
+    );
 }
