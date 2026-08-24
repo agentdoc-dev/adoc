@@ -113,7 +113,7 @@
     },
     "items": {
       "type": "array",
-      "description": "Closed citations whose content is validated against the canonical content digest in the caller-supplied citation projection.",
+      "description": "Closed citations whose scope and content are validated against the caller-supplied projection. In local graph receipt mode, knowledge_object content is exactly {\"body\": <Graph Knowledge Object body>}, source_binding content is the exact serialized GraphSourceBinding object, and evidence content is the exact serialized evidence entry at evidence_index. Diff-hunk and Source Assertion content comes from the upstream Source Record projection. A truncated item validates only when its projection explicitly permits that truncated content digest.",
       "items": {
         "type": "object",
         "required": ["handle_id", "class_id", "scope_ref", "handle", "content", "truncated"],
