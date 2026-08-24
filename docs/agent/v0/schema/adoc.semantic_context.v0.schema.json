@@ -12,7 +12,10 @@
     "base_revision",
     "head_revision",
     "basis",
+    "context_classes",
     "items",
+    "coverage",
+    "outcome",
     "context_digest"
   ],
   "additionalProperties": false,
@@ -56,14 +59,28 @@
         }
       }
     },
+    "context_classes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["class_id", "requirement", "byte_budget"],
+        "additionalProperties": false,
+        "properties": {
+          "class_id": { "$ref": "#/$defs/nonEmpty" },
+          "requirement": { "$ref": "#/$defs/requirement" },
+          "byte_budget": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
     "items": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["handle_id", "handle", "content"],
+        "required": ["handle_id", "class_id", "handle", "content", "truncated"],
         "additionalProperties": false,
         "properties": {
           "handle_id": { "$ref": "#/$defs/nonEmpty" },
+          "class_id": { "$ref": "#/$defs/nonEmpty" },
           "handle": {
             "oneOf": [
               {
@@ -117,15 +134,44 @@
               }
             ]
           },
-          "content": {}
+          "content": {},
+          "truncated": { "type": "boolean" }
         }
       }
     },
+    "coverage": {
+      "description": "Validator-derived coverage diagnostics in context-class order.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "class_id",
+          "requirement",
+          "item_count",
+          "included_bytes",
+          "byte_budget",
+          "truncated",
+          "complete"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "class_id": { "$ref": "#/$defs/nonEmpty" },
+          "requirement": { "$ref": "#/$defs/requirement" },
+          "item_count": { "type": "integer", "minimum": 0 },
+          "included_bytes": { "type": "integer", "minimum": 0 },
+          "byte_budget": { "type": "integer", "minimum": 1 },
+          "truncated": { "type": "boolean" },
+          "complete": { "type": "boolean" }
+        }
+      }
+    },
+    "outcome": { "enum": ["ready", "insufficient"] },
     "context_digest": { "$ref": "#/$defs/sha256" }
   },
   "$defs": {
     "nonEmpty": { "type": "string", "minLength": 1 },
     "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "requirement": { "enum": ["required", "optional"] },
     "objectId": {
       "type": "string",
       "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$"

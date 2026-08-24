@@ -1493,7 +1493,7 @@ fn retrieval_schema_ids_match_their_published_uris() {
 }
 
 #[test]
-fn semantic_context_schema_accepts_the_t1_envelope_and_rejects_unknown_fields() {
+fn semantic_context_schema_accepts_the_envelope_and_rejects_unknown_fields() {
     let digest = format!("sha256:{}", "a".repeat(64));
     let instance = json!({
         "schema_version": "adoc.semantic_context.v0",
@@ -1506,52 +1506,77 @@ fn semantic_context_schema_accepts_the_t1_envelope_and_rejects_unknown_fields() 
             "assessment_digest": digest,
             "knowledge_basis": { "kind": "graph_artifact", "digest": digest }
         },
+        "context_classes": [{
+            "class_id": "changed_knowledge",
+            "requirement": "required",
+            "byte_budget": 4096
+        }],
         "items": [
             {
                 "handle_id": "billing-ready",
+                "class_id": "changed_knowledge",
                 "handle": {
                     "kind": "knowledge_object",
                     "object_id": "billing.ready",
                     "semantic_hash": digest
                 },
-                "content": { "body": "Billing is ready." }
+                "content": { "body": "Billing is ready." },
+                "truncated": false
             },
             {
                 "handle_id": "billing-diff",
+                "class_id": "changed_knowledge",
                 "handle": {
                     "kind": "diff_hunk",
                     "changed_source_id": "docs/billing.adoc",
                     "hunk_digest": digest
                 },
-                "content": "diff content"
+                "content": "diff content",
+                "truncated": false
             },
             {
                 "handle_id": "billing-assertion",
+                "class_id": "changed_knowledge",
                 "handle": {
                     "kind": "source_assertion",
                     "source_assertion_id": "assertion-1",
                     "source_record_id": "record-1"
                 },
-                "content": "assertion content"
+                "content": "assertion content",
+                "truncated": false
             },
             {
                 "handle_id": "billing-binding",
+                "class_id": "changed_knowledge",
                 "handle": {
                     "kind": "source_binding",
                     "object_id": "billing.ready"
                 },
-                "content": "binding content"
+                "content": "binding content",
+                "truncated": false
             },
             {
                 "handle_id": "billing-evidence",
+                "class_id": "changed_knowledge",
                 "handle": {
                     "kind": "evidence",
                     "object_id": "billing.ready",
                     "evidence_index": 0
                 },
-                "content": "evidence content"
+                "content": "evidence content",
+                "truncated": false
             }
         ],
+        "coverage": [{
+            "class_id": "changed_knowledge",
+            "requirement": "required",
+            "item_count": 5,
+            "included_bytes": 100,
+            "byte_budget": 4096,
+            "truncated": false,
+            "complete": true
+        }],
+        "outcome": "ready",
         "context_digest": digest
     });
     assert_valid("adoc.semantic_context.v0.schema.json", &instance);
