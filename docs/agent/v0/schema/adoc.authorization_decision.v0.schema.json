@@ -924,7 +924,7 @@
               "enum": ["authoritative_sync", "additive_sync"]
             },
             "binding_mode_effective_at": {
-              "description": "Start of the binding-mode epoch under which membership_observation conferred this grant.",
+              "description": "Start of the binding-mode epoch in effect at evaluation_time. membership_observation must have been recorded within that same epoch before it can confer this grant.",
               "$ref": "#/$defs/rfc3339Timestamp"
             },
             "membership_observation": {
