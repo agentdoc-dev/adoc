@@ -804,6 +804,12 @@ fn group_retention_rules_match_the_e2_4_authority() {
         .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
         .expect("group has an external membership branch");
     let external_group_properties = &external_group["properties"];
+    let manual_group = schema["$defs"]["group"]["oneOf"]
+        .as_array()
+        .expect("group is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "manual")
+        .expect("group has a manual membership branch");
     let authorization = read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md");
     let a7 = annex_section(&authorization, "AUTHORIZATION.md", "## A7.");
     let effective_history_claim = "complete effective mode history";
@@ -873,6 +879,15 @@ fn group_retention_rules_match_the_e2_4_authority() {
             && a7.contains(source_kind_binding_claim),
         "membership replay must reject source-kind substitution"
     );
+    let manual_membership_binding_claim = "authorization envelope principal and enclosing group id";
+    assert!(
+        manual_group["properties"]["membership_id"]["description"]
+            .as_str()
+            .expect("manual membership replay binding is documented")
+            .contains(manual_membership_binding_claim)
+            && a7.contains(manual_membership_binding_claim),
+        "manual membership replay must reject principal or group substitution"
+    );
 
     let same_source_claim = "A connector membership observation resolves against exactly one retained source event or synchronization run";
     assert!(
@@ -924,6 +939,10 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "E2.4.T2 must reject a source kind that differs from the retained binding"
     );
     assert!(
+        e2_4.contains(manual_membership_binding_claim),
+        "E2.4.T1 must reject a manual membership from another principal or group"
+    );
+    assert!(
         e2_4.contains("does not equal the commit or completion instant of the event or run identified by that same"),
         "E2.4.T2 must reject an observation made effective by a different event or run"
     );
@@ -946,7 +965,11 @@ fn group_retention_rules_match_the_e2_4_authority() {
     let oidc_timing_claim =
         "token issuance, validation/ingestion-commit, and session-expiry instants";
     let oidc_lifetime_claim = "no later than the cited identity session's expiry";
-    let relink_recovery_claim = "Linking or relinking an external identity records a current-state membership read for that principal against every grant-conferring binding of the linked source";
+    let oidc_session_binding_claim = "must equal the identity session retained by";
+    let relink_recovery_claim = "Linking or relinking an external identity completes the link and records a pending current-state membership read for that principal against every grant-conferring binding of the linked source kind";
+    let relink_outcome_claim =
+        "each binding read and its outcome are recorded and operator-visible";
+    let relink_retry_claim = "failed read is surfaced with an explicit operator retry";
     let oidc_recovery_claim = "Claim-only `oidc_group` instead recovers at the next authentication";
     let registry_doc = registry();
     let registry_group_sources =
@@ -978,10 +1001,24 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "claim-only OIDC membership must not outlive its exact identity session"
     );
     assert!(
+        schema["$defs"]["principal"]["properties"]["identity_session_id"]["description"]
+            .as_str()
+            .expect("principal identity-session replay is documented")
+            .contains(oidc_session_binding_claim)
+            && effective_at.contains(oidc_session_binding_claim)
+            && a7.contains(oidc_session_binding_claim)
+            && e2_4.contains(oidc_session_binding_claim),
+        "claim-only OIDC must bind the observation to the evaluated identity session"
+    );
+    assert!(
         a7.contains(relink_recovery_claim)
             && e2_4.contains(relink_recovery_claim)
             && a7.contains(oidc_recovery_claim)
-            && e2_4.contains(oidc_recovery_claim),
+            && e2_4.contains(oidc_recovery_claim)
+            && a7.contains(relink_outcome_claim)
+            && e2_4.contains(relink_outcome_claim)
+            && a7.contains(relink_retry_claim)
+            && e2_4.contains(relink_retry_claim),
         "relink recovery must refresh event-driven memberships without treating OIDC as a connector"
     );
 }
