@@ -1706,7 +1706,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "id": "group-2",
         "name": "Incident responders",
         "membership_source": "manual",
-        "membership_created_at": "2026-08-23T10:00:00Z"
+        "membership_created_at": "2026-08-23T10:00:00Z",
+        "membership_observed_at": "2026-08-23T12:00:00Z"
     });
     let mut manual_group_grant = decision.clone();
     manual_group_grant["grants"][0]["group"] = manual_group.clone();
@@ -1775,6 +1776,19 @@ fn authorization_decision_schema_pins_replay_bindings() {
     unknown_group_source["grants"][0]["group"]["source_kind"] = json!("custom_directory");
     let mut manual_group_with_binding = manual_group_grant.clone();
     manual_group_with_binding["grants"][0]["group"]["binding_id"] = json!("github-team-binding-1");
+    let mut manual_group_without_membership_created_at = manual_group_grant.clone();
+    manual_group_without_membership_created_at["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("membership_created_at");
+    let mut manual_group_without_membership_observed_at = manual_group_grant.clone();
+    manual_group_without_membership_observed_at["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("membership_observed_at");
+    let mut manual_group_with_external_observation = manual_group_grant.clone();
+    manual_group_with_external_observation["grants"][0]["group"]["membership_observation"] =
+        external_group_grant["grants"][0]["group"]["membership_observation"].clone();
     let mut basis_group_without_group_grant = decision.clone();
     basis_group_without_group_grant["basis"]["group"] =
         manual_group_grant["basis"]["group"].clone();
@@ -2643,6 +2657,21 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "manual group with binding",
             manual_group_with_binding,
+            false,
+        ),
+        (
+            "manual group without membership creation time",
+            manual_group_without_membership_created_at,
+            false,
+        ),
+        (
+            "manual group without membership observation time",
+            manual_group_without_membership_observed_at,
+            false,
+        ),
+        (
+            "manual group with external membership observation",
+            manual_group_with_external_observation,
             false,
         ),
         (
