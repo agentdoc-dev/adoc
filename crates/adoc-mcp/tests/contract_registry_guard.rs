@@ -721,14 +721,19 @@ fn group_vocabularies_match_the_e2_4_registry() {
     let registered_modes = anchored_ids(&registry, "registry:group-binding-modes");
     let authorization = read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md");
     let a7 = annex_section(&authorization, "AUTHORIZATION.md", "## A7.");
-    let mode_list = fenced_lists_in(
+    let mode_lists = fenced_lists_in(
         a7.split_once("Membership binding modes:")
             .expect("AUTHORIZATION.md §A7 labels its membership binding modes")
             .1,
-    )
-    .into_iter()
-    .next()
-    .expect("AUTHORIZATION.md §A7 has a fenced membership binding-mode list");
+    );
+    assert_eq!(
+        mode_lists.len(),
+        1,
+        "AUTHORIZATION.md §A7 must carry exactly one fenced list after its \
+         `Membership binding modes:` lead-in, found {}",
+        mode_lists.len()
+    );
+    let mode_list = &mode_lists[0];
     let authority_modes: BTreeSet<_> = mode_list.iter().cloned().collect();
     assert_eq!(
         authority_modes.len(),
@@ -995,9 +1000,8 @@ fn annex_section<'doc>(doc: &'doc str, doc_name: &str, heading: &str) -> &'doc s
     }
 }
 
-/// The fenced blocks inside one annex section, in document order, each as
-/// its non-empty trimmed lines. A simple open/close toggle is enough here:
-/// the K9 lists are bare ``` blocks with one term per line.
+/// Fenced blocks inside an annex section or labeled fragment, in document
+/// order, each as its non-empty trimmed lines. Handles bare and tagged fences.
 fn fenced_lists_in(section: &str) -> Vec<Vec<String>> {
     let mut blocks = Vec::new();
     let mut current: Option<Vec<String>> = None;
