@@ -723,27 +723,63 @@
     {
       "if": {
         "properties": {
-          "grants": {
-            "contains": {
-              "properties": {
-                "group": {
-                  "properties": {
-                    "source_kind": { "const": "oidc_group" }
-                  },
-                  "required": ["source_kind"]
-                }
-              },
-              "required": ["group"]
-            }
-          }
+          "principal": { "required": ["identity_session_id"] }
         },
-        "required": ["grants"]
+        "required": ["principal"]
       },
       "then": {
         "properties": {
           "principal": {
             "properties": { "type": { "const": "human" } },
-            "required": ["type", "identity_session_id"]
+            "required": ["type"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "properties": {
+              "grants": {
+                "contains": {
+                  "properties": {
+                    "group": {
+                      "properties": {
+                        "source_kind": { "const": "oidc_group" }
+                      },
+                      "required": ["source_kind"]
+                    }
+                  },
+                  "required": ["group"]
+                }
+              }
+            },
+            "required": ["grants"]
+          },
+          {
+            "properties": {
+              "basis": {
+                "type": "object",
+                "properties": {
+                  "group": {
+                    "properties": {
+                      "source_kind": { "const": "oidc_group" }
+                    },
+                    "required": ["source_kind"]
+                  }
+                },
+                "required": ["group"]
+              }
+            },
+            "required": ["basis"]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "principal": {
+            "required": ["identity_session_id"]
           }
         }
       }
@@ -834,7 +870,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/nonEmpty" },
         "identity_session_id": {
-          "description": "Exact E2.3 human identity session used at evaluation. Required for any claim-only oidc_group grant; it must equal the identity session retained by source_event_id, and replay fails closed on mismatch.",
+          "description": "Exact E2.3 human identity session used at evaluation. The oidc_group source kind is claim-only in V1 and valid only for a human principal; nonhuman principals must omit this field. Required for any oidc_group grant or winning basis; it must equal the identity session retained by source_event_id, and replay fails closed on mismatch.",
           "$ref": "#/$defs/nonEmpty"
         },
         "type": { "enum": ["human", "service", "agent", "workload"] },
@@ -895,7 +931,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "external_identity_link_id": {
-          "description": "Verified E2.3 identity link through which the external source identity resolves to this workspace principal. Its preserved lifecycle retains the link and unlink instants. Evaluation and replay fail closed unless it was continuously active from observed_at through the decision evaluation time; an unlink after an earlier decision preserves that decision's replay but revokes future use, including after a subsequent relink.",
+          "description": "Verified E2.3 identity link through which the external source identity resolves to this workspace principal. Its preserved lifecycle retains the link and unlink instants. Evaluation and replay fail closed unless the link belongs to the authorization envelope principal and was continuously active from observed_at through the decision evaluation time; an unlink after an earlier decision preserves that decision's replay but revokes future use, including after a subsequent relink.",
           "$ref": "#/$defs/nonEmpty"
         },
         "source_event_id": {
