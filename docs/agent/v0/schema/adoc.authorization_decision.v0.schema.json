@@ -707,7 +707,7 @@
           "$ref": "#/$defs/policyInput"
         },
         "snapshot_id": {
-          "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance. current_authorization repeats the snapshot bound to its independently stored evidence record so the evaluator can prove freshness applies to this exact consulted payload. When both snapshot_id values are present they must match; equality is evaluator-owned and fails closed. The snapshot never establishes current authorization by itself.",
+          "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance. current_authorization repeats the snapshot bound to its independently stored evidence record so the evaluator can prove freshness applies to this exact consulted payload. Both snapshot_id values must match; equality is evaluator-owned and fails closed. The snapshot never establishes current authorization by itself.",
           "$ref": "#/$defs/nonEmpty"
         },
         "current_authorization": {
@@ -756,11 +756,37 @@
           "then": {
             "not": { "required": ["current_authorization"] }
           }
+        },
+        {
+          "if": {
+            "properties": { "result": { "const": "allow" } },
+            "required": ["result", "current_authorization"]
+          },
+          "then": {
+            "properties": {
+              "current_authorization": {
+                "properties": { "result": { "const": "allow" } }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "result": { "const": "deny" } },
+            "required": ["result", "current_authorization"]
+          },
+          "then": {
+            "properties": {
+              "current_authorization": {
+                "properties": { "result": { "const": "deny" } }
+              }
+            }
+          }
         }
       ]
     },
     "currentSourceAclAuthorization": {
-      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. Its presence requires connector_id and resource on the decision resource. workspace_id, connector_id, and source must match the corresponding decision resource fields and referenced snapshot; acl_policy_version must match the referenced snapshot; principal_id must match the decision principal; snapshot_id and result must match their sibling source_acl_ceiling values. These equality checks are evaluator-owned and fail closed.",
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. Its presence requires connector_id and resource on the decision resource. workspace_id, connector_id, and source must match the corresponding decision resource fields and referenced snapshot; acl_policy_version must match the referenced snapshot; principal_id must match the decision principal; snapshot_id and result must match their sibling source_acl_ceiling values. Result equality is schema-enforced; the remaining equality checks are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
@@ -784,11 +810,11 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "result": {
-          "description": "Provider verdict bound to this evidence record. It is a source-content readability and visibility ceiling shared across AgentDoc permissions, not a claim of provider write or administrative authority; the AgentDoc grant supplies operation authority. It must match source_acl_ceiling.result; equality is evaluator-owned and fails closed.",
+          "description": "Provider verdict bound to this evidence record. It is a source-content readability and visibility ceiling shared across AgentDoc permissions, not a claim of provider write or administrative authority; the AgentDoc grant supplies operation authority. It must match source_acl_ceiling.result; the schema enforces this equality.",
           "enum": ["allow", "deny"]
         },
         "snapshot_id": {
-          "description": "Retained adoc.source_acl_snapshot.v0 record establishing which ACL payload was evaluated, bound to this independently stored current-evidence record. Repeating it beside source_acl_ceiling.snapshot_id lets the evaluator reject evidence issued for a different payload; when both are present the values must match. Currency is established by expires_at, connector_available, and absence of invalidated_at, not by the snapshot alone.",
+          "description": "Retained adoc.source_acl_snapshot.v0 record establishing which ACL payload was evaluated, bound to this independently stored current-evidence record. Repeating it beside source_acl_ceiling.snapshot_id lets the evaluator reject evidence issued for a different payload; both values must match. Currency is established by expires_at, connector_available, and absence of invalidated_at, not by the snapshot alone.",
           "$ref": "#/$defs/nonEmpty"
         },
         "workspace_id": {
