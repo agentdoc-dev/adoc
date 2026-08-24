@@ -30,8 +30,9 @@ Examples:
   adoc check docs/refunds.adoc
   adoc check --receipt receipt.json --as-of 2026-01-01 \\
     --runtime-binary-digest sha256:<64 hex>
-  adoc check --receipt receipt.json --as-of 2026-01-01 \
-    --runtime-binary-digest sha256:<64 hex> --context-artifact dist/docs.graph.json \
+  adoc check --receipt receipt.json --as-of 2026-01-01 \\
+    --runtime-binary-digest sha256:<64 hex> \\
+    --context-artifact dist/docs.graph.json \\
     --semantic-context semantic-context.json
 
 --receipt runs the same validation and writes a digest-bound
@@ -42,6 +43,8 @@ explicit --as-of and the invoking harness's attested
 verifies its pin before invoking, see scripts/validation-runtime/).
 When --semantic-context is supplied, receipt mode validates its exact
 revision, digest, completeness, authorized scope, and closed citations.
+Graph-backed contexts require the exact --context-artifact. The local CLI
+has no managed-revision store, so managed-revision contexts fail closed.
 ";
 const MIGRATE_LONG_HELP: &str = "\
 Default is a dry run: prints what would be migrated plus the migrate.*

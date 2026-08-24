@@ -72,6 +72,23 @@ fn short_top_level_help_stays_compact() {
 }
 
 #[test]
+fn check_help_renders_the_semantic_context_example_as_shell_continuations() {
+    let output = adoc_command()
+        .args(["check", "--help"])
+        .output()
+        .expect("adoc check --help runs");
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = stdout(&output);
+    assert!(stdout.contains(
+        r"adoc check --receipt receipt.json --as-of 2026-01-01 \
+    --runtime-binary-digest sha256:<64 hex> \
+    --context-artifact dist/docs.graph.json \
+    --semantic-context semantic-context.json"
+    ));
+}
+
+#[test]
 fn contextual_why_help_forms_render_the_same_command_help() {
     let outputs = [
         adoc_command()

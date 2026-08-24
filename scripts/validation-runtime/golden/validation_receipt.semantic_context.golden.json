@@ -21,8 +21,12 @@
       "digest": "sha256:8b3e2fa42eccfceb2d3f477bc26d14686a5e79a34e825c166bbcdfbd4adbb87d"
     },
     {
+      "name": "context_artifact",
+      "digest": "sha256:5dd975e5a264a76bb1f52bd6b1787277dd664a8b5a2cb851a5c715daa76ec9e2"
+    },
+    {
       "name": "semantic_context",
-      "digest": "sha256:568efd8101d04dcff0b381d20daa562f51ee915e01a219aace8c19b7d290aa5a"
+      "digest": "sha256:b9c385dfd87f11d270b0e8014beba6710dcf7db5c8bcf29a273db14e45d56902"
     }
   ],
   "result": "pass",

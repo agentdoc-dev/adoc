@@ -302,10 +302,9 @@ fn run_with_provider<P: SourceProvider>(
                     diagnostics.push(Diagnostic::error(
                         code,
                         format!(
-                            "semantic context outcome is {:?}",
-                            semantic_context.outcome()
-                        )
-                        .to_lowercase(),
+                            "semantic context outcome is {}",
+                            semantic_context.outcome().as_str()
+                        ),
                     ));
                 }
             }
@@ -389,7 +388,10 @@ fn semantic_validation_basis(
     crate::SemanticContextValidationBasis {
         evaluation_date,
         graph_artifact_digest,
+        managed_revision_digest: None,
         graph_objects,
+        diff_hunks: Vec::new(),
+        source_assertions: Vec::new(),
     }
 }
 
