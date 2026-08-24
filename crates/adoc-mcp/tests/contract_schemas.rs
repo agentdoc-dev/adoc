@@ -1963,6 +1963,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut hard_deny = denied.clone();
     hard_deny["hard_deny"] = json!(true);
     hard_deny["reason"] = json!("hard_deny");
+    let mut hard_deny_before_required_acl = hard_deny.clone();
+    hard_deny_before_required_acl["source_acl_ceiling"] = json!({
+        "required": true,
+        "result": "insufficient_context"
+    });
     let mut hard_deny_with_expired_identity = hard_deny.clone();
     hard_deny_with_expired_identity["principal"]["freshness"] = json!("expired");
     hard_deny_with_expired_identity["reason"] = json!("identity_expired");
@@ -2077,6 +2082,15 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "required": true,
         "result": "insufficient_context"
     });
+    let mut expired_identity_before_required_acl =
+        identity_context_missing_before_required_acl.clone();
+    expired_identity_before_required_acl["principal"]["freshness"] = json!("expired");
+    expired_identity_before_required_acl["result"] = json!("deny");
+    expired_identity_before_required_acl["reason"] = json!("identity_expired");
+    let mut invalid_time_before_required_acl = identity_context_missing_before_required_acl.clone();
+    invalid_time_before_required_acl["principal"]["freshness"] = json!("current");
+    invalid_time_before_required_acl["evaluation_time"] = json!("");
+    invalid_time_before_required_acl["reason"] = json!("evaluation_time_invalid");
     let mut hard_deny_with_missing_identity = identity_context_missing.clone();
     hard_deny_with_missing_identity["hard_deny"] = json!(true);
     let mut false_identity_context_missing_reason = identity_context_missing.clone();
@@ -2170,6 +2184,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut invalid_time_with_source_acl_outage = source_acl_outage.clone();
     invalid_time_with_source_acl_outage["evaluation_time"] = json!("");
     invalid_time_with_source_acl_outage["reason"] = json!("evaluation_time_invalid");
+    let mut invalid_time_with_source_acl_evidence_only =
+        invalid_time_with_source_acl_outage.clone();
+    invalid_time_with_source_acl_evidence_only["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("source ACL ceiling")
+        .remove("check_context");
     let mut invalid_time_with_invalidated_source_acl = source_acl_invalidated.clone();
     invalid_time_with_invalidated_source_acl["evaluation_time"] = json!("");
     invalid_time_with_invalidated_source_acl["result"] = json!("insufficient_context");
@@ -2377,6 +2397,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         (
+            "expired identity may win before a required source ACL attempt",
+            expired_identity_before_required_acl,
+            true,
+        ),
+        (
             "consequential identity-context reason matches input",
             identity_context_missing,
             true,
@@ -2384,6 +2409,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "identity gate may win before a required source ACL attempt",
             identity_context_missing_before_required_acl,
+            true,
+        ),
+        (
+            "hard deny may win before a required source ACL attempt",
+            hard_deny_before_required_acl,
             true,
         ),
         (
@@ -2415,6 +2445,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "invalid time outranks source ACL outage",
             invalid_time_with_source_acl_outage,
+            true,
+        ),
+        (
+            "invalid time may retain source ACL evidence without an attempted check",
+            invalid_time_with_source_acl_evidence_only,
+            true,
+        ),
+        (
+            "invalid time may win before a required source ACL attempt",
+            invalid_time_before_required_acl,
             true,
         ),
         (
