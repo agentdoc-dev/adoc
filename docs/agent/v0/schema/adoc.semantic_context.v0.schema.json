@@ -64,6 +64,7 @@
     },
     "selection": {
       "type": "object",
+      "description": "Selection algorithm and version are compared with caller-supplied trusted expectations; the envelope records the selected result but does not independently prove that an algorithm implementation exhaustively retrieved every eligible object.",
       "required": ["algorithm", "version", "authorized_scope"],
       "additionalProperties": false,
       "properties": {

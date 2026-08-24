@@ -38,6 +38,8 @@ Examples:
     --semantic-base-revision git=base-sha \\
     --semantic-head-revision git=head-sha \\
     --semantic-assessment-digest sha256:<64 hex> \\
+    --semantic-selection-algorithm changed-only \\
+    --semantic-selection-version 1 \\
     --semantic-required-class changed_source \\
     --semantic-authorized-scope repo:billing \\
     --semantic-object-context $SEMANTIC_OBJECT_CONTEXT_JSON \\
@@ -52,9 +54,11 @@ explicit --as-of and the invoking harness's attested
 verifies its pin before invoking, see scripts/validation-runtime/).
 When --semantic-context is supplied, receipt mode validates its exact
 revision, digest, completeness, authorized scope, and closed citations.
-The revision, assessment, required-class, authorized-scope, object-context,
-and capability-policy flags are trusted expectations; repeat scope and object-
-context flags as needed. They are never inferred from context.
+The revision, assessment, selection, required-class, authorized-scope, object-
+context, and capability-policy flags are trusted expectations; repeat scope
+and object-context flags as needed. They are never inferred from context.
+Object-context may be omitted for citation-free contexts; any included
+citation without a trusted mapping fails closed.
 Graph-backed contexts require the exact --context-artifact. The local CLI
 has no managed-revision store, so managed-revision contexts fail closed.
 Diff-hunk and Source Assertion citations require E4.1 Source Record
@@ -496,9 +500,10 @@ pub(crate) enum Commands {
                 "semantic_base_revision",
                 "semantic_head_revision",
                 "semantic_assessment_digest",
+                "semantic_selection_algorithm",
+                "semantic_selection_version",
                 "semantic_required_class",
                 "semantic_authorized_scope",
-                "semantic_object_context",
                 "semantic_capability_policy"
             ]
         )]
@@ -510,24 +515,32 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
         semantic_source_revision: Option<adoc_core::ExactRevision>,
         /// Trusted base revision expected in --semantic-context.
-        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
-        semantic_base_revision: Option<adoc_core::ExactRevision>,
+        // Two boxed revision payloads keep `Commands` under clippy::large_enum_variant.
+        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_boxed_exact_revision)]
+        semantic_base_revision: Option<Box<adoc_core::ExactRevision>>,
         /// Trusted head revision expected in --semantic-context.
         #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_boxed_exact_revision)]
         semantic_head_revision: Option<Box<adoc_core::ExactRevision>>,
         /// Trusted assessment digest expected in --semantic-context.
         #[arg(long, value_name = "DIGEST", requires = "semantic_context", value_parser = parse_sha256_digest)]
         semantic_assessment_digest: Option<String>,
+        /// Trusted selection algorithm expected in --semantic-context.
+        #[arg(long, value_name = "ALGORITHM", requires = "semantic_context", value_parser = parse_semantic_text)]
+        semantic_selection_algorithm: Option<String>,
+        /// Trusted selection version expected in --semantic-context.
+        #[arg(long, value_name = "VERSION", requires = "semantic_context", value_parser = parse_semantic_text)]
+        semantic_selection_version: Option<String>,
         /// Trusted required context class; repeat for each required class.
         #[arg(long, value_name = "CLASS_ID", requires = "semantic_context", value_parser = parse_semantic_text)]
         semantic_required_class: Vec<String>,
         /// Trusted authorized scope; repeat for each scope.
         #[arg(long, value_name = "SCOPE", requires = "semantic_context", value_parser = parse_semantic_text)]
         semantic_authorized_scope: Vec<String>,
-        /// Trusted Object ID to context-class and scope mapping as JSON; repeat per object.
+        /// Trusted Object ID to class/scope mapping as JSON; repeat per cited object.
         #[arg(long, value_name = "JSON", requires = "semantic_context", value_parser = parse_graph_object_context)]
         semantic_object_context: Vec<adoc_core::GraphObjectContextExpectation>,
         /// Trusted complete capability policy as JSON.
+        // Boxed for the same `Commands` enum-size reason as the selection and head payloads.
         #[arg(long, value_name = "JSON", requires = "semantic_context", value_parser = parse_capability_policy)]
         semantic_capability_policy: Option<Box<adoc_core::CapabilityPolicy>>,
     },
@@ -790,7 +803,9 @@ pub(crate) enum Commands {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_exact_revision, parse_sha256_digest};
+    use clap::Parser;
+
+    use super::{Cli, parse_exact_revision, parse_sha256_digest};
 
     #[test]
     fn semantic_binding_parsers_reject_values_no_valid_context_can_match() {
@@ -804,6 +819,48 @@ mod tests {
         assert_eq!(parse_sha256_digest(&digest), Ok(digest));
         for invalid in ["sha256:ABC", "sha256:abc", "not-a-digest"] {
             assert!(parse_sha256_digest(invalid).is_err(), "{invalid:?}");
+        }
+    }
+
+    #[test]
+    fn citation_free_semantic_context_does_not_require_an_object_projection() {
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let policy = r#"{"version":"semantic-context-policy-v1","rules":[{"reason":"permission","outcome":"insufficient"},{"reason":"retention","outcome":"insufficient"},{"reason":"source_outage","outcome":"insufficient"},{"reason":"truncation","outcome":"insufficient"},{"reason":"resource_limit","outcome":"insufficient"}]}"#;
+        let parsed = Cli::try_parse_from([
+            "adoc",
+            "check",
+            "--receipt",
+            "receipt.json",
+            "--as-of",
+            "2026-01-01",
+            "--runtime-binary-digest",
+            digest.as_str(),
+            "--semantic-context",
+            "semantic-context.json",
+            "--semantic-subject-revision",
+            "git=head-sha",
+            "--semantic-source-revision",
+            "git=head-sha",
+            "--semantic-base-revision",
+            "git=base-sha",
+            "--semantic-head-revision",
+            "git=head-sha",
+            "--semantic-assessment-digest",
+            digest.as_str(),
+            "--semantic-selection-algorithm",
+            "changed-only",
+            "--semantic-selection-version",
+            "1",
+            "--semantic-required-class",
+            "changed_source",
+            "--semantic-authorized-scope",
+            "repo:billing",
+            "--semantic-capability-policy",
+            policy,
+        ]);
+
+        if let Err(error) = parsed {
+            panic!("unexpected usage error: {error}");
         }
     }
 }

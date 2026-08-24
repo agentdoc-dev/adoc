@@ -201,6 +201,8 @@ pub struct SemanticContextExpectedBindings {
     pub base_revision: ExactRevision,
     pub head_revision: ExactRevision,
     pub assessment_digest: String,
+    pub selection_algorithm: String,
+    pub selection_version: String,
     pub required_context_classes: Vec<String>,
     pub authorized_scope: Vec<String>,
     pub capability_policy: CapabilityPolicy,
@@ -215,6 +217,8 @@ pub struct SemanticContextValidationBasis {
     pub base_revision: ExactRevision,
     pub head_revision: ExactRevision,
     pub assessment_digest: String,
+    pub selection_algorithm: String,
+    pub selection_version: String,
     pub required_context_classes: Vec<String>,
     pub authorized_scope: Vec<String>,
     pub capability_policy: CapabilityPolicy,
@@ -789,6 +793,24 @@ pub fn validate_semantic_context(
         return Err(SemanticContextError::BasisMismatch {
             message: "assessment digest differs".to_string(),
         });
+    }
+    for (name, actual, expected) in [
+        (
+            "selection algorithm",
+            context.selection.algorithm.as_str(),
+            validation_basis.selection_algorithm.as_str(),
+        ),
+        (
+            "selection version",
+            context.selection.version.as_str(),
+            validation_basis.selection_version.as_str(),
+        ),
+    ] {
+        if actual != expected {
+            return Err(SemanticContextError::BasisMismatch {
+                message: format!("{name} differs"),
+            });
+        }
     }
     let expected_required: BTreeSet<_> = validation_basis
         .required_context_classes
