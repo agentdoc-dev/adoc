@@ -15,6 +15,8 @@ use adoc_mcp::{
 };
 use serde_json::json;
 
+const CANONICAL_SOURCE_ACL_OBSERVED_AT: &str = "2026-08-23T11:59:00Z";
+
 fn write(path: &Path, contents: &str) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).expect("parent directory can be created");
@@ -1610,7 +1612,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
                 "external_identity_link_id": "external-identity-link-1",
                 "source": { "kind": "repository", "id": "cloud" },
                 "acl_policy_version": "github-acl-v1",
-                "observed_at": "2026-08-23T11:59:00Z",
+                "observed_at": CANONICAL_SOURCE_ACL_OBSERVED_AT,
                 "expires_at": "2026-08-23T12:05:00Z",
                 "connector_available": true
             }
@@ -1631,6 +1633,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "role": { "id": "builtin:curator", "version": 1 }
         }
     });
+    assert_eq!(
+        decision["source_acl_ceiling"]["current_authorization"]["observed_at"],
+        CANONICAL_SOURCE_ACL_OBSERVED_AT,
+        "current authorization must retain the canonical snapshot observation instant"
+    );
 
     let mut direct_human = decision.clone();
     direct_human["grants"][0] = json!({
@@ -3061,10 +3068,14 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
         "source_container_id": "agentdoc-dev",
         "acl_policy_version": "github-acl-v1",
         "source": { "kind": "repository", "id": "cloud" },
-        "observed_at": "2026-08-23T11:59:00Z",
+        "observed_at": CANONICAL_SOURCE_ACL_OBSERVED_AT,
         "acl_payload_digest": format!("sha256:{}", "a".repeat(64)),
         "usage": "historical_provenance"
     });
+    assert_eq!(
+        snapshot["observed_at"], CANONICAL_SOURCE_ACL_OBSERVED_AT,
+        "snapshot and current authorization fixtures must share one freshness origin"
+    );
 
     assert!(schema_accepts(
         "adoc.source_acl_snapshot.v0.schema.json",
