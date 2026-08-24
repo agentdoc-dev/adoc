@@ -721,6 +721,27 @@ fn group_vocabularies_match_the_e2_4_registry() {
     let registered_modes = anchored_ids(&registry, "registry:group-binding-modes");
     let authorization = read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md");
     let a7 = annex_section(&authorization, "AUTHORIZATION.md", "## A7.");
+    let effective_history_claim = "complete effective mode history";
+    assert!(
+        a7.contains(effective_history_claim),
+        "AUTHORIZATION.md §A7 must retain only effective binding mode epochs"
+    );
+    assert!(
+        external_group["binding_id"]["description"]
+            .as_str()
+            .expect("external binding replay is documented")
+            .contains(effective_history_claim),
+        "binding_id must point replay at the effective history §A7 defines"
+    );
+    let pending_retention_claim = "requested reconfiguration and its resynchronization outcome are retained for every decision recorded while it was pending";
+    assert!(
+        a7.contains(pending_retention_claim),
+        "AUTHORIZATION.md §A7 must retain pending reconfiguration evidence"
+    );
+    assert!(
+        read_repo_doc("docs/roadmap/v10/MILESTONES.md").contains(pending_retention_claim),
+        "the E2.4 exit gate must retain pending reconfiguration evidence"
+    );
     let mode_lists = fenced_lists_in(
         a7.split_once("Membership binding modes:")
             .expect("AUTHORIZATION.md §A7 labels its membership binding modes")
