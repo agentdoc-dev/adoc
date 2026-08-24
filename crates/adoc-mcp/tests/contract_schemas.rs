@@ -2452,23 +2452,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut nonhuman_identity_session = decision.clone();
     nonhuman_identity_session["principal"]["type"] = json!("service");
     nonhuman_identity_session["principal"]["identity_session_id"] = json!("identity-session-1");
-    assert!(
-        !schema_accepts(
-            "adoc.authorization_decision.v0.schema.json",
-            &nonhuman_identity_session
-        ),
-        "nonhuman principals cannot carry a human identity session"
-    );
 
     let mut oidc_basis_without_session = external_group_grant.clone();
     oidc_basis_without_session["basis"]["group"]["source_kind"] = json!("oidc_group");
-    assert!(
-        !schema_accepts(
-            "adoc.authorization_decision.v0.schema.json",
-            &oidc_basis_without_session
-        ),
-        "an OIDC winning basis must identify the exact evaluated identity session"
-    );
 
     for mode in binding_modes {
         let mode = mode.as_str().expect("binding modes are strings");
@@ -2486,12 +2472,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
                 instance["principal"]["identity_session_id"] = json!("identity-session-1");
                 let mut service_instance = instance.clone();
                 service_instance["principal"]["type"] = json!("service");
+                service_instance["principal"]
+                    .as_object_mut()
+                    .expect("principal is an object")
+                    .remove("identity_session_id");
                 assert!(
                     !schema_accepts(
                         "adoc.authorization_decision.v0.schema.json",
                         &service_instance
                     ),
-                    "claim-only OIDC must use a human identity session"
+                    "claim-only OIDC must identify an identity session"
                 );
             }
             assert!(
@@ -2652,6 +2642,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "service direct grant without reason",
             service_direct_without_reason,
             true,
+        ),
+        (
+            "nonhuman principal with identity session",
+            nonhuman_identity_session,
+            false,
+        ),
+        (
+            "OIDC winning basis without identity session",
+            oidc_basis_without_session,
+            false,
         ),
         ("time-bounded human direct deny", direct_deny, true),
         (

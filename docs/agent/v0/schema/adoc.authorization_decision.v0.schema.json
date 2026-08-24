@@ -927,7 +927,7 @@
       "additionalProperties": false,
       "properties": {
         "id": {
-          "description": "Stable identifier of the retained membership observation. That record identifies one exact external binding. Replay verifies that the observation's retained binding equals the enclosing binding_id and that the retained binding's AgentDoc group equals the enclosing group id; any mismatch fails closed.",
+          "description": "Stable identifier of the retained membership observation. That record identifies one exact external binding and one exact identity link. Replay verifies that the observation's retained binding equals the enclosing binding_id, that the retained binding's AgentDoc group equals the enclosing group id, and that the observation's retained identity link equals the enclosing identity-link identifier, so the observation's subject is the authorization envelope principal; any mismatch fails closed.",
           "$ref": "#/$defs/nonEmpty"
         },
         "external_identity_link_id": {
@@ -935,7 +935,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "source_event_id": {
-          "description": "Immutable provenance record retained so replay can re-derive the observation from source. For an upstream connector event, it identifies the event that prompted a current-state membership read and carries its current-state read and ingestion-commit instants; the ingestion transaction commits only after the successful read. For a synchronization run, it identifies the run and carries its start and completion instants; a resynchronization sweep records one identifier for the run and cites it from every observation it produces. For claim-only oidc_group, it identifies the exact authenticated identity-session event and carries its token issuance, validation/ingestion-commit, and session-expiry instants.",
+          "description": "Immutable provenance record retained so replay can re-derive the observation from source. Replay verifies that the source record belongs to the observation's retained binding and that its event or per-principal run membership subject resolves through the observation's retained external identity link; any mismatch fails closed. For an upstream connector event, it identifies the event that prompted a current-state membership read and carries its current-state read and ingestion-commit instants; the ingestion transaction commits only after the successful read. For a synchronization run, it identifies the run and carries its start and completion instants plus the retained per-principal read result; a resynchronization sweep records one identifier for the run and cites it from every observation it produces. For claim-only oidc_group, it identifies the exact authenticated identity-session event and carries its token issuance, validation/ingestion-commit, and session-expiry instants.",
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
