@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.source_acl_snapshot.v0.schema.json",
   "title": "AgentDoc Historical Source ACL Snapshot",
-  "description": "Immutable historical ACL provenance retained with source-derived assertions. This envelope is never current authorization evidence: freshness, expiry, connector availability, and effective access are evaluated separately by Cloud under the connector ACL policy.",
+  "description": "Immutable historical ACL provenance retained with source-derived assertions. This envelope is never current authorization evidence: freshness, expiry, connector availability, and effective access are evaluated separately by Cloud under the connector ACL policy. snapshot_id, workspace_id, connector_id, source, and acl_policy_version must match current ACL evidence that names this snapshot; source_container_id, when present, must match the decision resource. These equalities are evaluator-owned and fail closed.",
   "type": "object",
   "required": [
     "schema_version",
@@ -24,11 +24,16 @@
       "$ref": "#/$defs/nonEmpty"
     },
     "connector_id": { "$ref": "#/$defs/nonEmpty" },
+    "source_container_id": {
+      "description": "Optional parent container for the bare source resource id. It must match resource.source_container_id on a decision that cites this snapshot; equality is evaluator-owned and fails closed.",
+      "$ref": "#/$defs/nonEmpty"
+    },
     "acl_policy_version": {
       "description": "Connector ACL policy version active when this historical snapshot was observed.",
       "$ref": "#/$defs/nonEmpty"
     },
     "source": {
+      "description": "Exact source resource with a bare source-local id; parent container context is carried separately by source_container_id.",
       "type": "object",
       "required": ["kind", "id"],
       "additionalProperties": false,
@@ -49,6 +54,7 @@
   },
   "$defs": {
     "nonEmpty": {
+      "description": "Single-line opaque identifier or version string.",
       "type": "string",
       "pattern": "^\\S(?:[^\\r\\n\\u2028\\u2029]*\\S)?$"
     },

@@ -2843,11 +2843,12 @@ fn connector_acl_policy_requires_every_activation_safety_declaration() {
 fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
     let snapshot = json!({
         "schema_version": "adoc.source_acl_snapshot.v0",
-        "snapshot_id": "acl-snapshot-1",
+        "snapshot_id": "acl-1",
         "workspace_id": "workspace-1",
-        "connector_id": "github-connector-1",
+        "connector_id": "github",
+        "source_container_id": "agentdoc-dev",
         "acl_policy_version": "github-acl-v1",
-        "source": { "kind": "repository", "id": "agentdoc-dev/cloud" },
+        "source": { "kind": "repository", "id": "cloud" },
         "observed_at": "2026-08-24T12:00:00Z",
         "acl_payload_digest": format!("sha256:{}", "a".repeat(64)),
         "usage": "historical_provenance"

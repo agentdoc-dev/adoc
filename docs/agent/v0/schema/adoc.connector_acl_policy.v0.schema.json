@@ -68,6 +68,7 @@
   ],
   "$defs": {
     "nonEmpty": {
+      "description": "Single-line opaque identifier or version string.",
       "type": "string",
       "pattern": "^\\S(?:[^\\r\\n\\u2028\\u2029]*\\S)?$"
     }
