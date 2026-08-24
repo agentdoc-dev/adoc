@@ -2369,14 +2369,23 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut direct_with_rfc3339_edge_expiry = direct_human.clone();
     direct_with_rfc3339_edge_expiry["grants"][0]["expires_at"] = json!("2026-12-31t23:59:60z");
 
-    for mode in ["authoritative_sync", "additive_sync"] {
-        for source_kind in [
-            "github_team",
-            "gitlab_group",
-            "slack_user_group",
-            "oidc_group",
-            "scim_group",
-        ] {
+    let authorization_schema = schema("adoc.authorization_decision.v0.schema.json");
+    let external_group_properties = &authorization_schema["$defs"]["group"]["oneOf"]
+        .as_array()
+        .expect("group is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
+        .expect("group has an external membership branch")["properties"];
+    let binding_modes = external_group_properties["binding_mode"]["enum"]
+        .as_array()
+        .expect("external group binding_mode is an enum");
+    let source_kinds = external_group_properties["source_kind"]["enum"]
+        .as_array()
+        .expect("external group source_kind is an enum");
+    for mode in binding_modes {
+        let mode = mode.as_str().expect("binding modes are strings");
+        for source_kind in source_kinds {
+            let source_kind = source_kind.as_str().expect("source kinds are strings");
             let mut instance = external_group_grant.clone();
             instance["grants"][0]["group"]["binding_mode"] = json!(mode);
             instance["grants"][0]["group"]["source_kind"] = json!(source_kind);

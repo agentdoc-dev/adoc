@@ -92,7 +92,7 @@ const ANCHORS: &[&str] = &[
     "registry:gate-codes",
     "registry:permission-primitives",
     "registry:group-binding-modes",
-    "registry:group-membership-sources",
+    "registry:group-source-kinds",
     "registry:cloud-codes",
     "registry:attestation-codes",
     "registry:dispositions",
@@ -698,7 +698,12 @@ fn group_vocabularies_match_the_e2_4_registry() {
         "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
     ))
     .expect("authorization decision schema is json");
-    let external_group = &schema["$defs"]["group"]["oneOf"][1]["properties"];
+    let external_group = &schema["$defs"]["group"]["oneOf"]
+        .as_array()
+        .expect("group is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
+        .expect("group has an external membership branch")["properties"];
     let schema_values = |name: &str| {
         external_group[name]["enum"]
             .as_array()
@@ -713,12 +718,43 @@ fn group_vocabularies_match_the_e2_4_registry() {
             .collect::<BTreeSet<_>>()
     };
 
+    let registered_modes = anchored_ids(&registry, "registry:group-binding-modes");
     assert_eq!(
-        anchored_ids(&registry, "registry:group-binding-modes"),
-        schema_values("binding_mode")
+        registered_modes,
+        [
+            "authoritative_sync",
+            "additive_sync",
+            "suggestion_only",
+            "disabled",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
     );
+
+    let mode_rows =
+        support::doc_scan::anchored_block(&registry, REGISTRY, "registry:group-binding-modes");
+    let mut grant_conferring_modes = BTreeSet::new();
+    for line in mode_rows.lines().map(str::trim) {
+        if !line.starts_with("| `") {
+            continue;
+        }
+        let cells = line.split('|').map(str::trim).collect::<Vec<_>>();
+        let mode = cells[1]
+            .strip_prefix('`')
+            .and_then(|value| value.strip_suffix('`'))
+            .expect("binding mode is backticked");
+        match cells.get(4).copied() {
+            Some("yes") => {
+                grant_conferring_modes.insert(mode.to_owned());
+            }
+            Some("no") => {}
+            value => panic!("binding mode {mode:?} has invalid confers-grant value {value:?}"),
+        }
+    }
+    assert_eq!(grant_conferring_modes, schema_values("binding_mode"));
     assert_eq!(
-        anchored_ids(&registry, "registry:group-membership-sources"),
+        anchored_ids(&registry, "registry:group-source-kinds"),
         schema_values("source_kind")
     );
 }
