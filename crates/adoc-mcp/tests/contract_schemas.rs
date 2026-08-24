@@ -1706,8 +1706,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "id": "group-2",
         "name": "Incident responders",
         "membership_source": "manual",
-        "membership_created_at": "2026-08-23T10:00:00Z",
-        "membership_observed_at": "2026-08-23T12:00:00Z"
+        "membership_id": "manual-membership-1",
+        "membership_created_at": "2026-08-23T10:00:00Z"
     });
     let mut manual_group_grant = decision.clone();
     manual_group_grant["grants"][0]["group"] = manual_group.clone();
@@ -1763,8 +1763,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut nested_membership_observation = external_group_grant.clone();
     nested_membership_observation["grants"][0]["group"]["membership_observation"]["nested"] =
         json!(true);
-    let mut invalid_membership_observed_at = external_group_grant.clone();
-    invalid_membership_observed_at["grants"][0]["group"]["membership_observation"]["observed_at"] =
+    let mut invalid_external_observed_at = external_group_grant.clone();
+    invalid_external_observed_at["grants"][0]["group"]["membership_observation"]["observed_at"] =
         json!("not-a-time");
     let mut multiline_group_name = manual_group_grant.clone();
     multiline_group_name["grants"][0]["group"]["name"] = json!("Curators\nadmin");
@@ -1781,14 +1781,17 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .as_object_mut()
         .expect("group object")
         .remove("membership_created_at");
-    let mut manual_group_without_membership_observed_at = manual_group_grant.clone();
-    manual_group_without_membership_observed_at["grants"][0]["group"]
+    let mut manual_group_without_membership_id = manual_group_grant.clone();
+    manual_group_without_membership_id["grants"][0]["group"]
         .as_object_mut()
         .expect("group object")
-        .remove("membership_observed_at");
+        .remove("membership_id");
     let mut manual_group_with_external_observation = manual_group_grant.clone();
     manual_group_with_external_observation["grants"][0]["group"]["membership_observation"] =
         external_group_grant["grants"][0]["group"]["membership_observation"].clone();
+    let mut external_group_with_manual_membership_time = external_group_grant.clone();
+    external_group_with_manual_membership_time["grants"][0]["group"]["membership_created_at"] =
+        json!("2026-08-23T10:00:00Z");
     let mut basis_group_without_group_grant = decision.clone();
     basis_group_without_group_grant["basis"]["group"] =
         manual_group_grant["basis"]["group"].clone();
@@ -2647,7 +2650,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ),
         (
             "external membership observation time is RFC 3339",
-            invalid_membership_observed_at,
+            invalid_external_observed_at,
             false,
         ),
         ("multiline group name", multiline_group_name, false),
@@ -2665,13 +2668,18 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         (
-            "manual group without membership observation time",
-            manual_group_without_membership_observed_at,
+            "manual group without membership id",
+            manual_group_without_membership_id,
             false,
         ),
         (
             "manual group with external membership observation",
             manual_group_with_external_observation,
+            false,
+        ),
+        (
+            "external group with manual membership creation time",
+            external_group_with_manual_membership_time,
             false,
         ),
         (

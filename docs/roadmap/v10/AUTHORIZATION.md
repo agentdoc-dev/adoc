@@ -196,7 +196,7 @@ Examples of sources:
 
 Roles/scoped grants attach to AgentDoc groups. Revocation from an authoritative source removes derived membership. Manual membership may coexist only where group policy permits it. Connector administrator status never implies AgentDoc administrator status.
 
-At authorization evaluation, an active manual membership is recorded with its creation time and an observation time equal to the decision evaluation time; reusing an earlier positive observation fails closed after revocation. When both manual and external membership confer the same group grant, the evaluator records the independently durable manual provenance.
+At authorization evaluation, an active manual membership is recorded with its stable membership identifier and creation time. Replay resolves that identifier against its preserved lifecycle record and verifies that the membership was created and not revoked at the decision evaluation time. When both manual and external membership confer the same group grant, the evaluator records the independently durable manual provenance.
 
 Nested-group behavior is not implemented accidentally; it requires a future explicit decision.
 
