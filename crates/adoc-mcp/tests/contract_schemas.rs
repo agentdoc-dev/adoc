@@ -1633,6 +1633,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "scope": role_scope.clone(),
             "role": { "id": "builtin:curator", "version": 1 }
         }],
+        "membership_evidence": "not_applicable",
         "source_acl_ceiling": {
             "required": true,
             "result": "allow",
@@ -1701,6 +1702,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
         }
     });
     let mut external_group_grant = decision.clone();
+    external_group_grant["membership_evidence"] = json!("current");
     external_group_grant["grants"][0]["group"] = external_group.clone();
     external_group_grant["basis"]["group"] = external_group;
 
@@ -1712,10 +1714,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "membership_created_at": "2026-08-23T10:00:00Z"
     });
     let mut manual_group_grant = decision.clone();
+    manual_group_grant["membership_evidence"] = json!("current");
     manual_group_grant["grants"][0]["group"] = manual_group.clone();
     manual_group_grant["basis"]["group"] = manual_group;
 
     let mut manual_group_direct_grant = decision.clone();
+    manual_group_direct_grant["membership_evidence"] = json!("current");
     manual_group_direct_grant["principal"]["type"] = json!("service");
     manual_group_direct_grant["grants"][0] = json!({
         "grant_id": "group-scoped-grant-1",
@@ -1813,6 +1817,14 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut basis_group_without_group_grant = decision.clone();
     basis_group_without_group_grant["basis"]["group"] =
         manual_group_grant["basis"]["group"].clone();
+    let mut group_with_not_applicable_membership_evidence = external_group_grant.clone();
+    group_with_not_applicable_membership_evidence["membership_evidence"] = json!("not_applicable");
+
+    let mut decision_without_membership_evidence = decision.clone();
+    decision_without_membership_evidence
+        .as_object_mut()
+        .expect("decision object")
+        .remove("membership_evidence");
 
     let mut no_acl_ceiling = decision.clone();
     no_acl_ceiling["source_acl_ceiling"] = json!({
@@ -1836,6 +1848,48 @@ fn authorization_decision_schema_pins_replay_bindings() {
     denied["result"] = json!("deny");
     denied["reason"] = json!("no_grant");
     denied["basis"] = json!(null);
+    let external_absence = json!({
+        "group_id": "group-1",
+        "group_name": "Curators",
+        "membership_source": "external",
+        "binding_id": "github-team-binding-1",
+        "binding_mode": "authoritative_sync",
+        "source_kind": "github_team",
+        "binding_mode_effective_at": "2026-08-23T10:00:00Z",
+        "membership_observation": {
+            "id": "membership-observation-absent-1",
+            "external_identity_link_id": "external-identity-link-1",
+            "source_event_id": "github-team-event-absent-1",
+            "observed_at": "2026-08-23T11:00:00Z",
+            "effective_at": "2026-08-23T11:00:30Z",
+            "fresh_until": "2026-08-23T12:05:00Z",
+            "member_present": false,
+            "nested": false
+        }
+    });
+    let mut no_grant_with_external_absence = denied.clone();
+    no_grant_with_external_absence["membership_evidence"] = json!("current");
+    no_grant_with_external_absence["membership_absence_evidence"] = json!([external_absence]);
+    let mut no_grant_with_manual_absence = denied.clone();
+    no_grant_with_manual_absence["membership_evidence"] = json!("current");
+    no_grant_with_manual_absence["membership_absence_evidence"] = json!([{
+        "group_id": "group-2",
+        "group_name": "Incident responders",
+        "membership_source": "manual"
+    }]);
+    let no_grant_without_absence_evidence = {
+        let mut instance = no_grant_with_external_absence.clone();
+        instance
+            .as_object_mut()
+            .expect("decision object")
+            .remove("membership_absence_evidence");
+        instance
+    };
+    let mut no_grant_with_positive_absence_observation = no_grant_with_external_absence.clone();
+    no_grant_with_positive_absence_observation["membership_absence_evidence"][0]["membership_observation"]
+        ["member_present"] = json!(true);
+    let mut no_grant_not_applicable_with_absence = no_grant_with_external_absence.clone();
+    no_grant_not_applicable_with_absence["membership_evidence"] = json!("not_applicable");
     let mut membership_evidence_unavailable = denied.clone();
     membership_evidence_unavailable["consequential"] = json!(true);
     membership_evidence_unavailable["result"] = json!("insufficient_context");
@@ -2800,9 +2854,29 @@ fn authorization_decision_schema_pins_replay_bindings() {
             basis_group_without_group_grant,
             false,
         ),
+        (
+            "group grant cannot mark membership not applicable",
+            group_with_not_applicable_membership_evidence,
+            false,
+        ),
+        (
+            "decision without membership status",
+            decision_without_membership_evidence,
+            false,
+        ),
         ("optional ACL ceiling", no_acl_ceiling, true),
         ("allow with no policy inputs", no_policy_inputs, true),
         ("deny without basis", denied, true),
+        (
+            "no grant with retained external absence evidence",
+            no_grant_with_external_absence,
+            true,
+        ),
+        (
+            "no grant with retained manual absence evidence",
+            no_grant_with_manual_absence,
+            true,
+        ),
         (
             "consequential membership evidence unavailable",
             membership_evidence_unavailable,
@@ -3193,6 +3267,21 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "no-grant reason with unavailable membership evidence",
             no_grant_with_unavailable_membership_evidence,
+            false,
+        ),
+        (
+            "current no-grant without absence evidence",
+            no_grant_without_absence_evidence,
+            false,
+        ),
+        (
+            "external absence evidence cannot record membership present",
+            no_grant_with_positive_absence_observation,
+            false,
+        ),
+        (
+            "not-applicable no-grant cannot carry absence evidence",
+            no_grant_not_applicable_with_absence,
             false,
         ),
         (
