@@ -200,6 +200,8 @@ At authorization evaluation, an active manual membership is recorded with its st
 
 External binding records, membership observations, and their source events are retained for every decision that cites them, so those decisions remain replayable after the observed membership is revoked and after binding resync, reconfiguration, or disablement.
 
+External binding records retain their complete mode history, so replay can resolve the mode epoch in effect at each decision's evaluation time.
+
 Nested-group behavior is not implemented accidentally; it requires a future explicit decision.
 
 ## A8. Authorization decision record

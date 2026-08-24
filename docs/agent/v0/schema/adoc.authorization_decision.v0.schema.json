@@ -917,7 +917,7 @@
             "name": { "$ref": "#/$defs/nonEmpty" },
             "membership_source": { "const": "external" },
             "binding_id": {
-              "description": "Stable identifier of the preserved external-binding record. Replay verifies binding_mode and binding_mode_effective_at against that record, which remains retained after reconfiguration or disablement.",
+              "description": "Stable identifier of the preserved external-binding record and its complete mode history. Replay verifies binding_mode and binding_mode_effective_at against the retained epoch.",
               "$ref": "#/$defs/nonEmpty"
             },
             "binding_mode": {
