@@ -688,11 +688,11 @@
       "properties": {
         "required": { "type": "boolean" },
         "result": {
-          "description": "Provider ACL verdict when one was observed, including evidence later found stale, invalidated, or unavailable; insufficient_context means no definitive provider verdict was available. The decision reason records freshness and availability precedence.",
+          "description": "Provider ACL verdict when one was observed, including evidence later found stale, invalidated, or unavailable; insufficient_context means no definitive provider verdict was available, while not_applicable means no source ACL check was required. The decision reason records freshness and availability precedence.",
           "$ref": "#/$defs/policyInput"
         },
         "snapshot_id": {
-          "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance. When current_authorization is present, both snapshot_id values must match; equality is evaluator-owned and fails closed. The snapshot never establishes current authorization by itself.",
+          "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance. current_authorization repeats the snapshot bound to its independently stored evidence record so the evaluator can prove freshness applies to this exact consulted payload. Both snapshot_id values must match; equality is evaluator-owned and fails closed. The snapshot never establishes current authorization by itself.",
           "$ref": "#/$defs/nonEmpty"
         },
         "current_authorization": {
@@ -755,7 +755,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "snapshot_id": {
-          "description": "Retained adoc.source_acl_snapshot.v0 record establishing which ACL payload was evaluated. Currency is established by expires_at, connector_available, and absence of invalidated_at, not by the payload digest. The sibling source_acl_ceiling.snapshot_id must match; equality is evaluator-owned and fails closed.",
+          "description": "Snapshot bound to this independently stored current-evidence record. Repeating it beside source_acl_ceiling.snapshot_id lets the evaluator reject evidence issued for a different payload; both values must match. Currency is established by expires_at, connector_available, and absence of invalidated_at, not by the snapshot alone.",
           "$ref": "#/$defs/nonEmpty"
         },
         "workspace_id": {
@@ -782,7 +782,7 @@
           "type": "boolean"
         },
         "invalidated_at": {
-          "description": "Set when a revocation observation invalidated this evidence. Presence forbids allow and is required by reason source_acl_invalidated.",
+          "description": "Set when a revocation observation invalidated this evidence. Presence forbids a top-level allow and is required by reason source_acl_invalidated; source_acl_ceiling.result may still preserve the provider verdict observed before invalidation.",
           "$ref": "#/$defs/rfc3339Timestamp"
         }
       }
