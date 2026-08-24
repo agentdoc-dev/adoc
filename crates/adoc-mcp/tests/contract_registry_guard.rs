@@ -830,6 +830,24 @@ fn group_retention_rules_match_the_e2_4_authority() {
     );
 
     let observation = &schema["$defs"]["membershipObservation"]["properties"];
+    let observation_required = schema["$defs"]["membershipObservation"]["required"]
+        .as_array()
+        .expect("membership observation required fields");
+    assert!(
+        observation_required
+            .iter()
+            .any(|field| field == "fresh_until"),
+        "external membership observations must carry a freshness deadline"
+    );
+    let fresh_until = observation["fresh_until"]["description"]
+        .as_str()
+        .expect("membership freshness deadline is documented");
+    assert!(
+        fresh_until.contains("versioned freshness policy retained by the exact binding")
+            && fresh_until.contains("evaluation_time does not exceed fresh_until")
+            && fresh_until.contains("connector unavailability cannot extend"),
+        "membership freshness must be binding-owned, bounded, and fail closed"
+    );
     let effective_at = observation["effective_at"]["description"]
         .as_str()
         .expect("membership effective time is documented");
@@ -962,6 +980,14 @@ fn group_retention_rules_match_the_e2_4_authority() {
         e2_4.contains(source_timing_claim),
         "the E2.4 exit gate must retain source timing endpoints"
     );
+    for surface in [a7, e2_4] {
+        assert!(
+            surface.contains("versioned freshness policy retained by the exact binding")
+                && surface.contains("evaluation_time` does not exceed `fresh_until")
+                && surface.contains("connector unavailability cannot extend"),
+            "A7 and E2.4 must bound external membership freshness"
+        );
+    }
     assert!(
         e2_4.contains(source_kind_binding_claim),
         "E2.4.T2 must reject a source kind that differs from the retained binding"
