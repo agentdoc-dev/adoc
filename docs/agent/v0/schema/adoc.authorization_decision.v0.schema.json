@@ -36,7 +36,7 @@
     },
     "consequential": { "type": "boolean" },
     "hard_deny": {
-      "description": "System-level deny observed ahead of the source ACL ceiling. True forces reason hard_deny and a deny result; only identity_context_missing, identity_expired, and evaluation_time_invalid may precede it because those stages preserve raw evaluator input for replay.",
+      "description": "System-level deny observed ahead of the source ACL ceiling. Unless identity_context_missing, identity_expired, or evaluation_time_invalid won earlier, true forces reason hard_deny and a deny result.",
       "type": "boolean"
     },
     "grants": {
@@ -964,7 +964,7 @@
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "connector_available": {
-          "description": "Whether the connector was available when this evidence was evaluated. False forbids authorization from widening access. After identity freshness, evaluation-time, and hard-deny stages pass, false without invalidated_at requires reason source_acl_unavailable or source_acl_stale; a known invalidation remains source_acl_invalidated. Conversely, source_acl_unavailable over an allow or deny ceiling requires false.",
+          "description": "Whether the connector was available when this evidence was evaluated. False forbids authorization from widening access. Unless identity_context_missing, identity_expired, evaluation_time_invalid, or hard_deny already won, false without invalidated_at requires reason source_acl_unavailable or source_acl_stale; a known invalidation remains source_acl_invalidated. Conversely, source_acl_unavailable over an allow or deny ceiling requires false.",
           "type": "boolean"
         },
         "invalidated_at": {

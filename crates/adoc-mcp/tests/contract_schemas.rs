@@ -1758,9 +1758,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
     explicit_deny_with_invalidated_source_acl["reason"] = json!("explicit_deny");
     explicit_deny_with_invalidated_source_acl["basis"] = decision["basis"].clone();
     explicit_deny_with_invalidated_source_acl["basis"]["effect"] = json!("deny");
-    let mut hard_deny_masking_invalidated_source_acl =
+    let mut hard_deny_recorded_as_lower_gate_reason =
         explicit_deny_with_invalidated_source_acl.clone();
-    hard_deny_masking_invalidated_source_acl["hard_deny"] = json!(true);
+    hard_deny_recorded_as_lower_gate_reason["hard_deny"] = json!(true);
 
     for field in ["connector_id", "resource"] {
         let mut missing_source_scope = decision.clone();
@@ -1916,6 +1916,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut hard_deny = denied.clone();
     hard_deny["hard_deny"] = json!(true);
     hard_deny["reason"] = json!("hard_deny");
+    let mut hard_deny_with_expired_identity = hard_deny.clone();
+    hard_deny_with_expired_identity["principal"]["freshness"] = json!("expired");
+    hard_deny_with_expired_identity["reason"] = json!("identity_expired");
+    let mut hard_deny_with_invalid_time = hard_deny.clone();
+    hard_deny_with_invalid_time["evaluation_time"] = json!("");
+    hard_deny_with_invalid_time["result"] = json!("insufficient_context");
+    hard_deny_with_invalid_time["reason"] = json!("evaluation_time_invalid");
     let mut hard_deny_recorded_as_no_grant = hard_deny.clone();
     hard_deny_recorded_as_no_grant["reason"] = json!("no_grant");
     let mut false_hard_deny_reason = hard_deny.clone();
@@ -2189,8 +2196,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         (
-            "hard deny cannot mask known source ACL invalidation",
-            hard_deny_masking_invalidated_source_acl,
+            "hard deny cannot be recorded as a lower-gate reason",
+            hard_deny_recorded_as_lower_gate_reason,
             false,
         ),
         (
@@ -2246,6 +2253,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ("deny without basis", denied, true),
         ("insufficient context without basis", insufficient, true),
         ("hard-deny reason matches input", hard_deny, true),
+        (
+            "expired identity precedes hard deny",
+            hard_deny_with_expired_identity,
+            true,
+        ),
+        (
+            "invalid evaluation time precedes hard deny",
+            hard_deny_with_invalid_time,
+            true,
+        ),
         (
             "source ACL denied reason matches input",
             source_acl_denied,
