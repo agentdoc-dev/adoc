@@ -921,6 +921,7 @@
         "source_event_id",
         "observed_at",
         "effective_at",
+        "fresh_until",
         "member_present",
         "nested"
       ],
@@ -944,6 +945,10 @@
         },
         "effective_at": {
           "description": "Instant this observation became eligible to confer grants. It must equal the ingestion-commit instant of the connector event, the completion instant of the synchronization run, or, for claim-only oidc_group, the authentication validation/ingestion-commit instant identified by source_event_id. For a sweep completing a binding-mode reconfiguration this equals the new epoch boundary; a routine sweep records into the epoch already in effect. For claim-only oidc_group, principal.identity_session_id must equal the identity session retained by source_event_id; the observation may confer only during that matching session, no later than the cited identity session's expiry. observed_at must not follow effective_at, and effective_at must not follow evaluation_time; comparisons are evaluator-owned and fail closed.",
+          "$ref": "#/$defs/rfc3339Timestamp"
+        },
+        "fresh_until": {
+          "description": "Immutable deadline derived from observed_at under the versioned freshness policy retained by the exact binding. Replay recomputes that deadline, caps oidc_group at the cited identity session's expiry, and fails closed unless evaluation_time does not exceed fresh_until; connector unavailability cannot extend it. observed_at must not follow fresh_until. Timestamp comparisons are evaluator-owned and fail closed.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "member_present": { "const": true },

@@ -1695,6 +1695,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "source_event_id": "github-team-event-1",
             "observed_at": "2026-08-23T11:00:00Z",
             "effective_at": "2026-08-23T11:00:30Z",
+            "fresh_until": "2026-08-23T12:05:00Z",
             "member_present": true,
             "nested": false
         }
@@ -1774,6 +1775,14 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .remove("effective_at");
     let mut invalid_external_effective_at = external_group_grant.clone();
     invalid_external_effective_at["grants"][0]["group"]["membership_observation"]["effective_at"] =
+        json!("not-a-time");
+    let mut external_group_without_fresh_until = external_group_grant.clone();
+    external_group_without_fresh_until["grants"][0]["group"]["membership_observation"]
+        .as_object_mut()
+        .expect("membership observation")
+        .remove("fresh_until");
+    let mut invalid_external_fresh_until = external_group_grant.clone();
+    invalid_external_fresh_until["grants"][0]["group"]["membership_observation"]["fresh_until"] =
         json!("not-a-time");
     let mut multiline_group_name = manual_group_grant.clone();
     multiline_group_name["grants"][0]["group"]["name"] = json!("Curators\nadmin");
@@ -2716,6 +2725,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "external membership activation time is RFC 3339",
             invalid_external_effective_at,
+            false,
+        ),
+        (
+            "external membership without freshness deadline",
+            external_group_without_fresh_until,
+            false,
+        ),
+        (
+            "external membership freshness deadline is RFC 3339",
+            invalid_external_fresh_until,
             false,
         ),
         ("multiline group name", multiline_group_name, false),
