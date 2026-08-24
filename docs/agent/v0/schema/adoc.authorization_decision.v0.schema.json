@@ -108,7 +108,8 @@
               "enum": [
                 "identity_context_missing",
                 "identity_expired",
-                "evaluation_time_invalid"
+                "evaluation_time_invalid",
+                "hard_deny"
               ]
             }
           },
@@ -875,7 +876,7 @@
       "additionalProperties": false,
       "properties": {
         "required": {
-          "description": "Whether the decision resource required a source ACL check, independent of whether evaluation reached that gate. True requires connector_id, source_container_id, and resource on the decision resource and forces result to allow, deny, or insufficient_context. check_context is required once identity and evaluation-time validation pass; identity_context_missing, identity_expired, or evaluation_time_invalid may win before an attempt and omit it. A required allow or deny additionally requires current ACL evidence. False forces not_applicable and forbids check context and current ACL evidence; snapshot_id remains permitted as historical audit provenance because it never establishes current authorization by itself.",
+          "description": "Whether the decision resource required a source ACL check, independent of whether evaluation reached that gate. True requires connector_id, source_container_id, and resource on the decision resource and forces result to allow, deny, or insufficient_context. check_context is required once the identity, evaluation-time, and hard-deny gates pass; identity_context_missing, identity_expired, evaluation_time_invalid, or hard_deny may win before an attempt and omit it. A required allow or deny additionally requires current ACL evidence. False forces not_applicable and forbids check context and current ACL evidence; snapshot_id remains permitted as historical audit provenance because it never establishes current authorization by itself.",
           "type": "boolean"
         },
         "result": {
@@ -975,7 +976,7 @@
       ]
     },
     "currentSourceAclAuthorization": {
-      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, source_container_id, and source must match the decision resource; principal_id must match the effective decision principal; acl_policy_version and external_identity_link_id must match check_context. The retained identity link must resolve principal_id continuously from observed_at through evaluation_time so evidence observed before linking or after revocation can never widen access; snapshot_id and result must match their sibling source_acl_ceiling values. Result equality is schema-enforced; the remaining equality and temporal checks are evaluator-owned and fail closed.",
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, source_container_id, and source must match the decision resource; principal_id must match the effective decision principal; acl_policy_version and external_identity_link_id must match check_context when it is present. The retained identity link independently binds this evidence to principal_id and must resolve it continuously from observed_at through evaluation_time so evidence observed before linking or after revocation can never widen access; snapshot_id and result must match their sibling source_acl_ceiling values. An earlier identity, evaluation-time, or hard-deny outcome may retain this downstream input without check_context for replay, but it can never override that earlier outcome. Result equality is schema-enforced; the remaining equality and temporal checks are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
