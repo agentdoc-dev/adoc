@@ -45,8 +45,15 @@
       "items": { "$ref": "#/$defs/grant" }
     },
     "membership_evidence": {
-      "description": "Required scoped-grants-stage input status. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established; not_applicable means no membership input could affect the scoped grants. When the scoped-grants stage owns the outcome, insufficient_context requires reason membership_evidence_unavailable; earlier identity, evaluation-time, hard-deny, or source-ACL outcomes and a decisive explicit deny retain precedence. A group-bearing grant requires current or insufficient_context and therefore forbids not_applicable. no_grant with current requires immutable membership_absence_evidence; an empty array is structurally permitted only with a group-bearing grant and is justified only when no relevant membership was established absent. no_grant with not_applicable forbids the field.",
+      "description": "Required scoped-grants-stage input status. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established and requires immutable membership_unavailability_evidence; not_applicable means no membership input could affect the scoped grants. When the scoped-grants stage owns the outcome, insufficient_context requires reason membership_evidence_unavailable; earlier identity, evaluation-time, hard-deny, or source-ACL outcomes and a decisive explicit deny retain precedence. A group-bearing grant requires current or insufficient_context and therefore forbids not_applicable. no_grant with current requires immutable membership_absence_evidence; an empty array is structurally permitted only with a group-bearing grant and is justified only when no relevant membership was established absent. no_grant with not_applicable forbids the field.",
       "enum": ["current", "insufficient_context", "not_applicable"]
+    },
+    "membership_unavailability_evidence": {
+      "description": "Immutable provenance for every relevant membership input that was unavailable or not yet established. Each entry identifies the exact group input and a retained failure, expiry, or pending-state record. Evaluator-owned completeness and record-ownership checks fail closed.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/membershipUnavailabilityEvidence" }
     },
     "membership_absence_evidence": {
       "description": "Exact retained negative membership facts used by a current no_grant decision. The required array contains every relevant manual group or grant-conferring external binding whose confirmed absence affected scoped-grant evaluation. A group-bearing grant is a necessary but not sufficient condition for an empty array; the array is empty only when no relevant membership was established absent. Evaluator-owned completeness checks fail closed. Manual entries replay against retained membership lifecycle history for the envelope principal and group at evaluation_time. External entries retain the exact negative observation, binding epoch, identity link, and source event or run.",
@@ -413,6 +420,20 @@
     },
     {
       "if": {
+        "properties": {
+          "membership_evidence": { "const": "insufficient_context" }
+        },
+        "required": ["membership_evidence"]
+      },
+      "then": {
+        "required": ["membership_unavailability_evidence"]
+      },
+      "else": {
+        "not": { "required": ["membership_unavailability_evidence"] }
+      }
+    },
+    {
+      "if": {
         "properties": { "reason": { "const": "no_grant" } },
         "required": ["reason"]
       },
@@ -436,9 +457,6 @@
                   "grants": { "contains": { "required": ["group"] } }
                 },
                 "required": ["grants"]
-              },
-              "then": {
-                "description": "A group-bearing grant proves some membership was established present, which is a necessary but not sufficient condition for an empty array: the array is empty only when no relevant membership was established absent. Completeness remains evaluator-owned and fails closed."
               },
               "else": {
                 "properties": {
@@ -1069,7 +1087,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
-          "description": "Source evidence time used for membership freshness. An event-driven observation of either polarity carries the current-state source read time prompted by its event, never the webhook delivery time: a positive observation is recorded only after that read confirms membership, and a negative observation only after that read confirms absence. A delayed or reordered positive event whose read no longer shows membership records no positive observation, and a delayed or reordered removal event whose read still shows membership records no negative observation. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership. For claim-only oidc_group, observed_at is the token issuance instant retained by source_event_id; validation of that freshly issued token at authentication is the current-state read.",
+          "description": "Source evidence time used for membership freshness. An event-driven observation carries the current-state source read time prompted by its event, never the webhook delivery time; event polarity only triggers the read, and the read result determines observation polarity. A positive event whose read confirms absence records a negative observation and no positive observation. A removal event whose read still shows membership records a positive observation and no negative observation; the contradiction is retained and operator-visible, and the binding's next scheduled resynchronization bounds revocation propagation. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership. For claim-only oidc_group, observed_at is the token issuance instant retained by source_event_id; validation of that freshly issued token at authentication is the current-state read.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "effective_at": {
@@ -1077,7 +1095,7 @@
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "fresh_until": {
-          "description": "Immutable deadline derived from observed_at under the versioned freshness policy retained by the exact binding. Replay resolves the policy version in effect at observed_at, recomputes the deadline, requires fresh_until to equal that recomputation, caps oidc_group at the cited identity session's expiry, and fails closed unless evaluation_time does not exceed fresh_until; connector unavailability cannot extend it. observed_at must not follow fresh_until, and fresh_until must follow effective_at, so an observation is never expired before it becomes eligible. A synchronization run whose produced observations cannot satisfy that ordering is rejected as a freshness-policy misconfiguration; a routine replacement run must also complete before the deadline of the observations it replaces. Timestamp comparisons are evaluator-owned and fail closed.",
+          "description": "Immutable deadline derived from observed_at under the versioned freshness policy retained by the exact binding. Replay resolves the policy versions in effect at observed_at and evaluation_time, requires fresh_until to equal the historical-version recomputation, and permits the observation to confer only through the shorter of fresh_until and the deadline recomputed with the evaluation-time freshness window. A shortened policy therefore caps existing observations immediately, while a longer policy never revives or extends them. Replay also caps oidc_group at the cited identity session's expiry and fails closed unless evaluation_time does not exceed the effective deadline; connector unavailability cannot extend it. The effective deadline must follow effective_at; observed_at must not follow fresh_until, and retained fresh_until must follow effective_at, so an observation is never expired before it becomes eligible. A synchronization run whose produced observations cannot satisfy that ordering is rejected as a freshness-policy misconfiguration; a routine replacement run must also complete before the deadline of the observations it replaces. Timestamp comparisons are evaluator-owned and fail closed.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "member_present": { "type": "boolean" },
@@ -1154,6 +1172,70 @@
                   "required": ["member_present"]
                 }
               ]
+            }
+          }
+        }
+      ]
+    },
+    "membershipUnavailabilityEvidence": {
+      "description": "Immutable fail-closed provenance for one unavailable membership input. The retained state record must belong to the named input and prove the stated condition at evaluation_time; replay fails closed on a mismatch.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "group_id",
+            "membership_source",
+            "state",
+            "state_record_id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "group_id": { "$ref": "#/$defs/nonEmpty" },
+            "membership_source": { "const": "manual" },
+            "state": { "const": "lifecycle_unavailable" },
+            "state_record_id": {
+              "description": "Immutable retained record of the failed or unresolved manual-membership lifecycle read for this group and the authorization envelope principal.",
+              "$ref": "#/$defs/nonEmpty"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "group_id",
+            "membership_source",
+            "binding_id",
+            "source_kind",
+            "external_identity_link_id",
+            "state",
+            "state_record_id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "group_id": { "$ref": "#/$defs/nonEmpty" },
+            "membership_source": { "const": "external" },
+            "binding_id": {
+              "description": "Exact retained external binding whose membership input could not be established.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "source_kind": { "$ref": "#/$defs/sourceKind" },
+            "external_identity_link_id": {
+              "description": "Exact retained identity link for the authorization envelope principal whose binding input was unavailable.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "state": {
+              "enum": [
+                "observation_expired",
+                "connector_read_failed",
+                "link_read_pending",
+                "link_read_failed",
+                "epoch_observation_pending",
+                "oidc_authentication_pending"
+              ]
+            },
+            "state_record_id": {
+              "description": "Immutable retained record matching state: the expired observation, failed connector read, pending or failed link read, empty-epoch synchronization state, or pending OIDC authentication state. Replay verifies that it belongs to binding_id and external_identity_link_id and was effective at evaluation_time.",
+              "$ref": "#/$defs/nonEmpty"
             }
           }
         }
