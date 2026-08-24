@@ -18,7 +18,7 @@ use serde_json::json;
 const CANONICAL_SOURCE_ACL_OBSERVED_AT: &str = "2026-08-23T11:59:00Z";
 const CANONICAL_SOURCE_ACL_EXPIRED_AT: &str = "2026-08-23T11:59:30Z";
 const CANONICAL_EVALUATION_TIME: &str = "2026-08-23T12:00:00Z";
-const CANONICAL_SOURCE_ACL_EXPIRES_AT: &str = "2026-08-23T12:05:00Z";
+const CANONICAL_SOURCE_ACL_EXPIRES_AT: &str = "2026-08-23T12:04:00Z";
 
 fn canonical_source_acl_join() -> serde_json::Value {
     json!({
@@ -3002,7 +3002,7 @@ fn connector_acl_policy_requires_every_activation_safety_declaration() {
         "connector_kind": "github",
         "policy_version": "github-acl-v1",
         "acquisition": "provider_events_and_api",
-        "freshness_window_seconds": 360,
+        "freshness_window_seconds": 300,
         "refresh_mechanism": "webhook_and_poll",
         "revocation_propagation": "immediate_on_observation",
         "connector_unavailable": "fail_closed",
@@ -3014,8 +3014,12 @@ fn connector_acl_policy_requires_every_activation_safety_declaration() {
 
     assert_eq!(
         policy["freshness_window_seconds"],
-        json!(360),
+        json!(300),
         "canonical ACL policy must produce the canonical evidence expiry"
+    );
+    assert_eq!(
+        CANONICAL_SOURCE_ACL_EXPIRES_AT, "2026-08-23T12:04:00Z",
+        "canonical ACL expiry must retain the policy's 300-second window"
     );
     assert!(schema_accepts(
         "adoc.connector_acl_policy.v0.schema.json",
