@@ -852,6 +852,7 @@
         "external_identity_link_id",
         "source_event_id",
         "observed_at",
+        "effective_at",
         "member_present",
         "nested"
       ],
@@ -867,7 +868,11 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
-          "description": "Instant this membership observation was recorded, which bounds the underlying read from above rather than naming it: membership was read at or before this instant, so the record can overstate freshness by the duration of the run that produced it and never understates it. An event-driven observation carries the instant the source event was observed; an observation produced by a resynchronization sweep carries the instant that run completed, so no observation can precede the epoch its run records into. For the resynchronization that completes a binding-mode reconfiguration, that instant is the new epoch's boundary; a resynchronization of an unreconfigured binding records into the epoch already in effect.",
+          "description": "Actual source read time used for membership freshness. An event-driven observation carries the instant the source event was observed. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership.",
+          "$ref": "#/$defs/rfc3339Timestamp"
+        },
+        "effective_at": {
+          "description": "Instant this observation became eligible to confer grants. Event-driven ingestion records its commit instant; a resynchronization sweep records the run-completion instant. For a sweep completing a binding-mode reconfiguration this equals the new epoch boundary; a routine sweep records into the epoch already in effect. observed_at must not follow effective_at, and effective_at must not follow evaluation_time; comparisons are evaluator-owned and fail closed.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "member_present": { "const": true },
@@ -902,7 +907,7 @@
           }
         },
         {
-          "description": "binding_mode and binding_mode_effective_at name the binding's mode epoch in effect at evaluation_time; observed_at must fall within that epoch, so it must neither precede binding_mode_effective_at nor follow evaluation_time. Those instant comparisons are evaluator-owned and fail closed.",
+          "description": "binding_mode and binding_mode_effective_at name the binding's mode epoch in effect at evaluation_time; membership_observation.effective_at must fall within that epoch and not follow evaluation_time. membership_observation.observed_at may precede the epoch while a transition sweep runs but must not follow effective_at. Those instant comparisons are evaluator-owned and fail closed.",
           "type": "object",
           "required": [
             "id",
@@ -927,7 +932,7 @@
               "enum": ["authoritative_sync", "additive_sync"]
             },
             "binding_mode_effective_at": {
-              "description": "Start of the binding-mode epoch in effect at evaluation_time. membership_observation must have been recorded within that same epoch before it can confer this grant.",
+              "description": "Start of the binding-mode epoch in effect at evaluation_time. membership_observation.effective_at must fall within that same epoch before the observation can confer this grant.",
               "$ref": "#/$defs/rfc3339Timestamp"
             },
             "membership_observation": {

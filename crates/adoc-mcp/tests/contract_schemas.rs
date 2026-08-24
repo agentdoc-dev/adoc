@@ -1694,6 +1694,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "external_identity_link_id": "external-identity-link-1",
             "source_event_id": "github-team-event-1",
             "observed_at": "2026-08-23T11:00:00Z",
+            "effective_at": "2026-08-23T11:00:30Z",
             "member_present": true,
             "nested": false
         }
@@ -1765,6 +1766,14 @@ fn authorization_decision_schema_pins_replay_bindings() {
         json!(true);
     let mut invalid_external_observed_at = external_group_grant.clone();
     invalid_external_observed_at["grants"][0]["group"]["membership_observation"]["observed_at"] =
+        json!("not-a-time");
+    let mut external_group_without_effective_at = external_group_grant.clone();
+    external_group_without_effective_at["grants"][0]["group"]["membership_observation"]
+        .as_object_mut()
+        .expect("membership observation")
+        .remove("effective_at");
+    let mut invalid_external_effective_at = external_group_grant.clone();
+    invalid_external_effective_at["grants"][0]["group"]["membership_observation"]["effective_at"] =
         json!("not-a-time");
     let mut multiline_group_name = manual_group_grant.clone();
     multiline_group_name["grants"][0]["group"]["name"] = json!("Curators\nadmin");
@@ -2424,9 +2433,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .as_str()
         .expect("membership observation time is documented");
     assert!(
-        observed_at_description.contains("read at or before")
-            && observed_at_description.contains("overstate freshness"),
-        "resync completion time must conservatively describe observation freshness"
+        observed_at_description.contains("source read time")
+            && observed_at_description.contains("sweep start"),
+        "membership freshness must use the source read time or a conservative bound"
     );
     let external_group_properties = &authorization_schema["$defs"]["group"]["oneOf"]
         .as_array()
@@ -2660,6 +2669,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "external membership observation time is RFC 3339",
             invalid_external_observed_at,
+            false,
+        ),
+        (
+            "external membership without activation time",
+            external_group_without_effective_at,
+            false,
+        ),
+        (
+            "external membership activation time is RFC 3339",
+            invalid_external_effective_at,
             false,
         ),
         ("multiline group name", multiline_group_name, false),

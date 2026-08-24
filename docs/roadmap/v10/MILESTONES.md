@@ -284,7 +284,7 @@ Replaces owner-only workspace RLS with workspace-scoped principals, one authoriz
 - Reconfiguration to `suggestion_only` or `disabled` takes effect immediately; a change to a grant-conferring mode remains under the prior epoch until resync completes and records current source membership in the new epoch, with pending state and failure visible to operators (exit gate).
 - `suggestion_only` no-ops without human action; `additive_sync` never removes manual members.
 - Manual membership removal revokes future use while preserving the lifecycle record for historical replay (exit gate).
-- External binding records and complete effective mode histories, membership observations, and their source events or synchronization runs remain retained for every decision that cites them after observed-membership revocation, resync, reconfiguration, or disablement; a requested reconfiguration and its resynchronization outcome are retained for every decision recorded while it was pending (exit gate).
+- External binding records and complete effective mode histories, membership observations, and their source events or synchronization runs remain retained for every decision that cites them after observed-membership revocation, resync, reconfiguration, or disablement; a requested reconfiguration, its request instant, and its resynchronization outcome and outcome instant are retained for every decision recorded while it was pending (exit gate).
 - Adversarial fixture: crafted nested-group observation grants nothing.
 **Out of scope:** nested groups (needs a separate decision), SCIM group sync (P4), membership sources beyond the decided set (GitHub team, GitLab group, Slack user group, OIDC/SCIM group).
 
