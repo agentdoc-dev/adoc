@@ -1684,6 +1684,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     insufficient["result"] = json!("insufficient_context");
     insufficient["reason"] = json!("source_acl_unavailable");
     insufficient["basis"] = json!(null);
+    let mut required_check_without_context = insufficient.clone();
+    required_check_without_context["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("ACL object")
+        .remove("check_context");
 
     let mut insufficient_with_current_acl = decision.clone();
     insufficient_with_current_acl["source_acl_ceiling"]["result"] = json!("insufficient_context");
@@ -1694,6 +1699,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut not_applicable_with_current_acl = decision.clone();
     not_applicable_with_current_acl["source_acl_ceiling"]["required"] = json!(false);
     not_applicable_with_current_acl["source_acl_ceiling"]["result"] = json!("not_applicable");
+    let mut optional_check_with_context = not_applicable_with_current_acl.clone();
+    optional_check_with_context["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("ACL object")
+        .remove("current_authorization");
 
     let mut current_acl_result_mismatch = decision.clone();
     current_acl_result_mismatch["source_acl_ceiling"]["result"] = json!("deny");
@@ -2195,6 +2205,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         (
+            "required source ACL check without attempt context",
+            required_check_without_context,
+            false,
+        ),
+        (
             "available connector cannot claim source ACL unavailability",
             available_connector_with_unavailable_reason,
             false,
@@ -2202,6 +2217,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "not-applicable source ACL with current verdict evidence",
             not_applicable_with_current_acl,
+            false,
+        ),
+        (
+            "optional source ACL with attempted-check context",
+            optional_check_with_context,
             false,
         ),
         (
