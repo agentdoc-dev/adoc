@@ -857,7 +857,10 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "membership-freshness policy is distinct from the connector source-ACL policy";
     let failed_reenable_claim = "failed re-enable remains non-granting";
     let membership_unavailable_claim = "`no_grant` remains reserved for a confirmed absence";
-    let group_name_history_claim = "complete effective group-name history";
+    let group_name_history_claim =
+        "complete effective group-name history, each version recording its effective instant";
+    let membership_absence_claim =
+        "`no_grant` with `current` retains `membership_absence_evidence`";
     let effective_at = observation["effective_at"]["description"]
         .as_str()
         .expect("membership effective time is documented");
@@ -1003,10 +1006,11 @@ fn group_retention_rules_match_the_e2_4_authority() {
             failed_reenable_claim,
             membership_unavailable_claim,
             group_name_history_claim,
+            membership_absence_claim,
         ] {
             assert!(
                 surface.contains(claim),
-                "{surface_name} must define membership freshness lifecycle: {claim}"
+                "{surface_name} must define membership retention and replay: {claim}"
             );
         }
     }

@@ -13,6 +13,7 @@
     "consequential",
     "hard_deny",
     "grants",
+    "membership_evidence",
     "source_acl_ceiling",
     "visibility",
     "action_policy",
@@ -44,8 +45,15 @@
       "items": { "$ref": "#/$defs/grant" }
     },
     "membership_evidence": {
-      "description": "Optional scoped-grants-stage status for membership resolution. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established; not_applicable means no membership input could affect the scoped grants. membership_evidence_unavailable requires insufficient_context, so replay can distinguish uncertainty from a confirmed no_grant outcome.",
+      "description": "Required scoped-grants-stage input status. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established; not_applicable means no membership input could affect the scoped grants. A group-bearing grant requires current. no_grant with current requires immutable membership_absence_evidence, while no_grant with not_applicable forbids it. membership_evidence_unavailable requires insufficient_context, so replay can distinguish uncertainty from confirmed absence.",
       "enum": ["current", "insufficient_context", "not_applicable"]
+    },
+    "membership_absence_evidence": {
+      "description": "Exact retained negative membership facts used by a current no_grant decision. The array contains every relevant manual group or grant-conferring external binding whose confirmed absence affected scoped-grant evaluation; evaluator-owned completeness checks fail closed. Manual entries replay against retained membership lifecycle history for the envelope principal and group at evaluation_time. External entries retain the exact negative observation, binding epoch, identity link, and source event or run.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/membershipAbsenceEvidence" }
     },
     "source_acl_ceiling": { "$ref": "#/$defs/sourceAclCeiling" },
     "visibility": { "$ref": "#/$defs/policyInput" },
@@ -81,6 +89,21 @@
     }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "grants": {
+            "contains": { "required": ["group"] }
+          }
+        },
+        "required": ["grants"]
+      },
+      "then": {
+        "properties": {
+          "membership_evidence": { "const": "current" }
+        }
+      }
+    },
     {
       "if": {
         "properties": {
@@ -373,7 +396,23 @@
           "basis": { "type": "null" },
           "membership_evidence": { "enum": ["current", "not_applicable"] },
           "result": { "const": "deny" }
-        }
+        },
+        "required": ["membership_evidence"],
+        "allOf": [
+          {
+            "if": {
+              "properties": { "membership_evidence": { "const": "current" } },
+              "required": ["membership_evidence"]
+            },
+            "then": { "required": ["membership_absence_evidence"] },
+            "else": {
+              "not": { "required": ["membership_absence_evidence"] }
+            }
+          }
+        ]
+      },
+      "else": {
+        "not": { "required": ["membership_absence_evidence"] }
       }
     },
     {
@@ -949,7 +988,7 @@
       }
     },
     "membershipObservation": {
-      "description": "Exact immutable positive, non-nested external membership observation selected by the evaluator. Latest-observation selection is evaluator-owned and fails closed.",
+      "description": "Exact immutable, non-nested external membership observation selected by the evaluator. A group grant constrains member_present to true; retained absence evidence constrains it to false. Latest-observation selection is evaluator-owned and fails closed.",
       "type": "object",
       "required": [
         "id",
@@ -987,9 +1026,76 @@
           "description": "Immutable deadline derived from observed_at under the versioned freshness policy retained by the exact binding. Replay resolves the policy version in effect at observed_at, recomputes the deadline, requires fresh_until to equal that recomputation, caps oidc_group at the cited identity session's expiry, and fails closed unless evaluation_time does not exceed fresh_until; connector unavailability cannot extend it. observed_at must not follow fresh_until, and fresh_until must follow effective_at, so an observation is never expired before it becomes eligible. A synchronization run whose produced observations cannot satisfy that ordering is rejected as a freshness-policy misconfiguration; a routine replacement run must also complete before the deadline of the observations it replaces. Timestamp comparisons are evaluator-owned and fail closed.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
-        "member_present": { "const": true },
+        "member_present": { "type": "boolean" },
         "nested": { "const": false }
       }
+    },
+    "membershipAbsenceEvidence": {
+      "description": "Immutable confirmed-absence provenance for one relevant group membership input.",
+      "oneOf": [
+        {
+          "description": "Manual absence replays by resolving the stable group and scanning the retained complete manual-membership lifecycle history for the authorization envelope principal at evaluation_time; any active lifecycle record makes this absence invalid and fails closed.",
+          "type": "object",
+          "required": ["group_id", "group_name", "membership_source"],
+          "additionalProperties": false,
+          "properties": {
+            "group_id": { "$ref": "#/$defs/nonEmpty" },
+            "group_name": {
+              "description": "AgentDoc group name in effect at evaluation_time, verified against the retained complete group-name history whose versions each record an effective instant.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "membership_source": { "const": "manual" }
+          }
+        },
+        {
+          "description": "External absence replays against the exact retained binding, mode epoch, identity link, and negative observation. Replay applies the same binding/group/source-kind, identity-link lifecycle, source-record ownership and subject, timing, and freshness checks as positive external group provenance; any mismatch fails closed.",
+          "type": "object",
+          "required": [
+            "group_id",
+            "group_name",
+            "membership_source",
+            "binding_id",
+            "binding_mode",
+            "source_kind",
+            "binding_mode_effective_at",
+            "membership_observation"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "group_id": { "$ref": "#/$defs/nonEmpty" },
+            "group_name": {
+              "description": "AgentDoc group name in effect at evaluation_time, verified against the retained complete group-name history whose versions each record an effective instant.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "membership_source": { "const": "external" },
+            "binding_id": { "$ref": "#/$defs/nonEmpty" },
+            "binding_mode": {
+              "enum": ["authoritative_sync", "additive_sync"]
+            },
+            "source_kind": {
+              "enum": [
+                "github_team",
+                "gitlab_group",
+                "slack_user_group",
+                "oidc_group",
+                "scim_group"
+              ]
+            },
+            "binding_mode_effective_at": {
+              "$ref": "#/$defs/rfc3339Timestamp"
+            },
+            "membership_observation": {
+              "allOf": [
+                { "$ref": "#/$defs/membershipObservation" },
+                {
+                  "properties": { "member_present": { "const": false } },
+                  "required": ["member_present"]
+                }
+              ]
+            }
+          }
+        }
+      ]
     },
     "group": {
       "description": "AgentDoc-owned group provenance with the immutable membership fact used at evaluation. When manual and external membership both confer the same group grant, the evaluator records the independently durable manual membership. External membership may confer a grant only through an authoritative or additive binding; suggestion-only and disabled bindings never appear in an authorization basis.",
@@ -1007,7 +1113,7 @@
           "properties": {
             "id": { "$ref": "#/$defs/nonEmpty" },
             "name": {
-              "description": "AgentDoc group name in effect at evaluation_time. Replay verifies id and name against the retained complete effective group-name history; any mismatch fails closed while later renames preserve historical replay.",
+              "description": "AgentDoc group name in effect at evaluation_time. Replay verifies id and name against the retained complete effective group-name history, whose versions each record an effective instant; any mismatch fails closed while later renames preserve historical replay.",
               "$ref": "#/$defs/nonEmpty"
             },
             "membership_source": { "const": "manual" },
@@ -1038,7 +1144,7 @@
           "properties": {
             "id": { "$ref": "#/$defs/nonEmpty" },
             "name": {
-              "description": "AgentDoc group name in effect at evaluation_time. Replay verifies id and name against the retained complete effective group-name history; any mismatch fails closed while later renames preserve historical replay.",
+              "description": "AgentDoc group name in effect at evaluation_time. Replay verifies id and name against the retained complete effective group-name history, whose versions each record an effective instant; any mismatch fails closed while later renames preserve historical replay.",
               "$ref": "#/$defs/nonEmpty"
             },
             "membership_source": { "const": "external" },
@@ -1054,7 +1160,13 @@
               "$ref": "#/$defs/rfc3339Timestamp"
             },
             "membership_observation": {
-              "$ref": "#/$defs/membershipObservation"
+              "allOf": [
+                { "$ref": "#/$defs/membershipObservation" },
+                {
+                  "properties": { "member_present": { "const": true } },
+                  "required": ["member_present"]
+                }
+              ]
             },
             "source_kind": {
               "description": "Closed source adapter kind for this membership. Replay resolves binding_id and fails closed unless this value equals the source kind recorded on the retained binding.",
