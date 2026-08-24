@@ -829,7 +829,10 @@
       "required": ["required", "result"],
       "additionalProperties": false,
       "properties": {
-        "required": { "type": "boolean" },
+        "required": {
+          "description": "Whether a source ACL check was required for this decision. True requires connector_id and resource on the decision resource, so a required check always names the exact source resource evaluated, and forces result to allow, deny, or insufficient_context. False forces not_applicable and forbids current ACL evidence.",
+          "type": "boolean"
+        },
         "result": {
           "description": "Provider ACL verdict when one was observed, including evidence later found stale, invalidated, or unavailable; insufficient_context means no definitive provider verdict was available, while not_applicable means no source ACL check was required. The decision reason records freshness and availability precedence.",
           "$ref": "#/$defs/policyInput"
@@ -914,7 +917,7 @@
       ]
     },
     "currentSourceAclAuthorization": {
-      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. Its presence requires connector_id and resource on the decision resource. workspace_id, connector_id, and source must match the corresponding decision resource fields and referenced snapshot; acl_policy_version must match the referenced snapshot; principal_id must match the decision principal; snapshot_id and result must match their sibling source_acl_ceiling values. Result equality is schema-enforced; the remaining equality checks are evaluator-owned and fail closed.",
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, and source must match the corresponding decision resource fields and referenced snapshot; acl_policy_version must match the referenced snapshot; principal_id must match the decision principal; snapshot_id and result must match their sibling source_acl_ceiling values. Result equality is schema-enforced; the remaining equality checks are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
