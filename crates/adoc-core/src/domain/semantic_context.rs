@@ -180,9 +180,18 @@ pub struct SourceAssertionCitation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CitationContentProjection {
     pub handle: CitationHandle,
+    pub class_id: String,
     pub scope_ref: String,
     pub content_digest: String,
     pub truncated_content_digests: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GraphObjectContextExpectation {
+    pub object_id: String,
+    pub class_id: String,
+    pub scope_ref: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,8 +202,9 @@ pub struct SemanticContextExpectedBindings {
     pub head_revision: ExactRevision,
     pub assessment_digest: String,
     pub required_context_classes: Vec<String>,
-    pub authorized_scope: String,
+    pub authorized_scope: Vec<String>,
     pub capability_policy: CapabilityPolicy,
+    pub graph_object_contexts: Vec<GraphObjectContextExpectation>,
 }
 
 #[derive(Debug, Clone)]
@@ -364,6 +374,8 @@ pub enum SemanticContextError {
     UnresolvedCitation { handle_id: String },
     #[error("semantic context citation scope for handle '{handle_id}' does not match its basis")]
     CitationScopeMismatch { handle_id: String },
+    #[error("semantic context citation class for handle '{handle_id}' does not match its basis")]
+    CitationClassMismatch { handle_id: String },
     #[error("semantic context citation content for handle '{handle_id}' does not match its basis")]
     CitationContentMismatch { handle_id: String },
     #[error("semantic context serialization failed: {message}")]
@@ -379,6 +391,7 @@ impl SemanticContextError {
             | Self::BasisMismatch { .. }
             | Self::UnresolvedCitation { .. }
             | Self::CitationScopeMismatch { .. }
+            | Self::CitationClassMismatch { .. }
             | Self::CitationContentMismatch { .. } => DiagnosticCode::SemanticContextBasisMismatch,
             Self::InvalidDocument { .. }
             | Self::InvalidText { .. }
@@ -803,17 +816,26 @@ pub fn validate_semantic_context(
         .iter()
         .map(String::as_str)
         .collect();
-    if expected_scope.len() != validation_basis.authorized_scope.len()
-        || context
-            .selection
-            .authorized_scope
-            .iter()
-            .map(String::as_str)
-            .collect::<BTreeSet<_>>()
-            != expected_scope
+    if expected_scope.len() != validation_basis.authorized_scope.len() {
+        return Err(SemanticContextError::BasisMismatch {
+            message: "authorized scope basis contains duplicates".to_string(),
+        });
+    }
+    if context
+        .selection
+        .authorized_scope
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>()
+        != expected_scope
     {
         return Err(SemanticContextError::BasisMismatch {
             message: "authorized scope differs".to_string(),
+        });
+    }
+    if !is_valid_capability_policy(&validation_basis.capability_policy) {
+        return Err(SemanticContextError::BasisMismatch {
+            message: "capability policy basis is invalid".to_string(),
         });
     }
     let expected_policy: BTreeMap<_, _> = validation_basis
@@ -828,8 +850,7 @@ pub fn validate_semantic_context(
         .iter()
         .map(|rule| (rule.reason, rule.outcome))
         .collect();
-    if !is_valid_capability_policy(&validation_basis.capability_policy)
-        || context.capability_policy.version != validation_basis.capability_policy.version
+    if context.capability_policy.version != validation_basis.capability_policy.version
         || actual_policy != expected_policy
     {
         return Err(SemanticContextError::BasisMismatch {
@@ -899,7 +920,8 @@ pub fn validate_semantic_context(
             .iter()
             .map(String::as_str)
             .collect();
-        if !is_semantic_context_text(&projection.scope_ref)
+        if !is_semantic_context_text(&projection.class_id)
+            || !is_semantic_context_text(&projection.scope_ref)
             || !is_sha256_digest(&projection.content_digest)
             || truncated_digests.len() != projection.truncated_content_digests.len()
             || !truncated_digests
@@ -959,6 +981,11 @@ pub fn validate_semantic_context(
             })?;
         if projection.scope_ref != item.scope_ref {
             return Err(SemanticContextError::CitationScopeMismatch {
+                handle_id: item.handle_id.clone(),
+            });
+        }
+        if projection.class_id != item.class_id {
+            return Err(SemanticContextError::CitationClassMismatch {
                 handle_id: item.handle_id.clone(),
             });
         }

@@ -300,12 +300,13 @@ fn run_with_provider<P: SourceProvider>(
     if let Some(bytes) = &semantic_context_bytes {
         match &input.semantic_context_expectations {
             Some(expectations) => {
-                let validation_basis = semantic_validation_basis(
+                match semantic_validation_basis(
                     input.evaluation_date,
                     context_artifact_bytes.as_deref(),
                     expectations,
-                );
-                match crate::validate_semantic_context(bytes, &validation_basis) {
+                )
+                .and_then(|basis| crate::validate_semantic_context(bytes, &basis))
+                {
                     Ok(semantic_context) => {
                         if let Some(code) = semantic_context.outcome().diagnostic_code() {
                             diagnostics.push(Diagnostic::error(
@@ -378,14 +379,34 @@ fn semantic_validation_basis(
     evaluation_date: NaiveDate,
     graph_artifact_bytes: Option<&[u8]>,
     expectations: &crate::SemanticContextExpectedBindings,
-) -> crate::SemanticContextValidationBasis {
+) -> Result<crate::SemanticContextValidationBasis, crate::SemanticContextError> {
     let graph_artifact_digest = graph_artifact_bytes.map(sha256_prefixed);
-    let local_scope = expectations.authorized_scope.clone();
-    let (graph_objects, citation_contents) = graph_artifact_bytes
+    let mut graph_object_contexts = BTreeMap::new();
+    for context in &expectations.graph_object_contexts {
+        if !crate::is_semantic_context_text(&context.object_id)
+            || !crate::is_semantic_context_text(&context.class_id)
+            || !crate::is_semantic_context_text(&context.scope_ref)
+        {
+            return Err(crate::SemanticContextError::BasisMismatch {
+                message: "graph object context basis is invalid".to_string(),
+            });
+        }
+        if graph_object_contexts
+            .insert(context.object_id.as_str(), context)
+            .is_some()
+        {
+            return Err(crate::SemanticContextError::BasisMismatch {
+                message: "graph object context basis contains duplicate Object IDs".to_string(),
+            });
+        }
+    }
+    let graph_document = graph_artifact_bytes
         // Parsing failures were already emitted by `validate_context_artifact`.
         // An empty projection keeps citation resolution fail-closed without
         // duplicating those artifact diagnostics.
-        .and_then(|bytes| parse_graph_artifact_document(Path::new("context_artifact"), bytes).ok())
+        .and_then(|bytes| parse_graph_artifact_document(Path::new("context_artifact"), bytes).ok());
+    let graph_was_parsed = graph_document.is_some();
+    let (graph_objects, citation_contents) = graph_document
         .map(|document| {
             let mut objects = Vec::new();
             let mut contents = Vec::new();
@@ -395,47 +416,52 @@ fn semantic_validation_basis(
                 };
                 let object_id = object.id;
                 let semantic_hash = object.content_hash;
-                contents.push(crate::CitationContentProjection {
-                    handle: crate::CitationHandle::KnowledgeObject {
-                        object_id: object_id.clone(),
-                        semantic_hash: semantic_hash.clone(),
-                    },
-                    scope_ref: local_scope.clone(),
-                    content_digest: crate::semantic_context_content_digest(
-                        &serde_json::json!({ "body": object.body }),
-                    ),
-                    truncated_content_digests: Vec::new(),
-                });
-                if let Some(binding) = &object.source_binding {
+                if let Some(context) = graph_object_contexts.remove(object_id.as_str()) {
                     contents.push(crate::CitationContentProjection {
-                        handle: crate::CitationHandle::SourceBinding {
+                        handle: crate::CitationHandle::KnowledgeObject {
                             object_id: object_id.clone(),
+                            semantic_hash: semantic_hash.clone(),
                         },
-                        scope_ref: local_scope.clone(),
+                        class_id: context.class_id.clone(),
+                        scope_ref: context.scope_ref.clone(),
                         content_digest: crate::semantic_context_content_digest(
-                            &serde_json::to_value(binding).unwrap_or_else(|_| {
-                                unreachable!("GraphSourceBinding serialization is infallible")
-                            }),
+                            &serde_json::json!({ "body": object.body }),
                         ),
                         truncated_content_digests: Vec::new(),
                     });
-                }
-                for (index, evidence) in object.evidence.iter().enumerate() {
-                    contents.push(crate::CitationContentProjection {
-                        handle: crate::CitationHandle::Evidence {
-                            object_id: object_id.clone(),
-                            evidence_index: u32::try_from(index).unwrap_or_else(|_| {
-                                unreachable!("graph evidence count is bounded by address space")
-                            }),
-                        },
-                        scope_ref: local_scope.clone(),
-                        content_digest: crate::semantic_context_content_digest(
-                            &serde_json::to_value(evidence).unwrap_or_else(|_| {
-                                unreachable!("GraphEvidence serialization is infallible")
-                            }),
-                        ),
-                        truncated_content_digests: Vec::new(),
-                    });
+                    if let Some(binding) = &object.source_binding {
+                        contents.push(crate::CitationContentProjection {
+                            handle: crate::CitationHandle::SourceBinding {
+                                object_id: object_id.clone(),
+                            },
+                            class_id: context.class_id.clone(),
+                            scope_ref: context.scope_ref.clone(),
+                            content_digest: crate::semantic_context_content_digest(
+                                &serde_json::to_value(binding).unwrap_or_else(|_| {
+                                    unreachable!("GraphSourceBinding serialization is infallible")
+                                }),
+                            ),
+                            truncated_content_digests: Vec::new(),
+                        });
+                    }
+                    for (index, evidence) in object.evidence.iter().enumerate() {
+                        contents.push(crate::CitationContentProjection {
+                            handle: crate::CitationHandle::Evidence {
+                                object_id: object_id.clone(),
+                                evidence_index: u32::try_from(index).unwrap_or_else(|_| {
+                                    unreachable!("graph evidence count is bounded by address space")
+                                }),
+                            },
+                            class_id: context.class_id.clone(),
+                            scope_ref: context.scope_ref.clone(),
+                            content_digest: crate::semantic_context_content_digest(
+                                &serde_json::to_value(evidence).unwrap_or_else(|_| {
+                                    unreachable!("GraphEvidence serialization is infallible")
+                                }),
+                            ),
+                            truncated_content_digests: Vec::new(),
+                        });
+                    }
                 }
                 objects.push(crate::GraphCitationObject {
                     object_id,
@@ -447,7 +473,12 @@ fn semantic_validation_basis(
             (objects, contents)
         })
         .unwrap_or_default();
-    crate::SemanticContextValidationBasis {
+    if !graph_object_contexts.is_empty() && graph_was_parsed {
+        return Err(crate::SemanticContextError::BasisMismatch {
+            message: "graph object context basis contains unknown Object IDs".to_string(),
+        });
+    }
+    Ok(crate::SemanticContextValidationBasis {
         evaluation_date,
         subject_revision: expectations.subject_revision.clone(),
         source_revision: expectations.source_revision.clone(),
@@ -455,7 +486,7 @@ fn semantic_validation_basis(
         head_revision: expectations.head_revision.clone(),
         assessment_digest: expectations.assessment_digest.clone(),
         required_context_classes: expectations.required_context_classes.clone(),
-        authorized_scope: vec![expectations.authorized_scope.clone()],
+        authorized_scope: expectations.authorized_scope.clone(),
         capability_policy: expectations.capability_policy.clone(),
         graph_artifact_digest,
         managed_revision_digest: None,
@@ -466,7 +497,7 @@ fn semantic_validation_basis(
         diff_hunks: Vec::new(),
         source_assertions: Vec::new(),
         citation_contents,
-    }
+    })
 }
 
 /// The compile input pinned to the exact bytes the receipt digests: yields
@@ -718,7 +749,7 @@ mod tests {
             },
             assessment_digest: TEST_DIGEST.to_string(),
             required_context_classes: vec!["changed_knowledge".to_string()],
-            authorized_scope: "repo:billing".to_string(),
+            authorized_scope: vec!["repo:billing".to_string()],
             capability_policy: crate::CapabilityPolicy {
                 version: "semantic-context-policy-v1".to_string(),
                 rules: [
@@ -735,6 +766,11 @@ mod tests {
                 })
                 .collect(),
             },
+            graph_object_contexts: vec![crate::GraphObjectContextExpectation {
+                object_id: "billing.ready".to_string(),
+                class_id: "changed_knowledge".to_string(),
+                scope_ref: "repo:billing".to_string(),
+            }],
         }
     }
 
@@ -1130,6 +1166,42 @@ mod tests {
         assert!(outcome.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == DiagnosticCode::SemanticContextBasisMismatch
                 && diagnostic.message.contains("head revision differs")
+        }));
+    }
+
+    #[test]
+    fn mismatched_semantic_context_class_fails_the_receipt() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let docs = workspace.path().join("docs");
+        write(&docs.join("index.adoc"), valid_source());
+        let graph_json = compiled_graph_json(&docs);
+        let graph_path = workspace.path().join("dist/docs.graph.json");
+        write(&graph_path, &graph_json);
+        let semantic_path = write_semantic_context(
+            workspace.path(),
+            &semantic_context_json(
+                &graph_json,
+                crate::KnowledgeBasis::GraphArtifact {
+                    digest: sha256_prefixed(graph_json.as_bytes()),
+                },
+                None,
+            ),
+        );
+        let mut expectations = semantic_expectations();
+        expectations.graph_object_contexts[0].class_id = "related_knowledge".to_string();
+
+        let mut input = standalone_input(&docs);
+        input.context_artifact = Some(graph_path);
+        input.semantic_context = Some(semantic_path);
+        input.semantic_context_expectations = Some(expectations);
+        let outcome = run_validation_runtime(input).expect("validation runs");
+
+        assert_eq!(outcome.receipt.result(), ValidationResult::Fail);
+        assert!(outcome.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == DiagnosticCode::SemanticContextBasisMismatch
+                && diagnostic
+                    .message
+                    .contains("class for handle 'billing-ready'")
         }));
     }
 
