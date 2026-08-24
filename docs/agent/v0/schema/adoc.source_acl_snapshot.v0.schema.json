@@ -7,6 +7,7 @@
   "required": [
     "schema_version",
     "snapshot_id",
+    "workspace_id",
     "connector_id",
     "acl_policy_version",
     "source",
@@ -18,6 +19,10 @@
   "properties": {
     "schema_version": { "const": "adoc.source_acl_snapshot.v0" },
     "snapshot_id": { "$ref": "#/$defs/nonEmpty" },
+    "workspace_id": {
+      "description": "Workspace in which this snapshot was observed. It must match the workspace on current ACL evidence that names this snapshot; equality is evaluator-owned and fails closed.",
+      "$ref": "#/$defs/nonEmpty"
+    },
     "connector_id": { "$ref": "#/$defs/nonEmpty" },
     "acl_policy_version": {
       "description": "Connector ACL policy version active when this historical snapshot was observed.",
