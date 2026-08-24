@@ -229,14 +229,30 @@ fn parse_evaluation_date(value: &str) -> Result<chrono::NaiveDate, String> {
 }
 
 fn parse_exact_revision(value: &str) -> Result<adoc_core::ExactRevision, String> {
+    let valid_part =
+        |part: &str| !part.is_empty() && part.trim() == part && !part.chars().any(char::is_control);
     let (system, revision) = value
         .split_once('=')
-        .filter(|(system, revision)| !system.trim().is_empty() && !revision.trim().is_empty())
+        .filter(|(system, revision)| valid_part(system) && valid_part(revision))
         .ok_or_else(|| format!("expected an exact revision like `git=head-sha`, got `{value}`"))?;
     Ok(adoc_core::ExactRevision {
         system: system.to_string(),
         value: revision.to_string(),
     })
+}
+
+fn parse_sha256_digest(value: &str) -> Result<String, String> {
+    let hex = value.strip_prefix("sha256:").unwrap_or_default();
+    if hex.len() == 64
+        && hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Ok(value.to_string());
+    }
+    Err(format!(
+        "expected a lowercase sha256 digest like `sha256:<64 hex>`, got `{value}`"
+    ))
 }
 
 /// The output format requested on the command line (`--format`).
@@ -441,7 +457,7 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
         semantic_head_revision: Option<adoc_core::ExactRevision>,
         /// Trusted assessment digest expected in --semantic-context.
-        #[arg(long, value_name = "DIGEST", requires = "semantic_context")]
+        #[arg(long, value_name = "DIGEST", requires = "semantic_context", value_parser = parse_sha256_digest)]
         semantic_assessment_digest: Option<String>,
     },
     #[command(
@@ -699,4 +715,23 @@ pub(crate) enum Commands {
         #[arg(long, default_value = "10")]
         top: NonZeroUsize,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_exact_revision, parse_sha256_digest};
+
+    #[test]
+    fn semantic_binding_parsers_reject_values_no_valid_context_can_match() {
+        assert!(parse_exact_revision("git=head-sha").is_ok());
+        for invalid in ["git= head-sha", " git=head-sha", "git=head\nsha"] {
+            assert!(parse_exact_revision(invalid).is_err(), "{invalid:?}");
+        }
+
+        let digest = format!("sha256:{}", "a".repeat(64));
+        assert_eq!(parse_sha256_digest(&digest), Ok(digest));
+        for invalid in ["sha256:ABC", "sha256:abc", "not-a-digest"] {
+            assert!(parse_sha256_digest(invalid).is_err(), "{invalid:?}");
+        }
+    }
 }
