@@ -135,11 +135,16 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                     mut graph_object_contexts,
                                     Some(capability_policy),
                                 ) if !context_classes.is_empty()
-                                    && context_classes.iter().any(|class| {
-                                        class.requirement == adoc_core::ContextRequirement::Required
-                                    })
                                     && !authorized_scope.is_empty() =>
                                 {
+                                    if !context_classes.iter().any(|class| {
+                                        class.requirement == adoc_core::ContextRequirement::Required
+                                    }) {
+                                        eprintln!(
+                                            "error[cli.semantic_context] --semantic-context-class must include at least one required class"
+                                        );
+                                        return 2;
+                                    }
                                     context_classes
                                         .sort_by(|left, right| left.class_id.cmp(&right.class_id));
                                     if context_classes
@@ -210,13 +215,14 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                 {
                                     None
                                 }
-                                // Unreachable while the clap `requires_all` wiring holds
-                                // (pinned by semantic_context_requires_complete_validation_basis).
-                                // Refuse loudly if it is loosened: passing `None` would produce a
-                                // fail receipt that blames the context instead of the invocation.
+                                // Partial shapes are unreachable while the clap `requires_all`
+                                // wiring holds (pinned by
+                                // semantic_context_requires_complete_validation_basis). Refuse
+                                // loudly if it is loosened: passing `None` would produce a fail
+                                // receipt that blames the context instead of the invocation.
                                 _ => {
                                     eprintln!(
-                                        "error[cli.semantic_context] --semantic-context requires all trusted revision, assessment, selection, context-class, authorized-scope, and capability-policy inputs, including at least one required context class; refusing to run with a partial validation basis"
+                                        "error[cli.semantic_context] --semantic-context requires all trusted revision, assessment, selection, context-class, authorized-scope, and capability-policy inputs; refusing to run with a partial validation basis"
                                     );
                                     return 2;
                                 }

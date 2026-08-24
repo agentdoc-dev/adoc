@@ -57,6 +57,8 @@ revision, digest, completeness, authorized scope, and closed citations.
 The revision, assessment, selection, context-class, authorized-scope, object-
 context, and capability-policy flags are trusted expectations; repeat scope
 and object-context flags as needed. They are never inferred from context.
+Local receipt mode requires at least one trusted context class whose
+requirement is `required`; optional-only class sets are refused.
 Object-context may be omitted for citation-free contexts; any included
 citation without a trusted mapping fails closed.
 Graph-backed contexts require the exact --context-artifact. The local CLI

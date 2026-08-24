@@ -2984,6 +2984,8 @@ const SEMANTIC_OBJECT_CONTEXT_JSON: &str =
     r#"{"object_id":"billing.ready","class_id":"changed_source","scope_ref":"repo:billing"}"#;
 const SEMANTIC_CONTEXT_CLASS_JSON: &str =
     r#"{"class_id":"changed_source","requirement":"required","byte_budget":4096}"#;
+const OPTIONAL_SEMANTIC_CONTEXT_CLASS_JSON: &str =
+    r#"{"class_id":"related_knowledge","requirement":"optional","byte_budget":4096}"#;
 
 fn validation_runtime_path(relative: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -3272,6 +3274,48 @@ fn semantic_context_rejects_duplicate_context_class_flags() {
 
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("must not repeat a class ID"));
+}
+
+#[test]
+fn semantic_context_rejects_an_optional_only_context_class_set() {
+    let output = adoc_command()
+        .current_dir(validation_runtime_path("fixture"))
+        .args([
+            "check",
+            "--receipt",
+            "receipt.json",
+            "--as-of",
+            "2026-01-01",
+            "--runtime-binary-digest",
+            GOLDEN_RUNTIME_DIGEST,
+            "--semantic-context",
+            "semantic-context.json",
+            "--semantic-subject-revision",
+            "git=head-sha",
+            "--semantic-source-revision",
+            "git=head-sha",
+            "--semantic-base-revision",
+            "git=base-sha",
+            "--semantic-head-revision",
+            "git=head-sha",
+            "--semantic-assessment-digest",
+            GOLDEN_RUNTIME_DIGEST,
+            "--semantic-selection-algorithm",
+            "changed-only",
+            "--semantic-selection-version",
+            "1",
+            "--semantic-context-class",
+            OPTIONAL_SEMANTIC_CONTEXT_CLASS_JSON,
+            "--semantic-authorized-scope",
+            "repo:billing",
+            "--semantic-capability-policy",
+            SEMANTIC_POLICY_JSON,
+        ])
+        .output()
+        .expect("adoc check runs");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr(&output).contains("must include at least one required class"));
 }
 
 #[test]
