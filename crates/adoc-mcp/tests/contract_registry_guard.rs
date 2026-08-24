@@ -822,6 +822,29 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "AUTHORIZATION.md §A7 must stop superseded sweeps from creating epochs"
     );
 
+    let observation = &schema["$defs"]["membershipObservation"]["properties"];
+    let effective_at = observation["effective_at"]["description"]
+        .as_str()
+        .expect("membership effective time is documented");
+    assert!(
+        effective_at.contains("must equal")
+            && effective_at.contains("identified by source_event_id"),
+        "membership effective_at must belong to its cited event or run"
+    );
+    assert!(
+        observation["source_event_id"]["description"]
+            .as_str()
+            .expect("membership source event is documented")
+            .contains("start and completion instants"),
+        "source_event_id must resolve to retained run endpoints"
+    );
+
+    let source_timing_claim = "each retained source event carrying its observed and ingestion-commit instants and each retained synchronization run carrying its start and completion instants";
+    assert!(
+        a7.contains(source_timing_claim),
+        "AUTHORIZATION.md §A7 must retain the timing endpoints needed for replay"
+    );
+
     let pending_retention_claim = "requested reconfiguration, its request instant, and its resynchronization outcome and outcome instant are retained for every decision recorded while it was pending";
     assert!(
         a7.contains(pending_retention_claim),
@@ -832,6 +855,14 @@ fn group_retention_rules_match_the_e2_4_authority() {
     assert!(
         e2_4.contains(pending_retention_claim),
         "the E2.4 exit gate must retain the pending-window endpoints"
+    );
+    assert!(
+        e2_4.contains(source_timing_claim),
+        "the E2.4 exit gate must retain source timing endpoints"
+    );
+    assert!(
+        e2_4.contains("does not equal the commit or completion instant of the event or run identified by that same"),
+        "E2.4.T2 must reject an observation made effective by a different event or run"
     );
 }
 

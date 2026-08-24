@@ -864,7 +864,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "source_event_id": {
-          "description": "Immutable upstream connector event or synchronization run that carried this membership observation, retained so replay can re-derive the observation from source. A resynchronization sweep records one identifier for the run and cites it from every observation it produces.",
+          "description": "Immutable upstream connector event or synchronization run that carried this membership observation, retained so replay can re-derive the observation from source. A retained event carries its observed and ingestion-commit instants. A retained synchronization run carries its start and completion instants; a resynchronization sweep records one identifier for the run and cites it from every observation it produces.",
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
@@ -872,7 +872,7 @@
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "effective_at": {
-          "description": "Instant this observation became eligible to confer grants. Event-driven ingestion records its commit instant; a resynchronization sweep records the run-completion instant. For a sweep completing a binding-mode reconfiguration this equals the new epoch boundary; a routine sweep records into the epoch already in effect. observed_at must not follow effective_at, and effective_at must not follow evaluation_time; comparisons are evaluator-owned and fail closed.",
+          "description": "Instant this observation became eligible to confer grants. It must equal the ingestion-commit instant of the event or the completion instant of the synchronization run identified by source_event_id. For a sweep completing a binding-mode reconfiguration this equals the new epoch boundary; a routine sweep records into the epoch already in effect. observed_at must not follow effective_at, and effective_at must not follow evaluation_time; comparisons are evaluator-owned and fail closed.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "member_present": { "const": true },
@@ -907,7 +907,7 @@
           }
         },
         {
-          "description": "binding_mode and binding_mode_effective_at name the binding's mode epoch in effect at evaluation_time; membership_observation.effective_at must fall within that epoch and not follow evaluation_time. membership_observation.observed_at must fall within the event or synchronization run identified by membership_observation.source_event_id, so it may precede the epoch while a transition sweep runs but must not precede that run's start nor follow effective_at. Those instant comparisons are evaluator-owned and fail closed.",
+          "description": "binding_mode and binding_mode_effective_at name the binding's mode epoch in effect at evaluation_time; membership_observation.effective_at must fall within that epoch and not follow evaluation_time. membership_observation.observed_at and effective_at must resolve against the same event or synchronization run identified by membership_observation.source_event_id: observed_at equals that event's observed instant or falls within that run, while effective_at equals that event's ingestion-commit instant or that run's completion instant. A sweep observation may precede the epoch while a transition sweep runs but must not precede that run's start nor follow effective_at. Those instant comparisons are evaluator-owned and fail closed.",
           "type": "object",
           "required": [
             "id",

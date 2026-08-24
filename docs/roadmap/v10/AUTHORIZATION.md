@@ -198,7 +198,7 @@ Roles/scoped grants attach to AgentDoc groups. Revocation from an authoritative 
 
 At authorization evaluation, an active manual membership is recorded with its stable membership identifier and creation time. Replay resolves that identifier against its preserved lifecycle record and verifies that the membership was created and not revoked at the decision evaluation time. Manual membership removal revokes future use and preserves the membership record so past decisions remain replayable. When both manual and external membership confer the same group grant, the evaluator records the independently durable manual provenance.
 
-External binding records, membership observations, and their source events or synchronization runs are retained for every decision that cites them, so those decisions remain replayable after the observed membership is revoked and after binding resync, reconfiguration, or disablement.
+External binding records, membership observations, and their source events or synchronization runs are retained for every decision that cites them, with each retained source event carrying its observed and ingestion-commit instants and each retained synchronization run carrying its start and completion instants, so those decisions remain replayable after the observed membership is revoked and after binding resync, reconfiguration, or disablement.
 
 External binding records retain their complete effective mode history, so replay can resolve the mode epoch in effect at each decision's evaluation time. A requested reconfiguration becomes an epoch only when it takes effect; a pending or failed reconfiguration never appears in that history.
 
