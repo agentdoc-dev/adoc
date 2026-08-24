@@ -90,6 +90,10 @@ pub struct ValidationRuntimeInput {
     /// `validation.context_artifact_drift` — JSON Schema stays preflight
     /// only (ADR-0015).
     pub context_artifact: Option<PathBuf>,
+    /// Digest-bound semantic context validated against the explicit
+    /// evaluation date and, for graph-backed context, the same once-read
+    /// graph artifact supplied above (E3.1).
+    pub semantic_context: Option<PathBuf>,
 }
 
 /// A validation run: the digest-bound receipt plus the ordinary typed
@@ -153,7 +157,8 @@ struct DigestEntry {
     digest: String,
 }
 
-/// One named validation-context input (`config`, `context_artifact`).
+/// One named validation-context input (`config`, `context_artifact`, or
+/// `semantic_context`).
 #[derive(Debug, Clone, Serialize)]
 struct NamedDigestEntry {
     name: String,
@@ -251,6 +256,25 @@ fn run_with_provider<P: SourceProvider>(
         None => None,
     };
 
+    // ONE semantic-context read: the receipt digest and domain validation
+    // consume the same byte snapshot.
+    let semantic_context_bytes = match &input.semantic_context {
+        Some(semantic_path) => {
+            let bytes = fs::read(semantic_path).map_err(|error| {
+                ValidationRuntimeError::ContextUnreadable {
+                    path: semantic_path.clone(),
+                    message: error.to_string(),
+                }
+            })?;
+            context.push(NamedDigestEntry {
+                name: "semantic_context".to_string(),
+                digest: sha256_prefixed(&bytes),
+            });
+            Some(bytes)
+        }
+        None => None,
+    };
+
     let snapshot = SnapshotSourceProvider {
         sources,
         inner: provider,
@@ -269,6 +293,28 @@ fn run_with_provider<P: SourceProvider>(
                 .map(|artifacts| artifacts.graph_json.as_str()),
         ));
     }
+    if let Some(bytes) = &semantic_context_bytes {
+        let validation_basis =
+            semantic_validation_basis(input.evaluation_date, context_artifact_bytes.as_deref());
+        match crate::validate_semantic_context(bytes, &validation_basis) {
+            Ok(semantic_context) => {
+                if let Some(code) = semantic_context.outcome().diagnostic_code() {
+                    diagnostics.push(Diagnostic::error(
+                        code,
+                        format!(
+                            "semantic context outcome is {:?}",
+                            semantic_context.outcome()
+                        )
+                        .to_lowercase(),
+                    ));
+                }
+            }
+            Err(error) => diagnostics.push(Diagnostic::error(
+                error.diagnostic_code(),
+                error.to_string(),
+            )),
+        }
+    }
 
     let result = if diagnostics
         .iter()
@@ -284,16 +330,23 @@ fn run_with_provider<P: SourceProvider>(
             .unwrap_or_else(|_| unreachable!("diagnostics serialize infallibly")),
     );
 
+    let mut contract_versions = BTreeMap::from([(
+        GRAPH_CONTRACT_KEY.to_string(),
+        crate::infrastructure::artifact::graph_json::SUPPORTED_GRAPH_SCHEMA_VERSION.to_string(),
+    )]);
+    if semantic_context_bytes.is_some() {
+        contract_versions.insert(
+            "semantic_context".to_string(),
+            crate::SEMANTIC_CONTEXT_SCHEMA_VERSION.to_string(),
+        );
+    }
     let receipt = ValidationReceipt {
         schema_version: VALIDATION_RECEIPT_SCHEMA_VERSION.to_string(),
         runtime: RuntimeIdentity {
             version: input.runtime_version,
             binary_digest: input.runtime_binary_digest,
         },
-        contract_versions: BTreeMap::from([(
-            GRAPH_CONTRACT_KEY.to_string(),
-            crate::infrastructure::artifact::graph_json::SUPPORTED_GRAPH_SCHEMA_VERSION.to_string(),
-        )]),
+        contract_versions,
         evaluation_date: input.evaluation_date.format("%Y-%m-%d").to_string(),
         inputs,
         context,
@@ -305,6 +358,39 @@ fn run_with_provider<P: SourceProvider>(
         receipt,
         diagnostics,
     })
+}
+
+fn semantic_validation_basis(
+    evaluation_date: NaiveDate,
+    graph_artifact_bytes: Option<&[u8]>,
+) -> crate::SemanticContextValidationBasis {
+    let graph_artifact_digest = graph_artifact_bytes.map(sha256_prefixed);
+    let graph_objects = graph_artifact_bytes
+        // Parsing failures were already emitted by `validate_context_artifact`.
+        // An empty projection keeps citation resolution fail-closed without
+        // duplicating those artifact diagnostics.
+        .and_then(|bytes| parse_graph_artifact_document(Path::new("context_artifact"), bytes).ok())
+        .map(|document| {
+            document
+                .nodes
+                .into_iter()
+                .filter_map(|node| match node {
+                    GraphNode::KnowledgeObject(object) => Some(crate::GraphCitationObject {
+                        object_id: object.id,
+                        semantic_hash: object.content_hash,
+                        has_source_binding: object.source_binding.is_some(),
+                        evidence_count: object.evidence.len(),
+                    }),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    crate::SemanticContextValidationBasis {
+        evaluation_date,
+        graph_artifact_digest,
+        graph_objects,
+    }
 }
 
 /// The compile input pinned to the exact bytes the receipt digests: yields
@@ -504,6 +590,7 @@ mod tests {
             runtime_binary_digest: TEST_DIGEST.to_string(),
             config_path: None,
             context_artifact: None,
+            semantic_context: None,
         }
     }
 
@@ -649,6 +736,104 @@ mod tests {
             serde_json::from_str(&outcome.receipt.to_canonical_json()).expect("receipt is json");
         assert_eq!(value["context"][0]["name"], "context_artifact");
         assert_eq!(value["contract_versions"]["graph"], "adoc.graph.v6");
+    }
+
+    #[test]
+    fn matching_semantic_context_is_validated_and_digest_bound_in_the_receipt() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let docs = workspace.path().join("docs");
+        write(&docs.join("index.adoc"), valid_source());
+        let graph_json = compiled_graph_json(&docs);
+        let artifact_path = workspace.path().join("dist/docs.graph.json");
+        write(&artifact_path, &graph_json);
+        let graph: GraphArtifactDocument = serde_json::from_str(&graph_json).expect("graph parses");
+        let object = knowledge_objects(&graph)
+            .get("billing.ready")
+            .copied()
+            .expect("fixture object");
+        let semantic_context = crate::build_semantic_context(crate::SemanticContextInput {
+            evaluation_date: NaiveDate::from_ymd_opt(2026, 1, 1).expect("valid date"),
+            subject_revision: crate::ExactRevision {
+                system: "git".to_string(),
+                value: "head-sha".to_string(),
+            },
+            source_revision: crate::ExactRevision {
+                system: "git".to_string(),
+                value: "head-sha".to_string(),
+            },
+            base_revision: crate::ExactRevision {
+                system: "git".to_string(),
+                value: "base-sha".to_string(),
+            },
+            head_revision: crate::ExactRevision {
+                system: "git".to_string(),
+                value: "head-sha".to_string(),
+            },
+            basis: crate::SemanticContextBasis {
+                assessment_digest: TEST_DIGEST.to_string(),
+                knowledge_basis: crate::KnowledgeBasis::GraphArtifact {
+                    digest: sha256_prefixed(graph_json.as_bytes()),
+                },
+            },
+            selection: crate::SemanticContextSelection {
+                algorithm: "changed-only".to_string(),
+                version: "1".to_string(),
+                authorized_scope: vec!["repo:billing".to_string()],
+            },
+            capability_policy: crate::CapabilityPolicy {
+                version: "semantic-context-policy-v1".to_string(),
+                rules: [
+                    crate::UnavailabilityReason::Permission,
+                    crate::UnavailabilityReason::Retention,
+                    crate::UnavailabilityReason::SourceOutage,
+                    crate::UnavailabilityReason::Truncation,
+                    crate::UnavailabilityReason::ResourceLimit,
+                ]
+                .into_iter()
+                .map(|reason| crate::CapabilityPolicyRule {
+                    reason,
+                    outcome: crate::UnavailabilityOutcome::Insufficient,
+                })
+                .collect(),
+            },
+            context_classes: vec![crate::ContextClass {
+                class_id: "changed_knowledge".to_string(),
+                requirement: crate::ContextRequirement::Required,
+                byte_budget: 4096,
+            }],
+            items: vec![crate::SemanticContextItem {
+                handle_id: "billing-ready".to_string(),
+                class_id: "changed_knowledge".to_string(),
+                scope_ref: "repo:billing".to_string(),
+                handle: crate::CitationHandle::KnowledgeObject {
+                    object_id: object.id.clone(),
+                    semantic_hash: object.content_hash.clone(),
+                },
+                content: serde_json::json!({ "body": object.body }),
+                truncated: false,
+            }],
+            unavailability: Vec::new(),
+        })
+        .expect("semantic context builds")
+        .to_canonical_json()
+        .expect("semantic context serializes");
+        let semantic_path = workspace.path().join("semantic-context.json");
+        write(&semantic_path, &semantic_context);
+
+        let mut input = standalone_input(&docs);
+        input.context_artifact = Some(artifact_path);
+        input.semantic_context = Some(semantic_path);
+        let outcome = run_validation_runtime(input).expect("validation runs");
+
+        assert_eq!(outcome.receipt.result(), ValidationResult::Pass);
+        let receipt: serde_json::Value =
+            serde_json::from_str(&outcome.receipt.to_canonical_json()).expect("receipt json");
+        assert_eq!(
+            receipt["contract_versions"]["semantic_context"],
+            crate::SEMANTIC_CONTEXT_SCHEMA_VERSION
+        );
+        assert_eq!(receipt["context"][1]["name"], "semantic_context");
+        assert_receipt_matches_published_schema(&outcome.receipt.to_canonical_json());
     }
 
     /// E1.7.T4 stop-ship cut: a context artifact the published JSON Schema

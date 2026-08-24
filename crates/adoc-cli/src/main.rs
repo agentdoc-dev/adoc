@@ -75,6 +75,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     receipt,
                     runtime_binary_digest,
                     context_artifact,
+                    semantic_context,
                 } => match (receipt, runtime_binary_digest, as_of) {
                     // clap `requires` guarantees the digest and --as-of
                     // accompany --receipt; the triple is re-matched here so
@@ -96,6 +97,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                             receipt,
                             runtime_binary_digest,
                             context_artifact,
+                            semantic_context,
                         )
                     }
                     // Unreachable while the clap `requires` wiring holds

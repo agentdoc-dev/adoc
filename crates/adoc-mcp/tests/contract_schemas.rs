@@ -1506,6 +1506,11 @@ fn semantic_context_schema_accepts_the_envelope_and_rejects_unknown_fields() {
             "assessment_digest": digest,
             "knowledge_basis": { "kind": "graph_artifact", "digest": digest }
         },
+        "selection": {
+            "algorithm": "changed-and-related",
+            "version": "1",
+            "authorized_scope": ["repo:billing"]
+        },
         "capability_policy": {
             "version": "semantic-context-policy-v1",
             "rules": [
@@ -1525,6 +1530,7 @@ fn semantic_context_schema_accepts_the_envelope_and_rejects_unknown_fields() {
             {
                 "handle_id": "billing-ready",
                 "class_id": "changed_knowledge",
+                "scope_ref": "repo:billing",
                 "handle": {
                     "kind": "knowledge_object",
                     "object_id": "billing.ready",
@@ -1536,6 +1542,7 @@ fn semantic_context_schema_accepts_the_envelope_and_rejects_unknown_fields() {
             {
                 "handle_id": "billing-diff",
                 "class_id": "changed_knowledge",
+                "scope_ref": "repo:billing",
                 "handle": {
                     "kind": "diff_hunk",
                     "changed_source_id": "docs/billing.adoc",
@@ -1547,6 +1554,7 @@ fn semantic_context_schema_accepts_the_envelope_and_rejects_unknown_fields() {
             {
                 "handle_id": "billing-assertion",
                 "class_id": "changed_knowledge",
+                "scope_ref": "repo:billing",
                 "handle": {
                     "kind": "source_assertion",
                     "source_assertion_id": "assertion-1",
@@ -1558,6 +1566,7 @@ fn semantic_context_schema_accepts_the_envelope_and_rejects_unknown_fields() {
             {
                 "handle_id": "billing-binding",
                 "class_id": "changed_knowledge",
+                "scope_ref": "repo:billing",
                 "handle": {
                     "kind": "source_binding",
                     "object_id": "billing.ready"
@@ -1568,6 +1577,7 @@ fn semantic_context_schema_accepts_the_envelope_and_rejects_unknown_fields() {
             {
                 "handle_id": "billing-evidence",
                 "class_id": "changed_knowledge",
+                "scope_ref": "repo:billing",
                 "handle": {
                     "kind": "evidence",
                     "object_id": "billing.ready",

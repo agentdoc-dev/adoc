@@ -92,6 +92,11 @@ fn public_surface_compiles_with_only_documented_imports() {
     let _ = DiagnosticCode::PatchBaseHashMismatch;
     let _ = DiagnosticCode::PatchTargetAlreadyExists;
     let _ = DiagnosticCode::PatchPlacementInvalid;
+    let _ = DiagnosticCode::SemanticContextInvalidDocument;
+    let _ = DiagnosticCode::SemanticContextDigestMismatch;
+    let _ = DiagnosticCode::SemanticContextBasisMismatch;
+    let _ = DiagnosticCode::SemanticContextInsufficientContext;
+    let _ = DiagnosticCode::SemanticContextFailed;
     // The wire string remains available for hosts that serialize manually.
     let _: &'static str = DiagnosticCode::ParseRawHtml.as_str();
     let _: &'static str = DiagnosticCode::ParseRawHtml.default_help();

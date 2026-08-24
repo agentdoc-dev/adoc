@@ -83,6 +83,8 @@ pub struct CheckReceiptInput {
     /// Graph artifact validated against the recompiled source (exact-match
     /// version gate + governed-meaning drift check, E1.7.T4).
     pub context_artifact: Option<PathBuf>,
+    /// E3.1 semantic context validated and digest-bound by receipt mode.
+    pub semantic_context: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -656,6 +658,11 @@ where
         .as_deref()
         .map(|path| context.path_policy().resolve_read_path(path))
         .transpose()?;
+    let semantic_context = input
+        .semantic_context
+        .as_deref()
+        .map(|path| context.path_policy().resolve_read_path(path))
+        .transpose()?;
     let outcome = adoc_core::run_validation_runtime(adoc_core::ValidationRuntimeInput {
         root: target.path,
         project: target.project,
@@ -665,6 +672,7 @@ where
         runtime_binary_digest: input.runtime_binary_digest,
         config_path: target.config_path,
         context_artifact,
+        semantic_context,
     })
     .map_err(|source| LocalError::ValidationRuntime { source })?;
     let exit_code = match outcome.receipt.result() {

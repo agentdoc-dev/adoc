@@ -30,6 +30,9 @@ Examples:
   adoc check docs/refunds.adoc
   adoc check --receipt receipt.json --as-of 2026-01-01 \\
     --runtime-binary-digest sha256:<64 hex>
+  adoc check --receipt receipt.json --as-of 2026-01-01 \
+    --runtime-binary-digest sha256:<64 hex> --context-artifact dist/docs.graph.json \
+    --semantic-context semantic-context.json
 
 --receipt runs the same validation and writes a digest-bound
 adoc.validation_receipt.v0 envelope (SEMANTICS S6). Receipts are
@@ -37,6 +40,8 @@ deterministic — no wall-clock timestamps — so --receipt requires an
 explicit --as-of and the invoking harness's attested
 --runtime-binary-digest (a binary cannot hash itself; the harness
 verifies its pin before invoking, see scripts/validation-runtime/).
+When --semantic-context is supplied, receipt mode validates its exact
+revision, digest, completeness, authorized scope, and closed citations.
 ";
 const MIGRATE_LONG_HELP: &str = "\
 Default is a dry run: prints what would be migrated plus the migrate.*
@@ -387,6 +392,10 @@ pub(crate) enum Commands {
         /// (exact-match adoc.graph.v6; drift fails the receipt).
         #[arg(long, value_name = "PATH", requires = "receipt")]
         context_artifact: Option<PathBuf>,
+        /// Digest-bound adoc.semantic_context.v0 validated against --as-of
+        /// and, when graph-backed, the same --context-artifact bytes.
+        #[arg(long, value_name = "PATH", requires = "receipt")]
+        semantic_context: Option<PathBuf>,
     },
     #[command(
         about = "Convert Markdown sources to prose-mode .adoc, or back with --export (dry-run by default).",
