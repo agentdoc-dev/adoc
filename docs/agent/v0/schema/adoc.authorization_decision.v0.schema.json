@@ -43,13 +43,17 @@
       "type": "array",
       "items": { "$ref": "#/$defs/grant" }
     },
+    "membership_evidence": {
+      "description": "Optional scoped-grants-stage status for membership resolution. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established; not_applicable means no membership input could affect the scoped grants. membership_evidence_unavailable requires insufficient_context, so replay can distinguish uncertainty from a confirmed no_grant outcome.",
+      "enum": ["current", "insufficient_context", "not_applicable"]
+    },
     "source_acl_ceiling": { "$ref": "#/$defs/sourceAclCeiling" },
     "visibility": { "$ref": "#/$defs/policyInput" },
     "action_policy": { "$ref": "#/$defs/policyInput" },
     "policy_version": { "$ref": "#/$defs/nonEmpty" },
     "result": { "$ref": "#/$defs/decision" },
     "reason": {
-      "description": "Evaluator outcome reason. evaluation_time_invalid is raised only after identity freshness passes; timestamp parsing itself is evaluator-owned so an invalid raw input remains recordable for replay. membership_evidence_unavailable distinguishes an expired or unavailable external-membership input from a confirmed no_grant result at the scoped-grants stage.",
+      "description": "Evaluator outcome reason. evaluation_time_invalid is raised only after identity freshness passes; timestamp parsing itself is evaluator-owned so an invalid raw input remains recordable for replay. membership_evidence_unavailable distinguishes an unavailable or not-yet-established membership input from a confirmed no_grant result at the scoped-grants stage.",
       "enum": [
         "identity_context_missing",
         "identity_expired",
@@ -223,6 +227,7 @@
               }
             ]
           },
+          "membership_evidence": { "enum": ["current", "not_applicable"] },
           "visibility": { "enum": ["allow", "not_applicable"] },
           "action_policy": { "enum": ["allow", "not_applicable"] },
           "reason": { "const": "allowed" },
@@ -337,7 +342,11 @@
         "required": ["reason"]
       },
       "then": {
-        "properties": { "basis": { "type": "null" } },
+        "properties": {
+          "membership_evidence": { "const": "insufficient_context" },
+          "basis": { "type": "null" }
+        },
+        "required": ["membership_evidence"],
         "allOf": [
           {
             "if": {
@@ -362,6 +371,7 @@
       "then": {
         "properties": {
           "basis": { "type": "null" },
+          "membership_evidence": { "enum": ["current", "not_applicable"] },
           "result": { "const": "deny" }
         }
       }
@@ -996,7 +1006,10 @@
           "additionalProperties": false,
           "properties": {
             "id": { "$ref": "#/$defs/nonEmpty" },
-            "name": { "$ref": "#/$defs/nonEmpty" },
+            "name": {
+              "description": "AgentDoc group name in effect at evaluation_time. Replay verifies id and name against the retained complete effective group-name history; any mismatch fails closed while later renames preserve historical replay.",
+              "$ref": "#/$defs/nonEmpty"
+            },
             "membership_source": { "const": "manual" },
             "membership_id": {
               "description": "Stable identifier of the preserved manual-membership lifecycle record that conferred this grant. Replay verifies that it belongs to the authorization envelope principal and enclosing group id, was created by evaluation_time, and was not then revoked; any mismatch fails closed.",
@@ -1024,7 +1037,10 @@
           "additionalProperties": false,
           "properties": {
             "id": { "$ref": "#/$defs/nonEmpty" },
-            "name": { "$ref": "#/$defs/nonEmpty" },
+            "name": {
+              "description": "AgentDoc group name in effect at evaluation_time. Replay verifies id and name against the retained complete effective group-name history; any mismatch fails closed while later renames preserve historical replay.",
+              "$ref": "#/$defs/nonEmpty"
+            },
             "membership_source": { "const": "external" },
             "binding_id": {
               "description": "Stable identifier of the preserved external-binding record and its complete effective mode history. Replay verifies binding_mode and binding_mode_effective_at against the retained epoch.",

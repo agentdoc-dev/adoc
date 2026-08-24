@@ -856,7 +856,8 @@ fn group_retention_rules_match_the_e2_4_authority() {
     let distinct_policy_claim =
         "membership-freshness policy is distinct from the connector source-ACL policy";
     let failed_reenable_claim = "failed re-enable remains non-granting";
-    let membership_unavailable_claim = "membership_evidence_unavailable";
+    let membership_unavailable_claim = "`no_grant` remains reserved for a confirmed absence";
+    let group_name_history_claim = "complete effective group-name history";
     let effective_at = observation["effective_at"]["description"]
         .as_str()
         .expect("membership effective time is documented");
@@ -1001,6 +1002,7 @@ fn group_retention_rules_match_the_e2_4_authority() {
             distinct_policy_claim,
             failed_reenable_claim,
             membership_unavailable_claim,
+            group_name_history_claim,
         ] {
             assert!(
                 surface.contains(claim),
