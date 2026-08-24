@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.semantic_context.v0.schema.json",
+  "title": "AgentDoc Semantic Context",
+  "description": "Digest-bound semantic context with exact revisions and closed citation handles (E3.1). JSON Schema is preflight only; adoc-core enforces canonical ordering, digest integrity, identity grammar, and semantic completeness.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evaluation_date",
+    "subject_revision",
+    "source_revision",
+    "base_revision",
+    "head_revision",
+    "basis",
+    "items",
+    "context_digest"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.semantic_context.v0" },
+    "evaluation_date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "subject_revision": { "$ref": "#/$defs/exactRevision" },
+    "source_revision": { "$ref": "#/$defs/exactRevision" },
+    "base_revision": { "$ref": "#/$defs/exactRevision" },
+    "head_revision": { "$ref": "#/$defs/exactRevision" },
+    "basis": {
+      "type": "object",
+      "required": ["assessment_digest", "knowledge_basis"],
+      "additionalProperties": false,
+      "properties": {
+        "assessment_digest": { "$ref": "#/$defs/sha256" },
+        "knowledge_basis": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["kind", "digest"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "graph_artifact" },
+                "digest": { "$ref": "#/$defs/sha256" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "digest"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "managed_revision" },
+                "digest": { "$ref": "#/$defs/sha256" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["handle_id", "handle", "content"],
+        "additionalProperties": false,
+        "properties": {
+          "handle_id": { "$ref": "#/$defs/nonEmpty" },
+          "handle": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["kind", "object_id", "semantic_hash"],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": { "const": "knowledge_object" },
+                  "object_id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$"
+                  },
+                  "semantic_hash": { "$ref": "#/$defs/sha256" }
+                }
+              }
+            ]
+          },
+          "content": {}
+        }
+      }
+    },
+    "context_digest": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "exactRevision": {
+      "type": "object",
+      "required": ["system", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "system": { "$ref": "#/$defs/nonEmpty" },
+        "value": { "$ref": "#/$defs/nonEmpty" }
+      }
+    }
+  }
+}
