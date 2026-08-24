@@ -863,7 +863,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "source_event_id": {
-          "description": "Immutable upstream connector event that carried this membership observation, retained so replay can re-derive the observation from source.",
+          "description": "Immutable upstream connector event or synchronization run that carried this membership observation, retained so replay can re-derive the observation from source. A resynchronization sweep records one identifier for the run and cites it from every observation it produces.",
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": { "$ref": "#/$defs/rfc3339Timestamp" },

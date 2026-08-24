@@ -198,11 +198,11 @@ Roles/scoped grants attach to AgentDoc groups. Revocation from an authoritative 
 
 At authorization evaluation, an active manual membership is recorded with its stable membership identifier and creation time. Replay resolves that identifier against its preserved lifecycle record and verifies that the membership was created and not revoked at the decision evaluation time. Manual membership removal revokes future use and preserves the membership record so past decisions remain replayable. When both manual and external membership confer the same group grant, the evaluator records the independently durable manual provenance.
 
-External binding records, membership observations, and their source events are retained for every decision that cites them, so those decisions remain replayable after the observed membership is revoked and after binding resync, reconfiguration, or disablement.
+External binding records, membership observations, and their source events or synchronization runs are retained for every decision that cites them, so those decisions remain replayable after the observed membership is revoked and after binding resync, reconfiguration, or disablement.
 
 External binding records retain their complete mode history, so replay can resolve the mode epoch in effect at each decision's evaluation time.
 
-A binding-mode reconfiguration starts a new epoch and resynchronizes the binding, recording a fresh membership observation for every current member of the new epoch; external membership confers grants again only from the first observation recorded within that epoch.
+Reconfiguration to `suggestion_only` or `disabled` takes effect immediately. A binding-mode reconfiguration between grant-conferring modes takes effect only when its resynchronization completes; until then the binding remains under the prior epoch. Completion starts the new epoch and records a fresh membership observation for every principal the source currently reports, with `observed_at` at or after the epoch boundary; external membership confers grants again only from an observation recorded within that epoch.
 
 Nested-group behavior is not implemented accidentally; it requires a future explicit decision.
 
