@@ -310,6 +310,8 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/adoc.executor_qualification.v0.schema.json",
         "adoc://agent/v0/schema/adoc.semantic_executor_request.v0.schema.json",
         "adoc://agent/v0/schema/adoc.semantic_executor_receipt.v0.schema.json",
+        "adoc://agent/v0/schema/adoc.work_request.v0.schema.json",
+        "adoc://agent/v0/schema/adoc.work_result.v0.schema.json",
         "adoc://agent/v0/schema/search-artifact.json",
         "adoc://agent/v0/schema/graph-artifact.v6.json",
     ];

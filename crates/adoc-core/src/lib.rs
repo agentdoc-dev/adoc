@@ -63,6 +63,12 @@ pub use domain::executor_qualification::{
     ExecutorQualificationExpectedBindings, ModelConfiguration, QualificationLayer,
     RequalificationTrigger, validate_executor_qualification,
 };
+pub use domain::external_work::{
+    CapabilityRequirement, ContractRequirement, ExternalWorkError, WORK_REQUEST_SCHEMA_VERSION,
+    WORK_RESULT_SCHEMA_VERSION, WorkChangeRequest, WorkRequest, WorkRequestInput, WorkResult,
+    WorkResultInput, WorkRuntime, WorkSource, WorkloadAuthorization, build_work_request,
+    build_work_result, validate_work_request, validate_work_result,
+};
 pub use domain::graph::{
     GraphDirection, GraphRelationKind, GraphTraversalEdge, GraphTraversalNode, GraphTraversalQuery,
     GraphTraversalResult, ProseBlockKind,

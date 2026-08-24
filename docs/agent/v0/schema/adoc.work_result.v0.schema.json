@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.work_result.v0.schema.json",
+  "title": "AgentDoc External Work Result",
+  "description": "Digest-bound external worker result that repeats the exact request, workspace, repository, revision, and workload identity bindings (E3.7).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "request_id",
+    "request_digest",
+    "workspace_id",
+    "repository_id",
+    "revision",
+    "completion_nonce",
+    "worker",
+    "runtime",
+    "output_digests",
+    "result_digest"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.work_result.v0" },
+    "request_id": { "$ref": "#/$defs/text" },
+    "request_digest": { "$ref": "#/$defs/digest" },
+    "workspace_id": { "$ref": "#/$defs/text" },
+    "repository_id": { "$ref": "#/$defs/text" },
+    "revision": { "$ref": "#/$defs/revision" },
+    "completion_nonce": { "$ref": "#/$defs/text" },
+    "worker": { "$ref": "#/$defs/workload" },
+    "runtime": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/text" },
+        "version": { "$ref": "#/$defs/text" }
+      }
+    },
+    "output_digests": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "$ref": "#/$defs/text" },
+      "additionalProperties": { "$ref": "#/$defs/digest" }
+    },
+    "result_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:.*\\S)?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "revision": {
+      "type": "object",
+      "required": ["system", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "system": { "$ref": "#/$defs/text" },
+        "value": { "$ref": "#/$defs/text" }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "required": ["principal_id", "subject", "audience"],
+      "additionalProperties": false,
+      "properties": {
+        "principal_id": { "$ref": "#/$defs/text" },
+        "subject": { "$ref": "#/$defs/text" },
+        "audience": { "$ref": "#/$defs/text" }
+      }
+    }
+  }
+}
