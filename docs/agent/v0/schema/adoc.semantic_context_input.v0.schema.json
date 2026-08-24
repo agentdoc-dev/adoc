@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.semantic_context_input.v0.schema.json",
+  "title": "AgentDoc Semantic Context Producer Input",
+  "description": "Portable producer input whose coverage, outcome, and digest are derived by adoc-core. Nested semantic validation remains authoritative.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evaluation_date",
+    "subject_revision",
+    "source_revision",
+    "base_revision",
+    "head_revision",
+    "basis",
+    "selection",
+    "capability_policy",
+    "context_classes",
+    "items",
+    "unavailability"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.semantic_context_input.v0" },
+    "evaluation_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+    "subject_revision": { "$ref": "#/$defs/revision" },
+    "source_revision": { "$ref": "#/$defs/revision" },
+    "base_revision": { "$ref": "#/$defs/revision" },
+    "head_revision": { "$ref": "#/$defs/revision" },
+    "basis": { "type": "object" },
+    "selection": { "type": "object" },
+    "capability_policy": { "type": "object" },
+    "context_classes": { "type": "array" },
+    "items": { "type": "array" },
+    "unavailability": { "type": "array" }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "revision": {
+      "type": "object",
+      "required": ["system", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "system": { "$ref": "#/$defs/nonEmpty" },
+        "value": { "$ref": "#/$defs/nonEmpty" }
+      }
+    }
+  }
+}

@@ -13,7 +13,7 @@ use crate::commands::{
     GraphCommandInput, ImpactedByCommandInput, MigrateCommandInput, PatchCommandInput,
     ReviewCommandInput, SearchCommandInput, StaleCommandInput, assess_changes, baseline, build,
     check, check_receipt, contradictions, diff, graph, impacted_by, init, migrate, patch, review,
-    search_command, stale, why,
+    search_command, semantic_context, semantic_executor, stale, why,
 };
 use crate::presentation::{ResolvedFormat, terminal};
 
@@ -304,6 +304,13 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                 Commands::Baseline { git_ref, as_of } => {
                     baseline(BaselineCommandInput { git_ref, as_of }, resolved)
                 }
+                Commands::SemanticContext { input, out } => semantic_context(input, out),
+                Commands::SemanticExecutor {
+                    request,
+                    assessment,
+                    receipt,
+                    validated_assessment,
+                } => semantic_executor(request, assessment, receipt, validated_assessment),
                 Commands::Patch {
                     check,
                     apply,

@@ -10,6 +10,7 @@ mod migrate;
 mod patch;
 mod review;
 mod search;
+mod semantic_executor;
 mod stale;
 mod why;
 
@@ -37,6 +38,7 @@ pub(crate) use migrate::{MigrateCommandInput, migrate};
 pub(crate) use patch::{PatchCommandInput, patch};
 pub(crate) use review::{ReviewCommandInput, review};
 pub(crate) use search::{SearchCommandInput, search_command};
+pub(crate) use semantic_executor::{semantic_context, semantic_executor};
 pub(crate) use stale::{StaleCommandInput, stale};
 pub(crate) use why::why;
 

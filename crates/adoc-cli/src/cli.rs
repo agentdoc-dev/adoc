@@ -705,6 +705,30 @@ pub(crate) enum Commands {
         as_of: Option<chrono::NaiveDate>,
     },
     #[command(
+        name = "semantic-context",
+        about = "Build canonical adoc.semantic_context.v0 from portable producer input."
+    )]
+    SemanticContext {
+        #[arg(long, value_name = "INPUT_JSON")]
+        input: PathBuf,
+        #[arg(long, value_name = "CONTEXT_JSON")]
+        out: PathBuf,
+    },
+    #[command(
+        name = "semantic-executor",
+        about = "Validate one semantic executor response and write its deterministic receipt."
+    )]
+    SemanticExecutor {
+        #[arg(long, value_name = "REQUEST_JSON")]
+        request: PathBuf,
+        #[arg(long, value_name = "ASSESSMENT_JSON")]
+        assessment: PathBuf,
+        #[arg(long, value_name = "RECEIPT_JSON")]
+        receipt: PathBuf,
+        #[arg(long, value_name = "VALIDATED_ASSESSMENT_JSON")]
+        validated_assessment: PathBuf,
+    },
+    #[command(
         about = "Validate one AgentDoc patch document against graph artifacts, or apply it to source.",
         after_long_help = PATCH_LONG_HELP
     )]

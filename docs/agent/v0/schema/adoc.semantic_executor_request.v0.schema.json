@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.semantic_executor_request.v0.schema.json",
+  "title": "AgentDoc Semantic Executor Request",
+  "description": "Provider-neutral request for Claude, Codex, generic/customer-hosted, local, and human adapters. adoc-core validates nested semantic context integrity and all digest bindings.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "request_id",
+    "capability",
+    "adapter",
+    "task_digest",
+    "prompt",
+    "timeout_seconds",
+    "context"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.semantic_executor_request.v0" },
+    "request_id": { "$ref": "#/$defs/nonEmpty" },
+    "capability": { "$ref": "#/$defs/nonEmpty" },
+    "adapter": {
+      "type": "object",
+      "required": [
+        "kind",
+        "provider",
+        "model",
+        "endpoint_class",
+        "endpoint_id",
+        "executor_digest",
+        "model_digest",
+        "config_digest"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["claude_code", "codex", "generic", "human"] },
+        "provider": { "$ref": "#/$defs/nonEmpty" },
+        "model": { "$ref": "#/$defs/nonEmpty" },
+        "endpoint_class": { "enum": ["public_provider", "customer_hosted", "local", "human"] },
+        "endpoint_id": { "$ref": "#/$defs/nonEmpty" },
+        "executor_digest": { "$ref": "#/$defs/sha256" },
+        "model_digest": { "$ref": "#/$defs/sha256" },
+        "config_digest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "task_digest": { "$ref": "#/$defs/sha256" },
+    "prompt": {
+      "type": "object",
+      "required": ["contract_version", "digest", "instructions"],
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": { "$ref": "#/$defs/nonEmpty" },
+        "digest": { "$ref": "#/$defs/sha256" },
+        "instructions": { "type": "string", "minLength": 1, "maxLength": 262144 }
+      }
+    },
+    "timeout_seconds": { "type": "integer", "minimum": 60, "maximum": 3600 },
+    "context": {
+      "type": "object",
+      "required": ["schema_version", "context_digest"],
+      "properties": {
+        "schema_version": { "const": "adoc.semantic_context.v0" },
+        "context_digest": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1, "pattern": "^\\S(?:.*\\S)?$" },
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

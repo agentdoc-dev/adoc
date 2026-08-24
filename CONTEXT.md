@@ -326,6 +326,10 @@ _Avoid_: model confidence, free-text judgment, deterministic semantic meaning, p
 The capability-specific `adoc.executor_qualification.v0` record that binds protocol validity, AgentDoc capability evaluation, organization approval for declared scope/risk/deployment, runtime-policy eligibility for one exact operation, and the exact executor configuration. Required-gate authority needs every layer and no requalification trigger. Protocol-valid-only output is advisory. Model executors bind exact executor/model/config and material-input digests; human executors bind an authenticated Principal and permission-policy digest instead of benchmark evidence.
 _Avoid_: schema-valid means qualified, provider-wide qualification, benchmark requirement for humans, stale configuration authority
 
+**Semantic Executor**:
+The provider-neutral `adoc.semantic_executor_request.v0` boundary shared by Claude Code, Codex, declared generic/customer-hosted or local endpoints, and authenticated human submissions. A request embeds one integrity-validated ready **Semantic Context** plus exact executor, model, configuration, task, and prompt digests; only a validator-accepted **Semantic Assessment** with the declared provider/model identity produces a completed `adoc.semantic_executor_receipt.v0`. Adapters invoke providers and protect credentials, but never validate domain meaning or render unvalidated output.
+_Avoid_: provider-specific assessment shape, undeclared endpoint class, caller-authored success receipt, free-text fallback
+
 **Embedding Provider**:
 The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the deterministic adapter is available for repeatable local/offline use.
 _Avoid_: hosted-only embedding pipeline, public plug-in registry, per-call API key configuration

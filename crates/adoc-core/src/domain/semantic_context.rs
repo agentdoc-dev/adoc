@@ -15,6 +15,7 @@ use super::hashing::sha256_prefixed;
 use super::identity::ObjectId;
 
 pub const SEMANTIC_CONTEXT_SCHEMA_VERSION: &str = "adoc.semantic_context.v0";
+pub const SEMANTIC_CONTEXT_INPUT_SCHEMA_VERSION: &str = "adoc.semantic_context_input.v0";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -325,6 +326,23 @@ struct SemanticContextDocument {
     coverage: Vec<ContextCoverage>,
     outcome: SemanticContextOutcome,
     context_digest: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SemanticContextInputDocument {
+    schema_version: String,
+    evaluation_date: String,
+    subject_revision: ExactRevision,
+    source_revision: ExactRevision,
+    base_revision: ExactRevision,
+    head_revision: ExactRevision,
+    basis: SemanticContextBasis,
+    selection: SemanticContextSelection,
+    capability_policy: CapabilityPolicy,
+    context_classes: Vec<ContextClass>,
+    items: Vec<SemanticContextItem>,
+    unavailability: Vec<ContextUnavailability>,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -709,6 +727,92 @@ pub fn build_semantic_context(
         outcome,
         context_digest: sha256_prefixed(&canonical),
     })
+}
+
+/// Builds canonical semantic context from the portable producer input used by
+/// Action and customer-hosted adapters. The derived coverage, outcome, and
+/// digest remain core-owned.
+pub fn build_semantic_context_from_document(
+    bytes: &[u8],
+) -> Result<SemanticContext, SemanticContextError> {
+    let document: SemanticContextInputDocument =
+        serde_json::from_slice(bytes).map_err(|error| SemanticContextError::InvalidDocument {
+            message: error.to_string(),
+        })?;
+    if document.schema_version != SEMANTIC_CONTEXT_INPUT_SCHEMA_VERSION {
+        return Err(SemanticContextError::UnsupportedVersion {
+            version: document.schema_version,
+        });
+    }
+    let evaluation_date = NaiveDate::parse_from_str(&document.evaluation_date, "%Y-%m-%d")
+        .map_err(|error| SemanticContextError::InvalidDocument {
+            message: error.to_string(),
+        })?;
+    build_semantic_context(SemanticContextInput {
+        evaluation_date,
+        subject_revision: document.subject_revision,
+        source_revision: document.source_revision,
+        base_revision: document.base_revision,
+        head_revision: document.head_revision,
+        basis: document.basis,
+        selection: document.selection,
+        capability_policy: document.capability_policy,
+        context_classes: document.context_classes,
+        items: document.items,
+        unavailability: document.unavailability,
+    })
+}
+
+/// Rebuilds an untrusted retained context and accepts it only when every
+/// derived field and the canonical digest agree. Caller-owned basis checks are
+/// still performed upstream by the context producer.
+pub fn validate_semantic_context_integrity(
+    bytes: &[u8],
+) -> Result<SemanticContext, SemanticContextError> {
+    let value: Value =
+        serde_json::from_slice(bytes).map_err(|error| SemanticContextError::InvalidDocument {
+            message: error.to_string(),
+        })?;
+    let document: SemanticContextDocument =
+        serde_json::from_value(value.clone()).map_err(|error| {
+            SemanticContextError::InvalidDocument {
+                message: error.to_string(),
+            }
+        })?;
+    if document.schema_version != SEMANTIC_CONTEXT_SCHEMA_VERSION {
+        return Err(SemanticContextError::UnsupportedVersion {
+            version: document.schema_version,
+        });
+    }
+    let evaluation_date = NaiveDate::parse_from_str(&document.evaluation_date, "%Y-%m-%d")
+        .map_err(|error| SemanticContextError::InvalidDocument {
+            message: error.to_string(),
+        })?;
+    let claimed_digest = document.context_digest;
+    let rebuilt = build_semantic_context(SemanticContextInput {
+        evaluation_date,
+        subject_revision: document.subject_revision,
+        source_revision: document.source_revision,
+        base_revision: document.base_revision,
+        head_revision: document.head_revision,
+        basis: document.basis,
+        selection: document.selection,
+        capability_policy: document.capability_policy,
+        context_classes: document.context_classes,
+        items: document.items,
+        unavailability: document.unavailability,
+    })?;
+    if claimed_digest != rebuilt.context_digest {
+        return Err(SemanticContextError::DigestMismatch);
+    }
+    let rebuilt_value =
+        serde_json::to_value(&rebuilt).map_err(|error| SemanticContextError::Serialization {
+            message: error.to_string(),
+        })?;
+    if value != rebuilt_value {
+        return Err(SemanticContextError::DerivedStateMismatch);
+    }
+    Ok(rebuilt)
 }
 
 pub fn validate_semantic_context(

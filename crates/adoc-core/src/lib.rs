@@ -94,12 +94,21 @@ pub use domain::semantic_context::{
     CapabilityPolicy, CapabilityPolicyRule, CitationContentProjection, CitationHandle,
     ContextClass, ContextRequirement, ContextUnavailability, ContextUnavailabilityKind,
     DiffHunkCitation, ExactRevision, GraphCitationObject, GraphObjectContextExpectation,
-    KnowledgeBasis, SEMANTIC_CONTEXT_SCHEMA_VERSION, SemanticContext, SemanticContextBasis,
-    SemanticContextError, SemanticContextExpectedBindings, SemanticContextInput,
-    SemanticContextItem, SemanticContextOutcome, SemanticContextSelection,
+    KnowledgeBasis, SEMANTIC_CONTEXT_INPUT_SCHEMA_VERSION, SEMANTIC_CONTEXT_SCHEMA_VERSION,
+    SemanticContext, SemanticContextBasis, SemanticContextError, SemanticContextExpectedBindings,
+    SemanticContextInput, SemanticContextItem, SemanticContextOutcome, SemanticContextSelection,
     SemanticContextValidationBasis, SourceAssertionCitation, UnavailabilityOutcome,
-    UnavailabilityReason, build_semantic_context, is_semantic_context_text, is_sha256_digest,
-    is_valid_capability_policy, semantic_context_content_digest, validate_semantic_context,
+    UnavailabilityReason, build_semantic_context, build_semantic_context_from_document,
+    is_semantic_context_text, is_sha256_digest, is_valid_capability_policy,
+    semantic_context_content_digest, validate_semantic_context,
+    validate_semantic_context_integrity,
+};
+pub use domain::semantic_executor::{
+    SEMANTIC_EXECUTOR_RECEIPT_SCHEMA_VERSION, SEMANTIC_EXECUTOR_REQUEST_SCHEMA_VERSION,
+    SemanticAdapterDescriptor, SemanticAdapterKind, SemanticEndpointClass, SemanticExecutorError,
+    SemanticExecutorOutcome, SemanticExecutorReceipt, SemanticExecutorRequest,
+    SemanticPromptContract, complete_semantic_execution, fail_semantic_execution,
+    validate_semantic_executor_request,
 };
 pub use domain::services::suggest_typed_blocks::SuggestedTypedBlock;
 pub use domain::value_objects::rel_path::{RelPath, RelPathError};
