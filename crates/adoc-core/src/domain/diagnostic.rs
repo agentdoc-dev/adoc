@@ -457,6 +457,16 @@ diagnostic_codes! {
     /// this domain check is what schema validation can never see.
     ValidationContextArtifactDrift = "validation.context_artifact_drift" =>
         "Rebuild the graph artifact from the source workspace with `adoc build`, then re-run validation.";
+    SemanticContextInvalidDocument = "semantic_context.invalid_document" =>
+        "Regenerate the semantic context with the supported schema and valid closed fields.";
+    SemanticContextDigestMismatch = "semantic_context.digest_mismatch" =>
+        "Regenerate the semantic context; its canonical content no longer matches its recorded digest.";
+    SemanticContextBasisMismatch = "semantic_context.basis_mismatch" =>
+        "Regenerate semantic context from the exact graph artifact or managed revision being validated.";
+    SemanticContextInsufficientContext = "semantic_context.insufficient_context" =>
+        "Restore the required authorized context and regenerate the semantic context before relying on the assessment.";
+    SemanticContextFailed = "semantic_context.failed" =>
+        "Resolve the capability-policy failure and regenerate the semantic context; the semantic run must not proceed.";
 }
 
 impl DiagnosticCode {

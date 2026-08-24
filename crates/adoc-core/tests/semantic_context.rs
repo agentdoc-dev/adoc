@@ -1,7 +1,9 @@
 use adoc_core::{
-    CitationHandle, ContextClass, ContextRequirement, ExactRevision, KnowledgeBasis,
-    SemanticContextBasis, SemanticContextInput, SemanticContextItem, SemanticContextOutcome,
-    build_semantic_context, validate_semantic_context,
+    CapabilityPolicy, CapabilityPolicyRule, CitationHandle, ContextClass, ContextRequirement,
+    ContextUnavailability, ContextUnavailabilityKind, DiagnosticCode, ExactRevision,
+    KnowledgeBasis, SemanticContextBasis, SemanticContextInput, SemanticContextItem,
+    SemanticContextOutcome, UnavailabilityOutcome, UnavailabilityReason, build_semantic_context,
+    validate_semantic_context,
 };
 use chrono::NaiveDate;
 use serde_json::json;
@@ -44,12 +46,29 @@ fn input(items: Vec<SemanticContextItem>) -> SemanticContextInput {
                 digest: GRAPH_DIGEST.to_string(),
             },
         },
+        capability_policy: CapabilityPolicy {
+            version: "semantic-context-policy-v1".to_string(),
+            rules: [
+                UnavailabilityReason::Permission,
+                UnavailabilityReason::Retention,
+                UnavailabilityReason::SourceOutage,
+                UnavailabilityReason::Truncation,
+                UnavailabilityReason::ResourceLimit,
+            ]
+            .into_iter()
+            .map(|reason| CapabilityPolicyRule {
+                reason,
+                outcome: UnavailabilityOutcome::Insufficient,
+            })
+            .collect(),
+        },
         context_classes: vec![ContextClass {
             class_id: "changed_knowledge".to_string(),
             requirement: ContextRequirement::Required,
             byte_budget: 4096,
         }],
         items,
+        unavailability: Vec::new(),
     }
 }
 
@@ -233,4 +252,57 @@ fn semantic_context_rejects_forged_derived_coverage() {
         error.to_string(),
         "semantic context coverage or outcome does not match its items"
     );
+}
+
+#[test]
+fn every_required_unavailability_reason_obeys_the_capability_policy() {
+    for reason in [
+        UnavailabilityReason::Permission,
+        UnavailabilityReason::Retention,
+        UnavailabilityReason::SourceOutage,
+        UnavailabilityReason::Truncation,
+        UnavailabilityReason::ResourceLimit,
+    ] {
+        let mut semantic_input = input(vec![item("handle-a", "billing.alpha", ASSESSMENT_DIGEST)]);
+        semantic_input.unavailability = vec![ContextUnavailability {
+            record_id: "unavailable-1".to_string(),
+            class_id: "changed_knowledge".to_string(),
+            kind: ContextUnavailabilityKind::Omission,
+            reason,
+        }];
+        semantic_input.capability_policy.rules = semantic_input
+            .capability_policy
+            .rules
+            .into_iter()
+            .map(|rule| CapabilityPolicyRule {
+                reason: rule.reason,
+                outcome: if rule.reason == reason {
+                    UnavailabilityOutcome::Failed
+                } else {
+                    UnavailabilityOutcome::Insufficient
+                },
+            })
+            .collect();
+
+        let failed = build_semantic_context(semantic_input).expect("failure is recordable");
+        assert_eq!(
+            failed.outcome(),
+            SemanticContextOutcome::Failed,
+            "{reason:?}"
+        );
+        assert!(!failed.allows_no_change_required());
+    }
+}
+
+#[test]
+fn semantic_context_outcomes_map_to_stable_diagnostics() {
+    assert_eq!(
+        SemanticContextOutcome::Insufficient.diagnostic_code(),
+        Some(DiagnosticCode::SemanticContextInsufficientContext)
+    );
+    assert_eq!(
+        SemanticContextOutcome::Failed.diagnostic_code(),
+        Some(DiagnosticCode::SemanticContextFailed)
+    );
+    assert_eq!(SemanticContextOutcome::Ready.diagnostic_code(), None);
 }

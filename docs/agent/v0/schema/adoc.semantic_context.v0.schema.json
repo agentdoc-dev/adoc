@@ -12,8 +12,10 @@
     "base_revision",
     "head_revision",
     "basis",
+    "capability_policy",
     "context_classes",
     "items",
+    "unavailability",
     "coverage",
     "outcome",
     "context_digest"
@@ -56,6 +58,28 @@
               }
             }
           ]
+        }
+      }
+    },
+    "capability_policy": {
+      "type": "object",
+      "required": ["version", "rules"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "$ref": "#/$defs/nonEmpty" },
+        "rules": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["reason", "outcome"],
+            "additionalProperties": false,
+            "properties": {
+              "reason": { "$ref": "#/$defs/unavailabilityReason" },
+              "outcome": { "enum": ["insufficient", "failed"] }
+            }
+          }
         }
       }
     },
@@ -139,6 +163,21 @@
         }
       }
     },
+    "unavailability": {
+      "description": "Content-free redaction and omission records; sensitive content and source identifiers are never carried here.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["record_id", "class_id", "kind", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "record_id": { "$ref": "#/$defs/nonEmpty" },
+          "class_id": { "$ref": "#/$defs/nonEmpty" },
+          "kind": { "enum": ["redaction", "omission"] },
+          "reason": { "$ref": "#/$defs/unavailabilityReason" }
+        }
+      }
+    },
     "coverage": {
       "description": "Validator-derived coverage diagnostics in context-class order.",
       "type": "array",
@@ -151,6 +190,8 @@
           "included_bytes",
           "byte_budget",
           "truncated",
+          "unavailable_count",
+          "reasons",
           "complete"
         ],
         "additionalProperties": false,
@@ -161,17 +202,25 @@
           "included_bytes": { "type": "integer", "minimum": 0 },
           "byte_budget": { "type": "integer", "minimum": 1 },
           "truncated": { "type": "boolean" },
+          "unavailable_count": { "type": "integer", "minimum": 0 },
+          "reasons": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/unavailabilityReason" }
+          },
           "complete": { "type": "boolean" }
         }
       }
     },
-    "outcome": { "enum": ["ready", "insufficient"] },
+    "outcome": { "enum": ["ready", "insufficient", "failed"] },
     "context_digest": { "$ref": "#/$defs/sha256" }
   },
   "$defs": {
     "nonEmpty": { "type": "string", "minLength": 1 },
     "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "requirement": { "enum": ["required", "optional"] },
+    "unavailabilityReason": {
+      "enum": ["permission", "retention", "source_outage", "truncation", "resource_limit"]
+    },
     "objectId": {
       "type": "string",
       "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$"

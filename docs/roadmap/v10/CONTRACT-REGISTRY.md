@@ -267,6 +267,11 @@ Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed
 | `search.invalid_filter` |
 | `search.invalid_scope` |
 | `search.model_mismatch` |
+| `semantic_context.basis_mismatch` |
+| `semantic_context.digest_mismatch` |
+| `semantic_context.failed` |
+| `semantic_context.insufficient_context` |
+| `semantic_context.invalid_document` |
 | `store.retention_floor_violation` |
 | `task.overdue` |
 | `validation.context_artifact_drift` |
