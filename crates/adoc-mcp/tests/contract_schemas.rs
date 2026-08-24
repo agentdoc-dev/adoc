@@ -2434,7 +2434,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         (
-            "hard deny may retain definitive source ACL evidence without attempt context",
+            "hard deny may retain definitive source ACL evidence for replay",
             hard_deny_with_source_acl_evidence_only,
             true,
         ),
@@ -2470,7 +2470,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         (
-            "invalid time may retain source ACL evidence without an attempted check",
+            "invalid evaluation time may retain definitive source ACL evidence for replay",
             invalid_time_with_source_acl_evidence_only,
             true,
         ),
@@ -2841,6 +2841,29 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "authorization decision schema case failed: {name}\ninstance: {instance}"
         );
     }
+
+    let authorization_schema = schema("adoc.authorization_decision.v0.schema.json");
+    let check_context_description =
+        authorization_schema["$defs"]["sourceAclCheckContext"]["description"]
+            .as_str()
+            .expect("source ACL check context is documented");
+    assert!(
+        check_context_description.contains(
+            "must name the effective decision principal's retained provider identity link resolving that principal at evaluation_time"
+        ) && check_context_description
+            .contains("must name the connector policy governing the attempt"),
+        "evidence-free source ACL attempts must retain principal and policy bindings"
+    );
+    let current_policy_description = authorization_schema["$defs"]["currentSourceAclAuthorization"]
+        ["properties"]["acl_policy_version"]["description"]
+        .as_str()
+        .expect("current source ACL policy version is documented");
+    assert!(
+        current_policy_description.contains("remains the governing version at evaluation_time")
+            && current_policy_description
+                .contains("policy-version change invalidates the evidence"),
+        "current source ACL evidence must not survive a governing policy change"
+    );
 
     for field in [
         "role",
