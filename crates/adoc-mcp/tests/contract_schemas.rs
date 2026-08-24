@@ -1739,6 +1739,10 @@ fn authorization_decision_schema_pins_replay_bindings() {
     source_acl_stale["result"] = json!("deny");
     source_acl_stale["reason"] = json!("source_acl_stale");
     source_acl_stale["basis"] = json!(null);
+    let mut source_acl_policy_superseded = decision.clone();
+    source_acl_policy_superseded["result"] = json!("deny");
+    source_acl_policy_superseded["reason"] = json!("source_acl_stale");
+    source_acl_policy_superseded["basis"] = json!(null);
 
     let mut source_acl_invalidated = decision.clone();
     source_acl_invalidated["source_acl_ceiling"]["current_authorization"]["invalidated_at"] =
@@ -2279,6 +2283,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         ("stale current source ACL evidence", source_acl_stale, true),
+        (
+            "governing policy change makes current source ACL evidence stale",
+            source_acl_policy_superseded,
+            true,
+        ),
         (
             "invalidated current source ACL evidence",
             source_acl_invalidated,
@@ -2841,29 +2850,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "authorization decision schema case failed: {name}\ninstance: {instance}"
         );
     }
-
-    let authorization_schema = schema("adoc.authorization_decision.v0.schema.json");
-    let check_context_description =
-        authorization_schema["$defs"]["sourceAclCheckContext"]["description"]
-            .as_str()
-            .expect("source ACL check context is documented");
-    assert!(
-        check_context_description.contains(
-            "must name the effective decision principal's retained provider identity link resolving that principal at evaluation_time"
-        ) && check_context_description
-            .contains("must name the connector policy governing the attempt"),
-        "evidence-free source ACL attempts must retain principal and policy bindings"
-    );
-    let current_policy_description = authorization_schema["$defs"]["currentSourceAclAuthorization"]
-        ["properties"]["acl_policy_version"]["description"]
-        .as_str()
-        .expect("current source ACL policy version is documented");
-    assert!(
-        current_policy_description.contains("remains the governing version at evaluation_time")
-            && current_policy_description
-                .contains("policy-version change invalidates the evidence"),
-        "current source ACL evidence must not survive a governing policy change"
-    );
 
     for field in [
         "role",

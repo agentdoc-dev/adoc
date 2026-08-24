@@ -857,7 +857,7 @@
       ]
     },
     "sourceAclCheckContext": {
-      "description": "Immutable inline context for an attempted required source ACL check. After the earlier identity, evaluation-time, and hard-deny gates pass, it is required when no current_authorization exists and carries the only retained provider-identity and policy bindings for that evidence-free attempt: external_identity_link_id must name the effective decision principal's retained provider identity link resolving that principal at evaluation_time, and acl_policy_version must name the connector policy governing the attempt. Beside definitive current_authorization it is optional supplemental attempt context; when present, both must match that evidence. Resource and principal bindings come from the enclosing decision rather than being duplicated here. For delegated execution, the workload or service principal uses its own linked provider identity while the delegator remains in the separate delegation chain. These bindings are evaluator-owned and fail closed.",
+      "description": "Immutable inline context for an attempted required source ACL check. After the earlier identity, evaluation-time, and hard-deny gates pass, it is required when no current_authorization exists and carries the only retained provider-identity and policy bindings for that evidence-free attempt: external_identity_link_id must name the effective decision principal's retained provider identity link resolving that principal at evaluation_time, and acl_policy_version must name the connector policy governing the attempt. Beside definitive current_authorization it is optional attempt context giving consumers a uniform read path for those two bindings; the evidence records the same two values, so a present context restates rather than supplements them. Resource and principal bindings come from the enclosing decision rather than being duplicated here. For delegated execution, the workload or service principal uses its own linked provider identity while the delegator remains in the separate delegation chain. These bindings are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
@@ -877,7 +877,7 @@
       "additionalProperties": false,
       "properties": {
         "required": {
-          "description": "Whether the decision resource required a source ACL check, independent of whether evaluation reached that gate. True requires connector_id, source_container_id, and resource on the decision resource and forces result to allow, deny, or insufficient_context. Once the identity, evaluation-time, and hard-deny gates pass, check_context is required only when no current_authorization exists; definitive current evidence may stand alone, while retained context remains optional supplemental attempt context. identity_context_missing, identity_expired, evaluation_time_invalid, or hard_deny may win before an attempt and omit context. A required allow or deny additionally requires current ACL evidence. False forces not_applicable and forbids check context and current ACL evidence; snapshot_id remains permitted as historical audit provenance because it never establishes current authorization by itself.",
+          "description": "Whether the decision resource required a source ACL check, independent of whether evaluation reached that gate. True requires connector_id, source_container_id, and resource on the decision resource and forces result to allow, deny, or insufficient_context. Once the identity, evaluation-time, and hard-deny gates pass, check_context is required only when no current_authorization exists; definitive current evidence may stand alone, while retained context remains an optional uniform read path for the attempt bindings. identity_context_missing, identity_expired, evaluation_time_invalid, or hard_deny may win before an attempt and omit context. A required allow or deny additionally requires current ACL evidence. False forces not_applicable and forbids check context and current ACL evidence; snapshot_id remains permitted as historical audit provenance because it never establishes current authorization by itself.",
           "type": "boolean"
         },
         "result": {
@@ -885,7 +885,7 @@
           "$ref": "#/$defs/policyInput"
         },
         "check_context": {
-          "description": "Provider-identity and policy bindings for an evidence-free attempted required source ACL check, or optional supplemental attempt context beside definitive current evidence; field bindings are defined by sourceAclCheckContext.",
+          "description": "Provider-identity and policy bindings for an evidence-free attempted required source ACL check, or an optional uniform read path that restates those bindings beside definitive current evidence; field bindings are defined by sourceAclCheckContext.",
           "$ref": "#/$defs/sourceAclCheckContext"
         },
         "snapshot_id": {
@@ -1026,7 +1026,7 @@
         },
         "source": { "$ref": "#/$defs/sourceResource" },
         "acl_policy_version": {
-          "description": "Connector ACL policy version in force when this current evidence was observed. Evidence is current only while that same version remains the governing version at evaluation_time; any policy-version change invalidates the evidence even before expires_at and requires refresh. Therefore, when check_context is present, both acl_policy_version fields are equal by definition. This value must also match acl_policy_version on the corresponding adoc.source_acl_snapshot.v0 record. Equality is evaluator-owned and fails closed.",
+          "description": "Connector ACL policy version in force when this current evidence was observed. Evidence is current only while that same version remains the governing version at evaluation_time; any policy-version change invalidates the evidence even before expires_at, requires refresh, and records source_acl_stale rather than reusing the evidence. When check_context is present, both acl_policy_version fields must match. This value must also match acl_policy_version on the corresponding adoc.source_acl_snapshot.v0 record. Equality is evaluator-owned and fails closed.",
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
