@@ -305,6 +305,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/adoc.migrate.report.v0.schema.json",
         "adoc://agent/v0/schema/adoc.lifecycle_mapping.v0.schema.json",
         "adoc://agent/v0/schema/adoc.semantic_context.v0.schema.json",
+        "adoc://agent/v0/schema/adoc.semantic_assessment.v0.schema.json",
         "adoc://agent/v0/schema/search-artifact.json",
         "adoc://agent/v0/schema/graph-artifact.v6.json",
     ];

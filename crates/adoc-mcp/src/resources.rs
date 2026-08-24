@@ -389,6 +389,16 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.semantic_assessment.v0.schema.json",
+        name: "schema-adoc-semantic-assessment-v0-json",
+        title: "Semantic Assessment JSON Schema",
+        description: "JSON Schema for adoc.semantic_assessment.v0, the provider-neutral findings contract validated against one exact semantic context.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.semantic_assessment.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/search-artifact.json",
         name: "schema-search-artifact-json",
         title: "Search Artifact JSON Schema",

@@ -314,6 +314,14 @@ _Avoid_: receipt with wall-clock timestamps, self-hashed binary digest, receipt 
 The deterministic `adoc.semantic_context.v0` envelope supplied as inert data to a semantic executor: exact subject/source/base/head revisions, assessment and Graph Artifact or managed-revision basis digests, closed citation handles, completeness facts, and its canonical context digest. It records what authorized context was supplied; it does not retrieve context, authorize access, or grant model output authority.
 _Avoid_: prompt, RAG dump, open citation URL, context reconstructed by the validator, semantic assessment
 
+**Semantic Assessment**:
+The provider-neutral `adoc.semantic_assessment.v0` envelope validated against one exact **Semantic Context**: typed findings, affected Object ID/hash pairs, closed citations, provider/model identity, proposed dispositions, candidate updates, unresolved questions, and validator-owned materiality. Model and human structured submissions share this boundary; unvalidated JSON has no typed core representation and explanatory prose never becomes gate authority.
+_Avoid_: semantic review for the V1 contract, compliance verdict, provider response, model-set gate result
+
+**Semantic Materiality**:
+The closed `material | immaterial | undetermined` projection produced by `adoc.materiality.v0` from a validated finding's typed classification plus an exact cited diff-hunk fact (ADR-0059). The projection is deterministic; the executor's semantic classification is not. `no_change_required` is possible only for immaterial findings with no candidates or unresolved questions.
+_Avoid_: model confidence, free-text judgment, deterministic semantic meaning, proposal approval
+
 **Embedding Provider**:
 The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the deterministic adapter is available for repeatable local/offline use.
 _Avoid_: hosted-only embedding pipeline, public plug-in registry, per-call API key configuration

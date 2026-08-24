@@ -2,11 +2,12 @@ use adoc_core::{
     CapabilityPolicy, CapabilityPolicyRule, CitationHandle, ContextClass, ContextRequirement,
     ContextUnavailability, ContextUnavailabilityKind, DiagnosticCode, ExactRevision,
     KnowledgeBasis, SemanticContext, SemanticContextBasis, SemanticContextInput,
-    SemanticContextItem, SemanticContextSelection, UnavailabilityOutcome, UnavailabilityReason,
-    build_semantic_context, validate_semantic_assessment,
+    SemanticContextItem, SemanticContextSelection, SemanticMateriality, UnavailabilityOutcome,
+    UnavailabilityReason, build_semantic_context, validate_semantic_assessment,
 };
 use chrono::NaiveDate;
 use serde_json::json;
+use std::{fs, path::PathBuf};
 
 const ASSESSMENT_DIGEST: &str =
     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -98,6 +99,7 @@ fn assessment_json(context: &SemanticContext) -> serde_json::Value {
         "base_revision": {"system": "git", "value": "base-sha"},
         "head_revision": {"system": "git", "value": "head-sha"},
         "identity": {"provider": "codex", "model": "gpt-5"},
+        "materiality_policy_version": "adoc.materiality.v0",
         "scope": {"handle_ids": ["object-a", "hunk-a"]},
         "findings": [{
             "finding_id": "finding-001",
@@ -107,6 +109,7 @@ fn assessment_json(context: &SemanticContext) -> serde_json::Value {
                 "content_hash": GRAPH_DIGEST
             }],
             "citations": ["object-a", "hunk-a"],
+            "materiality": "material",
             "proposed_disposition": "update_existing",
             "candidate_updates": [{
                 "object_id": "billing.policy",
@@ -245,5 +248,200 @@ fn semantic_assessment_rejects_context_with_required_omissions() {
     assert_eq!(
         error.diagnostic_code(),
         DiagnosticCode::AssessmentSemanticCitationInvalid
+    );
+}
+
+#[test]
+fn every_semantic_assessment_wire_code_is_producible() {
+    let context = context();
+    let mut cases = Vec::new();
+
+    let mut document = assessment_json(&context);
+    document["unexpected"] = json!(true);
+    cases.push((document, DiagnosticCode::AssessmentSemanticSchemaInvalid));
+
+    let mut document = assessment_json(&context);
+    document["schema_version"] = json!("adoc.semantic_assessment.v99");
+    cases.push((
+        document,
+        DiagnosticCode::AssessmentSemanticVersionUnsupported,
+    ));
+
+    let mut document = assessment_json(&context);
+    document["findings"][0]["citations"] = json!(["fabricated-hunk"]);
+    document["scope"]["handle_ids"] = json!(["fabricated-hunk"]);
+    cases.push((document, DiagnosticCode::AssessmentSemanticCitationInvalid));
+
+    let mut document = assessment_json(&context);
+    document["findings"][0]["classification"] = json!("probably_fine");
+    cases.push((
+        document,
+        DiagnosticCode::AssessmentSemanticClassificationUnknown,
+    ));
+
+    let mut document = assessment_json(&context);
+    document["head_revision"]["value"] = json!("other-head");
+    cases.push((document, DiagnosticCode::AssessmentSemanticRevisionMismatch));
+
+    let mut document = assessment_json(&context);
+    document["identity"] = json!(null);
+    cases.push((document, DiagnosticCode::AssessmentSemanticIdentityMissing));
+
+    for (document, expected) in cases {
+        let error = validate_semantic_assessment(
+            serde_json::to_vec(&document)
+                .expect("fixture serializes")
+                .as_slice(),
+            &context,
+        )
+        .expect_err("corrupted fixture is rejected");
+        assert_eq!(error.diagnostic_code(), expected);
+    }
+}
+
+#[test]
+fn typed_materiality_is_derived_without_reading_explanatory_prose() {
+    let context = context();
+    let material = validate_semantic_assessment(
+        serde_json::to_vec(&assessment_json(&context))
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect("material fixture validates");
+    assert_eq!(
+        material.findings()[0].materiality(),
+        SemanticMateriality::Material
+    );
+
+    let mut immaterial = assessment_json(&context);
+    immaterial["findings"][0]["classification"] = json!("consistent");
+    immaterial["findings"][0]["materiality"] = json!("immaterial");
+    immaterial["findings"][0]["proposed_disposition"] = json!("no_change_required");
+    immaterial["findings"][0]["candidate_updates"] = json!([]);
+    immaterial["findings"][0]["explanation"] =
+        json!("Free-form words cannot set materiality or gate authority.");
+    let immaterial = validate_semantic_assessment(
+        serde_json::to_vec(&immaterial)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect("immaterial fixture validates");
+    assert_eq!(
+        immaterial.findings()[0].materiality(),
+        SemanticMateriality::Immaterial
+    );
+    assert!(immaterial.allows_no_change_required());
+
+    let mut false_claim = assessment_json(&context);
+    false_claim["findings"][0]["materiality"] = json!("immaterial");
+    let error = validate_semantic_assessment(
+        serde_json::to_vec(&false_claim)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect_err("producer cannot set materiality contrary to typed facts");
+    assert_eq!(
+        error.diagnostic_code(),
+        DiagnosticCode::AssessmentSemanticSchemaInvalid
+    );
+}
+
+#[test]
+fn insufficient_evidence_cannot_claim_no_change_required() {
+    let context = context();
+    let mut document = assessment_json(&context);
+    document["findings"][0]["classification"] = json!("insufficient_evidence");
+    document["findings"][0]["materiality"] = json!("undetermined");
+    document["findings"][0]["proposed_disposition"] = json!("no_change_required");
+    document["findings"][0]["candidate_updates"] = json!([]);
+
+    let error = validate_semantic_assessment(
+        serde_json::to_vec(&document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect_err("insufficient evidence cannot produce a negative verdict");
+    assert_eq!(
+        error.diagnostic_code(),
+        DiagnosticCode::AssessmentSemanticSchemaInvalid
+    );
+}
+
+#[test]
+fn serialized_semantic_assessment_matches_the_published_schema() {
+    let context = context();
+    let assessment = validate_semantic_assessment(
+        serde_json::to_vec(&assessment_json(&context))
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect("assessment validates");
+    let instance = serde_json::to_value(&assessment).expect("assessment serializes");
+    let schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/agent/v0/schema/adoc.semantic_assessment.v0.schema.json");
+    let schema: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(schema_path).expect("published schema is readable"),
+    )
+    .expect("published schema is JSON");
+    let validator = jsonschema::validator_for(&schema).expect("published schema compiles");
+    let errors = validator
+        .iter_errors(&instance)
+        .map(|error| error.to_string())
+        .collect::<Vec<_>>();
+
+    assert!(errors.is_empty(), "schema validation failed: {errors:#?}");
+}
+
+#[test]
+fn human_submission_uses_the_identical_contract_boundary() {
+    let context = context();
+    let model_document = assessment_json(&context);
+    let mut human_document = model_document.clone();
+    human_document["identity"] = json!({"provider": "human", "model": "structured-assessment-v0"});
+
+    let model = validate_semantic_assessment(
+        serde_json::to_vec(&model_document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect("model submission validates");
+    let human = validate_semantic_assessment(
+        serde_json::to_vec(&human_document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect("human submission validates");
+
+    assert_eq!(human.identity().provider, "human");
+    assert_eq!(model.findings(), human.findings());
+    assert_eq!(
+        model.allows_no_change_required(),
+        human.allows_no_change_required()
+    );
+}
+
+#[test]
+fn empty_findings_cannot_masquerade_as_a_complete_assessment() {
+    let context = context();
+    let mut document = assessment_json(&context);
+    document["findings"] = json!([]);
+
+    let error = validate_semantic_assessment(
+        serde_json::to_vec(&document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect_err("an empty assessment is not complete");
+    assert_eq!(
+        error.diagnostic_code(),
+        DiagnosticCode::AssessmentSemanticSchemaInvalid
     );
 }
