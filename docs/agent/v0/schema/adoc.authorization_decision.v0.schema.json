@@ -858,21 +858,24 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "id": { "$ref": "#/$defs/nonEmpty" },
+        "id": {
+          "description": "Stable identifier of the retained membership observation. That record identifies one exact external binding. Replay verifies that the observation's retained binding equals the enclosing binding_id and that the retained binding's AgentDoc group equals the enclosing group id; any mismatch fails closed.",
+          "$ref": "#/$defs/nonEmpty"
+        },
         "external_identity_link_id": {
           "description": "Verified E2.3 identity link through which the external source identity resolves to this workspace principal. Its preserved lifecycle retains the link and unlink instants. Evaluation and replay fail closed unless it was continuously active from observed_at through the decision evaluation time; an unlink after an earlier decision preserves that decision's replay but revokes future use, including after a subsequent relink.",
           "$ref": "#/$defs/nonEmpty"
         },
         "source_event_id": {
-          "description": "Immutable upstream connector event that prompted a current-state membership read, or synchronization run that carried this membership observation, retained so replay can re-derive the observation from source. A retained event carries its current-state read and ingestion-commit instants; the ingestion transaction commits only after the successful read it prompted. A retained synchronization run carries its start and completion instants; a resynchronization sweep records one identifier for the run and cites it from every observation it produces.",
+          "description": "Immutable provenance record retained so replay can re-derive the observation from source. For an upstream connector event, it identifies the event that prompted a current-state membership read and carries its current-state read and ingestion-commit instants; the ingestion transaction commits only after the successful read. For a synchronization run, it identifies the run and carries its start and completion instants; a resynchronization sweep records one identifier for the run and cites it from every observation it produces. For claim-only oidc_group, it identifies the exact authenticated identity-session event and carries its token issuance, validation/ingestion-commit, and session-expiry instants.",
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
-          "description": "Actual source read time used for membership freshness. An event-driven positive observation carries the current-state source read time prompted by its event, never the webhook delivery time; a delayed or reordered positive event that the current-state read no longer confirms produces no positive observation. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership.",
+          "description": "Source evidence time used for membership freshness. An event-driven positive observation carries the current-state source read time prompted by its event, never the webhook delivery time; a delayed or reordered positive event that the current-state read no longer confirms produces no positive observation. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership. For claim-only oidc_group, observed_at is the token issuance instant retained by source_event_id; validation of that freshly issued token at authentication is the current-state read.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "effective_at": {
-          "description": "Instant this observation became eligible to confer grants. It must equal the ingestion-commit instant of the event or the completion instant of the synchronization run identified by source_event_id. For a sweep completing a binding-mode reconfiguration this equals the new epoch boundary; a routine sweep records into the epoch already in effect. observed_at must not follow effective_at, and effective_at must not follow evaluation_time; comparisons are evaluator-owned and fail closed.",
+          "description": "Instant this observation became eligible to confer grants. It must equal the ingestion-commit instant of the connector event, the completion instant of the synchronization run, or, for claim-only oidc_group, the authentication validation/ingestion-commit instant identified by source_event_id. For a sweep completing a binding-mode reconfiguration this equals the new epoch boundary; a routine sweep records into the epoch already in effect. A claim-only observation is bound to the exact cited identity session and may confer only during that session, no later than the cited identity session's expiry. observed_at must not follow effective_at, and effective_at must not follow evaluation_time; comparisons are evaluator-owned and fail closed.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "member_present": { "const": true },
@@ -907,7 +910,7 @@
           }
         },
         {
-          "description": "binding_mode and binding_mode_effective_at name the binding's mode epoch in effect at evaluation_time; membership_observation.effective_at must fall within that epoch and not follow evaluation_time. membership_observation.observed_at and effective_at must resolve against the same event or synchronization run identified by membership_observation.source_event_id: observed_at equals that event's current-state read instant or falls within that run, while effective_at equals that event's ingestion-commit instant or that run's completion instant. Only the transition sweep that opened the epoch — the observation whose effective_at equals binding_mode_effective_at — may carry an observed_at preceding the epoch, and never one preceding that run's start; every other observation's observed_at must fall at or after binding_mode_effective_at. Those instant comparisons are evaluator-owned and fail closed.",
+          "description": "binding_mode and binding_mode_effective_at name the binding's mode epoch in effect at evaluation_time; membership_observation.effective_at must fall within that epoch and not follow evaluation_time. For a connector event or synchronization run, membership_observation.observed_at and effective_at must resolve against the same record identified by membership_observation.source_event_id: observed_at equals that event's current-state read instant or falls within that run, while effective_at equals that event's ingestion-commit instant or that run's completion instant. For claim-only oidc_group, the same identifier instead retains the exact identity session and its token-issuance, validation/ingestion-commit, and expiry instants. Only the transition sweep that opened the epoch — the observation whose effective_at equals binding_mode_effective_at — may carry an observed_at preceding the epoch, and never one preceding that run's start; every other observation's observed_at must fall at or after binding_mode_effective_at. Those instant comparisons are evaluator-owned and fail closed.",
           "type": "object",
           "required": [
             "id",
