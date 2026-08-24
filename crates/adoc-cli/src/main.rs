@@ -76,6 +76,11 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     runtime_binary_digest,
                     context_artifact,
                     semantic_context,
+                    semantic_subject_revision,
+                    semantic_source_revision,
+                    semantic_base_revision,
+                    semantic_head_revision,
+                    semantic_assessment_digest,
                 } => match (receipt, runtime_binary_digest, as_of) {
                     // clap `requires` guarantees the digest and --as-of
                     // accompany --receipt; the triple is re-matched here so
@@ -98,6 +103,29 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                             runtime_binary_digest,
                             context_artifact,
                             semantic_context,
+                            match (
+                                semantic_subject_revision,
+                                semantic_source_revision,
+                                semantic_base_revision,
+                                semantic_head_revision,
+                                semantic_assessment_digest,
+                            ) {
+                                (
+                                    Some(subject_revision),
+                                    Some(source_revision),
+                                    Some(base_revision),
+                                    Some(head_revision),
+                                    Some(assessment_digest),
+                                ) => Some(adoc_core::SemanticContextExpectedBindings {
+                                    subject_revision,
+                                    source_revision,
+                                    base_revision,
+                                    head_revision,
+                                    assessment_digest,
+                                }),
+                                (None, None, None, None, None) => None,
+                                _ => unreachable!("clap requires the complete semantic basis"),
+                            },
                         )
                     }
                     // Unreachable while the clap `requires` wiring holds

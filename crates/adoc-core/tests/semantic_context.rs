@@ -82,6 +82,11 @@ fn input(items: Vec<SemanticContextItem>) -> SemanticContextInput {
 fn validation_basis() -> SemanticContextValidationBasis {
     SemanticContextValidationBasis {
         evaluation_date: NaiveDate::from_ymd_opt(2026, 8, 24).expect("valid date"),
+        subject_revision: revision("subject-sha"),
+        source_revision: revision("source-sha"),
+        base_revision: revision("base-sha"),
+        head_revision: revision("head-sha"),
+        assessment_digest: ASSESSMENT_DIGEST.to_string(),
         graph_artifact_digest: Some(GRAPH_DIGEST.to_string()),
         managed_revision_digest: None,
         graph_objects: vec![
@@ -106,6 +111,44 @@ fn validation_basis() -> SemanticContextValidationBasis {
             source_assertion_id: "assertion-1".to_string(),
             source_record_id: "record-1".to_string(),
         }],
+    }
+}
+
+#[test]
+fn semantic_context_rejects_every_mismatched_exact_binding() {
+    let context = build_semantic_context(input(vec![item(
+        "handle-a",
+        "billing.alpha",
+        ASSESSMENT_DIGEST,
+    )]))
+    .expect("context builds")
+    .to_canonical_json()
+    .expect("context serializes");
+
+    let mut cases = Vec::new();
+    let mut basis = validation_basis();
+    basis.subject_revision = revision("other-subject");
+    cases.push(basis);
+    let mut basis = validation_basis();
+    basis.source_revision = revision("other-source");
+    cases.push(basis);
+    let mut basis = validation_basis();
+    basis.base_revision = revision("other-base");
+    cases.push(basis);
+    let mut basis = validation_basis();
+    basis.head_revision = revision("other-head");
+    cases.push(basis);
+    let mut basis = validation_basis();
+    basis.assessment_digest = GRAPH_DIGEST.to_string();
+    cases.push(basis);
+
+    for basis in cases {
+        let error = validate_semantic_context(context.as_bytes(), &basis)
+            .expect_err("mismatched exact binding rejected");
+        assert_eq!(
+            error.diagnostic_code(),
+            DiagnosticCode::SemanticContextBasisMismatch
+        );
     }
 }
 
@@ -367,6 +410,44 @@ fn optional_truncation_is_reported_without_blocking_readiness() {
 }
 
 #[test]
+fn failed_policy_reason_blocks_even_an_optional_context_class() {
+    let mut semantic_input = input(vec![item(
+        "required-item",
+        "billing.alpha",
+        ASSESSMENT_DIGEST,
+    )]);
+    semantic_input.context_classes.push(ContextClass {
+        class_id: "related_knowledge".to_string(),
+        requirement: ContextRequirement::Optional,
+        byte_budget: 1024,
+    });
+    semantic_input.unavailability.push(ContextUnavailability {
+        record_id: "optional-outage".to_string(),
+        class_id: "related_knowledge".to_string(),
+        kind: ContextUnavailabilityKind::Omission,
+        reason: UnavailabilityReason::SourceOutage,
+    });
+    semantic_input.capability_policy.rules = semantic_input
+        .capability_policy
+        .rules
+        .into_iter()
+        .map(|rule| CapabilityPolicyRule {
+            reason: rule.reason,
+            outcome: if rule.reason == UnavailabilityReason::SourceOutage {
+                UnavailabilityOutcome::Failed
+            } else {
+                rule.outcome
+            },
+        })
+        .collect();
+
+    let context = build_semantic_context(semantic_input).expect("failure is recordable");
+
+    assert_eq!(context.outcome(), SemanticContextOutcome::Failed);
+    assert!(!context.allows_no_change_required());
+}
+
+#[test]
 fn semantic_context_rejects_content_over_its_declared_budget() {
     let mut semantic_input = input(vec![item("handle-a", "billing.alpha", ASSESSMENT_DIGEST)]);
     semantic_input.context_classes[0].byte_budget = 1;
@@ -519,6 +600,11 @@ fn graph_backed_context_rejects_unresolved_source_binding_coordinates() {
     let serialized = context.to_canonical_json().expect("serializes");
     let basis = SemanticContextValidationBasis {
         evaluation_date: NaiveDate::from_ymd_opt(2026, 8, 24).expect("valid date"),
+        subject_revision: revision("subject-sha"),
+        source_revision: revision("source-sha"),
+        base_revision: revision("base-sha"),
+        head_revision: revision("head-sha"),
+        assessment_digest: ASSESSMENT_DIGEST.to_string(),
         graph_artifact_digest: Some(GRAPH_DIGEST.to_string()),
         managed_revision_digest: None,
         graph_objects: vec![GraphCitationObject {
