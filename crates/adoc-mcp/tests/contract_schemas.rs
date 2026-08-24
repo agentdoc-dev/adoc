@@ -1895,6 +1895,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
     no_grant_with_group_but_no_absence["grants"][0]["permission"] = json!("workspace.read");
     no_grant_with_group_but_no_absence["membership_evidence"] = json!("current");
     no_grant_with_group_but_no_absence["membership_absence_evidence"] = json!([]);
+    let mut no_grant_with_no_membership_facts = denied.clone();
+    no_grant_with_no_membership_facts["membership_evidence"] = json!("current");
+    no_grant_with_no_membership_facts["membership_absence_evidence"] = json!([]);
     let mut membership_evidence_unavailable = denied.clone();
     membership_evidence_unavailable["consequential"] = json!(true);
     membership_evidence_unavailable["result"] = json!("insufficient_context");
@@ -2343,6 +2346,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     visibility_denied["visibility"] = json!("deny");
     visibility_denied["result"] = json!("deny");
     visibility_denied["reason"] = json!("visibility_denied");
+    let mut unresolved_membership_at_visibility_gate = external_group_grant.clone();
+    unresolved_membership_at_visibility_gate["membership_evidence"] = json!("insufficient_context");
+    unresolved_membership_at_visibility_gate["visibility"] = json!("deny");
+    unresolved_membership_at_visibility_gate["result"] = json!("deny");
+    unresolved_membership_at_visibility_gate["reason"] = json!("visibility_denied");
     let mut false_visibility_denied_reason = visibility_denied.clone();
     false_visibility_denied_reason["visibility"] = json!("allow");
     let mut visibility_denied_without_basis = visibility_denied.clone();
@@ -2891,6 +2899,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         (
+            "current no grant cannot omit every membership fact",
+            no_grant_with_no_membership_facts,
+            false,
+        ),
+        (
             "consequential membership evidence unavailable",
             membership_evidence_unavailable,
             true,
@@ -2936,6 +2949,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "visibility denied reason matches input",
             visibility_denied,
             true,
+        ),
+        (
+            "unresolved membership cannot reach the visibility gate",
+            unresolved_membership_at_visibility_gate,
+            false,
         ),
         (
             "visibility unavailable reason matches input",

@@ -972,6 +972,15 @@ fn group_retention_rules_match_the_e2_4_authority() {
             && a7.contains(delayed_positive_claim),
         "positive events must not supersede revocation without a current-state read"
     );
+    let delayed_negative_claim = "delayed or reordered removal event";
+    assert!(
+        observation["observed_at"]["description"]
+            .as_str()
+            .expect("membership observation time is documented")
+            .contains(delayed_negative_claim)
+            && a7.contains(delayed_negative_claim),
+        "negative events must not fabricate absence without a current-state read"
+    );
     let transition_latitude_claim = "transition sweep that opened the epoch";
     assert!(
         external_group["description"]
@@ -1002,6 +1011,10 @@ fn group_retention_rules_match_the_e2_4_authority() {
     assert!(
         e2_4.contains(source_timing_claim),
         "the E2.4 exit gate must retain source timing endpoints"
+    );
+    assert!(
+        e2_4.contains(delayed_negative_claim),
+        "the E2.4 exit gate must require current-state confirmation of negative events"
     );
     for (surface_name, surface) in [("AUTHORIZATION.md §A7", a7), ("MILESTONES.md E2.4", e2_4)] {
         for claim in [
