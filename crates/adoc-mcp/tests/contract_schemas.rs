@@ -1688,6 +1688,10 @@ fn authorization_decision_schema_pins_replay_bindings() {
     current_acl_result_mismatch["reason"] = json!("source_acl_denied");
     current_acl_result_mismatch["basis"] = json!(null);
 
+    let mut allowing_ceiling_with_denying_current_acl = decision.clone();
+    allowing_ceiling_with_denying_current_acl["source_acl_ceiling"]["current_authorization"]["result"] =
+        json!("deny");
+
     let mut legacy_allow_without_current_acl = decision.clone();
     legacy_allow_without_current_acl["source_acl_ceiling"]
         .as_object_mut()
@@ -1727,6 +1731,19 @@ fn authorization_decision_schema_pins_replay_bindings() {
     denying_source_acl_outage["source_acl_ceiling"]["result"] = json!("deny");
     denying_source_acl_outage["source_acl_ceiling"]["current_authorization"]["result"] =
         json!("deny");
+
+    let mut explicit_deny_during_source_acl_outage = source_acl_outage.clone();
+    explicit_deny_during_source_acl_outage["grants"][0]["effect"] = json!("deny");
+    explicit_deny_during_source_acl_outage["result"] = json!("deny");
+    explicit_deny_during_source_acl_outage["reason"] = json!("explicit_deny");
+    explicit_deny_during_source_acl_outage["basis"] = decision["basis"].clone();
+    explicit_deny_during_source_acl_outage["basis"]["effect"] = json!("deny");
+
+    let mut explicit_deny_with_invalidated_source_acl = source_acl_invalidated.clone();
+    explicit_deny_with_invalidated_source_acl["grants"][0]["effect"] = json!("deny");
+    explicit_deny_with_invalidated_source_acl["reason"] = json!("explicit_deny");
+    explicit_deny_with_invalidated_source_acl["basis"] = decision["basis"].clone();
+    explicit_deny_with_invalidated_source_acl["basis"]["effect"] = json!("deny");
 
     for field in ["connector_id", "resource"] {
         let mut missing_source_scope = decision.clone();
@@ -2099,6 +2116,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             current_acl_result_mismatch,
             false,
         ),
+        (
+            "allowing ceiling disagrees with denying current source ACL",
+            allowing_ceiling_with_denying_current_acl,
+            false,
+        ),
         ("stale current source ACL evidence", source_acl_stale, true),
         (
             "invalidated current source ACL evidence",
@@ -2112,6 +2134,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         ("denying source ACL outage", denying_source_acl_outage, true),
+        (
+            "explicit deny cannot outrank source ACL outage",
+            explicit_deny_during_source_acl_outage,
+            false,
+        ),
+        (
+            "explicit deny cannot outrank invalidated source ACL",
+            explicit_deny_with_invalidated_source_acl,
+            false,
+        ),
         ("direct human grant", direct_human, true),
         (
             "direct human grant with multiline reason",

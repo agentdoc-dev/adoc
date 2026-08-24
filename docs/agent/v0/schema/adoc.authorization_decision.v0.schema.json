@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
   "title": "AgentDoc Authorization Decision",
-  "description": "Replayable, source-neutral authorization decision for E2.2 and the E2.6 source ACL ceiling. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns timestamp comparison, lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
+  "description": "Replayable, source-neutral authorization decision for E2.2 and the E2.6 source ACL ceiling. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants plus top-level freshness and structurally observable current source-ACL precedence; the Cloud evaluator owns timestamp comparison, remaining lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
   "type": "object",
   "required": [
     "schema_version",
@@ -350,6 +350,58 @@
           "basis": { "type": "null" },
           "result": { "const": "deny" }
         }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "principal": {
+            "properties": { "freshness": { "const": "current" } },
+            "required": ["freshness"]
+          },
+          "hard_deny": { "const": false },
+          "source_acl_ceiling": {
+            "properties": {
+              "current_authorization": {
+                "properties": {
+                  "connector_available": { "const": false }
+                },
+                "required": ["connector_available"]
+              }
+            },
+            "required": ["current_authorization"]
+          }
+        },
+        "required": ["principal", "hard_deny", "source_acl_ceiling"]
+      },
+      "then": {
+        "properties": { "reason": { "const": "source_acl_unavailable" } }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "principal": {
+            "properties": { "freshness": { "const": "current" } },
+            "required": ["freshness"]
+          },
+          "hard_deny": { "const": false },
+          "source_acl_ceiling": {
+            "properties": {
+              "current_authorization": {
+                "properties": {
+                  "connector_available": { "const": true }
+                },
+                "required": ["connector_available", "invalidated_at"]
+              }
+            },
+            "required": ["current_authorization"]
+          }
+        },
+        "required": ["principal", "hard_deny", "source_acl_ceiling"]
+      },
+      "then": {
+        "properties": { "reason": { "const": "source_acl_invalidated" } }
       }
     },
     {
@@ -810,7 +862,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "result": {
-          "description": "Provider verdict bound to this evidence record. It is a source-content readability and visibility ceiling shared across AgentDoc permissions, not a claim of provider write or administrative authority; the AgentDoc grant supplies operation authority. It must match source_acl_ceiling.result; the schema enforces this equality.",
+          "description": "Provider verdict bound to this evidence record. It is a source-content readability and visibility ceiling shared across AgentDoc permissions, not a claim of provider write or administrative authority; the AgentDoc grant supplies operation authority. It must match source_acl_ceiling.result; the schema enforces this equality, so an evaluator that observes the independently stored evidence disagreeing with the decision ceiling fails closed and records source_acl_unavailable rather than emitting the mismatch.",
           "enum": ["allow", "deny"]
         },
         "snapshot_id": {
