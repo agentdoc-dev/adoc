@@ -49,7 +49,7 @@
     "policy_version": { "$ref": "#/$defs/nonEmpty" },
     "result": { "$ref": "#/$defs/decision" },
     "reason": {
-      "description": "Evaluator outcome reason. evaluation_time_invalid is raised only after identity freshness passes; timestamp parsing itself is evaluator-owned so an invalid raw input remains recordable for replay.",
+      "description": "Evaluator outcome reason. evaluation_time_invalid is raised only after identity freshness passes; timestamp parsing itself is evaluator-owned so an invalid raw input remains recordable for replay. source_acl_stale records exactly one source_acl_ceiling.stale_cause: expired when evaluation_time exceeded expires_at, otherwise policy_superseded when the governing policy version changed.",
       "enum": [
         "identity_context_missing",
         "identity_expired",
@@ -131,8 +131,13 @@
       "if": {
         "properties": {
           "source_acl_ceiling": {
-            "properties": { "required": { "const": true } },
-            "required": ["required"]
+            "anyOf": [
+              {
+                "properties": { "required": { "const": true } },
+                "required": ["required"]
+              },
+              { "required": ["snapshot_id"] }
+            ]
           }
         },
         "required": ["source_acl_ceiling"]
@@ -554,10 +559,17 @@
                 "not": { "required": ["invalidated_at"] }
               }
             },
-            "required": ["result", "current_authorization"]
+            "required": ["result", "current_authorization", "stale_cause"]
           },
           "basis": { "type": "null" },
           "result": { "const": "deny" }
+        }
+      },
+      "else": {
+        "properties": {
+          "source_acl_ceiling": {
+            "not": { "required": ["stale_cause"] }
+          }
         }
       }
     },
@@ -857,7 +869,7 @@
       ]
     },
     "sourceAclCheckContext": {
-      "description": "Immutable inline context for an attempted required source ACL check. After the earlier identity, evaluation-time, and hard-deny gates pass, it is required when no current_authorization exists and carries the only retained provider-identity and policy bindings for that evidence-free attempt: external_identity_link_id must name the effective decision principal's retained provider identity link resolving that principal at evaluation_time, and acl_policy_version must name the connector policy governing the attempt. Beside definitive current_authorization it is optional attempt context giving consumers a uniform read path for those two bindings; the evidence records the same two values, so a present context restates rather than supplements them. Resource and principal bindings come from the enclosing decision rather than being duplicated here. For delegated execution, the workload or service principal uses its own linked provider identity while the delegator remains in the separate delegation chain. These bindings are evaluator-owned and fail closed.",
+      "description": "Immutable inline context for an attempted required source ACL check. After the earlier identity, evaluation-time, and hard-deny gates pass, it is required when no current_authorization exists and carries the only retained provider-identity and policy bindings for that evidence-free attempt: external_identity_link_id must name the effective decision principal's retained provider identity link resolving that principal at evaluation_time, and acl_policy_version must name the connector policy governing the attempt. Beside definitive current_authorization it gives consumers a uniform read path for those bindings: normally it restates the evidence values, but stale_cause policy_superseded requires it and its acl_policy_version records the different policy version governing at evaluation_time. Resource and principal bindings come from the enclosing decision rather than being duplicated here. For delegated execution, the workload or service principal uses its own linked provider identity while the delegator remains in the separate delegation chain. These bindings are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
@@ -877,7 +889,7 @@
       "additionalProperties": false,
       "properties": {
         "required": {
-          "description": "Whether the decision resource required a source ACL check, independent of whether evaluation reached that gate. True requires connector_id, source_container_id, and resource on the decision resource and forces result to allow, deny, or insufficient_context. Once the identity, evaluation-time, and hard-deny gates pass, check_context is required only when no current_authorization exists; definitive current evidence may stand alone, while retained context remains an optional uniform read path for the attempt bindings. identity_context_missing, identity_expired, evaluation_time_invalid, or hard_deny may win before an attempt and omit context. A required allow or deny additionally requires current ACL evidence. False forces not_applicable and forbids check context and current ACL evidence; snapshot_id remains permitted as historical audit provenance because it never establishes current authorization by itself.",
+          "description": "Whether the decision resource required a source ACL check, independent of whether evaluation reached that gate. True requires connector_id, source_container_id, and resource on the decision resource and forces result to allow, deny, or insufficient_context. Retaining snapshot_id also requires that complete source scope even when required is false, so the cited snapshot remains bound to the authorized resource. Once the identity, evaluation-time, and hard-deny gates pass, check_context is required only when no current_authorization exists or when stale_cause is policy_superseded; definitive unchanged-policy evidence may stand alone. identity_context_missing, identity_expired, evaluation_time_invalid, or hard_deny may win before an attempt and omit context. A required allow or deny additionally requires current ACL evidence. False forces not_applicable and forbids check context, current ACL evidence, and stale cause; snapshot_id remains permitted as historical audit provenance because it never establishes current authorization by itself.",
           "type": "boolean"
         },
         "result": {
@@ -885,16 +897,20 @@
           "$ref": "#/$defs/policyInput"
         },
         "check_context": {
-          "description": "Provider-identity and policy bindings for an evidence-free attempted required source ACL check, or an optional uniform read path that restates those bindings beside definitive current evidence; field bindings are defined by sourceAclCheckContext.",
+          "description": "Provider-identity and evaluation-time governing-policy bindings for an attempted required source ACL check. Beside definitive current evidence it normally restates the evidence bindings; stale_cause policy_superseded instead requires it to record the different policy version that superseded the observed evidence. Field bindings are defined by sourceAclCheckContext.",
           "$ref": "#/$defs/sourceAclCheckContext"
         },
         "snapshot_id": {
-          "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance. current_authorization repeats the snapshot bound to its independently stored evidence record so the evaluator can prove freshness applies to this exact consulted payload. Both snapshot_id values must match; equality is evaluator-owned and fails closed. The snapshot never establishes current authorization by itself.",
+          "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance. Its presence requires connector_id, source_container_id, and resource on the enclosing decision resource even when required is false, so the snapshot remains bound to the source scope being authorized. current_authorization repeats the snapshot bound to its independently stored evidence record so the evaluator can prove freshness applies to this exact consulted payload. Both snapshot_id values must match; equality is evaluator-owned and fails closed. The snapshot never establishes current authorization by itself.",
           "$ref": "#/$defs/nonEmpty"
         },
         "current_authorization": {
           "description": "Freshness-bounded evidence for a required definitive source ACL result; field bindings are defined by currentSourceAclAuthorization.",
           "$ref": "#/$defs/currentSourceAclAuthorization"
+        },
+        "stale_cause": {
+          "description": "Recorded cause required exactly when reason is source_acl_stale. expired means evaluation_time exceeded current_authorization.expires_at and wins when both expiry and policy change are observed. policy_superseded means the evidence is unexpired, current_authorization.acl_policy_version governed at observed_at, and required check_context.acl_policy_version records a different policy version governing at evaluation_time. Timestamp comparison and cross-field version inequality are evaluator-owned and fail closed.",
+          "enum": ["expired", "policy_superseded"]
         }
       },
       "allOf": [
@@ -908,7 +924,8 @@
             "not": {
               "anyOf": [
                 { "required": ["check_context"] },
-                { "required": ["current_authorization"] }
+                { "required": ["current_authorization"] },
+                { "required": ["stale_cause"] }
               ]
             }
           },
@@ -917,6 +934,17 @@
               "result": { "enum": ["allow", "deny", "insufficient_context"] }
             }
           }
+        },
+        {
+          "if": { "required": ["stale_cause"] },
+          "then": { "required": ["current_authorization"] }
+        },
+        {
+          "if": {
+            "properties": { "stale_cause": { "const": "policy_superseded" } },
+            "required": ["stale_cause"]
+          },
+          "then": { "required": ["check_context", "current_authorization"] }
         },
         {
           "if": {
@@ -977,7 +1005,7 @@
       ]
     },
     "currentSourceAclAuthorization": {
-      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, source_container_id, and source must match the decision resource; principal_id must match the effective decision principal; acl_policy_version and external_identity_link_id must match check_context when it is present. The retained identity link independently binds this evidence to principal_id and must resolve it continuously from observed_at through evaluation_time so evidence observed before linking or after revocation can never widen access; snapshot_id and result must match their sibling source_acl_ceiling values. An earlier identity, evaluation-time, or hard-deny outcome may retain this downstream input without check_context for replay, but it can never override that earlier outcome. Result equality is schema-enforced; the remaining equality and temporal checks are evaluator-owned and fail closed.",
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, source_container_id, and source must match the decision resource; principal_id must match the effective decision principal; external_identity_link_id must match check_context when it is present. acl_policy_version normally matches check_context, except stale_cause policy_superseded requires current_authorization.acl_policy_version to name the version governing at observed_at and check_context.acl_policy_version to name a different version governing at evaluation_time. The retained identity link independently binds this evidence to principal_id and must resolve it continuously from observed_at through evaluation_time so evidence observed before linking or after revocation can never widen access; snapshot_id and result must match their sibling source_acl_ceiling values. An earlier identity, evaluation-time, or hard-deny outcome may retain this downstream input without check_context for replay, but it can never override that earlier outcome. Result equality is schema-enforced; the remaining equality and temporal checks are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
@@ -1026,7 +1054,7 @@
         },
         "source": { "$ref": "#/$defs/sourceResource" },
         "acl_policy_version": {
-          "description": "Connector ACL policy version in force when this current evidence was observed. Evidence is current only while that same version remains the governing version at evaluation_time; any policy-version change invalidates the evidence even before expires_at, requires refresh, and records source_acl_stale rather than reusing the evidence. When check_context is present, both acl_policy_version fields must match. This value must also match acl_policy_version on the corresponding adoc.source_acl_snapshot.v0 record. Equality is evaluator-owned and fails closed.",
+          "description": "Connector ACL policy version in force when this current evidence was observed. Evidence is stale when evaluation_time exceeds expires_at or when a different policy version governs at evaluation_time. A policy-version change invalidates even unexpired evidence, requires refresh, records stale_cause policy_superseded and reason source_acl_stale, and requires check_context.acl_policy_version to retain the different superseding version; expired wins when both triggers apply. Otherwise both acl_policy_version fields match. This value must also match acl_policy_version on the corresponding adoc.source_acl_snapshot.v0 record. Equality, inequality, and temporal checks are evaluator-owned and fail closed.",
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
@@ -1034,7 +1062,7 @@
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "expires_at": {
-          "description": "Freshness bound derived from the connector ACL policy. Comparison against evaluation_time is evaluator-owned and fails closed: expired evidence can never widen access. Once observed, expiry remains definitive when the connector later becomes unavailable, so the evaluator records source_acl_stale rather than source_acl_unavailable. JSON Schema cannot compare these instants; replay enforces the ordering.",
+          "description": "Freshness bound derived from the connector ACL policy. Evidence is stale when evaluation_time exceeds expires_at or when the policy version governing at evaluation_time differs from current_authorization.acl_policy_version. Expiry records stale_cause expired and wins when both triggers apply; an unexpired policy change records stale_cause policy_superseded and requires check_context to retain the superseding version. Once observed, either stale cause remains definitive when the connector later becomes unavailable, so the evaluator records source_acl_stale rather than source_acl_unavailable. JSON Schema cannot compare instants or arbitrary version strings; replay enforces the ordering and inequality fail closed.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "connector_available": {

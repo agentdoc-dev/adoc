@@ -1663,6 +1663,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
     });
     let mut optional_acl_with_snapshot = no_acl_ceiling.clone();
     optional_acl_with_snapshot["source_acl_ceiling"]["snapshot_id"] = json!("acl-1");
+    let mut optional_snapshot_without_source_scope = optional_acl_with_snapshot.clone();
+    optional_snapshot_without_source_scope["resource"] = json!({
+        "workspace_id": "workspace-1",
+        "knowledge_kind": "policy",
+        "object_id": "policy.refunds.enterprise"
+    });
 
     let mut denied = no_acl_ceiling.clone();
     denied["grants"] = json!([]);
@@ -1736,13 +1742,32 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut source_acl_stale = decision.clone();
     source_acl_stale["source_acl_ceiling"]["current_authorization"]["expires_at"] =
         json!("2026-08-23T12:00:00Z");
+    source_acl_stale["source_acl_ceiling"]["stale_cause"] = json!("expired");
     source_acl_stale["result"] = json!("deny");
     source_acl_stale["reason"] = json!("source_acl_stale");
     source_acl_stale["basis"] = json!(null);
     let mut source_acl_policy_superseded = decision.clone();
+    source_acl_policy_superseded["source_acl_ceiling"]["stale_cause"] = json!("policy_superseded");
+    source_acl_policy_superseded["source_acl_ceiling"]["check_context"]["acl_policy_version"] =
+        json!("github-acl-v2");
     source_acl_policy_superseded["result"] = json!("deny");
     source_acl_policy_superseded["reason"] = json!("source_acl_stale");
     source_acl_policy_superseded["basis"] = json!(null);
+    assert_ne!(
+        source_acl_policy_superseded["source_acl_ceiling"]["current_authorization"]["acl_policy_version"],
+        source_acl_policy_superseded["source_acl_ceiling"]["check_context"]["acl_policy_version"],
+        "policy-supersession replay must retain distinct observation-time and evaluation-time versions"
+    );
+    let mut stale_without_recorded_cause = source_acl_policy_superseded.clone();
+    stale_without_recorded_cause["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("ACL ceiling")
+        .remove("stale_cause");
+    let mut supersession_without_check_context = source_acl_policy_superseded.clone();
+    supersession_without_check_context["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("ACL ceiling")
+        .remove("check_context");
 
     let mut source_acl_invalidated = decision.clone();
     source_acl_invalidated["source_acl_ceiling"]["current_authorization"]["invalidated_at"] =
@@ -2273,6 +2298,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         (
+            "retained optional ACL snapshot without source scope",
+            optional_snapshot_without_source_scope,
+            false,
+        ),
+        (
             "current source ACL verdict disagrees with ceiling",
             current_acl_result_mismatch,
             false,
@@ -2287,6 +2317,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "governing policy change makes current source ACL evidence stale",
             source_acl_policy_superseded,
             true,
+        ),
+        (
+            "stale source ACL without a recorded cause",
+            stale_without_recorded_cause,
+            false,
+        ),
+        (
+            "policy supersession without evaluation-time check context",
+            supersession_without_check_context,
+            false,
         ),
         (
             "invalidated current source ACL evidence",
