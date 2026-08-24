@@ -45,11 +45,11 @@
       "items": { "$ref": "#/$defs/grant" }
     },
     "membership_evidence": {
-      "description": "Required scoped-grants-stage input status. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established and requires reason membership_evidence_unavailable; not_applicable means no membership input could affect the scoped grants. A group-bearing grant requires current or insufficient_context and therefore forbids not_applicable. no_grant with current requires immutable membership_absence_evidence; an empty array records that present memberships are retained by group-bearing grants but none grants the requested permission. no_grant with not_applicable forbids the field.",
+      "description": "Required scoped-grants-stage input status. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established; not_applicable means no membership input could affect the scoped grants. When the scoped-grants stage owns the outcome, insufficient_context requires reason membership_evidence_unavailable; earlier identity, evaluation-time, hard-deny, or source-ACL outcomes and a decisive explicit deny retain precedence. A group-bearing grant requires current or insufficient_context and therefore forbids not_applicable. no_grant with current requires immutable membership_absence_evidence; an empty array is structurally permitted only with a group-bearing grant and is justified only when no relevant membership was established absent. no_grant with not_applicable forbids the field.",
       "enum": ["current", "insufficient_context", "not_applicable"]
     },
     "membership_absence_evidence": {
-      "description": "Exact retained negative membership facts used by a current no_grant decision. The required array contains every relevant manual group or grant-conferring external binding whose confirmed absence affected scoped-grant evaluation; it is empty only when present memberships are retained by group-bearing grants but none grants the requested permission. Evaluator-owned completeness checks fail closed. Manual entries replay against retained membership lifecycle history for the envelope principal and group at evaluation_time. External entries retain the exact negative observation, binding epoch, identity link, and source event or run.",
+      "description": "Exact retained negative membership facts used by a current no_grant decision. The required array contains every relevant manual group or grant-conferring external binding whose confirmed absence affected scoped-grant evaluation. A group-bearing grant is a necessary but not sufficient condition for an empty array; the array is empty only when no relevant membership was established absent. Evaluator-owned completeness checks fail closed. Manual entries replay against retained membership lifecycle history for the envelope principal and group at evaluation_time. External entries retain the exact negative observation, binding epoch, identity link, and source event or run.",
       "type": "array",
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/membershipAbsenceEvidence" }
@@ -359,9 +359,22 @@
     {
       "if": {
         "properties": {
-          "membership_evidence": { "const": "insufficient_context" }
+          "membership_evidence": { "const": "insufficient_context" },
+          "reason": {
+            "not": {
+              "enum": [
+                "identity_context_missing",
+                "identity_expired",
+                "evaluation_time_invalid",
+                "hard_deny",
+                "source_acl_denied",
+                "source_acl_unavailable",
+                "explicit_deny"
+              ]
+            }
+          }
         },
-        "required": ["membership_evidence"]
+        "required": ["membership_evidence", "reason"]
       },
       "then": {
         "properties": {
@@ -423,6 +436,9 @@
                   "grants": { "contains": { "required": ["group"] } }
                 },
                 "required": ["grants"]
+              },
+              "then": {
+                "description": "A group-bearing grant proves some membership was established present, which is a necessary but not sufficient condition for an empty array: the array is empty only when no relevant membership was established absent. Completeness remains evaluator-owned and fails closed."
               },
               "else": {
                 "properties": {
@@ -1053,7 +1069,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
-          "description": "Source evidence time used for membership freshness. An event-driven positive observation carries the current-state source read time prompted by its event, never the webhook delivery time; a delayed or reordered positive event that the current-state read no longer confirms produces no positive observation. A delayed or reordered removal event that the current-state read no longer confirms produces no negative observation. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership. For claim-only oidc_group, observed_at is the token issuance instant retained by source_event_id; validation of that freshly issued token at authentication is the current-state read.",
+          "description": "Source evidence time used for membership freshness. An event-driven observation of either polarity carries the current-state source read time prompted by its event, never the webhook delivery time: a positive observation is recorded only after that read confirms membership, and a negative observation only after that read confirms absence. A delayed or reordered positive event whose read no longer shows membership records no positive observation, and a delayed or reordered removal event whose read still shows membership records no negative observation. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership. For claim-only oidc_group, observed_at is the token issuance instant retained by source_event_id; validation of that freshly issued token at authentication is the current-state read.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "effective_at": {

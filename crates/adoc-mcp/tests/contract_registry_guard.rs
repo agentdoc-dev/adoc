@@ -973,12 +973,24 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "positive events must not supersede revocation without a current-state read"
     );
     let delayed_negative_claim = "delayed or reordered removal event";
+    let negative_confirmation_claim = "negative observation only after that read confirms absence";
+    let stale_removal_claim = "removal event whose read still shows membership";
     assert!(
         observation["observed_at"]["description"]
             .as_str()
             .expect("membership observation time is documented")
             .contains(delayed_negative_claim)
-            && a7.contains(delayed_negative_claim),
+            && observation["observed_at"]["description"]
+                .as_str()
+                .expect("membership observation polarity is documented")
+                .contains(negative_confirmation_claim)
+            && observation["observed_at"]["description"]
+                .as_str()
+                .expect("stale removal suppression is documented")
+                .contains(stale_removal_claim)
+            && a7.contains(delayed_negative_claim)
+            && a7.contains(negative_confirmation_claim)
+            && a7.contains(stale_removal_claim),
         "negative events must not fabricate absence without a current-state read"
     );
     let transition_latitude_claim = "transition sweep that opened the epoch";
@@ -1015,6 +1027,25 @@ fn group_retention_rules_match_the_e2_4_authority() {
     assert!(
         e2_4.contains(delayed_negative_claim),
         "the E2.4 exit gate must require current-state confirmation of negative events"
+    );
+    assert!(
+        e2_4.contains(negative_confirmation_claim) && e2_4.contains(stale_removal_claim),
+        "the E2.4 exit gate must distinguish confirmed absence from stale removal"
+    );
+    let empty_absence_claim = "necessary but not sufficient condition for an empty array";
+    assert!(
+        schema["properties"]["membership_absence_evidence"]["description"]
+            .as_str()
+            .expect("membership absence completeness is documented")
+            .contains(empty_absence_claim)
+            && a7.contains(empty_absence_claim)
+            && e2_4.contains(empty_absence_claim),
+        "group presence must not erase a different group's confirmed absence"
+    );
+    let oidc_epoch_claim = "Claim-only `oidc_group` instead opens a grant-conferring epoch after provider-configuration validation";
+    assert!(
+        a7.contains(oidc_epoch_claim) && e2_4.contains(oidc_epoch_claim),
+        "claim-only OIDC must not wait for an impossible resynchronization"
     );
     for (surface_name, surface) in [("AUTHORIZATION.md §A7", a7), ("MILESTONES.md E2.4", e2_4)] {
         for claim in [
