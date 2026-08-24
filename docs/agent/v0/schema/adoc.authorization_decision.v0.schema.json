@@ -112,7 +112,9 @@
       },
       "then": {
         "properties": {
-          "resource": { "required": ["connector_id", "resource"] }
+          "resource": {
+            "required": ["connector_id", "source_container_id", "resource"]
+          }
         }
       }
     },
@@ -830,7 +832,7 @@
       "additionalProperties": false,
       "properties": {
         "required": {
-          "description": "Whether a source ACL check was required for this decision. True requires connector_id and resource on the decision resource, so a required check always names the exact source resource evaluated, and forces result to allow, deny, or insufficient_context; a required allow or deny additionally requires current ACL evidence. source_container_id may appear as optional parent context; it is not duplicated by current_authorization and has no equality check there. False forces not_applicable and forbids current ACL evidence.",
+          "description": "Whether a source ACL check was required for this decision. True requires connector_id, source_container_id, and resource on the decision resource, so a required check always names the exact source resource evaluated, and forces result to allow, deny, or insufficient_context; a required allow or deny additionally requires current ACL evidence carrying the same source identity. False forces not_applicable and forbids current ACL evidence.",
           "type": "boolean"
         },
         "result": {
@@ -918,7 +920,7 @@
       ]
     },
     "currentSourceAclAuthorization": {
-      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, and source must match the corresponding decision resource fields and referenced snapshot; acl_policy_version must match the referenced snapshot; principal_id must match the decision principal; snapshot_id and result must match their sibling source_acl_ceiling values. Result equality is schema-enforced; the remaining equality checks are evaluator-owned and fail closed.",
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. workspace_id, connector_id, source_container_id, and source must match the corresponding decision resource fields and referenced snapshot; acl_policy_version must match the referenced snapshot; principal_id must match the decision principal; snapshot_id and result must match their sibling source_acl_ceiling values. Result equality is schema-enforced; the remaining equality checks are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
@@ -927,6 +929,7 @@
         "snapshot_id",
         "workspace_id",
         "connector_id",
+        "source_container_id",
         "principal_id",
         "source",
         "acl_policy_version",
@@ -954,6 +957,10 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "connector_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_container_id": {
+          "description": "Parent source container for the bare source id. It must match both resource.source_container_id and the referenced snapshot; equality is evaluator-owned and fails closed.",
+          "$ref": "#/$defs/nonEmpty"
+        },
         "principal_id": { "$ref": "#/$defs/nonEmpty" },
         "source": { "$ref": "#/$defs/sourceResource" },
         "acl_policy_version": {

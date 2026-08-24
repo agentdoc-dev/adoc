@@ -1600,6 +1600,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
                 "snapshot_id": "acl-1",
                 "workspace_id": "workspace-1",
                 "connector_id": "github",
+                "source_container_id": "agentdoc-dev",
                 "principal_id": "principal-1",
                 "source": { "kind": "repository", "id": "cloud" },
                 "acl_policy_version": "github-acl-v1",
@@ -1762,7 +1763,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
         explicit_deny_with_invalidated_source_acl.clone();
     hard_deny_recorded_as_lower_gate_reason["hard_deny"] = json!(true);
 
-    for field in ["connector_id", "resource"] {
+    for field in ["connector_id", "source_container_id", "resource"] {
         let mut missing_source_scope = decision.clone();
         missing_source_scope["resource"]
             .as_object_mut()
@@ -1776,7 +1777,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "required ACL check with a decision resource missing {field} must be rejected"
         );
     }
-    for field in ["connector_id", "resource"] {
+    for field in ["connector_id", "source_container_id", "resource"] {
         let mut unavailable_without_source_scope = insufficient.clone();
         unavailable_without_source_scope["resource"]
             .as_object_mut()
@@ -2849,7 +2850,7 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
         "source_container_id": "agentdoc-dev",
         "acl_policy_version": "github-acl-v1",
         "source": { "kind": "repository", "id": "cloud" },
-        "observed_at": "2026-08-24T12:00:00Z",
+        "observed_at": "2026-08-23T11:59:00Z",
         "acl_payload_digest": format!("sha256:{}", "a".repeat(64)),
         "usage": "historical_provenance"
     });
@@ -2873,6 +2874,11 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
         .as_object_mut()
         .expect("snapshot object")
         .remove("workspace_id");
+    let mut missing_source_container_id = snapshot.clone();
+    missing_source_container_id
+        .as_object_mut()
+        .expect("snapshot object")
+        .remove("source_container_id");
     let mut invalid_observed_at = snapshot.clone();
     invalid_observed_at["observed_at"] = json!("not-a-time");
     let mut whitespace_padded_connector_id = snapshot.clone();
@@ -2888,6 +2894,7 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
         ("expiry field", expiring_snapshot),
         ("missing ACL policy version", missing_policy_version),
         ("missing workspace id", missing_workspace_id),
+        ("missing source container id", missing_source_container_id),
         ("invalid observed timestamp", invalid_observed_at),
         (
             "whitespace-padded connector id",
