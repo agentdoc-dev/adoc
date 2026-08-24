@@ -1746,6 +1746,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     source_acl_stale["result"] = json!("deny");
     source_acl_stale["reason"] = json!("source_acl_stale");
     source_acl_stale["basis"] = json!(null);
+    assert_eq!(
+        source_acl_stale["source_acl_ceiling"]["current_authorization"]["acl_policy_version"],
+        source_acl_stale["source_acl_ceiling"]["check_context"]["acl_policy_version"],
+        "unchanged-policy expiry must keep observation-time and evaluation-time versions equal"
+    );
     let mut source_acl_policy_superseded = decision.clone();
     source_acl_policy_superseded["source_acl_ceiling"]["stale_cause"] = json!("policy_superseded");
     source_acl_policy_superseded["source_acl_ceiling"]["check_context"]["acl_policy_version"] =
@@ -1765,6 +1770,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .remove("stale_cause");
     let mut supersession_without_check_context = source_acl_policy_superseded.clone();
     supersession_without_check_context["source_acl_ceiling"]
+        .as_object_mut()
+        .expect("ACL ceiling")
+        .remove("check_context");
+    let mut expired_stale_without_check_context = source_acl_stale.clone();
+    expired_stale_without_check_context["source_acl_ceiling"]
         .as_object_mut()
         .expect("ACL ceiling")
         .remove("check_context");
@@ -2338,6 +2348,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "policy supersession without evaluation-time check context",
             supersession_without_check_context,
             false,
+        ),
+        (
+            "expired stale evidence has no structural context requirement",
+            expired_stale_without_check_context,
+            true,
         ),
         (
             "expiry wins while retaining a superseding policy version",
