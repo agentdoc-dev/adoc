@@ -371,7 +371,7 @@
         "properties": {
           "source_acl_ceiling": {
             "properties": {
-              "result": { "const": "allow" },
+              "result": { "enum": ["allow", "deny"] },
               "current_authorization": {
                 "properties": {
                   "connector_available": { "const": true }
@@ -396,7 +396,7 @@
         "properties": {
           "source_acl_ceiling": {
             "properties": {
-              "result": { "const": "allow" },
+              "result": { "enum": ["allow", "deny"] },
               "current_authorization": {
                 "properties": {
                   "connector_available": { "const": true }
@@ -428,7 +428,7 @@
               },
               {
                 "properties": {
-                  "result": { "const": "allow" },
+                  "result": { "enum": ["allow", "deny"] },
                   "current_authorization": {
                     "properties": {
                       "connector_available": { "const": false }
@@ -687,9 +687,12 @@
       "additionalProperties": false,
       "properties": {
         "required": { "type": "boolean" },
-        "result": { "$ref": "#/$defs/policyInput" },
+        "result": {
+          "description": "Provider ACL verdict when one was observed, including evidence later found stale, invalidated, or unavailable; insufficient_context means no definitive provider verdict was available. The decision reason records freshness and availability precedence.",
+          "$ref": "#/$defs/policyInput"
+        },
         "snapshot_id": {
-          "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance. It may retain the same ACL payload named by current_authorization.snapshot_id, but the snapshot never establishes current authorization by itself.",
+          "description": "Immutable historical ACL snapshot consulted by this decision for audit provenance. When current_authorization is present, both snapshot_id values must match; equality is evaluator-owned and fails closed. The snapshot never establishes current authorization by itself.",
           "$ref": "#/$defs/nonEmpty"
         },
         "current_authorization": {
@@ -729,7 +732,7 @@
       ]
     },
     "currentSourceAclAuthorization": {
-      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. principal_id, connector_id, and source identify the subject of this evidence; equality with the decision principal and resource is evaluator-owned and fails closed.",
+      "description": "Freshness-bounded current authorization input. Historical source ACL snapshots remain provenance only. principal_id, connector_id, source, and snapshot_id identify the subject and payload of this evidence; equality with the decision principal, resource, and sibling source_acl_ceiling snapshot is evaluator-owned and fails closed.",
       "type": "object",
       "required": [
         "role",
@@ -751,7 +754,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "snapshot_id": {
-          "description": "Retained adoc.source_acl_snapshot.v0 record of the ACL payload from which this current evidence was computed. Its payload digest is audit provenance, not current evidence; the sibling source_acl_ceiling.snapshot_id names the historical snapshot consulted and need not match.",
+          "description": "Retained adoc.source_acl_snapshot.v0 record establishing which ACL payload was evaluated. Currency is established by expires_at, connector_available, and absence of invalidated_at, not by the payload digest. The sibling source_acl_ceiling.snapshot_id must match; equality is evaluator-owned and fails closed.",
           "$ref": "#/$defs/nonEmpty"
         },
         "connector_id": { "$ref": "#/$defs/nonEmpty" },
@@ -761,10 +764,22 @@
           "description": "Connector ACL policy version in force when this current evidence was observed. Matches acl_policy_version on the corresponding adoc.source_acl_snapshot.v0 record.",
           "$ref": "#/$defs/nonEmpty"
         },
-        "observed_at": { "$ref": "#/$defs/rfc3339Timestamp" },
-        "expires_at": { "$ref": "#/$defs/rfc3339Timestamp" },
-        "connector_available": { "type": "boolean" },
-        "invalidated_at": { "$ref": "#/$defs/rfc3339Timestamp" }
+        "observed_at": {
+          "description": "Instant this ACL evidence was observed. The schema pins the lexical RFC 3339 shape only.",
+          "$ref": "#/$defs/rfc3339Timestamp"
+        },
+        "expires_at": {
+          "description": "Freshness bound derived from the connector ACL policy. Comparison against evaluation_time is evaluator-owned and fails closed: expired evidence can never widen access.",
+          "$ref": "#/$defs/rfc3339Timestamp"
+        },
+        "connector_available": {
+          "description": "Whether the connector was available when this evidence was evaluated. False forbids authorization from widening access.",
+          "type": "boolean"
+        },
+        "invalidated_at": {
+          "description": "Set when a revocation observation invalidated this evidence. Presence forbids allow and is required by reason source_acl_invalidated.",
+          "$ref": "#/$defs/rfc3339Timestamp"
+        }
       }
     },
     "basis": {
