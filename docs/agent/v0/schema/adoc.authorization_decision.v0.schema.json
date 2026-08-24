@@ -830,7 +830,7 @@
       "additionalProperties": false,
       "properties": {
         "required": {
-          "description": "Whether a source ACL check was required for this decision. True requires connector_id and resource on the decision resource, so a required check always names the exact source resource evaluated, and forces result to allow, deny, or insufficient_context. False forces not_applicable and forbids current ACL evidence.",
+          "description": "Whether a source ACL check was required for this decision. True requires connector_id and resource on the decision resource, so a required check always names the exact source resource evaluated, and forces result to allow, deny, or insufficient_context; a required allow or deny additionally requires current ACL evidence. source_container_id may appear as optional parent context; it is not duplicated by current_authorization and has no equality check there. current_authorization.source matches the decision resource's nested resource object. False forces not_applicable and forbids current ACL evidence.",
           "type": "boolean"
         },
         "result": {
@@ -842,6 +842,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "current_authorization": {
+          "description": "Freshness-bounded evidence for a required definitive source ACL result; field bindings are defined by currentSourceAclAuthorization.",
           "$ref": "#/$defs/currentSourceAclAuthorization"
         }
       },

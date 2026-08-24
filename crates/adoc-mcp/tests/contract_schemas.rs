@@ -1790,6 +1790,18 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "required ACL outage with a decision resource missing {field} must be rejected"
         );
     }
+    let mut optional_acl_without_source_scope = no_acl_ceiling.clone();
+    optional_acl_without_source_scope["resource"] = json!({
+        "workspace_id": "workspace-1",
+        "object_id": "policy.refunds.enterprise"
+    });
+    assert!(
+        schema_accepts(
+            "adoc.authorization_decision.v0.schema.json",
+            &optional_acl_without_source_scope
+        ),
+        "an optional ACL check must not require source resource scope"
+    );
 
     let mut allow_during_source_acl_outage = decision.clone();
     allow_during_source_acl_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
