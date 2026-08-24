@@ -13,7 +13,7 @@ test-embedding-provider = []
 
 [dependencies]
 tracing = "0.1"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 dirs = { version = "6", optional = true }
 fastembed = { version = "6", optional = true }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }

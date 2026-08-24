@@ -51,6 +51,8 @@ Producer for every row is the `adoc` release train (CLI, MCP server, and local g
 | `adoc.semantic_executor_request.v0` | shipped | adoc 0.4.x | Action v2 Claude/Codex/generic/human adapters; customer-hosted/local executors | exact-match reader with additive human-review claims; one request shape embeds an integrity-validated ready semantic context, closed adapter and endpoint classes, 60–3600 second timeout, prompt contract, and exact executor/model/config/task/prompt digests; the prompt digest is SHA-256 over compact canonical JSON containing exactly its contract version and instructions; human uses the identical boundary with closed `human` adapter/provider/endpoint bindings; request and assessment Principal IDs are untrusted claims, while authoritative completion separately requires authenticated reviewing/requesting Principal bindings from the invoking platform and exact-matches both documents to them |
 | `adoc.semantic_executor_receipt.v0` | shipped | adoc 0.4.x | Action v2 adapter orchestration; Cloud ingestion planned (E4.6) | exact-match validator-owned receipt; completed digests the validator-owned canonical assessment serialization and binds exact request/context/adapter digests, so callers cannot pair a typed assessment with different bytes; failed requires a typed failure code and cannot carry an assessment digest; no wall-clock timestamp |
 | `adoc.stale.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
+| `adoc.work_request.v0` | shipped | adoc 0.4.x | Cloud `source_ci`/`customer_worker` dispatch; external workers | exact-match reader and canonical digest builder; binds request ID/nonce, Workspace/repository/source, exact revision/change request, sorted contract/capability requirements, expiry, and authorized workload Principal/subject/audience; unknown versions reject with remediation (ADR-0061) |
+| `adoc.work_result.v0` | shipped | adoc 0.4.x | external workers; Cloud verifier and Action hand-off | exact-match reader and canonical digest builder; repeats request ID/digest, Workspace/repository/revision and authorized workload identity, then binds runtime name/version, completion nonce, named output digests, and result digest; any cross-request/repository/revision/Workspace substitution fails (ADR-0061) |
 | `adoc.validation_receipt.v0` | shipped | adoc 0.4.0 | adoc 0.4.0 (CLI receipt mode, contract-tested; schema `adoc.validation_receipt.v0.schema.json`); checksum-pinned CI harness and Cloud driver consume receipt bytes (E1.7.T2/T3) | v0-additive; digest-bound AgentDoc Validation Runtime receipt (SEMANTICS §S6): closed result vocabulary `pass` / `fail`; `diagnostics_digest` is the sha256-prefixed digest of the canonically serialized diagnostics array; deterministic — stable ordering, no wall-clock timestamps anywhere, lifecycle pinned to the explicit `evaluation_date` input; `runtime.binary_digest` is supplied by the invoking harness as an attested input (a binary cannot hash itself deterministically) after verifying the binary against its recorded pin; validator-only construction — the runtime is the only constructor path and unvalidated receipt JSON has no core representation (no `Deserialize`); the published JSON Schema is preflight/documentation only, never domain authority (ADR-0015); digest binding covers the compiled source inputs (`inputs`) and named validation context (`context`) — Evidence Anchor reads sit outside it: advisory warnings only, never result-affecting (digest-bound evidence lands with E4.1 Source Records) |
 <!-- /registry:envelopes-shipped-adoc -->
 
@@ -82,6 +84,7 @@ Deliberately invalid version fixtures cited from test modules in `crates/*/src`,
 | --- | --- | --- |
 | `adoc.graph.v99` | fixture | rejected-version fixture proving the Validation Runtime's exact-match context-artifact gating (E1.7.T4): neither an older nor a newer unknown graph version is consumed |
 | `adoc.search.v99` | fixture | rejected-version fixture for Search Artifact version gating |
+| `adoc.work_request.v99` | fixture | rejected-version fixture proving external work requests fail with exact-version remediation |
 <!-- /registry:test-fixture-ids -->
 
 ## Envelopes and contracts — planned
@@ -99,8 +102,6 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.sensitive_access.v0` | adoc | E6.3 | name held until a final registered successor (RT-08) |
 | `adoc.egress_policy.v0` | adoc | E6.6 | provenance RT-21: absent from the original V10 inventory |
 | `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record; extended at E2.4 with AgentDoc group and external-binding provenance |
-| `adoc.work_request.v0` | adoc | E3.7 | versioned external work request with nonce/digest/expiry/workload identity |
-| `adoc.work_result.v0` | adoc | E3.7 | result binding with replay/idempotency state |
 | `adoc.migration_request.v0` | adoc | E7.1 | exact-revision standalone-to-Cloud migration request |
 | `adoc.migration_receipt.v0` | adoc | E7.1 | migration receipt with qualification policy outcome |
 | `adoc.connector_manifest.v0` | adoc | E4.5 | capability manifest bound to exact adapter version and publisher |
@@ -320,7 +321,7 @@ Shared row values for shipped rows: producer Action v2.0.0-alpha.19 (workflow an
 | `action.structural_errors_changed` | shipped | structural errors in changed objects |
 | `action.structural_errors_full` | shipped | structural errors in the full graph |
 | `action.unsupported_event` | shipped | unsupported triggering event |
-| `action.cloud_sync_failed` | planned (E3.7) | Cloud hand-off upload failed; local assessment preserved and annotated, never failed retroactively |
+| `action.cloud_sync_failed` | shipped | Action v2 E3.7 Cloud hand-off failed; local assessment preserved and annotated, never failed retroactively |
 | `action.attestation_bot_rejected` | planned (E8.1) | Action check wrapper for the canonical Cloud code `attestation.bot_approver_rejected` — one documented mapping, no competing suffix |
 <!-- /registry:action-codes -->
 

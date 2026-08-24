@@ -330,6 +330,10 @@ _Avoid_: schema-valid means qualified, provider-wide qualification, benchmark re
 The provider-neutral `adoc.semantic_executor_request.v0` boundary shared by Claude Code, Codex, declared generic/customer-hosted or local endpoints, and authenticated human submissions. A request embeds one integrity-validated ready **Semantic Context** plus exact executor, model, configuration, task, and prompt digests; only a validator-accepted **Semantic Assessment** with the declared provider/model identity produces a completed `adoc.semantic_executor_receipt.v0`. Adapters invoke providers and protect credentials, but never validate domain meaning or render unvalidated output.
 _Avoid_: provider-specific assessment shape, undeclared endpoint class, caller-authored success receipt, free-text fallback
 
+**External Work Request / Result**:
+The paired `adoc.work_request.v0` and `adoc.work_result.v0` contracts for `source_ci` and `customer_worker` processing. The request digest binds the Workspace, repository/source, exact revision/change request, request nonce, requirements, expiry, and authorized workload Principal/subject/audience. The result repeats those trust boundaries and binds runtime identity/version, completion nonce, output digests, and its own digest; validation rejects reuse across a different request, Workspace, repository, revision, or workload identity.
+_Avoid_: unsigned job payload, result matched by branch name, reusable upload token, caller-claimed identity, silent processing-mode fallback
+
 **Embedding Provider**:
 The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the deterministic adapter is available for repeatable local/offline use.
 _Avoid_: hosted-only embedding pipeline, public plug-in registry, per-call API key configuration

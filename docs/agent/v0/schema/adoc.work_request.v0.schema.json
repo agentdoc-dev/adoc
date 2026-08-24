@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.work_request.v0.schema.json",
+  "title": "AgentDoc External Work Request",
+  "description": "Digest-bound request for source_ci or customer_worker processing (E3.7). JSON Schema is transport preflight; adoc-core owns canonical digest and binding validation.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "request_id",
+    "nonce",
+    "workspace_id",
+    "repository_id",
+    "source",
+    "revision",
+    "change_request",
+    "contracts",
+    "capabilities",
+    "expires_at",
+    "workload",
+    "request_digest"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.work_request.v0" },
+    "request_id": { "$ref": "#/$defs/text" },
+    "nonce": { "$ref": "#/$defs/text" },
+    "workspace_id": { "$ref": "#/$defs/text" },
+    "repository_id": { "$ref": "#/$defs/text" },
+    "source": { "$ref": "#/$defs/source" },
+    "revision": { "$ref": "#/$defs/revision" },
+    "change_request": { "$ref": "#/$defs/changeRequest" },
+    "contracts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/contract" }
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/capability" }
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "workload": { "$ref": "#/$defs/workload" },
+    "request_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:.*\\S)?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "revision": {
+      "type": "object",
+      "required": ["system", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "system": { "$ref": "#/$defs/text" },
+        "value": { "$ref": "#/$defs/text" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["provider", "external_repository_id"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "$ref": "#/$defs/text" },
+        "external_repository_id": { "$ref": "#/$defs/text" }
+      }
+    },
+    "changeRequest": {
+      "type": "object",
+      "required": ["system", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "system": { "$ref": "#/$defs/text" },
+        "id": { "$ref": "#/$defs/text" }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "required": ["schema_version"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "$ref": "#/$defs/text" }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/text" },
+        "version": { "$ref": "#/$defs/text" }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "required": ["principal_id", "subject", "audience"],
+      "additionalProperties": false,
+      "properties": {
+        "principal_id": { "$ref": "#/$defs/text" },
+        "subject": { "$ref": "#/$defs/text" },
+        "audience": { "$ref": "#/$defs/text" }
+      }
+    }
+  }
+}

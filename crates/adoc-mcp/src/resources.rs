@@ -439,6 +439,22 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.work_request.v0.schema.json",
+        name: "schema-adoc-work-request-v0-json",
+        title: "External Work Request JSON Schema",
+        description: "JSON Schema for the digest-bound external work request.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.work_request.v0.schema.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.work_result.v0.schema.json",
+        name: "schema-adoc-work-result-v0-json",
+        title: "External Work Result JSON Schema",
+        description: "JSON Schema for replay-safe external work results.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.work_result.v0.schema.json"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/search-artifact.json",
         name: "schema-search-artifact-json",
         title: "Search Artifact JSON Schema",
