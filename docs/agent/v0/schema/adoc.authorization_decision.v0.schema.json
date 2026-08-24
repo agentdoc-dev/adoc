@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
   "title": "AgentDoc Authorization Decision",
-  "description": "Replayable, source-neutral authorization decision for E2.2 and E2.4. The record carries the explicit evaluation time, policy version, complete scoped grant input, immutable group-membership evidence, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns lower-gate precedence, grant applicability, membership and scope effectivity comparisons, expiry evaluation, replay semantics, and exact copying of winning-grant fields, including group provenance, into the basis. An absent group on a grant means that grant is principal-attributed.",
+  "description": "Replayable, source-neutral authorization decision for E2.2 and E2.4. The record carries the explicit evaluation time, policy version, complete scoped grant input, immutable group-membership evidence, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns lower-gate precedence, grant applicability, scope matching, membership effectivity comparisons, expiry evaluation, replay semantics, and exact copying of winning-grant fields, including group provenance, into the basis. An absent group on a grant means that grant is principal-attributed.",
   "type": "object",
   "required": [
     "schema_version",
@@ -845,7 +845,7 @@
       }
     },
     "membershipObservation": {
-      "description": "Exact immutable positive, non-nested external membership observation selected by the evaluator. observed_at and binding_mode_effective_at must not follow evaluation_time, and observed_at must not precede the binding-mode epoch; those instant comparisons and latest-observation selection are evaluator-owned and fail closed.",
+      "description": "Exact immutable positive, non-nested external membership observation selected by the evaluator. Latest-observation selection is evaluator-owned and fails closed.",
       "type": "object",
       "required": [
         "id",
@@ -858,15 +858,21 @@
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/$defs/nonEmpty" },
-        "external_identity_link_id": { "$ref": "#/$defs/nonEmpty" },
-        "source_event_id": { "$ref": "#/$defs/nonEmpty" },
+        "external_identity_link_id": {
+          "description": "Verified E2.3 identity link through which the external source identity resolves to this workspace principal.",
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "source_event_id": {
+          "description": "Immutable upstream connector event that carried this membership observation, retained so replay can re-derive the observation from source.",
+          "$ref": "#/$defs/nonEmpty"
+        },
         "observed_at": { "$ref": "#/$defs/rfc3339Timestamp" },
         "member_present": { "const": true },
         "nested": { "const": false }
       }
     },
     "group": {
-      "description": "AgentDoc-owned group provenance with the immutable membership fact used at evaluation. External membership may confer a grant only through an authoritative or additive binding; suggestion-only and disabled bindings never appear in an authorization basis.",
+      "description": "AgentDoc-owned group provenance with the immutable membership fact used at evaluation. When manual and external membership both confer the same group grant, the evaluator records the independently durable manual membership. External membership may confer a grant only through an authoritative or additive binding; suggestion-only and disabled bindings never appear in an authorization basis.",
       "oneOf": [
         {
           "type": "object",
@@ -874,7 +880,8 @@
             "id",
             "name",
             "membership_source",
-            "membership_created_at"
+            "membership_created_at",
+            "membership_observed_at"
           ],
           "additionalProperties": false,
           "properties": {
@@ -884,10 +891,15 @@
             "membership_created_at": {
               "description": "Creation time of the manual membership that conferred this grant. It must not follow evaluation_time; comparison is evaluator-owned.",
               "$ref": "#/$defs/rfc3339Timestamp"
+            },
+            "membership_observed_at": {
+              "description": "Immutable evaluator observation that this manual membership was active. It must exactly equal evaluation_time, preventing an earlier positive membership input from being reused after revocation; comparison is evaluator-owned and fails closed.",
+              "$ref": "#/$defs/rfc3339Timestamp"
             }
           }
         },
         {
+          "description": "observed_at and binding_mode_effective_at must not follow evaluation_time, and observed_at must not precede the binding-mode epoch; those instant comparisons are evaluator-owned and fail closed.",
           "type": "object",
           "required": [
             "id",
