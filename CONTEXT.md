@@ -322,6 +322,10 @@ _Avoid_: semantic review for the V1 contract, compliance verdict, provider respo
 The closed `material | immaterial | undetermined` projection produced by `adoc.materiality.v0` from a validated finding's typed classification plus an exact cited diff-hunk fact (ADR-0059). The projection is deterministic; the executor's semantic classification is not. `no_change_required` is possible only for immaterial findings with no candidates or unresolved questions.
 _Avoid_: model confidence, free-text judgment, deterministic semantic meaning, proposal approval
 
+**Executor Qualification**:
+The capability-specific `adoc.executor_qualification.v0` record that binds protocol validity, AgentDoc capability evaluation, organization approval for declared scope/risk/deployment, runtime-policy eligibility for one exact operation, and the exact executor configuration. Required-gate authority needs every layer and no requalification trigger. Protocol-valid-only output is advisory. Model executors bind exact executor/model/config and material-input digests; human executors bind an authenticated Principal and permission-policy digest instead of benchmark evidence.
+_Avoid_: schema-valid means qualified, provider-wide qualification, benchmark requirement for humans, stale configuration authority
+
 **Embedding Provider**:
 The internal port that turns a canonical embedding-input string into a vector. Implemented in code as the `EmbeddingProvider` trait under `domain/ports/`, governed by ADR-0006. The default adapter wraps `fastembed-rs` with `bge-small-en-v1.5`; the deterministic adapter is available for repeatable local/offline use.
 _Avoid_: hosted-only embedding pipeline, public plug-in registry, per-call API key configuration

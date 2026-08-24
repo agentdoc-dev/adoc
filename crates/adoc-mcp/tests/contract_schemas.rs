@@ -950,6 +950,10 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "adoc://agent/v0/schema/adoc.semantic_assessment.v0.schema.json",
             "adoc.semantic_assessment.v0.schema.json",
         ),
+        (
+            "adoc://agent/v0/schema/adoc.executor_qualification.v0.schema.json",
+            "adoc.executor_qualification.v0.schema.json",
+        ),
     ] {
         let result = server
             .read_agent_resource(uri)
@@ -1491,6 +1495,10 @@ fn retrieval_schema_ids_match_their_published_uris() {
             "adoc.semantic_assessment.v0.schema.json",
             "adoc://agent/v0/schema/adoc.semantic_assessment.v0.schema.json",
         ),
+        (
+            "adoc.executor_qualification.v0.schema.json",
+            "adoc://agent/v0/schema/adoc.executor_qualification.v0.schema.json",
+        ),
     ] {
         assert_eq!(
             schema(name)["$id"],
@@ -1658,6 +1666,74 @@ fn semantic_assessment_schema_accepts_the_envelope_and_rejects_unknown_fields() 
         !schema_accepts("adoc.semantic_assessment.v0.schema.json", &unknown),
         "semantic assessment must reject unknown fields"
     );
+}
+
+#[test]
+fn executor_qualification_schema_accepts_model_and_human_records() {
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let mut model = json!({
+        "schema_version": "adoc.executor_qualification.v0",
+        "qualification_id": "qual-code-assessment-v1",
+        "capability": {"name": "code_change_assessment", "version": "1"},
+        "subject": {
+            "kind": "model",
+            "provider": "codex",
+            "executor_digest": digest,
+            "model_digest": digest,
+            "config_digest": digest,
+            "configuration": {
+                "model_revision_digest": digest,
+                "quantization_digest": digest,
+                "system_prompt_task_digest": digest,
+                "context_strategy_digest": digest,
+                "output_constraints_digest": digest,
+                "toolset_digest": digest,
+                "inference_parameters_digest": digest,
+                "safety_configuration_digest": digest,
+                "adapter_implementation_digest": digest
+            }
+        },
+        "protocol": {"valid": true, "version": "semantic-executor-v1"},
+        "agentdoc_evaluation": {
+            "kind": "capability",
+            "qualified": true,
+            "evidence_ref": "suite:code-assessment-v1"
+        },
+        "organization_approval": {
+            "approved": true,
+            "scope": ["repo:billing"],
+            "risk": ["high"],
+            "deployment": ["customer_worker"],
+            "policy_digest": digest
+        },
+        "runtime_policy": {
+            "eligible": true,
+            "operation_digest": digest,
+            "policy_digest": digest
+        }
+    });
+    assert_valid("adoc.executor_qualification.v0.schema.json", &model);
+
+    model["subject"] = json!({
+        "kind": "human",
+        "principal_id": "principal:reviewer-1",
+        "executor_digest": digest,
+        "config_digest": digest,
+        "permission_policy_digest": digest
+    });
+    model["agentdoc_evaluation"] = json!({
+        "kind": "authenticated_permission",
+        "qualified": true,
+        "principal_id": "principal:reviewer-1",
+        "permission_policy_digest": digest
+    });
+    assert_valid("adoc.executor_qualification.v0.schema.json", &model);
+
+    model["unexpected"] = json!(true);
+    assert!(!schema_accepts(
+        "adoc.executor_qualification.v0.schema.json",
+        &model
+    ));
 }
 
 /// The frozen v0 schema must accept every envelope real v0 emitters produced,
