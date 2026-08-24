@@ -849,8 +849,23 @@ fn group_retention_rules_match_the_e2_4_authority() {
             && link_description.contains(link_endpoint_claim),
         "membership observations must retain and verify the link interval"
     );
+    let observation_binding_claim = "observation's retained binding";
+    let observation_group_claim = "retained binding's AgentDoc group";
+    assert!(
+        observation["id"]["description"]
+            .as_str()
+            .expect("membership observation replay binding is documented")
+            .contains(observation_binding_claim)
+            && observation["id"]["description"]
+                .as_str()
+                .expect("membership observation replay group is documented")
+                .contains(observation_group_claim)
+            && a7.contains(observation_binding_claim)
+            && a7.contains(observation_group_claim),
+        "membership replay must reject observation substitution across bindings or groups"
+    );
 
-    let same_source_claim = "A membership observation resolves against exactly one retained source event or synchronization run";
+    let same_source_claim = "A connector membership observation resolves against exactly one retained source event or synchronization run";
     assert!(
         a7.contains(same_source_claim),
         "AUTHORIZATION.md §A7 must bind both observation times to one source record"
@@ -874,7 +889,7 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "only the epoch-opening sweep may carry a pre-epoch observation"
     );
 
-    let source_timing_claim = "each retained source event carrying its current-state read and ingestion-commit instants and each retained synchronization run carrying its start and completion instants";
+    let source_timing_claim = "each retained connector source event carrying its current-state read and ingestion-commit instants and each retained synchronization run carrying its start and completion instants";
     assert!(
         a7.contains(source_timing_claim),
         "AUTHORIZATION.md §A7 must retain the timing endpoints needed for replay"
@@ -915,16 +930,46 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "A7 and E2.4 must reject observations from already-unlinked identities"
     );
     let oidc_claim = "freshly issued and verified ID token";
+    let oidc_timing_claim =
+        "token issuance, validation/ingestion-commit, and session-expiry instants";
+    let oidc_lifetime_claim = "no later than the cited identity session's expiry";
+    let relink_recovery_claim = "Linking or relinking an external identity records a current-state membership read for that principal against every grant-conferring binding of the linked source";
+    let oidc_recovery_claim = "Claim-only `oidc_group` instead recovers at the next authentication";
+    let registry_doc = registry();
+    let registry_group_sources =
+        support::doc_scan::anchored_block(&registry_doc, REGISTRY, "registry:group-source-kinds");
     assert!(
         a7.contains(oidc_claim)
             && e2_4.contains(oidc_claim)
-            && support::doc_scan::anchored_block(
-                &registry(),
-                REGISTRY,
-                "registry:group-source-kinds"
-            )
-            .contains(oidc_claim),
+            && registry_group_sources.contains(oidc_claim),
         "OIDC group membership must define claim-only freshness and recovery"
+    );
+    assert!(
+        observation["source_event_id"]["description"]
+            .as_str()
+            .expect("membership source provenance is documented")
+            .contains(oidc_timing_claim)
+            && observation["observed_at"]["description"]
+                .as_str()
+                .expect("membership observation time is documented")
+                .contains("token issuance instant")
+            && effective_at.contains("validation/ingestion-commit instant")
+            && a7.contains(oidc_timing_claim),
+        "claim-only OIDC must map issuance, validation, commit, and expiry to retained provenance"
+    );
+    assert!(
+        effective_at.contains(oidc_lifetime_claim)
+            && a7.contains(oidc_lifetime_claim)
+            && e2_4.contains(oidc_lifetime_claim)
+            && registry_group_sources.contains(oidc_lifetime_claim),
+        "claim-only OIDC membership must not outlive its exact identity session"
+    );
+    assert!(
+        a7.contains(relink_recovery_claim)
+            && e2_4.contains(relink_recovery_claim)
+            && a7.contains(oidc_recovery_claim)
+            && e2_4.contains(oidc_recovery_claim),
+        "relink recovery must refresh event-driven memberships without treating OIDC as a connector"
     );
 }
 
