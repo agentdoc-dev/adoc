@@ -1739,6 +1739,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
         invalidated_source_acl_during_outage.clone();
     unavailable_reason_with_invalidated_source_acl["result"] = json!("insufficient_context");
     unavailable_reason_with_invalidated_source_acl["reason"] = json!("source_acl_unavailable");
+    let mut hard_deny_masking_invalidated_source_acl =
+        unavailable_reason_with_invalidated_source_acl.clone();
+    hard_deny_masking_invalidated_source_acl["hard_deny"] = json!(true);
+
+    let mut stale_source_acl_during_outage = source_acl_stale.clone();
+    stale_source_acl_during_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
+        json!(false);
 
     let mut explicit_deny_during_source_acl_outage = source_acl_outage.clone();
     explicit_deny_during_source_acl_outage["grants"][0]["effect"] = json!("deny");
@@ -1907,6 +1914,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut hard_deny = denied.clone();
     hard_deny["hard_deny"] = json!(true);
     hard_deny["reason"] = json!("hard_deny");
+    let mut hard_deny_recorded_as_no_grant = hard_deny.clone();
+    hard_deny_recorded_as_no_grant["reason"] = json!("no_grant");
     let mut false_hard_deny_reason = hard_deny.clone();
     false_hard_deny_reason["hard_deny"] = json!(false);
     let mut hard_deny_with_basis = hard_deny.clone();
@@ -1949,6 +1958,10 @@ fn authorization_decision_schema_pins_replay_bindings() {
     });
     let mut source_acl_unavailable_with_basis = insufficient.clone();
     source_acl_unavailable_with_basis["basis"] = decision["basis"].clone();
+    let mut missing_source_acl_verdict_recorded_as_no_grant = insufficient.clone();
+    missing_source_acl_verdict_recorded_as_no_grant["grants"] = json!([]);
+    missing_source_acl_verdict_recorded_as_no_grant["result"] = json!("deny");
+    missing_source_acl_verdict_recorded_as_no_grant["reason"] = json!("no_grant");
 
     let mut visibility_denied = decision.clone();
     visibility_denied["visibility"] = json!("deny");
@@ -2167,6 +2180,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "connector outage cannot mask known source ACL invalidation",
             unavailable_reason_with_invalidated_source_acl,
             false,
+        ),
+        (
+            "hard deny cannot mask known source ACL invalidation",
+            hard_deny_masking_invalidated_source_acl,
+            false,
+        ),
+        (
+            "known stale source ACL outranks connector outage",
+            stale_source_acl_during_outage,
+            true,
         ),
         (
             "explicit deny cannot outrank source ACL outage",
@@ -2394,6 +2417,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         ("false hard-deny reason", false_hard_deny_reason, false),
+        (
+            "hard deny cannot be recorded as no grant",
+            hard_deny_recorded_as_no_grant,
+            false,
+        ),
         ("hard-deny reason with basis", hard_deny_with_basis, false),
         (
             "false source ACL denied reason",
@@ -2428,6 +2456,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "source ACL unavailable reason with basis",
             source_acl_unavailable_with_basis,
+            false,
+        ),
+        (
+            "missing source ACL verdict cannot be recorded as no grant",
+            missing_source_acl_verdict_recorded_as_no_grant,
             false,
         ),
         (
