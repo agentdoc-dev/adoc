@@ -36,7 +36,7 @@
     },
     "consequential": { "type": "boolean" },
     "hard_deny": {
-      "description": "System-level deny observed ahead of the source ACL ceiling. Unless identity_context_missing, identity_expired, or evaluation_time_invalid won earlier, true forces reason hard_deny and a deny result.",
+      "description": "System-level deny observed ahead of the source ACL ceiling. Unless identity_context_missing, identity_expired, or evaluation_time_invalid won earlier, true forces reason hard_deny and a deny result. Conversely, reason hard_deny requires hard_deny true and a null basis.",
       "type": "boolean"
     },
     "grants": {
