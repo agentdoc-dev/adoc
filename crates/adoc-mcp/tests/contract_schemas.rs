@@ -2622,6 +2622,39 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "reason {reason:?} must retain precedence over unresolved membership"
         );
     }
+    let mut invalid_time_unresolved_without_group_name = invalid_time.clone();
+    invalid_time_unresolved_without_group_name["grants"] = external_group_grant["grants"].clone();
+    invalid_time_unresolved_without_group_name["membership_evidence"] =
+        json!("insufficient_context");
+    invalid_time_unresolved_without_group_name["membership_unavailability_evidence"] =
+        external_unavailability_evidence.clone();
+    invalid_time_unresolved_without_group_name["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("invalid-time unavailability evidence")
+        .remove("group_name");
+    assert!(
+        schema_accepts(
+            "adoc.authorization_decision.v0.schema.json",
+            &invalid_time_unresolved_without_group_name
+        ),
+        "an invalid evaluation time cannot require an evaluation-time group name"
+    );
+    let mut invalid_time_manual_without_group_name = invalid_time.clone();
+    invalid_time_manual_without_group_name["grants"] = external_group_grant["grants"].clone();
+    invalid_time_manual_without_group_name["membership_evidence"] = json!("insufficient_context");
+    invalid_time_manual_without_group_name["membership_unavailability_evidence"] =
+        manual_membership_evidence_unavailable["membership_unavailability_evidence"].clone();
+    invalid_time_manual_without_group_name["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("invalid-time manual unavailability evidence")
+        .remove("group_name");
+    assert!(
+        schema_accepts(
+            "adoc.authorization_decision.v0.schema.json",
+            &invalid_time_manual_without_group_name
+        ),
+        "an invalid evaluation time cannot require a manual evaluation-time group name"
+    );
 
     let mut allow_with_empty_evaluation_time = decision.clone();
     allow_with_empty_evaluation_time["evaluation_time"] = json!("");
@@ -2679,6 +2712,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
         instance["membership_unavailability_evidence"][0]["state"] = json!(state);
         if state == "oidc_authentication_pending" {
             instance["membership_unavailability_evidence"][0]["source_kind"] = json!("oidc_group");
+        } else if state == "epoch_observation_pending" {
+            instance["membership_unavailability_evidence"][0]["binding_mode"] = json!("disabled");
         }
         assert!(
             schema_accepts("adoc.authorization_decision.v0.schema.json", &instance),
@@ -2696,10 +2731,18 @@ fn authorization_decision_schema_pins_replay_bindings() {
         &oidc_expired_without_session
     ));
     let mut oidc_expired_with_session = oidc_expired_without_session.clone();
-    oidc_expired_with_session["principal"]["identity_session_id"] = json!("identity-session-1");
+    oidc_expired_with_session["membership_unavailability_evidence"][0]["identity_session_id"] =
+        json!("identity-session-expired-1");
     assert!(schema_accepts(
         "adoc.authorization_decision.v0.schema.json",
         &oidc_expired_with_session
+    ));
+    let mut oidc_expired_with_evaluation_session_only = oidc_expired_without_session.clone();
+    oidc_expired_with_evaluation_session_only["principal"]["identity_session_id"] =
+        json!("identity-session-current-1");
+    assert!(!schema_accepts(
+        "adoc.authorization_decision.v0.schema.json",
+        &oidc_expired_with_evaluation_session_only
     ));
     let mut nonhuman_oidc_pending = membership_evidence_unavailable.clone();
     nonhuman_oidc_pending["principal"]["type"] = json!("service");
@@ -2711,6 +2754,31 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "adoc.authorization_decision.v0.schema.json",
         &nonhuman_oidc_pending
     ));
+    let mut oidc_pending_with_entry_session = membership_evidence_unavailable.clone();
+    oidc_pending_with_entry_session["membership_unavailability_evidence"][0]["source_kind"] =
+        json!("oidc_group");
+    oidc_pending_with_entry_session["membership_unavailability_evidence"][0]["state"] =
+        json!("oidc_authentication_pending");
+    oidc_pending_with_entry_session["membership_unavailability_evidence"][0]["identity_session_id"] =
+        json!("identity-session-1");
+    assert!(!schema_accepts(
+        "adoc.authorization_decision.v0.schema.json",
+        &oidc_pending_with_entry_session
+    ));
+    let mut mixed_oidc_pending = mixed_group_membership_evidence_unavailable.clone();
+    mixed_oidc_pending["grants"][0]["group"]["source_kind"] = json!("oidc_group");
+    mixed_oidc_pending["principal"]["identity_session_id"] = json!("identity-session-1");
+    mixed_oidc_pending["membership_unavailability_evidence"][0]["source_kind"] =
+        json!("oidc_group");
+    mixed_oidc_pending["membership_unavailability_evidence"][0]["state"] =
+        json!("oidc_authentication_pending");
+    assert!(
+        schema_accepts(
+            "adoc.authorization_decision.v0.schema.json",
+            &mixed_oidc_pending
+        ),
+        "pending OIDC input may coexist with a sibling OIDC grant that requires the envelope session"
+    );
     for (source_kind, state) in [
         ("github_team", "oidc_authentication_pending"),
         ("oidc_group", "connector_read_failed"),

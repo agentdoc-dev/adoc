@@ -398,12 +398,12 @@ The closed E2.4 state vocabulary retained when an authorization decision cannot 
 | state | status | planned by | compatible input | meaning |
 | --- | --- | --- | --- | --- |
 | `lifecycle_unavailable` | planned | E2.4 | manual membership | the manual-membership lifecycle read failed or remained unresolved |
-| `observation_expired` | planned | E2.4 | connector or OIDC external membership | the last retained positive observation reached its effective freshness or identity-session deadline |
+| `observation_expired` | planned | E2.4 | connector or OIDC external membership | the retained positive observation reached its effective freshness or identity-session deadline; OIDC evidence cites that observation's exact historical identity session on the unavailable entry |
 | `connector_read_failed` | planned | E2.4 | connector-read external membership | the retained current-state connector read failed |
 | `link_read_pending` | planned | E2.4 | connector-read external membership | the retained post-link or post-relink binding read is pending |
 | `link_read_failed` | planned | E2.4 | connector-read external membership | the retained post-link or post-relink binding read failed |
-| `epoch_observation_pending` | planned | E2.4 | connector-read external membership | a grant-conferring binding epoch is awaiting its first resynchronization observation |
-| `oidc_authentication_pending` | planned | E2.4 | claim-only OIDC external membership | a validated grant-conferring OIDC epoch is awaiting the principal's next authentication |
+| `epoch_observation_pending` | planned | E2.4 | connector-read external membership | a requested grant-conferring transition is awaiting its sweep while the prior effective mode epoch, including `suggestion_only` or `disabled`, remains in force |
+| `oidc_authentication_pending` | planned | E2.4 | claim-only OIDC external membership | a validated grant-conferring OIDC epoch is awaiting the principal's next authentication; the unavailable entry cites no session of its own |
 <!-- /registry:group-membership-unavailability-states -->
 
 ## Cloud codes — owner `cloud`
