@@ -12,6 +12,7 @@
     "base_revision",
     "head_revision",
     "basis",
+    "selection",
     "capability_policy",
     "context_classes",
     "items",
@@ -61,6 +62,19 @@
         }
       }
     },
+    "selection": {
+      "type": "object",
+      "required": ["algorithm", "version", "authorized_scope"],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": { "$ref": "#/$defs/nonEmpty" },
+        "version": { "$ref": "#/$defs/nonEmpty" },
+        "authorized_scope": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        }
+      }
+    },
     "capability_policy": {
       "type": "object",
       "required": ["version", "rules"],
@@ -100,11 +114,12 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["handle_id", "class_id", "handle", "content", "truncated"],
+        "required": ["handle_id", "class_id", "scope_ref", "handle", "content", "truncated"],
         "additionalProperties": false,
         "properties": {
           "handle_id": { "$ref": "#/$defs/nonEmpty" },
           "class_id": { "$ref": "#/$defs/nonEmpty" },
+          "scope_ref": { "$ref": "#/$defs/nonEmpty" },
           "handle": {
             "oneOf": [
               {

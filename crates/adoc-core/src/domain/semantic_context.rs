@@ -76,6 +76,14 @@ pub struct CapabilityPolicy {
     pub rules: Vec<CapabilityPolicyRule>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SemanticContextSelection {
+    pub algorithm: String,
+    pub version: String,
+    pub authorized_scope: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContextUnavailabilityKind {
@@ -128,6 +136,7 @@ pub enum CitationHandle {
 pub struct SemanticContextItem {
     pub handle_id: String,
     pub class_id: String,
+    pub scope_ref: String,
     pub handle: CitationHandle,
     pub content: Value,
     pub truncated: bool,
@@ -141,10 +150,26 @@ pub struct SemanticContextInput {
     pub base_revision: ExactRevision,
     pub head_revision: ExactRevision,
     pub basis: SemanticContextBasis,
+    pub selection: SemanticContextSelection,
     pub capability_policy: CapabilityPolicy,
     pub context_classes: Vec<ContextClass>,
     pub items: Vec<SemanticContextItem>,
     pub unavailability: Vec<ContextUnavailability>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GraphCitationObject {
+    pub object_id: String,
+    pub semantic_hash: String,
+    pub has_source_binding: bool,
+    pub evidence_count: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct SemanticContextValidationBasis {
+    pub evaluation_date: NaiveDate,
+    pub graph_artifact_digest: Option<String>,
+    pub graph_objects: Vec<GraphCitationObject>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -188,6 +213,7 @@ pub struct SemanticContext {
     base_revision: ExactRevision,
     head_revision: ExactRevision,
     basis: SemanticContextBasis,
+    selection: SemanticContextSelection,
     capability_policy: CapabilityPolicy,
     context_classes: Vec<ContextClass>,
     items: Vec<SemanticContextItem>,
@@ -206,6 +232,7 @@ struct DigestInput<'a> {
     base_revision: &'a ExactRevision,
     head_revision: &'a ExactRevision,
     basis: &'a SemanticContextBasis,
+    selection: &'a SemanticContextSelection,
     capability_policy: &'a CapabilityPolicy,
     context_classes: &'a [ContextClass],
     items: &'a [SemanticContextItem],
@@ -224,6 +251,7 @@ struct SemanticContextDocument {
     base_revision: ExactRevision,
     head_revision: ExactRevision,
     basis: SemanticContextBasis,
+    selection: SemanticContextSelection,
     capability_policy: CapabilityPolicy,
     context_classes: Vec<ContextClass>,
     items: Vec<SemanticContextItem>,
@@ -249,6 +277,13 @@ pub enum SemanticContextError {
     DuplicateHandleId { handle_id: String },
     #[error("semantic context contains duplicate class id '{class_id}'")]
     DuplicateClassId { class_id: String },
+    #[error("semantic context contains duplicate authorized scope reference '{scope_ref}'")]
+    DuplicateAuthorizedScope { scope_ref: String },
+    #[error("semantic context item '{handle_id}' is outside authorized scope '{scope_ref}'")]
+    UnauthorizedScope {
+        handle_id: String,
+        scope_ref: String,
+    },
     #[error("semantic context item '{handle_id}' references unknown class '{class_id}'")]
     UnknownClass { handle_id: String, class_id: String },
     #[error("semantic context class '{class_id}' must have a positive byte budget")]
@@ -263,6 +298,12 @@ pub enum SemanticContextError {
     DuplicateUnavailabilityId { record_id: String },
     #[error("semantic context digest does not match its canonical content")]
     DigestMismatch,
+    #[error("semantic context evaluation date does not match the validation runtime")]
+    EvaluationDateMismatch,
+    #[error("semantic context basis does not match the supplied validation basis: {message}")]
+    BasisMismatch { message: String },
+    #[error("semantic context citation handle '{handle_id}' does not resolve in its exact basis")]
+    UnresolvedCitation { handle_id: String },
     #[error("semantic context serialization failed: {message}")]
     Serialization { message: String },
 }
@@ -272,12 +313,17 @@ impl SemanticContextError {
         match self {
             Self::UnsupportedVersion { .. } => DiagnosticCode::SchemaUnsupportedVersion,
             Self::DigestMismatch => DiagnosticCode::SemanticContextDigestMismatch,
+            Self::EvaluationDateMismatch
+            | Self::BasisMismatch { .. }
+            | Self::UnresolvedCitation { .. } => DiagnosticCode::SemanticContextBasisMismatch,
             Self::InvalidDocument { .. }
             | Self::InvalidText { .. }
             | Self::InvalidDigest { .. }
             | Self::InvalidObjectId { .. }
             | Self::DuplicateHandleId { .. }
             | Self::DuplicateClassId { .. }
+            | Self::DuplicateAuthorizedScope { .. }
+            | Self::UnauthorizedScope { .. }
             | Self::UnknownClass { .. }
             | Self::InvalidByteBudget { .. }
             | Self::ByteBudgetExceeded { .. }
@@ -329,6 +375,25 @@ pub fn build_semantic_context(
             require_digest("basis.knowledge_basis.digest", digest)?;
         }
     }
+    require_text("selection.algorithm", &input.selection.algorithm)?;
+    require_text("selection.version", &input.selection.version)?;
+    input.selection.authorized_scope.sort();
+    for scope in &input.selection.authorized_scope {
+        require_text("selection.authorized_scope[]", scope)?;
+    }
+    for duplicate in input.selection.authorized_scope.windows(2) {
+        if duplicate[0] == duplicate[1] {
+            return Err(SemanticContextError::DuplicateAuthorizedScope {
+                scope_ref: duplicate[0].clone(),
+            });
+        }
+    }
+    let authorized_scope: BTreeSet<_> = input
+        .selection
+        .authorized_scope
+        .iter()
+        .map(String::as_str)
+        .collect();
     require_text(
         "capability_policy.version",
         &input.capability_policy.version,
@@ -399,9 +464,16 @@ pub fn build_semantic_context(
     for item in &input.items {
         require_text("items[].handle_id", &item.handle_id)?;
         require_text("items[].class_id", &item.class_id)?;
+        require_text("items[].scope_ref", &item.scope_ref)?;
         if !handle_ids.insert(item.handle_id.as_str()) {
             return Err(SemanticContextError::DuplicateHandleId {
                 handle_id: item.handle_id.clone(),
+            });
+        }
+        if !authorized_scope.contains(item.scope_ref.as_str()) {
+            return Err(SemanticContextError::UnauthorizedScope {
+                handle_id: item.handle_id.clone(),
+                scope_ref: item.scope_ref.clone(),
             });
         }
         let coverage = coverage_by_class.get_mut(&item.class_id).ok_or_else(|| {
@@ -524,6 +596,7 @@ pub fn build_semantic_context(
         base_revision: &input.base_revision,
         head_revision: &input.head_revision,
         basis: &input.basis,
+        selection: &input.selection,
         capability_policy: &input.capability_policy,
         context_classes: &input.context_classes,
         items: &input.items,
@@ -544,6 +617,7 @@ pub fn build_semantic_context(
         base_revision: input.base_revision,
         head_revision: input.head_revision,
         basis: input.basis,
+        selection: input.selection,
         capability_policy: input.capability_policy,
         context_classes: input.context_classes,
         items: input.items,
@@ -554,7 +628,10 @@ pub fn build_semantic_context(
     })
 }
 
-pub fn validate_semantic_context(bytes: &[u8]) -> Result<SemanticContext, SemanticContextError> {
+pub fn validate_semantic_context(
+    bytes: &[u8],
+    validation_basis: &SemanticContextValidationBasis,
+) -> Result<SemanticContext, SemanticContextError> {
     let document: SemanticContextDocument =
         serde_json::from_slice(bytes).map_err(|error| SemanticContextError::InvalidDocument {
             message: error.to_string(),
@@ -575,6 +652,7 @@ pub fn validate_semantic_context(bytes: &[u8]) -> Result<SemanticContext, Semant
         base_revision: document.base_revision,
         head_revision: document.head_revision,
         basis: document.basis,
+        selection: document.selection,
         capability_policy: document.capability_policy,
         context_classes: document.context_classes,
         items: document.items,
@@ -585,6 +663,54 @@ pub fn validate_semantic_context(bytes: &[u8]) -> Result<SemanticContext, Semant
     }
     if context.context_digest != document.context_digest {
         return Err(SemanticContextError::DigestMismatch);
+    }
+    if context.evaluation_date
+        != validation_basis
+            .evaluation_date
+            .format("%Y-%m-%d")
+            .to_string()
+    {
+        return Err(SemanticContextError::EvaluationDateMismatch);
+    }
+    if let KnowledgeBasis::GraphArtifact { digest } = &context.basis.knowledge_basis {
+        if validation_basis.graph_artifact_digest.as_deref() != Some(digest.as_str()) {
+            return Err(SemanticContextError::BasisMismatch {
+                message: "graph artifact digest differs".to_string(),
+            });
+        }
+        let mut objects = BTreeMap::new();
+        for object in &validation_basis.graph_objects {
+            if objects.insert(object.object_id.as_str(), object).is_some() {
+                return Err(SemanticContextError::BasisMismatch {
+                    message: "graph basis contains duplicate Object IDs".to_string(),
+                });
+            }
+        }
+        for item in &context.items {
+            let resolves = match &item.handle {
+                CitationHandle::KnowledgeObject {
+                    object_id,
+                    semantic_hash,
+                } => objects
+                    .get(object_id.as_str())
+                    .is_some_and(|object| object.semantic_hash == *semantic_hash),
+                CitationHandle::SourceBinding { object_id } => objects
+                    .get(object_id.as_str())
+                    .is_some_and(|object| object.has_source_binding),
+                CitationHandle::Evidence {
+                    object_id,
+                    evidence_index,
+                } => objects
+                    .get(object_id.as_str())
+                    .is_some_and(|object| (*evidence_index as usize) < object.evidence_count),
+                CitationHandle::DiffHunk { .. } | CitationHandle::SourceAssertion { .. } => true,
+            };
+            if !resolves {
+                return Err(SemanticContextError::UnresolvedCitation {
+                    handle_id: item.handle_id.clone(),
+                });
+            }
+        }
     }
     Ok(context)
 }

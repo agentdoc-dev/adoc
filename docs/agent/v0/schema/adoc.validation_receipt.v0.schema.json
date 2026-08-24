@@ -19,12 +19,13 @@
       }
     },
     "contract_versions": {
-      "description": "Consumed contract versions, keyed by contract role. 'graph' names the graph contract this runtime's semantics validate (adoc.graph.v6); a consumed context artifact must match it exactly or the run fails with schema.unsupported_version.",
+      "description": "Consumed contract versions, keyed by contract role. 'graph' names the graph contract this runtime's semantics validate (adoc.graph.v6); semantic_context is present exactly when an adoc.semantic_context.v0 input is consumed.",
       "type": "object",
       "required": ["graph"],
       "additionalProperties": { "type": "string", "minLength": 1 },
       "properties": {
-        "graph": { "const": "adoc.graph.v6" }
+        "graph": { "const": "adoc.graph.v6" },
+        "semantic_context": { "const": "adoc.semantic_context.v0" }
       }
     },
     "evaluation_date": {
@@ -46,14 +47,14 @@
       }
     },
     "context": {
-      "description": "Named validation-context inputs where applicable: 'config' (the discovered project config file) and 'context_artifact' (a graph artifact validated against the recompiled source).",
+      "description": "Named validation-context inputs where applicable: config, context_artifact, and semantic_context. Digests bind the exact bytes read once and validated by the runtime.",
       "type": "array",
       "items": {
         "type": "object",
         "required": ["name", "digest"],
         "additionalProperties": false,
         "properties": {
-          "name": { "enum": ["config", "context_artifact"] },
+          "name": { "enum": ["config", "context_artifact", "semantic_context"] },
           "digest": { "$ref": "#/$defs/sha256" }
         }
       }
@@ -67,6 +68,32 @@
       "$ref": "#/$defs/sha256"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "context": {
+            "contains": {
+              "type": "object",
+              "properties": { "name": { "const": "semantic_context" } },
+              "required": ["name"]
+            }
+          }
+        },
+        "required": ["context"]
+      },
+      "then": {
+        "properties": {
+          "contract_versions": { "required": ["semantic_context"] }
+        }
+      },
+      "else": {
+        "properties": {
+          "contract_versions": { "not": { "required": ["semantic_context"] } }
+        }
+      }
+    }
+  ],
   "$defs": {
     "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
   }

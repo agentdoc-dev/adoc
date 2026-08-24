@@ -80,9 +80,10 @@ pub use domain::review::object_diff::ObjectDiff;
 pub use domain::review::reviewer::{RequiredReviewer, required_reviewers};
 pub use domain::semantic_context::{
     CapabilityPolicy, CapabilityPolicyRule, CitationHandle, ContextClass, ContextRequirement,
-    ContextUnavailability, ContextUnavailabilityKind, ExactRevision, KnowledgeBasis,
-    SEMANTIC_CONTEXT_SCHEMA_VERSION, SemanticContext, SemanticContextBasis, SemanticContextError,
-    SemanticContextInput, SemanticContextItem, SemanticContextOutcome, UnavailabilityOutcome,
+    ContextUnavailability, ContextUnavailabilityKind, ExactRevision, GraphCitationObject,
+    KnowledgeBasis, SEMANTIC_CONTEXT_SCHEMA_VERSION, SemanticContext, SemanticContextBasis,
+    SemanticContextError, SemanticContextInput, SemanticContextItem, SemanticContextOutcome,
+    SemanticContextSelection, SemanticContextValidationBasis, UnavailabilityOutcome,
     UnavailabilityReason, build_semantic_context, validate_semantic_context,
 };
 pub use domain::services::suggest_typed_blocks::SuggestedTypedBlock;
