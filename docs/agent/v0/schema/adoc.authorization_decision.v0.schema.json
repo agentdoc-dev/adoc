@@ -49,7 +49,7 @@
     "policy_version": { "$ref": "#/$defs/nonEmpty" },
     "result": { "$ref": "#/$defs/decision" },
     "reason": {
-      "description": "Evaluator outcome reason. evaluation_time_invalid is raised only after identity freshness passes; timestamp parsing itself is evaluator-owned so an invalid raw input remains recordable for replay.",
+      "description": "Evaluator outcome reason. evaluation_time_invalid is raised only after identity freshness passes; timestamp parsing itself is evaluator-owned so an invalid raw input remains recordable for replay. membership_evidence_unavailable distinguishes an expired or unavailable external-membership input from a confirmed no_grant result at the scoped-grants stage.",
       "enum": [
         "identity_context_missing",
         "identity_expired",
@@ -59,6 +59,7 @@
         "source_acl_stale",
         "source_acl_invalidated",
         "source_acl_unavailable",
+        "membership_evidence_unavailable",
         "no_grant",
         "explicit_deny",
         "visibility_denied",
@@ -312,6 +313,31 @@
           },
           "basis": { "type": "null" }
         },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "consequential": { "const": true } },
+              "required": ["consequential"]
+            },
+            "then": {
+              "properties": { "result": { "const": "insufficient_context" } }
+            },
+            "else": {
+              "properties": { "result": { "const": "deny" } }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason": { "const": "membership_evidence_unavailable" }
+        },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": { "basis": { "type": "null" } },
         "allOf": [
           {
             "if": {
@@ -948,7 +974,7 @@
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "fresh_until": {
-          "description": "Immutable deadline derived from observed_at under the versioned freshness policy retained by the exact binding. Replay resolves the policy version in effect at observed_at, recomputes the deadline, caps oidc_group at the cited identity session's expiry, and fails closed unless evaluation_time does not exceed fresh_until; connector unavailability cannot extend it. observed_at must not follow fresh_until, and fresh_until must follow effective_at, so an observation is never expired before it becomes eligible. A binding whose synchronization run cannot complete before the deadline is rejected as a freshness-policy misconfiguration rather than emitting a silently inert observation. Timestamp comparisons are evaluator-owned and fail closed.",
+          "description": "Immutable deadline derived from observed_at under the versioned freshness policy retained by the exact binding. Replay resolves the policy version in effect at observed_at, recomputes the deadline, requires fresh_until to equal that recomputation, caps oidc_group at the cited identity session's expiry, and fails closed unless evaluation_time does not exceed fresh_until; connector unavailability cannot extend it. observed_at must not follow fresh_until, and fresh_until must follow effective_at, so an observation is never expired before it becomes eligible. A synchronization run whose produced observations cannot satisfy that ordering is rejected as a freshness-policy misconfiguration; a routine replacement run must also complete before the deadline of the observations it replaces. Timestamp comparisons are evaluator-owned and fail closed.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "member_present": { "const": true },
