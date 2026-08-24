@@ -390,6 +390,22 @@ The closed E2.4 `source_kind` vocabulary carried by an external AgentDoc-group m
 | `scim_group` | planned | E2.4 | SCIM group membership |
 <!-- /registry:group-source-kinds -->
 
+## Group membership-unavailability states — planned, owner `cloud`
+
+The closed E2.4 state vocabulary retained when an authorization decision cannot establish a potentially grant-conferring membership input. Each state identifies an immutable record through `state_record_id`; source compatibility is schema-enforced.
+
+<!-- registry:group-membership-unavailability-states -->
+| state | status | planned by | compatible input | meaning |
+| --- | --- | --- | --- | --- |
+| `lifecycle_unavailable` | planned | E2.4 | manual membership | the manual-membership lifecycle read failed or remained unresolved |
+| `observation_expired` | planned | E2.4 | connector or OIDC external membership | the last retained positive observation reached its effective freshness or identity-session deadline |
+| `connector_read_failed` | planned | E2.4 | connector-read external membership | the retained current-state connector read failed |
+| `link_read_pending` | planned | E2.4 | connector-read external membership | the retained post-link or post-relink binding read is pending |
+| `link_read_failed` | planned | E2.4 | connector-read external membership | the retained post-link or post-relink binding read failed |
+| `epoch_observation_pending` | planned | E2.4 | connector-read external membership | a grant-conferring binding epoch is awaiting its first resynchronization observation |
+| `oidc_authentication_pending` | planned | E2.4 | claim-only OIDC external membership | a validated grant-conferring OIDC epoch is awaiting the principal's next authentication |
+<!-- /registry:group-membership-unavailability-states -->
+
 ## Cloud codes — owner `cloud`
 
 Operation labels and typed failure codes owned by the private Cloud service. New Cloud wire codes register here before they ship: `workspace.bootstrap` names the identity-bootstrap operation, the E2.1 `workspace.*` failures cover repository registration and tenant isolation, and `governance.decision_binding_missing` belongs to the E1.3 reconciliation-decision route.

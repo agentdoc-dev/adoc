@@ -1900,8 +1900,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     no_grant_with_no_membership_facts["membership_absence_evidence"] = json!([]);
     let external_unavailability_evidence = json!([{
         "group_id": "group-1",
+        "group_name": "Curators",
         "membership_source": "external",
         "binding_id": "github-team-binding-1",
+        "binding_mode": "authoritative_sync",
+        "binding_mode_effective_at": "2026-08-23T10:00:00Z",
         "source_kind": "github_team",
         "external_identity_link_id": "external-identity-link-1",
         "state": "connector_read_failed",
@@ -1917,6 +1920,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut manual_membership_evidence_unavailable = membership_evidence_unavailable.clone();
     manual_membership_evidence_unavailable["membership_unavailability_evidence"] = json!([{
         "group_id": "group-2",
+        "group_name": "Incident responders",
         "membership_source": "manual",
         "state": "lifecycle_unavailable",
         "state_record_id": "manual-membership-read-failure-1"
@@ -1940,6 +1944,33 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .as_object_mut()
         .expect("unavailability evidence object")
         .remove("state_record_id");
+    let mut membership_evidence_unavailable_without_group_name =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_group_name["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("unavailability evidence object")
+        .remove("group_name");
+    let mut membership_evidence_unavailable_without_binding_mode =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_binding_mode["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("unavailability evidence object")
+        .remove("binding_mode");
+    let mut membership_evidence_unavailable_without_binding_epoch =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_binding_epoch["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("unavailability evidence object")
+        .remove("binding_mode_effective_at");
+    let mut manual_unavailability_without_group_name =
+        manual_membership_evidence_unavailable.clone();
+    manual_unavailability_without_group_name["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("manual unavailability evidence object")
+        .remove("group_name");
+    let mut unavailable_membership_from_disabled_binding = membership_evidence_unavailable.clone();
+    unavailable_membership_from_disabled_binding["membership_unavailability_evidence"][0]["binding_mode"] =
+        json!("disabled");
     let mut membership_evidence_unavailable_with_unknown_state =
         membership_evidence_unavailable.clone();
     membership_evidence_unavailable_with_unknown_state["membership_unavailability_evidence"][0]["state"] =
@@ -2622,6 +2653,10 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let source_kinds = authorization_schema["$defs"]["sourceKind"]["enum"]
         .as_array()
         .expect("shared sourceKind is an enum");
+    let unavailability_states =
+        authorization_schema["$defs"]["membershipUnavailabilityState"]["enum"]
+            .as_array()
+            .expect("membershipUnavailabilityState is an enum");
     let mut nonhuman_identity_session = decision.clone();
     nonhuman_identity_session["principal"]["type"] = json!("service");
     nonhuman_identity_session["principal"]["identity_session_id"] = json!("identity-session-1");
@@ -2633,6 +2668,61 @@ fn authorization_decision_schema_pins_replay_bindings() {
         json!("oidc_group");
     let mut oidc_absence_with_session = oidc_absence_without_session.clone();
     oidc_absence_with_session["principal"]["identity_session_id"] = json!("identity-session-1");
+
+    for state in unavailability_states {
+        let state = state.as_str().expect("unavailability states are strings");
+        let mut instance = if state == "lifecycle_unavailable" {
+            manual_membership_evidence_unavailable.clone()
+        } else {
+            membership_evidence_unavailable.clone()
+        };
+        instance["membership_unavailability_evidence"][0]["state"] = json!(state);
+        if state == "oidc_authentication_pending" {
+            instance["membership_unavailability_evidence"][0]["source_kind"] = json!("oidc_group");
+        }
+        assert!(
+            schema_accepts("adoc.authorization_decision.v0.schema.json", &instance),
+            "registered membership-unavailability state {state:?} must have a valid fixture"
+        );
+    }
+
+    let mut oidc_expired_without_session = membership_evidence_unavailable.clone();
+    oidc_expired_without_session["membership_unavailability_evidence"][0]["source_kind"] =
+        json!("oidc_group");
+    oidc_expired_without_session["membership_unavailability_evidence"][0]["state"] =
+        json!("observation_expired");
+    assert!(!schema_accepts(
+        "adoc.authorization_decision.v0.schema.json",
+        &oidc_expired_without_session
+    ));
+    let mut oidc_expired_with_session = oidc_expired_without_session.clone();
+    oidc_expired_with_session["principal"]["identity_session_id"] = json!("identity-session-1");
+    assert!(schema_accepts(
+        "adoc.authorization_decision.v0.schema.json",
+        &oidc_expired_with_session
+    ));
+    let mut nonhuman_oidc_pending = membership_evidence_unavailable.clone();
+    nonhuman_oidc_pending["principal"]["type"] = json!("service");
+    nonhuman_oidc_pending["membership_unavailability_evidence"][0]["source_kind"] =
+        json!("oidc_group");
+    nonhuman_oidc_pending["membership_unavailability_evidence"][0]["state"] =
+        json!("oidc_authentication_pending");
+    assert!(!schema_accepts(
+        "adoc.authorization_decision.v0.schema.json",
+        &nonhuman_oidc_pending
+    ));
+    for (source_kind, state) in [
+        ("github_team", "oidc_authentication_pending"),
+        ("oidc_group", "connector_read_failed"),
+    ] {
+        let mut impossible = membership_evidence_unavailable.clone();
+        impossible["membership_unavailability_evidence"][0]["source_kind"] = json!(source_kind);
+        impossible["membership_unavailability_evidence"][0]["state"] = json!(state);
+        assert!(
+            !schema_accepts("adoc.authorization_decision.v0.schema.json", &impossible),
+            "source {source_kind:?} cannot recover through state {state:?}"
+        );
+    }
 
     for mode in binding_modes {
         let mode = mode.as_str().expect("binding modes are strings");
@@ -3398,6 +3488,31 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "unavailable membership without a retained state record",
             membership_evidence_unavailable_without_state_record,
+            false,
+        ),
+        (
+            "unavailable membership without a retained group name",
+            membership_evidence_unavailable_without_group_name,
+            false,
+        ),
+        (
+            "external unavailable membership without a binding mode",
+            membership_evidence_unavailable_without_binding_mode,
+            false,
+        ),
+        (
+            "external unavailable membership without a binding epoch",
+            membership_evidence_unavailable_without_binding_epoch,
+            false,
+        ),
+        (
+            "manual unavailable membership without a retained group name",
+            manual_unavailability_without_group_name,
+            false,
+        ),
+        (
+            "disabled binding cannot be an unavailable granting input",
+            unavailable_membership_from_disabled_binding,
             false,
         ),
         (
