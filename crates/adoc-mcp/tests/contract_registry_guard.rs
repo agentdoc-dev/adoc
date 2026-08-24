@@ -721,27 +721,6 @@ fn group_vocabularies_match_the_e2_4_registry() {
     let registered_modes = anchored_ids(&registry, "registry:group-binding-modes");
     let authorization = read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md");
     let a7 = annex_section(&authorization, "AUTHORIZATION.md", "## A7.");
-    let effective_history_claim = "complete effective mode history";
-    assert!(
-        a7.contains(effective_history_claim),
-        "AUTHORIZATION.md §A7 must retain only effective binding mode epochs"
-    );
-    assert!(
-        external_group["binding_id"]["description"]
-            .as_str()
-            .expect("external binding replay is documented")
-            .contains(effective_history_claim),
-        "binding_id must point replay at the effective history §A7 defines"
-    );
-    let pending_retention_claim = "requested reconfiguration and its resynchronization outcome are retained for every decision recorded while it was pending";
-    assert!(
-        a7.contains(pending_retention_claim),
-        "AUTHORIZATION.md §A7 must retain pending reconfiguration evidence"
-    );
-    assert!(
-        read_repo_doc("docs/roadmap/v10/MILESTONES.md").contains(pending_retention_claim),
-        "the E2.4 exit gate must retain pending reconfiguration evidence"
-    );
     let mode_lists = fenced_lists_in(
         a7.split_once("Membership binding modes:")
             .expect("AUTHORIZATION.md §A7 labels its membership binding modes")
@@ -809,6 +788,50 @@ fn group_vocabularies_match_the_e2_4_registry() {
     assert_eq!(
         anchored_ids(&registry, "registry:group-source-kinds"),
         schema_values("source_kind")
+    );
+}
+
+#[test]
+fn group_retention_rules_match_the_e2_4_authority() {
+    let schema: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
+    ))
+    .expect("authorization decision schema is json");
+    let external_group = &schema["$defs"]["group"]["oneOf"]
+        .as_array()
+        .expect("group is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
+        .expect("group has an external membership branch")["properties"];
+    let authorization = read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md");
+    let a7 = annex_section(&authorization, "AUTHORIZATION.md", "## A7.");
+    let effective_history_claim = "complete effective mode history";
+    assert!(
+        a7.contains(effective_history_claim),
+        "AUTHORIZATION.md §A7 must retain only effective binding mode epochs"
+    );
+    assert!(
+        external_group["binding_id"]["description"]
+            .as_str()
+            .expect("external binding replay is documented")
+            .contains(effective_history_claim),
+        "binding_id must point replay at the effective history §A7 defines"
+    );
+    assert!(
+        a7.contains("superseded by any later reconfiguration"),
+        "AUTHORIZATION.md §A7 must stop superseded sweeps from creating epochs"
+    );
+
+    let pending_retention_claim = "requested reconfiguration, its request instant, and its resynchronization outcome and outcome instant are retained for every decision recorded while it was pending";
+    assert!(
+        a7.contains(pending_retention_claim),
+        "AUTHORIZATION.md §A7 must retain the pending-window endpoints"
+    );
+    let milestones = read_repo_doc("docs/roadmap/v10/MILESTONES.md");
+    let e2_4 = heading_section(&milestones, "MILESTONES.md", "### E2.4 ", "\n### ");
+    assert!(
+        e2_4.contains(pending_retention_claim),
+        "the E2.4 exit gate must retain the pending-window endpoints"
     );
 }
 
@@ -1011,11 +1034,21 @@ fn bot_attestation_family_has_one_documented_wrapper_mapping() {
 /// The annex section opened by `heading` (a `## …` line), up to the next
 /// `## ` heading or EOF. Loud when the heading is missing.
 fn annex_section<'doc>(doc: &'doc str, doc_name: &str, heading: &str) -> &'doc str {
+    heading_section(doc, doc_name, heading, "\n## ")
+}
+
+/// The section opened by `heading`, up to `next_heading` or EOF.
+fn heading_section<'doc>(
+    doc: &'doc str,
+    doc_name: &str,
+    heading: &str,
+    next_heading: &str,
+) -> &'doc str {
     let start = doc
         .find(heading)
         .unwrap_or_else(|| panic!("{doc_name} lost its `{heading}` section"));
     let body = &doc[start + heading.len()..];
-    match body.find("\n## ") {
+    match body.find(next_heading) {
         Some(end) => &body[..end],
         None => body,
     }
