@@ -719,32 +719,54 @@ fn group_vocabularies_match_the_e2_4_registry() {
     };
 
     let registered_modes = anchored_ids(&registry, "registry:group-binding-modes");
+    let authorization = read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md");
+    let a7 = annex_section(&authorization, "AUTHORIZATION.md", "## A7.");
+    let lists = fenced_lists_in(a7);
     assert_eq!(
-        registered_modes,
-        [
-            "authoritative_sync",
-            "additive_sync",
-            "suggestion_only",
-            "disabled",
-        ]
-        .into_iter()
-        .map(str::to_owned)
-        .collect()
+        lists.len(),
+        1,
+        "AUTHORIZATION.md §A7 must carry exactly one binding-mode list"
     );
+    let authority_modes: BTreeSet<_> = lists[0].iter().cloned().collect();
+    assert_eq!(
+        authority_modes.len(),
+        lists[0].len(),
+        "binding modes repeat"
+    );
+    assert!(!authority_modes.is_empty(), "binding modes are empty");
+    assert_eq!(registered_modes, authority_modes);
 
     let mode_rows =
         support::doc_scan::anchored_block(&registry, REGISTRY, "registry:group-binding-modes");
+    let header = mode_rows
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with('|'))
+        .expect("binding modes have a table header");
+    let header = header
+        .trim_matches('|')
+        .split('|')
+        .map(str::trim)
+        .collect::<Vec<_>>();
+    let confers_grant = header
+        .iter()
+        .position(|cell| *cell == "confers grant")
+        .expect("binding-mode table has a confers grant column");
     let mut grant_conferring_modes = BTreeSet::new();
     for line in mode_rows.lines().map(str::trim) {
         if !line.starts_with("| `") {
             continue;
         }
-        let cells = line.split('|').map(str::trim).collect::<Vec<_>>();
-        let mode = cells[1]
+        let cells = line
+            .trim_matches('|')
+            .split('|')
+            .map(str::trim)
+            .collect::<Vec<_>>();
+        let mode = cells[0]
             .strip_prefix('`')
             .and_then(|value| value.strip_suffix('`'))
             .expect("binding mode is backticked");
-        match cells.get(4).copied() {
+        match cells.get(confers_grant).copied() {
             Some("yes") => {
                 grant_conferring_modes.insert(mode.to_owned());
             }
