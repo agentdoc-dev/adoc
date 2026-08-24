@@ -836,16 +836,18 @@ fn group_retention_rules_match_the_e2_4_authority() {
         observation["source_event_id"]["description"]
             .as_str()
             .expect("membership source event is documented")
-            .contains("start and completion instants"),
-        "source_event_id must resolve to retained run endpoints"
+            .contains("current-state read and ingestion-commit instants"),
+        "source_event_id must resolve to retained event endpoints"
     );
-    let link_lifecycle_claim = "active at the decision evaluation time";
+    let link_lifecycle_claim = "continuously active from";
+    let link_endpoint_claim = "link and unlink instants";
+    let link_description = observation["external_identity_link_id"]["description"]
+        .as_str()
+        .expect("external identity link replay is documented");
     assert!(
-        observation["external_identity_link_id"]["description"]
-            .as_str()
-            .expect("external identity link replay is documented")
-            .contains(link_lifecycle_claim),
-        "membership observations must use a link active at evaluation"
+        link_description.contains(link_lifecycle_claim)
+            && link_description.contains(link_endpoint_claim),
+        "membership observations must retain and verify the link interval"
     );
 
     let same_source_claim = "A membership observation resolves against exactly one retained source event or synchronization run";
@@ -872,7 +874,7 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "only the epoch-opening sweep may carry a pre-epoch observation"
     );
 
-    let source_timing_claim = "each retained source event carrying its observed and ingestion-commit instants and each retained synchronization run carrying its start and completion instants";
+    let source_timing_claim = "each retained source event carrying its current-state read and ingestion-commit instants and each retained synchronization run carrying its start and completion instants";
     assert!(
         a7.contains(source_timing_claim),
         "AUTHORIZATION.md §A7 must retain the timing endpoints needed for replay"
@@ -906,8 +908,23 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "E2.4.T2 must reject routine sweeps that cross an epoch boundary"
     );
     assert!(
-        a7.contains(link_lifecycle_claim) && e2_4.contains(link_lifecycle_claim),
+        a7.contains(link_lifecycle_claim)
+            && a7.contains(link_endpoint_claim)
+            && e2_4.contains(link_lifecycle_claim)
+            && e2_4.contains(link_endpoint_claim),
         "A7 and E2.4 must reject observations from already-unlinked identities"
+    );
+    let oidc_claim = "freshly issued and verified ID token";
+    assert!(
+        a7.contains(oidc_claim)
+            && e2_4.contains(oidc_claim)
+            && support::doc_scan::anchored_block(
+                &registry(),
+                REGISTRY,
+                "registry:group-source-kinds"
+            )
+            .contains(oidc_claim),
+        "OIDC group membership must define claim-only freshness and recovery"
     );
 }
 

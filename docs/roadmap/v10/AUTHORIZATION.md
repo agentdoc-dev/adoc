@@ -154,7 +154,7 @@ Every action records both:
 - stable AgentDoc workspace principal;
 - exact external identity/session/workload used.
 
-Unlinking revokes future use but does not rewrite history. Shared/bot accounts map to service/workload/agent principals rather than human principals.
+The preserved identity-link lifecycle retains its link and unlink instants. Unlinking revokes future use but does not rewrite history, and a subsequent relink creates a new lifecycle record rather than clearing the prior unlink. Shared/bot accounts map to service/workload/agent principals rather than human principals.
 
 A delegated workload uses the provider identity linked to the effective workload or service principal for source ACL checks; its human or service delegator remains independently attributable through the delegation chain.
 
@@ -198,11 +198,13 @@ Roles/scoped grants attach to AgentDoc groups. Revocation from an authoritative 
 
 At authorization evaluation, an active manual membership is recorded with its stable membership identifier and creation time. Replay resolves that identifier against its preserved lifecycle record and verifies that the membership was created and not revoked at the decision evaluation time. Manual membership removal revokes future use and preserves the membership record so past decisions remain replayable. When both manual and external membership confer the same group grant, the evaluator records the independently durable manual provenance.
 
-External binding records, membership observations, and their source events or synchronization runs are retained for every decision that cites them, with each retained source event carrying its observed and ingestion-commit instants and each retained synchronization run carrying its start and completion instants, so those decisions remain replayable after the observed membership is revoked and after binding resync, reconfiguration, or disablement.
+External binding records, membership observations, and their source events or synchronization runs are retained for every decision that cites them, with each retained source event carrying its current-state read and ingestion-commit instants and each retained synchronization run carrying its start and completion instants, so those decisions remain replayable after the observed membership is revoked and after binding resync, reconfiguration, or disablement.
 
-A membership observation resolves against exactly one retained source event or synchronization run: its `observed_at` equals the current-state read instant retained with that event or falls within that run, and its `effective_at` equals that event's ingestion-commit instant or that run's completion instant. An event-driven positive observation is recorded only after its trigger causes a current-state source read confirming membership; a delayed or reordered positive event that current state no longer confirms records no positive observation.
+A membership observation resolves against exactly one retained source event or synchronization run: its `observed_at` equals the current-state read instant retained with that event or falls within that run, and its `effective_at` equals that event's ingestion-commit instant or that run's completion instant. The event ingestion transaction commits only after the successful read it prompted, so `observed_at` cannot follow `effective_at`. An event-driven positive observation is recorded only after its trigger causes a current-state source read confirming membership; a delayed or reordered positive event that current state no longer confirms records no positive observation.
 
-Every external membership observation resolves its `external_identity_link_id` against the preserved E2.3 link lifecycle, and that link must have been active at the decision evaluation time. Unlinking later preserves replay of an earlier decision but prevents the observation from conferring any future grant.
+For claim-only `oidc_group`, validation of a freshly issued and verified ID token at authentication is the current-state read, and the token issuance instant is `observed_at`; no out-of-band membership sweep exists. A grant-conferring reconfiguration opens the new epoch only after provider-configuration validation, carries forward no prior observations, and each principal regains membership only when a later authentication records a new positive observation in that epoch.
+
+Every external membership observation resolves its `external_identity_link_id` against the preserved E2.3 link lifecycle, which retains its link and unlink instants, and that link must have been continuously active from the observation's `observed_at` through the decision evaluation time. Unlinking later preserves replay of an earlier decision but prevents the observation from conferring any future grant, including after a subsequent relink.
 
 External binding records retain their complete effective mode history, so replay can resolve the mode epoch in effect at each decision's evaluation time. A requested reconfiguration becomes an epoch only when it takes effect; a pending or failed reconfiguration never appears in that history.
 

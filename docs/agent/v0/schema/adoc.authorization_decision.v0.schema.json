@@ -860,11 +860,11 @@
       "properties": {
         "id": { "$ref": "#/$defs/nonEmpty" },
         "external_identity_link_id": {
-          "description": "Verified E2.3 identity link through which the external source identity resolves to this workspace principal. Evaluation and replay resolve its preserved lifecycle and fail closed unless it was active at the decision evaluation time; an unlink after an earlier decision preserves that decision's replay but revokes future use.",
+          "description": "Verified E2.3 identity link through which the external source identity resolves to this workspace principal. Its preserved lifecycle retains the link and unlink instants. Evaluation and replay fail closed unless it was continuously active from observed_at through the decision evaluation time; an unlink after an earlier decision preserves that decision's replay but revokes future use, including after a subsequent relink.",
           "$ref": "#/$defs/nonEmpty"
         },
         "source_event_id": {
-          "description": "Immutable upstream connector event that prompted a current-state membership read, or synchronization run that carried this membership observation, retained so replay can re-derive the observation from source. A retained event carries the current-state read's observed instant and its ingestion-commit instant. A retained synchronization run carries its start and completion instants; a resynchronization sweep records one identifier for the run and cites it from every observation it produces.",
+          "description": "Immutable upstream connector event that prompted a current-state membership read, or synchronization run that carried this membership observation, retained so replay can re-derive the observation from source. A retained event carries its current-state read and ingestion-commit instants; the ingestion transaction commits only after the successful read it prompted. A retained synchronization run carries its start and completion instants; a resynchronization sweep records one identifier for the run and cites it from every observation it produces.",
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
