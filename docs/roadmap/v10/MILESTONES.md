@@ -275,14 +275,14 @@ Replaces owner-only workspace RLS with workspace-scoped principals, one authoriz
 **Tracer bullets:**
 1. `E2.4.T1` — AgentDoc-owned workspace group + manual membership + role/grant attachment; failing test (through the E2.2 conformance suite): role attached to a group authorizes a member, removal de-authorizes while preserving the membership lifecycle record so a decision recorded before removal still replays.
 2. `E2.4.T2` — External binding with exact modes `authoritative_sync` / `additive_sync` / `suggestion_only` / `disabled`; failing test: `suggestion_only` changes nothing without human action.
-3. `E2.4.T3` — Revocation propagation: failing fixture: external revocation under `authoritative_sync` removes derived membership; manual member survives only where group policy permits.
+3. `E2.4.T3` — Revocation propagation: failing fixture: external revocation under `authoritative_sync` removes derived membership while retaining the binding, membership observation, and source event so a decision recorded before revocation still replays; manual member survives only where group policy permits.
 4. `E2.4.T4` — Nested source group observation is inert (unsupported); failing test lands first.
 **Acceptance:**
 - Source team membership never directly implies an AgentDoc role — bindings supply membership observations only (exit gate).
 - `authoritative_sync` revocation removes derived membership (exit gate); `disabled` ignores observations entirely.
 - `suggestion_only` no-ops without human action; `additive_sync` never removes manual members.
 - Manual membership removal revokes future use while preserving the lifecycle record for historical replay (exit gate).
-- External membership observations and their source events remain retained for every decision that cites them after resync, reconfiguration, or disablement (exit gate).
+- External binding records, membership observations, and their source events remain retained for every decision that cites them after observed-membership revocation, resync, reconfiguration, or disablement (exit gate).
 - Adversarial fixture: crafted nested-group observation grants nothing.
 **Out of scope:** nested groups (needs a separate decision), SCIM group sync (P4), membership sources beyond the decided set (GitHub team, GitLab group, Slack user group, OIDC/SCIM group).
 

@@ -916,7 +916,10 @@
             "id": { "$ref": "#/$defs/nonEmpty" },
             "name": { "$ref": "#/$defs/nonEmpty" },
             "membership_source": { "const": "external" },
-            "binding_id": { "$ref": "#/$defs/nonEmpty" },
+            "binding_id": {
+              "description": "Stable identifier of the preserved external-binding record. Replay verifies binding_mode and binding_mode_effective_at against that record, which remains retained after reconfiguration or disablement.",
+              "$ref": "#/$defs/nonEmpty"
+            },
             "binding_mode": {
               "enum": ["authoritative_sync", "additive_sync"]
             },
