@@ -137,14 +137,6 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                 ) if !context_classes.is_empty()
                                     && !authorized_scope.is_empty() =>
                                 {
-                                    if !context_classes.iter().any(|class| {
-                                        class.requirement == adoc_core::ContextRequirement::Required
-                                    }) {
-                                        eprintln!(
-                                            "error[cli.semantic_context] --semantic-context-class must include at least one required class"
-                                        );
-                                        return 2;
-                                    }
                                     context_classes
                                         .sort_by(|left, right| left.class_id.cmp(&right.class_id));
                                     if context_classes
