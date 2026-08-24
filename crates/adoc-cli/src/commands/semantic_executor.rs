@@ -31,6 +31,7 @@ pub(crate) fn semantic_context(input: PathBuf, out: PathBuf) -> i32 {
 pub(crate) fn semantic_executor(
     request_path: PathBuf,
     assessment_path: PathBuf,
+    failure_code: Option<String>,
     receipt_path: PathBuf,
     validated_assessment_path: PathBuf,
 ) -> i32 {
@@ -48,6 +49,14 @@ pub(crate) fn semantic_executor(
         Ok(request) => request,
         Err(error) => return fail(&error.to_string()),
     };
+    if let Some(code) = failure_code {
+        return record_failure(
+            &request,
+            &code,
+            "semantic executor invocation failed before candidate validation",
+            &receipt_path,
+        );
+    }
     let assessment_bytes = match bounded_assessment(&assessment_path) {
         Ok(bytes) => bytes,
         Err(message) => {
