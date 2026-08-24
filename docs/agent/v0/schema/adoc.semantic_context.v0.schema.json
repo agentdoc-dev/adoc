@@ -72,11 +72,47 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": { "const": "knowledge_object" },
-                  "object_id": {
-                    "type": "string",
-                    "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$"
-                  },
+                  "object_id": { "$ref": "#/$defs/objectId" },
                   "semantic_hash": { "$ref": "#/$defs/sha256" }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "changed_source_id", "hunk_digest"],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": { "const": "diff_hunk" },
+                  "changed_source_id": { "$ref": "#/$defs/nonEmpty" },
+                  "hunk_digest": { "$ref": "#/$defs/sha256" }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "source_assertion_id", "source_record_id"],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": { "const": "source_assertion" },
+                  "source_assertion_id": { "$ref": "#/$defs/nonEmpty" },
+                  "source_record_id": { "$ref": "#/$defs/nonEmpty" }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "object_id"],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": { "const": "source_binding" },
+                  "object_id": { "$ref": "#/$defs/objectId" }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["kind", "object_id", "evidence_index"],
+                "additionalProperties": false,
+                "properties": {
+                  "kind": { "const": "evidence" },
+                  "object_id": { "$ref": "#/$defs/objectId" },
+                  "evidence_index": { "type": "integer", "minimum": 0 }
                 }
               }
             ]
@@ -90,6 +126,10 @@
   "$defs": {
     "nonEmpty": { "type": "string", "minLength": 1 },
     "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "objectId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$"
+    },
     "exactRevision": {
       "type": "object",
       "required": ["system", "value"],

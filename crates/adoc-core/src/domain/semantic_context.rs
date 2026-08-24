@@ -43,6 +43,21 @@ pub enum CitationHandle {
         object_id: String,
         semantic_hash: String,
     },
+    DiffHunk {
+        changed_source_id: String,
+        hunk_digest: String,
+    },
+    SourceAssertion {
+        source_assertion_id: String,
+        source_record_id: String,
+    },
+    SourceBinding {
+        object_id: String,
+    },
+    Evidence {
+        object_id: String,
+        evidence_index: u32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,6 +191,26 @@ pub fn build_semantic_context(
                     handle_id: item.handle_id.clone(),
                 })?;
                 require_digest("items[].handle.semantic_hash", semantic_hash)?;
+            }
+            CitationHandle::DiffHunk {
+                changed_source_id,
+                hunk_digest,
+            } => {
+                require_text("items[].handle.changed_source_id", changed_source_id)?;
+                require_digest("items[].handle.hunk_digest", hunk_digest)?;
+            }
+            CitationHandle::SourceAssertion {
+                source_assertion_id,
+                source_record_id,
+            } => {
+                require_text("items[].handle.source_assertion_id", source_assertion_id)?;
+                require_text("items[].handle.source_record_id", source_record_id)?;
+            }
+            CitationHandle::SourceBinding { object_id }
+            | CitationHandle::Evidence { object_id, .. } => {
+                ObjectId::new(object_id).map_err(|_| SemanticContextError::InvalidObjectId {
+                    handle_id: item.handle_id.clone(),
+                })?;
             }
         }
     }

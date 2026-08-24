@@ -1506,15 +1506,52 @@ fn semantic_context_schema_accepts_the_t1_envelope_and_rejects_unknown_fields() 
             "assessment_digest": digest,
             "knowledge_basis": { "kind": "graph_artifact", "digest": digest }
         },
-        "items": [{
-            "handle_id": "billing-ready",
-            "handle": {
-                "kind": "knowledge_object",
-                "object_id": "billing.ready",
-                "semantic_hash": digest
+        "items": [
+            {
+                "handle_id": "billing-ready",
+                "handle": {
+                    "kind": "knowledge_object",
+                    "object_id": "billing.ready",
+                    "semantic_hash": digest
+                },
+                "content": { "body": "Billing is ready." }
             },
-            "content": { "body": "Billing is ready." }
-        }],
+            {
+                "handle_id": "billing-diff",
+                "handle": {
+                    "kind": "diff_hunk",
+                    "changed_source_id": "docs/billing.adoc",
+                    "hunk_digest": digest
+                },
+                "content": "diff content"
+            },
+            {
+                "handle_id": "billing-assertion",
+                "handle": {
+                    "kind": "source_assertion",
+                    "source_assertion_id": "assertion-1",
+                    "source_record_id": "record-1"
+                },
+                "content": "assertion content"
+            },
+            {
+                "handle_id": "billing-binding",
+                "handle": {
+                    "kind": "source_binding",
+                    "object_id": "billing.ready"
+                },
+                "content": "binding content"
+            },
+            {
+                "handle_id": "billing-evidence",
+                "handle": {
+                    "kind": "evidence",
+                    "object_id": "billing.ready",
+                    "evidence_index": 0
+                },
+                "content": "evidence content"
+            }
+        ],
         "context_digest": digest
     });
     assert_valid("adoc.semantic_context.v0.schema.json", &instance);
