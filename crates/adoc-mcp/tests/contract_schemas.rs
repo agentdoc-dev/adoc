@@ -2603,6 +2603,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ("evaluation_time_invalid", &invalid_time),
         ("hard_deny", &hard_deny),
         ("source_acl_denied", &source_acl_denied),
+        ("source_acl_stale", &source_acl_stale),
+        ("source_acl_invalidated", &source_acl_invalidated),
         ("source_acl_unavailable", &insufficient),
         ("explicit_deny", &direct_deny),
     ] {
