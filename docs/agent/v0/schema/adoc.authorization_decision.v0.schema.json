@@ -36,7 +36,7 @@
     },
     "consequential": { "type": "boolean" },
     "hard_deny": {
-      "description": "System-level deny observed ahead of the source ACL ceiling. Unless identity_context_missing, identity_expired, or evaluation_time_invalid won earlier, true forces reason hard_deny and a deny result. Conversely, reason hard_deny requires hard_deny true and a null basis.",
+      "description": "System-level deny observed ahead of the source ACL ceiling. True always forbids a top-level allow; unless identity_context_missing, identity_expired, or evaluation_time_invalid won earlier, it also forces reason hard_deny and a deny result. Conversely, reason hard_deny requires hard_deny true and a null basis.",
       "type": "boolean"
     },
     "grants": {
@@ -104,7 +104,8 @@
       "if": {
         "properties": {
           "source_acl_ceiling": {
-            "required": ["current_authorization"]
+            "properties": { "required": { "const": true } },
+            "required": ["required"]
           }
         },
         "required": ["source_acl_ceiling"]
@@ -968,7 +969,7 @@
           "type": "boolean"
         },
         "invalidated_at": {
-          "description": "Set when a revocation observation invalidated this evidence. Presence forbids a top-level allow and is required by reason source_acl_invalidated; source_acl_ceiling.result may still preserve the provider verdict observed before invalidation. An observed invalidation remains definitive when the connector later becomes unavailable.",
+          "description": "Set when a revocation observation invalidated this evidence. Unless identity_context_missing, identity_expired, evaluation_time_invalid, or hard_deny already won, presence requires reason source_acl_invalidated; conversely that reason requires presence. Presence forbids a top-level allow; source_acl_ceiling.result may still preserve the provider verdict observed before invalidation. An observed invalidation remains definitive when the connector later becomes unavailable.",
           "$ref": "#/$defs/rfc3339Timestamp"
         }
       }

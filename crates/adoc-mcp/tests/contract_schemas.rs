@@ -1776,6 +1776,20 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "current ACL evidence with a decision resource missing {field} must be rejected"
         );
     }
+    for field in ["connector_id", "resource"] {
+        let mut unavailable_without_source_scope = insufficient.clone();
+        unavailable_without_source_scope["resource"]
+            .as_object_mut()
+            .expect("resource scope")
+            .remove(field);
+        assert!(
+            !schema_accepts(
+                "adoc.authorization_decision.v0.schema.json",
+                &unavailable_without_source_scope
+            ),
+            "required ACL outage with a decision resource missing {field} must be rejected"
+        );
+    }
 
     let mut allow_during_source_acl_outage = decision.clone();
     allow_during_source_acl_outage["source_acl_ceiling"]["current_authorization"]["connector_available"] =
