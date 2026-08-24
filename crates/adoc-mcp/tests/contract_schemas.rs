@@ -2200,6 +2200,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
     direct_deny["result"] = json!("deny");
     direct_deny["reason"] = json!("explicit_deny");
     direct_deny["basis"]["effect"] = json!("deny");
+    let mut explicit_deny_with_unresolved_membership = direct_deny.clone();
+    explicit_deny_with_unresolved_membership["grants"]
+        .as_array_mut()
+        .expect("grants array")
+        .push(external_group_grant["grants"][0].clone());
+    explicit_deny_with_unresolved_membership["membership_evidence"] = json!("insufficient_context");
 
     let mut direct_deny_without_expiry = direct_deny.clone();
     direct_deny_without_expiry["grants"][0]
@@ -2330,6 +2336,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
     });
     let mut source_acl_denied_with_basis = source_acl_denied.clone();
     source_acl_denied_with_basis["basis"] = decision["basis"].clone();
+    let mut hard_deny_with_unresolved_membership = hard_deny.clone();
+    hard_deny_with_unresolved_membership["grants"] = external_group_grant["grants"].clone();
+    hard_deny_with_unresolved_membership["membership_evidence"] = json!("insufficient_context");
+    let mut source_acl_denied_with_unresolved_membership = source_acl_denied.clone();
+    source_acl_denied_with_unresolved_membership["grants"] = external_group_grant["grants"].clone();
+    source_acl_denied_with_unresolved_membership["membership_evidence"] =
+        json!("insufficient_context");
     let mut false_source_acl_unavailable_reason = insufficient.clone();
     false_source_acl_unavailable_reason["source_acl_ceiling"] = json!({
         "required": false,
@@ -2763,6 +2776,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         ),
         ("time-bounded human direct deny", direct_deny, true),
         (
+            "explicit deny retains precedence over unresolved membership",
+            explicit_deny_with_unresolved_membership,
+            true,
+        ),
+        (
             "direct deny without expiry",
             direct_deny_without_expiry,
             false,
@@ -2941,8 +2959,18 @@ fn authorization_decision_schema_pins_replay_bindings() {
             true,
         ),
         (
+            "hard deny retains precedence over unresolved membership",
+            hard_deny_with_unresolved_membership,
+            true,
+        ),
+        (
             "source ACL denied reason matches input",
             source_acl_denied,
+            true,
+        ),
+        (
+            "source ACL deny retains precedence over unresolved membership",
+            source_acl_denied_with_unresolved_membership,
             true,
         ),
         (
