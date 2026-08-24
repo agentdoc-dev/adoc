@@ -203,7 +203,7 @@ pub struct SemanticContextExpectedBindings {
     pub assessment_digest: String,
     pub selection_algorithm: String,
     pub selection_version: String,
-    pub required_context_classes: Vec<String>,
+    pub context_classes: Vec<ContextClass>,
     pub authorized_scope: Vec<String>,
     pub capability_policy: CapabilityPolicy,
     pub graph_object_contexts: Vec<GraphObjectContextExpectation>,
@@ -219,7 +219,7 @@ pub struct SemanticContextValidationBasis {
     pub assessment_digest: String,
     pub selection_algorithm: String,
     pub selection_version: String,
-    pub required_context_classes: Vec<String>,
+    pub context_classes: Vec<ContextClass>,
     pub authorized_scope: Vec<String>,
     pub capability_policy: CapabilityPolicy,
     pub graph_artifact_digest: Option<String>,
@@ -812,25 +812,38 @@ pub fn validate_semantic_context(
             });
         }
     }
-    let expected_required: BTreeSet<_> = validation_basis
-        .required_context_classes
-        .iter()
-        .map(String::as_str)
-        .collect();
-    if expected_required.len() != validation_basis.required_context_classes.len() {
-        return Err(SemanticContextError::BasisMismatch {
-            message: "required context-class basis contains duplicates".to_string(),
-        });
+    let mut expected_classes = BTreeMap::new();
+    for class in &validation_basis.context_classes {
+        if !is_semantic_context_text(&class.class_id) || class.byte_budget == 0 {
+            return Err(SemanticContextError::BasisMismatch {
+                message: "context-class basis is invalid".to_string(),
+            });
+        }
+        if expected_classes
+            .insert(
+                class.class_id.as_str(),
+                (class.requirement, class.byte_budget),
+            )
+            .is_some()
+        {
+            return Err(SemanticContextError::BasisMismatch {
+                message: "context-class basis contains duplicates".to_string(),
+            });
+        }
     }
-    let actual_required: BTreeSet<_> = context
+    let actual_classes: BTreeMap<_, _> = context
         .context_classes
         .iter()
-        .filter(|class| class.requirement == ContextRequirement::Required)
-        .map(|class| class.class_id.as_str())
+        .map(|class| {
+            (
+                class.class_id.as_str(),
+                (class.requirement, class.byte_budget),
+            )
+        })
         .collect();
-    if actual_required != expected_required {
+    if actual_classes != expected_classes {
         return Err(SemanticContextError::BasisMismatch {
-            message: "required context classes differ".to_string(),
+            message: "context classes differ".to_string(),
         });
     }
     let expected_scope: BTreeSet<_> = validation_basis

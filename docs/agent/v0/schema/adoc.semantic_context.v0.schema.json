@@ -102,6 +102,7 @@
     },
     "context_classes": {
       "type": "array",
+      "description": "Complete class definitions. Validation compares every class ID, required/optional requirement, and byte budget with caller-supplied trusted expectations before accepting coverage or outcome.",
       "items": {
         "type": "object",
         "required": ["class_id", "requirement", "byte_budget"],

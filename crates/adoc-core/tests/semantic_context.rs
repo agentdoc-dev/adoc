@@ -90,7 +90,7 @@ fn validation_basis() -> SemanticContextValidationBasis {
         assessment_digest: ASSESSMENT_DIGEST.to_string(),
         selection_algorithm: "changed-only".to_string(),
         selection_version: "1".to_string(),
-        required_context_classes: vec!["changed_knowledge".to_string()],
+        context_classes: input(Vec::new()).context_classes,
         authorized_scope: vec!["repo:billing".to_string()],
         capability_policy: input(Vec::new()).capability_policy,
         graph_artifact_digest: Some(GRAPH_DIGEST.to_string()),
@@ -248,7 +248,7 @@ fn citation_bound_prompt_instructions_remain_inert_data() {
 }
 
 #[test]
-fn semantic_context_cannot_omit_the_trusted_required_class_set() {
+fn semantic_context_cannot_omit_the_trusted_context_class_set() {
     let mut empty = input(Vec::new());
     empty.context_classes.clear();
     let context = build_semantic_context(empty)
@@ -257,11 +257,25 @@ fn semantic_context_cannot_omit_the_trusted_required_class_set() {
         .expect("context serializes");
 
     let error = validate_semantic_context(context.as_bytes(), &validation_basis())
-        .expect_err("trusted required classes cannot be omitted");
+        .expect_err("trusted context classes cannot be omitted");
     assert_eq!(
         error.diagnostic_code(),
         DiagnosticCode::SemanticContextBasisMismatch
     );
+}
+
+#[test]
+fn semantic_context_cannot_raise_a_trusted_class_byte_budget() {
+    let mut producer_input = input(Vec::new());
+    producer_input.context_classes[0].byte_budget = 8192;
+    let context = build_semantic_context(producer_input)
+        .expect("context builds")
+        .to_canonical_json()
+        .expect("context serializes");
+
+    let error = validate_semantic_context(context.as_bytes(), &validation_basis())
+        .expect_err("producer-controlled byte budget rejected");
+    assert!(error.to_string().contains("context classes differ"));
 }
 
 #[test]
@@ -392,6 +406,11 @@ fn producer_cannot_downgrade_the_trusted_capability_policy() {
         .to_canonical_json()
         .expect("context serializes");
     let mut basis = validation_basis();
+    basis.context_classes.push(ContextClass {
+        class_id: "related_knowledge".to_string(),
+        requirement: ContextRequirement::Optional,
+        byte_budget: 1024,
+    });
     basis.capability_policy.rules = basis
         .capability_policy
         .rules
@@ -662,6 +681,7 @@ fn truncated_required_context_is_ineligible_for_no_change_required() {
     );
     let serialized = context.to_canonical_json().expect("serializes");
     let mut basis = validation_basis();
+    basis.context_classes[0].byte_budget = 1024;
     basis.citation_contents[0].truncated_content_digests = vec![semantic_context_content_digest(
         &json!({"body": "short excerpt"}),
     )];
@@ -896,7 +916,7 @@ fn graph_backed_context_rejects_unresolved_source_binding_coordinates() {
         assessment_digest: ASSESSMENT_DIGEST.to_string(),
         selection_algorithm: "changed-only".to_string(),
         selection_version: "1".to_string(),
-        required_context_classes: vec!["changed_knowledge".to_string()],
+        context_classes: input(Vec::new()).context_classes,
         authorized_scope: vec!["repo:billing".to_string()],
         capability_policy: input(Vec::new()).capability_policy,
         graph_artifact_digest: Some(GRAPH_DIGEST.to_string()),

@@ -2982,6 +2982,8 @@ const GOLDEN_RUNTIME_DIGEST: &str =
 const SEMANTIC_POLICY_JSON: &str = r#"{"version":"semantic-context-policy-v1","rules":[{"reason":"permission","outcome":"insufficient"},{"reason":"retention","outcome":"insufficient"},{"reason":"source_outage","outcome":"insufficient"},{"reason":"truncation","outcome":"insufficient"},{"reason":"resource_limit","outcome":"insufficient"}]}"#;
 const SEMANTIC_OBJECT_CONTEXT_JSON: &str =
     r#"{"object_id":"billing.ready","class_id":"changed_source","scope_ref":"repo:billing"}"#;
+const SEMANTIC_CONTEXT_CLASS_JSON: &str =
+    r#"{"class_id":"changed_source","requirement":"required","byte_budget":4096}"#;
 
 fn validation_runtime_path(relative: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -3150,8 +3152,8 @@ fn check_receipt_emits_the_semantic_context_golden_byte_for_byte() {
             "changed-only",
             "--semantic-selection-version",
             "1",
-            "--semantic-required-class",
-            "changed_source",
+            "--semantic-context-class",
+            SEMANTIC_CONTEXT_CLASS_JSON,
             "--semantic-authorized-scope",
             "repo:billing",
             "--semantic-object-context",
@@ -3218,7 +3220,7 @@ fn semantic_context_requires_complete_validation_basis() {
         "--semantic-assessment-digest",
         "--semantic-selection-algorithm",
         "--semantic-selection-version",
-        "--semantic-required-class",
+        "--semantic-context-class",
         "--semantic-authorized-scope",
         "--semantic-capability-policy",
     ] {
@@ -3227,7 +3229,7 @@ fn semantic_context_requires_complete_validation_basis() {
 }
 
 #[test]
-fn semantic_context_rejects_duplicate_required_class_flags() {
+fn semantic_context_rejects_duplicate_context_class_flags() {
     let output = adoc_command()
         .current_dir(validation_runtime_path("fixture"))
         .args([
@@ -3254,10 +3256,10 @@ fn semantic_context_rejects_duplicate_required_class_flags() {
             "changed-only",
             "--semantic-selection-version",
             "1",
-            "--semantic-required-class",
-            "changed_source",
-            "--semantic-required-class",
-            "changed_source",
+            "--semantic-context-class",
+            SEMANTIC_CONTEXT_CLASS_JSON,
+            "--semantic-context-class",
+            SEMANTIC_CONTEXT_CLASS_JSON,
             "--semantic-authorized-scope",
             "repo:billing",
             "--semantic-object-context",
@@ -3300,8 +3302,8 @@ fn semantic_context_rejects_duplicate_authorized_scope_flags() {
             "changed-only",
             "--semantic-selection-version",
             "1",
-            "--semantic-required-class",
-            "changed_source",
+            "--semantic-context-class",
+            SEMANTIC_CONTEXT_CLASS_JSON,
             "--semantic-authorized-scope",
             "repo:billing",
             "--semantic-authorized-scope",

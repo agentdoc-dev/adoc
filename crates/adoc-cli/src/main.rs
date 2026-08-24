@@ -83,7 +83,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                     semantic_assessment_digest,
                     semantic_selection_algorithm,
                     semantic_selection_version,
-                    semantic_required_class,
+                    semantic_context_class,
                     semantic_authorized_scope,
                     semantic_object_context,
                     semantic_capability_policy,
@@ -117,7 +117,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                 semantic_assessment_digest,
                                 semantic_selection_algorithm,
                                 semantic_selection_version,
-                                semantic_required_class,
+                                semantic_context_class,
                                 semantic_authorized_scope,
                                 semantic_object_context,
                                 semantic_capability_policy,
@@ -130,20 +130,24 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                     Some(assessment_digest),
                                     Some(selection_algorithm),
                                     Some(selection_version),
-                                    mut required_context_classes,
+                                    mut context_classes,
                                     mut authorized_scope,
                                     mut graph_object_contexts,
                                     Some(capability_policy),
-                                ) if !required_context_classes.is_empty()
+                                ) if !context_classes.is_empty()
+                                    && context_classes.iter().any(|class| {
+                                        class.requirement == adoc_core::ContextRequirement::Required
+                                    })
                                     && !authorized_scope.is_empty() =>
                                 {
-                                    required_context_classes.sort();
-                                    if required_context_classes
+                                    context_classes
+                                        .sort_by(|left, right| left.class_id.cmp(&right.class_id));
+                                    if context_classes
                                         .windows(2)
-                                        .any(|pair| pair[0] == pair[1])
+                                        .any(|pair| pair[0].class_id == pair[1].class_id)
                                     {
                                         eprintln!(
-                                            "error[cli.semantic_context] --semantic-required-class must not repeat a class ID"
+                                            "error[cli.semantic_context] --semantic-context-class must not repeat a class ID"
                                         );
                                         return 2;
                                     }
@@ -182,7 +186,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                         assessment_digest,
                                         selection_algorithm,
                                         selection_version,
-                                        required_context_classes,
+                                        context_classes,
                                         authorized_scope,
                                         capability_policy: *capability_policy,
                                         graph_object_contexts,
@@ -196,12 +200,13 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                     None,
                                     None,
                                     None,
-                                    required_context_classes,
+                                    context_classes,
                                     authorized_scope,
-                                    _graph_object_contexts,
+                                    graph_object_contexts,
                                     None,
-                                ) if required_context_classes.is_empty()
-                                    && authorized_scope.is_empty() =>
+                                ) if context_classes.is_empty()
+                                    && authorized_scope.is_empty()
+                                    && graph_object_contexts.is_empty() =>
                                 {
                                     None
                                 }
@@ -211,7 +216,7 @@ fn run(arguments: impl IntoIterator<Item = String>) -> i32 {
                                 // fail receipt that blames the context instead of the invocation.
                                 _ => {
                                     eprintln!(
-                                        "error[cli.semantic_context] --semantic-context requires all trusted revision, assessment, selection, required-class, authorized-scope, and capability-policy inputs; refusing to run with a partial validation basis"
+                                        "error[cli.semantic_context] --semantic-context requires all trusted revision, assessment, selection, context-class, authorized-scope, and capability-policy inputs, including at least one required context class; refusing to run with a partial validation basis"
                                     );
                                     return 2;
                                 }

@@ -487,7 +487,7 @@ fn semantic_validation_basis(
         assessment_digest: expectations.assessment_digest.clone(),
         selection_algorithm: expectations.selection_algorithm.clone(),
         selection_version: expectations.selection_version.clone(),
-        required_context_classes: expectations.required_context_classes.clone(),
+        context_classes: expectations.context_classes.clone(),
         authorized_scope: expectations.authorized_scope.clone(),
         capability_policy: expectations.capability_policy.clone(),
         graph_artifact_digest,
@@ -752,7 +752,11 @@ mod tests {
             assessment_digest: TEST_DIGEST.to_string(),
             selection_algorithm: "changed-only".to_string(),
             selection_version: "1".to_string(),
-            required_context_classes: vec!["changed_knowledge".to_string()],
+            context_classes: vec![crate::ContextClass {
+                class_id: "changed_knowledge".to_string(),
+                requirement: crate::ContextRequirement::Required,
+                byte_budget: 4096,
+            }],
             authorized_scope: vec!["repo:billing".to_string()],
             capability_policy: crate::CapabilityPolicy {
                 version: "semantic-context-policy-v1".to_string(),
