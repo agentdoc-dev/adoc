@@ -93,7 +93,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.source_binding.v0` | adoc | E1.1 | exact source placement binding, independent of the semantic hash; carried since E1.1.T2 as the `source_binding` member of `adoc.graph.v6` Knowledge Object nodes (schema `graph-artifact.v6.json`), governed by that envelope's version — registered as a standalone envelope when a surface emits it outside the graph artifact |
 | `adoc.sensitive_access.v0` | adoc | E6.3 | name held until a final registered successor (RT-08) |
 | `adoc.egress_policy.v0` | adoc | E6.6 | provenance RT-21: absent from the original V10 inventory |
-| `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record |
+| `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record; extended at E2.4 with AgentDoc group and external-binding provenance |
 | `adoc.work_request.v0` | adoc | E3.7 | versioned external work request with nonce/digest/expiry/workload identity |
 | `adoc.work_result.v0` | adoc | E3.7 | result binding with replay/idempotency state |
 | `adoc.migration_request.v0` | adoc | E7.1 | exact-revision standalone-to-Cloud migration request |
@@ -367,6 +367,49 @@ The immutable version-1 permission vocabulary implemented by E2.2. Policy evalua
 | `workspace.manage_members` | 1 | planned | E2.2 |
 | `workspace.read` | 1 | planned | E2.2 |
 <!-- /registry:permission-primitives -->
+
+## External group binding modes — planned, owner `cloud`
+
+The complete E2.4 external-binding state vocabulary from `AUTHORIZATION.md` §A7. Only rows marked `yes` can confer a grant and therefore appear in authorization-decision provenance.
+
+<!-- registry:group-binding-modes -->
+| mode | status | planned by | confers grant | meaning |
+| --- | --- | --- | --- | --- |
+| `authoritative_sync` | planned | E2.4 | yes | external membership is authoritative for the binding epoch |
+| `additive_sync` | planned | E2.4 | yes | external membership adds to manual membership for the binding epoch |
+| `suggestion_only` | planned | E2.4 | no | external membership is advisory and never grants authorization |
+| `disabled` | planned | E2.4 | no | the binding is inactive and never grants authorization |
+<!-- /registry:group-binding-modes -->
+
+## External group source kinds — planned, owner `cloud`
+
+The closed E2.4 `source_kind` vocabulary carried by an external AgentDoc-group membership in authorization provenance. The sibling `membership_source` discriminator (`manual` / `external`) is structural and governed by the `adoc.authorization_decision.v0` row. `MILESTONES.md` §E2.4 names the OIDC/SCIM category; the contract records its two protocol-specific values separately. `scim_group` is registered for provenance while SCIM sync remains deferred to P4, and a future enterprise-directory adapter requires a new registered value.
+
+<!-- registry:group-source-kinds -->
+| source kind | status | planned by | meaning |
+| --- | --- | --- | --- |
+| `github_team` | planned | E2.4 | GitHub team membership |
+| `gitlab_group` | planned | E2.4 | GitLab group membership |
+| `slack_user_group` | planned | E2.4 | Slack user-group membership |
+| `oidc_group` | planned | E2.4 | the source kind is claim-only in V1 and valid only for a human principal; group claim comes from a freshly issued and verified ID token, refreshes per principal at authentication with no out-of-band lookup or sweep, retains token issuance, validation/ingestion-commit, and session-expiry instants, requires the decision principal to identify that exact session, and confers no later than the cited identity session's expiry |
+| `scim_group` | planned | E2.4 | SCIM group membership |
+<!-- /registry:group-source-kinds -->
+
+## Group membership-unavailability states — planned, owner `cloud`
+
+The closed E2.4 state vocabulary retained when an authorization decision cannot establish a potentially grant-conferring membership input. Each state identifies an immutable record through `state_record_id`; source compatibility is schema-enforced.
+
+<!-- registry:group-membership-unavailability-states -->
+| state | status | planned by | compatible input | meaning |
+| --- | --- | --- | --- | --- |
+| `lifecycle_unavailable` | planned | E2.4 | manual membership | the manual-membership lifecycle read failed or remained unresolved |
+| `observation_expired` | planned | E2.4 | connector or OIDC external membership | the retained positive observation reached its effective freshness or identity-session deadline; OIDC evidence cites that observation's exact historical identity session on the unavailable entry |
+| `connector_read_failed` | planned | E2.4 | connector-read external membership | the retained current-state connector read failed |
+| `link_read_pending` | planned | E2.4 | connector-read external membership | the retained post-link or post-relink binding read is pending |
+| `link_read_failed` | planned | E2.4 | connector-read external membership | the retained post-link or post-relink binding read failed |
+| `epoch_observation_pending` | planned | E2.4 | connector-read external membership | a requested grant-conferring transition is awaiting its sweep while the prior effective mode epoch, including `suggestion_only` or `disabled`, remains in force |
+| `oidc_authentication_pending` | planned | E2.4 | claim-only OIDC external membership | a validated grant-conferring OIDC epoch is awaiting the principal's next authentication; the unavailable entry cites no session of its own |
+<!-- /registry:group-membership-unavailability-states -->
 
 ## Cloud codes — owner `cloud`
 

@@ -91,6 +91,9 @@ const ANCHORS: &[&str] = &[
     "registry:action-codes",
     "registry:gate-codes",
     "registry:permission-primitives",
+    "registry:group-binding-modes",
+    "registry:group-source-kinds",
+    "registry:group-membership-unavailability-states",
     "registry:cloud-codes",
     "registry:attestation-codes",
     "registry:dispositions",
@@ -689,6 +692,649 @@ fn permission_primitives_match_the_e2_2_registry() {
     assert_eq!(actual, schema_permissions);
 }
 
+#[test]
+fn membership_unavailability_precedence_classifies_every_reason() {
+    let schema: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
+    ))
+    .expect("authorization decision schema is json");
+    let precedence =
+        schema["allOf"]
+            .as_array()
+            .expect("authorization decision allOf")
+            .iter()
+            .find(|branch| {
+                branch["if"]["properties"]["membership_evidence"]["const"] == "insufficient_context"
+                    && branch["if"]["properties"]["reason"]["not"]["enum"].is_array()
+            })
+            .expect("unavailable membership reason-precedence branch")["if"]["properties"]["reason"]
+            ["not"]["enum"]
+            .as_array()
+            .expect("precedence reasons are an enum")
+            .iter()
+            .map(|reason| reason.as_str().expect("reason is a string").to_owned())
+            .collect::<BTreeSet<_>>();
+    let downstream = [
+        "membership_evidence_unavailable",
+        "no_grant",
+        "visibility_denied",
+        "visibility_unavailable",
+        "action_policy_denied",
+        "action_policy_unavailable",
+        "allowed",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect::<BTreeSet<_>>();
+    let reasons = schema["properties"]["reason"]["enum"]
+        .as_array()
+        .expect("decision reasons are an enum")
+        .iter()
+        .map(|reason| reason.as_str().expect("reason is a string").to_owned())
+        .collect::<BTreeSet<_>>();
+
+    assert!(
+        precedence.is_disjoint(&downstream),
+        "a reason cannot sit on both sides of the scoped-grants stage"
+    );
+    assert_eq!(
+        precedence
+            .union(&downstream)
+            .cloned()
+            .collect::<BTreeSet<_>>(),
+        reasons,
+        "every reason must be classified relative to the scoped-grants stage"
+    );
+}
+
+#[test]
+fn group_vocabularies_match_the_e2_4_registry() {
+    let registry = registry();
+    let schema: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
+    ))
+    .expect("authorization decision schema is json");
+    let external_group = &schema["$defs"]["group"]["oneOf"]
+        .as_array()
+        .expect("group is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
+        .expect("group has an external membership branch")["properties"];
+    let external_absence = &schema["$defs"]["membershipAbsenceEvidence"]["oneOf"]
+        .as_array()
+        .expect("membership absence evidence is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
+        .expect("membership absence evidence has an external branch")["properties"];
+    let schema_values = |name: &str| {
+        schema["$defs"][name]["enum"]
+            .as_array()
+            .unwrap_or_else(|| panic!("shared {name} is an enum"))
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .unwrap_or_else(|| panic!("external group {name} values are strings"))
+                    .to_owned()
+            })
+            .collect::<BTreeSet<_>>()
+    };
+
+    let registered_modes = anchored_ids(&registry, "registry:group-binding-modes");
+    let authorization = read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md");
+    let a7 = annex_section(&authorization, "AUTHORIZATION.md", "## A7.");
+    let mode_lists = fenced_lists_in(
+        a7.split_once("Membership binding modes:")
+            .expect("AUTHORIZATION.md §A7 labels its membership binding modes")
+            .1,
+    );
+    assert_eq!(
+        mode_lists.len(),
+        1,
+        "AUTHORIZATION.md §A7 must carry exactly one fenced list after its \
+         `Membership binding modes:` lead-in, found {}",
+        mode_lists.len()
+    );
+    let mode_list = &mode_lists[0];
+    let authority_modes: BTreeSet<_> = mode_list.iter().cloned().collect();
+    assert_eq!(
+        authority_modes.len(),
+        mode_list.len(),
+        "binding modes repeat"
+    );
+    assert!(!authority_modes.is_empty(), "binding modes are empty");
+    assert_eq!(
+        registered_modes, authority_modes,
+        "every §A7 binding mode needs a `registry:group-binding-modes` row, and vice versa"
+    );
+
+    let mode_rows =
+        support::doc_scan::anchored_block(&registry, REGISTRY, "registry:group-binding-modes");
+    let header = mode_rows
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with('|'))
+        .expect("binding modes have a table header");
+    let header = header
+        .trim_matches('|')
+        .split('|')
+        .map(str::trim)
+        .collect::<Vec<_>>();
+    let confers_grant = header
+        .iter()
+        .position(|cell| *cell == "confers grant")
+        .expect("binding-mode table has a confers grant column");
+    let mut grant_conferring_modes = BTreeSet::new();
+    for line in mode_rows.lines().map(str::trim) {
+        if !line.starts_with("| `") {
+            continue;
+        }
+        let cells = line
+            .trim_matches('|')
+            .split('|')
+            .map(str::trim)
+            .collect::<Vec<_>>();
+        let mode = cells[0]
+            .strip_prefix('`')
+            .and_then(|value| value.strip_suffix('`'))
+            .expect("binding mode is backticked");
+        match cells.get(confers_grant).copied() {
+            Some("yes") => {
+                grant_conferring_modes.insert(mode.to_owned());
+            }
+            Some("no") => {}
+            value => panic!("binding mode {mode:?} has invalid confers-grant value {value:?}"),
+        }
+    }
+    for properties in [external_group, external_absence] {
+        assert_eq!(properties["binding_mode"]["$ref"], "#/$defs/bindingMode");
+        assert_eq!(properties["source_kind"]["$ref"], "#/$defs/sourceKind");
+    }
+    assert_eq!(grant_conferring_modes, schema_values("bindingMode"));
+    assert_eq!(registered_modes, schema_values("bindingModeAtEvaluation"));
+    assert_eq!(
+        anchored_ids(&registry, "registry:group-source-kinds"),
+        schema_values("sourceKind")
+    );
+    assert_eq!(
+        anchored_ids(&registry, "registry:group-membership-unavailability-states"),
+        schema_values("membershipUnavailabilityState")
+    );
+}
+
+#[test]
+fn group_retention_rules_match_the_e2_4_authority() {
+    let schema: serde_json::Value = serde_json::from_str(&read_repo_doc(
+        "docs/agent/v0/schema/adoc.authorization_decision.v0.schema.json",
+    ))
+    .expect("authorization decision schema is json");
+    let external_group = schema["$defs"]["group"]["oneOf"]
+        .as_array()
+        .expect("group is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
+        .expect("group has an external membership branch");
+    let external_group_properties = &external_group["properties"];
+    let manual_group = schema["$defs"]["group"]["oneOf"]
+        .as_array()
+        .expect("group is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "manual")
+        .expect("group has a manual membership branch");
+    let authorization = read_repo_doc("docs/roadmap/v10/AUTHORIZATION.md");
+    let a7 = annex_section(&authorization, "AUTHORIZATION.md", "## A7.");
+    let effective_history_claim = "complete effective mode history";
+    assert!(
+        a7.contains(effective_history_claim),
+        "AUTHORIZATION.md §A7 must retain only effective binding mode epochs"
+    );
+    assert!(
+        external_group_properties["binding_id"]["description"]
+            .as_str()
+            .expect("external binding replay is documented")
+            .contains(effective_history_claim),
+        "binding_id must point replay at the effective history §A7 defines"
+    );
+    assert!(
+        a7.contains("superseded by any later reconfiguration"),
+        "AUTHORIZATION.md §A7 must stop superseded sweeps from creating epochs"
+    );
+
+    let observation = &schema["$defs"]["membershipObservation"]["properties"];
+    let observation_required = schema["$defs"]["membershipObservation"]["required"]
+        .as_array()
+        .expect("membership observation required fields");
+    assert!(
+        observation_required
+            .iter()
+            .any(|field| field == "fresh_until"),
+        "external membership observations must carry a freshness deadline"
+    );
+    let fresh_until = observation["fresh_until"]["description"]
+        .as_str()
+        .expect("membership freshness deadline is documented");
+    assert!(
+        fresh_until.contains("versioned freshness policy retained by the exact binding")
+            && fresh_until
+                .contains("requires fresh_until to equal the historical-version recomputation")
+            && fresh_until.contains("shorter of retained fresh_until")
+            && fresh_until
+                .contains("shortened policy therefore caps existing observations immediately")
+            && fresh_until.contains("connector unavailability cannot extend")
+            && fresh_until.contains("uncapped observation")
+            && fresh_until.contains("born inert")
+            && fresh_until.contains("observation_expired"),
+        "membership freshness must be binding-owned, tightening-aware, bounded, and fail closed"
+    );
+    let freshness_history_claim = "complete effective membership-freshness policy history";
+    let scheduled_refresh_claim =
+        "completes each run before the deadline of the observations it replaces";
+    let distinct_policy_claim =
+        "membership-freshness policy is distinct from the connector source-ACL policy";
+    let failed_reenable_claim = "failed re-enable remains non-granting";
+    let membership_unavailable_claim = "`no_grant` remains reserved for a confirmed absence";
+    let group_name_history_claim =
+        "complete effective group-name history, each version recording its effective instant";
+    let membership_absence_claim =
+        "`no_grant` with `current` retains `membership_absence_evidence`";
+    let membership_unavailability_claim =
+        "`insufficient_context` status retains `membership_unavailability_evidence`";
+    let unavailability = &schema["properties"]["membership_unavailability_evidence"];
+    assert_eq!(unavailability["minItems"], 1);
+    assert_eq!(
+        unavailability["items"]["$ref"],
+        "#/$defs/membershipUnavailabilityEvidence"
+    );
+    let unavailable_external = schema["$defs"]["membershipUnavailabilityEvidence"]["oneOf"]
+        .as_array()
+        .expect("membership unavailability evidence is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
+        .expect("membership unavailability evidence has an external branch");
+    let unavailable_manual = schema["$defs"]["membershipUnavailabilityEvidence"]["oneOf"]
+        .as_array()
+        .expect("membership unavailability evidence is a oneOf")
+        .iter()
+        .find(|branch| branch["properties"]["membership_source"]["const"] == "manual")
+        .expect("membership unavailability evidence has a manual branch");
+    assert_eq!(
+        unavailable_external["properties"]["binding_mode"]["$ref"],
+        "#/$defs/bindingModeAtEvaluation"
+    );
+    assert!(unavailable_manual["properties"]["group_name"].is_object());
+    for field in [
+        "group_id",
+        "binding_id",
+        "binding_mode",
+        "binding_mode_effective_at",
+        "source_kind",
+        "external_identity_link_id",
+        "state",
+        "state_record_id",
+    ] {
+        assert!(
+            unavailable_external["required"]
+                .as_array()
+                .expect("external unavailability required fields")
+                .iter()
+                .any(|required| required == field),
+            "external unavailability must retain {field}"
+        );
+    }
+    let effective_at = observation["effective_at"]["description"]
+        .as_str()
+        .expect("membership effective time is documented");
+    assert!(
+        effective_at.contains("must equal")
+            && effective_at.contains("identified by source_event_id"),
+        "membership effective_at must belong to its cited event or run"
+    );
+    assert!(
+        observation["source_event_id"]["description"]
+            .as_str()
+            .expect("membership source event is documented")
+            .contains("current-state read and ingestion-commit instants"),
+        "source_event_id must resolve to retained event endpoints"
+    );
+    let link_lifecycle_claim = "continuously active from";
+    let link_endpoint_claim = "link and unlink instants";
+    let link_description = observation["external_identity_link_id"]["description"]
+        .as_str()
+        .expect("external identity link replay is documented");
+    assert!(
+        link_description.contains(link_lifecycle_claim)
+            && link_description.contains(link_endpoint_claim),
+        "membership observations must retain and verify the link interval"
+    );
+    let link_principal_claim = "link belongs to the authorization envelope principal";
+    assert!(
+        link_description.contains(link_principal_claim) && a7.contains(link_principal_claim),
+        "membership observations must reject another principal's identity link"
+    );
+    let observation_binding_claim = "observation's retained binding";
+    let observation_group_claim = "retained binding's AgentDoc group";
+    let observation_link_claim =
+        "observation's retained identity link equals the enclosing identity-link identifier";
+    assert!(
+        observation["id"]["description"]
+            .as_str()
+            .expect("membership observation replay binding is documented")
+            .contains(observation_binding_claim)
+            && observation["id"]["description"]
+                .as_str()
+                .expect("membership observation replay group is documented")
+                .contains(observation_group_claim)
+            && a7.contains(observation_binding_claim)
+            && a7.contains(observation_group_claim),
+        "membership replay must reject observation substitution across bindings or groups"
+    );
+    assert!(
+        observation["id"]["description"]
+            .as_str()
+            .expect("membership observation identity-link binding is documented")
+            .contains(observation_link_claim)
+            && a7.contains(observation_link_claim),
+        "membership replay must reject observation substitution across principals"
+    );
+    let source_kind_binding_claim = "source kind recorded on the retained binding";
+    assert!(
+        schema["$defs"]["sourceKind"]["description"]
+            .as_str()
+            .expect("external source-kind replay is documented")
+            .contains(source_kind_binding_claim)
+            && a7.contains(source_kind_binding_claim),
+        "membership replay must reject source-kind substitution"
+    );
+    let manual_membership_binding_claim = "authorization envelope principal and enclosing group id";
+    assert!(
+        manual_group["properties"]["membership_id"]["description"]
+            .as_str()
+            .expect("manual membership replay binding is documented")
+            .contains(manual_membership_binding_claim)
+            && a7.contains(manual_membership_binding_claim),
+        "manual membership replay must reject principal or group substitution"
+    );
+
+    let same_source_claim = "A connector membership observation resolves against exactly one retained source event or synchronization run";
+    assert!(
+        a7.contains(same_source_claim),
+        "AUTHORIZATION.md §A7 must bind both observation times to one source record"
+    );
+    let source_record_binding_claim = "source record belongs to the observation's retained binding";
+    let source_subject_claim =
+        "membership subject resolves through the observation's retained external identity link";
+    let source_event_description = observation["source_event_id"]["description"]
+        .as_str()
+        .expect("membership source-record replay binding is documented");
+    assert!(
+        source_event_description.contains(source_record_binding_claim)
+            && source_event_description.contains(source_subject_claim)
+            && a7.contains(source_record_binding_claim)
+            && a7.contains(source_subject_claim),
+        "membership replay must bind source evidence to the binding and observed principal"
+    );
+    let event_polarity_claim = "polarity only triggers";
+    let positive_absence_claim =
+        "positive event whose read confirms absence records a negative observation";
+    assert!(
+        observation["observed_at"]["description"]
+            .as_str()
+            .expect("membership observation time is documented")
+            .contains(event_polarity_claim)
+            && observation["observed_at"]["description"]
+                .as_str()
+                .expect("membership observation polarity is documented")
+                .contains(positive_absence_claim)
+            && a7.contains(event_polarity_claim)
+            && a7.contains(positive_absence_claim),
+        "current-state reads, not event polarity, must determine membership observations"
+    );
+    let removal_membership_claim =
+        "removal event whose read still shows membership records a positive observation";
+    let removal_cap_schema_claim =
+        "fresh_until is capped at the deadline of the latest prior positive observation";
+    let removal_cap_doc_claim =
+        "`fresh_until` is capped at the deadline of the latest prior positive observation";
+    let no_prior_cap_claim = "no prior positive observation exists";
+    let born_inert_claim = "born inert";
+    let contradiction_claim = "contradiction is retained and operator-visible";
+    let resync_bound_claim = "next scheduled resynchronization bounds revocation propagation";
+    assert!(
+        observation["observed_at"]["description"]
+            .as_str()
+            .expect("membership observation time is documented")
+            .contains(removal_membership_claim)
+            && observation["observed_at"]["description"]
+                .as_str()
+                .expect("removal-event freshness cap is documented")
+                .contains(removal_cap_schema_claim)
+            && observation["fresh_until"]["description"]
+                .as_str()
+                .expect("freshness cap is documented")
+                .contains(removal_cap_schema_claim)
+            && observation["fresh_until"]["description"]
+                .as_str()
+                .expect("no-prior cap behavior is documented")
+                .contains(no_prior_cap_claim)
+            && observation["fresh_until"]["description"]
+                .as_str()
+                .expect("capped expiry behavior is documented")
+                .contains(born_inert_claim)
+            && observation["observed_at"]["description"]
+                .as_str()
+                .expect("event contradiction retention is documented")
+                .contains(contradiction_claim)
+            && observation["observed_at"]["description"]
+                .as_str()
+                .expect("revocation propagation bound is documented")
+                .contains(resync_bound_claim)
+            && a7.contains(removal_membership_claim)
+            && a7.contains(removal_cap_doc_claim)
+            && a7.contains(no_prior_cap_claim)
+            && a7.contains(born_inert_claim)
+            && a7.contains(contradiction_claim)
+            && a7.contains(resync_bound_claim),
+        "contradicted removals must remain replayable, visible, and propagation-bounded"
+    );
+    let transition_latitude_claim = "transition sweep that opened the epoch";
+    assert!(
+        external_group["description"]
+            .as_str()
+            .expect("external membership epoch rules are documented")
+            .contains(transition_latitude_claim)
+            && a7.contains(transition_latitude_claim),
+        "only the epoch-opening sweep may carry a pre-epoch observation"
+    );
+
+    let source_timing_claim = "each retained connector source event carrying its current-state read and ingestion-commit instants and each retained synchronization run carrying its start and completion instants";
+    assert!(
+        a7.contains(source_timing_claim),
+        "AUTHORIZATION.md §A7 must retain the timing endpoints needed for replay"
+    );
+
+    let pending_retention_claim = "requested reconfiguration, its request instant, and its resynchronization outcome and outcome instant are retained for every decision recorded while it was pending";
+    assert!(
+        a7.contains(pending_retention_claim),
+        "AUTHORIZATION.md §A7 must retain the pending-window endpoints"
+    );
+    let milestones = read_repo_doc("docs/roadmap/v10/MILESTONES.md");
+    let e2_4 = heading_section(&milestones, "MILESTONES.md", "### E2.4 ", "\n### ");
+    assert!(
+        e2_4.contains(pending_retention_claim),
+        "the E2.4 exit gate must retain the pending-window endpoints"
+    );
+    assert!(
+        e2_4.contains(source_timing_claim),
+        "the E2.4 exit gate must retain source timing endpoints"
+    );
+    assert!(
+        e2_4.contains(event_polarity_claim)
+            && e2_4.contains(positive_absence_claim)
+            && e2_4.contains(removal_membership_claim)
+            && e2_4.contains(removal_cap_doc_claim)
+            && e2_4.contains(no_prior_cap_claim)
+            && e2_4.contains(born_inert_claim)
+            && e2_4.contains(contradiction_claim)
+            && e2_4.contains(resync_bound_claim),
+        "the E2.4 exit gate must make current state authoritative and bound contradictions"
+    );
+    for state in schema["$defs"]["membershipUnavailabilityState"]["enum"]
+        .as_array()
+        .expect("membership-unavailability states are an enum")
+    {
+        let state = state
+            .as_str()
+            .expect("membership-unavailability states are strings");
+        let token = format!("`{state}`");
+        assert!(
+            a7.contains(&token) && e2_4.contains(&token),
+            "A7 and E2.4 must define registered unavailability state {state:?}"
+        );
+    }
+    let empty_absence_claim = "necessary but not sufficient condition for an empty array";
+    assert!(
+        schema["properties"]["membership_absence_evidence"]["description"]
+            .as_str()
+            .expect("membership absence completeness is documented")
+            .contains(empty_absence_claim)
+            && a7.contains(empty_absence_claim)
+            && e2_4.contains(empty_absence_claim),
+        "group presence must not erase a different group's confirmed absence"
+    );
+    let oidc_epoch_claim = "Claim-only `oidc_group` instead opens a grant-conferring epoch after provider-configuration validation";
+    assert!(
+        a7.contains(oidc_epoch_claim) && e2_4.contains(oidc_epoch_claim),
+        "claim-only OIDC must not wait for an impossible resynchronization"
+    );
+    for (surface_name, surface) in [("AUTHORIZATION.md §A7", a7), ("MILESTONES.md E2.4", e2_4)] {
+        for claim in [
+            "versioned freshness policy retained by the exact binding",
+            "requires `fresh_until` to equal that recomputation",
+            "shorter of retained `fresh_until`",
+            "shorter policy caps existing observations immediately",
+            "connector unavailability cannot extend",
+            "effective deadline must follow `effective_at`",
+            freshness_history_claim,
+            scheduled_refresh_claim,
+            distinct_policy_claim,
+            failed_reenable_claim,
+            membership_unavailable_claim,
+            group_name_history_claim,
+            membership_absence_claim,
+            membership_unavailability_claim,
+        ] {
+            assert!(
+                surface.contains(claim),
+                "{surface_name} must define membership retention and replay: {claim}"
+            );
+        }
+    }
+    assert!(
+        e2_4.contains(source_kind_binding_claim),
+        "E2.4.T2 must reject a source kind that differs from the retained binding"
+    );
+    assert!(
+        e2_4.contains(observation_link_claim)
+            && e2_4.contains(source_record_binding_claim)
+            && e2_4.contains(source_subject_claim),
+        "E2.4.T2 must reject observation or source-record substitution"
+    );
+    assert!(
+        e2_4.contains(manual_membership_binding_claim),
+        "E2.4.T1 must reject a manual membership from another principal or group"
+    );
+    assert!(
+        e2_4.contains("does not equal the commit or completion instant of the event or run identified by that same"),
+        "E2.4.T2 must reject an observation made effective by a different event or run"
+    );
+    assert!(
+        e2_4.contains(transition_latitude_claim),
+        "E2.4.T2 must reject routine sweeps that cross an epoch boundary"
+    );
+    assert!(
+        a7.contains(link_lifecycle_claim)
+            && a7.contains(link_endpoint_claim)
+            && e2_4.contains(link_lifecycle_claim)
+            && e2_4.contains(link_endpoint_claim)
+            && e2_4.contains(link_principal_claim),
+        "A7 and E2.4 must reject wrong-principal and inactive identity links"
+    );
+    let oidc_claim = "freshly issued and verified ID token";
+    let oidc_timing_claim =
+        "token issuance, validation/ingestion-commit, and session-expiry instants";
+    let oidc_lifetime_claim = "no later than the cited identity session's expiry";
+    let oidc_session_binding_claim = "must equal the identity session retained by";
+    let oidc_human_claim = "source kind is claim-only in V1 and valid only for a human principal";
+    let relink_recovery_claim = "Linking or relinking an external identity completes the link and records a pending current-state membership read for that principal against every grant-conferring binding of the linked source kind";
+    let relink_outcome_claim =
+        "each binding read and its outcome are recorded and operator-visible";
+    let relink_retry_claim = "failed read is surfaced with an explicit operator retry";
+    let relink_retention_claim = "request instant and outcome instant are retained for every decision recorded while it was pending";
+    let oidc_recovery_claim = "Claim-only `oidc_group` instead recovers at the next authentication";
+    let registry_doc = registry();
+    let registry_group_sources =
+        support::doc_scan::anchored_block(&registry_doc, REGISTRY, "registry:group-source-kinds");
+    assert!(
+        a7.contains(oidc_claim)
+            && e2_4.contains(oidc_claim)
+            && registry_group_sources.contains(oidc_claim),
+        "OIDC group membership must define claim-only freshness and recovery"
+    );
+    assert!(
+        observation["source_event_id"]["description"]
+            .as_str()
+            .expect("membership source provenance is documented")
+            .contains(oidc_timing_claim)
+            && observation["observed_at"]["description"]
+                .as_str()
+                .expect("membership observation time is documented")
+                .contains("token issuance instant")
+            && effective_at.contains("validation/ingestion-commit instant")
+            && a7.contains(oidc_timing_claim),
+        "claim-only OIDC must map issuance, validation, commit, and expiry to retained provenance"
+    );
+    assert!(
+        effective_at.contains(oidc_lifetime_claim)
+            && a7.contains(oidc_lifetime_claim)
+            && e2_4.contains(oidc_lifetime_claim)
+            && registry_group_sources.contains(oidc_lifetime_claim),
+        "claim-only OIDC membership must not outlive its exact identity session"
+    );
+    assert!(
+        schema["$defs"]["principal"]["properties"]["identity_session_id"]["description"]
+            .as_str()
+            .expect("principal identity-session replay is documented")
+            .contains(oidc_session_binding_claim)
+            && effective_at.contains(oidc_session_binding_claim)
+            && a7.contains(oidc_session_binding_claim)
+            && e2_4.contains(oidc_session_binding_claim),
+        "claim-only OIDC must bind the observation to the evaluated identity session"
+    );
+    assert!(
+        schema["$defs"]["principal"]["properties"]["identity_session_id"]["description"]
+            .as_str()
+            .expect("principal identity-session ownership is documented")
+            .contains(oidc_human_claim)
+            && a7.contains(oidc_human_claim)
+            && e2_4.contains(oidc_human_claim)
+            && registry_group_sources.contains(oidc_human_claim),
+        "claim-only OIDC group membership must be human-session-only"
+    );
+    assert!(
+        a7.contains(relink_recovery_claim)
+            && e2_4.contains(relink_recovery_claim)
+            && a7.contains(oidc_recovery_claim)
+            && e2_4.contains(oidc_recovery_claim)
+            && a7.contains(relink_outcome_claim)
+            && e2_4.contains(relink_outcome_claim)
+            && a7.contains(relink_retry_claim)
+            && e2_4.contains(relink_retry_claim)
+            && a7.contains(relink_retention_claim)
+            && e2_4.contains(relink_retention_claim),
+        "relink recovery must refresh event-driven memberships without treating OIDC as a connector"
+    );
+}
+
 /// Backticked codes cited by the executable planning surface, one
 /// `(document, line, code)` per citation. Covers `gate.*`/`action.*`/
 /// `workspace.*` codes and envelope ids; `attestation.*` siblings are
@@ -888,19 +1534,28 @@ fn bot_attestation_family_has_one_documented_wrapper_mapping() {
 /// The annex section opened by `heading` (a `## …` line), up to the next
 /// `## ` heading or EOF. Loud when the heading is missing.
 fn annex_section<'doc>(doc: &'doc str, doc_name: &str, heading: &str) -> &'doc str {
+    heading_section(doc, doc_name, heading, "\n## ")
+}
+
+/// The section opened by `heading`, up to `next_heading` or EOF.
+fn heading_section<'doc>(
+    doc: &'doc str,
+    doc_name: &str,
+    heading: &str,
+    next_heading: &str,
+) -> &'doc str {
     let start = doc
         .find(heading)
         .unwrap_or_else(|| panic!("{doc_name} lost its `{heading}` section"));
     let body = &doc[start + heading.len()..];
-    match body.find("\n## ") {
+    match body.find(next_heading) {
         Some(end) => &body[..end],
         None => body,
     }
 }
 
-/// The fenced blocks inside one annex section, in document order, each as
-/// its non-empty trimmed lines. A simple open/close toggle is enough here:
-/// the K9 lists are bare ``` blocks with one term per line.
+/// Fenced blocks inside an annex section or labeled fragment, in document
+/// order, each as its non-empty trimmed lines. Handles bare and tagged fences.
 fn fenced_lists_in(section: &str) -> Vec<Vec<String>> {
     let mut blocks = Vec::new();
     let mut current: Option<Vec<String>> = None;

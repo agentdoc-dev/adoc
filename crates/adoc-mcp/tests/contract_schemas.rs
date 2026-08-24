@@ -1761,6 +1761,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "scope": role_scope.clone(),
             "role": { "id": "builtin:curator", "version": 1 }
         }],
+        "membership_evidence": "not_applicable",
         "source_acl_ceiling": {
             "required": true,
             "result": "allow",
@@ -1809,6 +1810,150 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut expiring_role = decision.clone();
     expiring_role["grants"][0]["expires_at"] = json!("2026-08-24T12:00:00Z");
 
+    let external_group = json!({
+        "id": "group-1",
+        "name": "Curators",
+        "membership_source": "external",
+        "binding_id": "github-team-binding-1",
+        "binding_mode": "authoritative_sync",
+        "source_kind": "github_team",
+        "binding_mode_effective_at": "2026-08-23T10:00:00Z",
+        "membership_observation": {
+            "id": "membership-observation-1",
+            "external_identity_link_id": "external-identity-link-1",
+            "source_event_id": "github-team-event-1",
+            "observed_at": "2026-08-23T11:00:00Z",
+            "effective_at": "2026-08-23T11:00:30Z",
+            "fresh_until": "2026-08-23T12:05:00Z",
+            "member_present": true,
+            "nested": false
+        }
+    });
+    let mut external_group_grant = decision.clone();
+    external_group_grant["membership_evidence"] = json!("current");
+    external_group_grant["grants"][0]["group"] = external_group.clone();
+    external_group_grant["basis"]["group"] = external_group;
+
+    let manual_group = json!({
+        "id": "group-2",
+        "name": "Incident responders",
+        "membership_source": "manual",
+        "membership_id": "manual-membership-1",
+        "membership_created_at": "2026-08-23T10:00:00Z"
+    });
+    let mut manual_group_grant = decision.clone();
+    manual_group_grant["membership_evidence"] = json!("current");
+    manual_group_grant["grants"][0]["group"] = manual_group.clone();
+    manual_group_grant["basis"]["group"] = manual_group;
+
+    let mut manual_group_direct_grant = decision.clone();
+    manual_group_direct_grant["membership_evidence"] = json!("current");
+    manual_group_direct_grant["principal"]["type"] = json!("service");
+    manual_group_direct_grant["grants"][0] = json!({
+        "grant_id": "group-scoped-grant-1",
+        "source": "direct_grant",
+        "effect": "allow",
+        "permission": "proposal.approve",
+        "scope": { "workspace_id": "workspace-1" },
+        "expires_at": "2026-08-24T12:00:00Z",
+        "group": manual_group_grant["grants"][0]["group"].clone()
+    });
+    manual_group_direct_grant["basis"] = json!({
+        "grant_id": "group-scoped-grant-1",
+        "source": "direct_grant",
+        "effect": "allow",
+        "scope_match": { "workspace_id": "workspace-1" },
+        "group": manual_group_grant["basis"]["group"].clone()
+    });
+
+    let mut external_group_without_binding = external_group_grant.clone();
+    external_group_without_binding["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("binding_id");
+    let mut external_basis_without_mode = external_group_grant.clone();
+    external_basis_without_mode["basis"]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("binding_mode");
+    let mut external_group_without_source_kind = external_group_grant.clone();
+    external_group_without_source_kind["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("source_kind");
+    let mut external_group_without_observation = external_group_grant.clone();
+    external_group_without_observation["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("membership_observation");
+    let mut external_group_without_mode_effectivity = external_group_grant.clone();
+    external_group_without_mode_effectivity["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("binding_mode_effective_at");
+    let mut absent_membership_observation = external_group_grant.clone();
+    absent_membership_observation["grants"][0]["group"]["membership_observation"]["member_present"] =
+        json!(false);
+    let mut nested_membership_observation = external_group_grant.clone();
+    nested_membership_observation["grants"][0]["group"]["membership_observation"]["nested"] =
+        json!(true);
+    let mut invalid_external_observed_at = external_group_grant.clone();
+    invalid_external_observed_at["grants"][0]["group"]["membership_observation"]["observed_at"] =
+        json!("not-a-time");
+    let mut external_group_without_effective_at = external_group_grant.clone();
+    external_group_without_effective_at["grants"][0]["group"]["membership_observation"]
+        .as_object_mut()
+        .expect("membership observation")
+        .remove("effective_at");
+    let mut invalid_external_effective_at = external_group_grant.clone();
+    invalid_external_effective_at["grants"][0]["group"]["membership_observation"]["effective_at"] =
+        json!("not-a-time");
+    let mut external_group_without_fresh_until = external_group_grant.clone();
+    external_group_without_fresh_until["grants"][0]["group"]["membership_observation"]
+        .as_object_mut()
+        .expect("membership observation")
+        .remove("fresh_until");
+    let mut invalid_external_fresh_until = external_group_grant.clone();
+    invalid_external_fresh_until["grants"][0]["group"]["membership_observation"]["fresh_until"] =
+        json!("not-a-time");
+    let mut multiline_group_name = manual_group_grant.clone();
+    multiline_group_name["grants"][0]["group"]["name"] = json!("Curators\nadmin");
+    let mut suggestion_group_grant = external_group_grant.clone();
+    suggestion_group_grant["grants"][0]["group"]["binding_mode"] = json!("suggestion_only");
+    let mut disabled_group_basis = external_group_grant.clone();
+    disabled_group_basis["basis"]["group"]["binding_mode"] = json!("disabled");
+    let mut unknown_group_source = external_group_grant.clone();
+    unknown_group_source["grants"][0]["group"]["source_kind"] = json!("custom_directory");
+    let mut manual_group_with_binding = manual_group_grant.clone();
+    manual_group_with_binding["grants"][0]["group"]["binding_id"] = json!("github-team-binding-1");
+    let mut manual_group_without_membership_created_at = manual_group_grant.clone();
+    manual_group_without_membership_created_at["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("membership_created_at");
+    let mut manual_group_without_membership_id = manual_group_grant.clone();
+    manual_group_without_membership_id["grants"][0]["group"]
+        .as_object_mut()
+        .expect("group object")
+        .remove("membership_id");
+    let mut manual_group_with_external_observation = manual_group_grant.clone();
+    manual_group_with_external_observation["grants"][0]["group"]["membership_observation"] =
+        external_group_grant["grants"][0]["group"]["membership_observation"].clone();
+    let mut external_group_with_manual_membership_time = external_group_grant.clone();
+    external_group_with_manual_membership_time["grants"][0]["group"]["membership_created_at"] =
+        json!("2026-08-23T10:00:00Z");
+    let mut basis_group_without_group_grant = decision.clone();
+    basis_group_without_group_grant["basis"]["group"] =
+        manual_group_grant["basis"]["group"].clone();
+    let mut group_with_not_applicable_membership_evidence = external_group_grant.clone();
+    group_with_not_applicable_membership_evidence["membership_evidence"] = json!("not_applicable");
+
+    let mut decision_without_membership_evidence = decision.clone();
+    decision_without_membership_evidence
+        .as_object_mut()
+        .expect("decision object")
+        .remove("membership_evidence");
+
     let mut no_acl_ceiling = decision.clone();
     no_acl_ceiling["source_acl_ceiling"] = json!({
         "required": false,
@@ -1831,6 +1976,163 @@ fn authorization_decision_schema_pins_replay_bindings() {
     denied["result"] = json!("deny");
     denied["reason"] = json!("no_grant");
     denied["basis"] = json!(null);
+    let external_absence = json!({
+        "group_id": "group-1",
+        "group_name": "Curators",
+        "membership_source": "external",
+        "binding_id": "github-team-binding-1",
+        "binding_mode": "authoritative_sync",
+        "source_kind": "github_team",
+        "binding_mode_effective_at": "2026-08-23T10:00:00Z",
+        "membership_observation": {
+            "id": "membership-observation-absent-1",
+            "external_identity_link_id": "external-identity-link-1",
+            "source_event_id": "github-team-event-absent-1",
+            "observed_at": "2026-08-23T11:00:00Z",
+            "effective_at": "2026-08-23T11:00:30Z",
+            "fresh_until": "2026-08-23T12:05:00Z",
+            "member_present": false,
+            "nested": false
+        }
+    });
+    let mut no_grant_with_external_absence = denied.clone();
+    no_grant_with_external_absence["membership_evidence"] = json!("current");
+    no_grant_with_external_absence["membership_absence_evidence"] = json!([external_absence]);
+    let mut no_grant_with_manual_absence = denied.clone();
+    no_grant_with_manual_absence["membership_evidence"] = json!("current");
+    no_grant_with_manual_absence["membership_absence_evidence"] = json!([{
+        "group_id": "group-2",
+        "group_name": "Incident responders",
+        "membership_source": "manual"
+    }]);
+    let no_grant_without_absence_evidence = {
+        let mut instance = no_grant_with_external_absence.clone();
+        instance
+            .as_object_mut()
+            .expect("decision object")
+            .remove("membership_absence_evidence");
+        instance
+    };
+    let mut no_grant_with_positive_absence_observation = no_grant_with_external_absence.clone();
+    no_grant_with_positive_absence_observation["membership_absence_evidence"][0]["membership_observation"]
+        ["member_present"] = json!(true);
+    let mut no_grant_not_applicable_with_absence = no_grant_with_external_absence.clone();
+    no_grant_not_applicable_with_absence["membership_evidence"] = json!("not_applicable");
+    let mut no_grant_with_group_but_no_absence = denied.clone();
+    no_grant_with_group_but_no_absence["grants"] = external_group_grant["grants"].clone();
+    no_grant_with_group_but_no_absence["grants"][0]["permission"] = json!("workspace.read");
+    no_grant_with_group_but_no_absence["membership_evidence"] = json!("current");
+    no_grant_with_group_but_no_absence["membership_absence_evidence"] = json!([]);
+    let mut no_grant_with_no_membership_facts = denied.clone();
+    no_grant_with_no_membership_facts["membership_evidence"] = json!("current");
+    no_grant_with_no_membership_facts["membership_absence_evidence"] = json!([]);
+    let external_unavailability_evidence = json!([{
+        "group_id": "group-1",
+        "group_name": "Curators",
+        "membership_source": "external",
+        "binding_id": "github-team-binding-1",
+        "binding_mode": "authoritative_sync",
+        "binding_mode_effective_at": "2026-08-23T10:00:00Z",
+        "source_kind": "github_team",
+        "external_identity_link_id": "external-identity-link-1",
+        "state": "connector_read_failed",
+        "state_record_id": "membership-read-failure-1"
+    }]);
+    let mut membership_evidence_unavailable = denied.clone();
+    membership_evidence_unavailable["consequential"] = json!(true);
+    membership_evidence_unavailable["result"] = json!("insufficient_context");
+    membership_evidence_unavailable["reason"] = json!("membership_evidence_unavailable");
+    membership_evidence_unavailable["membership_evidence"] = json!("insufficient_context");
+    membership_evidence_unavailable["membership_unavailability_evidence"] =
+        external_unavailability_evidence.clone();
+    let mut manual_membership_evidence_unavailable = membership_evidence_unavailable.clone();
+    manual_membership_evidence_unavailable["membership_unavailability_evidence"] = json!([{
+        "group_id": "group-2",
+        "group_name": "Incident responders",
+        "membership_source": "manual",
+        "state": "lifecycle_unavailable",
+        "state_record_id": "manual-membership-read-failure-1"
+    }]);
+    let mut membership_evidence_unavailable_without_provenance =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_provenance
+        .as_object_mut()
+        .expect("decision object")
+        .remove("membership_unavailability_evidence");
+    let mut membership_evidence_unavailable_with_empty_provenance =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_with_empty_provenance["membership_unavailability_evidence"] =
+        json!([]);
+    let mut resolved_membership_with_unavailability = decision.clone();
+    resolved_membership_with_unavailability["membership_unavailability_evidence"] =
+        external_unavailability_evidence.clone();
+    let mut membership_evidence_unavailable_without_state_record =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_state_record["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("unavailability evidence object")
+        .remove("state_record_id");
+    let mut membership_evidence_unavailable_without_group_name =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_group_name["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("unavailability evidence object")
+        .remove("group_name");
+    let mut membership_evidence_unavailable_without_binding_mode =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_binding_mode["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("unavailability evidence object")
+        .remove("binding_mode");
+    let mut membership_evidence_unavailable_without_binding_epoch =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_binding_epoch["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("unavailability evidence object")
+        .remove("binding_mode_effective_at");
+    let mut manual_unavailability_without_group_name =
+        manual_membership_evidence_unavailable.clone();
+    manual_unavailability_without_group_name["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("manual unavailability evidence object")
+        .remove("group_name");
+    let mut unavailable_membership_from_disabled_binding = membership_evidence_unavailable.clone();
+    unavailable_membership_from_disabled_binding["membership_unavailability_evidence"][0]["binding_mode"] =
+        json!("disabled");
+    let mut membership_evidence_unavailable_with_unknown_state =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_with_unknown_state["membership_unavailability_evidence"][0]["state"] =
+        json!("silent_retry");
+    let mut mixed_group_membership_evidence_unavailable = membership_evidence_unavailable.clone();
+    mixed_group_membership_evidence_unavailable["grants"] = external_group_grant["grants"].clone();
+    mixed_group_membership_evidence_unavailable["grants"][0]["permission"] =
+        json!("workspace.read");
+    let mut nonconsequential_membership_evidence_unavailable =
+        membership_evidence_unavailable.clone();
+    nonconsequential_membership_evidence_unavailable["consequential"] = json!(false);
+    nonconsequential_membership_evidence_unavailable["result"] = json!("deny");
+    let mut membership_evidence_unavailable_with_basis = membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_with_basis["basis"] = decision["basis"].clone();
+    let mut consequential_membership_evidence_unavailable_with_deny =
+        membership_evidence_unavailable.clone();
+    consequential_membership_evidence_unavailable_with_deny["result"] = json!("deny");
+    let mut nonconsequential_membership_evidence_unavailable_with_insufficient =
+        nonconsequential_membership_evidence_unavailable.clone();
+    nonconsequential_membership_evidence_unavailable_with_insufficient["result"] =
+        json!("insufficient_context");
+    let mut membership_evidence_unavailable_without_input = membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_without_input
+        .as_object_mut()
+        .expect("decision object")
+        .remove("membership_evidence");
+    let mut membership_evidence_unavailable_with_current_input =
+        membership_evidence_unavailable.clone();
+    membership_evidence_unavailable_with_current_input["membership_evidence"] = json!("current");
+    let mut no_grant_with_unavailable_membership_evidence = denied.clone();
+    no_grant_with_unavailable_membership_evidence["membership_evidence"] =
+        json!("insufficient_context");
+    no_grant_with_unavailable_membership_evidence["membership_unavailability_evidence"] =
+        external_unavailability_evidence.clone();
 
     let mut insufficient = decision.clone();
     insufficient["source_acl_ceiling"] = json!({
@@ -2100,7 +2402,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
     direct_deny["result"] = json!("deny");
     direct_deny["reason"] = json!("explicit_deny");
     direct_deny["basis"]["effect"] = json!("deny");
-
     let mut direct_deny_without_expiry = direct_deny.clone();
     direct_deny_without_expiry["grants"][0]
         .as_object_mut()
@@ -2246,6 +2547,13 @@ fn authorization_decision_schema_pins_replay_bindings() {
     visibility_denied["visibility"] = json!("deny");
     visibility_denied["result"] = json!("deny");
     visibility_denied["reason"] = json!("visibility_denied");
+    let mut unresolved_membership_at_visibility_gate = external_group_grant.clone();
+    unresolved_membership_at_visibility_gate["membership_evidence"] = json!("insufficient_context");
+    unresolved_membership_at_visibility_gate["membership_unavailability_evidence"] =
+        external_unavailability_evidence.clone();
+    unresolved_membership_at_visibility_gate["visibility"] = json!("deny");
+    unresolved_membership_at_visibility_gate["result"] = json!("deny");
+    unresolved_membership_at_visibility_gate["reason"] = json!("visibility_denied");
     let mut false_visibility_denied_reason = visibility_denied.clone();
     false_visibility_denied_reason["visibility"] = json!("allow");
     let mut visibility_denied_without_basis = visibility_denied.clone();
@@ -2417,6 +2725,67 @@ fn authorization_decision_schema_pins_replay_bindings() {
     invalid_time_with_denied_source_acl["result"] = json!("insufficient_context");
     invalid_time_with_denied_source_acl["reason"] = json!("evaluation_time_invalid");
 
+    for (reason, base) in [
+        ("identity_context_missing", &identity_context_missing),
+        ("identity_expired", &identity_expired),
+        ("evaluation_time_invalid", &invalid_time),
+        ("hard_deny", &hard_deny),
+        ("source_acl_denied", &source_acl_denied),
+        ("source_acl_stale", &source_acl_stale),
+        ("source_acl_invalidated", &source_acl_invalidated),
+        ("source_acl_unavailable", &insufficient),
+        ("explicit_deny", &direct_deny),
+    ] {
+        let mut unresolved = base.clone();
+        if reason == "explicit_deny" {
+            unresolved["grants"]
+                .as_array_mut()
+                .expect("grants array")
+                .push(external_group_grant["grants"][0].clone());
+        } else {
+            unresolved["grants"] = external_group_grant["grants"].clone();
+        }
+        unresolved["membership_evidence"] = json!("insufficient_context");
+        unresolved["membership_unavailability_evidence"] = external_unavailability_evidence.clone();
+        assert!(
+            schema_accepts("adoc.authorization_decision.v0.schema.json", &unresolved),
+            "reason {reason:?} must retain precedence over unresolved membership"
+        );
+    }
+    let mut invalid_time_unresolved_without_group_name = invalid_time.clone();
+    invalid_time_unresolved_without_group_name["grants"] = external_group_grant["grants"].clone();
+    invalid_time_unresolved_without_group_name["membership_evidence"] =
+        json!("insufficient_context");
+    invalid_time_unresolved_without_group_name["membership_unavailability_evidence"] =
+        external_unavailability_evidence.clone();
+    invalid_time_unresolved_without_group_name["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("invalid-time unavailability evidence")
+        .remove("group_name");
+    assert!(
+        schema_accepts(
+            "adoc.authorization_decision.v0.schema.json",
+            &invalid_time_unresolved_without_group_name
+        ),
+        "an invalid evaluation time cannot require an evaluation-time group name"
+    );
+    let mut invalid_time_manual_without_group_name = invalid_time.clone();
+    invalid_time_manual_without_group_name["grants"] = external_group_grant["grants"].clone();
+    invalid_time_manual_without_group_name["membership_evidence"] = json!("insufficient_context");
+    invalid_time_manual_without_group_name["membership_unavailability_evidence"] =
+        manual_membership_evidence_unavailable["membership_unavailability_evidence"].clone();
+    invalid_time_manual_without_group_name["membership_unavailability_evidence"][0]
+        .as_object_mut()
+        .expect("invalid-time manual unavailability evidence")
+        .remove("group_name");
+    assert!(
+        schema_accepts(
+            "adoc.authorization_decision.v0.schema.json",
+            &invalid_time_manual_without_group_name
+        ),
+        "an invalid evaluation time cannot require a manual evaluation-time group name"
+    );
+
     let mut allow_with_empty_evaluation_time = decision.clone();
     allow_with_empty_evaluation_time["evaluation_time"] = json!("");
     let mut allow_with_blank_evaluation_time = decision.clone();
@@ -2430,6 +2799,163 @@ fn authorization_decision_schema_pins_replay_bindings() {
     direct_with_zoneless_expiry["grants"][0]["expires_at"] = json!("2026-08-24T12:00:00");
     let mut direct_with_rfc3339_edge_expiry = direct_human.clone();
     direct_with_rfc3339_edge_expiry["grants"][0]["expires_at"] = json!("2026-12-31t23:59:60z");
+
+    let authorization_schema = schema("adoc.authorization_decision.v0.schema.json");
+    let observed_at_description = authorization_schema["$defs"]["membershipObservation"]
+        ["properties"]["observed_at"]["description"]
+        .as_str()
+        .expect("membership observation time is documented");
+    assert!(
+        observed_at_description.contains("source read time")
+            && observed_at_description.contains("sweep start"),
+        "membership freshness must use the source read time or a conservative bound"
+    );
+    let binding_modes = authorization_schema["$defs"]["bindingMode"]["enum"]
+        .as_array()
+        .expect("shared bindingMode is an enum");
+    let source_kinds = authorization_schema["$defs"]["sourceKind"]["enum"]
+        .as_array()
+        .expect("shared sourceKind is an enum");
+    let unavailability_states =
+        authorization_schema["$defs"]["membershipUnavailabilityState"]["enum"]
+            .as_array()
+            .expect("membershipUnavailabilityState is an enum");
+    let mut nonhuman_identity_session = decision.clone();
+    nonhuman_identity_session["principal"]["type"] = json!("service");
+    nonhuman_identity_session["principal"]["identity_session_id"] = json!("identity-session-1");
+
+    let mut oidc_basis_without_session = external_group_grant.clone();
+    oidc_basis_without_session["basis"]["group"]["source_kind"] = json!("oidc_group");
+    let mut oidc_absence_without_session = no_grant_with_external_absence.clone();
+    oidc_absence_without_session["membership_absence_evidence"][0]["source_kind"] =
+        json!("oidc_group");
+    let mut oidc_absence_with_session = oidc_absence_without_session.clone();
+    oidc_absence_with_session["principal"]["identity_session_id"] = json!("identity-session-1");
+
+    for state in unavailability_states {
+        let state = state.as_str().expect("unavailability states are strings");
+        let mut instance = if state == "lifecycle_unavailable" {
+            manual_membership_evidence_unavailable.clone()
+        } else {
+            membership_evidence_unavailable.clone()
+        };
+        instance["membership_unavailability_evidence"][0]["state"] = json!(state);
+        if state == "oidc_authentication_pending" {
+            instance["membership_unavailability_evidence"][0]["source_kind"] = json!("oidc_group");
+        } else if state == "epoch_observation_pending" {
+            instance["membership_unavailability_evidence"][0]["binding_mode"] = json!("disabled");
+        }
+        assert!(
+            schema_accepts("adoc.authorization_decision.v0.schema.json", &instance),
+            "registered membership-unavailability state {state:?} must have a valid fixture"
+        );
+    }
+
+    let mut oidc_expired_without_session = membership_evidence_unavailable.clone();
+    oidc_expired_without_session["membership_unavailability_evidence"][0]["source_kind"] =
+        json!("oidc_group");
+    oidc_expired_without_session["membership_unavailability_evidence"][0]["state"] =
+        json!("observation_expired");
+    assert!(!schema_accepts(
+        "adoc.authorization_decision.v0.schema.json",
+        &oidc_expired_without_session
+    ));
+    let mut oidc_expired_with_session = oidc_expired_without_session.clone();
+    oidc_expired_with_session["membership_unavailability_evidence"][0]["identity_session_id"] =
+        json!("identity-session-expired-1");
+    assert!(schema_accepts(
+        "adoc.authorization_decision.v0.schema.json",
+        &oidc_expired_with_session
+    ));
+    let mut oidc_expired_with_evaluation_session_only = oidc_expired_without_session.clone();
+    oidc_expired_with_evaluation_session_only["principal"]["identity_session_id"] =
+        json!("identity-session-current-1");
+    assert!(!schema_accepts(
+        "adoc.authorization_decision.v0.schema.json",
+        &oidc_expired_with_evaluation_session_only
+    ));
+    let mut nonhuman_oidc_pending = membership_evidence_unavailable.clone();
+    nonhuman_oidc_pending["principal"]["type"] = json!("service");
+    nonhuman_oidc_pending["membership_unavailability_evidence"][0]["source_kind"] =
+        json!("oidc_group");
+    nonhuman_oidc_pending["membership_unavailability_evidence"][0]["state"] =
+        json!("oidc_authentication_pending");
+    assert!(!schema_accepts(
+        "adoc.authorization_decision.v0.schema.json",
+        &nonhuman_oidc_pending
+    ));
+    let mut oidc_pending_with_entry_session = membership_evidence_unavailable.clone();
+    oidc_pending_with_entry_session["membership_unavailability_evidence"][0]["source_kind"] =
+        json!("oidc_group");
+    oidc_pending_with_entry_session["membership_unavailability_evidence"][0]["state"] =
+        json!("oidc_authentication_pending");
+    oidc_pending_with_entry_session["membership_unavailability_evidence"][0]["identity_session_id"] =
+        json!("identity-session-1");
+    assert!(!schema_accepts(
+        "adoc.authorization_decision.v0.schema.json",
+        &oidc_pending_with_entry_session
+    ));
+    let mut mixed_oidc_pending = mixed_group_membership_evidence_unavailable.clone();
+    mixed_oidc_pending["grants"][0]["group"]["source_kind"] = json!("oidc_group");
+    mixed_oidc_pending["principal"]["identity_session_id"] = json!("identity-session-1");
+    mixed_oidc_pending["membership_unavailability_evidence"][0]["source_kind"] =
+        json!("oidc_group");
+    mixed_oidc_pending["membership_unavailability_evidence"][0]["state"] =
+        json!("oidc_authentication_pending");
+    assert!(
+        schema_accepts(
+            "adoc.authorization_decision.v0.schema.json",
+            &mixed_oidc_pending
+        ),
+        "pending OIDC input may coexist with a sibling OIDC grant that requires the envelope session"
+    );
+    for (source_kind, state) in [
+        ("github_team", "oidc_authentication_pending"),
+        ("oidc_group", "connector_read_failed"),
+    ] {
+        let mut impossible = membership_evidence_unavailable.clone();
+        impossible["membership_unavailability_evidence"][0]["source_kind"] = json!(source_kind);
+        impossible["membership_unavailability_evidence"][0]["state"] = json!(state);
+        assert!(
+            !schema_accepts("adoc.authorization_decision.v0.schema.json", &impossible),
+            "source {source_kind:?} cannot recover through state {state:?}"
+        );
+    }
+
+    for mode in binding_modes {
+        let mode = mode.as_str().expect("binding modes are strings");
+        for source_kind in source_kinds {
+            let source_kind = source_kind.as_str().expect("source kinds are strings");
+            let mut instance = external_group_grant.clone();
+            instance["grants"][0]["group"]["binding_mode"] = json!(mode);
+            instance["grants"][0]["group"]["source_kind"] = json!(source_kind);
+            instance["basis"]["group"] = instance["grants"][0]["group"].clone();
+            if source_kind == "oidc_group" {
+                assert!(
+                    !schema_accepts("adoc.authorization_decision.v0.schema.json", &instance),
+                    "claim-only OIDC must identify the exact evaluated identity session"
+                );
+                instance["principal"]["identity_session_id"] = json!("identity-session-1");
+                let mut service_instance = instance.clone();
+                service_instance["principal"]["type"] = json!("service");
+                service_instance["principal"]
+                    .as_object_mut()
+                    .expect("principal is an object")
+                    .remove("identity_session_id");
+                assert!(
+                    !schema_accepts(
+                        "adoc.authorization_decision.v0.schema.json",
+                        &service_instance
+                    ),
+                    "claim-only OIDC must identify an identity session"
+                );
+            }
+            assert!(
+                schema_accepts("adoc.authorization_decision.v0.schema.json", &instance),
+                "external group mode {mode:?} and source {source_kind:?} must be valid"
+            );
+        }
+    }
 
     for (name, instance, expected_valid) in [
         ("role assignment allow", decision.clone(), true),
@@ -2583,6 +3109,16 @@ fn authorization_decision_schema_pins_replay_bindings() {
             service_direct_without_reason,
             true,
         ),
+        (
+            "nonhuman principal with identity session",
+            nonhuman_identity_session,
+            false,
+        ),
+        (
+            "OIDC winning basis without identity session",
+            oidc_basis_without_session,
+            false,
+        ),
         ("time-bounded human direct deny", direct_deny, true),
         (
             "direct deny without expiry",
@@ -2595,9 +3131,161 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         ("expiring role assignment", expiring_role, true),
+        ("external group role assignment", external_group_grant, true),
+        ("manual group role assignment", manual_group_grant, true),
+        ("manual group direct grant", manual_group_direct_grant, true),
+        (
+            "external group without binding",
+            external_group_without_binding,
+            false,
+        ),
+        (
+            "external group basis without binding mode",
+            external_basis_without_mode,
+            false,
+        ),
+        (
+            "external group without source kind",
+            external_group_without_source_kind,
+            false,
+        ),
+        (
+            "external group without membership observation",
+            external_group_without_observation,
+            false,
+        ),
+        (
+            "external group without binding mode effectivity",
+            external_group_without_mode_effectivity,
+            false,
+        ),
+        (
+            "absent external membership cannot confer a grant",
+            absent_membership_observation,
+            false,
+        ),
+        (
+            "nested external membership cannot confer a grant",
+            nested_membership_observation,
+            false,
+        ),
+        (
+            "external membership observation time is RFC 3339",
+            invalid_external_observed_at,
+            false,
+        ),
+        (
+            "external membership without activation time",
+            external_group_without_effective_at,
+            false,
+        ),
+        (
+            "external membership activation time is RFC 3339",
+            invalid_external_effective_at,
+            false,
+        ),
+        (
+            "external membership without freshness deadline",
+            external_group_without_fresh_until,
+            false,
+        ),
+        (
+            "external membership freshness deadline is RFC 3339",
+            invalid_external_fresh_until,
+            false,
+        ),
+        ("multiline group name", multiline_group_name, false),
+        ("suggestion-only group grant", suggestion_group_grant, false),
+        ("disabled group basis", disabled_group_basis, false),
+        ("unknown external group source", unknown_group_source, false),
+        (
+            "manual group with binding",
+            manual_group_with_binding,
+            false,
+        ),
+        (
+            "manual group without membership creation time",
+            manual_group_without_membership_created_at,
+            false,
+        ),
+        (
+            "manual group without membership id",
+            manual_group_without_membership_id,
+            false,
+        ),
+        (
+            "manual group with external membership observation",
+            manual_group_with_external_observation,
+            false,
+        ),
+        (
+            "external group with manual membership creation time",
+            external_group_with_manual_membership_time,
+            false,
+        ),
+        (
+            "basis cannot invent group provenance",
+            basis_group_without_group_grant,
+            false,
+        ),
+        (
+            "group grant cannot mark membership not applicable",
+            group_with_not_applicable_membership_evidence,
+            false,
+        ),
+        (
+            "decision without membership status",
+            decision_without_membership_evidence,
+            false,
+        ),
         ("optional ACL ceiling", no_acl_ceiling, true),
         ("allow with no policy inputs", no_policy_inputs, true),
         ("deny without basis", denied, true),
+        (
+            "no grant with retained external absence evidence",
+            no_grant_with_external_absence,
+            true,
+        ),
+        (
+            "no grant with retained manual absence evidence",
+            no_grant_with_manual_absence,
+            true,
+        ),
+        (
+            "no grant with a resolved group but no absent membership",
+            no_grant_with_group_but_no_absence,
+            true,
+        ),
+        (
+            "current no grant cannot omit every membership fact",
+            no_grant_with_no_membership_facts,
+            false,
+        ),
+        (
+            "consequential membership evidence unavailable",
+            membership_evidence_unavailable,
+            true,
+        ),
+        (
+            "manual membership evidence unavailable",
+            manual_membership_evidence_unavailable,
+            true,
+        ),
+        (
+            "membership evidence unavailable with another resolved group",
+            mixed_group_membership_evidence_unavailable,
+            true,
+        ),
+        (
+            "nonconsequential membership evidence unavailable",
+            nonconsequential_membership_evidence_unavailable,
+            true,
+        ),
+        (
+            "OIDC absence evidence bound to an identity session",
+            oidc_absence_with_session,
+            true,
+        ),
         ("insufficient context without basis", insufficient, true),
         ("hard-deny reason matches input", hard_deny, true),
         (
@@ -2624,6 +3312,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "visibility denied reason matches input",
             visibility_denied,
             true,
+        ),
+        (
+            "unresolved membership cannot reach the visibility gate",
+            unresolved_membership_at_visibility_gate,
+            false,
         ),
         (
             "visibility unavailable reason matches input",
@@ -2958,6 +3651,106 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "no-grant reason without deny result",
             no_grant_without_deny_result,
+            false,
+        ),
+        (
+            "membership-evidence-unavailable reason with basis",
+            membership_evidence_unavailable_with_basis,
+            false,
+        ),
+        (
+            "membership-evidence-unavailable reason without status input",
+            membership_evidence_unavailable_without_input,
+            false,
+        ),
+        (
+            "membership-evidence-unavailable reason with current status",
+            membership_evidence_unavailable_with_current_input,
+            false,
+        ),
+        (
+            "unavailable membership without retained provenance",
+            membership_evidence_unavailable_without_provenance,
+            false,
+        ),
+        (
+            "unavailable membership with empty retained provenance",
+            membership_evidence_unavailable_with_empty_provenance,
+            false,
+        ),
+        (
+            "resolved membership cannot carry unavailability provenance",
+            resolved_membership_with_unavailability,
+            false,
+        ),
+        (
+            "unavailable membership without a retained state record",
+            membership_evidence_unavailable_without_state_record,
+            false,
+        ),
+        (
+            "unavailable membership without a retained group name",
+            membership_evidence_unavailable_without_group_name,
+            false,
+        ),
+        (
+            "external unavailable membership without a binding mode",
+            membership_evidence_unavailable_without_binding_mode,
+            false,
+        ),
+        (
+            "external unavailable membership without a binding epoch",
+            membership_evidence_unavailable_without_binding_epoch,
+            false,
+        ),
+        (
+            "manual unavailable membership without a retained group name",
+            manual_unavailability_without_group_name,
+            false,
+        ),
+        (
+            "disabled binding cannot be an unavailable granting input",
+            unavailable_membership_from_disabled_binding,
+            false,
+        ),
+        (
+            "unavailable membership with an unknown state",
+            membership_evidence_unavailable_with_unknown_state,
+            false,
+        ),
+        (
+            "no-grant reason with unavailable membership evidence",
+            no_grant_with_unavailable_membership_evidence,
+            false,
+        ),
+        (
+            "current no-grant without absence evidence",
+            no_grant_without_absence_evidence,
+            false,
+        ),
+        (
+            "external absence evidence cannot record membership present",
+            no_grant_with_positive_absence_observation,
+            false,
+        ),
+        (
+            "not-applicable no-grant cannot carry absence evidence",
+            no_grant_not_applicable_with_absence,
+            false,
+        ),
+        (
+            "OIDC absence evidence without an identity session",
+            oidc_absence_without_session,
+            false,
+        ),
+        (
+            "consequential membership evidence unavailable with deny result",
+            consequential_membership_evidence_unavailable_with_deny,
+            false,
+        ),
+        (
+            "nonconsequential membership evidence unavailable with insufficient result",
+            nonconsequential_membership_evidence_unavailable_with_insufficient,
             false,
         ),
         (

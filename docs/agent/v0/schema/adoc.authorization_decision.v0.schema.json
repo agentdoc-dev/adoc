@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.authorization_decision.v0.schema.json",
   "title": "AgentDoc Authorization Decision",
-  "description": "Replayable, source-neutral authorization decision for E2.2. The record carries the explicit evaluation time, policy version, complete scoped grant input, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns lower-gate precedence, grant applicability, scope matching, expiry evaluation, and replay semantics.",
+  "description": "Replayable, source-neutral authorization decision for E2.2 and E2.4. The record carries the explicit evaluation time, policy version, complete scoped grant input, immutable group-membership evidence, source ACL ceiling, visibility and action-policy inputs, winning basis, and allow/deny/insufficient_context result. Schema validation pins fail-closed structural invariants and the top-level freshness precedence; the Cloud evaluator owns lower-gate precedence, grant applicability, scope matching, membership effectivity comparisons, expiry evaluation, replay semantics, and exact copying of winning-grant fields, including group provenance, into the basis. An absent group on a grant means that grant is principal-attributed.",
   "type": "object",
   "required": [
     "schema_version",
@@ -13,6 +13,7 @@
     "consequential",
     "hard_deny",
     "grants",
+    "membership_evidence",
     "source_acl_ceiling",
     "visibility",
     "action_policy",
@@ -43,13 +44,30 @@
       "type": "array",
       "items": { "$ref": "#/$defs/grant" }
     },
+    "membership_evidence": {
+      "description": "Required scoped-grants-stage input status. current means every membership input needed for this decision was established from retained current state, whether present or absent; insufficient_context means at least one potentially grant-conferring membership input was unavailable or not yet established and requires immutable membership_unavailability_evidence; not_applicable means no membership input could affect the scoped grants. When the scoped-grants stage owns the outcome, insufficient_context requires reason membership_evidence_unavailable; earlier identity, evaluation-time, hard-deny, or source-ACL outcomes and a decisive explicit deny retain precedence. A group-bearing grant requires current or insufficient_context and therefore forbids not_applicable. no_grant with current requires immutable membership_absence_evidence; an empty array is structurally permitted only with a group-bearing grant and is justified only when no relevant membership was established absent. no_grant with not_applicable forbids the field.",
+      "enum": ["current", "insufficient_context", "not_applicable"]
+    },
+    "membership_unavailability_evidence": {
+      "description": "Immutable provenance for every relevant membership input that was unavailable or not yet established. Each entry identifies the exact group input and a retained failure, expiry, or pending-state record. The evaluation-time group name is required unless reason is evaluation_time_invalid, when no valid instant exists against which to resolve it. Evaluator-owned completeness and record-ownership checks fail closed.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/membershipUnavailabilityEvidence" }
+    },
+    "membership_absence_evidence": {
+      "description": "Exact retained negative membership facts used by a current no_grant decision. The required array contains every relevant manual group or grant-conferring external binding whose confirmed absence affected scoped-grant evaluation. A group-bearing grant is a necessary but not sufficient condition for an empty array; the array is empty only when no relevant membership was established absent. Evaluator-owned completeness checks fail closed. Manual entries replay against retained membership lifecycle history for the envelope principal and group at evaluation_time. External entries retain the exact negative observation, binding epoch, identity link, and source event or run.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/membershipAbsenceEvidence" }
+    },
     "source_acl_ceiling": { "$ref": "#/$defs/sourceAclCeiling" },
     "visibility": { "$ref": "#/$defs/policyInput" },
     "action_policy": { "$ref": "#/$defs/policyInput" },
     "policy_version": { "$ref": "#/$defs/nonEmpty" },
     "result": { "$ref": "#/$defs/decision" },
     "reason": {
-      "description": "Evaluator outcome reason. evaluation_time_invalid is raised only after identity freshness passes; timestamp parsing itself is evaluator-owned so an invalid raw input remains recordable for replay.",
+      "description": "Evaluator outcome reason. evaluation_time_invalid is raised only after identity freshness passes; timestamp parsing itself is evaluator-owned so an invalid raw input remains recordable for replay. membership_evidence_unavailable distinguishes an unavailable or not-yet-established membership input from a confirmed no_grant result at the scoped-grants stage.",
       "enum": [
         "identity_context_missing",
         "identity_expired",
@@ -59,6 +77,7 @@
         "source_acl_stale",
         "source_acl_invalidated",
         "source_acl_unavailable",
+        "membership_evidence_unavailable",
         "no_grant",
         "explicit_deny",
         "visibility_denied",
@@ -76,6 +95,38 @@
     }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "grants": {
+            "contains": { "required": ["group"] }
+          }
+        },
+        "required": ["grants"]
+      },
+      "then": {
+        "properties": {
+          "membership_evidence": { "enum": ["current", "insufficient_context"] }
+        }
+      }
+    },
+    {
+      "if": {
+        "not": {
+          "properties": {
+            "reason": { "const": "evaluation_time_invalid" }
+          },
+          "required": ["reason"]
+        }
+      },
+      "then": {
+        "properties": {
+          "membership_unavailability_evidence": {
+            "items": { "required": ["group_name"] }
+          }
+        }
+      }
+    },
     {
       "if": {
         "properties": {
@@ -222,6 +273,7 @@
               }
             ]
           },
+          "membership_evidence": { "enum": ["current", "not_applicable"] },
           "visibility": { "enum": ["allow", "not_applicable"] },
           "action_policy": { "enum": ["allow", "not_applicable"] },
           "reason": { "const": "allowed" },
@@ -330,14 +382,115 @@
     },
     {
       "if": {
+        "properties": {
+          "membership_evidence": { "const": "insufficient_context" },
+          "reason": {
+            "not": {
+              "enum": [
+                "identity_context_missing",
+                "identity_expired",
+                "evaluation_time_invalid",
+                "hard_deny",
+                "source_acl_denied",
+                "source_acl_stale",
+                "source_acl_invalidated",
+                "source_acl_unavailable",
+                "explicit_deny"
+              ]
+            }
+          }
+        },
+        "required": ["membership_evidence", "reason"]
+      },
+      "then": {
+        "properties": {
+          "reason": { "const": "membership_evidence_unavailable" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reason": { "const": "membership_evidence_unavailable" }
+        },
+        "required": ["reason"]
+      },
+      "then": {
+        "properties": {
+          "membership_evidence": { "const": "insufficient_context" },
+          "basis": { "type": "null" }
+        },
+        "required": ["membership_evidence"],
+        "allOf": [
+          {
+            "if": {
+              "properties": { "consequential": { "const": true } },
+              "required": ["consequential"]
+            },
+            "then": {
+              "properties": { "result": { "const": "insufficient_context" } }
+            },
+            "else": {
+              "properties": { "result": { "const": "deny" } }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "membership_evidence": { "const": "insufficient_context" }
+        },
+        "required": ["membership_evidence"]
+      },
+      "then": {
+        "required": ["membership_unavailability_evidence"]
+      },
+      "else": {
+        "not": { "required": ["membership_unavailability_evidence"] }
+      }
+    },
+    {
+      "if": {
         "properties": { "reason": { "const": "no_grant" } },
         "required": ["reason"]
       },
       "then": {
         "properties": {
           "basis": { "type": "null" },
+          "membership_evidence": { "enum": ["current", "not_applicable"] },
           "result": { "const": "deny" }
-        }
+        },
+        "required": ["membership_evidence"],
+        "allOf": [
+          {
+            "if": {
+              "properties": { "membership_evidence": { "const": "current" } },
+              "required": ["membership_evidence"]
+            },
+            "then": {
+              "required": ["membership_absence_evidence"],
+              "if": {
+                "properties": {
+                  "grants": { "contains": { "required": ["group"] } }
+                },
+                "required": ["grants"]
+              },
+              "else": {
+                "properties": {
+                  "membership_absence_evidence": { "minItems": 1 }
+                }
+              }
+            },
+            "else": {
+              "not": { "required": ["membership_absence_evidence"] }
+            }
+          }
+        ]
+      },
+      "else": {
+        "not": { "required": ["membership_absence_evidence"] }
       }
     },
     {
@@ -719,6 +872,119 @@
           }
         ]
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "principal": { "required": ["identity_session_id"] }
+        },
+        "required": ["principal"]
+      },
+      "then": {
+        "properties": {
+          "principal": {
+            "properties": { "type": { "const": "human" } },
+            "required": ["type"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "membership_unavailability_evidence": {
+            "contains": {
+              "properties": {
+                "source_kind": { "const": "oidc_group" }
+              },
+              "required": ["source_kind"]
+            }
+          }
+        },
+        "required": ["membership_unavailability_evidence"]
+      },
+      "then": {
+        "properties": {
+          "principal": {
+            "properties": { "type": { "const": "human" } },
+            "required": ["type"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "properties": {
+              "grants": {
+                "contains": {
+                  "properties": {
+                    "group": {
+                      "properties": {
+                        "source_kind": { "const": "oidc_group" }
+                      },
+                      "required": ["source_kind"]
+                    }
+                  },
+                  "required": ["group"]
+                }
+              }
+            },
+            "required": ["grants"]
+          },
+          {
+            "properties": {
+              "basis": {
+                "type": "object",
+                "properties": {
+                  "group": {
+                    "properties": {
+                      "source_kind": { "const": "oidc_group" }
+                    },
+                    "required": ["source_kind"]
+                  }
+                },
+                "required": ["group"]
+              }
+            },
+            "required": ["basis"]
+          },
+          {
+            "properties": {
+              "membership_absence_evidence": {
+                "contains": {
+                  "properties": {
+                    "source_kind": { "const": "oidc_group" }
+                  },
+                  "required": ["source_kind"]
+                }
+              }
+            },
+            "required": ["membership_absence_evidence"]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "principal": {
+            "required": ["identity_session_id"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "basis": { "type": "object", "required": ["group"] }
+        },
+        "required": ["basis"]
+      },
+      "then": {
+        "properties": {
+          "grants": { "contains": { "required": ["group"] } }
+        }
+      }
     }
   ],
   "$defs": {
@@ -792,6 +1058,10 @@
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/$defs/nonEmpty" },
+        "identity_session_id": {
+          "description": "Exact E2.3 human identity session used at evaluation. The oidc_group source kind is claim-only in V1 and valid only for a human principal; nonhuman principals must omit this field. Required for any positive or negative oidc_group observation carried by a grant, winning basis, or membership_absence_evidence; it must equal the identity session retained by source_event_id, and replay fails closed on mismatch. An expired OIDC observation cited only by membership_unavailability_evidence carries its own historical identity_session_id on that entry instead.",
+          "$ref": "#/$defs/nonEmpty"
+        },
         "type": { "enum": ["human", "service", "agent", "workload"] },
         "freshness": { "enum": ["current", "expired", "insufficient_context"] }
       }
@@ -831,6 +1101,351 @@
         "version": { "type": "integer", "minimum": 1 }
       }
     },
+    "membershipObservation": {
+      "description": "Exact immutable, non-nested external membership observation selected by the evaluator. A group grant constrains member_present to true; retained absence evidence constrains it to false. Latest-observation selection is evaluator-owned and fails closed.",
+      "type": "object",
+      "required": [
+        "id",
+        "external_identity_link_id",
+        "source_event_id",
+        "observed_at",
+        "effective_at",
+        "fresh_until",
+        "member_present",
+        "nested"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Stable identifier of the retained membership observation. That record identifies one exact external binding and one exact identity link. Replay verifies that the observation's retained binding equals the enclosing binding_id, that the retained binding's AgentDoc group equals the enclosing group id, and that the observation's retained identity link equals the enclosing identity-link identifier, so the observation's subject is the authorization envelope principal; any mismatch fails closed.",
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "external_identity_link_id": {
+          "description": "Verified E2.3 identity link through which the external source identity resolves to this workspace principal. Its preserved lifecycle retains the link and unlink instants. Evaluation and replay fail closed unless the link belongs to the authorization envelope principal and was continuously active from observed_at through the decision evaluation time; an unlink after an earlier decision preserves that decision's replay but revokes future use, including after a subsequent relink.",
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "source_event_id": {
+          "description": "Immutable provenance record retained so replay can re-derive the observation from source. Replay verifies that the source record belongs to the observation's retained binding and that its event or per-principal run membership subject resolves through the observation's retained external identity link; any mismatch fails closed. For an upstream connector event, it identifies the event that prompted a current-state membership read and carries its current-state read and ingestion-commit instants; the ingestion transaction commits only after the successful read. For a synchronization run, it identifies the run and carries its start and completion instants plus the retained per-principal read result; a resynchronization sweep records one identifier for the run and cites it from every observation it produces. For claim-only oidc_group, it identifies the exact authenticated identity-session event and carries its token issuance, validation/ingestion-commit, and session-expiry instants.",
+          "$ref": "#/$defs/nonEmpty"
+        },
+        "observed_at": {
+          "description": "Source evidence time used for membership freshness. An event-driven observation carries the current-state source read time prompted by its event, never the webhook delivery time; event polarity only triggers the read, and the read result determines observation polarity. A positive event whose read confirms absence records a negative observation and no positive observation. A removal event whose read still shows membership records a positive observation and no negative observation, but its fresh_until is capped at the deadline of the latest prior positive observation for the same group, binding, and identity link, so a revocation signal or redelivery never extends the positive membership it reports. When no prior positive observation exists, the ordinary historical-policy deadline applies. The contradiction is retained and operator-visible, and the binding's next scheduled resynchronization bounds revocation propagation. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership. For claim-only oidc_group, observed_at is the token issuance instant retained by source_event_id; validation of that freshly issued token at authentication is the current-state read.",
+          "$ref": "#/$defs/rfc3339Timestamp"
+        },
+        "effective_at": {
+          "description": "Instant this observation became eligible to confer grants. It must equal the ingestion-commit instant of the connector event, the completion instant of the synchronization run, or, for claim-only oidc_group, the authentication validation/ingestion-commit instant identified by source_event_id. For a sweep completing a binding-mode reconfiguration this equals the new epoch boundary; a routine sweep records into the epoch already in effect. For claim-only oidc_group, principal.identity_session_id must equal the identity session retained by source_event_id; the observation may confer only during that matching session, no later than the cited identity session's expiry. observed_at must not follow effective_at, and effective_at must not follow evaluation_time; comparisons are evaluator-owned and fail closed.",
+          "$ref": "#/$defs/rfc3339Timestamp"
+        },
+        "fresh_until": {
+          "description": "Immutable deadline derived from observed_at under the versioned freshness policy retained by the exact binding. Replay resolves the policy versions in effect at observed_at and evaluation_time and requires fresh_until to equal the historical-version recomputation, except that for a positive observation from a removal-event read, fresh_until is capped at the deadline of the latest prior positive observation for the same group, binding, and identity link: it equals the earlier of that cap and the historical recomputation. When no prior positive observation exists, no cap applies and fresh_until equals the historical recomputation. A revocation signal or redelivery therefore cannot renew prior positive membership. The observation may confer only through the shorter of retained fresh_until and the deadline recomputed with the evaluation-time freshness window; a shortened policy therefore caps existing observations immediately, while a longer policy never revives or extends them. Replay also caps oidc_group at the cited identity session's expiry and fails closed unless evaluation_time does not exceed the effective deadline; connector unavailability cannot extend it. For an uncapped observation, the effective deadline must follow effective_at, observed_at must not follow retained fresh_until, and retained fresh_until must follow effective_at, so it is never expired before becoming eligible. A capped observation whose retained fresh_until does not follow effective_at is born inert: it is retained for replay, confers nothing, and its unavailable input records observation_expired. A synchronization run whose produced observations cannot satisfy the uncapped ordering is rejected as a freshness-policy misconfiguration; a routine replacement run must also complete before the deadline of the observations it replaces. Timestamp comparisons are evaluator-owned and fail closed.",
+          "$ref": "#/$defs/rfc3339Timestamp"
+        },
+        "member_present": { "type": "boolean" },
+        "nested": { "const": false }
+      }
+    },
+    "bindingMode": {
+      "description": "Grant-conferring binding mode in effect at evaluation_time. Replay resolves binding_id against the retained complete effective mode history and fails closed unless this value names that epoch.",
+      "enum": ["authoritative_sync", "additive_sync"]
+    },
+    "bindingModeAtEvaluation": {
+      "description": "Binding mode epoch actually in effect at evaluation_time for unavailable input provenance. When reason is evaluation_time_invalid, it instead names the epoch retained by state_record_id and makes no at-evaluation temporal claim. suggestion_only and disabled are valid only for epoch_observation_pending, where the retained pending request targets a future grant-conferring mode but no new epoch exists yet.",
+      "enum": [
+        "authoritative_sync",
+        "additive_sync",
+        "suggestion_only",
+        "disabled"
+      ]
+    },
+    "sourceKind": {
+      "description": "Closed source adapter kind for this membership. Replay resolves binding_id and fails closed unless this value equals the source kind recorded on the retained binding.",
+      "enum": [
+        "github_team",
+        "gitlab_group",
+        "slack_user_group",
+        "oidc_group",
+        "scim_group"
+      ]
+    },
+    "membershipUnavailabilityState": {
+      "description": "Closed state vocabulary for immutable membership-unavailability evidence.",
+      "enum": [
+        "lifecycle_unavailable",
+        "observation_expired",
+        "connector_read_failed",
+        "link_read_pending",
+        "link_read_failed",
+        "epoch_observation_pending",
+        "oidc_authentication_pending"
+      ]
+    },
+    "membershipAbsenceEvidence": {
+      "description": "Immutable confirmed-absence provenance for one relevant group membership input.",
+      "oneOf": [
+        {
+          "description": "Manual absence replays by resolving the stable group and scanning the retained complete manual-membership lifecycle history for the authorization envelope principal at evaluation_time; any active lifecycle record makes this absence invalid and fails closed.",
+          "type": "object",
+          "required": ["group_id", "group_name", "membership_source"],
+          "additionalProperties": false,
+          "properties": {
+            "group_id": { "$ref": "#/$defs/nonEmpty" },
+            "group_name": {
+              "description": "AgentDoc group name in effect at evaluation_time, verified against the retained complete group-name history whose versions each record an effective instant.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "membership_source": { "const": "manual" }
+          }
+        },
+        {
+          "description": "External absence replays against the exact retained binding, mode epoch, identity link, and negative observation. Replay applies the same binding/group/source-kind, identity-link lifecycle, source-record ownership and subject, timing, and freshness checks as positive external group provenance; any mismatch fails closed.",
+          "type": "object",
+          "required": [
+            "group_id",
+            "group_name",
+            "membership_source",
+            "binding_id",
+            "binding_mode",
+            "source_kind",
+            "binding_mode_effective_at",
+            "membership_observation"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "group_id": { "$ref": "#/$defs/nonEmpty" },
+            "group_name": {
+              "description": "AgentDoc group name in effect at evaluation_time, verified against the retained complete group-name history whose versions each record an effective instant.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "membership_source": { "const": "external" },
+            "binding_id": {
+              "description": "Stable identifier of the preserved external-binding record and its complete effective mode history.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "binding_mode": { "$ref": "#/$defs/bindingMode" },
+            "source_kind": { "$ref": "#/$defs/sourceKind" },
+            "binding_mode_effective_at": {
+              "description": "Start of the retained binding-mode epoch in effect at evaluation_time and containing the negative observation.",
+              "$ref": "#/$defs/rfc3339Timestamp"
+            },
+            "membership_observation": {
+              "allOf": [
+                { "$ref": "#/$defs/membershipObservation" },
+                {
+                  "properties": { "member_present": { "const": false } },
+                  "required": ["member_present"]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "membershipUnavailabilityEvidence": {
+      "description": "Immutable fail-closed provenance for one unavailable membership input. The retained state record must belong to the named input and, when evaluation_time is valid, prove the stated condition at that instant. For evaluation_time_invalid, replay verifies stable input identity and state-record ownership without making a temporal claim against the malformed instant. Replay fails closed on a mismatch.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "group_id",
+            "membership_source",
+            "state",
+            "state_record_id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "group_id": { "$ref": "#/$defs/nonEmpty" },
+            "group_name": {
+              "description": "AgentDoc group name in effect at evaluation_time, verified against the retained complete group-name history. It is omitted only when reason is evaluation_time_invalid.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "membership_source": { "const": "manual" },
+            "state": {
+              "$ref": "#/$defs/membershipUnavailabilityState",
+              "const": "lifecycle_unavailable"
+            },
+            "state_record_id": {
+              "description": "Immutable retained record of the failed or unresolved manual-membership lifecycle read for this group and the authorization envelope principal.",
+              "$ref": "#/$defs/nonEmpty"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "group_id",
+            "membership_source",
+            "binding_id",
+            "binding_mode",
+            "binding_mode_effective_at",
+            "source_kind",
+            "external_identity_link_id",
+            "state",
+            "state_record_id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "group_id": { "$ref": "#/$defs/nonEmpty" },
+            "group_name": {
+              "description": "AgentDoc group name in effect at evaluation_time, verified against the retained complete group-name history. It is omitted only when reason is evaluation_time_invalid.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "membership_source": { "const": "external" },
+            "binding_id": {
+              "description": "Exact retained external binding whose membership input could not be established.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "binding_mode": { "$ref": "#/$defs/bindingModeAtEvaluation" },
+            "binding_mode_effective_at": {
+              "description": "Start of the retained binding-mode epoch actually in effect at evaluation_time. For evaluation_time_invalid it instead identifies the epoch retained by state_record_id without claiming effectivity at the malformed instant. For epoch_observation_pending this is the prior epoch, including suggestion_only or disabled while a retained request awaits its transition sweep; it never invents the requested grant-conferring epoch before completion.",
+              "$ref": "#/$defs/rfc3339Timestamp"
+            },
+            "source_kind": { "$ref": "#/$defs/sourceKind" },
+            "external_identity_link_id": {
+              "description": "Exact retained identity link for the authorization envelope principal whose binding input was unavailable.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "identity_session_id": {
+              "description": "Exact retained E2.3 identity session bound to the expired OIDC observation identified by state_record_id. This per-input historical session is required only for oidc_group observation_expired and need not equal the principal identity session used at evaluation.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "state": {
+              "$ref": "#/$defs/membershipUnavailabilityState",
+              "not": { "const": "lifecycle_unavailable" }
+            },
+            "state_record_id": {
+              "description": "Immutable retained record matching state: the expired observation, failed connector read, pending or failed link read, pending transition request, or pending OIDC authentication state. Replay verifies that it belongs to binding_id and external_identity_link_id and, when evaluation_time is valid, was effective at that instant; evaluation_time_invalid verifies ownership without a temporal claim.",
+              "$ref": "#/$defs/nonEmpty"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": { "source_kind": { "const": "oidc_group" } },
+                "required": ["source_kind"]
+              },
+              "then": {
+                "properties": {
+                  "state": {
+                    "enum": ["observation_expired", "oidc_authentication_pending"]
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "state": {
+                    "enum": [
+                      "observation_expired",
+                      "connector_read_failed",
+                      "link_read_pending",
+                      "link_read_failed",
+                      "epoch_observation_pending"
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "state": { "const": "epoch_observation_pending" }
+                },
+                "required": ["state"]
+              },
+              "else": {
+                "properties": {
+                  "binding_mode": { "$ref": "#/$defs/bindingMode" }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "source_kind": { "const": "oidc_group" },
+                  "state": { "const": "observation_expired" }
+                },
+                "required": ["source_kind", "state"]
+              },
+              "then": { "required": ["identity_session_id"] },
+              "else": { "not": { "required": ["identity_session_id"] } }
+            }
+          ]
+        }
+      ]
+    },
+    "group": {
+      "description": "AgentDoc-owned group provenance with the immutable membership fact used at evaluation. When manual and external membership both confer the same group grant, the evaluator records the independently durable manual membership. External membership may confer a grant only through an authoritative or additive binding; suggestion-only and disabled bindings never appear in an authorization basis.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "membership_source",
+            "membership_id",
+            "membership_created_at"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/nonEmpty" },
+            "name": {
+              "description": "AgentDoc group name in effect at evaluation_time. Replay verifies id and name against the retained complete effective group-name history, whose versions each record an effective instant; any mismatch fails closed while later renames preserve historical replay.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "membership_source": { "const": "manual" },
+            "membership_id": {
+              "description": "Stable identifier of the preserved manual-membership lifecycle record that conferred this grant. Replay verifies that it belongs to the authorization envelope principal and enclosing group id, was created by evaluation_time, and was not then revoked; any mismatch fails closed.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "membership_created_at": {
+              "description": "Creation time of the manual membership identified by membership_id, exactly matching that record's creation time. It must not follow evaluation_time; both comparisons are evaluator-owned.",
+              "$ref": "#/$defs/rfc3339Timestamp"
+            }
+          }
+        },
+        {
+          "description": "binding_mode and binding_mode_effective_at name the binding's mode epoch in effect at evaluation_time; membership_observation.effective_at must fall within that epoch and not follow evaluation_time. For a connector event or synchronization run, membership_observation.observed_at and effective_at must resolve against the same record identified by membership_observation.source_event_id: observed_at equals that event's current-state read instant or falls within that run, while effective_at equals that event's ingestion-commit instant or that run's completion instant. For claim-only oidc_group, the same identifier instead retains the exact identity session and its token-issuance, validation/ingestion-commit, and expiry instants. Only the transition sweep that opened the epoch — the observation whose effective_at equals binding_mode_effective_at — may carry an observed_at preceding the epoch, and never one preceding that run's start; every other observation's observed_at must fall at or after binding_mode_effective_at. Those instant comparisons are evaluator-owned and fail closed.",
+          "type": "object",
+          "required": [
+            "id",
+            "name",
+            "membership_source",
+            "binding_id",
+            "binding_mode",
+            "source_kind",
+            "binding_mode_effective_at",
+            "membership_observation"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/nonEmpty" },
+            "name": {
+              "description": "AgentDoc group name in effect at evaluation_time. Replay verifies id and name against the retained complete effective group-name history, whose versions each record an effective instant; any mismatch fails closed while later renames preserve historical replay.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "membership_source": { "const": "external" },
+            "binding_id": {
+              "description": "Stable identifier of the preserved external-binding record and its complete effective mode history. Replay verifies binding_mode and binding_mode_effective_at against the retained epoch.",
+              "$ref": "#/$defs/nonEmpty"
+            },
+            "binding_mode": { "$ref": "#/$defs/bindingMode" },
+            "binding_mode_effective_at": {
+              "description": "Start of the binding-mode epoch in effect at evaluation_time. membership_observation.effective_at must fall within that same epoch before the observation can confer this grant.",
+              "$ref": "#/$defs/rfc3339Timestamp"
+            },
+            "membership_observation": {
+              "allOf": [
+                { "$ref": "#/$defs/membershipObservation" },
+                {
+                  "properties": { "member_present": { "const": true } },
+                  "required": ["member_present"]
+                }
+              ]
+            },
+            "source_kind": { "$ref": "#/$defs/sourceKind" }
+          }
+        }
+      ]
+    },
     "grant": {
       "type": "object",
       "required": ["grant_id", "source", "effect", "permission", "scope"],
@@ -849,7 +1464,11 @@
           "description": "Required for every human direct grant, regardless of effect.",
           "$ref": "#/$defs/nonEmptyText"
         },
-        "role": { "$ref": "#/$defs/role" }
+        "role": { "$ref": "#/$defs/role" },
+        "group": {
+          "description": "Present only when this grant is conferred through the recorded AgentDoc group; absence means the grant is principal-attributed.",
+          "$ref": "#/$defs/group"
+        }
       },
       "allOf": [
         {
@@ -1080,7 +1699,7 @@
       }
     },
     "basis": {
-      "description": "Denormalized winning-grant summary emitted by the trusted evaluator for audit display. Replay resolves grant_id against grants and recomputes the decision from the complete recorded inputs.",
+      "description": "Denormalized winning-grant summary emitted by the trusted evaluator. grant_id, source, effect, role, and group must exactly match the grants entry selected by grant_id; scope_match must exactly match that grant's scope. Standard JSON Schema cannot express that arbitrary array join, so consumers must replay or otherwise verify the match before trusting the basis for audit display.",
       "type": "object",
       "required": ["grant_id", "source", "effect", "scope_match"],
       "additionalProperties": false,
@@ -1089,7 +1708,11 @@
         "source": { "enum": ["role_assignment", "direct_grant"] },
         "effect": { "enum": ["allow", "deny"] },
         "scope_match": { "$ref": "#/$defs/scope" },
-        "role": { "$ref": "#/$defs/role" }
+        "role": { "$ref": "#/$defs/role" },
+        "group": {
+          "description": "Evaluator-owned exact copy of the winning grant group when that grant is group-conferred. The schema additionally requires at least one group-bearing grant when this field is present; replay verifies that the selected grant is that grant and that omission means the winner is principal-attributed.",
+          "$ref": "#/$defs/group"
+        }
       },
       "allOf": [
         {
