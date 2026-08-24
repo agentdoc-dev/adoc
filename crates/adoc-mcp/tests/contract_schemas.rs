@@ -1602,6 +1602,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
                 "connector_id": "github",
                 "source_container_id": "agentdoc-dev",
                 "principal_id": "principal-1",
+                "external_identity_link_id": "external-identity-link-1",
                 "source": { "kind": "repository", "id": "cloud" },
                 "acl_policy_version": "github-acl-v1",
                 "observed_at": "2026-08-23T11:59:00Z",
@@ -2732,6 +2733,24 @@ fn authorization_decision_schema_pins_replay_bindings() {
         );
     }
 
+    let authorization_schema = schema("adoc.authorization_decision.v0.schema.json");
+    let source_container_description = authorization_schema["$defs"]["scope"]["properties"]
+        ["source_container_id"]["description"]
+        .as_str()
+        .expect("decision source container is documented");
+    assert!(
+        source_container_description.contains("provider-owned")
+            && source_container_description.contains("tenant or account"),
+        "decision containers must have one canonical single-tenant fallback"
+    );
+    assert!(
+        authorization_schema["$defs"]["sourceResource"]["description"]
+            .as_str()
+            .expect("source resource identity is documented")
+            .contains("optional on grant scopes"),
+        "source resource documentation must distinguish decision and grant scopes"
+    );
+
     for field in [
         "role",
         "current_acl_id",
@@ -2739,7 +2758,9 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "snapshot_id",
         "workspace_id",
         "connector_id",
+        "source_container_id",
         "principal_id",
+        "external_identity_link_id",
         "source",
         "acl_policy_version",
         "observed_at",
@@ -2859,6 +2880,16 @@ fn source_acl_snapshot_is_historical_provenance_not_current_authority() {
         "adoc.source_acl_snapshot.v0.schema.json",
         &snapshot
     ));
+    let snapshot_schema = schema("adoc.source_acl_snapshot.v0.schema.json");
+    let container_description = snapshot_schema["properties"]["source_container_id"]
+        ["description"]
+        .as_str()
+        .expect("snapshot source container is documented");
+    assert!(
+        container_description.contains("provider-owned")
+            && container_description.contains("tenant or account"),
+        "snapshot containers must have one canonical single-tenant fallback"
+    );
 
     let mut current_authority = snapshot.clone();
     current_authority["usage"] = json!("current_authorization");
