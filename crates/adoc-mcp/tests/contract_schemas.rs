@@ -946,6 +946,10 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "adoc://agent/v0/schema/adoc.semantic_context.v0.schema.json",
             "adoc.semantic_context.v0.schema.json",
         ),
+        (
+            "adoc://agent/v0/schema/adoc.semantic_assessment.v0.schema.json",
+            "adoc.semantic_assessment.v0.schema.json",
+        ),
     ] {
         let result = server
             .read_agent_resource(uri)
@@ -1483,6 +1487,10 @@ fn retrieval_schema_ids_match_their_published_uris() {
             "adoc.semantic_context.v0.schema.json",
             "adoc://agent/v0/schema/adoc.semantic_context.v0.schema.json",
         ),
+        (
+            "adoc.semantic_assessment.v0.schema.json",
+            "adoc://agent/v0/schema/adoc.semantic_assessment.v0.schema.json",
+        ),
     ] {
         assert_eq!(
             schema(name)["$id"],
@@ -1609,6 +1617,46 @@ fn semantic_context_schema_accepts_the_envelope_and_rejects_unknown_fields() {
     assert!(
         !schema_accepts("adoc.semantic_context.v0.schema.json", &unknown),
         "semantic context must reject unknown fields"
+    );
+}
+
+#[test]
+fn semantic_assessment_schema_accepts_the_envelope_and_rejects_unknown_fields() {
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let instance = json!({
+        "schema_version": "adoc.semantic_assessment.v0",
+        "context_digest": digest,
+        "base_revision": { "system": "git", "value": "base-sha" },
+        "head_revision": { "system": "git", "value": "head-sha" },
+        "identity": { "provider": "codex", "model": "gpt-5" },
+        "materiality_policy_version": "adoc.materiality.v0",
+        "scope": { "handle_ids": ["hunk-a", "object-a"] },
+        "findings": [{
+            "finding_id": "finding-001",
+            "classification": "extends_existing_knowledge",
+            "affected_objects": [{
+                "object_id": "billing.policy",
+                "content_hash": digest
+            }],
+            "citations": ["hunk-a", "object-a"],
+            "materiality": "material",
+            "proposed_disposition": "update_existing",
+            "candidate_updates": [{
+                "object_id": "billing.policy",
+                "body": "Updated billing policy.",
+                "fields": {}
+            }],
+            "unresolved_questions": [],
+            "explanation": "The new branch changes durable billing behavior."
+        }]
+    });
+    assert_valid("adoc.semantic_assessment.v0.schema.json", &instance);
+
+    let mut unknown = instance;
+    unknown["unexpected"] = json!(true);
+    assert!(
+        !schema_accepts("adoc.semantic_assessment.v0.schema.json", &unknown),
+        "semantic assessment must reject unknown fields"
     );
 }
 

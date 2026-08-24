@@ -17,6 +17,7 @@ use super::semantic_context::{
 };
 
 pub const SEMANTIC_ASSESSMENT_SCHEMA_VERSION: &str = "adoc.semantic_assessment.v0";
+pub const MATERIALITY_POLICY_VERSION: &str = "adoc.materiality.v0";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -25,6 +26,14 @@ pub enum SemanticClassification {
     ExtendsExistingKnowledge,
     ContradictsExistingKnowledge,
     InsufficientEvidence,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SemanticMateriality {
+    Material,
+    Immaterial,
+    Undetermined,
 }
 
 impl SemanticClassification {
@@ -84,6 +93,7 @@ pub struct SemanticFinding {
     classification: SemanticClassification,
     affected_objects: Vec<AffectedObject>,
     citations: Vec<String>,
+    materiality: SemanticMateriality,
     proposed_disposition: SemanticDisposition,
     candidate_updates: Vec<CandidateUpdate>,
     unresolved_questions: Vec<String>,
@@ -97,6 +107,7 @@ pub struct SemanticAssessment {
     base_revision: ExactRevision,
     head_revision: ExactRevision,
     identity: SemanticExecutorIdentity,
+    materiality_policy_version: String,
     scope: SemanticAssessmentScope,
     findings: Vec<SemanticFinding>,
 }
@@ -109,6 +120,7 @@ struct RawSemanticAssessment {
     base_revision: ExactRevision,
     head_revision: ExactRevision,
     identity: Option<RawSemanticExecutorIdentity>,
+    materiality_policy_version: String,
     scope: SemanticAssessmentScope,
     findings: Vec<RawSemanticFinding>,
 }
@@ -127,6 +139,7 @@ struct RawSemanticFinding {
     classification: String,
     affected_objects: Vec<AffectedObject>,
     citations: Vec<String>,
+    materiality: SemanticMateriality,
     proposed_disposition: SemanticDisposition,
     candidate_updates: Vec<CandidateUpdate>,
     unresolved_questions: Vec<String>,
@@ -186,6 +199,24 @@ impl SemanticAssessment {
     pub fn findings(&self) -> &[SemanticFinding] {
         &self.findings
     }
+
+    pub fn allows_no_change_required(&self) -> bool {
+        !self.findings.is_empty()
+            && self.findings.iter().all(|finding| {
+                finding.materiality == SemanticMateriality::Immaterial
+                    && finding.proposed_disposition == SemanticDisposition::NoChangeRequired
+            })
+    }
+}
+
+impl SemanticFinding {
+    pub fn classification(&self) -> SemanticClassification {
+        self.classification
+    }
+
+    pub fn materiality(&self) -> SemanticMateriality {
+        self.materiality
+    }
 }
 
 pub fn validate_semantic_assessment(
@@ -201,6 +232,12 @@ pub fn validate_semantic_assessment(
         return Err(SemanticAssessmentError::UnsupportedVersion {
             version: raw.schema_version,
         });
+    }
+    if raw.materiality_policy_version != MATERIALITY_POLICY_VERSION {
+        return Err(invalid(format!(
+            "unsupported materiality policy version '{}'",
+            raw.materiality_policy_version
+        )));
     }
     if context.outcome() != SemanticContextOutcome::Ready {
         return Err(SemanticAssessmentError::CitationInvalid {
@@ -226,6 +263,11 @@ pub fn validate_semantic_assessment(
     };
     if !is_semantic_context_text(&provider) || !is_semantic_context_text(&model) {
         return Err(SemanticAssessmentError::IdentityMissing);
+    }
+    if raw.findings.is_empty() {
+        return Err(invalid(
+            "semantic assessment must contain at least one finding",
+        ));
     }
 
     let mut handle_ids = raw.scope.handle_ids;
@@ -266,6 +308,59 @@ pub fn validate_semantic_assessment(
                     message: format!("handle '{citation}' is outside the assessment scope"),
                 });
             }
+        }
+        if !citations.iter().any(|citation| {
+            matches!(
+                context.citation_handle(citation),
+                Some(CitationHandle::DiffHunk { .. })
+            )
+        }) {
+            return Err(SemanticAssessmentError::CitationInvalid {
+                message: format!(
+                    "finding '{}' cites no deterministic diff hunk",
+                    raw_finding.finding_id
+                ),
+            });
+        }
+        let materiality = match classification {
+            SemanticClassification::Consistent => SemanticMateriality::Immaterial,
+            SemanticClassification::ExtendsExistingKnowledge
+            | SemanticClassification::ContradictsExistingKnowledge => SemanticMateriality::Material,
+            SemanticClassification::InsufficientEvidence => SemanticMateriality::Undetermined,
+        };
+        if raw_finding.materiality != materiality {
+            return Err(invalid(format!(
+                "finding '{}' materiality does not match policy {}",
+                raw_finding.finding_id, MATERIALITY_POLICY_VERSION
+            )));
+        }
+        match raw_finding.proposed_disposition {
+            SemanticDisposition::NoChangeRequired
+                if materiality != SemanticMateriality::Immaterial =>
+            {
+                return Err(invalid(format!(
+                    "finding '{}' cannot claim no_change_required with {:?} materiality",
+                    raw_finding.finding_id, materiality
+                )));
+            }
+            SemanticDisposition::UpdateExisting | SemanticDisposition::CreateKnowledge
+                if materiality != SemanticMateriality::Material =>
+            {
+                return Err(invalid(format!(
+                    "finding '{}' cannot propose a knowledge change with {:?} materiality",
+                    raw_finding.finding_id, materiality
+                )));
+            }
+            _ => {}
+        }
+        if raw_finding.proposed_disposition == SemanticDisposition::NoChangeRequired
+            && (!raw_finding.candidate_updates.is_empty()
+                || !raw_finding.unresolved_questions.is_empty())
+        {
+            return Err(invalid(format!(
+                "finding '{}' cannot combine no_change_required with candidates or unresolved questions",
+                raw_finding.finding_id
+            )));
         }
 
         let mut affected_objects = raw_finding.affected_objects;
@@ -326,6 +421,7 @@ pub fn validate_semantic_assessment(
             classification,
             affected_objects,
             citations,
+            materiality,
             proposed_disposition: raw_finding.proposed_disposition,
             candidate_updates,
             unresolved_questions: raw_finding.unresolved_questions,
@@ -340,6 +436,7 @@ pub fn validate_semantic_assessment(
         base_revision: raw.base_revision,
         head_revision: raw.head_revision,
         identity: SemanticExecutorIdentity { provider, model },
+        materiality_policy_version: MATERIALITY_POLICY_VERSION.to_string(),
         scope: SemanticAssessmentScope { handle_ids },
         findings,
     })
