@@ -1741,7 +1741,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
 
     let mut source_acl_stale = decision.clone();
     source_acl_stale["source_acl_ceiling"]["current_authorization"]["expires_at"] =
-        json!("2026-08-23T12:00:00Z");
+        json!("2026-08-23T11:59:30Z");
     source_acl_stale["source_acl_ceiling"]["stale_cause"] = json!("expired");
     source_acl_stale["result"] = json!("deny");
     source_acl_stale["reason"] = json!("source_acl_stale");
@@ -1771,7 +1771,12 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let mut expired_and_policy_superseded = source_acl_policy_superseded.clone();
     expired_and_policy_superseded["source_acl_ceiling"]["stale_cause"] = json!("expired");
     expired_and_policy_superseded["source_acl_ceiling"]["current_authorization"]["expires_at"] =
-        json!("2026-08-23T12:00:00Z");
+        json!("2026-08-23T11:59:30Z");
+    assert_ne!(
+        expired_and_policy_superseded["source_acl_ceiling"]["current_authorization"]["acl_policy_version"],
+        expired_and_policy_superseded["source_acl_ceiling"]["check_context"]["acl_policy_version"],
+        "expiry-wins replay must retain the different evaluation-time governing version"
+    );
     let mut false_stale_cause = decision.clone();
     false_stale_cause["source_acl_ceiling"]["stale_cause"] = json!("expired");
 
