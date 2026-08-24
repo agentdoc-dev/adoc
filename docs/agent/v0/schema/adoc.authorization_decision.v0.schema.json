@@ -880,20 +880,20 @@
             "id",
             "name",
             "membership_source",
-            "membership_created_at",
-            "membership_observed_at"
+            "membership_id",
+            "membership_created_at"
           ],
           "additionalProperties": false,
           "properties": {
             "id": { "$ref": "#/$defs/nonEmpty" },
             "name": { "$ref": "#/$defs/nonEmpty" },
             "membership_source": { "const": "manual" },
+            "membership_id": {
+              "description": "Stable identifier of the preserved manual-membership lifecycle record that conferred this grant. Replay verifies that it was created and not revoked at evaluation_time.",
+              "$ref": "#/$defs/nonEmpty"
+            },
             "membership_created_at": {
               "description": "Creation time of the manual membership that conferred this grant. It must not follow evaluation_time; comparison is evaluator-owned.",
-              "$ref": "#/$defs/rfc3339Timestamp"
-            },
-            "membership_observed_at": {
-              "description": "Immutable evaluator observation that this manual membership was active. It must exactly equal evaluation_time, preventing an earlier positive membership input from being reused after revocation; comparison is evaluator-owned and fails closed.",
               "$ref": "#/$defs/rfc3339Timestamp"
             }
           }
