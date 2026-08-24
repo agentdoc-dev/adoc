@@ -758,7 +758,7 @@
       }
     },
     "sourceResource": {
-      "description": "Repository, project, space, or channel level within a scope. id is the bare source-local resource identifier; parent container context is carried separately by source_container_id — required on a decision resource with source_acl_ceiling.required true and on current ACL evidence, optional on a decision resource with no required check and on grant scopes.",
+      "description": "Repository, project, space, or channel level within a scope. id is the bare source-local resource identifier; parent container context is carried separately by source_container_id — required on a decision resource with source_acl_ceiling.required true and on the attempted-check context and current ACL evidence beside it, optional on a decision resource with no required check and on grant scopes.",
       "type": "object",
       "required": ["kind", "id"],
       "additionalProperties": false,
@@ -830,7 +830,7 @@
       ]
     },
     "sourceAclCheckContext": {
-      "description": "Immutable context for an attempted required source ACL check, retained even when no provider verdict is available. workspace_id, connector_id, source_container_id, and source must match the decision resource; principal_id must match the effective decision principal; external_identity_link_id must name that principal's retained provider identity link at evaluation_time; acl_policy_version must name the connector policy governing the attempt. For delegated execution, the workload or service principal uses its own linked provider identity while the delegator remains in the separate delegation chain. These bindings are evaluator-owned and fail closed.",
+      "description": "Immutable context for an attempted required source ACL check, retained even when no provider verdict is available. workspace_id, connector_id, source_container_id, and source must match the decision resource; principal_id must match the effective decision principal; external_identity_link_id must name that principal's retained provider identity link at evaluation_time, and when current_authorization is present it is the same link and must additionally satisfy the continuous-resolution rule stated there; acl_policy_version must name the connector policy governing the attempt. When current ACL evidence is present its workspace_id, connector_id, source_container_id, source, principal_id, external_identity_link_id, and acl_policy_version repeat these values and must match. The independently stored attempt and evidence records duplicate these bindings so replay can prove freshness belongs to the exact attempted check. For delegated execution, the workload or service principal uses its own linked provider identity while the delegator remains in the separate delegation chain. These bindings are evaluator-owned and fail closed.",
       "type": "object",
       "required": [
         "role",
@@ -868,6 +868,7 @@
           "$ref": "#/$defs/policyInput"
         },
         "check_context": {
+          "description": "Immutable identity, resource, and policy bindings for the attempted required source ACL check; field bindings are defined by sourceAclCheckContext.",
           "$ref": "#/$defs/sourceAclCheckContext"
         },
         "snapshot_id": {
