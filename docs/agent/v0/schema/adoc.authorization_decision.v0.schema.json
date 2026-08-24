@@ -49,7 +49,7 @@
       "enum": ["current", "insufficient_context", "not_applicable"]
     },
     "membership_unavailability_evidence": {
-      "description": "Immutable provenance for every relevant membership input that was unavailable or not yet established. Each entry identifies the exact group input and a retained failure, expiry, or pending-state record. Evaluator-owned completeness and record-ownership checks fail closed.",
+      "description": "Immutable provenance for every relevant membership input that was unavailable or not yet established. Each entry identifies the exact group input and a retained failure, expiry, or pending-state record. The evaluation-time group name is required unless reason is evaluation_time_invalid, when no valid instant exists against which to resolve it. Evaluator-owned completeness and record-ownership checks fail closed.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
@@ -107,6 +107,23 @@
       "then": {
         "properties": {
           "membership_evidence": { "enum": ["current", "insufficient_context"] }
+        }
+      }
+    },
+    {
+      "if": {
+        "not": {
+          "properties": {
+            "reason": { "const": "evaluation_time_invalid" }
+          },
+          "required": ["reason"]
+        }
+      },
+      "then": {
+        "properties": {
+          "membership_unavailability_evidence": {
+            "items": { "required": ["group_name"] }
+          }
         }
       }
     },
@@ -943,20 +960,6 @@
               }
             },
             "required": ["membership_absence_evidence"]
-          },
-          {
-            "properties": {
-              "membership_unavailability_evidence": {
-                "contains": {
-                  "properties": {
-                    "source_kind": { "const": "oidc_group" },
-                    "state": { "const": "observation_expired" }
-                  },
-                  "required": ["source_kind", "state"]
-                }
-              }
-            },
-            "required": ["membership_unavailability_evidence"]
           }
         ]
       },
@@ -1054,7 +1057,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/nonEmpty" },
         "identity_session_id": {
-          "description": "Exact E2.3 human identity session used at evaluation. The oidc_group source kind is claim-only in V1 and valid only for a human principal; nonhuman principals must omit this field. Required for any positive or negative oidc_group observation carried by a grant, winning basis, or membership_absence_evidence; it must equal the identity session retained by source_event_id, and replay fails closed on mismatch.",
+          "description": "Exact E2.3 human identity session used at evaluation. The oidc_group source kind is claim-only in V1 and valid only for a human principal; nonhuman principals must omit this field. Required for any positive or negative oidc_group observation carried by a grant, winning basis, or membership_absence_evidence; it must equal the identity session retained by source_event_id, and replay fails closed on mismatch. An expired OIDC observation cited only by membership_unavailability_evidence carries its own historical identity_session_id on that entry instead.",
           "$ref": "#/$defs/nonEmpty"
         },
         "type": { "enum": ["human", "service", "agent", "workload"] },
@@ -1124,7 +1127,7 @@
           "$ref": "#/$defs/nonEmpty"
         },
         "observed_at": {
-          "description": "Source evidence time used for membership freshness. An event-driven observation carries the current-state source read time prompted by its event, never the webhook delivery time; event polarity only triggers the read, and the read result determines observation polarity. A positive event whose read confirms absence records a negative observation and no positive observation. A removal event whose read still shows membership records a positive observation and no negative observation, but its fresh_until is capped at the deadline of the latest prior observation for the same group, binding, and identity link, so a revocation signal or redelivery never extends the membership it reports. The contradiction is retained and operator-visible, and the binding's next scheduled resynchronization bounds revocation propagation. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership. For claim-only oidc_group, observed_at is the token issuance instant retained by source_event_id; validation of that freshly issued token at authentication is the current-state read.",
+          "description": "Source evidence time used for membership freshness. An event-driven observation carries the current-state source read time prompted by its event, never the webhook delivery time; event polarity only triggers the read, and the read result determines observation polarity. A positive event whose read confirms absence records a negative observation and no positive observation. A removal event whose read still shows membership records a positive observation and no negative observation, but its fresh_until is capped at the deadline of the latest prior positive observation for the same group, binding, and identity link, so a revocation signal or redelivery never extends the positive membership it reports. When no prior positive observation exists, the ordinary historical-policy deadline applies. The contradiction is retained and operator-visible, and the binding's next scheduled resynchronization bounds revocation propagation. A resynchronization sweep carries the per-principal read time when available, otherwise the sweep start as a conservative lower bound; it never substitutes the later run-completion time, so a long sweep cannot extend stale membership. For claim-only oidc_group, observed_at is the token issuance instant retained by source_event_id; validation of that freshly issued token at authentication is the current-state read.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "effective_at": {
@@ -1132,7 +1135,7 @@
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "fresh_until": {
-          "description": "Immutable deadline derived from observed_at under the versioned freshness policy retained by the exact binding. Replay resolves the policy versions in effect at observed_at and evaluation_time and requires fresh_until to equal the historical-version recomputation, except that for a positive observation from a removal-event read, fresh_until is capped at the deadline of the latest prior observation for the same group, binding, and identity link: it equals the earlier of that cap and the historical recomputation. A revocation signal or redelivery therefore cannot renew membership. The observation may confer only through the shorter of retained fresh_until and the deadline recomputed with the evaluation-time freshness window; a shortened policy therefore caps existing observations immediately, while a longer policy never revives or extends them. Replay also caps oidc_group at the cited identity session's expiry and fails closed unless evaluation_time does not exceed the effective deadline; connector unavailability cannot extend it. The effective deadline must follow effective_at; observed_at must not follow fresh_until, and retained fresh_until must follow effective_at, so an observation is never expired before it becomes eligible. A synchronization run whose produced observations cannot satisfy that ordering is rejected as a freshness-policy misconfiguration; a routine replacement run must also complete before the deadline of the observations it replaces. Timestamp comparisons are evaluator-owned and fail closed.",
+          "description": "Immutable deadline derived from observed_at under the versioned freshness policy retained by the exact binding. Replay resolves the policy versions in effect at observed_at and evaluation_time and requires fresh_until to equal the historical-version recomputation, except that for a positive observation from a removal-event read, fresh_until is capped at the deadline of the latest prior positive observation for the same group, binding, and identity link: it equals the earlier of that cap and the historical recomputation. When no prior positive observation exists, no cap applies and fresh_until equals the historical recomputation. A revocation signal or redelivery therefore cannot renew prior positive membership. The observation may confer only through the shorter of retained fresh_until and the deadline recomputed with the evaluation-time freshness window; a shortened policy therefore caps existing observations immediately, while a longer policy never revives or extends them. Replay also caps oidc_group at the cited identity session's expiry and fails closed unless evaluation_time does not exceed the effective deadline; connector unavailability cannot extend it. For an uncapped observation, the effective deadline must follow effective_at, observed_at must not follow retained fresh_until, and retained fresh_until must follow effective_at, so it is never expired before becoming eligible. A capped observation whose retained fresh_until does not follow effective_at is born inert: it is retained for replay, confers nothing, and its unavailable input records observation_expired. A synchronization run whose produced observations cannot satisfy the uncapped ordering is rejected as a freshness-policy misconfiguration; a routine replacement run must also complete before the deadline of the observations it replaces. Timestamp comparisons are evaluator-owned and fail closed.",
           "$ref": "#/$defs/rfc3339Timestamp"
         },
         "member_present": { "type": "boolean" },
@@ -1142,6 +1145,15 @@
     "bindingMode": {
       "description": "Grant-conferring binding mode in effect at evaluation_time. Replay resolves binding_id against the retained complete effective mode history and fails closed unless this value names that epoch.",
       "enum": ["authoritative_sync", "additive_sync"]
+    },
+    "bindingModeAtEvaluation": {
+      "description": "Binding mode epoch actually in effect at evaluation_time for unavailable input provenance. When reason is evaluation_time_invalid, it instead names the epoch retained by state_record_id and makes no at-evaluation temporal claim. suggestion_only and disabled are valid only for epoch_observation_pending, where the retained pending request targets a future grant-conferring mode but no new epoch exists yet.",
+      "enum": [
+        "authoritative_sync",
+        "additive_sync",
+        "suggestion_only",
+        "disabled"
+      ]
     },
     "sourceKind": {
       "description": "Closed source adapter kind for this membership. Replay resolves binding_id and fails closed unless this value equals the source kind recorded on the retained binding.",
@@ -1227,13 +1239,12 @@
       ]
     },
     "membershipUnavailabilityEvidence": {
-      "description": "Immutable fail-closed provenance for one unavailable membership input. The retained state record must belong to the named input and prove the stated condition at evaluation_time; replay fails closed on a mismatch.",
+      "description": "Immutable fail-closed provenance for one unavailable membership input. The retained state record must belong to the named input and, when evaluation_time is valid, prove the stated condition at that instant. For evaluation_time_invalid, replay verifies stable input identity and state-record ownership without making a temporal claim against the malformed instant. Replay fails closed on a mismatch.",
       "oneOf": [
         {
           "type": "object",
           "required": [
             "group_id",
-            "group_name",
             "membership_source",
             "state",
             "state_record_id"
@@ -1242,7 +1253,7 @@
           "properties": {
             "group_id": { "$ref": "#/$defs/nonEmpty" },
             "group_name": {
-              "description": "AgentDoc group name in effect at evaluation_time, verified against the retained complete group-name history.",
+              "description": "AgentDoc group name in effect at evaluation_time, verified against the retained complete group-name history. It is omitted only when reason is evaluation_time_invalid.",
               "$ref": "#/$defs/nonEmpty"
             },
             "membership_source": { "const": "manual" },
@@ -1260,7 +1271,6 @@
           "type": "object",
           "required": [
             "group_id",
-            "group_name",
             "membership_source",
             "binding_id",
             "binding_mode",
@@ -1274,7 +1284,7 @@
           "properties": {
             "group_id": { "$ref": "#/$defs/nonEmpty" },
             "group_name": {
-              "description": "AgentDoc group name in effect at evaluation_time, verified against the retained complete group-name history.",
+              "description": "AgentDoc group name in effect at evaluation_time, verified against the retained complete group-name history. It is omitted only when reason is evaluation_time_invalid.",
               "$ref": "#/$defs/nonEmpty"
             },
             "membership_source": { "const": "external" },
@@ -1282,9 +1292,9 @@
               "description": "Exact retained external binding whose membership input could not be established.",
               "$ref": "#/$defs/nonEmpty"
             },
-            "binding_mode": { "$ref": "#/$defs/bindingMode" },
+            "binding_mode": { "$ref": "#/$defs/bindingModeAtEvaluation" },
             "binding_mode_effective_at": {
-              "description": "Start of the retained grant-conferring binding-mode epoch in effect at evaluation_time.",
+              "description": "Start of the retained binding-mode epoch actually in effect at evaluation_time. For evaluation_time_invalid it instead identifies the epoch retained by state_record_id without claiming effectivity at the malformed instant. For epoch_observation_pending this is the prior epoch, including suggestion_only or disabled while a retained request awaits its transition sweep; it never invents the requested grant-conferring epoch before completion.",
               "$ref": "#/$defs/rfc3339Timestamp"
             },
             "source_kind": { "$ref": "#/$defs/sourceKind" },
@@ -1292,12 +1302,16 @@
               "description": "Exact retained identity link for the authorization envelope principal whose binding input was unavailable.",
               "$ref": "#/$defs/nonEmpty"
             },
+            "identity_session_id": {
+              "description": "Exact retained E2.3 identity session bound to the expired OIDC observation identified by state_record_id. This per-input historical session is required only for oidc_group observation_expired and need not equal the principal identity session used at evaluation.",
+              "$ref": "#/$defs/nonEmpty"
+            },
             "state": {
               "$ref": "#/$defs/membershipUnavailabilityState",
               "not": { "const": "lifecycle_unavailable" }
             },
             "state_record_id": {
-              "description": "Immutable retained record matching state: the expired observation, failed connector read, pending or failed link read, empty-epoch synchronization state, or pending OIDC authentication state. Replay verifies that it belongs to binding_id and external_identity_link_id and was effective at evaluation_time.",
+              "description": "Immutable retained record matching state: the expired observation, failed connector read, pending or failed link read, pending transition request, or pending OIDC authentication state. Replay verifies that it belongs to binding_id and external_identity_link_id and, when evaluation_time is valid, was effective at that instant; evaluation_time_invalid verifies ownership without a temporal claim.",
               "$ref": "#/$defs/nonEmpty"
             }
           },
@@ -1327,6 +1341,30 @@
                   }
                 }
               }
+            },
+            {
+              "if": {
+                "properties": {
+                  "state": { "const": "epoch_observation_pending" }
+                },
+                "required": ["state"]
+              },
+              "else": {
+                "properties": {
+                  "binding_mode": { "$ref": "#/$defs/bindingMode" }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "source_kind": { "const": "oidc_group" },
+                  "state": { "const": "observation_expired" }
+                },
+                "required": ["source_kind", "state"]
+              },
+              "then": { "required": ["identity_session_id"] },
+              "else": { "not": { "required": ["identity_session_id"] } }
             }
           ]
         }

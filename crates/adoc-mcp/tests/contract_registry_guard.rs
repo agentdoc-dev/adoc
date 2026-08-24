@@ -851,6 +851,7 @@ fn group_vocabularies_match_the_e2_4_registry() {
         assert_eq!(properties["source_kind"]["$ref"], "#/$defs/sourceKind");
     }
     assert_eq!(grant_conferring_modes, schema_values("bindingMode"));
+    assert_eq!(registered_modes, schema_values("bindingModeAtEvaluation"));
     assert_eq!(
         anchored_ids(&registry, "registry:group-source-kinds"),
         schema_values("sourceKind")
@@ -920,8 +921,9 @@ fn group_retention_rules_match_the_e2_4_authority() {
             && fresh_until
                 .contains("shortened policy therefore caps existing observations immediately")
             && fresh_until.contains("connector unavailability cannot extend")
-            && fresh_until.contains("effective deadline must follow effective_at")
-            && fresh_until.contains("retained fresh_until must follow effective_at"),
+            && fresh_until.contains("uncapped observation")
+            && fresh_until.contains("born inert")
+            && fresh_until.contains("observation_expired"),
         "membership freshness must be binding-owned, tightening-aware, bounded, and fail closed"
     );
     let freshness_history_claim = "complete effective membership-freshness policy history";
@@ -955,17 +957,13 @@ fn group_retention_rules_match_the_e2_4_authority() {
         .iter()
         .find(|branch| branch["properties"]["membership_source"]["const"] == "manual")
         .expect("membership unavailability evidence has a manual branch");
-    assert!(
-        unavailable_manual["required"]
-            .as_array()
-            .expect("manual unavailability required fields")
-            .iter()
-            .any(|required| required == "group_name"),
-        "manual unavailability must retain the evaluation-time group name"
+    assert_eq!(
+        unavailable_external["properties"]["binding_mode"]["$ref"],
+        "#/$defs/bindingModeAtEvaluation"
     );
+    assert!(unavailable_manual["properties"]["group_name"].is_object());
     for field in [
         "group_id",
-        "group_name",
         "binding_id",
         "binding_mode",
         "binding_mode_effective_at",
@@ -1094,9 +1092,11 @@ fn group_retention_rules_match_the_e2_4_authority() {
     let removal_membership_claim =
         "removal event whose read still shows membership records a positive observation";
     let removal_cap_schema_claim =
-        "fresh_until is capped at the deadline of the latest prior observation";
+        "fresh_until is capped at the deadline of the latest prior positive observation";
     let removal_cap_doc_claim =
-        "`fresh_until` is capped at the deadline of the latest prior observation";
+        "`fresh_until` is capped at the deadline of the latest prior positive observation";
+    let no_prior_cap_claim = "no prior positive observation exists";
+    let born_inert_claim = "born inert";
     let contradiction_claim = "contradiction is retained and operator-visible";
     let resync_bound_claim = "next scheduled resynchronization bounds revocation propagation";
     assert!(
@@ -1112,6 +1112,14 @@ fn group_retention_rules_match_the_e2_4_authority() {
                 .as_str()
                 .expect("freshness cap is documented")
                 .contains(removal_cap_schema_claim)
+            && observation["fresh_until"]["description"]
+                .as_str()
+                .expect("no-prior cap behavior is documented")
+                .contains(no_prior_cap_claim)
+            && observation["fresh_until"]["description"]
+                .as_str()
+                .expect("capped expiry behavior is documented")
+                .contains(born_inert_claim)
             && observation["observed_at"]["description"]
                 .as_str()
                 .expect("event contradiction retention is documented")
@@ -1122,6 +1130,8 @@ fn group_retention_rules_match_the_e2_4_authority() {
                 .contains(resync_bound_claim)
             && a7.contains(removal_membership_claim)
             && a7.contains(removal_cap_doc_claim)
+            && a7.contains(no_prior_cap_claim)
+            && a7.contains(born_inert_claim)
             && a7.contains(contradiction_claim)
             && a7.contains(resync_bound_claim),
         "contradicted removals must remain replayable, visible, and propagation-bounded"
@@ -1162,6 +1172,8 @@ fn group_retention_rules_match_the_e2_4_authority() {
             && e2_4.contains(positive_absence_claim)
             && e2_4.contains(removal_membership_claim)
             && e2_4.contains(removal_cap_doc_claim)
+            && e2_4.contains(no_prior_cap_claim)
+            && e2_4.contains(born_inert_claim)
             && e2_4.contains(contradiction_claim)
             && e2_4.contains(resync_bound_claim),
         "the E2.4 exit gate must make current state authoritative and bound contradictions"
