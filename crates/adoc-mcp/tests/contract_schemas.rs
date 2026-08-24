@@ -1592,12 +1592,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
             "result": "allow",
             "check_context": {
                 "role": "attempted_check",
-                "workspace_id": "workspace-1",
-                "connector_id": "github",
-                "source_container_id": "agentdoc-dev",
-                "principal_id": "principal-1",
                 "external_identity_link_id": "external-identity-link-1",
-                "source": { "kind": "repository", "id": "cloud" },
                 "acl_policy_version": "github-acl-v1"
             },
             "snapshot_id": "acl-1",
@@ -1666,6 +1661,8 @@ fn authorization_decision_schema_pins_replay_bindings() {
         "required": false,
         "result": "not_applicable"
     });
+    let mut optional_acl_with_snapshot = no_acl_ceiling.clone();
+    optional_acl_with_snapshot["source_acl_ceiling"]["snapshot_id"] = json!("acl-1");
 
     let mut denied = no_acl_ceiling.clone();
     denied["grants"] = json!([]);
@@ -2075,6 +2072,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
     identity_context_missing["consequential"] = json!(true);
     identity_context_missing["result"] = json!("insufficient_context");
     identity_context_missing["reason"] = json!("identity_context_missing");
+    let mut identity_context_missing_before_required_acl = identity_context_missing.clone();
+    identity_context_missing_before_required_acl["source_acl_ceiling"] = json!({
+        "required": true,
+        "result": "insufficient_context"
+    });
     let mut hard_deny_with_missing_identity = identity_context_missing.clone();
     hard_deny_with_missing_identity["hard_deny"] = json!(true);
     let mut false_identity_context_missing_reason = identity_context_missing.clone();
@@ -2225,6 +2227,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
             false,
         ),
         (
+            "optional source ACL may retain a historical snapshot",
+            optional_acl_with_snapshot,
+            true,
+        ),
+        (
             "current source ACL verdict disagrees with ceiling",
             current_acl_result_mismatch,
             false,
@@ -2372,6 +2379,11 @@ fn authorization_decision_schema_pins_replay_bindings() {
         (
             "consequential identity-context reason matches input",
             identity_context_missing,
+            true,
+        ),
+        (
+            "identity gate may win before a required source ACL attempt",
+            identity_context_missing_before_required_acl,
             true,
         ),
         (
@@ -2795,16 +2807,7 @@ fn authorization_decision_schema_pins_replay_bindings() {
         );
     }
 
-    for field in [
-        "role",
-        "workspace_id",
-        "connector_id",
-        "source_container_id",
-        "principal_id",
-        "external_identity_link_id",
-        "source",
-        "acl_policy_version",
-    ] {
+    for field in ["role", "external_identity_link_id", "acl_policy_version"] {
         let mut missing = insufficient.clone();
         missing["source_acl_ceiling"]["check_context"]
             .as_object_mut()
