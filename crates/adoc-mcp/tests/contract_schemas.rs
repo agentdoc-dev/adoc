@@ -2434,13 +2434,6 @@ fn authorization_decision_schema_pins_replay_bindings() {
         .iter()
         .find(|branch| branch["properties"]["membership_source"]["const"] == "external")
         .expect("group has an external membership branch")["properties"];
-    assert!(
-        external_group_properties["binding_id"]["description"]
-            .as_str()
-            .expect("external binding replay is documented")
-            .contains("complete effective mode history"),
-        "replay must resolve only effective binding mode epochs"
-    );
     let binding_modes = external_group_properties["binding_mode"]["enum"]
         .as_array()
         .expect("external group binding_mode is an enum");

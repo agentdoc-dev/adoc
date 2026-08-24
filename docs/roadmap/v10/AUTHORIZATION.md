@@ -204,6 +204,8 @@ External binding records retain their complete effective mode history, so replay
 
 Reconfiguration to `suggestion_only` or `disabled` takes effect immediately. A binding-mode reconfiguration to a grant-conferring mode takes effect only when its resynchronization completes; until then the binding remains under the prior epoch. While deferred, the requested target mode and pending state are operator-visible, and a failed resynchronization is recorded and surfaced rather than retried silently. Completion starts the new epoch and records a fresh membership observation for every principal the source currently reports, with `observed_at` equal to that completion instant and epoch boundary; external membership confers grants again only from an observation recorded within that epoch.
 
+A requested reconfiguration and its resynchronization outcome are retained for every decision recorded while it was pending, including a failed outcome that leaves the prior effective mode epoch in force.
+
 Nested-group behavior is not implemented accidentally; it requires a future explicit decision.
 
 ## A8. Authorization decision record
