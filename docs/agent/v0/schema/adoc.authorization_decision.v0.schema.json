@@ -893,7 +893,7 @@
               "$ref": "#/$defs/nonEmpty"
             },
             "membership_created_at": {
-              "description": "Creation time of the manual membership that conferred this grant. It must not follow evaluation_time; comparison is evaluator-owned.",
+              "description": "Creation time of the manual membership identified by membership_id, exactly matching that record's creation time. It must not follow evaluation_time; both comparisons are evaluator-owned.",
               "$ref": "#/$defs/rfc3339Timestamp"
             }
           }
