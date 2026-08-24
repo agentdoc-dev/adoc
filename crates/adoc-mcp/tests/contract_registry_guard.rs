@@ -862,6 +862,8 @@ fn group_retention_rules_match_the_e2_4_authority() {
     );
     let observation_binding_claim = "observation's retained binding";
     let observation_group_claim = "retained binding's AgentDoc group";
+    let observation_link_claim =
+        "observation's retained identity link equals the enclosing identity-link identifier";
     assert!(
         observation["id"]["description"]
             .as_str()
@@ -874,6 +876,14 @@ fn group_retention_rules_match_the_e2_4_authority() {
             && a7.contains(observation_binding_claim)
             && a7.contains(observation_group_claim),
         "membership replay must reject observation substitution across bindings or groups"
+    );
+    assert!(
+        observation["id"]["description"]
+            .as_str()
+            .expect("membership observation identity-link binding is documented")
+            .contains(observation_link_claim)
+            && a7.contains(observation_link_claim),
+        "membership replay must reject observation substitution across principals"
     );
     let source_kind_binding_claim = "source kind recorded on the retained binding";
     assert!(
@@ -898,6 +908,19 @@ fn group_retention_rules_match_the_e2_4_authority() {
     assert!(
         a7.contains(same_source_claim),
         "AUTHORIZATION.md §A7 must bind both observation times to one source record"
+    );
+    let source_record_binding_claim = "source record belongs to the observation's retained binding";
+    let source_subject_claim =
+        "membership subject resolves through the observation's retained external identity link";
+    let source_event_description = observation["source_event_id"]["description"]
+        .as_str()
+        .expect("membership source-record replay binding is documented");
+    assert!(
+        source_event_description.contains(source_record_binding_claim)
+            && source_event_description.contains(source_subject_claim)
+            && a7.contains(source_record_binding_claim)
+            && a7.contains(source_subject_claim),
+        "membership replay must bind source evidence to the binding and observed principal"
     );
     let delayed_positive_claim = "delayed or reordered positive event";
     assert!(
@@ -944,6 +967,12 @@ fn group_retention_rules_match_the_e2_4_authority() {
         "E2.4.T2 must reject a source kind that differs from the retained binding"
     );
     assert!(
+        e2_4.contains(observation_link_claim)
+            && e2_4.contains(source_record_binding_claim)
+            && e2_4.contains(source_subject_claim),
+        "E2.4.T2 must reject observation or source-record substitution"
+    );
+    assert!(
         e2_4.contains(manual_membership_binding_claim),
         "E2.4.T1 must reject a manual membership from another principal or group"
     );
@@ -977,6 +1006,7 @@ fn group_retention_rules_match_the_e2_4_authority() {
     let relink_outcome_claim =
         "each binding read and its outcome are recorded and operator-visible";
     let relink_retry_claim = "failed read is surfaced with an explicit operator retry";
+    let relink_retention_claim = "request instant and outcome instant are retained for every decision recorded while it was pending";
     let oidc_recovery_claim = "Claim-only `oidc_group` instead recovers at the next authentication";
     let registry_doc = registry();
     let registry_group_sources =
@@ -1035,7 +1065,9 @@ fn group_retention_rules_match_the_e2_4_authority() {
             && a7.contains(relink_outcome_claim)
             && e2_4.contains(relink_outcome_claim)
             && a7.contains(relink_retry_claim)
-            && e2_4.contains(relink_retry_claim),
+            && e2_4.contains(relink_retry_claim)
+            && a7.contains(relink_retention_claim)
+            && e2_4.contains(relink_retention_claim),
         "relink recovery must refresh event-driven memberships without treating OIDC as a connector"
     );
 }
