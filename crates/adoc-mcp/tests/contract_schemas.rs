@@ -1660,6 +1660,28 @@ fn semantic_assessment_schema_accepts_the_envelope_and_rejects_unknown_fields() 
     });
     assert_valid("adoc.semantic_assessment.v0.schema.json", &instance);
 
+    let mut human = instance.clone();
+    human["identity"] = json!({
+        "provider": "human",
+        "model": "structured-assessment-v0"
+    });
+    assert!(
+        !schema_accepts("adoc.semantic_assessment.v0.schema.json", &human),
+        "human assessment requires principal-attributed independence facts"
+    );
+    human["human_review"] = json!({
+        "authority": "semantic_review",
+        "reviewing_principal_id": "principal:reviewer",
+        "requesting_principal_id": "principal:author",
+        "independence": "independent"
+    });
+    assert_valid("adoc.semantic_assessment.v0.schema.json", &human);
+    human["human_review"]["authority"] = json!("proposal_approval");
+    assert!(
+        !schema_accepts("adoc.semantic_assessment.v0.schema.json", &human),
+        "semantic assessment cannot carry proposal-approval authority"
+    );
+
     let mut unknown = instance;
     unknown["unexpected"] = json!(true);
     assert!(

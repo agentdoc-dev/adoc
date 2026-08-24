@@ -29,6 +29,7 @@
         "model": { "$ref": "#/$defs/nonEmpty" }
       }
     },
+    "human_review": { "$ref": "#/$defs/humanReview" },
     "materiality_policy_version": { "const": "adoc.materiality.v0" },
     "scope": {
       "type": "object",
@@ -48,6 +49,21 @@
       "items": { "$ref": "#/$defs/finding" }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "identity": {
+            "properties": { "provider": { "const": "human" } },
+            "required": ["provider"]
+          }
+        },
+        "required": ["identity"]
+      },
+      "then": { "required": ["human_review"] },
+      "else": { "not": { "required": ["human_review"] } }
+    }
+  ],
   "$defs": {
     "nonEmpty": {
       "type": "string",
@@ -69,6 +85,22 @@
       "properties": {
         "system": { "$ref": "#/$defs/nonEmpty" },
         "value": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "humanReview": {
+      "type": "object",
+      "required": [
+        "authority",
+        "reviewing_principal_id",
+        "requesting_principal_id",
+        "independence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "authority": { "const": "semantic_review" },
+        "reviewing_principal_id": { "$ref": "#/$defs/nonEmpty" },
+        "requesting_principal_id": { "$ref": "#/$defs/nonEmpty" },
+        "independence": { "enum": ["self_assessment", "independent"] }
       }
     },
     "affectedObject": {

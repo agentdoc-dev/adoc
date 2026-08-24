@@ -315,7 +315,7 @@ The deterministic `adoc.semantic_context.v0` envelope supplied as inert data to 
 _Avoid_: prompt, RAG dump, open citation URL, context reconstructed by the validator, semantic assessment
 
 **Semantic Assessment**:
-The provider-neutral `adoc.semantic_assessment.v0` envelope validated against one exact **Semantic Context**: typed findings, affected Object ID/hash pairs, closed citations, provider/model identity, proposed dispositions, candidate updates, unresolved questions, and validator-owned materiality. Model and human structured submissions share this boundary; unvalidated JSON has no typed core representation and explanatory prose never becomes gate authority.
+The provider-neutral `adoc.semantic_assessment.v0` envelope validated against one exact **Semantic Context**: typed findings, affected Object ID/hash pairs, closed citations, provider/model identity, proposed dispositions, candidate updates, unresolved questions, and validator-owned materiality. Human submissions additionally bind the reviewing and requesting Principals plus the validator-derived `self_assessment | independent` determination under the fixed `semantic_review` authority; Cloud policy decides whether that truthful fact is eligible. Model and human structured submissions share this boundary; unvalidated JSON has no typed core representation and explanatory prose never becomes gate authority.
 _Avoid_: semantic review for the V1 contract, compliance verdict, provider response, model-set gate result
 
 **Semantic Materiality**:
