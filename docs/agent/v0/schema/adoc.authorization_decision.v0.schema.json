@@ -860,7 +860,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/nonEmpty" },
         "external_identity_link_id": {
-          "description": "Verified E2.3 identity link through which the external source identity resolves to this workspace principal.",
+          "description": "Verified E2.3 identity link through which the external source identity resolves to this workspace principal. Evaluation and replay resolve its preserved lifecycle and fail closed unless it was active at the decision evaluation time; an unlink after an earlier decision preserves that decision's replay but revokes future use.",
           "$ref": "#/$defs/nonEmpty"
         },
         "source_event_id": {

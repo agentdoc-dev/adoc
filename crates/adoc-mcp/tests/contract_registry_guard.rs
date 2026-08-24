@@ -839,6 +839,14 @@ fn group_retention_rules_match_the_e2_4_authority() {
             .contains("start and completion instants"),
         "source_event_id must resolve to retained run endpoints"
     );
+    let link_lifecycle_claim = "active at the decision evaluation time";
+    assert!(
+        observation["external_identity_link_id"]["description"]
+            .as_str()
+            .expect("external identity link replay is documented")
+            .contains(link_lifecycle_claim),
+        "membership observations must use a link active at evaluation"
+    );
 
     let same_source_claim = "A membership observation resolves against exactly one retained source event or synchronization run";
     assert!(
@@ -896,6 +904,10 @@ fn group_retention_rules_match_the_e2_4_authority() {
     assert!(
         e2_4.contains(transition_latitude_claim),
         "E2.4.T2 must reject routine sweeps that cross an epoch boundary"
+    );
+    assert!(
+        a7.contains(link_lifecycle_claim) && e2_4.contains(link_lifecycle_claim),
+        "A7 and E2.4 must reject observations from already-unlinked identities"
     );
 }
 
