@@ -399,6 +399,16 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.executor_qualification.v0.schema.json",
+        name: "schema-adoc-executor-qualification-v0-json",
+        title: "Executor Qualification JSON Schema",
+        description: "JSON Schema for adoc.executor_qualification.v0, the four-layer capability qualification record bound to exact executor configuration digests.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.executor_qualification.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/search-artifact.json",
         name: "schema-search-artifact-json",
         title: "Search Artifact JSON Schema",

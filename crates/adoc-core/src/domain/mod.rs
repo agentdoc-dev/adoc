@@ -2,6 +2,7 @@
 pub(crate) mod artifact;
 pub(crate) mod ast;
 pub(crate) mod diagnostic;
+pub(crate) mod executor_qualification;
 pub(crate) mod graph;
 pub(crate) mod hashing;
 pub(crate) mod identity;

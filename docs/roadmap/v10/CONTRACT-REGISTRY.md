@@ -28,6 +28,7 @@ Producer for every row is the `adoc` release train (CLI, MCP server, and local g
 | `adoc.change_assessment.v0` | shipped | adoc 0.3.4 | Action v2.0.0-alpha.19; Cloud ingestion planned (E4.6) | v0-additive |
 | `adoc.contradictions.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.diff.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
+| `adoc.executor_qualification.v0` | shipped | adoc 0.4.x | adoc 0.4.x authoritative validator and MCP schema resource; Cloud v0.1.0 store/route (E3.3) | exact-match reader; four ordered eligibility layers are protocol-valid, AgentDoc-evaluated for the named capability, organization-approved for declared scope/risk/deployment, and runtime-policy-eligible for the exact operation; all four plus an unchanged exact executor configuration are required for gate authority; protocol-valid-only output is advisory; model records bind exact executor/model/config digests and every named requalification input; human records bind an authenticated principal and permission-policy digest instead of benchmark evidence |
 | `adoc.graph.traversal.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
 | `adoc.graph.v6` | shipped | adoc 0.4.0 | adoc 0.4.0 (CLI/MCP/local gateway surfaces) | exact-match reader; v5 rejected with `schema.unsupported_version` + rebuild guidance; migration is deterministic regeneration from source (ADR-0058) |
 | `adoc.impacted.v0` | shipped | adoc 0.3.4 | CLI/MCP agent clients at adoc 0.3.4 | v0-additive |
