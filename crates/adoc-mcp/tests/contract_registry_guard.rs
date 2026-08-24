@@ -855,6 +855,11 @@ fn group_retention_rules_match_the_e2_4_authority() {
             && link_description.contains(link_endpoint_claim),
         "membership observations must retain and verify the link interval"
     );
+    let link_principal_claim = "link belongs to the authorization envelope principal";
+    assert!(
+        link_description.contains(link_principal_claim) && a7.contains(link_principal_claim),
+        "membership observations must reject another principal's identity link"
+    );
     let observation_binding_claim = "observation's retained binding";
     let observation_group_claim = "retained binding's AgentDoc group";
     assert!(
@@ -958,14 +963,16 @@ fn group_retention_rules_match_the_e2_4_authority() {
         a7.contains(link_lifecycle_claim)
             && a7.contains(link_endpoint_claim)
             && e2_4.contains(link_lifecycle_claim)
-            && e2_4.contains(link_endpoint_claim),
-        "A7 and E2.4 must reject observations from already-unlinked identities"
+            && e2_4.contains(link_endpoint_claim)
+            && e2_4.contains(link_principal_claim),
+        "A7 and E2.4 must reject wrong-principal and inactive identity links"
     );
     let oidc_claim = "freshly issued and verified ID token";
     let oidc_timing_claim =
         "token issuance, validation/ingestion-commit, and session-expiry instants";
     let oidc_lifetime_claim = "no later than the cited identity session's expiry";
     let oidc_session_binding_claim = "must equal the identity session retained by";
+    let oidc_human_claim = "source kind is claim-only in V1 and valid only for a human principal";
     let relink_recovery_claim = "Linking or relinking an external identity completes the link and records a pending current-state membership read for that principal against every grant-conferring binding of the linked source kind";
     let relink_outcome_claim =
         "each binding read and its outcome are recorded and operator-visible";
@@ -1009,6 +1016,16 @@ fn group_retention_rules_match_the_e2_4_authority() {
             && a7.contains(oidc_session_binding_claim)
             && e2_4.contains(oidc_session_binding_claim),
         "claim-only OIDC must bind the observation to the evaluated identity session"
+    );
+    assert!(
+        schema["$defs"]["principal"]["properties"]["identity_session_id"]["description"]
+            .as_str()
+            .expect("principal identity-session ownership is documented")
+            .contains(oidc_human_claim)
+            && a7.contains(oidc_human_claim)
+            && e2_4.contains(oidc_human_claim)
+            && registry_group_sources.contains(oidc_human_claim),
+        "claim-only OIDC group membership must be human-session-only"
     );
     assert!(
         a7.contains(relink_recovery_claim)

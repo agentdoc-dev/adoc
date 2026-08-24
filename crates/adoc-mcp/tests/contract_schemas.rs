@@ -2449,6 +2449,27 @@ fn authorization_decision_schema_pins_replay_bindings() {
     let source_kinds = external_group_properties["source_kind"]["enum"]
         .as_array()
         .expect("external group source_kind is an enum");
+    let mut nonhuman_identity_session = decision.clone();
+    nonhuman_identity_session["principal"]["type"] = json!("service");
+    nonhuman_identity_session["principal"]["identity_session_id"] = json!("identity-session-1");
+    assert!(
+        !schema_accepts(
+            "adoc.authorization_decision.v0.schema.json",
+            &nonhuman_identity_session
+        ),
+        "nonhuman principals cannot carry a human identity session"
+    );
+
+    let mut oidc_basis_without_session = external_group_grant.clone();
+    oidc_basis_without_session["basis"]["group"]["source_kind"] = json!("oidc_group");
+    assert!(
+        !schema_accepts(
+            "adoc.authorization_decision.v0.schema.json",
+            &oidc_basis_without_session
+        ),
+        "an OIDC winning basis must identify the exact evaluated identity session"
+    );
+
     for mode in binding_modes {
         let mode = mode.as_str().expect("binding modes are strings");
         for source_kind in source_kinds {
