@@ -141,9 +141,17 @@ struct RawSemanticFinding {
     citations: Vec<String>,
     materiality: SemanticMateriality,
     proposed_disposition: SemanticDisposition,
-    candidate_updates: Vec<CandidateUpdate>,
+    candidate_updates: Vec<RawCandidateUpdate>,
     unresolved_questions: Vec<String>,
     explanation: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCandidateUpdate {
+    object_id: String,
+    body: Option<Option<String>>,
+    fields: BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -398,7 +406,29 @@ pub fn validate_semantic_assessment(
             .map(|object| object.object_id.as_str())
             .collect::<BTreeSet<_>>();
 
-        let mut candidate_updates = raw_finding.candidate_updates;
+        if raw_finding.proposed_disposition == SemanticDisposition::CreateKnowledge
+            && !raw_finding.candidate_updates.is_empty()
+        {
+            return Err(SemanticAssessmentError::CitationInvalid {
+                message: format!(
+                    "finding '{}' cannot carry create candidates without a trusted creation scope",
+                    raw_finding.finding_id
+                ),
+            });
+        }
+        let mut candidate_updates = raw_finding
+            .candidate_updates
+            .into_iter()
+            .map(|update| {
+                Ok(CandidateUpdate {
+                    object_id: update.object_id,
+                    body: update.body.ok_or_else(|| {
+                        invalid("candidate update body must be present (string or null)")
+                    })?,
+                    fields: update.fields,
+                })
+            })
+            .collect::<Result<Vec<_>, SemanticAssessmentError>>()?;
         candidate_updates.sort_by(|left, right| left.object_id.cmp(&right.object_id));
         for update in &candidate_updates {
             ObjectId::new(&update.object_id)

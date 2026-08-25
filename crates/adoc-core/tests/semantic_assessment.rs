@@ -224,6 +224,41 @@ fn update_candidates_must_target_a_cited_affected_object() {
 }
 
 #[test]
+fn create_knowledge_cannot_smuggle_an_unbound_candidate_target() {
+    let context = context();
+    let mut document = assessment_json(&context);
+    document["findings"][0]["proposed_disposition"] = json!("create_knowledge");
+    document["findings"][0]["candidate_updates"][0]["object_id"] = json!("admin.secrets");
+
+    validate_semantic_assessment(
+        serde_json::to_vec(&document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect_err("create_knowledge cannot authorize an unbound candidate target");
+}
+
+#[test]
+fn candidate_body_is_required_even_when_it_is_null() {
+    let context = context();
+    let mut document = assessment_json(&context);
+    document["findings"][0]["candidate_updates"][0]
+        .as_object_mut()
+        .expect("candidate object")
+        .remove("body");
+    document["findings"][0]["candidate_updates"][0]["fields"] = json!({"owner": "team-billing"});
+
+    validate_semantic_assessment(
+        serde_json::to_vec(&document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect_err("the published nullable body field must still be present");
+}
+
+#[test]
 fn semantic_assessment_rejects_a_different_revision_identity() {
     let context = context();
 

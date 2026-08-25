@@ -24,7 +24,9 @@ impossible to reproduce.
    handle scope, and at least one finding. Each finding contains affected Object ID/hash
    pairs, closed classification, closed context-handle citations, typed
    materiality, proposed disposition, candidate body/field updates, unresolved
-   questions, and explanatory prose. It contains no wall-clock timestamp.
+   questions, and explanatory prose. Candidate `body` is required on the wire
+   but may be null when fields carry the update. It contains no wall-clock
+   timestamp.
 2. The closed classification set remains the proven ADR-0052 set:
    `consistent`, `extends_existing_knowledge`,
    `contradicts_existing_knowledge`, and `insufficient_evidence`.
@@ -45,14 +47,18 @@ impossible to reproduce.
 4. `no_change_required` is valid only for `immaterial` findings and cannot
    coexist with candidate updates or unresolved questions. A material finding
    may propose an update/create or request human review. An undetermined
-   finding cannot produce a negative verdict.
+   finding cannot produce a negative verdict. Update candidates must target a
+   cited affected Object. `create_knowledge` carries no candidate until a
+   trusted creation scope exists; later proposal validation owns new Object
+   identity and placement.
 5. Explanatory prose is serialized for humans but is absent from the
    materiality projection and future gate input. Changing only prose cannot
    change materiality.
 6. Provider JSON has no typed core representation until the authoritative Rust
    validator confirms exact version, context digest, revisions, identity,
-   closed classification, citation membership, Object ID/hash bindings, and
-   materiality projection. One failure rejects the whole artifact.
+   closed classification, citation membership, Object ID/hash and candidate
+   target bindings, required wire fields, and materiality projection. One
+   failure rejects the whole artifact.
 7. Human structured submissions use the identical boundary. They record
    `provider: human` plus a non-empty structured-format identity in `model`;
    authenticated principal and independence fields arrive in E3.6.
