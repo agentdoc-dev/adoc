@@ -204,6 +204,26 @@ fn semantic_assessment_rejects_every_citation_outside_the_exact_context() {
 }
 
 #[test]
+fn update_candidates_must_target_a_cited_affected_object() {
+    let context = context();
+    let mut document = assessment_json(&context);
+    document["findings"][0]["candidate_updates"][0]["object_id"] = json!("admin.secrets");
+
+    let error = validate_semantic_assessment(
+        serde_json::to_vec(&document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect_err("an update outside the cited affected set is rejected");
+
+    assert_eq!(
+        error.diagnostic_code(),
+        DiagnosticCode::AssessmentSemanticCitationInvalid
+    );
+}
+
+#[test]
 fn semantic_assessment_rejects_a_different_revision_identity() {
     let context = context();
 
