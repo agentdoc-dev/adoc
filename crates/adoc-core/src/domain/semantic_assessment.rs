@@ -97,6 +97,13 @@ pub struct HumanReview {
     pub independence: HumanReviewIndependence,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HumanReviewExpectedBindings {
+    pub reviewing_principal_id: String,
+    pub requesting_principal_id: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HumanReviewAuthority {
@@ -260,6 +267,22 @@ pub fn validate_semantic_assessment(
     bytes: &[u8],
     context: &SemanticContext,
 ) -> Result<SemanticAssessment, SemanticAssessmentError> {
+    validate_semantic_assessment_with_human_bindings(bytes, context, None)
+}
+
+pub fn validate_human_semantic_assessment(
+    bytes: &[u8],
+    context: &SemanticContext,
+    expected: &HumanReviewExpectedBindings,
+) -> Result<SemanticAssessment, SemanticAssessmentError> {
+    validate_semantic_assessment_with_human_bindings(bytes, context, Some(expected))
+}
+
+fn validate_semantic_assessment_with_human_bindings(
+    bytes: &[u8],
+    context: &SemanticContext,
+    expected_human_review: Option<&HumanReviewExpectedBindings>,
+) -> Result<SemanticAssessment, SemanticAssessmentError> {
     let raw: RawSemanticAssessment = serde_json::from_slice(bytes).map_err(|error| {
         SemanticAssessmentError::InvalidDocument {
             message: error.to_string(),
@@ -301,8 +324,16 @@ pub fn validate_semantic_assessment(
     if !is_semantic_context_text(&provider) || !is_semantic_context_text(&model) {
         return Err(SemanticAssessmentError::IdentityMissing);
     }
-    let human_review = match (provider.as_str(), raw.human_review) {
-        ("human", Some(review)) => {
+    let human_review = match (provider.as_str(), raw.human_review, expected_human_review) {
+        ("human", Some(review), Some(expected)) => {
+            require_text(
+                "expected reviewing principal",
+                &expected.reviewing_principal_id,
+            )?;
+            require_text(
+                "expected requesting principal",
+                &expected.requesting_principal_id,
+            )?;
             require_text(
                 "human_review.reviewing_principal_id",
                 &review.reviewing_principal_id,
@@ -311,7 +342,14 @@ pub fn validate_semantic_assessment(
                 "human_review.requesting_principal_id",
                 &review.requesting_principal_id,
             )?;
-            let derived = if review.reviewing_principal_id == review.requesting_principal_id {
+            if review.reviewing_principal_id != expected.reviewing_principal_id
+                || review.requesting_principal_id != expected.requesting_principal_id
+            {
+                return Err(invalid(
+                    "human_review principals do not match the trusted request bindings",
+                ));
+            }
+            let derived = if expected.reviewing_principal_id == expected.requesting_principal_id {
                 HumanReviewIndependence::SelfAssessment
             } else {
                 HumanReviewIndependence::Independent
@@ -323,17 +361,28 @@ pub fn validate_semantic_assessment(
             }
             Some(review)
         }
-        ("human", None) => {
+        ("human", None, Some(_)) => {
             return Err(invalid(
                 "human assessment requires reviewing principal and independence facts",
             ));
         }
-        (_, Some(_)) => {
+        ("human", None, None) => None,
+        ("human", Some(_), None) => {
+            return Err(invalid(
+                "human_review facts require trusted expected principal bindings",
+            ));
+        }
+        (_, Some(_), _) => {
             return Err(invalid(
                 "human_review facts are valid only for the human provider",
             ));
         }
-        (_, None) => None,
+        (_, None, Some(_)) => {
+            return Err(invalid(
+                "human-review expectations are valid only for the human provider",
+            ));
+        }
+        (_, None, None) => None,
     };
     if raw.findings.is_empty() {
         return Err(invalid(

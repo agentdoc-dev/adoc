@@ -1665,10 +1665,7 @@ fn semantic_assessment_schema_accepts_the_envelope_and_rejects_unknown_fields() 
         "provider": "human",
         "model": "structured-assessment-v0"
     });
-    assert!(
-        !schema_accepts("adoc.semantic_assessment.v0.schema.json", &human),
-        "human assessment requires principal-attributed independence facts"
-    );
+    assert_valid("adoc.semantic_assessment.v0.schema.json", &human);
     human["human_review"] = json!({
         "authority": "semantic_review",
         "reviewing_principal_id": "principal:reviewer",
@@ -1912,6 +1909,25 @@ fn semantic_executor_schemas_share_closed_adapter_and_receipt_shapes() {
         "adoc.semantic_executor_request.v0.schema.json",
         &human_kind
     ));
+    let mut human_request = request.clone();
+    human_request["adapter"]["kind"] = json!("human");
+    human_request["adapter"]["provider"] = json!("human");
+    human_request["adapter"]["endpoint_class"] = json!("human");
+    assert!(
+        !schema_accepts(
+            "adoc.semantic_executor_request.v0.schema.json",
+            &human_request
+        ),
+        "human requests require trusted principal bindings"
+    );
+    human_request["human_review"] = json!({
+        "reviewing_principal_id": "principal:reviewer",
+        "requesting_principal_id": "principal:author"
+    });
+    assert_valid(
+        "adoc.semantic_executor_request.v0.schema.json",
+        &human_request,
+    );
     request["adapter"]["kind"] = json!("shell_magic");
     assert!(!schema_accepts(
         "adoc.semantic_executor_request.v0.schema.json",

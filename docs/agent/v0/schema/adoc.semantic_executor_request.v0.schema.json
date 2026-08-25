@@ -43,6 +43,7 @@
         "config_digest": { "$ref": "#/$defs/sha256" }
       }
     },
+    "human_review": { "$ref": "#/$defs/humanReviewBindings" },
     "task_digest": { "$ref": "#/$defs/sha256" },
     "prompt": {
       "type": "object",
@@ -72,24 +73,42 @@
         "required": ["adapter"]
       },
       "then": {
+        "required": ["human_review"],
         "properties": {
           "adapter": {
-            "properties": { "endpoint_class": { "const": "human" } }
+            "properties": {
+              "provider": { "const": "human" },
+              "endpoint_class": { "const": "human" }
+            }
           }
         }
       },
       "else": {
-        "properties": {
-          "adapter": {
-            "properties": { "endpoint_class": { "not": { "const": "human" } } }
-          }
-        }
+        "allOf": [
+          {
+            "properties": {
+              "adapter": {
+                "properties": { "endpoint_class": { "not": { "const": "human" } } }
+              }
+            }
+          },
+          { "not": { "required": ["human_review"] } }
+        ]
       }
     }
   ],
   "$defs": {
     "nonEmpty": { "type": "string", "minLength": 1, "pattern": "^\\S(?:.*\\S)?$" },
     "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "humanReviewBindings": {
+      "type": "object",
+      "required": ["reviewing_principal_id", "requesting_principal_id"],
+      "additionalProperties": false,
+      "properties": {
+        "reviewing_principal_id": { "$ref": "#/$defs/nonEmpty" },
+        "requesting_principal_id": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
     "unavailabilityReason": {
       "enum": ["permission", "retention", "source_outage", "truncation", "resource_limit"]
     },

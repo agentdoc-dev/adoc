@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.semantic_assessment.v0.schema.json",
   "title": "AgentDoc Semantic Assessment",
-  "description": "Provider-neutral findings bound to one exact adoc.semantic_context.v0 document (E3.2). JSON Schema is transport preflight only; adoc-core validates revisions, context membership, citations, identity, and canonical ordering.",
+  "description": "Provider-neutral findings bound to one exact adoc.semantic_context.v0 document (E3.2). Human-review facts are additive: legacy human assessments may omit them, and supplied facts establish authority only when adoc-core validates them against trusted request bindings. JSON Schema is transport preflight only; adoc-core validates revisions, context membership, citations, identity, and canonical ordering.",
   "type": "object",
   "required": [
     "schema_version",
@@ -60,7 +60,7 @@
         },
         "required": ["identity"]
       },
-      "then": { "required": ["human_review"] },
+      "then": {},
       "else": { "not": { "required": ["human_review"] } }
     }
   ],

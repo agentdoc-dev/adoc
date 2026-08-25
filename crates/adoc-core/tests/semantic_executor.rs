@@ -1,7 +1,8 @@
 use adoc_core::{
     DiagnosticCode, SemanticAdapterKind, SemanticExecutorOutcome,
     build_semantic_context_from_document, complete_semantic_execution, fail_semantic_execution,
-    semantic_prompt_digest, validate_semantic_assessment, validate_semantic_executor_request,
+    semantic_prompt_digest, validate_human_semantic_assessment, validate_semantic_assessment,
+    validate_semantic_executor_request,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -83,7 +84,7 @@ fn request(adapter: &str, provider: &str, model: &str) -> Value {
     let instructions = "Return one structured semantic assessment.";
     let prompt_digest = semantic_prompt_digest("semantic-assessment-task-v1", instructions)
         .expect("prompt digest builds");
-    json!({
+    let mut document = json!({
         "schema_version": "adoc.semantic_executor_request.v0",
         "request_id": "semantic-request-001",
         "capability": "code_change_assessment",
@@ -106,7 +107,14 @@ fn request(adapter: &str, provider: &str, model: &str) -> Value {
         "timeout_seconds": 600,
         "context": serde_json::from_str::<Value>(&context.to_canonical_json().expect("serializes"))
             .expect("context JSON")
-    })
+    });
+    if adapter == "human" {
+        document["human_review"] = json!({
+            "reviewing_principal_id": "principal:reviewer",
+            "requesting_principal_id": "principal:author"
+        });
+    }
+    document
 }
 
 fn assessment(context_digest: &str, provider: &str, model: &str) -> Value {
@@ -163,8 +171,13 @@ fn all_four_adapters_use_one_request_assessment_and_receipt_boundary() {
             model,
         ))
         .expect("serializes");
-        let assessment = validate_semantic_assessment(&assessment_bytes, request.context())
-            .expect("assessment validates");
+        let assessment = match request.human_review() {
+            Some(expected) => {
+                validate_human_semantic_assessment(&assessment_bytes, request.context(), expected)
+            }
+            None => validate_semantic_assessment(&assessment_bytes, request.context()),
+        }
+        .expect("assessment validates");
         let receipt = complete_semantic_execution(&request, &assessment).expect("receipt builds");
 
         assert_eq!(receipt.outcome(), SemanticExecutorOutcome::Completed);
@@ -357,4 +370,41 @@ fn adapter_kind_is_closed_and_human_is_not_privileged() {
         validate_semantic_executor_request(&serde_json::to_vec(&human).expect("serializes"))
             .is_err()
     );
+}
+
+#[test]
+fn human_adapter_cannot_complete_without_bound_review_facts() {
+    let request = validate_semantic_executor_request(
+        &serde_json::to_vec(&request("human", "human", "structured-assessment-v0"))
+            .expect("serializes"),
+    )
+    .expect("human request validates");
+    let mut document = assessment(
+        request.context().context_digest(),
+        "human",
+        "structured-assessment-v0",
+    );
+    document
+        .as_object_mut()
+        .expect("assessment object")
+        .remove("human_review");
+    let assessment_bytes = serde_json::to_vec(&document).expect("serializes");
+    let assessment = validate_semantic_assessment(&assessment_bytes, request.context())
+        .expect("legacy base human assessment remains valid");
+
+    complete_semantic_execution(&request, &assessment)
+        .expect_err("the closed human adapter kind must require bound review facts");
+}
+
+#[test]
+fn human_adapter_rejects_a_provider_controlled_identity_kind() {
+    validate_semantic_executor_request(
+        &serde_json::to_vec(&request(
+            "human",
+            "authenticated-principal",
+            "structured-assessment-v0",
+        ))
+        .expect("serializes"),
+    )
+    .expect_err("human status comes from the closed adapter contract");
 }
