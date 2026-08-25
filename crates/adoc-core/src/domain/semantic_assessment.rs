@@ -432,6 +432,15 @@ pub fn validate_semantic_assessment(
             })
             .collect::<Result<Vec<_>, SemanticAssessmentError>>()?;
         candidate_updates.sort_by(|left, right| left.object_id.cmp(&right.object_id));
+        if candidate_updates
+            .windows(2)
+            .any(|pair| pair[0].object_id == pair[1].object_id)
+        {
+            return Err(invalid(format!(
+                "finding '{}' contains duplicate candidate object IDs",
+                raw_finding.finding_id
+            )));
+        }
         for update in &candidate_updates {
             ObjectId::new(&update.object_id)
                 .map_err(|_| invalid(format!("invalid candidate object '{}'", update.object_id)))?;
