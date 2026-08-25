@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "adoc://agent/v0/schema/adoc.source_record.v0.schema.json",
+  "$id": "adoc://agent/v0/schema/adoc.source_record.v1.schema.json",
   "title": "AgentDoc Source Record",
-  "description": "Immutable metadata for one source observation. Exact payload bytes are stored separately and must match content_digest and content_length_bytes (E4.1).",
+  "description": "Immutable metadata for one source observation and the exact historical ACL Snapshot that scoped it. Exact payload bytes are stored separately and must match content_digest and content_length_bytes (E4.1).",
   "type": "object",
   "required": [
     "schema_version",
@@ -10,6 +10,7 @@
     "workspace_id",
     "connector_id",
     "source",
+    "source_acl_scope",
     "observed_at",
     "media_type",
     "retention_class",
@@ -18,7 +19,7 @@
   ],
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "const": "adoc.source_record.v0" },
+    "schema_version": { "const": "adoc.source_record.v1" },
     "source_record_id": { "$ref": "#/$defs/text" },
     "workspace_id": { "$ref": "#/$defs/text" },
     "connector_id": { "$ref": "#/$defs/text" },
@@ -31,6 +32,26 @@
         "kind": { "$ref": "#/$defs/text" },
         "external_id": { "$ref": "#/$defs/text" },
         "external_version": { "$ref": "#/$defs/text" }
+      }
+    },
+    "source_acl_scope": {
+      "description": "Exact historical ACL Snapshot and authorization scope from which this source observation originated. Every field must match the ACL Snapshot retained with any derived Source Assertion; equality is Cloud-owned and fails closed.",
+      "type": "object",
+      "required": ["snapshot_id", "source_container_id", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "snapshot_id": { "$ref": "#/$defs/text" },
+        "source_container_id": { "$ref": "#/$defs/text" },
+        "source": {
+          "description": "Bare source-local authorization resource; its parent container is carried separately.",
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["repository", "project", "space", "channel"] },
+            "id": { "$ref": "#/$defs/text" }
+          }
+        }
       }
     },
     "observed_at": {

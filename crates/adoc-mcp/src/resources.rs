@@ -465,6 +465,14 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/adoc.source_record.v0.schema.json"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.source_record.v1.schema.json",
+        name: "schema-adoc-source-record-v1-json",
+        title: "Source Record v1 JSON Schema",
+        description: "JSON Schema for source observations bound to one exact ACL Snapshot.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.source_record.v1.schema.json"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.work_request.v0.schema.json",
         name: "schema-adoc-work-request-v0-json",
         title: "External Work Request JSON Schema",

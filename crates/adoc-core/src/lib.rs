@@ -126,9 +126,9 @@ pub use domain::source_provenance::{
     validate_source_binding,
 };
 pub use domain::source_record::{
-    RetentionClass, SOURCE_RECORD_SCHEMA_VERSION, SourceAclResource, SourceAclResourceKind,
-    SourceAclScope, SourceArtifact, SourceRecord, SourceRecordError, SourceRecordInput,
-    build_source_record, validate_source_record,
+    RetentionClass, SOURCE_RECORD_SCHEMA_VERSION, SOURCE_RECORD_SCHEMA_VERSION_V0,
+    SourceAclResource, SourceAclResourceKind, SourceAclScope, SourceArtifact, SourceRecord,
+    SourceRecordError, SourceRecordInput, build_source_record, validate_source_record,
 };
 pub use domain::value_objects::rel_path::{RelPath, RelPathError};
 pub use infrastructure::git::error::GitError;

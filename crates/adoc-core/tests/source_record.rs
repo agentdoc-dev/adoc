@@ -21,6 +21,7 @@ fn input() -> SourceRecordInput<'static> {
             external_version: "0123456789abcdef".to_string(),
         },
         source_acl_scope: SourceAclScope {
+            snapshot_id: "snapshot-001".to_string(),
             source_container_id: "agentdoc-dev".to_string(),
             source: SourceAclResource {
                 kind: SourceAclResourceKind::Repository,
@@ -45,10 +46,15 @@ fn source_record_digest_roundtrip() {
         validate_source_record(document.as_bytes(), EXACT_BYTES).expect("record validates");
 
     assert_eq!(validated, record);
+    assert_eq!(
+        serde_json::to_value(&record).expect("record serializes")["schema_version"],
+        "adoc.source_record.v1"
+    );
     assert_eq!(record.content_length_bytes(), EXACT_BYTES.len() as u64);
     assert_eq!(
         serde_json::to_value(&record).expect("record serializes")["source_acl_scope"],
         serde_json::json!({
+            "snapshot_id": "snapshot-001",
             "source_container_id": "agentdoc-dev",
             "source": {"kind": "repository", "id": "policies"}
         })
@@ -70,7 +76,7 @@ fn source_record_serialization_matches_published_schema() {
     let record = build_source_record(input()).expect("source record builds");
     let mut instance = serde_json::to_value(record).expect("record serializes");
     let schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/agent/v0/schema/adoc.source_record.v0.schema.json");
+        .join("../../docs/agent/v0/schema/adoc.source_record.v1.schema.json");
     let schema: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(schema_path).expect("source record schema is published"),
     )
@@ -80,6 +86,59 @@ fn source_record_serialization_matches_published_schema() {
     assert!(validator.is_valid(&instance));
     instance["unexpected"] = serde_json::json!(true);
     assert!(!validator.is_valid(&instance));
+}
+
+#[test]
+fn retained_v0_source_record_remains_readable() {
+    let document = serde_json::json!({
+        "schema_version": "adoc.source_record.v0",
+        "source_record_id": "source-record-legacy",
+        "workspace_id": "workspace-001",
+        "connector_id": "connector-001",
+        "source": {
+            "provider": "github",
+            "kind": "file",
+            "external_id": "repository-42:docs/policy.adoc",
+            "external_version": "0123456789abcdef"
+        },
+        "observed_at": "2026-08-25T10:00:00Z",
+        "media_type": "text/plain; charset=utf-8",
+        "retention_class": "exact_candidate_input",
+        "content_digest": format!(
+            "sha256:{}",
+            Sha256::digest(EXACT_BYTES)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        ),
+        "content_length_bytes": EXACT_BYTES.len()
+    });
+
+    let retained = validate_source_record(
+        serde_json::to_string(&document)
+            .expect("document serializes")
+            .as_bytes(),
+        EXACT_BYTES,
+    )
+    .expect("retained v0 validates");
+    let retained = serde_json::to_value(retained).expect("record serializes");
+    assert_eq!(retained["schema_version"], "adoc.source_record.v0");
+    assert!(retained.get("source_acl_scope").is_none());
+}
+
+#[test]
+fn source_record_acl_scope_is_version_exact() {
+    let record = build_source_record(input()).expect("source record builds");
+    let mut v0_with_scope = serde_json::to_value(&record).expect("record serializes");
+    v0_with_scope["schema_version"] = serde_json::json!("adoc.source_record.v0");
+    assert!(validate_source_record(v0_with_scope.to_string().as_bytes(), EXACT_BYTES).is_err());
+
+    let mut v1_without_scope = serde_json::to_value(record).expect("record serializes");
+    v1_without_scope
+        .as_object_mut()
+        .expect("record is an object")
+        .remove("source_acl_scope");
+    assert!(validate_source_record(v1_without_scope.to_string().as_bytes(), EXACT_BYTES).is_err());
 }
 
 #[test]

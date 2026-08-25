@@ -313,6 +313,7 @@ fn lists_and_reads_all_stable_agent_resources() {
         "adoc://agent/v0/schema/adoc.source_assertion.v0.schema.json",
         "adoc://agent/v0/schema/adoc.source_binding.v0.schema.json",
         "adoc://agent/v0/schema/adoc.source_record.v0.schema.json",
+        "adoc://agent/v0/schema/adoc.source_record.v1.schema.json",
         "adoc://agent/v0/schema/adoc.work_request.v0.schema.json",
         "adoc://agent/v0/schema/adoc.work_result.v0.schema.json",
         "adoc://agent/v0/schema/search-artifact.json",
