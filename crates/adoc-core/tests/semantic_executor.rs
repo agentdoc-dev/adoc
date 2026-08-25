@@ -12,6 +12,13 @@ const B: &str = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 const C: &str = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const D: &str = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
+fn trusted_human_review() -> HumanReviewExpectedBindings {
+    HumanReviewExpectedBindings {
+        reviewing_principal_id: "principal:reviewer".to_string(),
+        requesting_principal_id: "principal:author".to_string(),
+    }
+}
+
 fn context_input() -> Value {
     json!({
         "schema_version": "adoc.semantic_context_input.v0",
@@ -171,14 +178,16 @@ fn all_four_adapters_use_one_request_assessment_and_receipt_boundary() {
             model,
         ))
         .expect("serializes");
-        let assessment = match request.human_review() {
+        let expected = (kind == "human").then(trusted_human_review);
+        let assessment = match expected.as_ref() {
             Some(expected) => {
                 validate_human_semantic_assessment(&assessment_bytes, request.context(), expected)
             }
             None => validate_semantic_assessment(&assessment_bytes, request.context()),
         }
         .expect("assessment validates");
-        let receipt = complete_semantic_execution(&request, &assessment).expect("receipt builds");
+        let receipt = complete_semantic_execution(&request, &assessment, expected.as_ref())
+            .expect("receipt builds");
 
         assert_eq!(receipt.outcome(), SemanticExecutorOutcome::Completed);
         assert_eq!(receipt.adapter().provider, provider);
@@ -197,7 +206,7 @@ fn identity_mismatch_and_fabricated_citation_are_rejected_by_the_shared_runtime(
     let mut wrong_identity = assessment(request.context().context_digest(), "claude-code", "other");
     let bytes = serde_json::to_vec(&wrong_identity).expect("serializes");
     let validated = validate_semantic_assessment(&bytes, request.context()).expect("schema valid");
-    let error = complete_semantic_execution(&request, &validated)
+    let error = complete_semantic_execution(&request, &validated, None)
         .expect_err("adapter identity mismatch rejected");
     assert!(error.to_string().contains("identity"));
 
@@ -331,7 +340,7 @@ fn completion_digests_the_validator_owned_canonical_assessment() {
             .map(|byte| format!("{byte:02x}"))
             .collect::<String>()
     );
-    let receipt = complete_semantic_execution(&request, &assessment).expect("receipt builds");
+    let receipt = complete_semantic_execution(&request, &assessment, None).expect("receipt builds");
 
     assert_eq!(receipt.assessment_digest(), Some(expected.as_str()));
 }
@@ -392,7 +401,8 @@ fn human_adapter_cannot_complete_without_bound_review_facts() {
     let assessment = validate_semantic_assessment(&assessment_bytes, request.context())
         .expect("legacy base human assessment remains valid");
 
-    complete_semantic_execution(&request, &assessment)
+    let expected = trusted_human_review();
+    complete_semantic_execution(&request, &assessment, Some(&expected))
         .expect_err("the closed human adapter kind must require bound review facts");
 }
 
@@ -421,36 +431,40 @@ fn legacy_human_request_remains_valid_but_cannot_complete() {
     )
     .expect("legacy assessment validates without authority");
 
-    complete_semantic_execution(&request, &assessment)
+    let expected = trusted_human_review();
+    complete_semantic_execution(&request, &assessment, Some(&expected))
         .expect_err("legacy input cannot manufacture human-review authority");
 }
 
 #[test]
-fn completion_rechecks_the_request_principal_bindings() {
+fn untrusted_request_and_assessment_cannot_establish_principals() {
+    let mut request_document = request("human", "human", "structured-assessment-v0");
+    request_document["human_review"]["reviewing_principal_id"] =
+        json!("principal:claimed-reviewer");
     let request = validate_semantic_executor_request(
-        &serde_json::to_vec(&request("human", "human", "structured-assessment-v0"))
-            .expect("serializes"),
+        &serde_json::to_vec(&request_document).expect("serializes"),
     )
-    .expect("human request validates");
+    .expect("claimed human request validates structurally");
     let mut document = assessment(
         request.context().context_digest(),
         "human",
         "structured-assessment-v0",
     );
-    document["human_review"]["reviewing_principal_id"] = json!("principal:other-reviewer");
-    let stale = HumanReviewExpectedBindings {
-        reviewing_principal_id: "principal:other-reviewer".to_string(),
+    document["human_review"]["reviewing_principal_id"] = json!("principal:claimed-reviewer");
+    let claimed = HumanReviewExpectedBindings {
+        reviewing_principal_id: "principal:claimed-reviewer".to_string(),
         requesting_principal_id: "principal:author".to_string(),
     };
     let assessment = validate_human_semantic_assessment(
         &serde_json::to_vec(&document).expect("serializes"),
         request.context(),
-        &stale,
+        &claimed,
     )
-    .expect("assessment is valid only for the stale bindings");
+    .expect("assessment is structurally valid for the same untrusted claims");
 
-    complete_semantic_execution(&request, &assessment)
-        .expect_err("completion must compare against its own request principals");
+    let authenticated = trusted_human_review();
+    complete_semantic_execution(&request, &assessment, Some(&authenticated))
+        .expect_err("untrusted request and assessment claims cannot establish identity");
 }
 
 #[test]

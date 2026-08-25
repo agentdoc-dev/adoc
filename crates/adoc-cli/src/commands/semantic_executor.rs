@@ -2,9 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use adoc_core::{
-    DiagnosticCode, SemanticExecutorError, build_semantic_context_from_document,
-    complete_semantic_execution, fail_semantic_execution, validate_human_semantic_assessment,
-    validate_semantic_assessment, validate_semantic_executor_request,
+    DiagnosticCode, HumanReviewExpectedBindings, SemanticExecutorError,
+    build_semantic_context_from_document, complete_semantic_execution, fail_semantic_execution,
+    validate_human_semantic_assessment, validate_semantic_assessment,
+    validate_semantic_executor_request,
 };
 
 const MAX_ASSESSMENT_BYTES: u64 = 1024 * 1024;
@@ -41,6 +42,8 @@ pub(crate) fn semantic_executor(
     failure_code: Option<String>,
     receipt_path: PathBuf,
     validated_assessment_path: PathBuf,
+    reviewing_principal_id: Option<String>,
+    requesting_principal_id: Option<String>,
 ) -> i32 {
     if let Err(message) = ensure_distinct_paths(&[
         &request_path,
@@ -68,6 +71,16 @@ pub(crate) fn semantic_executor(
         Ok(request) => request,
         Err(error) => return fail(&error.to_string()),
     };
+    let expected_human_review = match (reviewing_principal_id, requesting_principal_id) {
+        (Some(reviewing_principal_id), Some(requesting_principal_id)) => {
+            Some(HumanReviewExpectedBindings {
+                reviewing_principal_id,
+                requesting_principal_id,
+            })
+        }
+        (None, None) => None,
+        _ => return fail("both trusted human-review Principal IDs are required together"),
+    };
     if let Some(code) = failure_code {
         return record_failure(
             &request,
@@ -87,7 +100,7 @@ pub(crate) fn semantic_executor(
             );
         }
     };
-    let validated = match request.human_review() {
+    let validated = match expected_human_review.as_ref() {
         Some(expected) => {
             validate_human_semantic_assessment(&assessment_bytes, request.context(), expected)
         }
@@ -104,18 +117,19 @@ pub(crate) fn semantic_executor(
             );
         }
     };
-    let receipt = match complete_semantic_execution(&request, &assessment) {
-        Ok(receipt) => receipt,
-        Err(error) => {
-            let code = match &error {
-                SemanticExecutorError::IdentityMismatch => {
-                    DiagnosticCode::AssessmentSemanticIdentityMismatch.as_str()
-                }
-                _ => DiagnosticCode::AssessmentSemanticSchemaInvalid.as_str(),
-            };
-            return record_failure(&request, code, &error.to_string(), &receipt_path);
-        }
-    };
+    let receipt =
+        match complete_semantic_execution(&request, &assessment, expected_human_review.as_ref()) {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                let code = match &error {
+                    SemanticExecutorError::IdentityMismatch => {
+                        DiagnosticCode::AssessmentSemanticIdentityMismatch.as_str()
+                    }
+                    _ => DiagnosticCode::AssessmentSemanticSchemaInvalid.as_str(),
+                };
+                return record_failure(&request, code, &error.to_string(), &receipt_path);
+            }
+        };
     let assessment_json = match assessment.to_canonical_json() {
         Ok(json) => json,
         Err(error) => return fail(&error.to_string()),

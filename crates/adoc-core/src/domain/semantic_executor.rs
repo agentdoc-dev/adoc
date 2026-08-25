@@ -116,10 +116,6 @@ impl SemanticExecutorRequest {
         &self.adapter
     }
 
-    pub fn human_review(&self) -> Option<&HumanReviewExpectedBindings> {
-        self.human_review.as_ref()
-    }
-
     pub fn request_id(&self) -> &str {
         &self.request_id
     }
@@ -316,6 +312,7 @@ pub fn validate_semantic_executor_request(
 pub fn complete_semantic_execution(
     request: &SemanticExecutorRequest,
     assessment: &SemanticAssessment,
+    expected_human_review: Option<&HumanReviewExpectedBindings>,
 ) -> Result<SemanticExecutorReceipt, SemanticExecutorError> {
     let assessment_json =
         assessment
@@ -334,16 +331,18 @@ pub fn complete_semantic_execution(
         request.adapter.kind,
         request.human_review.as_ref(),
         assessment.human_review(),
+        expected_human_review,
     ) {
-        (SemanticAdapterKind::Human, Some(expected), Some(review))
-            if review.reviewing_principal_id == expected.reviewing_principal_id
+        (SemanticAdapterKind::Human, Some(claimed), Some(review), Some(expected))
+            if claimed == expected
+                && review.reviewing_principal_id == expected.reviewing_principal_id
                 && review.requesting_principal_id == expected.requesting_principal_id => {}
-        (SemanticAdapterKind::Human, _, _) => {
+        (SemanticAdapterKind::Human, _, _, _) => {
             return Err(invalid(
-                "human adapter completion requires the request's trusted human-review facts",
+                "human adapter completion requires separately trusted human-review facts",
             ));
         }
-        (_, None, None) => {}
+        (_, None, None, None) => {}
         _ => {
             return Err(invalid(
                 "model adapter completion cannot carry human-review facts",
