@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.source_record.v0.schema.json",
+  "title": "AgentDoc Source Record",
+  "description": "Immutable metadata for one source observation. Exact payload bytes are stored separately and must match content_digest and content_length_bytes (E4.1).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_record_id",
+    "workspace_id",
+    "connector_id",
+    "source",
+    "observed_at",
+    "media_type",
+    "retention_class",
+    "content_digest",
+    "content_length_bytes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.source_record.v0" },
+    "source_record_id": { "$ref": "#/$defs/text" },
+    "workspace_id": { "$ref": "#/$defs/text" },
+    "connector_id": { "$ref": "#/$defs/text" },
+    "source": {
+      "type": "object",
+      "required": ["provider", "kind", "external_id", "external_version"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "$ref": "#/$defs/text" },
+        "kind": { "$ref": "#/$defs/text" },
+        "external_id": { "$ref": "#/$defs/text" },
+        "external_version": { "$ref": "#/$defs/text" }
+      }
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "media_type": { "$ref": "#/$defs/text" },
+    "retention_class": {
+      "enum": [
+        "digest_only",
+        "bounded_evidence",
+        "exact_candidate_input",
+        "temporary_processing",
+        "full_source_snapshot"
+      ]
+    },
+    "content_digest": { "$ref": "#/$defs/digest" },
+    "content_length_bytes": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:[^\\r\\n\\u2028\\u2029]*\\S)?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

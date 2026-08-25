@@ -1,0 +1,212 @@
+//! Digest-bound immutable source observations (`adoc.source_record.v0`, E4.1).
+
+use chrono::{DateTime, Datelike, SecondsFormat, Utc};
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use super::hashing::sha256_prefixed;
+
+pub const SOURCE_RECORD_SCHEMA_VERSION: &str = "adoc.source_record.v0";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceArtifact {
+    pub provider: String,
+    pub kind: String,
+    pub external_id: String,
+    pub external_version: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RetentionClass {
+    DigestOnly,
+    BoundedEvidence,
+    ExactCandidateInput,
+    TemporaryProcessing,
+    FullSourceSnapshot,
+}
+
+#[derive(Debug, Clone)]
+pub struct SourceRecordInput<'a> {
+    pub source_record_id: String,
+    pub workspace_id: String,
+    pub connector_id: String,
+    pub source: SourceArtifact,
+    pub observed_at: DateTime<Utc>,
+    pub media_type: String,
+    pub retention_class: RetentionClass,
+    pub exact_bytes: &'a [u8],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SourceRecord {
+    schema_version: String,
+    source_record_id: String,
+    workspace_id: String,
+    connector_id: String,
+    source: SourceArtifact,
+    observed_at: DateTime<Utc>,
+    media_type: String,
+    retention_class: RetentionClass,
+    content_digest: String,
+    content_length_bytes: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawSourceRecord {
+    #[serde(rename = "schema_version")]
+    _schema_version: String,
+    source_record_id: String,
+    workspace_id: String,
+    connector_id: String,
+    source: SourceArtifact,
+    observed_at: String,
+    media_type: String,
+    retention_class: RetentionClass,
+    content_digest: String,
+    content_length_bytes: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawEnvelopeVersion {
+    schema_version: String,
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum SourceRecordError {
+    #[error("source record document is invalid: {message}")]
+    InvalidDocument { message: String },
+    #[error("unsupported source record version '{version}'")]
+    UnsupportedVersion { version: String },
+    #[error("source record content digest does not match the exact bytes")]
+    DigestMismatch,
+    #[error("source record content length does not match the exact bytes")]
+    ContentLengthMismatch,
+    #[error("source record serialization failed: {message}")]
+    Serialization { message: String },
+}
+
+impl SourceRecordError {
+    pub fn remediation(&self) -> &'static str {
+        match self {
+            Self::UnsupportedVersion { .. } => {
+                "Regenerate the document with the supported source-record version."
+            }
+            Self::DigestMismatch | Self::ContentLengthMismatch => {
+                "Submit metadata and exact bytes from the same immutable observation."
+            }
+            Self::InvalidDocument { .. } | Self::Serialization { .. } => {
+                "Regenerate a complete valid source-record document."
+            }
+        }
+    }
+}
+
+impl SourceRecord {
+    pub fn to_canonical_json(&self) -> Result<String, SourceRecordError> {
+        serde_json::to_string(self).map_err(|error| SourceRecordError::Serialization {
+            message: error.to_string(),
+        })
+    }
+
+    pub fn content_digest(&self) -> &str {
+        &self.content_digest
+    }
+
+    pub fn content_length_bytes(&self) -> u64 {
+        self.content_length_bytes
+    }
+}
+
+pub fn build_source_record(
+    input: SourceRecordInput<'_>,
+) -> Result<SourceRecord, SourceRecordError> {
+    validate_text("source_record_id", &input.source_record_id)?;
+    validate_text("workspace_id", &input.workspace_id)?;
+    validate_text("connector_id", &input.connector_id)?;
+    validate_text("source.provider", &input.source.provider)?;
+    validate_text("source.kind", &input.source.kind)?;
+    validate_text("source.external_id", &input.source.external_id)?;
+    validate_text("source.external_version", &input.source.external_version)?;
+    validate_text("media_type", &input.media_type)?;
+    if !(0..=9999).contains(&input.observed_at.year()) {
+        return Err(invalid("observed_at must use a four-digit UTC year"));
+    }
+    if input.observed_at.timestamp_subsec_nanos() != 0 {
+        return Err(invalid("observed_at must use whole UTC seconds"));
+    }
+    let content_length_bytes = u64::try_from(input.exact_bytes.len())
+        .map_err(|_| invalid("exact byte length exceeds the contract limit"))?;
+
+    Ok(SourceRecord {
+        schema_version: SOURCE_RECORD_SCHEMA_VERSION.to_string(),
+        source_record_id: input.source_record_id,
+        workspace_id: input.workspace_id,
+        connector_id: input.connector_id,
+        source: input.source,
+        observed_at: input.observed_at,
+        media_type: input.media_type,
+        retention_class: input.retention_class,
+        content_digest: sha256_prefixed(input.exact_bytes),
+        content_length_bytes,
+    })
+}
+
+pub fn validate_source_record(
+    document: &[u8],
+    exact_bytes: &[u8],
+) -> Result<SourceRecord, SourceRecordError> {
+    let version: RawEnvelopeVersion = serde_json::from_slice(document)
+        .map_err(|error| invalid(format!("invalid JSON or schema version: {error}")))?;
+    if version.schema_version != SOURCE_RECORD_SCHEMA_VERSION {
+        return Err(SourceRecordError::UnsupportedVersion {
+            version: version.schema_version,
+        });
+    }
+    let raw: RawSourceRecord =
+        serde_json::from_slice(document).map_err(|error| invalid(error.to_string()))?;
+    let observed_at = DateTime::parse_from_rfc3339(&raw.observed_at)
+        .map_err(|error| invalid(format!("observed_at is invalid: {error}")))?
+        .with_timezone(&Utc);
+    if raw.observed_at != observed_at.to_rfc3339_opts(SecondsFormat::Secs, true) {
+        return Err(invalid("observed_at must use whole UTC seconds"));
+    }
+
+    let record = build_source_record(SourceRecordInput {
+        source_record_id: raw.source_record_id,
+        workspace_id: raw.workspace_id,
+        connector_id: raw.connector_id,
+        source: raw.source,
+        observed_at,
+        media_type: raw.media_type,
+        retention_class: raw.retention_class,
+        exact_bytes,
+    })?;
+    if raw.content_digest != record.content_digest {
+        return Err(SourceRecordError::DigestMismatch);
+    }
+    if raw.content_length_bytes != record.content_length_bytes {
+        return Err(SourceRecordError::ContentLengthMismatch);
+    }
+    Ok(record)
+}
+
+fn validate_text(field: &str, value: &str) -> Result<(), SourceRecordError> {
+    if value.is_empty()
+        || value.trim() != value
+        || value.contains(['\r', '\n', '\u{2028}', '\u{2029}'])
+    {
+        return Err(invalid(format!(
+            "{field} must be non-empty single-line text"
+        )));
+    }
+    Ok(())
+}
+
+fn invalid(message: impl Into<String>) -> SourceRecordError {
+    SourceRecordError::InvalidDocument {
+        message: message.into(),
+    }
+}
