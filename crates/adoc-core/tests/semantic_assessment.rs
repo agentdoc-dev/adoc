@@ -224,6 +224,27 @@ fn update_candidates_must_target_a_cited_affected_object() {
 }
 
 #[test]
+fn human_review_candidates_must_target_a_cited_affected_object() {
+    let context = context();
+    let mut document = assessment_json(&context);
+    document["findings"][0]["proposed_disposition"] = json!("needs_human_review");
+    document["findings"][0]["candidate_updates"][0]["object_id"] = json!("admin.secrets");
+
+    let error = validate_semantic_assessment(
+        serde_json::to_vec(&document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect_err("a human-review candidate outside the cited affected set is rejected");
+
+    assert_eq!(
+        error.diagnostic_code(),
+        DiagnosticCode::AssessmentSemanticCitationInvalid
+    );
+}
+
+#[test]
 fn create_knowledge_cannot_smuggle_an_unbound_candidate_target() {
     let context = context();
     let mut document = assessment_json(&context);
@@ -243,11 +264,21 @@ fn create_knowledge_cannot_smuggle_an_unbound_candidate_target() {
 fn candidate_body_is_required_even_when_it_is_null() {
     let context = context();
     let mut document = assessment_json(&context);
+    document["findings"][0]["candidate_updates"][0]["body"] = json!(null);
+    document["findings"][0]["candidate_updates"][0]["fields"] = json!({"owner": "team-billing"});
+
+    validate_semantic_assessment(
+        serde_json::to_vec(&document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect("an explicit null body remains valid when fields are present");
+
     document["findings"][0]["candidate_updates"][0]
         .as_object_mut()
         .expect("candidate object")
         .remove("body");
-    document["findings"][0]["candidate_updates"][0]["fields"] = json!({"owner": "team-billing"});
 
     validate_semantic_assessment(
         serde_json::to_vec(&document)
