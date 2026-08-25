@@ -16,15 +16,19 @@ must not be reusable across a request, Workspace, repository, or revision.
    source identity, exact revision/change request, ASCII-only contract/capability
    requirements sorted in ascending ASCII order, expiry, and the authorized workload Principal, subject, and
    audience. `request_digest` is SHA-256 over the canonical payload excluding
-   that digest field. Expiry uses canonical UTC whole-second text so Rust,
-   TypeScript, and source-CI producers hash identical bytes.
+   that digest field. Canonical bytes are compact UTF-8 JSON with every object
+   member recursively sorted by ASCII name; arrays retain their contract-defined
+   order. Expiry uses canonical UTC whole-second text so Rust, TypeScript, and
+   source-CI producers hash identical bytes. Wire requirement arrays must already
+   be in canonical order; the reader does not normalize alternate spellings.
 2. `adoc.work_result.v0` repeats the request ID/digest, Workspace, repository,
    revision, and workload identity, then binds runtime name/version, a distinct
    completion nonce, named output digests, and `result_digest` over the
    canonical payload excluding that digest field. Output names use lower snake
    case (`^[a-z][a-z0-9_]*$`), are unique on the wire, and serialize in ascending
    ASCII order. This excludes JavaScript integer-index ordering
-   and gives Rust and TypeScript one digest representation.
+   and gives Rust and TypeScript one digest representation. `result_digest` uses
+   the same recursively key-sorted compact JSON encoding.
 3. The authoritative validator rejects unknown versions, digest mismatch, and
    any request/Workspace/repository/revision/workload substitution. Unknown
    versions carry explicit regeneration remediation.
