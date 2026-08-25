@@ -479,6 +479,8 @@ diagnostic_codes! {
         "Regenerate the assessment for the semantic context's exact base and head revisions.";
     AssessmentSemanticIdentityMissing = "assessment.semantic_identity_missing" =>
         "Record non-empty provider and model identity in every semantic assessment, including structured human submissions.";
+    AssessmentSemanticIdentityMismatch = "assessment.semantic_identity_mismatch" =>
+        "Regenerate the assessment with the exact provider and model identity declared by the semantic executor request.";
 }
 
 impl DiagnosticCode {
