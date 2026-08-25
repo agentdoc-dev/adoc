@@ -393,12 +393,26 @@ pub fn validate_semantic_assessment(
                 });
             }
         }
+        let affected_object_ids = affected_objects
+            .iter()
+            .map(|object| object.object_id.as_str())
+            .collect::<BTreeSet<_>>();
 
         let mut candidate_updates = raw_finding.candidate_updates;
         candidate_updates.sort_by(|left, right| left.object_id.cmp(&right.object_id));
         for update in &candidate_updates {
             ObjectId::new(&update.object_id)
                 .map_err(|_| invalid(format!("invalid candidate object '{}'", update.object_id)))?;
+            if raw_finding.proposed_disposition == SemanticDisposition::UpdateExisting
+                && !affected_object_ids.contains(update.object_id.as_str())
+            {
+                return Err(SemanticAssessmentError::CitationInvalid {
+                    message: format!(
+                        "candidate update '{}' is outside the cited affected object set",
+                        update.object_id
+                    ),
+                });
+            }
             if update
                 .body
                 .as_deref()
