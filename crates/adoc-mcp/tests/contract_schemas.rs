@@ -1813,6 +1813,11 @@ fn semantic_executor_schemas_share_closed_adapter_and_receipt_shapes() {
         "adoc.semantic_context_input.v0.schema.json",
         &incomplete_input
     ));
+    let mut context = input;
+    context["schema_version"] = json!("adoc.semantic_context.v0");
+    context["coverage"] = json!([]);
+    context["outcome"] = json!("ready");
+    context["context_digest"] = json!(digest.clone());
 
     let adapter = json!({
         "kind": "codex",
@@ -1836,12 +1841,21 @@ fn semantic_executor_schemas_share_closed_adapter_and_receipt_shapes() {
             "instructions": "Return structured JSON."
         },
         "timeout_seconds": 600,
-        "context": {
-            "schema_version": "adoc.semantic_context.v0",
-            "context_digest": digest
-        }
+        "context": context
     });
     assert_valid("adoc.semantic_executor_request.v0.schema.json", &request);
+    let mut human_endpoint = request.clone();
+    human_endpoint["adapter"]["endpoint_class"] = json!("human");
+    assert!(!schema_accepts(
+        "adoc.semantic_executor_request.v0.schema.json",
+        &human_endpoint
+    ));
+    let mut human_kind = request.clone();
+    human_kind["adapter"]["kind"] = json!("human");
+    assert!(!schema_accepts(
+        "adoc.semantic_executor_request.v0.schema.json",
+        &human_kind
+    ));
     request["adapter"]["kind"] = json!("shell_magic");
     assert!(!schema_accepts(
         "adoc.semantic_executor_request.v0.schema.json",
