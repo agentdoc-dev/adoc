@@ -119,6 +119,10 @@ pub use domain::semantic_executor::{
     semantic_prompt_digest, validate_semantic_executor_request,
 };
 pub use domain::services::suggest_typed_blocks::SuggestedTypedBlock;
+pub use domain::source_record::{
+    RetentionClass, SOURCE_RECORD_SCHEMA_VERSION, SourceArtifact, SourceRecord, SourceRecordError,
+    SourceRecordInput, build_source_record, validate_source_record,
+};
 pub use domain::value_objects::rel_path::{RelPath, RelPathError};
 pub use infrastructure::git::error::GitError;
 
