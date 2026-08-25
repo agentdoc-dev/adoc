@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.source_binding.v0.schema.json",
+  "title": "AgentDoc Source Binding",
+  "description": "An immutable standalone envelope for the exact graph-v6 Source Binding observed with one Source Record. Placement remains separate from semantic content hashes.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_binding_id",
+    "workspace_id",
+    "source_record_id",
+    "binding"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.source_binding.v0" },
+    "source_binding_id": { "$ref": "#/$defs/text" },
+    "workspace_id": { "$ref": "#/$defs/text" },
+    "source_record_id": { "$ref": "#/$defs/text" },
+    "binding": {
+      "type": "object",
+      "description": "The graph-v6 Source Binding shape: connector, source, optional native revision, path-or-coordinate, anchor, and exact source-revision digest.",
+      "required": [
+        "connector",
+        "source",
+        "path",
+        "anchor",
+        "source_revision_digest"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "connector": { "$ref": "#/$defs/text" },
+        "source": { "$ref": "#/$defs/text" },
+        "revision": { "$ref": "#/$defs/text" },
+        "path": { "$ref": "#/$defs/text" },
+        "anchor": { "$ref": "#/$defs/text" },
+        "source_revision_digest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "pattern": "^\\S(?:[^\\r\\n\\u2028\\u2029]*\\S)?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}

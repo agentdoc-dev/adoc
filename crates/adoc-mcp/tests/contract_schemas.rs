@@ -955,6 +955,14 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "adoc.executor_qualification.v0.schema.json",
         ),
         (
+            "adoc://agent/v0/schema/adoc.source_assertion.v0.schema.json",
+            "adoc.source_assertion.v0.schema.json",
+        ),
+        (
+            "adoc://agent/v0/schema/adoc.source_binding.v0.schema.json",
+            "adoc.source_binding.v0.schema.json",
+        ),
+        (
             "adoc://agent/v0/schema/adoc.source_record.v0.schema.json",
             "adoc.source_record.v0.schema.json",
         ),
@@ -1510,6 +1518,14 @@ fn retrieval_schema_ids_match_their_published_uris() {
         (
             "adoc.executor_qualification.v0.schema.json",
             "adoc://agent/v0/schema/adoc.executor_qualification.v0.schema.json",
+        ),
+        (
+            "adoc.source_assertion.v0.schema.json",
+            "adoc://agent/v0/schema/adoc.source_assertion.v0.schema.json",
+        ),
+        (
+            "adoc.source_binding.v0.schema.json",
+            "adoc://agent/v0/schema/adoc.source_binding.v0.schema.json",
         ),
         (
             "adoc.source_record.v0.schema.json",

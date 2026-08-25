@@ -119,6 +119,12 @@ pub use domain::semantic_executor::{
     semantic_prompt_digest, validate_semantic_executor_request,
 };
 pub use domain::services::suggest_typed_blocks::SuggestedTypedBlock;
+pub use domain::source_provenance::{
+    SOURCE_ASSERTION_SCHEMA_VERSION, SOURCE_BINDING_SCHEMA_VERSION, SourceAssertion,
+    SourceAssertionInput, SourceBinding, SourceBindingCoordinates, SourceBindingInput,
+    SourceProvenanceError, build_source_assertion, build_source_binding, validate_source_assertion,
+    validate_source_binding,
+};
 pub use domain::source_record::{
     RetentionClass, SOURCE_RECORD_SCHEMA_VERSION, SourceArtifact, SourceRecord, SourceRecordError,
     SourceRecordInput, build_source_record, validate_source_record,

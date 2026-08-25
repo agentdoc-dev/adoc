@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/adoc.source_assertion.v0.schema.json",
+  "title": "AgentDoc Source Assertion",
+  "description": "A small immutable atomic assertion extracted from one Source Record. The envelope binds exact assertion bytes, their placement, historical ACL provenance, and the versioned extractor. It is an observation, never automatically a canonical Knowledge Object.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source_assertion_id",
+    "workspace_id",
+    "source_record_id",
+    "source_binding_id",
+    "source_acl_snapshot_id",
+    "extractor",
+    "extractor_version",
+    "media_type",
+    "content_digest",
+    "content_length_bytes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "adoc.source_assertion.v0" },
+    "source_assertion_id": { "$ref": "#/$defs/text" },
+    "workspace_id": { "$ref": "#/$defs/text" },
+    "source_record_id": { "$ref": "#/$defs/text" },
+    "source_binding_id": { "$ref": "#/$defs/text" },
+    "source_acl_snapshot_id": {
+      "description": "Immutable historical ACL provenance only; current authorization is evaluated separately.",
+      "$ref": "#/$defs/text"
+    },
+    "extractor": { "$ref": "#/$defs/text" },
+    "extractor_version": { "$ref": "#/$defs/text" },
+    "media_type": { "$ref": "#/$defs/text" },
+    "content_digest": { "$ref": "#/$defs/digest" },
+    "content_length_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "pattern": "^\\S(?:[^\\r\\n\\u2028\\u2029]*\\S)?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    }
+  }
+}
