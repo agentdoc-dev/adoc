@@ -55,6 +55,12 @@
       "minLength": 1,
       "pattern": "^\\S(?:.*\\S)?$"
     },
+    "asciiText": {
+      "allOf": [
+        { "$ref": "#/$defs/text" },
+        { "pattern": "^[\\u0020-\\u007e]+$" }
+      ]
+    },
     "digest": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
@@ -91,7 +97,7 @@
       "required": ["schema_version"],
       "additionalProperties": false,
       "properties": {
-        "schema_version": { "$ref": "#/$defs/text" }
+        "schema_version": { "$ref": "#/$defs/asciiText" }
       }
     },
     "capability": {
@@ -99,8 +105,8 @@
       "required": ["name", "version"],
       "additionalProperties": false,
       "properties": {
-        "name": { "$ref": "#/$defs/text" },
-        "version": { "$ref": "#/$defs/text" }
+        "name": { "$ref": "#/$defs/asciiText" },
+        "version": { "$ref": "#/$defs/asciiText" }
       }
     },
     "workload": {

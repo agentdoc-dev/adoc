@@ -1,9 +1,10 @@
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use adoc_core::{
-    CapabilityRequirement, ContractRequirement, ExactRevision, WorkChangeRequest, WorkRequest,
-    WorkRequestInput, WorkResultInput, WorkRuntime, WorkSource, WorkloadAuthorization,
-    build_work_request, build_work_result, validate_work_request, validate_work_result,
+    CapabilityRequirement, ContractRequirement, ExactRevision, ExternalWorkError,
+    WorkChangeRequest, WorkRequest, WorkRequestInput, WorkResultInput, WorkRuntime, WorkSource,
+    WorkloadAuthorization, build_work_request, build_work_result, validate_work_request,
+    validate_work_result,
 };
 use chrono::{TimeZone, Utc};
 
@@ -130,6 +131,11 @@ fn unknown_work_envelope_version_is_rejected_with_remediation() {
     let request = build_work_request(request_input()).expect("request builds");
     let mut document = serde_json::to_value(&request).expect("request serializes");
     document["schema_version"] = serde_json::json!("adoc.work_request.v99");
+    document
+        .as_object_mut()
+        .expect("request object")
+        .remove("request_id");
+    document["future_field"] = serde_json::json!(true);
 
     let error = validate_work_request(
         serde_json::to_vec(&document)
@@ -143,6 +149,40 @@ fn unknown_work_envelope_version_is_rejected_with_remediation() {
             .remediation()
             .contains("supported work-request version")
     );
+
+    let result = build_work_result(result_input(&request), &request).expect("result builds");
+    let mut document = serde_json::to_value(result).expect("result serializes");
+    document["schema_version"] = serde_json::json!("adoc.work_result.v99");
+    document
+        .as_object_mut()
+        .expect("result object")
+        .remove("result_digest");
+    document["future_field"] = serde_json::json!(true);
+    let error = validate_work_result(
+        serde_json::to_vec(&document)
+            .expect("document serializes")
+            .as_slice(),
+        &request,
+    )
+    .expect_err("unknown result version is rejected before exact v0 decoding");
+    assert!(matches!(
+        error,
+        ExternalWorkError::UnsupportedVersion {
+            envelope: "work-result",
+            version
+        } if version == "adoc.work_result.v99"
+    ));
+}
+
+#[test]
+fn work_requirements_are_ascii_for_cross_runtime_ordering() {
+    let mut contract = request_input();
+    contract.contracts[0].schema_version = "adoc.\u{10000}.v0".to_string();
+    build_work_request(contract).expect_err("non-ASCII contract versions are rejected");
+
+    let mut capability = request_input();
+    capability.capabilities[0].name = "code_\u{e000}_assessment".to_string();
+    build_work_request(capability).expect_err("non-ASCII capability fields are rejected");
 }
 
 #[test]

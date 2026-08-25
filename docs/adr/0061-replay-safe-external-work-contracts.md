@@ -13,8 +13,8 @@ must not be reusable across a request, Workspace, repository, or revision.
 ## Decision
 
 1. `adoc.work_request.v0` binds request ID and nonce, Workspace, repository and
-   source identity, exact revision/change request, sorted contract/capability
-   requirements, expiry, and the authorized workload Principal, subject, and
+   source identity, exact revision/change request, ASCII-only contract/capability
+   requirements sorted in ascending ASCII order, expiry, and the authorized workload Principal, subject, and
    audience. `request_digest` is SHA-256 over the canonical payload excluding
    that digest field. Expiry uses canonical UTC whole-second text so Rust,
    TypeScript, and source-CI producers hash identical bytes.

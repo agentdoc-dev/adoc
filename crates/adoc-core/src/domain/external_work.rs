@@ -94,7 +94,8 @@ pub struct WorkRequest {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawWorkRequest {
-    schema_version: String,
+    #[serde(rename = "schema_version")]
+    _schema_version: String,
     request_id: String,
     nonce: String,
     workspace_id: String,
@@ -140,7 +141,8 @@ pub struct WorkResult {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawWorkResult {
-    schema_version: String,
+    #[serde(rename = "schema_version")]
+    _schema_version: String,
     request_id: String,
     request_digest: String,
     workspace_id: String,
@@ -152,6 +154,11 @@ struct RawWorkResult {
     #[serde(deserialize_with = "deserialize_unique_output_digests")]
     output_digests: BTreeMap<String, String>,
     result_digest: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawEnvelopeVersion {
+    schema_version: String,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -269,11 +276,11 @@ pub fn build_work_request(mut input: WorkRequestInput) -> Result<WorkRequest, Ex
         ));
     }
     for contract in &input.contracts {
-        require_text("contracts[].schema_version", &contract.schema_version)?;
+        require_ascii_text("contracts[].schema_version", &contract.schema_version)?;
     }
     for capability in &input.capabilities {
-        require_text("capabilities[].name", &capability.name)?;
-        require_text("capabilities[].version", &capability.version)?;
+        require_ascii_text("capabilities[].name", &capability.name)?;
+        require_ascii_text("capabilities[].version", &capability.version)?;
     }
     input.contracts.sort();
     input.capabilities.sort();
@@ -300,14 +307,9 @@ pub fn build_work_request(mut input: WorkRequestInput) -> Result<WorkRequest, Ex
 }
 
 pub fn validate_work_request(bytes: &[u8]) -> Result<WorkRequest, ExternalWorkError> {
+    require_version(bytes, WORK_REQUEST_SCHEMA_VERSION, "work-request")?;
     let raw: RawWorkRequest =
         serde_json::from_slice(bytes).map_err(|error| invalid(error.to_string()))?;
-    if raw.schema_version != WORK_REQUEST_SCHEMA_VERSION {
-        return Err(ExternalWorkError::UnsupportedVersion {
-            envelope: "work-request",
-            version: raw.schema_version,
-        });
-    }
     let expires_at = DateTime::parse_from_rfc3339(&raw.expires_at)
         .map_err(|_| invalid("expires_at must use canonical UTC whole seconds"))?
         .with_timezone(&Utc);
@@ -388,14 +390,9 @@ pub fn validate_work_result(
     bytes: &[u8],
     request: &WorkRequest,
 ) -> Result<WorkResult, ExternalWorkError> {
+    require_version(bytes, WORK_RESULT_SCHEMA_VERSION, "work-result")?;
     let raw: RawWorkResult =
         serde_json::from_slice(bytes).map_err(|error| invalid(error.to_string()))?;
-    if raw.schema_version != WORK_RESULT_SCHEMA_VERSION {
-        return Err(ExternalWorkError::UnsupportedVersion {
-            envelope: "work-result",
-            version: raw.schema_version,
-        });
-    }
     let claimed = raw.result_digest;
     let result = build_work_result(
         WorkResultInput {
@@ -512,6 +509,32 @@ fn require_text(field: &str, value: &str) -> Result<(), ExternalWorkError> {
         return Ok(());
     }
     Err(invalid(format!("{field} must be non-blank text")))
+}
+
+fn require_ascii_text(field: &str, value: &str) -> Result<(), ExternalWorkError> {
+    require_text(field, value)?;
+    if value.is_ascii() {
+        return Ok(());
+    }
+    Err(invalid(format!(
+        "{field} must use ASCII for cross-runtime ordering"
+    )))
+}
+
+fn require_version(
+    bytes: &[u8],
+    expected: &str,
+    envelope: &'static str,
+) -> Result<(), ExternalWorkError> {
+    let version: RawEnvelopeVersion =
+        serde_json::from_slice(bytes).map_err(|error| invalid(error.to_string()))?;
+    if version.schema_version == expected {
+        return Ok(());
+    }
+    Err(ExternalWorkError::UnsupportedVersion {
+        envelope,
+        version: version.schema_version,
+    })
 }
 
 fn is_output_digest_name(value: &str) -> bool {
