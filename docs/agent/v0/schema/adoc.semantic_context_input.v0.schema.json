@@ -22,26 +22,194 @@
   "properties": {
     "schema_version": { "const": "adoc.semantic_context_input.v0" },
     "evaluation_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
-    "subject_revision": { "$ref": "#/$defs/revision" },
-    "source_revision": { "$ref": "#/$defs/revision" },
-    "base_revision": { "$ref": "#/$defs/revision" },
-    "head_revision": { "$ref": "#/$defs/revision" },
-    "basis": { "type": "object" },
-    "selection": { "type": "object" },
-    "capability_policy": { "type": "object" },
-    "context_classes": { "type": "array" },
-    "items": { "type": "array" },
-    "unavailability": { "type": "array" }
+    "subject_revision": { "$ref": "#/$defs/exactRevision" },
+    "source_revision": { "$ref": "#/$defs/exactRevision" },
+    "base_revision": { "$ref": "#/$defs/exactRevision" },
+    "head_revision": { "$ref": "#/$defs/exactRevision" },
+    "basis": { "$ref": "#/$defs/basis" },
+    "selection": { "$ref": "#/$defs/selection" },
+    "capability_policy": { "$ref": "#/$defs/capabilityPolicy" },
+    "context_classes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contextClass" }
+    },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contextItem" }
+    },
+    "unavailability": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/unavailability" }
+    }
   },
   "$defs": {
     "nonEmpty": { "type": "string", "minLength": 1 },
-    "revision": {
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "objectId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$"
+    },
+    "unavailabilityReason": {
+      "enum": ["permission", "retention", "source_outage", "truncation", "resource_limit"]
+    },
+    "exactRevision": {
       "type": "object",
       "required": ["system", "value"],
       "additionalProperties": false,
       "properties": {
         "system": { "$ref": "#/$defs/nonEmpty" },
         "value": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "basis": {
+      "type": "object",
+      "required": ["assessment_digest", "knowledge_basis"],
+      "additionalProperties": false,
+      "properties": {
+        "assessment_digest": { "$ref": "#/$defs/sha256" },
+        "knowledge_basis": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["kind", "digest"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "graph_artifact" },
+                "digest": { "$ref": "#/$defs/sha256" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "digest"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "managed_revision" },
+                "digest": { "$ref": "#/$defs/sha256" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "required": ["algorithm", "version", "authorized_scope"],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": { "$ref": "#/$defs/nonEmpty" },
+        "version": { "$ref": "#/$defs/nonEmpty" },
+        "authorized_scope": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        }
+      }
+    },
+    "capabilityPolicy": {
+      "type": "object",
+      "required": ["version", "rules"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "$ref": "#/$defs/nonEmpty" },
+        "rules": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["reason", "outcome"],
+            "additionalProperties": false,
+            "properties": {
+              "reason": { "$ref": "#/$defs/unavailabilityReason" },
+              "outcome": { "enum": ["insufficient", "failed"] }
+            }
+          }
+        }
+      }
+    },
+    "contextClass": {
+      "type": "object",
+      "required": ["class_id", "requirement", "byte_budget"],
+      "additionalProperties": false,
+      "properties": {
+        "class_id": { "$ref": "#/$defs/nonEmpty" },
+        "requirement": { "enum": ["required", "optional"] },
+        "byte_budget": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "contextItem": {
+      "type": "object",
+      "required": ["handle_id", "class_id", "scope_ref", "handle", "content", "truncated"],
+      "additionalProperties": false,
+      "properties": {
+        "handle_id": { "$ref": "#/$defs/nonEmpty" },
+        "class_id": { "$ref": "#/$defs/nonEmpty" },
+        "scope_ref": { "$ref": "#/$defs/nonEmpty" },
+        "handle": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["kind", "object_id", "semantic_hash"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "knowledge_object" },
+                "object_id": { "$ref": "#/$defs/objectId" },
+                "semantic_hash": { "$ref": "#/$defs/sha256" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "changed_source_id", "hunk_digest"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "diff_hunk" },
+                "changed_source_id": { "$ref": "#/$defs/nonEmpty" },
+                "hunk_digest": { "$ref": "#/$defs/sha256" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "source_assertion_id", "source_record_id"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "source_assertion" },
+                "source_assertion_id": { "$ref": "#/$defs/nonEmpty" },
+                "source_record_id": { "$ref": "#/$defs/nonEmpty" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "object_id"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "source_binding" },
+                "object_id": { "$ref": "#/$defs/objectId" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["kind", "object_id", "evidence_index"],
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "const": "evidence" },
+                "object_id": { "$ref": "#/$defs/objectId" },
+                "evidence_index": { "type": "integer", "minimum": 0 }
+              }
+            }
+          ]
+        },
+        "content": {},
+        "truncated": { "type": "boolean" }
+      }
+    },
+    "unavailability": {
+      "type": "object",
+      "required": ["record_id", "class_id", "kind", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "record_id": { "$ref": "#/$defs/nonEmpty" },
+        "class_id": { "$ref": "#/$defs/nonEmpty" },
+        "kind": { "enum": ["redaction", "omission"] },
+        "reason": { "$ref": "#/$defs/unavailabilityReason" }
       }
     }
   }

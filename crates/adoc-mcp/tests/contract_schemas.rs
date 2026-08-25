@@ -1783,14 +1783,36 @@ fn semantic_executor_schemas_share_closed_adapter_and_receipt_shapes() {
         "source_revision": {"system": "git", "value": "head"},
         "base_revision": {"system": "git", "value": "base"},
         "head_revision": {"system": "git", "value": "head"},
-        "basis": {},
-        "selection": {},
-        "capability_policy": {},
+        "basis": {
+            "assessment_digest": digest,
+            "knowledge_basis": {"kind": "graph_artifact", "digest": digest}
+        },
+        "selection": {
+            "algorithm": "action-bounded-lexical",
+            "version": "1",
+            "authorized_scope": []
+        },
+        "capability_policy": {
+            "version": "semantic-context-policy-v1",
+            "rules": [
+                {"reason": "permission", "outcome": "insufficient"},
+                {"reason": "retention", "outcome": "insufficient"},
+                {"reason": "source_outage", "outcome": "failed"},
+                {"reason": "truncation", "outcome": "insufficient"},
+                {"reason": "resource_limit", "outcome": "insufficient"}
+            ]
+        },
         "context_classes": [],
         "items": [],
         "unavailability": []
     });
     assert_valid("adoc.semantic_context_input.v0.schema.json", &input);
+    let mut incomplete_input = input.clone();
+    incomplete_input["basis"] = json!({});
+    assert!(!schema_accepts(
+        "adoc.semantic_context_input.v0.schema.json",
+        &incomplete_input
+    ));
 
     let adapter = json!({
         "kind": "codex",
