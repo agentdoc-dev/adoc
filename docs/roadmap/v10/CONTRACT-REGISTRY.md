@@ -70,6 +70,7 @@ Producer for every row is the `adoc` release train (CLI, MCP server, and local g
 <!-- registry:envelopes-historical -->
 | id | status | notes |
 | --- | --- | --- |
+| `adoc.graph.v2` | historical | legacy V5 graph artifact cited by a rejected-version integration fixture; production emission ended before the V10 registry, and current readers fail closed rather than dropping newer knowledge kinds |
 | `adoc.graph.v5` | historical | superseded by `adoc.graph.v6` (E1.1, ADR-0058); production emission stopped; the v5 schema stays published at `docs/agent/v0/schema/graph-artifact.v5.json` for the historical record; rejection fixtures cite it from test scope only |
 | `adoc.retrieval.v0` | historical | superseded by `adoc.retrieval.v1`; the v0 schema stays published at `docs/agent/v0/schema/retrieval-envelope.v0.json` for readers of retained output |
 | `adoc.search.v1` | historical | superseded by `adoc.search.v2` (E1.1.T5, ADR-0058); production emission stopped; the wire shape is unchanged — the bump exists to invalidate v1 embedding caches for the v6 full re-embed; `docs/agent/v0/schema/search-artifact.json` is updated in place to v2 (unversioned filename) |
@@ -77,14 +78,18 @@ Producer for every row is the `adoc` release train (CLI, MCP server, and local g
 
 ## Test-fixture ids — never emitted
 
-Deliberately invalid version fixtures cited from test modules in `crates/*/src`, proving rejected-version handling. The completeness scan splits every file at its `#[cfg(test)] mod` boundary: production literals must match the shipped table exactly, and a fixture id emitted from production scope fails the scan. Back-compat tests citing a historical id need no fixture row — the historical table already registers the id — so a fixture id must never collide with any real contract row (guard-enforced).
+Deliberately invalid version fixtures cited from test modules in `crates/*/src`, integration tests, or UTF-8 fixture inputs in `crates/*/tests`, proving rejected-version handling. The completeness scan splits source files at their `#[cfg(test)] mod` boundary and treats integration tests and their textual inputs as test scope: production literals must match the shipped table exactly, and a fixture id emitted from production scope fails the scan. Back-compat tests citing a historical id need no fixture row — the historical table already registers the id — so a fixture id must never collide with any real contract row (guard-enforced).
 
 <!-- registry:test-fixture-ids -->
 | id | status | notes |
 | --- | --- | --- |
 | `adoc.graph.v99` | fixture | rejected-version fixture proving the Validation Runtime's exact-match context-artifact gating (E1.7.T4): neither an older nor a newer unknown graph version is consumed |
 | `adoc.search.v99` | fixture | rejected-version fixture for Search Artifact version gating |
+| `adoc.semantic_assessment.v99` | fixture | rejected-version fixture proving semantic assessments fail with exact-version remediation |
+| `adoc.semantic_context.v1` | fixture | rejected-version fixture proving the first unsupported semantic-context successor fails closed |
+| `adoc.semantic_context.v99` | fixture | rejected-version fixture proving arbitrary future semantic-context versions fail closed |
 | `adoc.work_request.v99` | fixture | rejected-version fixture proving external work requests fail with exact-version remediation |
+| `adoc.work_result.v99` | fixture | rejected-version fixture proving external work results fail with exact-version remediation |
 <!-- /registry:test-fixture-ids -->
 
 ## Envelopes and contracts — planned
