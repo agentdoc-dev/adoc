@@ -108,7 +108,7 @@ pub use domain::semantic_executor::{
     SemanticAdapterDescriptor, SemanticAdapterKind, SemanticEndpointClass, SemanticExecutorError,
     SemanticExecutorOutcome, SemanticExecutorReceipt, SemanticExecutorRequest,
     SemanticPromptContract, complete_semantic_execution, fail_semantic_execution,
-    validate_semantic_executor_request,
+    semantic_prompt_digest, validate_semantic_executor_request,
 };
 pub use domain::services::suggest_typed_blocks::SuggestedTypedBlock;
 pub use domain::value_objects::rel_path::{RelPath, RelPathError};

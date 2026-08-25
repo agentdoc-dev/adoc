@@ -1,5 +1,6 @@
 mod support;
 
+use adoc_core::semantic_prompt_digest;
 use serde_json::{Value, json};
 use support::{TestWorkspace, adoc_command, stderr, stdout};
 
@@ -101,6 +102,9 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
     )
     .expect("context JSON");
 
+    let instructions = "Return structured JSON.";
+    let prompt_digest = semantic_prompt_digest("semantic-assessment-task-v1", instructions)
+        .expect("prompt digest builds");
     let request = json!({
         "schema_version": "adoc.semantic_executor_request.v0",
         "request_id": "request-1",
@@ -111,8 +115,8 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
             "executor_digest": A, "model_digest": B, "config_digest": A
         },
         "task_digest": B,
-        "prompt": {"contract_version": "semantic-assessment-task-v1", "digest": A,
-            "instructions": "Return structured JSON."},
+        "prompt": {"contract_version": "semantic-assessment-task-v1", "digest": prompt_digest,
+            "instructions": instructions},
         "timeout_seconds": 600,
         "context": context
     });

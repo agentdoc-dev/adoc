@@ -79,7 +79,7 @@ pub(crate) fn semantic_executor(
             );
         }
     };
-    let receipt = match complete_semantic_execution(&request, &assessment_bytes, &assessment) {
+    let receipt = match complete_semantic_execution(&request, &assessment) {
         Ok(receipt) => receipt,
         Err(error) => {
             return record_failure(
