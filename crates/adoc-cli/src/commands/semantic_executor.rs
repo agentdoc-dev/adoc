@@ -2,8 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use adoc_core::{
-    build_semantic_context_from_document, complete_semantic_execution, fail_semantic_execution,
-    validate_semantic_assessment, validate_semantic_executor_request,
+    SemanticExecutorError, build_semantic_context_from_document, complete_semantic_execution,
+    fail_semantic_execution, validate_semantic_assessment, validate_semantic_executor_request,
 };
 
 const MAX_ASSESSMENT_BYTES: u64 = 1024 * 1024;
@@ -35,6 +35,7 @@ pub(crate) fn semantic_executor(
     receipt_path: PathBuf,
     validated_assessment_path: PathBuf,
 ) -> i32 {
+    remove_stale(&receipt_path);
     remove_stale(&validated_assessment_path);
     let request_bytes = match fs::read(&request_path) {
         Ok(bytes) => bytes,
@@ -82,12 +83,11 @@ pub(crate) fn semantic_executor(
     let receipt = match complete_semantic_execution(&request, &assessment) {
         Ok(receipt) => receipt,
         Err(error) => {
-            return record_failure(
-                &request,
-                "assessment.semantic_schema_invalid",
-                &error.to_string(),
-                &receipt_path,
-            );
+            let code = match &error {
+                SemanticExecutorError::IdentityMismatch => "assessment.semantic_identity_mismatch",
+                _ => "assessment.semantic_schema_invalid",
+            };
+            return record_failure(&request, code, &error.to_string(), &receipt_path);
         }
     };
     let assessment_json = match assessment.to_canonical_json() {

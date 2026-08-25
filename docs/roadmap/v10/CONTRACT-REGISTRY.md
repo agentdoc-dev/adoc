@@ -135,6 +135,7 @@ Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed
 | `assessment.semantic_citation_invalid` |
 | `assessment.semantic_classification_unknown` |
 | `assessment.semantic_identity_missing` |
+| `assessment.semantic_identity_mismatch` |
 | `assessment.semantic_revision_mismatch` |
 | `assessment.semantic_schema_invalid` |
 | `assessment.semantic_version_unsupported` |
