@@ -1815,7 +1815,35 @@ fn semantic_executor_schemas_share_closed_adapter_and_receipt_shapes() {
     ));
     let mut context = input;
     context["schema_version"] = json!("adoc.semantic_context.v0");
-    context["coverage"] = json!([]);
+    context["selection"]["authorized_scope"] = json!(["repo:agentdoc/test"]);
+    context["context_classes"] = json!([{
+        "class_id": "changed_knowledge",
+        "requirement": "required",
+        "byte_budget": 4096
+    }]);
+    context["items"] = json!([{
+        "handle_id": "hunk-a",
+        "class_id": "changed_knowledge",
+        "scope_ref": "repo:agentdoc/test",
+        "handle": {
+            "kind": "diff_hunk",
+            "changed_source_id": "src/billing.rs",
+            "hunk_digest": digest
+        },
+        "content": {"diff": "+ durable billing behavior"},
+        "truncated": false
+    }]);
+    context["coverage"] = json!([{
+        "class_id": "changed_knowledge",
+        "requirement": "required",
+        "item_count": 1,
+        "included_bytes": 37,
+        "byte_budget": 4096,
+        "truncated": false,
+        "unavailable_count": 0,
+        "reasons": [],
+        "complete": true
+    }]);
     context["outcome"] = json!("ready");
     context["context_digest"] = json!(digest.clone());
 
@@ -1844,6 +1872,12 @@ fn semantic_executor_schemas_share_closed_adapter_and_receipt_shapes() {
         "context": context
     });
     assert_valid("adoc.semantic_executor_request.v0.schema.json", &request);
+    let mut missing_diff = request.clone();
+    missing_diff["context"]["items"] = json!([]);
+    assert!(!schema_accepts(
+        "adoc.semantic_executor_request.v0.schema.json",
+        &missing_diff
+    ));
     let mut human_endpoint = request.clone();
     human_endpoint["adapter"]["endpoint_class"] = json!("human");
     assert!(!schema_accepts(
