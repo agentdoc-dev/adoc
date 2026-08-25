@@ -153,6 +153,64 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
     assert!(stdout(&output).contains("\"outcome\": \"completed\""));
     assert!(workspace.root.join("validated.json").is_file());
 
+    workspace.write("invalid-request.json", "{");
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "semantic-executor",
+            "--request",
+            "invalid-request.json",
+            "--assessment",
+            "assessment.json",
+            "--receipt",
+            "receipt.json",
+            "--validated-assessment",
+            "never-invalid-request.json",
+        ])
+        .output()
+        .expect("invalid request command runs");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        !workspace.root.join("receipt.json").exists(),
+        "a prior success receipt must not survive request validation"
+    );
+
+    let mut wrong_identity = assessment(
+        request["context"]["context_digest"]
+            .as_str()
+            .expect("digest"),
+    );
+    wrong_identity["identity"]["model"] = json!("other-model");
+    workspace.write(
+        "assessment.json",
+        &serde_json::to_string_pretty(&wrong_identity).expect("serializes"),
+    );
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "semantic-executor",
+            "--request",
+            "request.json",
+            "--assessment",
+            "assessment.json",
+            "--receipt",
+            "identity-failed.json",
+            "--validated-assessment",
+            "never-identity.json",
+        ])
+        .output()
+        .expect("identity mismatch command runs");
+    assert_eq!(output.status.code(), Some(2));
+    let identity_failed: Value = serde_json::from_str(
+        &std::fs::read_to_string(workspace.root.join("identity-failed.json"))
+            .expect("identity failure receipt"),
+    )
+    .expect("identity receipt JSON");
+    assert_eq!(
+        identity_failed["failure_code"],
+        "assessment.semantic_identity_mismatch"
+    );
+
     let mut invalid = assessment(
         request["context"]["context_digest"]
             .as_str()
