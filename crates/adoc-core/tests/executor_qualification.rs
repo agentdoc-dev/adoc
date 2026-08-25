@@ -1,8 +1,10 @@
 use adoc_core::{
-    ExecutorAuthority, ExecutorConfiguration, ExecutorQualificationError, QualificationLayer,
-    RequalificationTrigger, validate_executor_qualification,
+    ExecutorAuthority, ExecutorConfiguration, ExecutorQualificationError,
+    ExecutorQualificationExpectedBindings, QualificationLayer, RequalificationTrigger,
+    validate_executor_qualification,
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 const D1: &str = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
 const D2: &str = "sha256:2222222222222222222222222222222222222222222222222222222222222222";
@@ -70,6 +72,39 @@ fn configuration(value: &Value) -> ExecutorConfiguration {
     serde_json::from_value(value["subject"].clone()).expect("configuration fixture parses")
 }
 
+fn expected(value: &Value) -> ExecutorQualificationExpectedBindings {
+    let bytes = serde_json::to_vec(value).expect("fixture serializes");
+    ExecutorQualificationExpectedBindings {
+        qualification_id: value["qualification_id"]
+            .as_str()
+            .expect("qualification id")
+            .to_string(),
+        record_digest: format!(
+            "sha256:{}",
+            Sha256::digest(bytes)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        ),
+        capability_name: value["capability"]["name"]
+            .as_str()
+            .expect("capability name")
+            .to_string(),
+        capability_version: value["capability"]["version"]
+            .as_str()
+            .expect("capability version")
+            .to_string(),
+        organization_policy_digest: value["organization_approval"]["policy_digest"]
+            .as_str()
+            .expect("organization policy")
+            .to_string(),
+        runtime_policy_digest: value["runtime_policy"]["policy_digest"]
+            .as_str()
+            .expect("runtime policy")
+            .to_string(),
+    }
+}
+
 #[test]
 fn protocol_valid_but_unqualified_output_is_advisory_only() {
     let mut value = model_record();
@@ -78,7 +113,7 @@ fn protocol_valid_but_unqualified_output_is_advisory_only() {
     value["runtime_policy"]["eligible"] = json!(false);
     let record = validate(&value);
 
-    let eligibility = record.evaluate(&configuration(&model_record()), DA);
+    let eligibility = record.evaluate(&configuration(&model_record()), DA, &expected(&value));
 
     assert_eq!(eligibility.authority(), ExecutorAuthority::AdvisoryOnly);
     assert_eq!(
@@ -96,7 +131,9 @@ fn every_layer_is_required_for_gate_authority() {
     let base = model_record();
     let current = configuration(&base);
     assert_eq!(
-        validate(&base).evaluate(&current, DA).authority(),
+        validate(&base)
+            .evaluate(&current, DA, &expected(&base))
+            .authority(),
         ExecutorAuthority::GateAuthoritative
     );
 
@@ -120,7 +157,7 @@ fn every_layer_is_required_for_gate_authority() {
             "eligible"
         };
         value[path][field] = json!(false);
-        let eligibility = validate(&value).evaluate(&current, DA);
+        let eligibility = validate(&value).evaluate(&current, DA, &expected(&value));
         assert!(eligibility.missing_layers().contains(&missing));
         assert_ne!(
             eligibility.authority(),
@@ -170,7 +207,7 @@ fn every_material_model_configuration_change_names_a_requalification_trigger() {
         current["configuration"][field] = json!(DC);
         let current: ExecutorConfiguration =
             serde_json::from_value(current).expect("configuration parses");
-        let eligibility = record.evaluate(&current, DA);
+        let eligibility = record.evaluate(&current, DA, &expected(&value));
         assert_eq!(eligibility.authority(), ExecutorAuthority::AdvisoryOnly);
         assert_eq!(eligibility.requalification_triggers(), &[trigger]);
     }
@@ -186,6 +223,7 @@ fn an_inference_temperature_change_requires_requalification() {
     let eligibility = record.evaluate(
         &serde_json::from_value(current).expect("configuration parses"),
         DA,
+        &expected(&value),
     );
 
     assert_eq!(eligibility.authority(), ExecutorAuthority::AdvisoryOnly);
@@ -199,12 +237,55 @@ fn an_inference_temperature_change_requires_requalification() {
 #[test]
 fn runtime_eligibility_is_bound_to_the_exact_operation() {
     let value = model_record();
-    let eligibility = validate(&value).evaluate(&configuration(&value), DB);
+    let eligibility = validate(&value).evaluate(&configuration(&value), DB, &expected(&value));
 
     assert_eq!(eligibility.authority(), ExecutorAuthority::AdvisoryOnly);
     assert_eq!(
         eligibility.missing_layers(),
         &[QualificationLayer::RuntimePolicyEligible]
+    );
+}
+
+#[test]
+fn self_declared_qualification_cannot_create_gate_authority() {
+    let trusted = model_record();
+    let mut self_declared = trusted.clone();
+    self_declared["qualification_id"] = json!("attacker-declared");
+
+    assert_ne!(
+        validate(&self_declared)
+            .evaluate(&configuration(&trusted), DA, &expected(&trusted))
+            .authority(),
+        ExecutorAuthority::GateAuthoritative
+    );
+}
+
+#[test]
+fn qualification_is_bound_to_the_requested_capability() {
+    let trusted = model_record();
+    let mut other_capability = trusted.clone();
+    other_capability["capability"] = json!({"name": "contradiction_analysis", "version": "1"});
+
+    assert_ne!(
+        validate(&other_capability)
+            .evaluate(&configuration(&trusted), DA, &expected(&trusted))
+            .authority(),
+        ExecutorAuthority::GateAuthoritative
+    );
+}
+
+#[test]
+fn qualification_is_bound_to_current_approval_policies() {
+    let trusted = model_record();
+    let mut stale = trusted.clone();
+    stale["organization_approval"]["policy_digest"] = json!(DB);
+    stale["runtime_policy"]["policy_digest"] = json!(DB);
+
+    assert_ne!(
+        validate(&stale)
+            .evaluate(&configuration(&trusted), DA, &expected(&trusted))
+            .authority(),
+        ExecutorAuthority::GateAuthoritative
     );
 }
 
@@ -244,7 +325,9 @@ fn human_qualification_uses_authenticated_permission_policy_not_benchmarks() {
 
     let record = validate(&value);
     assert_eq!(
-        record.evaluate(&configuration(&value), DA).authority(),
+        record
+            .evaluate(&configuration(&value), DA, &expected(&value))
+            .authority(),
         ExecutorAuthority::GateAuthoritative
     );
     assert!(
