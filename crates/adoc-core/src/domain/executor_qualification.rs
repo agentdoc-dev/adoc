@@ -96,6 +96,10 @@ pub struct ExecutorQualificationExpectedBindings {
     pub record_digest: String,
     pub capability_name: String,
     pub capability_version: String,
+    pub protocol_version: String,
+    pub requested_scope: String,
+    pub requested_risk: String,
+    pub requested_deployment: String,
     pub organization_policy_digest: String,
     pub runtime_policy_digest: String,
 }
@@ -204,13 +208,30 @@ impl ExecutorQualification {
         expected: &ExecutorQualificationExpectedBindings,
     ) -> ExecutorEligibility {
         let mut missing_layers = Vec::new();
-        if !self.record.protocol.valid {
+        if !self.record.protocol.valid || self.record.protocol.version != expected.protocol_version
+        {
             missing_layers.push(QualificationLayer::ProtocolValid);
         }
         if !self.record.agentdoc_evaluation.qualified() {
             missing_layers.push(QualificationLayer::AgentDocEvaluated);
         }
-        if !self.record.organization_approval.approved {
+        if !self.record.organization_approval.approved
+            || !self
+                .record
+                .organization_approval
+                .scope
+                .contains(&expected.requested_scope)
+            || !self
+                .record
+                .organization_approval
+                .risk
+                .contains(&expected.requested_risk)
+            || !self
+                .record
+                .organization_approval
+                .deployment
+                .contains(&expected.requested_deployment)
+        {
             missing_layers.push(QualificationLayer::OrganizationApproved);
         }
         if !self.record.runtime_policy.eligible
