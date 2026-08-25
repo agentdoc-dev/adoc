@@ -85,6 +85,24 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
         "context-input.json",
         &serde_json::to_string_pretty(&context_input()).expect("serializes"),
     );
+    let original_input =
+        std::fs::read_to_string(workspace.root.join("context-input.json")).expect("input exists");
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "semantic-context",
+            "--input",
+            "context-input.json",
+            "--out",
+            "context-input.json",
+        ])
+        .output()
+        .expect("aliased context command runs");
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(
+        std::fs::read_to_string(workspace.root.join("context-input.json")).expect("input survives"),
+        original_input
+    );
     let output = adoc_command()
         .current_dir(&workspace.root)
         .args([
@@ -152,6 +170,30 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
         ))
         .expect("serializes"),
     );
+
+    for (receipt, validated) in [
+        ("request.json", "never-alias.json"),
+        ("same-output.json", "same-output.json"),
+    ] {
+        let output = adoc_command()
+            .current_dir(&workspace.root)
+            .args([
+                "semantic-executor",
+                "--request",
+                "request.json",
+                "--assessment",
+                "assessment.json",
+                "--receipt",
+                receipt,
+                "--validated-assessment",
+                validated,
+            ])
+            .output()
+            .expect("aliased executor command runs");
+        assert_eq!(output.status.code(), Some(2));
+    }
+    assert!(workspace.root.join("request.json").is_file());
+    assert!(!workspace.root.join("same-output.json").exists());
 
     let output = adoc_command()
         .current_dir(&workspace.root)

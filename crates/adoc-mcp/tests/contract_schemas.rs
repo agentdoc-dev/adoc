@@ -1885,6 +1885,13 @@ fn semantic_executor_schemas_share_closed_adapter_and_receipt_shapes() {
     });
     assert_valid("adoc.semantic_executor_receipt.v0.schema.json", &completed);
 
+    let mut impossible_adapter = completed.clone();
+    impossible_adapter["adapter"]["endpoint_class"] = json!("public_provider");
+    assert!(!schema_accepts(
+        "adoc.semantic_executor_receipt.v0.schema.json",
+        &impossible_adapter
+    ));
+
     let mut invalid = completed;
     invalid["failure_code"] = json!("executor.failed");
     assert!(!schema_accepts(

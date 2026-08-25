@@ -473,6 +473,12 @@ impl SemanticContext {
             .find(|item| item.handle_id == handle_id)
             .map(|item| &item.handle)
     }
+
+    pub(crate) fn has_diff_hunk(&self) -> bool {
+        self.items
+            .iter()
+            .any(|item| matches!(&item.handle, CitationHandle::DiffHunk { .. }))
+    }
 }
 
 pub fn build_semantic_context(

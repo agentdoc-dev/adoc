@@ -252,6 +252,39 @@ fn prompt_instructions_may_be_multiline() {
 }
 
 #[test]
+fn prompt_limit_counts_characters_like_the_schema() {
+    let mut document = request("codex", "codex", "gpt-5.6-codex");
+    let instructions = "😀".repeat(70_000);
+    document["prompt"]["instructions"] = json!(instructions);
+    document["prompt"]["digest"] = json!(
+        semantic_prompt_digest("semantic-assessment-task-v1", &instructions)
+            .expect("prompt digest builds")
+    );
+
+    validate_semantic_executor_request(&serde_json::to_vec(&document).expect("serializes"))
+        .expect("schema-valid Unicode prompt length is accepted");
+}
+
+#[test]
+fn executor_context_must_contain_a_diff_hunk() {
+    let mut empty_input = context_input();
+    empty_input["selection"]["authorized_scope"] = json!([]);
+    empty_input["context_classes"] = json!([]);
+    empty_input["items"] = json!([]);
+    let context = build_semantic_context_from_document(
+        &serde_json::to_vec(&empty_input).expect("input serializes"),
+    )
+    .expect("empty context builds as ready");
+    let mut document = request("codex", "codex", "gpt-5.6-codex");
+    document["context"] =
+        serde_json::from_str(&context.to_canonical_json().expect("context serializes"))
+            .expect("context JSON");
+
+    validate_semantic_executor_request(&serde_json::to_vec(&document).expect("serializes"))
+        .expect_err("an assessment request needs at least one diff-hunk citation");
+}
+
+#[test]
 fn completion_digests_the_validator_owned_canonical_assessment() {
     let request = validate_semantic_executor_request(
         &serde_json::to_vec(&request("codex", "codex", "gpt-5.6-codex")).expect("serializes"),
