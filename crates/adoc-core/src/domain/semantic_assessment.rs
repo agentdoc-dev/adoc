@@ -446,9 +446,14 @@ pub fn validate_semantic_assessment(
             if update
                 .body
                 .as_deref()
-                .is_none_or(|body| body.trim().is_empty())
-                && update.fields.is_empty()
+                .is_some_and(|body| body.trim().is_empty())
             {
+                return Err(invalid(format!(
+                    "candidate update '{}' body must be non-blank when present",
+                    update.object_id
+                )));
+            }
+            if update.body.is_none() && update.fields.is_empty() {
                 return Err(invalid(format!(
                     "candidate update '{}' has no body or fields",
                     update.object_id

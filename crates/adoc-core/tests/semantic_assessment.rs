@@ -275,6 +275,15 @@ fn candidate_body_is_required_even_when_it_is_null() {
     )
     .expect("an explicit null body remains valid when fields are present");
 
+    document["findings"][0]["candidate_updates"][0]["body"] = json!("");
+    validate_semantic_assessment(
+        serde_json::to_vec(&document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect_err("an empty body is invalid even when fields are present");
+
     document["findings"][0]["candidate_updates"][0]
         .as_object_mut()
         .expect("candidate object")
