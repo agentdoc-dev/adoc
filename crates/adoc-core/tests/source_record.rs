@@ -1,6 +1,6 @@
 use adoc_core::{
-    RetentionClass, SourceArtifact, SourceRecordError, SourceRecordInput, build_source_record,
-    validate_source_record,
+    RetentionClass, SourceAclResource, SourceAclResourceKind, SourceAclScope, SourceArtifact,
+    SourceRecordError, SourceRecordInput, build_source_record, validate_source_record,
 };
 use chrono::{TimeZone, Utc};
 use sha2::{Digest, Sha256};
@@ -19,6 +19,13 @@ fn input() -> SourceRecordInput<'static> {
             kind: "file".to_string(),
             external_id: "repository-42:docs/policy.adoc".to_string(),
             external_version: "0123456789abcdef".to_string(),
+        },
+        source_acl_scope: SourceAclScope {
+            source_container_id: "agentdoc-dev".to_string(),
+            source: SourceAclResource {
+                kind: SourceAclResourceKind::Repository,
+                id: "policies".to_string(),
+            },
         },
         observed_at: Utc
             .with_ymd_and_hms(2026, 8, 25, 10, 0, 0)
@@ -39,6 +46,13 @@ fn source_record_digest_roundtrip() {
 
     assert_eq!(validated, record);
     assert_eq!(record.content_length_bytes(), EXACT_BYTES.len() as u64);
+    assert_eq!(
+        serde_json::to_value(&record).expect("record serializes")["source_acl_scope"],
+        serde_json::json!({
+            "source_container_id": "agentdoc-dev",
+            "source": {"kind": "repository", "id": "policies"}
+        })
+    );
     assert_eq!(
         record.content_digest(),
         format!(

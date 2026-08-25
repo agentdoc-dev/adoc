@@ -19,6 +19,29 @@ pub struct SourceArtifact {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum SourceAclResourceKind {
+    Repository,
+    Project,
+    Space,
+    Channel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceAclResource {
+    pub kind: SourceAclResourceKind,
+    pub id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceAclScope {
+    pub source_container_id: String,
+    pub source: SourceAclResource,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum RetentionClass {
     DigestOnly,
     BoundedEvidence,
@@ -33,6 +56,7 @@ pub struct SourceRecordInput<'a> {
     pub workspace_id: String,
     pub connector_id: String,
     pub source: SourceArtifact,
+    pub source_acl_scope: SourceAclScope,
     pub observed_at: DateTime<Utc>,
     pub media_type: String,
     pub retention_class: RetentionClass,
@@ -46,6 +70,7 @@ pub struct SourceRecord {
     workspace_id: String,
     connector_id: String,
     source: SourceArtifact,
+    source_acl_scope: SourceAclScope,
     observed_at: DateTime<Utc>,
     media_type: String,
     retention_class: RetentionClass,
@@ -62,6 +87,7 @@ struct RawSourceRecord {
     workspace_id: String,
     connector_id: String,
     source: SourceArtifact,
+    source_acl_scope: SourceAclScope,
     observed_at: String,
     media_type: String,
     retention_class: RetentionClass,
@@ -130,6 +156,14 @@ pub fn build_source_record(
     validate_text("source.kind", &input.source.kind)?;
     validate_text("source.external_id", &input.source.external_id)?;
     validate_text("source.external_version", &input.source.external_version)?;
+    validate_text(
+        "source_acl_scope.source_container_id",
+        &input.source_acl_scope.source_container_id,
+    )?;
+    validate_text(
+        "source_acl_scope.source.id",
+        &input.source_acl_scope.source.id,
+    )?;
     validate_text("media_type", &input.media_type)?;
     if !(0..=9999).contains(&input.observed_at.year()) {
         return Err(invalid("observed_at must use a four-digit UTC year"));
@@ -146,6 +180,7 @@ pub fn build_source_record(
         workspace_id: input.workspace_id,
         connector_id: input.connector_id,
         source: input.source,
+        source_acl_scope: input.source_acl_scope,
         observed_at: input.observed_at,
         media_type: input.media_type,
         retention_class: input.retention_class,
@@ -179,6 +214,7 @@ pub fn validate_source_record(
         workspace_id: raw.workspace_id,
         connector_id: raw.connector_id,
         source: raw.source,
+        source_acl_scope: raw.source_acl_scope,
         observed_at,
         media_type: raw.media_type,
         retention_class: raw.retention_class,

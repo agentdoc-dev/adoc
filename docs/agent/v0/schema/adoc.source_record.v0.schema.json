@@ -10,6 +10,7 @@
     "workspace_id",
     "connector_id",
     "source",
+    "source_acl_scope",
     "observed_at",
     "media_type",
     "retention_class",
@@ -31,6 +32,25 @@
         "kind": { "$ref": "#/$defs/text" },
         "external_id": { "$ref": "#/$defs/text" },
         "external_version": { "$ref": "#/$defs/text" }
+      }
+    },
+    "source_acl_scope": {
+      "description": "Exact authorization scope from which this source observation originated. These coordinates must match the historical ACL Snapshot retained with any derived Source Assertion; equality is Cloud-owned and fails closed.",
+      "type": "object",
+      "required": ["source_container_id", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "source_container_id": { "$ref": "#/$defs/text" },
+        "source": {
+          "description": "Bare source-local authorization resource; its parent container is carried separately.",
+          "type": "object",
+          "required": ["kind", "id"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["repository", "project", "space", "channel"] },
+            "id": { "$ref": "#/$defs/text" }
+          }
+        }
       }
     },
     "observed_at": {
