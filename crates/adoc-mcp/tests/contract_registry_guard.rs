@@ -1,9 +1,9 @@
 //! Docs-truth guard (E0.3): `docs/roadmap/v10/CONTRACT-REGISTRY.md` is the
 //! single canonical inventory of externally observable wire surfaces — no
 //! envelope schema-version id or Diagnostic Code may be emitted by `adoc`
-//! source without a registry row, and no shipped registry row may outlive
-//! the code that emitted it. The parse targets pinned HTML comment anchors
-//! and backticked first table cells, never free prose.
+//! source or tests without a registry row, and no shipped registry row may
+//! outlive the code that emitted it. The parse targets pinned HTML comment
+//! anchors and backticked first table cells, never free prose.
 
 mod support;
 
@@ -122,28 +122,29 @@ fn is_envelope_id(candidate: &str) -> bool {
         && version.chars().all(|c| c.is_ascii_digit())
 }
 
-/// Envelope ids appearing as complete double-quoted string literals in one
-/// source text. `//` comment lines are skipped (mirroring
+/// Envelope ids appearing in quote-delimited chunks of one source text.
+/// `//` comment lines are skipped (mirroring
 /// `diagnostic_codes_in`) so an id surviving only in a comment cannot keep
-/// a stale shipped row alive. Quote pairing restarts on every line, so a
-/// stray `'"'` char literal or an escaped quote earlier in the FILE can
-/// never desync the scan and hide a later id — desync is bounded to the one
-/// line carrying it. Whole files are scanned, `#[cfg(test)]` modules
-/// included: fixture ids there are registered rows (the test-fixture
-/// table), so a new unregistered literal fails loudly wherever it sits.
+/// a stale shipped row alive. Every quote-delimited chunk is inspected so
+/// escaped JSON string values are visible too; trailing escape slashes are
+/// removed before the exact-id check. Whole files are scanned,
+/// `#[cfg(test)]` modules included: fixture ids there are registered rows
+/// (the test-fixture table), so a new unregistered literal fails loudly
+/// wherever it sits.
 // ponytail: ids built with format!/concat are outside any textual net —
 // the workspace convention is whole-literal schema-version consts.
 fn envelope_ids_in(source: &str) -> BTreeSet<String> {
     source
         .lines()
         .filter(|line| !line.trim_start().starts_with("//"))
-        .flat_map(|line| line.split('"').skip(1).step_by(2))
+        .flat_map(|line| line.split('"').skip(1))
+        .map(|chunk| chunk.trim_end_matches('\\'))
         .filter(|chunk| is_envelope_id(chunk))
         .map(str::to_string)
         .collect()
 }
 
-fn rust_sources_under(dir: &Path, sources: &mut Vec<PathBuf>) {
+fn text_files_under(dir: &Path, sources: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(dir)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", dir.display()));
     for entry in entries {
@@ -151,8 +152,8 @@ fn rust_sources_under(dir: &Path, sources: &mut Vec<PathBuf>) {
             .unwrap_or_else(|error| panic!("failed to list {}: {error}", dir.display()))
             .path();
         if path.is_dir() {
-            rust_sources_under(&path, sources);
-        } else if path.extension().is_some_and(|ext| ext == "rs") {
+            text_files_under(&path, sources);
+        } else {
             sources.push(path);
         }
     }
@@ -195,24 +196,29 @@ struct EmittedIds {
     test_scoped: BTreeSet<String>,
 }
 
-/// Every envelope id appearing in `crates/*/src`, split by scope: production
-/// literals must match the shipped table exactly; test-scoped literals may
-/// additionally cite historical rows (back-compat tests) and registered
-/// fixture ids, but never an unregistered id.
-// ponytail: the walk covers crates/<name>/src only — a build.rs or a nested
-// crate would sit outside it; neither exists in this workspace.
+/// Every envelope id appearing in `crates/*/{src,tests}`, split by scope:
+/// production literals must match the shipped table exactly; test-scoped
+/// literals may additionally cite historical rows (back-compat tests) and
+/// registered fixture ids, but never an unregistered id.
+// ponytail: a build.rs or a nested crate would sit outside this walk; neither
+// exists in this workspace.
 fn emitted_envelope_ids() -> EmittedIds {
     let crates_dir = repo_root().join("crates");
     let mut sources = Vec::new();
+    let mut test_sources = Vec::new();
     let entries = fs::read_dir(&crates_dir)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", crates_dir.display()));
     for entry in entries {
-        let src = entry
+        let crate_dir = entry
             .unwrap_or_else(|error| panic!("failed to list {}: {error}", crates_dir.display()))
-            .path()
-            .join("src");
+            .path();
+        let src = crate_dir.join("src");
         if src.is_dir() {
-            rust_sources_under(&src, &mut sources);
+            text_files_under(&src, &mut sources);
+        }
+        let tests = crate_dir.join("tests");
+        if tests.is_dir() {
+            text_files_under(&tests, &mut test_sources);
         }
     }
     assert!(
@@ -229,6 +235,15 @@ fn emitted_envelope_ids() -> EmittedIds {
         let (production, test) = split_test_scope(&content);
         emitted.production.extend(envelope_ids_in(&production));
         emitted.test_scoped.extend(envelope_ids_in(&test));
+    }
+
+    for path in test_sources {
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(error) if error.kind() == std::io::ErrorKind::InvalidData => continue,
+            Err(error) => panic!("failed to read {}: {error}", path.display()),
+        };
+        emitted.test_scoped.extend(envelope_ids_in(&content));
     }
     emitted
 }
@@ -321,7 +336,7 @@ fn shipped_adoc_envelope_rows_match_the_source_scan() {
     let rogue: Vec<_> = emitted.test_scoped.difference(&all).collect();
     assert!(
         rogue.is_empty(),
-        "test-scoped envelope ids in crates/*/src without any registry row \
+        "test-scoped envelope ids in crates/*/src or crates/*/tests without any registry row \
          (shipped, historical, or test-fixture) in {REGISTRY}: {rogue:?}"
     );
 }
@@ -381,15 +396,14 @@ fn diagnostic_code_rows_match_the_code_table() {
 
 #[test]
 fn scan_flags_an_unregistered_wire_code_fixture() {
-    let fixture = r#"
-        pub const ROGUE_SCHEMA_VERSION: &str = "adoc.unregistered.v0";
-    "#;
-    let emitted = envelope_ids_in(fixture);
+    let rogue = concat!("adoc.", "unregistered.v0");
+    let fixture = format!(r#"pub const ROGUE_SCHEMA_VERSION: &str = "{rogue}";"#);
+    let emitted = envelope_ids_in(&fixture);
     let registered = all_registered_ids(&registry());
     let unregistered: Vec<_> = emitted.difference(&registered).collect();
     assert_eq!(
         unregistered,
-        ["adoc.unregistered.v0"],
+        [rogue],
         "the completeness scan must fail on a fixture emitting one unregistered wire code"
     );
 }
@@ -480,6 +494,30 @@ fn quote_desync_stays_bounded_to_its_line() {
         envelope_ids_in(fixture).contains("adoc.diff.v0"),
         "a char-literal quote on an earlier line must not hide later ids"
     );
+}
+
+#[test]
+fn escaped_json_fixture_ids_are_scanned() {
+    let fixture = r#"let json = "{\"schema_version\":\"adoc.graph.v2\"}";"#;
+    assert!(
+        envelope_ids_in(fixture).contains("adoc.graph.v2"),
+        "an envelope id inside escaped JSON must not bypass the registry guard"
+    );
+}
+
+#[test]
+fn textual_test_fixture_ids_are_scanned() {
+    let mut files = Vec::new();
+    text_files_under(
+        &repo_root().join("crates/adoc-cli/tests/fixtures/v1_1_why"),
+        &mut files,
+    );
+    let fixture = files
+        .iter()
+        .find(|path| path.ends_with("unsupported_version.graph.json"))
+        .expect("JSON inputs consumed by integration tests join the file walk");
+    let content = fs::read_to_string(fixture).expect("fixture is UTF-8");
+    assert!(envelope_ids_in(&content).contains("adoc.graph.v99"));
 }
 
 #[test]
