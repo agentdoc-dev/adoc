@@ -150,7 +150,7 @@ struct RawSemanticFinding {
 #[serde(deny_unknown_fields)]
 struct RawCandidateUpdate {
     object_id: String,
-    body: Option<Option<String>>,
+    body: Value,
     fields: BTreeMap<String, Value>,
 }
 
@@ -422,9 +422,11 @@ pub fn validate_semantic_assessment(
             .map(|update| {
                 Ok(CandidateUpdate {
                     object_id: update.object_id,
-                    body: update.body.ok_or_else(|| {
-                        invalid("candidate update body must be present (string or null)")
-                    })?,
+                    body: match update.body {
+                        Value::Null => None,
+                        Value::String(body) => Some(body),
+                        _ => return Err(invalid("candidate update body must be a string or null")),
+                    },
                     fields: update.fields,
                 })
             })
@@ -433,9 +435,7 @@ pub fn validate_semantic_assessment(
         for update in &candidate_updates {
             ObjectId::new(&update.object_id)
                 .map_err(|_| invalid(format!("invalid candidate object '{}'", update.object_id)))?;
-            if raw_finding.proposed_disposition == SemanticDisposition::UpdateExisting
-                && !affected_object_ids.contains(update.object_id.as_str())
-            {
+            if !affected_object_ids.contains(update.object_id.as_str()) {
                 return Err(SemanticAssessmentError::CitationInvalid {
                     message: format!(
                         "candidate update '{}' is outside the cited affected object set",
