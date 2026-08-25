@@ -2,8 +2,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use adoc_core::{
-    SemanticExecutorError, build_semantic_context_from_document, complete_semantic_execution,
-    fail_semantic_execution, validate_semantic_assessment, validate_semantic_executor_request,
+    DiagnosticCode, SemanticExecutorError, build_semantic_context_from_document,
+    complete_semantic_execution, fail_semantic_execution, validate_semantic_assessment,
+    validate_semantic_executor_request,
 };
 
 const MAX_ASSESSMENT_BYTES: u64 = 1024 * 1024;
@@ -84,8 +85,10 @@ pub(crate) fn semantic_executor(
         Ok(receipt) => receipt,
         Err(error) => {
             let code = match &error {
-                SemanticExecutorError::IdentityMismatch => "assessment.semantic_identity_mismatch",
-                _ => "assessment.semantic_schema_invalid",
+                SemanticExecutorError::IdentityMismatch => {
+                    DiagnosticCode::AssessmentSemanticIdentityMismatch.as_str()
+                }
+                _ => DiagnosticCode::AssessmentSemanticSchemaInvalid.as_str(),
             };
             return record_failure(&request, code, &error.to_string(), &receipt_path);
         }
