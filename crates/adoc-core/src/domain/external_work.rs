@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -101,7 +101,7 @@ struct RawWorkRequest {
     change_request: WorkChangeRequest,
     contracts: Vec<ContractRequirement>,
     capabilities: Vec<CapabilityRequirement>,
-    expires_at: DateTime<Utc>,
+    expires_at: String,
     workload: WorkloadAuthorization,
     request_digest: String,
 }
@@ -304,6 +304,12 @@ pub fn validate_work_request(bytes: &[u8]) -> Result<WorkRequest, ExternalWorkEr
             version: raw.schema_version,
         });
     }
+    let expires_at = DateTime::parse_from_rfc3339(&raw.expires_at)
+        .map_err(|_| invalid("expires_at must use canonical UTC whole seconds"))?
+        .with_timezone(&Utc);
+    if expires_at.to_rfc3339_opts(SecondsFormat::Secs, true) != raw.expires_at {
+        return Err(invalid("expires_at must use canonical UTC whole seconds"));
+    }
     let claimed = raw.request_digest;
     let request = build_work_request(WorkRequestInput {
         request_id: raw.request_id,
@@ -315,7 +321,7 @@ pub fn validate_work_request(bytes: &[u8]) -> Result<WorkRequest, ExternalWorkEr
         change_request: raw.change_request,
         contracts: raw.contracts,
         capabilities: raw.capabilities,
-        expires_at: raw.expires_at,
+        expires_at,
         workload: raw.workload,
     })?;
     if request.request_digest != claimed {

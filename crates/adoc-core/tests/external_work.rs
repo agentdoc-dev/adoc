@@ -112,6 +112,18 @@ fn work_request_expiry_uses_canonical_utc_seconds() {
 }
 
 #[test]
+fn work_request_rejects_noncanonical_expiry_spellings() {
+    let request = build_work_request(request_input()).expect("request builds");
+    let canonical = request.to_canonical_json().expect("request serializes");
+
+    for expiry in ["2026-08-26T12:00:00.000Z", "2026-08-26T13:00:00+01:00"] {
+        let document = canonical.replace("2026-08-26T12:00:00Z", expiry);
+        validate_work_request(document.as_bytes())
+            .expect_err("equivalent but noncanonical expiry text must be rejected");
+    }
+}
+
+#[test]
 fn unknown_work_envelope_version_is_rejected_with_remediation() {
     let request = build_work_request(request_input()).expect("request builds");
     let mut document = serde_json::to_value(&request).expect("request serializes");
