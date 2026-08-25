@@ -70,6 +70,20 @@
       }
     }
   },
+  "oneOf": [
+    {
+      "properties": {
+        "subject": { "$ref": "#/$defs/model_subject" },
+        "agentdoc_evaluation": { "$ref": "#/$defs/capability_evaluation" }
+      }
+    },
+    {
+      "properties": {
+        "subject": { "$ref": "#/$defs/human_subject" },
+        "agentdoc_evaluation": { "$ref": "#/$defs/human_evaluation" }
+      }
+    }
+  ],
   "$defs": {
     "text": { "type": "string", "minLength": 1 },
     "digest": {
