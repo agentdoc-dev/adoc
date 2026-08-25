@@ -316,6 +316,11 @@ pub fn validate_work_request(bytes: &[u8]) -> Result<WorkRequest, ExternalWorkEr
     if expires_at.to_rfc3339_opts(SecondsFormat::Secs, true) != raw.expires_at {
         return Err(invalid("expires_at must use canonical UTC whole seconds"));
     }
+    if !is_strictly_sorted(&raw.contracts) || !is_strictly_sorted(&raw.capabilities) {
+        return Err(invalid(
+            "work request requirements must use canonical ascending order",
+        ));
+    }
     let claimed = raw.request_digest;
     let request = build_work_request(WorkRequestInput {
         request_id: raw.request_id,
@@ -490,11 +495,16 @@ fn canonical_json(value: &impl Serialize) -> Result<String, ExternalWorkError> {
 }
 
 fn digest(value: &impl Serialize) -> Result<String, ExternalWorkError> {
-    serde_json::to_vec(value)
+    serde_json::to_value(value)
+        .and_then(|value| serde_json::to_vec(&value))
         .map(|bytes| sha256_prefixed(&bytes))
         .map_err(|error| ExternalWorkError::Serialization {
             message: error.to_string(),
         })
+}
+
+fn is_strictly_sorted<T: Ord>(values: &[T]) -> bool {
+    values.windows(2).all(|pair| pair[0] < pair[1])
 }
 
 fn require_texts(values: &[(&str, &str)]) -> Result<(), ExternalWorkError> {

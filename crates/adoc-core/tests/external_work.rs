@@ -7,6 +7,7 @@ use adoc_core::{
     validate_work_result,
 };
 use chrono::{TimeZone, Utc};
+use sha2::{Digest, Sha256};
 
 const OUTPUT_DIGEST: &str =
     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -96,10 +97,36 @@ fn work_request_digest_and_round_trip_are_stable() {
         validate_work_request(bytes.as_bytes()).expect("canonical request validates")
     );
     assert!(first.request_digest().starts_with("sha256:"));
+    let mut digest_input = serde_json::to_value(&first).expect("request serializes");
+    digest_input
+        .as_object_mut()
+        .expect("request object")
+        .remove("request_digest");
+    let expected = format!(
+        "sha256:{}",
+        Sha256::digest(serde_json::to_vec(&digest_input).expect("canonical JSON"))
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    assert_eq!(first.request_digest(), expected);
     assert_eq!(
         first.request_digest(),
-        "sha256:07eb0c74414a6a42882c8e6c673fd98f1cbb556a25d9f9cb9104fac7d59fffd4"
+        "sha256:9ce0a75ac46186aec3ae1b4a16ad8d49c0e0cc6a59e1b03a53a6fe84ff55824f"
     );
+}
+
+#[test]
+fn wire_requirements_must_already_use_canonical_order() {
+    let request = build_work_request(request_input()).expect("request builds");
+    let mut document = serde_json::to_value(request).expect("request serializes");
+    document["contracts"]
+        .as_array_mut()
+        .expect("contracts array")
+        .reverse();
+
+    validate_work_request(&serde_json::to_vec(&document).expect("serializes"))
+        .expect_err("wire requirements cannot rely on validator normalization");
 }
 
 #[test]
@@ -196,7 +223,7 @@ fn work_result_is_bound_to_the_exact_request() {
     );
     assert_eq!(
         result.result_digest(),
-        "sha256:b7c85dfbce4fb7c9d2e6b4eab344cab45da328c92c90c7ed332422c382939f2d"
+        "sha256:548cd60cbca8128ba87cb4516744e81c07b6a027ab09b8dd0d08a5b76de347e2"
     );
 
     for boundary in ["request", "repository", "revision", "workspace"] {
