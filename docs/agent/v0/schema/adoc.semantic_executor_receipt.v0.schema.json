@@ -59,6 +59,7 @@
         "properties": {
           "adapter": {
             "properties": {
+              "provider": { "const": "human" },
               "endpoint_class": { "const": "human" }
             }
           }
@@ -68,6 +69,7 @@
         "properties": {
           "adapter": {
             "properties": {
+              "provider": { "not": { "const": "human" } },
               "endpoint_class": { "not": { "const": "human" } }
             }
           }

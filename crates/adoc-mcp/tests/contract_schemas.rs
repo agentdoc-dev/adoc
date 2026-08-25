@@ -1966,6 +1966,12 @@ fn semantic_executor_schemas_share_closed_adapter_and_receipt_shapes() {
         "adoc.semantic_executor_receipt.v0.schema.json",
         &impossible_adapter
     ));
+    let mut impossible_provider = completed.clone();
+    impossible_provider["adapter"]["provider"] = json!("other");
+    assert!(!schema_accepts(
+        "adoc.semantic_executor_receipt.v0.schema.json",
+        &impossible_provider
+    ));
 
     let mut invalid = completed;
     invalid["failure_code"] = json!("executor.failed");
