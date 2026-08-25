@@ -326,7 +326,19 @@
         },
         "items": {
           "type": "array",
-          "items": { "$ref": "#/$defs/contextItem" }
+          "items": { "$ref": "#/$defs/contextItem" },
+          "contains": {
+            "type": "object",
+            "required": ["handle"],
+            "properties": {
+              "handle": {
+                "type": "object",
+                "required": ["kind"],
+                "properties": { "kind": { "const": "diff_hunk" } }
+              }
+            }
+          },
+          "minContains": 1
         },
         "unavailability": {
           "type": "array",
