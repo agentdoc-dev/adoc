@@ -1913,12 +1913,9 @@ fn semantic_executor_schemas_share_closed_adapter_and_receipt_shapes() {
     human_request["adapter"]["kind"] = json!("human");
     human_request["adapter"]["provider"] = json!("human");
     human_request["adapter"]["endpoint_class"] = json!("human");
-    assert!(
-        !schema_accepts(
-            "adoc.semantic_executor_request.v0.schema.json",
-            &human_request
-        ),
-        "human requests require trusted principal bindings"
+    assert_valid(
+        "adoc.semantic_executor_request.v0.schema.json",
+        &human_request,
     );
     human_request["human_review"] = json!({
         "reviewing_principal_id": "principal:reviewer",

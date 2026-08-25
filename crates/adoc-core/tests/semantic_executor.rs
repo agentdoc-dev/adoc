@@ -1,5 +1,5 @@
 use adoc_core::{
-    DiagnosticCode, SemanticAdapterKind, SemanticExecutorOutcome,
+    DiagnosticCode, HumanReviewExpectedBindings, SemanticAdapterKind, SemanticExecutorOutcome,
     build_semantic_context_from_document, complete_semantic_execution, fail_semantic_execution,
     semantic_prompt_digest, validate_human_semantic_assessment, validate_semantic_assessment,
     validate_semantic_executor_request,
@@ -394,6 +394,63 @@ fn human_adapter_cannot_complete_without_bound_review_facts() {
 
     complete_semantic_execution(&request, &assessment)
         .expect_err("the closed human adapter kind must require bound review facts");
+}
+
+#[test]
+fn legacy_human_request_remains_valid_but_cannot_complete() {
+    let mut document = request("human", "human", "structured-assessment-v0");
+    document
+        .as_object_mut()
+        .expect("request object")
+        .remove("human_review");
+    let request =
+        validate_semantic_executor_request(&serde_json::to_vec(&document).expect("serializes"))
+            .expect("the additive request contract remains compatible");
+    let mut document = assessment(
+        request.context().context_digest(),
+        "human",
+        "structured-assessment-v0",
+    );
+    document
+        .as_object_mut()
+        .expect("assessment object")
+        .remove("human_review");
+    let assessment = validate_semantic_assessment(
+        &serde_json::to_vec(&document).expect("serializes"),
+        request.context(),
+    )
+    .expect("legacy assessment validates without authority");
+
+    complete_semantic_execution(&request, &assessment)
+        .expect_err("legacy input cannot manufacture human-review authority");
+}
+
+#[test]
+fn completion_rechecks_the_request_principal_bindings() {
+    let request = validate_semantic_executor_request(
+        &serde_json::to_vec(&request("human", "human", "structured-assessment-v0"))
+            .expect("serializes"),
+    )
+    .expect("human request validates");
+    let mut document = assessment(
+        request.context().context_digest(),
+        "human",
+        "structured-assessment-v0",
+    );
+    document["human_review"]["reviewing_principal_id"] = json!("principal:other-reviewer");
+    let stale = HumanReviewExpectedBindings {
+        reviewing_principal_id: "principal:other-reviewer".to_string(),
+        requesting_principal_id: "principal:author".to_string(),
+    };
+    let assessment = validate_human_semantic_assessment(
+        &serde_json::to_vec(&document).expect("serializes"),
+        request.context(),
+        &stale,
+    )
+    .expect("assessment is valid only for the stale bindings");
+
+    complete_semantic_execution(&request, &assessment)
+        .expect_err("completion must compare against its own request principals");
 }
 
 #[test]
