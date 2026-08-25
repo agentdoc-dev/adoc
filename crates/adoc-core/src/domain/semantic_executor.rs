@@ -219,11 +219,13 @@ pub fn validate_semantic_executor_request(
             "prompt.contract_version",
             raw.prompt.contract_version.as_str(),
         ),
-        ("prompt.instructions", raw.prompt.instructions.as_str()),
     ] {
         if !is_semantic_context_text(value) {
             return Err(invalid(format!("{field} must be non-blank semantic text")));
         }
+    }
+    if raw.prompt.instructions.trim().is_empty() {
+        return Err(invalid("prompt.instructions must be non-blank"));
     }
     for (field, digest) in [
         (

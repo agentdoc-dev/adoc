@@ -10,6 +10,9 @@ use adoc_core::{
 const MAX_ASSESSMENT_BYTES: u64 = 1024 * 1024;
 
 pub(crate) fn semantic_context(input: PathBuf, out: PathBuf) -> i32 {
+    if let Err(message) = remove_stale(&out) {
+        return fail(&message);
+    }
     let bytes = match fs::read(&input) {
         Ok(bytes) => bytes,
         Err(error) => return fail(&format!("could not read {}: {error}", input.display())),
@@ -36,8 +39,11 @@ pub(crate) fn semantic_executor(
     receipt_path: PathBuf,
     validated_assessment_path: PathBuf,
 ) -> i32 {
-    remove_stale(&receipt_path);
-    remove_stale(&validated_assessment_path);
+    for path in [&receipt_path, &validated_assessment_path] {
+        if let Err(message) = remove_stale(path) {
+            return fail(&message);
+        }
+    }
     let request_bytes = match fs::read(&request_path) {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -108,7 +114,12 @@ pub(crate) fn semantic_executor(
         ));
     }
     if let Err(error) = fs::write(&receipt_path, &receipt_json) {
-        remove_stale(&validated_assessment_path);
+        if let Err(cleanup_error) = remove_stale(&validated_assessment_path) {
+            return fail(&format!(
+                "could not write {}: {error}; {cleanup_error}",
+                receipt_path.display()
+            ));
+        }
         return fail(&format!(
             "could not write {}: {error}",
             receipt_path.display()
@@ -150,9 +161,14 @@ fn record_failure(
     2
 }
 
-fn remove_stale(path: &Path) {
-    if path.is_file() {
-        let _ = fs::remove_file(path);
+fn remove_stale(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "could not remove stale output {}: {error}",
+            path.display()
+        )),
     }
 }
 

@@ -102,6 +102,25 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
     )
     .expect("context JSON");
 
+    workspace.write("stale-context.json", "stale");
+    workspace.write("invalid-context-input.json", "{");
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "semantic-context",
+            "--input",
+            "invalid-context-input.json",
+            "--out",
+            "stale-context.json",
+        ])
+        .output()
+        .expect("invalid context command runs");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        !workspace.root.join("stale-context.json").exists(),
+        "a prior context must not survive failed input validation"
+    );
+
     let instructions = "Return structured JSON.";
     let prompt_digest = semantic_prompt_digest("semantic-assessment-task-v1", instructions)
         .expect("prompt digest builds");
@@ -174,6 +193,25 @@ fn semantic_executor_cli_builds_context_and_records_completed_or_failed_validati
         !workspace.root.join("receipt.json").exists(),
         "a prior success receipt must not survive request validation"
     );
+
+    std::fs::create_dir(workspace.root.join("blocked-receipt")).expect("blocked receipt directory");
+    let output = adoc_command()
+        .current_dir(&workspace.root)
+        .args([
+            "semantic-executor",
+            "--request",
+            "request.json",
+            "--assessment",
+            "assessment.json",
+            "--receipt",
+            "blocked-receipt",
+            "--validated-assessment",
+            "never-blocked.json",
+        ])
+        .output()
+        .expect("blocked cleanup command runs");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr(&output).contains("could not remove stale output"));
 
     let mut wrong_identity = assessment(
         request["context"]["context_digest"]

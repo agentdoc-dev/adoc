@@ -238,6 +238,20 @@ fn prompt_digest_must_bind_the_exact_contract_and_instructions() {
 }
 
 #[test]
+fn prompt_instructions_may_be_multiline() {
+    let mut document = request("codex", "codex", "gpt-5.6-codex");
+    let instructions = "Review the change:\n\t- cite evidence\n\t- return JSON";
+    document["prompt"]["instructions"] = json!(instructions);
+    document["prompt"]["digest"] = json!(
+        semantic_prompt_digest("semantic-assessment-task-v1", instructions)
+            .expect("prompt digest builds")
+    );
+
+    validate_semantic_executor_request(&serde_json::to_vec(&document).expect("serializes"))
+        .expect("multiline provider prompts are valid");
+}
+
+#[test]
 fn completion_digests_the_validator_owned_canonical_assessment() {
     let request = validate_semantic_executor_request(
         &serde_json::to_vec(&request("codex", "codex", "gpt-5.6-codex")).expect("serializes"),
