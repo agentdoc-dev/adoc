@@ -1897,11 +1897,17 @@ fn semantic_executor_schemas_share_closed_adapter_and_receipt_shapes() {
         "adoc.semantic_executor_request.v0.schema.json",
         &missing_diff
     ));
-    let mut human_endpoint = request.clone();
-    human_endpoint["adapter"]["endpoint_class"] = json!("human");
+    let mut reserved_human_provider = request.clone();
+    reserved_human_provider["adapter"]["provider"] = json!("human");
     assert!(!schema_accepts(
         "adoc.semantic_executor_request.v0.schema.json",
-        &human_endpoint
+        &reserved_human_provider
+    ));
+    let mut reserved_human_endpoint = request.clone();
+    reserved_human_endpoint["adapter"]["endpoint_class"] = json!("human");
+    assert!(!schema_accepts(
+        "adoc.semantic_executor_request.v0.schema.json",
+        &reserved_human_endpoint
     ));
     let mut human_kind = request.clone();
     human_kind["adapter"]["kind"] = json!("human");

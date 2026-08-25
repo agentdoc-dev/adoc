@@ -87,7 +87,10 @@
           {
             "properties": {
               "adapter": {
-                "properties": { "endpoint_class": { "not": { "const": "human" } } }
+                "properties": {
+                  "provider": { "not": { "const": "human" } },
+                  "endpoint_class": { "not": { "const": "human" } }
+                }
               }
             }
           },
