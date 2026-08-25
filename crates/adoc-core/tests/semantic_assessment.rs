@@ -224,6 +224,25 @@ fn update_candidates_must_target_a_cited_affected_object() {
 }
 
 #[test]
+fn candidate_updates_must_have_unique_object_ids() {
+    let context = context();
+    let mut document = assessment_json(&context);
+    let duplicate = document["findings"][0]["candidate_updates"][0].clone();
+    document["findings"][0]["candidate_updates"]
+        .as_array_mut()
+        .expect("candidate array")
+        .push(duplicate);
+
+    validate_semantic_assessment(
+        serde_json::to_vec(&document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect_err("duplicate updates for one object are ambiguous");
+}
+
+#[test]
 fn human_review_candidates_must_target_a_cited_affected_object() {
     let context = context();
     let mut document = assessment_json(&context);
