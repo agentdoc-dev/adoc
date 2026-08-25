@@ -13,12 +13,15 @@ review and proposal approval are separate authorities.
 
 ## Decision
 
-1. A human `adoc.semantic_assessment.v0` additionally records the reviewing
+1. A human `adoc.semantic_assessment.v0` may additionally record the reviewing
    Principal, requesting Principal, fixed `semantic_review` authority, and the
-   closed `self_assessment | independent` determination.
-2. The authoritative validator derives the determination from Principal
-   equality and rejects missing or contradictory facts. Model assessments
-   cannot carry human-review facts.
+   closed `self_assessment | independent` determination. Omitting the additive
+   facts remains valid for compatibility, but establishes no review authority.
+2. Reviewing and requesting Principal IDs come from trusted, authenticated
+   executor-request bindings, not the submitted assessment. The authoritative
+   human validator exact-matches the submitted IDs to those bindings, derives
+   independence from trusted Principal equality, and rejects missing or
+   contradictory facts. Model assessments cannot carry human-review facts.
 3. Truthful self-assessment remains contract-valid. Cloud policy decides
    whether it is eligible for the assessed risk.
 4. A semantic-assessment record cannot carry `proposal_approval` authority.
@@ -29,3 +32,5 @@ review and proposal approval are separate authorities.
 
 Gate evaluation can consume typed facts without reading prose. E3.6 does not
 create the native approval flow or gate evaluator assigned to E5.2–E5.3.
+The human adapter cannot complete from a compatibility-only assessment without
+trusted review facts.

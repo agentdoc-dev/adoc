@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 
 use adoc_core::{
     DiagnosticCode, SemanticExecutorError, build_semantic_context_from_document,
-    complete_semantic_execution, fail_semantic_execution, validate_semantic_assessment,
-    validate_semantic_executor_request,
+    complete_semantic_execution, fail_semantic_execution, validate_human_semantic_assessment,
+    validate_semantic_assessment, validate_semantic_executor_request,
 };
 
 const MAX_ASSESSMENT_BYTES: u64 = 1024 * 1024;
@@ -87,7 +87,13 @@ pub(crate) fn semantic_executor(
             );
         }
     };
-    let assessment = match validate_semantic_assessment(&assessment_bytes, request.context()) {
+    let validated = match request.human_review() {
+        Some(expected) => {
+            validate_human_semantic_assessment(&assessment_bytes, request.context(), expected)
+        }
+        None => validate_semantic_assessment(&assessment_bytes, request.context()),
+    };
+    let assessment = match validated {
         Ok(assessment) => assessment,
         Err(error) => {
             return record_failure(

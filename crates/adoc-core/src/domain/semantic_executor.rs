@@ -8,7 +8,9 @@ use serde_json::Value;
 use thiserror::Error;
 
 use super::hashing::sha256_prefixed;
-use super::semantic_assessment::{SemanticAssessment, SemanticExecutorIdentity};
+use super::semantic_assessment::{
+    HumanReviewExpectedBindings, SemanticAssessment, SemanticExecutorIdentity,
+};
 use super::semantic_context::{
     SemanticContext, SemanticContextError, SemanticContextOutcome, is_semantic_context_text,
     is_sha256_digest, validate_semantic_context_integrity,
@@ -84,6 +86,7 @@ struct RawSemanticExecutorRequest {
     request_id: String,
     capability: String,
     adapter: SemanticAdapterDescriptor,
+    human_review: Option<HumanReviewExpectedBindings>,
     task_digest: String,
     prompt: SemanticPromptContract,
     timeout_seconds: u16,
@@ -96,6 +99,8 @@ pub struct SemanticExecutorRequest {
     request_id: String,
     capability: String,
     adapter: SemanticAdapterDescriptor,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    human_review: Option<HumanReviewExpectedBindings>,
     task_digest: String,
     prompt: SemanticPromptContract,
     timeout_seconds: u16,
@@ -109,6 +114,10 @@ impl SemanticExecutorRequest {
 
     pub fn adapter(&self) -> &SemanticAdapterDescriptor {
         &self.adapter
+    }
+
+    pub fn human_review(&self) -> Option<&HumanReviewExpectedBindings> {
+        self.human_review.as_ref()
     }
 
     pub fn request_id(&self) -> &str {
@@ -254,13 +263,32 @@ pub fn validate_semantic_executor_request(
     if raw.prompt.instructions.chars().count() > MAX_PROMPT_CHARS {
         return Err(invalid("prompt instructions exceed 262144 characters"));
     }
-    match (raw.adapter.kind, raw.adapter.endpoint_class) {
-        (SemanticAdapterKind::Human, SemanticEndpointClass::Human) => {}
-        (SemanticAdapterKind::Human, _) | (_, SemanticEndpointClass::Human) => {
-            return Err(invalid("human adapter and endpoint class must be paired"));
+    let human_review = match (
+        raw.adapter.kind,
+        raw.adapter.endpoint_class,
+        raw.adapter.provider.as_str(),
+        raw.human_review,
+    ) {
+        (SemanticAdapterKind::Human, SemanticEndpointClass::Human, "human", Some(binding)) => {
+            if !is_semantic_context_text(&binding.reviewing_principal_id)
+                || !is_semantic_context_text(&binding.requesting_principal_id)
+            {
+                return Err(invalid(
+                    "human review request bindings must name both trusted principals",
+                ));
+            }
+            Some(binding)
         }
-        _ => {}
-    }
+        (SemanticAdapterKind::Human, _, _, _)
+        | (_, SemanticEndpointClass::Human, _, _)
+        | (_, _, "human", _)
+        | (_, _, _, Some(_)) => {
+            return Err(invalid(
+                "human adapter, provider, endpoint class, and review bindings must be paired",
+            ));
+        }
+        _ => None,
+    };
     let context_bytes =
         serde_json::to_vec(&raw.context).map_err(|error| SemanticExecutorError::Serialization {
             message: error.to_string(),
@@ -276,6 +304,7 @@ pub fn validate_semantic_executor_request(
         request_id: raw.request_id,
         capability: raw.capability,
         adapter: raw.adapter,
+        human_review,
         task_digest: raw.task_digest,
         prompt: raw.prompt,
         timeout_seconds: raw.timeout_seconds,
@@ -299,6 +328,20 @@ pub fn complete_semantic_execution(
     let SemanticExecutorIdentity { provider, model } = assessment.identity();
     if provider != &request.adapter.provider || model != &request.adapter.model {
         return Err(SemanticExecutorError::IdentityMismatch);
+    }
+    match request.adapter.kind {
+        SemanticAdapterKind::Human if assessment.human_review().is_none() => {
+            return Err(invalid(
+                "human adapter completion requires trusted human-review facts",
+            ));
+        }
+        SemanticAdapterKind::Human => {}
+        _ if assessment.human_review().is_some() => {
+            return Err(invalid(
+                "model adapter completion cannot carry human-review facts",
+            ));
+        }
+        _ => {}
     }
     receipt(
         request,

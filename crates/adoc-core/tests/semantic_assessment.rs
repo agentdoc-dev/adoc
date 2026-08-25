@@ -1,9 +1,10 @@
 use adoc_core::{
     CapabilityPolicy, CapabilityPolicyRule, CitationHandle, ContextClass, ContextRequirement,
     ContextUnavailability, ContextUnavailabilityKind, DiagnosticCode, ExactRevision,
-    KnowledgeBasis, SemanticContext, SemanticContextBasis, SemanticContextInput,
-    SemanticContextItem, SemanticContextSelection, SemanticMateriality, UnavailabilityOutcome,
-    UnavailabilityReason, build_semantic_context, validate_semantic_assessment,
+    HumanReviewExpectedBindings, KnowledgeBasis, SemanticContext, SemanticContextBasis,
+    SemanticContextInput, SemanticContextItem, SemanticContextSelection, SemanticMateriality,
+    UnavailabilityOutcome, UnavailabilityReason, build_semantic_context,
+    validate_human_semantic_assessment, validate_semantic_assessment,
 };
 use chrono::NaiveDate;
 use serde_json::json;
@@ -90,6 +91,13 @@ fn context_input() -> SemanticContextInput {
 
 fn context() -> SemanticContext {
     build_semantic_context(context_input()).expect("semantic context builds")
+}
+
+fn human_bindings(reviewing: &str, requesting: &str) -> HumanReviewExpectedBindings {
+    HumanReviewExpectedBindings {
+        reviewing_principal_id: reviewing.to_string(),
+        requesting_principal_id: requesting.to_string(),
+    }
 }
 
 fn assessment_json(context: &SemanticContext) -> serde_json::Value {
@@ -531,11 +539,12 @@ fn human_submission_uses_the_identical_contract_boundary() {
         &context,
     )
     .expect("model submission validates");
-    let human = validate_semantic_assessment(
+    let human = validate_human_semantic_assessment(
         serde_json::to_vec(&human_document)
             .expect("fixture serializes")
             .as_slice(),
         &context,
+        &human_bindings("principal:reviewer", "principal:author"),
     )
     .expect("human submission validates");
 
@@ -552,6 +561,42 @@ fn human_submission_uses_the_identical_contract_boundary() {
         model.allows_no_change_required(),
         human.allows_no_change_required()
     );
+}
+
+#[test]
+fn legacy_human_assessment_without_independence_facts_remains_base_valid() {
+    let context = context();
+    let mut document = assessment_json(&context);
+    document["identity"] = json!({"provider": "human", "model": "structured-assessment-v0"});
+
+    validate_semantic_assessment(
+        serde_json::to_vec(&document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect("the additive base contract remains compatible");
+}
+
+#[test]
+fn untrusted_human_review_facts_do_not_establish_independence() {
+    let context = context();
+    let mut document = assessment_json(&context);
+    document["identity"] = json!({"provider": "human", "model": "structured-assessment-v0"});
+    document["human_review"] = json!({
+        "authority": "semantic_review",
+        "reviewing_principal_id": "principal:claimed-reviewer",
+        "requesting_principal_id": "principal:claimed-author",
+        "independence": "independent"
+    });
+
+    validate_semantic_assessment(
+        serde_json::to_vec(&document)
+            .expect("fixture serializes")
+            .as_slice(),
+        &context,
+    )
+    .expect_err("principal-controlled JSON cannot establish independence");
 }
 
 #[test]
@@ -576,12 +621,26 @@ fn human_submission_requires_a_truthful_independence_determination() {
         "independence": "independent"
     });
 
-    for document in [missing, false_self, false_independent] {
-        let error = validate_semantic_assessment(
+    for (document, expected) in [
+        (
+            missing,
+            human_bindings("principal:reviewer", "principal:author"),
+        ),
+        (
+            false_self,
+            human_bindings("principal:reviewer", "principal:author"),
+        ),
+        (
+            false_independent,
+            human_bindings("principal:author", "principal:author"),
+        ),
+    ] {
+        let error = validate_human_semantic_assessment(
             serde_json::to_vec(&document)
                 .expect("fixture serializes")
                 .as_slice(),
             &context,
+            &expected,
         )
         .expect_err("missing or false independence facts are rejected");
         assert_eq!(
@@ -603,20 +662,22 @@ fn self_assessment_is_a_valid_fact_but_never_proposal_approval() {
         "independence": "self_assessment"
     });
 
-    validate_semantic_assessment(
+    validate_human_semantic_assessment(
         serde_json::to_vec(&document)
             .expect("fixture serializes")
             .as_slice(),
         &context,
+        &human_bindings("principal:author", "principal:author"),
     )
     .expect("policy, not the contract, decides whether truthful self-assessment is eligible");
 
     document["human_review"]["authority"] = json!("proposal_approval");
-    validate_semantic_assessment(
+    validate_human_semantic_assessment(
         serde_json::to_vec(&document)
             .expect("fixture serializes")
             .as_slice(),
         &context,
+        &human_bindings("principal:author", "principal:author"),
     )
     .expect_err("one semantic-review record cannot also be proposal approval");
 }
