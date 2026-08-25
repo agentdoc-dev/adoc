@@ -44,6 +44,39 @@
       "properties": { "outcome": { "const": "failed" } }
     }
   ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "adapter": {
+            "properties": { "kind": { "const": "human" } },
+            "required": ["kind"]
+          }
+        },
+        "required": ["adapter"]
+      },
+      "then": {
+        "properties": {
+          "adapter": {
+            "properties": {
+              "provider": { "const": "human" },
+              "endpoint_class": { "const": "human" }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "adapter": {
+            "properties": {
+              "provider": { "not": { "const": "human" } },
+              "endpoint_class": { "not": { "const": "human" } }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "nonEmpty": { "type": "string", "minLength": 1, "pattern": "^\\S(?:.*\\S)?$" },
     "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },

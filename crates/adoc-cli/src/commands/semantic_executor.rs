@@ -10,6 +10,9 @@ use adoc_core::{
 const MAX_ASSESSMENT_BYTES: u64 = 1024 * 1024;
 
 pub(crate) fn semantic_context(input: PathBuf, out: PathBuf) -> i32 {
+    if let Err(message) = ensure_distinct_paths(&[&input, &out]) {
+        return fail(&message);
+    }
     if let Err(message) = remove_stale(&out) {
         return fail(&message);
     }
@@ -39,6 +42,14 @@ pub(crate) fn semantic_executor(
     receipt_path: PathBuf,
     validated_assessment_path: PathBuf,
 ) -> i32 {
+    if let Err(message) = ensure_distinct_paths(&[
+        &request_path,
+        &assessment_path,
+        &receipt_path,
+        &validated_assessment_path,
+    ]) {
+        return fail(&message);
+    }
     for path in [&receipt_path, &validated_assessment_path] {
         if let Err(message) = remove_stale(path) {
             return fail(&message);
@@ -170,6 +181,36 @@ fn remove_stale(path: &Path) -> Result<(), String> {
             path.display()
         )),
     }
+}
+
+fn ensure_distinct_paths(paths: &[&Path]) -> Result<(), String> {
+    let identities = paths
+        .iter()
+        .map(|path| path_identity(path))
+        .collect::<Vec<_>>();
+    if identities
+        .iter()
+        .enumerate()
+        .any(|(index, path)| identities[..index].contains(path))
+    {
+        return Err("semantic input and output artifact paths must be distinct".to_string());
+    }
+    Ok(())
+}
+
+fn path_identity(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| {
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        fs::canonicalize(parent)
+            .map(|parent| {
+                path.file_name()
+                    .map_or(parent.clone(), |name| parent.join(name))
+            })
+            .unwrap_or_else(|_| path.to_path_buf())
+    })
 }
 
 fn fail(message: &str) -> i32 {

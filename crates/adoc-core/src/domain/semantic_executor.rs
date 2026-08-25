@@ -18,7 +18,7 @@ pub const SEMANTIC_EXECUTOR_REQUEST_SCHEMA_VERSION: &str = "adoc.semantic_execut
 pub const SEMANTIC_EXECUTOR_RECEIPT_SCHEMA_VERSION: &str = "adoc.semantic_executor_receipt.v0";
 
 const MAX_REQUEST_BYTES: usize = 4 * 1024 * 1024;
-const MAX_PROMPT_BYTES: usize = 256 * 1024;
+const MAX_PROMPT_CHARS: usize = 256 * 1024;
 const MAX_ASSESSMENT_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -251,8 +251,8 @@ pub fn validate_semantic_executor_request(
     if !(60..=3600).contains(&raw.timeout_seconds) {
         return Err(invalid("timeout_seconds must be between 60 and 3600"));
     }
-    if raw.prompt.instructions.len() > MAX_PROMPT_BYTES {
-        return Err(invalid("prompt instructions exceed 256 KiB"));
+    if raw.prompt.instructions.chars().count() > MAX_PROMPT_CHARS {
+        return Err(invalid("prompt instructions exceed 262144 characters"));
     }
     match (raw.adapter.kind, raw.adapter.endpoint_class) {
         (SemanticAdapterKind::Human, SemanticEndpointClass::Human) => {}
@@ -266,8 +266,10 @@ pub fn validate_semantic_executor_request(
             message: error.to_string(),
         })?;
     let context = validate_semantic_context_integrity(&context_bytes)?;
-    if context.outcome() != SemanticContextOutcome::Ready {
-        return Err(invalid("semantic context is not ready"));
+    if context.outcome() != SemanticContextOutcome::Ready || !context.has_diff_hunk() {
+        return Err(invalid(
+            "semantic context must be ready and contain a diff-hunk citation",
+        ));
     }
     Ok(SemanticExecutorRequest {
         schema_version: SEMANTIC_EXECUTOR_REQUEST_SCHEMA_VERSION.to_string(),
