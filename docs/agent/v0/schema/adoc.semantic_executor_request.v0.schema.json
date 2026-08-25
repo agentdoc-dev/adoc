@@ -43,7 +43,10 @@
         "config_digest": { "$ref": "#/$defs/sha256" }
       }
     },
-    "human_review": { "$ref": "#/$defs/humanReviewBindings" },
+    "human_review": {
+      "allOf": [{ "$ref": "#/$defs/humanReviewBindings" }],
+      "description": "Claimed human-review Principal IDs. These bytes are not authentication; authoritative completion separately requires trusted bindings from authenticated caller/session state."
+    },
     "task_digest": { "$ref": "#/$defs/sha256" },
     "prompt": {
       "type": "object",

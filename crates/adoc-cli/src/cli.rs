@@ -730,6 +730,12 @@ pub(crate) enum Commands {
         receipt: PathBuf,
         #[arg(long, value_name = "VALIDATED_ASSESSMENT_JSON")]
         validated_assessment: PathBuf,
+        /// Authenticated reviewing Principal supplied by the trusted caller, not the request file.
+        #[arg(long, requires = "requesting_principal_id", value_parser = parse_semantic_text)]
+        reviewing_principal_id: Option<String>,
+        /// Authenticated requesting Principal supplied by the trusted caller, not the request file.
+        #[arg(long, requires = "reviewing_principal_id", value_parser = parse_semantic_text)]
+        requesting_principal_id: Option<String>,
     },
     #[command(
         about = "Validate one AgentDoc patch document against graph artifacts, or apply it to source.",
