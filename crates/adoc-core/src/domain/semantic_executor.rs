@@ -71,6 +71,12 @@ pub struct SemanticPromptContract {
     pub instructions: String,
 }
 
+#[derive(Serialize)]
+struct SemanticPromptDigestInput<'a> {
+    contract_version: &'a str,
+    instructions: &'a str,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawSemanticExecutorRequest {
@@ -167,6 +173,10 @@ impl SemanticExecutorReceipt {
         &self.context_digest
     }
 
+    pub fn assessment_digest(&self) -> Option<&str> {
+        self.assessment_digest.as_deref()
+    }
+
     pub fn to_canonical_json(&self) -> Result<String, SemanticExecutorError> {
         pretty_json(self)
     }
@@ -229,6 +239,13 @@ pub fn validate_semantic_executor_request(
             return Err(invalid(format!("{field} must be a sha256 digest")));
         }
     }
+    if raw.prompt.digest
+        != semantic_prompt_digest(&raw.prompt.contract_version, &raw.prompt.instructions)?
+    {
+        return Err(invalid(
+            "prompt.digest does not bind the exact contract version and instructions",
+        ));
+    }
     if !(60..=3600).contains(&raw.timeout_seconds) {
         return Err(invalid("timeout_seconds must be between 60 and 3600"));
     }
@@ -264,10 +281,15 @@ pub fn validate_semantic_executor_request(
 
 pub fn complete_semantic_execution(
     request: &SemanticExecutorRequest,
-    assessment_bytes: &[u8],
     assessment: &SemanticAssessment,
 ) -> Result<SemanticExecutorReceipt, SemanticExecutorError> {
-    if assessment_bytes.len() > MAX_ASSESSMENT_BYTES {
+    let assessment_json =
+        assessment
+            .to_canonical_json()
+            .map_err(|error| SemanticExecutorError::Serialization {
+                message: error.to_string(),
+            })?;
+    if assessment_json.len() > MAX_ASSESSMENT_BYTES {
         return Err(invalid("assessment exceeds 1 MiB"));
     }
     let SemanticExecutorIdentity { provider, model } = assessment.identity();
@@ -277,9 +299,23 @@ pub fn complete_semantic_execution(
     receipt(
         request,
         SemanticExecutorOutcome::Completed,
-        Some(sha256_prefixed(assessment_bytes)),
+        Some(sha256_prefixed(assessment_json.as_bytes())),
         None,
     )
+}
+
+pub fn semantic_prompt_digest(
+    contract_version: &str,
+    instructions: &str,
+) -> Result<String, SemanticExecutorError> {
+    let bytes = serde_json::to_vec(&SemanticPromptDigestInput {
+        contract_version,
+        instructions,
+    })
+    .map_err(|error| SemanticExecutorError::Serialization {
+        message: error.to_string(),
+    })?;
+    Ok(sha256_prefixed(&bytes))
 }
 
 pub fn fail_semantic_execution(

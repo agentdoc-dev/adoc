@@ -26,7 +26,10 @@
     "prompt_digest": { "$ref": "#/$defs/sha256" },
     "context_digest": { "$ref": "#/$defs/sha256" },
     "outcome": { "enum": ["completed", "failed"] },
-    "assessment_digest": { "$ref": "#/$defs/sha256" },
+    "assessment_digest": {
+      "allOf": [{ "$ref": "#/$defs/sha256" }],
+      "description": "SHA-256 of the canonical assessment serialization owned by the authoritative validator."
+    },
     "failure_code": { "$ref": "#/$defs/nonEmpty" }
   },
   "oneOf": [
