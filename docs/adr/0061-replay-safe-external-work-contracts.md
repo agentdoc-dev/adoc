@@ -21,7 +21,10 @@ must not be reusable across a request, Workspace, repository, or revision.
 2. `adoc.work_result.v0` repeats the request ID/digest, Workspace, repository,
    revision, and workload identity, then binds runtime name/version, a distinct
    completion nonce, named output digests, and `result_digest` over the
-   canonical payload excluding that digest field.
+   canonical payload excluding that digest field. Output names use lower snake
+   case (`^[a-z][a-z0-9_]*$`), are unique on the wire, and serialize in ascending
+   ASCII order. This excludes JavaScript integer-index ordering
+   and gives Rust and TypeScript one digest representation.
 3. The authoritative validator rejects unknown versions, digest mismatch, and
    any request/Workspace/repository/revision/workload substitution. Unknown
    versions carry explicit regeneration remediation.

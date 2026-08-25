@@ -39,7 +39,7 @@
     "output_digests": {
       "type": "object",
       "minProperties": 1,
-      "propertyNames": { "$ref": "#/$defs/text" },
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]*$" },
       "additionalProperties": { "$ref": "#/$defs/digest" }
     },
     "result_digest": { "$ref": "#/$defs/digest" }

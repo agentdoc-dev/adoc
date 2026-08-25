@@ -9,6 +9,8 @@ use chrono::{TimeZone, Utc};
 
 const OUTPUT_DIGEST: &str =
     "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const OTHER_DIGEST: &str =
+    "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const WORKSPACE_ID: &str = "10000000-0000-0000-0000-000000000401";
 const REPOSITORY_ID: &str = "30000000-0000-0000-0000-000000000401";
 const WORKLOAD_PRINCIPAL_ID: &str = "20000000-0000-0000-0000-000000000401";
@@ -195,6 +197,32 @@ fn work_result_rejects_a_forged_digest_or_worker_identity() {
         )
         .expect_err("forged result is rejected");
     }
+}
+
+#[test]
+fn output_digest_names_have_one_cross_runtime_order() {
+    let request = build_work_request(request_input()).expect("request builds");
+    let mut input = result_input(&request);
+    input.output_digests = BTreeMap::from([
+        ("2".to_string(), OUTPUT_DIGEST.to_string()),
+        ("10".to_string(), OTHER_DIGEST.to_string()),
+    ]);
+
+    build_work_result(input, &request)
+        .expect_err("integer-like keys have runtime-specific JSON ordering");
+}
+
+#[test]
+fn duplicate_output_digest_keys_are_rejected_before_normalization() {
+    let request = build_work_request(request_input()).expect("request builds");
+    let result = build_work_result(result_input(&request), &request).expect("result builds");
+    let canonical = result.to_canonical_json().expect("result serializes");
+    let needle = format!("\"semantic_assessment\": \"{OUTPUT_DIGEST}\"");
+    let replacement = format!("\"semantic_assessment\": \"{OTHER_DIGEST}\",\n    {needle}");
+    let duplicated = canonical.replacen(&needle, &replacement, 1);
+
+    validate_work_result(duplicated.as_bytes(), &request)
+        .expect_err("duplicate digest names must not be collapsed by map deserialization");
 }
 
 #[test]
