@@ -94,6 +94,22 @@ fn expected(value: &Value) -> ExecutorQualificationExpectedBindings {
             .as_str()
             .expect("capability version")
             .to_string(),
+        protocol_version: value["protocol"]["version"]
+            .as_str()
+            .expect("protocol version")
+            .to_string(),
+        requested_scope: value["organization_approval"]["scope"][0]
+            .as_str()
+            .expect("scope")
+            .to_string(),
+        requested_risk: value["organization_approval"]["risk"][0]
+            .as_str()
+            .expect("risk")
+            .to_string(),
+        requested_deployment: value["organization_approval"]["deployment"][0]
+            .as_str()
+            .expect("deployment")
+            .to_string(),
         organization_policy_digest: value["organization_approval"]["policy_digest"]
             .as_str()
             .expect("organization policy")
@@ -286,6 +302,43 @@ fn qualification_is_bound_to_current_approval_policies() {
             .evaluate(&configuration(&trusted), DA, &expected(&trusted))
             .authority(),
         ExecutorAuthority::GateAuthoritative
+    );
+}
+
+#[test]
+fn qualification_is_bound_to_the_requested_approval_dimensions() {
+    let value = model_record();
+
+    for dimension in ["scope", "risk", "deployment"] {
+        let mut expected = expected(&value);
+        match dimension {
+            "scope" => expected.requested_scope = "repo:other".to_string(),
+            "risk" => expected.requested_risk = "low".to_string(),
+            "deployment" => expected.requested_deployment = "public_provider".to_string(),
+            _ => unreachable!(),
+        }
+        assert_ne!(
+            validate(&value)
+                .evaluate(&configuration(&value), DA, &expected)
+                .authority(),
+            ExecutorAuthority::GateAuthoritative,
+            "{dimension} must match the trusted request"
+        );
+    }
+}
+
+#[test]
+fn qualification_is_bound_to_the_current_protocol_version() {
+    let value = model_record();
+    let mut expected = expected(&value);
+    expected.protocol_version = "semantic-executor-v2".to_string();
+
+    let eligibility = validate(&value).evaluate(&configuration(&value), DA, &expected);
+    assert_eq!(eligibility.authority(), ExecutorAuthority::AdvisoryOnly);
+    assert!(
+        eligibility
+            .missing_layers()
+            .contains(&QualificationLayer::ProtocolValid)
     );
 }
 
