@@ -1714,6 +1714,18 @@ fn executor_qualification_schema_accepts_model_and_human_records() {
     });
     assert_valid("adoc.executor_qualification.v0.schema.json", &model);
 
+    let mut mismatched = model.clone();
+    mismatched["agentdoc_evaluation"] = json!({
+        "kind": "authenticated_permission",
+        "qualified": true,
+        "principal_id": "principal:reviewer-1",
+        "permission_policy_digest": digest
+    });
+    assert!(!schema_accepts(
+        "adoc.executor_qualification.v0.schema.json",
+        &mismatched
+    ));
+
     model["subject"] = json!({
         "kind": "human",
         "principal_id": "principal:reviewer-1",
@@ -1729,6 +1741,22 @@ fn executor_qualification_schema_accepts_model_and_human_records() {
     });
     assert_valid("adoc.executor_qualification.v0.schema.json", &model);
 
+    model["agentdoc_evaluation"] = json!({
+        "kind": "capability",
+        "qualified": true,
+        "evidence_ref": "suite:code-assessment-v1"
+    });
+    assert!(!schema_accepts(
+        "adoc.executor_qualification.v0.schema.json",
+        &model
+    ));
+
+    model["agentdoc_evaluation"] = json!({
+        "kind": "authenticated_permission",
+        "qualified": true,
+        "principal_id": "principal:reviewer-1",
+        "permission_policy_digest": digest
+    });
     model["unexpected"] = json!(true);
     assert!(!schema_accepts(
         "adoc.executor_qualification.v0.schema.json",
