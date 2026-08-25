@@ -1714,6 +1714,15 @@ fn executor_qualification_schema_accepts_model_and_human_records() {
     });
     assert_valid("adoc.executor_qualification.v0.schema.json", &model);
 
+    for invalid_name in [" ", "code\tassessment"] {
+        let mut invalid_text = model.clone();
+        invalid_text["capability"]["name"] = json!(invalid_name);
+        assert!(!schema_accepts(
+            "adoc.executor_qualification.v0.schema.json",
+            &invalid_text
+        ));
+    }
+
     let mut mismatched = model.clone();
     mismatched["agentdoc_evaluation"] = json!({
         "kind": "authenticated_permission",
