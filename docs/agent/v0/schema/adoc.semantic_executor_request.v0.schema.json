@@ -73,7 +73,6 @@
         "required": ["adapter"]
       },
       "then": {
-        "required": ["human_review"],
         "properties": {
           "adapter": {
             "properties": {

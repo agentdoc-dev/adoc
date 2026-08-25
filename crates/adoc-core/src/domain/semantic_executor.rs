@@ -269,15 +269,16 @@ pub fn validate_semantic_executor_request(
         raw.adapter.provider.as_str(),
         raw.human_review,
     ) {
-        (SemanticAdapterKind::Human, SemanticEndpointClass::Human, "human", Some(binding)) => {
-            if !is_semantic_context_text(&binding.reviewing_principal_id)
-                || !is_semantic_context_text(&binding.requesting_principal_id)
+        (SemanticAdapterKind::Human, SemanticEndpointClass::Human, "human", binding) => {
+            if let Some(binding) = &binding
+                && (!is_semantic_context_text(&binding.reviewing_principal_id)
+                    || !is_semantic_context_text(&binding.requesting_principal_id))
             {
                 return Err(invalid(
                     "human review request bindings must name both trusted principals",
                 ));
             }
-            Some(binding)
+            binding
         }
         (SemanticAdapterKind::Human, _, _, _)
         | (_, SemanticEndpointClass::Human, _, _)
@@ -329,19 +330,25 @@ pub fn complete_semantic_execution(
     if provider != &request.adapter.provider || model != &request.adapter.model {
         return Err(SemanticExecutorError::IdentityMismatch);
     }
-    match request.adapter.kind {
-        SemanticAdapterKind::Human if assessment.human_review().is_none() => {
+    match (
+        request.adapter.kind,
+        request.human_review.as_ref(),
+        assessment.human_review(),
+    ) {
+        (SemanticAdapterKind::Human, Some(expected), Some(review))
+            if review.reviewing_principal_id == expected.reviewing_principal_id
+                && review.requesting_principal_id == expected.requesting_principal_id => {}
+        (SemanticAdapterKind::Human, _, _) => {
             return Err(invalid(
-                "human adapter completion requires trusted human-review facts",
+                "human adapter completion requires the request's trusted human-review facts",
             ));
         }
-        SemanticAdapterKind::Human => {}
-        _ if assessment.human_review().is_some() => {
+        (_, None, None) => {}
+        _ => {
             return Err(invalid(
                 "model adapter completion cannot carry human-review facts",
             ));
         }
-        _ => {}
     }
     receipt(
         request,

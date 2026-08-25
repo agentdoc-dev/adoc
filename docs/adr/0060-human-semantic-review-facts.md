@@ -33,4 +33,6 @@ review and proposal approval are separate authorities.
 Gate evaluation can consume typed facts without reading prose. E3.6 does not
 create the native approval flow or gate evaluator assigned to E5.2–E5.3.
 The human adapter cannot complete from a compatibility-only assessment without
-trusted review facts.
+trusted review facts. Existing v0 human executor requests without those
+additive bindings remain valid input but likewise cannot complete with review
+authority.
