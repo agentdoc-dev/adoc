@@ -1,9 +1,12 @@
 //! Replay-safe external work request/result contracts (`adoc.work_*.v0`, E3.7).
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt};
 
 use chrono::{DateTime, SecondsFormat, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize, Deserializer, Serialize,
+    de::{self, MapAccess, Visitor},
+};
 use thiserror::Error;
 
 use super::{
@@ -146,6 +149,7 @@ struct RawWorkResult {
     completion_nonce: String,
     worker: WorkloadAuthorization,
     runtime: WorkRuntime,
+    #[serde(deserialize_with = "deserialize_unique_output_digests")]
     output_digests: BTreeMap<String, String>,
     result_digest: String,
 }
@@ -345,7 +349,11 @@ pub fn build_work_result(
         ));
     }
     for (name, digest) in &input.output_digests {
-        require_text("output_digests key", name)?;
+        if !is_output_digest_name(name) {
+            return Err(invalid(format!(
+                "output digest name '{name}' must use lower snake case"
+            )));
+        }
         if !is_sha256_digest(digest) {
             return Err(invalid(format!("output digest '{name}' is invalid")));
         }
@@ -504,6 +512,46 @@ fn require_text(field: &str, value: &str) -> Result<(), ExternalWorkError> {
         return Ok(());
     }
     Err(invalid(format!("{field} must be non-blank text")))
+}
+
+fn is_output_digest_name(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    matches!(bytes.next(), Some(b'a'..=b'z'))
+        && bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+fn deserialize_unique_output_digests<'de, D>(
+    deserializer: D,
+) -> Result<BTreeMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct UniqueOutputDigests;
+
+    impl<'de> Visitor<'de> for UniqueOutputDigests {
+        type Value = BTreeMap<String, String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("an output digest object with unique names")
+        }
+
+        fn visit_map<A>(self, mut entries: A) -> Result<Self::Value, A::Error>
+        where
+            A: MapAccess<'de>,
+        {
+            let mut output_digests = BTreeMap::new();
+            while let Some((name, digest)) = entries.next_entry::<String, String>()? {
+                if output_digests.insert(name.clone(), digest).is_some() {
+                    return Err(de::Error::custom(format!(
+                        "duplicate output digest name '{name}'"
+                    )));
+                }
+            }
+            Ok(output_digests)
+        }
+    }
+
+    deserializer.deserialize_map(UniqueOutputDigests)
 }
 
 fn reject_duplicates<T: PartialEq>(values: &[T], field: &str) -> Result<(), ExternalWorkError> {
