@@ -7,7 +7,10 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use super::semantic_context::{is_semantic_context_text, is_sha256_digest};
+use super::{
+    hashing::sha256_prefixed,
+    semantic_context::{is_semantic_context_text, is_sha256_digest},
+};
 
 pub const EXECUTOR_QUALIFICATION_SCHEMA_VERSION: &str = "adoc.executor_qualification.v0";
 
@@ -83,6 +86,18 @@ pub struct ExecutorEligibility {
     authority: ExecutorAuthority,
     missing_layers: Vec<QualificationLayer>,
     requalification_triggers: Vec<RequalificationTrigger>,
+}
+
+/// Current bindings obtained from the trusted qualification store/policy
+/// state, never from the executor-supplied qualification document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutorQualificationExpectedBindings {
+    pub qualification_id: String,
+    pub record_digest: String,
+    pub capability_name: String,
+    pub capability_version: String,
+    pub organization_policy_digest: String,
+    pub runtime_policy_digest: String,
 }
 
 impl ExecutorEligibility {
@@ -167,8 +182,11 @@ struct RawExecutorQualification {
     runtime_policy: RuntimePolicy,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ExecutorQualification(RawExecutorQualification);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutorQualification {
+    record: RawExecutorQualification,
+    source_digest: String,
+}
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ExecutorQualificationError {
@@ -183,26 +201,46 @@ impl ExecutorQualification {
         &self,
         current: &ExecutorConfiguration,
         operation_digest: &str,
+        expected: &ExecutorQualificationExpectedBindings,
     ) -> ExecutorEligibility {
         let mut missing_layers = Vec::new();
-        if !self.0.protocol.valid {
+        if !self.record.protocol.valid {
             missing_layers.push(QualificationLayer::ProtocolValid);
         }
-        if !self.0.agentdoc_evaluation.qualified() {
+        if !self.record.agentdoc_evaluation.qualified() {
             missing_layers.push(QualificationLayer::AgentDocEvaluated);
         }
-        if !self.0.organization_approval.approved {
+        if !self.record.organization_approval.approved {
             missing_layers.push(QualificationLayer::OrganizationApproved);
         }
-        if !self.0.runtime_policy.eligible
-            || self.0.runtime_policy.operation_digest != operation_digest
+        if !self.record.runtime_policy.eligible
+            || self.record.runtime_policy.operation_digest != operation_digest
         {
             missing_layers.push(QualificationLayer::RuntimePolicyEligible);
         }
-        let requalification_triggers = configuration_changes(&self.0.subject, current);
+        if self.source_digest != expected.record_digest
+            || self.record.qualification_id != expected.qualification_id
+            || self.record.capability.name != expected.capability_name
+            || self.record.capability.version != expected.capability_version
+        {
+            push_missing(&mut missing_layers, QualificationLayer::AgentDocEvaluated);
+        }
+        if self.record.organization_approval.policy_digest != expected.organization_policy_digest {
+            push_missing(
+                &mut missing_layers,
+                QualificationLayer::OrganizationApproved,
+            );
+        }
+        if self.record.runtime_policy.policy_digest != expected.runtime_policy_digest {
+            push_missing(
+                &mut missing_layers,
+                QualificationLayer::RuntimePolicyEligible,
+            );
+        }
+        let requalification_triggers = configuration_changes(&self.record.subject, current);
         let authority = if missing_layers.is_empty() && requalification_triggers.is_empty() {
             ExecutorAuthority::GateAuthoritative
-        } else if self.0.protocol.valid {
+        } else if self.record.protocol.valid {
             ExecutorAuthority::AdvisoryOnly
         } else {
             ExecutorAuthority::Rejected
@@ -215,8 +253,8 @@ impl ExecutorQualification {
     }
 
     pub fn to_canonical_json(&self) -> Result<String, ExecutorQualificationError> {
-        let mut json =
-            serde_json::to_string_pretty(&self.0).map_err(|error| invalid(error.to_string()))?;
+        let mut json = serde_json::to_string_pretty(&self.record)
+            .map_err(|error| invalid(error.to_string()))?;
         json.push('\n');
         Ok(json)
     }
@@ -249,7 +287,10 @@ pub fn validate_executor_qualification(
         "runtime_policy.policy_digest",
         &record.runtime_policy.policy_digest,
     )?;
-    Ok(ExecutorQualification(record))
+    Ok(ExecutorQualification {
+        record,
+        source_digest: sha256_prefixed(bytes),
+    })
 }
 
 fn validate_subject(
@@ -490,6 +531,12 @@ fn configuration_changes(
 
 fn push_if<T>(values: &mut Vec<T>, condition: bool, value: T) {
     if condition {
+        values.push(value);
+    }
+}
+
+fn push_missing(values: &mut Vec<QualificationLayer>, value: QualificationLayer) {
+    if !values.contains(&value) {
         values.push(value);
     }
 }
