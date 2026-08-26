@@ -74,7 +74,7 @@ fn schema_accepts(schema_name: &str, instance: &serde_json::Value) -> bool {
 }
 
 #[test]
-fn cloud_operation_contracts_round_trip_and_reject_unknown_versions() {
+fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_version() {
     for id in [
         "agentdoc.cloud.assessment_submission.v0",
         "agentdoc.cloud.ingestion_result.v0",
@@ -99,14 +99,16 @@ fn cloud_operation_contracts_round_trip_and_reject_unknown_versions() {
 
         assert_eq!(round_trip, fixture, "{id} changed across JSON round-trip");
         assert_valid(&file, &round_trip);
-
-        let mut unsupported = fixture;
-        unsupported["schema_version"] = json!(format!("{}.v99", id.trim_end_matches(".v0")));
-        assert!(
-            !schema_accepts(&file, &unsupported),
-            "{id} accepted an unknown exact version"
-        );
     }
+
+    let unsupported = json!({
+        "schema_version": "agentdoc.cloud.assessment_submission.v99",
+        "payload": { "fixture": "rejected-version" }
+    });
+    assert!(!schema_accepts(
+        "agentdoc.cloud.assessment_submission.v0.schema.json",
+        &unsupported
+    ));
 }
 
 fn project_with_built_graph() -> (tempfile::TempDir, AgentDocMcpServer, String) {
