@@ -15,11 +15,22 @@ pub const SOURCE_BINDING_SCHEMA_VERSION: &str = "adoc.source_binding.v0";
 pub struct SourceBindingCoordinates {
     pub connector: String,
     pub source: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_revision",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub revision: Option<String>,
     pub path: String,
     pub anchor: String,
     pub source_revision_digest: String,
+}
+
+fn deserialize_optional_revision<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    String::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Clone)]

@@ -49,6 +49,24 @@ fn standalone_source_binding_reuses_the_graph_v6_shape() {
 }
 
 #[test]
+fn source_binding_rejects_an_explicit_null_revision() {
+    let binding = build_source_binding(SourceBindingInput {
+        source_binding_id: "binding-001".to_string(),
+        workspace_id: "workspace-001".to_string(),
+        source_record_id: "source-record-001".to_string(),
+        coordinates: coordinates(),
+    })
+    .expect("source binding builds");
+    let mut document = serde_json::to_value(binding).expect("binding serializes");
+    document["binding"]["revision"] = serde_json::Value::Null;
+
+    assert!(matches!(
+        validate_source_binding(document.to_string().as_bytes()),
+        Err(SourceProvenanceError::InvalidDocument { .. })
+    ));
+}
+
+#[test]
 fn source_assertion_digest_roundtrip() {
     let assertion = build_source_assertion(SourceAssertionInput {
         source_assertion_id: "assertion-001".to_string(),
