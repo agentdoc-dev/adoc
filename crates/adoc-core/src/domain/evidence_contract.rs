@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use chrono::{DateTime, FixedOffset};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -8,7 +9,9 @@ use serde_json::Value;
 pub enum EvidenceContractValidationError {
     EvidenceContractMissing,
     FrozenAtMissing,
+    FrozenAtInvalid,
     EligibleFromMissing,
+    EligibleFromInvalid,
     FreezeOrderingInvalid,
     MetricsMissing,
     MetricIdMissing,
@@ -43,20 +46,22 @@ pub fn validate_evidence_contract(document: &Value) -> EvidenceContractValidatio
         ]);
     };
     let mut errors = Vec::new();
-    match (
+    let frozen_at = parse_utc_timestamp(
         evidence["frozen_at"].as_str(),
+        EvidenceContractValidationError::FrozenAtMissing,
+        EvidenceContractValidationError::FrozenAtInvalid,
+        &mut errors,
+    );
+    let eligible_from = parse_utc_timestamp(
         evidence["eligible_from"].as_str(),
-    ) {
-        (None, None) => {
-            errors.push(EvidenceContractValidationError::FrozenAtMissing);
-            errors.push(EvidenceContractValidationError::EligibleFromMissing);
-        }
-        (None, Some(_)) => errors.push(EvidenceContractValidationError::FrozenAtMissing),
-        (Some(_), None) => errors.push(EvidenceContractValidationError::EligibleFromMissing),
-        (Some(frozen_at), Some(eligible_from)) if frozen_at >= eligible_from => {
-            errors.push(EvidenceContractValidationError::FreezeOrderingInvalid);
-        }
-        (Some(_), Some(_)) => {}
+        EvidenceContractValidationError::EligibleFromMissing,
+        EvidenceContractValidationError::EligibleFromInvalid,
+        &mut errors,
+    );
+    if let (Some(frozen_at), Some(eligible_from)) = (frozen_at, eligible_from)
+        && frozen_at >= eligible_from
+    {
+        errors.push(EvidenceContractValidationError::FreezeOrderingInvalid);
     }
     let metric_ids = collect_ids(
         &evidence["metrics"],
@@ -148,6 +153,29 @@ fn collect_ids(
     Some(ids)
 }
 
+fn parse_utc_timestamp(
+    value: Option<&str>,
+    missing: EvidenceContractValidationError,
+    invalid: EvidenceContractValidationError,
+    errors: &mut Vec<EvidenceContractValidationError>,
+) -> Option<DateTime<FixedOffset>> {
+    let Some(value) = value else {
+        errors.push(missing);
+        return None;
+    };
+    if !value.ends_with('Z') {
+        errors.push(invalid);
+        return None;
+    }
+    match DateTime::parse_from_rfc3339(value) {
+        Ok(value) => Some(value),
+        Err(_) => {
+            errors.push(invalid);
+            None
+        }
+    }
+}
+
 fn invalid(errors: Vec<EvidenceContractValidationError>) -> EvidenceContractValidation {
     EvidenceContractValidation {
         valid: false,
@@ -208,5 +236,19 @@ mod tests {
                     .contains(&EvidenceContractValidationError::FreezeOrderingInvalid)
             );
         }
+    }
+
+    #[test]
+    fn rejects_impossible_calendar_dates() {
+        let mut invalid = contract();
+        invalid["evidence_contract"]["frozen_at"] = json!("2026-02-30T00:00:00Z");
+        invalid["evidence_contract"]["eligible_from"] = json!("2026-02-31T00:00:00Z");
+        assert_eq!(
+            validate_evidence_contract(&invalid).errors,
+            vec![
+                EvidenceContractValidationError::FrozenAtInvalid,
+                EvidenceContractValidationError::EligibleFromInvalid,
+            ]
+        );
     }
 }

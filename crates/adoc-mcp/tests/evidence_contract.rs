@@ -176,6 +176,16 @@ fn semantic_validator_rejects_eligibility_at_or_before_freeze() {
 }
 
 #[test]
+fn semantic_validator_rejects_impossible_calendar_dates() {
+    let mut invalid = active_contract();
+    invalid["evidence_contract"]["frozen_at"] = json!("2026-02-30T00:00:00Z");
+    invalid["evidence_contract"]["eligible_from"] = json!("2026-02-31T00:00:00Z");
+    let errors = validate_evidence_contract(&invalid).errors;
+    assert!(errors.contains(&EvidenceContractValidationError::FrozenAtInvalid));
+    assert!(errors.contains(&EvidenceContractValidationError::EligibleFromInvalid));
+}
+
+#[test]
 fn real_run_set_is_precommitted_at_the_population_floor() {
     let instance = active_contract();
     let evidence = &instance["evidence_contract"];
