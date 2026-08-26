@@ -217,7 +217,7 @@ fn every_frozen_contract_matches_its_immutable_git_anchor() {
             .expect("git show runs");
         assert!(frozen.status.success(), "git show failed for {path}");
         assert_eq!(
-            fs::read(repository.join(&path)).expect("frozen contract bytes"),
+            fs::read(repository.join(path)).expect("frozen contract bytes"),
             frozen.stdout,
             "{path} changed; close this cohort and add a new version"
         );
