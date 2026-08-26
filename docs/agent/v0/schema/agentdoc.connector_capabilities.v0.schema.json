@@ -33,10 +33,12 @@
       ]
     },
     "capabilities": {
-      "type": "array",
-      "minItems": 1,
-      "uniqueItems": true,
-      "items": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/identifier"
+      },
+      "additionalProperties": {
         "$ref": "#/$defs/capability"
       }
     }
@@ -107,7 +109,6 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "name",
         "version",
         "maturity",
         "dependencies",
@@ -117,9 +118,6 @@
         "deployment_modes"
       ],
       "properties": {
-        "name": {
-          "$ref": "#/$defs/identifier"
-        },
         "version": {
           "$ref": "#/$defs/text"
         },

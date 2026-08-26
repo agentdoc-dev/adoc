@@ -118,8 +118,8 @@ fn connector_capability_manifest_schema_is_closed_and_version_exact() {
         "adapter": { "name": "github-action", "version": "2.0.0-alpha.19" },
         "publisher": { "id": "agentdoc-dev/action", "kind": "agentdoc" },
         "overall_stage": "Beta",
-        "capabilities": [{
-            "name": "change_request.trusted_assessment",
+        "capabilities": {
+          "change_request.trusted_assessment": {
             "version": "1",
             "maturity": "ga",
             "dependencies": [{
@@ -134,7 +134,8 @@ fn connector_capability_manifest_schema_is_closed_and_version_exact() {
             "processing_modes": ["source_ci"],
             "deployment_modes": ["github_action"],
             "qualification_evidence_ref": "agentdoc:evidence/github-action/trusted-assessment-v1"
-        }]
+          }
+        }
     });
     let name = "agentdoc.connector_capabilities.v0.schema.json";
 
@@ -149,18 +150,34 @@ fn connector_capability_manifest_schema_is_closed_and_version_exact() {
     assert!(!schema_accepts(name, &unknown_version));
 
     let mut unknown_maturity = manifest.clone();
-    unknown_maturity["capabilities"][0]["maturity"] = json!("stable");
+    unknown_maturity["capabilities"]["change_request.trusted_assessment"]["maturity"] =
+        json!("stable");
     assert!(!schema_accepts(name, &unknown_maturity));
 
     let mut unevidenced_ga = manifest.clone();
-    unevidenced_ga["capabilities"][0]
+    unevidenced_ga["capabilities"]["change_request.trusted_assessment"]
         .as_object_mut()
         .expect("capability is an object")
         .remove("qualification_evidence_ref");
     assert!(!schema_accepts(name, &unevidenced_ga));
 
+    let mut duplicate_identity = manifest.clone();
+    let mut conflicting =
+        duplicate_identity["capabilities"]["change_request.trusted_assessment"].clone();
+    conflicting["maturity"] = json!("deprecated");
+    duplicate_identity["capabilities"] = json!([
+        {
+            "name": "change_request.trusted_assessment",
+            "version": "1",
+            "maturity": "ga"
+        },
+        conflicting
+    ]);
+    assert!(!schema_accepts(name, &duplicate_identity));
+
     let mut unknown_field = manifest;
-    unknown_field["capabilities"][0]["silently_weaken_gate"] = json!(true);
+    unknown_field["capabilities"]["change_request.trusted_assessment"]["silently_weaken_gate"] =
+        json!(true);
     assert!(!schema_accepts(name, &unknown_field));
 }
 
