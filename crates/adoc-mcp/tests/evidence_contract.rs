@@ -122,54 +122,91 @@ fn frozen_at_precedes_the_earliest_eligible_observation() {
     assert!(frozen_at < earliest_eligible_observation);
 }
 
-#[test]
-fn every_metric_has_one_named_denominator_floor_and_threshold() {
-    let instance = active_contract();
-    let evidence = &instance["evidence_contract"];
-    let metrics = evidence["metrics"].as_array().expect("metrics");
-    let ids = metrics
+fn metric_links_are_exact(evidence: &Value) -> bool {
+    let Some(metrics) = evidence["metrics"].as_array() else {
+        return false;
+    };
+    let Some(metric_ids) = metrics
         .iter()
-        .map(|metric| metric["id"].as_str().expect("metric id"))
-        .collect::<HashSet<_>>();
-    assert_eq!(ids.len(), metrics.len(), "metric ids must be unique");
-    assert!(metrics.iter().all(|metric| {
+        .map(|metric| metric["id"].as_str())
+        .collect::<Option<Vec<_>>>()
+    else {
+        return false;
+    };
+    if !metrics.iter().all(|metric| {
         metric["denominator"]
             .as_str()
             .is_some_and(|value| !value.is_empty())
-    }));
+    }) {
+        return false;
+    }
 
-    let rules = evidence["numerator_denominator_rules"]
-        .as_array()
-        .expect("rules");
-    let thresholds = evidence["thresholds"].as_array().expect("thresholds");
-    let floors = evidence["minimum_population"]["metric_denominators"]
-        .as_object()
-        .expect("metric denominator floors");
+    let Some(rules) = evidence["numerator_denominator_rules"].as_array() else {
+        return false;
+    };
+    let Some(rule_ids) = rules
+        .iter()
+        .map(|rule| rule["metric_id"].as_str())
+        .collect::<Option<Vec<_>>>()
+    else {
+        return false;
+    };
+    let Some(thresholds) = evidence["thresholds"].as_array() else {
+        return false;
+    };
+    let Some(threshold_ids) = thresholds
+        .iter()
+        .map(|threshold| threshold["metric_id"].as_str())
+        .collect::<Option<Vec<_>>>()
+    else {
+        return false;
+    };
+    let Some(floors) = evidence["minimum_population"]["metric_denominators"].as_object() else {
+        return false;
+    };
 
-    for id in ids {
-        let matching_rules = rules
-            .iter()
-            .filter(|rule| rule["metric_id"] == id)
-            .collect::<Vec<_>>();
-        assert_eq!(
-            matching_rules.len(),
-            1,
-            "each metric has exactly one denominator rule"
-        );
-        let rule = matching_rules[0];
-        assert_eq!(
-            rule["denominator_floor"], floors[id],
-            "rule and minimum population floors must agree for {id}"
-        );
-        assert_eq!(
-            thresholds
-                .iter()
-                .filter(|threshold| threshold["metric_id"] == id)
-                .count(),
-            1,
-            "each metric has exactly one frozen threshold"
+    let metric_ids = metric_ids.into_iter().collect::<HashSet<_>>();
+    let rule_id_set = rule_ids.iter().copied().collect::<HashSet<_>>();
+    let threshold_id_set = threshold_ids.iter().copied().collect::<HashSet<_>>();
+    let floor_ids = floors.keys().map(String::as_str).collect::<HashSet<_>>();
+
+    metric_ids.len() == metrics.len()
+        && rule_id_set.len() == rules.len()
+        && threshold_id_set.len() == thresholds.len()
+        && metric_ids == rule_id_set
+        && metric_ids == threshold_id_set
+        && metric_ids == floor_ids
+        && rules.iter().all(|rule| {
+            rule["metric_id"]
+                .as_str()
+                .and_then(|id| floors.get(id))
+                .is_some_and(|floor| rule["denominator_floor"] == *floor)
+        })
+}
+
+#[test]
+fn every_contract_has_unique_and_exactly_linked_metric_rules() {
+    for (path, _) in FROZEN_CONTRACTS {
+        assert!(
+            metric_links_are_exact(&contract(path)["evidence_contract"]),
+            "{path} has ambiguous metric links"
         );
     }
+}
+
+#[test]
+fn semantic_validator_rejects_duplicate_and_orphan_metric_links() {
+    let mut duplicate = active_contract();
+    let metric = duplicate["evidence_contract"]["metrics"][0].clone();
+    duplicate["evidence_contract"]["metrics"]
+        .as_array_mut()
+        .expect("metrics")
+        .push(metric);
+    assert!(!metric_links_are_exact(&duplicate["evidence_contract"]));
+
+    let mut orphan = active_contract();
+    orphan["evidence_contract"]["thresholds"][0]["metric_id"] = json!("orphan_metric");
+    assert!(!metric_links_are_exact(&orphan["evidence_contract"]));
 }
 
 #[test]

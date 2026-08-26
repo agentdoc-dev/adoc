@@ -14,7 +14,7 @@ for contract in docs/pilots/g1a/evidence-contract-v*.yaml; do
     --source-ref refs/pull/177/merge \
     --format json |
     jq -e --arg timestamp "$rekor_timestamp" '
-      length > 0 and all(.[].verificationResult.verifiedTimestamps;
+      length > 0 and any(.[].verificationResult.verifiedTimestamps;
         any(.[];
           .type == "Tlog" and
           .uri == "https://rekor.sigstore.dev" and

@@ -39,11 +39,13 @@
         "metrics": {
           "type": "array",
           "minItems": 1,
+          "uniqueItems": true,
           "items": { "$ref": "#/$defs/metric" }
         },
         "numerator_denominator_rules": {
           "type": "array",
           "minItems": 1,
+          "uniqueItems": true,
           "items": { "$ref": "#/$defs/rate_rule" }
         },
         "exclusions": {
@@ -54,6 +56,7 @@
         "thresholds": {
           "type": "array",
           "minItems": 1,
+          "uniqueItems": true,
           "items": { "$ref": "#/$defs/threshold" }
         },
         "stop_ship_conditions": {
