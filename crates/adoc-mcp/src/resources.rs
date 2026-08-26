@@ -489,6 +489,116 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/adoc.work_result.v0.schema.json"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.approval_command.v0.schema.json",
+        name: "schema-agentdoc-cloud-approval-command-v0-json",
+        title: "AgentDoc Cloud Approval Command JSON Schema",
+        description: "JSON Schema for the versioned Cloud approval command.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.approval_command.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.assessment_submission.v0.schema.json",
+        name: "schema-agentdoc-cloud-assessment-submission-v0-json",
+        title: "AgentDoc Cloud Assessment Submission JSON Schema",
+        description: "JSON Schema for the versioned Cloud assessment submission.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.assessment_submission.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.egress_policy.v0.schema.json",
+        name: "schema-agentdoc-cloud-egress-policy-v0-json",
+        title: "AgentDoc Cloud Egress Policy JSON Schema",
+        description: "JSON Schema for the versioned Cloud data-egress policy.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.egress_policy.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.gate_decision.v0.schema.json",
+        name: "schema-agentdoc-cloud-gate-decision-v0-json",
+        title: "AgentDoc Cloud Gate Decision JSON Schema",
+        description: "JSON Schema for the versioned Cloud gate decision.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.gate_decision.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.ingestion_result.v0.schema.json",
+        name: "schema-agentdoc-cloud-ingestion-result-v0-json",
+        title: "AgentDoc Cloud Ingestion Result JSON Schema",
+        description: "JSON Schema for the versioned Cloud ingestion outcome.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.ingestion_result.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_receipt.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-receipt-v0-json",
+        title: "AgentDoc Cloud Migration Receipt JSON Schema",
+        description: "JSON Schema for the versioned Cloud migration receipt.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_receipt.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.migration_request.v0.schema.json",
+        name: "schema-agentdoc-cloud-migration-request-v0-json",
+        title: "AgentDoc Cloud Migration Request JSON Schema",
+        description: "JSON Schema for the versioned Cloud migration request.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.migration_request.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.proposal_command.v0.schema.json",
+        name: "schema-agentdoc-cloud-proposal-command-v0-json",
+        title: "AgentDoc Cloud Proposal Command JSON Schema",
+        description: "JSON Schema for the versioned Cloud proposal command.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.proposal_command.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.repository_config.v0.schema.json",
+        name: "schema-agentdoc-cloud-repository-config-v0-json",
+        title: "AgentDoc Cloud Repository Configuration JSON Schema",
+        description: "JSON Schema for the versioned Cloud repository configuration.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.repository_config.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.work_request.v0.schema.json",
+        name: "schema-agentdoc-cloud-work-request-v0-json",
+        title: "AgentDoc Cloud Work Request JSON Schema",
+        description: "JSON Schema for the versioned Cloud work request.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.work_request.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.cloud.work_result.v0.schema.json",
+        name: "schema-agentdoc-cloud-work-result-v0-json",
+        title: "AgentDoc Cloud Work Result JSON Schema",
+        description: "JSON Schema for the versioned Cloud work result.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.cloud.work_result.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/search-artifact.json",
         name: "schema-search-artifact-json",
         title: "Search Artifact JSON Schema",
