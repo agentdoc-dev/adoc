@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "adoc://agent/v0/schema/adoc.validation_receipt.v0.schema.json",
-  "title": "AgentDoc Validation Runtime Receipt",
-  "description": "Digest-bound receipt returned by the pinned AgentDoc Validation Runtime (SEMANTICS S6, MILESTONES E1.7). Deterministic by contract: stable ordering, no wall-clock timestamps anywhere — evaluation_date is the explicit lifecycle-pinning input, never 'today'. This JSON Schema is preflight and documentation only, never domain authority (ADR-0015): a payload this schema accepts may still be domain-invalid, and only the runtime's typed validation constructs the receipt. runtime.binary_digest is supplied by the invoking harness as an explicit attested input (a binary cannot hash itself deterministically); the harness verifies the binary's sha256 against its recorded pin before invoking (scripts/validation-runtime/run.sh).",
+  "$id": "adoc://agent/v0/schema/adoc.validation_receipt.v1.schema.json",
+  "title": "AgentDoc Cloud-Bound Validation Runtime Receipt",
+  "description": "Digest-bound receipt returned by the pinned AgentDoc Validation Runtime when a Cloud source invocation is supplied. Deterministic by contract: stable ordering, no wall-clock timestamps, and an explicit evaluation_date. This JSON Schema is transport preflight only; the runtime remains the sole authoritative constructor.",
   "type": "object",
   "required": ["schema_version", "runtime", "contract_versions", "evaluation_date", "inputs", "context", "result", "diagnostics_digest"],
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "const": "adoc.validation_receipt.v0" },
+    "schema_version": { "const": "adoc.validation_receipt.v1" },
     "runtime": {
       "description": "Exact runtime identity: the release version of the invoking adoc surface and the harness-attested sha256 of its binary.",
       "type": "object",
@@ -19,7 +19,7 @@
       }
     },
     "contract_versions": {
-      "description": "Consumed contract versions, keyed by contract role. 'graph' names the graph contract this runtime's semantics validate (adoc.graph.v6); semantic_context is present exactly when an adoc.semantic_context.v0 input is consumed.",
+      "description": "Consumed contract versions, keyed by contract role. 'graph' names the graph contract this runtime validates; semantic_context is present exactly when an adoc.semantic_context.v0 input is consumed.",
       "type": "object",
       "required": ["graph"],
       "additionalProperties": { "type": "string", "minLength": 1 },
@@ -29,12 +29,12 @@
       }
     },
     "evaluation_date": {
-      "description": "The explicit lifecycle evaluation date input (adoc check --as-of). Mandatory in receipt mode so the receipt never depends on the wall clock.",
+      "description": "The explicit lifecycle evaluation date input. Mandatory so the receipt never depends on the wall clock.",
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
     },
     "inputs": {
-      "description": "Every compiled source input: Logical Source Path plus sha256 of its bytes, in lexicographic path order. Evidence Anchor reads are outside the digest binding: advisory warnings only, never result-affecting.",
+      "description": "Every compiled source input with its logical path and sha256 digest, in lexicographic path order.",
       "type": "array",
       "items": {
         "type": "object",
@@ -47,8 +47,13 @@
       }
     },
     "context": {
-      "description": "Named validation-context inputs where applicable: config, context_artifact, and semantic_context. Digests bind the exact bytes read once and validated by the runtime.",
+      "description": "Named validation-context inputs. source_invocation binds the exact Cloud manifest bytes read once by the runtime.",
       "type": "array",
+      "contains": {
+        "type": "object",
+        "properties": { "name": { "const": "source_invocation" } },
+        "required": ["name"]
+      },
       "items": {
         "type": "object",
         "required": ["name", "digest"],
@@ -57,6 +62,7 @@
           "name": {
             "enum": [
               "config",
+              "source_invocation",
               "context_artifact",
               "semantic_context"
             ]
@@ -66,11 +72,11 @@
       }
     },
     "result": {
-      "description": "Closed result vocabulary. fail is recorded, never suppressed: a domain-invalid input yields a receipt with result fail and typed diagnostics behind diagnostics_digest.",
+      "description": "Closed result vocabulary.",
       "enum": ["pass", "fail"]
     },
     "diagnostics_digest": {
-      "description": "sha256 over the canonically serialized (compact JSON) typed diagnostics array of the run, in the runtime's stable source order.",
+      "description": "sha256 over the canonically serialized typed diagnostics array.",
       "$ref": "#/$defs/sha256"
     }
   },

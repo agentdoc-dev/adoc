@@ -2,7 +2,7 @@
 //! MILESTONES §E1.7; PRD §6.7).
 //!
 //! All AgentDoc-domain validation runs through this pinned runtime; it
-//! returns the registered `adoc.validation_receipt.v0` envelope binding the
+//! returns a registered `adoc.validation_receipt.v0` or `.v1` envelope binding the
 //! exact runtime identity, the digest of every compiled source input and
 //! named validation-context input, the consumed contract versions, the
 //! closed `pass | fail` result, and a digest of the typed diagnostics.
@@ -52,8 +52,8 @@ use crate::infrastructure::artifact::graph_json::parse_graph_artifact_document;
 use crate::infrastructure::source::evidence_fs::FsEvidenceFileReader;
 use crate::infrastructure::source::fs::FsSourceProvider;
 
-/// The registered contract id every serialized receipt carries.
-pub(crate) const VALIDATION_RECEIPT_SCHEMA_VERSION: &str = "adoc.validation_receipt.v0";
+const VALIDATION_RECEIPT_V0_SCHEMA_VERSION: &str = "adoc.validation_receipt.v0";
+const VALIDATION_RECEIPT_V1_SCHEMA_VERSION: &str = "adoc.validation_receipt.v1";
 
 /// The graph contract whose semantics this runtime validates; recorded under
 /// `contract_versions` in every receipt.
@@ -113,7 +113,7 @@ pub struct ValidationRuntimeOutcome {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-/// Digest-bound `adoc.validation_receipt.v0` (SEMANTICS §S6).
+/// Digest-bound AgentDoc validation receipt (SEMANTICS §S6).
 ///
 /// Constructible only by [`run_validation_runtime`]; serialized with
 /// [`ValidationReceipt::to_canonical_json`]. Unvalidated JSON has no core
@@ -234,6 +234,11 @@ fn run_with_provider<P: SourceProvider>(
     input: ValidationRuntimeInput,
 ) -> Result<ValidationRuntimeOutcome, ValidationRuntimeError> {
     require_sha256_digest(&input.runtime_binary_digest)?;
+    let receipt_schema_version = if input.source_invocation.is_some() {
+        VALIDATION_RECEIPT_V1_SCHEMA_VERSION
+    } else {
+        VALIDATION_RECEIPT_V0_SCHEMA_VERSION
+    };
 
     // ONE source read serves both the digests and the compile below.
     let sources = provider.load_sources();
@@ -366,7 +371,7 @@ fn run_with_provider<P: SourceProvider>(
         );
     }
     let receipt = ValidationReceipt {
-        schema_version: VALIDATION_RECEIPT_SCHEMA_VERSION.to_string(),
+        schema_version: receipt_schema_version.to_string(),
         runtime: RuntimeIdentity {
             version: input.runtime_version,
             binary_digest: input.runtime_binary_digest,
@@ -889,14 +894,18 @@ mod tests {
         assert_receipt_matches_published_schema(&outcome.receipt.to_canonical_json());
     }
 
-    /// Parity discipline (ADR-0015) helper shared by the pass- and
-    /// fail-receipt tests: the serialized receipt validates against the
-    /// published `adoc.validation_receipt.v0` JSON Schema.
+    /// Parity discipline (ADR-0015) helper shared by receipt tests.
     fn assert_receipt_matches_published_schema(receipt_json: &str) {
         let instance: serde_json::Value =
             serde_json::from_str(receipt_json).expect("receipt is json");
+        let schema_file = match instance["schema_version"].as_str() {
+            Some(VALIDATION_RECEIPT_V0_SCHEMA_VERSION) => "adoc.validation_receipt.v0.schema.json",
+            Some(VALIDATION_RECEIPT_V1_SCHEMA_VERSION) => "adoc.validation_receipt.v1.schema.json",
+            version => panic!("unexpected validation receipt version: {version:?}"),
+        };
         let schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../docs/agent/v0/schema/adoc.validation_receipt.v0.schema.json");
+            .join("../../docs/agent/v0/schema")
+            .join(schema_file);
         let schema: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(schema_path).expect("schema is readable"))
                 .expect("schema is json");
@@ -907,7 +916,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(
             errors.is_empty(),
-            "adoc.validation_receipt.v0 schema validation failed:\n{}\ninstance:\n{instance:#}",
+            "{schema_file} validation failed:\n{}\ninstance:\n{instance:#}",
             errors.join("\n")
         );
     }
@@ -930,7 +939,10 @@ mod tests {
 
         let value: serde_json::Value =
             serde_json::from_str(&first.receipt.to_canonical_json()).expect("receipt is json");
-        assert_eq!(value["schema_version"], "adoc.validation_receipt.v0");
+        assert_eq!(
+            value["schema_version"],
+            VALIDATION_RECEIPT_V0_SCHEMA_VERSION
+        );
         assert_eq!(value["runtime"]["binary_digest"], TEST_DIGEST);
         assert_eq!(value["contract_versions"]["graph"], "adoc.graph.v6");
         assert_eq!(value["result"], "pass");
@@ -1005,12 +1017,38 @@ mod tests {
         let receipt: serde_json::Value =
             serde_json::from_str(&outcome.receipt.to_canonical_json()).expect("receipt json");
 
+        assert_eq!(receipt["schema_version"], "adoc.validation_receipt.v1");
         assert_eq!(receipt["context"][0]["name"], "source_invocation");
         assert_eq!(
             receipt["context"][0]["digest"],
             sha256_prefixed(r#"{"source":"agentdoc-dev/adoc","revision":"head-sha"}"#.as_bytes())
         );
         assert_receipt_matches_published_schema(&outcome.receipt.to_canonical_json());
+    }
+
+    #[test]
+    fn published_v0_receipt_schema_rejects_source_invocation_context() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let docs = workspace.path().join("docs");
+        write(&docs.join("index.adoc"), valid_source());
+        let outcome = run_validation_runtime(standalone_input(&docs)).expect("validation runs");
+        let mut receipt: serde_json::Value =
+            serde_json::from_str(&outcome.receipt.to_canonical_json()).expect("receipt json");
+        receipt["context"] = serde_json::json!([{
+            "name": "source_invocation",
+            "digest": TEST_DIGEST
+        }]);
+
+        let schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/agent/v0/schema/adoc.validation_receipt.v0.schema.json");
+        let schema: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(schema_path).expect("v0 schema is readable"))
+                .expect("v0 schema is json");
+        assert!(
+            !jsonschema::validator_for(&schema)
+                .expect("v0 schema compiles")
+                .is_valid(&receipt)
+        );
     }
 
     #[test]
