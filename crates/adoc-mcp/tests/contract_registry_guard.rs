@@ -684,12 +684,18 @@ fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
     assert!(row.contains("authenticated submitting principal"));
     assert!(row.contains("exact managed candidate version ID and content digest"));
     assert!(row.contains("strictly later candidate-operation ordinal"));
+    assert!(row.contains("connector-origin candidates require"));
+    assert!(row.contains("AgentDoc-origin candidates carry no connector Source Assertion"));
 
     let conflict = registry
         .lines()
         .find(|line| line.contains("`authority.candidate_origin_conflict`"))
         .expect("candidate replay-conflict code row");
     assert!(conflict.contains("submitting principal"));
+    assert!(conflict.contains("managed candidate version ID and content digest"));
+    assert!(conflict.contains("policy receipt, effect ordinal, and effect transaction ID"));
+    assert!(conflict.contains("candidate-operation ordinal and transaction ID"));
+    assert!(conflict.contains("authority mode"));
 
     let attestation = block
         .lines()
@@ -710,7 +716,10 @@ fn connector_authority_policy_receipt_orders_effect_and_exact_matches_authorizat
 
     assert!(row.contains("prior effective policy ID/version"));
     assert!(row.contains("policy effect ordinal"));
+    assert!(row.contains("policy effect transaction ID"));
     assert!(row.contains("strictly later governed-operation ordinal"));
+    assert!(row.contains("prior committed transaction"));
+    assert!(row.contains("distinct governed transaction ID"));
     assert!(row.contains("`connector.configure` permission"));
     assert!(row.contains("exact-match the change"));
 }
