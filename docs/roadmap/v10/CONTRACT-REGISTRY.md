@@ -114,6 +114,9 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.migration_receipt.v0` | adoc | E7.1 | migration receipt with qualification policy outcome |
 | `adoc.connector_manifest.v0` | adoc | E4.5 | capability manifest bound to exact adapter version and publisher |
 | `agentdoc.cloud.validation_invocation.v0` | cloud | E4.2 | closed Cloud invocation manifest whose exact bytes bind an AgentDoc validation receipt to one immutable Workspace/Source Record/Source Binding/ACL snapshot/config/evaluation-date tuple |
+| `agentdoc.cloud.connector_authority_policy_receipt.v0` | cloud | E4.3 | immutable receipted connector-authority policy change binding exact scope, closed authority mode, promotion rule, policy version, principal, and authorization decision |
+| `agentdoc.cloud.candidate_authority.v0` | cloud | E4.3 | immutable candidate provenance binding the exact policy receipt, authority mode, proposal origin, and required connector Source Assertion |
+| `agentdoc.cloud.external_promotion_attestation.v0` | cloud | E4.3 | closed external-promotion attestation binding one candidate and policy to the policy-declared issuer and attestation type; activation additionally requires an immutable Source Assertion carrying those exact bytes |
 | `adoc.governance_event.v0` | cloud | E4.2 | append-only governance transition record |
 | `adoc.semantic_endpoint_policy.v0` | cloud | E3.4 | immutable declaration binding one generic semantic endpoint id, endpoint class, exact URL, and allowed state; Action rejects a missing or non-matching declaration before invocation; moves to shipped at Cloud's first versioned release |
 | `adoc.proposal.v0` | cloud | E5.1 | canonical proposal record; includes the typed per-finding no-change disposition record (E5.3.T3) |
@@ -446,6 +449,17 @@ Operation labels and typed failure codes owned by the private Cloud service. New
 | `workspace.duplicate_repository` | planned (E2.1) | the same external repository is already registered in the Workspace |
 | `workspace.cross_tenant_denied` | planned (E2.1) | a Workspace-scoped operation is outside the authenticated principal's memberships; a nonexistent target emits this same code, so foreign and nonexistent targets remain indistinguishable to the caller |
 | `governance.decision_binding_missing` | planned (E1.3, in-flight cloud cut) | Cloud reconciliation-decision route rejects a record whose subject/counterpart exact version binding or policy version is missing or padded (deny-by-default; MILESTONES §E1.3.T4); the principal binding is never client-supplied — the store binds the authenticated session, and absent authority context maps to the `insufficient_context` outcome value, envelope-governed vocabulary rather than a standalone code; E1.4 widens Cloud's contract-scan grep to the `governance.` family |
+| `authority.scope_invalid` | planned (E4.3) | connector-authority scope is malformed, references a nonexistent connector, or skips a hierarchy level |
+| `authority.policy_change_not_authorized` | planned (E4.3) | the authenticated principal lacks current `connector.configure` authority for the exact policy scope |
+| `authority.policy_missing` | planned (E4.3) | no committed connector-authority policy applies to the requested exact scope |
+| `authority.mode_unknown` | planned (E4.3) | requested authority mode is outside the closed five-mode vocabulary |
+| `authority.promotion_rule_invalid` | planned (E4.3) | promotion rule does not exactly match the selected authority mode |
+| `authority.candidate_rejected` | planned (E4.3) | the effective authority mode forbids that AgentDoc or connector proposal origin |
+| `authority.source_assertion_required` | planned (E4.3) | connector proposal lacks the exact principal-bound Source Assertion for its Source Record |
+| `authority.candidate_origin_conflict` | planned (E4.3) | an idempotent candidate replay attempts to change its recorded proposal origin or Source Assertion |
+| `authority.promotion_rejected` | planned (E4.3) | Cloud governance attempted to promote a candidate origin forbidden by the effective authority mode |
+| `authority.external_active_rejected` | planned (E4.3) | external activation was attempted outside `externally_canonical` authority |
+| `authority.attestation_invalid` | planned (E4.3) | external-promotion attestation digest, immutable Source Assertion, or exact candidate/policy/issuer/type binding is invalid |
 <!-- /registry:cloud-codes -->
 
 ## Attestation codes — planned, owner `cloud`
