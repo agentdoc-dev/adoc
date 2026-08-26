@@ -441,6 +441,26 @@ fn fixture_ids_are_registered_and_disjoint_from_real_rows() {
 }
 
 #[test]
+fn e4_4_cloud_operation_contracts_are_registered_exactly() {
+    let registered = all_registered_ids(&registry());
+    for id in [
+        "agentdoc.cloud.assessment_submission.v0",
+        "agentdoc.cloud.ingestion_result.v0",
+        "agentdoc.cloud.repository_config.v0",
+        "agentdoc.cloud.work_request.v0",
+        "agentdoc.cloud.work_result.v0",
+        "agentdoc.cloud.gate_decision.v0",
+        "agentdoc.cloud.proposal_command.v0",
+        "agentdoc.cloud.approval_command.v0",
+        "agentdoc.cloud.migration_request.v0",
+        "agentdoc.cloud.migration_receipt.v0",
+        "agentdoc.cloud.egress_policy.v0",
+    ] {
+        assert!(registered.contains(id), "E4.4 contract missing: {id}");
+    }
+}
+
+#[test]
 fn test_only_use_does_not_split_the_scope() {
     let fixture = r#"
         #[cfg(test)]

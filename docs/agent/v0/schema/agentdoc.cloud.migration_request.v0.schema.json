@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.cloud.migration_request.v0.schema.json",
+  "title": "AgentDoc Cloud Migration Request",
+  "description": "E4.4 transport schema for the versioned migration request. The owning domain slice defines payload semantics; this boundary preserves the JSON object verbatim and rejects non-exact operation versions.",
+  "type": "object",
+  "required": ["schema_version", "payload"],
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.cloud.migration_request.v0"
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}
