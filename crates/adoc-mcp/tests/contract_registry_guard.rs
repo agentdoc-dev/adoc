@@ -478,6 +478,16 @@ fn connector_capability_manifest_is_shipped_by_its_contract_owner() {
 }
 
 #[test]
+fn e4_7_evidence_contract_is_shipped_by_its_single_schema_owner() {
+    let doc = registry();
+    let shipped = anchored_ids(&doc, "registry:envelopes-shipped-adoc");
+    let planned = anchored_ids(&doc, "registry:envelopes-planned");
+
+    assert!(shipped.contains("agentdoc.evidence_contract.v0"));
+    assert!(!planned.contains("agentdoc.evidence_contract.v0"));
+}
+
+#[test]
 fn e4_5_cloud_capability_trust_codes_are_registered_exactly() {
     let registered = anchored_ids(&registry(), "registry:cloud-codes");
     for code in [

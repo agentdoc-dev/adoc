@@ -74,6 +74,7 @@ dependencies = [
  "rmcp",
  "schemars",
  "serde",
+ "serde-saphyr",
  "serde_json",
  "tempfile",
  "thiserror",

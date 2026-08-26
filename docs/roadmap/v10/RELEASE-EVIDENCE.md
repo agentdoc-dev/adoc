@@ -144,6 +144,8 @@ Separate evidence lines for executor quality, workflow usefulness, gate behavior
 
 Freeze before first eligible internal tracer run. Includes replay/stale-run/digest/idempotency/isolation suites plus a small precommitted set of real internal assessments. Passing G1A allows governance implementation to proceed internally.
 
+G1A contract v1 is frozen in [`docs/pilots/g1a/evidence-contract-v1.yaml`](../../pilots/g1a/evidence-contract-v1.yaml) and validates against the single reusable [`agentdoc.evidence_contract.v0`](../../agent/v0/schema/agentdoc.evidence_contract.v0.schema.json) schema. Its readout remains a separate pass/fail artifact; publishing the criteria does not claim the gate passed.
+
 ### G1B — external Pilot Candidate admission
 
 Freeze before any external design-partner workspace contributes eligible evidence. Stronger real-run population (the original V10 proposal of roughly ≥25 assessments across ≥2 repos with perfect digest integrity/zero duplicate-stale corruption may be ratified or amended before freeze).

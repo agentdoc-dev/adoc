@@ -1090,6 +1090,10 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "adoc://agent/v0/schema/agentdoc.connector_capabilities.v0.schema.json",
             "agentdoc.connector_capabilities.v0.schema.json",
         ),
+        (
+            "adoc://agent/v0/schema/agentdoc.evidence_contract.v0.schema.json",
+            "agentdoc.evidence_contract.v0.schema.json",
+        ),
     ] {
         let result = server
             .read_agent_resource(uri)
@@ -1662,6 +1666,10 @@ fn retrieval_schema_ids_match_their_published_uris() {
         (
             "agentdoc.connector_capabilities.v0.schema.json",
             "adoc://agent/v0/schema/agentdoc.connector_capabilities.v0.schema.json",
+        ),
+        (
+            "agentdoc.evidence_contract.v0.schema.json",
+            "adoc://agent/v0/schema/agentdoc.evidence_contract.v0.schema.json",
         ),
     ] {
         assert_eq!(

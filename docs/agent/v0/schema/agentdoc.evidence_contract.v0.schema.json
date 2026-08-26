@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.evidence_contract.v0.schema.json",
+  "title": "AgentDoc Evidence Contract v0",
+  "description": "Versioned, precommitted evidence criteria. Contract instances are YAML documents validated through their YAML data model against this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["evidence_contract"],
+  "properties": {
+    "evidence_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "frozen_at",
+        "eligible_from",
+        "cohort_definition",
+        "minimum_population",
+        "minimum_duration",
+        "metrics",
+        "numerator_denominator_rules",
+        "exclusions",
+        "thresholds",
+        "stop_ship_conditions",
+        "approved_by"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "version": { "type": "integer", "minimum": 1 },
+        "frozen_at": { "$ref": "#/$defs/utc_timestamp" },
+        "eligible_from": { "$ref": "#/$defs/utc_timestamp" },
+        "cohort_definition": { "$ref": "#/$defs/cohort" },
+        "minimum_population": { "$ref": "#/$defs/minimum_population" },
+        "minimum_duration": {
+          "type": "string",
+          "pattern": "^P(?:0D|[1-9][0-9]*D|T(?:0S|[1-9][0-9]*[SMH]))$"
+        },
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/metric" }
+        },
+        "numerator_denominator_rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/rate_rule" }
+        },
+        "exclusions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/named_rule" }
+        },
+        "thresholds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/threshold" }
+        },
+        "stop_ship_conditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/named_rule" }
+        },
+        "approved_by": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/approval" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\s\\u0000-\\u001f\\u007f-\\u009f](?:[^\\u0000-\\u001f\\u007f-\\u009f]*[^\\s\\u0000-\\u001f\\u007f-\\u009f])?$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "utc_timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+    },
+    "git_commit_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "repository", "selection_rule"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "repository": {
+          "type": "string",
+          "pattern": "^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$"
+        },
+        "selection_rule": { "$ref": "#/$defs/text" }
+      }
+    },
+    "cohort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "repositories",
+        "run_set",
+        "action_revision",
+        "cloud_ingestion_revision",
+        "agentdoc_version",
+        "material_rule_change"
+      ],
+      "properties": {
+        "kind": { "const": "internal_real_assessments_and_controlled_suites" },
+        "repositories": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 3 }
+        },
+        "run_set": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/run" }
+        },
+        "action_revision": { "$ref": "#/$defs/git_commit_sha" },
+        "cloud_ingestion_revision": { "$ref": "#/$defs/git_commit_sha" },
+        "agentdoc_version": { "$ref": "#/$defs/text" },
+        "material_rule_change": { "const": "close_cohort_and_increment_version" }
+      }
+    },
+    "minimum_population": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "real_internal_assessments",
+        "repositories",
+        "metric_denominators"
+      ],
+      "properties": {
+        "real_internal_assessments": { "type": "integer", "minimum": 1 },
+        "repositories": { "type": "integer", "minimum": 1 },
+        "metric_denominators": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/identifier" },
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "value_kind", "numerator", "denominator"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "source": { "enum": ["real_internal_runs", "controlled_suite"] },
+        "value_kind": { "enum": ["rate", "count"] },
+        "numerator": { "$ref": "#/$defs/text" },
+        "denominator": { "$ref": "#/$defs/text" }
+      }
+    },
+    "rate_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric_id",
+        "denominator_floor",
+        "missing_or_invalid_attempt",
+        "below_floor"
+      ],
+      "properties": {
+        "metric_id": { "$ref": "#/$defs/identifier" },
+        "denominator_floor": { "type": "integer", "minimum": 1 },
+        "missing_or_invalid_attempt": { "enum": ["count_in_denominator_as_failure"] },
+        "below_floor": { "const": "descriptive_insufficient_evidence_no_promotion" }
+      }
+    },
+    "named_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "rule"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "rule": { "$ref": "#/$defs/text" }
+      }
+    },
+    "threshold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric_id", "operator", "value"],
+      "properties": {
+        "metric_id": { "$ref": "#/$defs/identifier" },
+        "operator": { "enum": ["equal", "at_least", "at_most"] },
+        "value": { "type": "number", "minimum": 0 }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["principal", "roles"],
+      "properties": {
+        "principal": { "$ref": "#/$defs/text" },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/identifier" }
+        }
+      }
+    }
+  }
+}

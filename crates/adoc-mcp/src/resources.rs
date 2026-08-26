@@ -499,6 +499,16 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.evidence_contract.v0.schema.json",
+        name: "schema-agentdoc-evidence-contract-v0-json",
+        title: "AgentDoc Evidence Contract JSON Schema",
+        description: "JSON Schema for versioned YAML evidence contracts frozen before eligible observations.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.evidence_contract.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/agentdoc.cloud.approval_command.v0.schema.json",
         name: "schema-agentdoc-cloud-approval-command-v0-json",
         title: "AgentDoc Cloud Approval Command JSON Schema",

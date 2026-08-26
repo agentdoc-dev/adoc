@@ -5,6 +5,7 @@ mod infrastructure;
 use std::path::PathBuf;
 
 pub const CONNECTOR_CAPABILITIES_SCHEMA_VERSION: &str = "agentdoc.connector_capabilities.v0";
+pub const EVIDENCE_CONTRACT_SCHEMA_VERSION: &str = "agentdoc.evidence_contract.v0";
 
 pub use application::apply::{
     ApplyProposer, ApplyTrace, ObjectHashes, PATCH_APPLY_SCHEMA_VERSION, PatchApplyResult,
