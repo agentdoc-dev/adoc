@@ -702,6 +702,9 @@ fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
         .find(|line| line.contains("`agentdoc.cloud.external_promotion_attestation.v0`"))
         .expect("external promotion attestation contract row");
     assert!(attestation.contains("trusted issuer evidence"));
+    assert!(attestation.contains("policy effect ordinal and transaction ID"));
+    assert!(attestation.contains("strictly later promotion-operation ordinal and transaction ID"));
+    assert!(attestation.contains("prior committed transaction"));
 }
 
 #[test]
