@@ -1,0 +1,115 @@
+evidence_contract:
+  id: g1a-technical-engineering-admission
+  version: 3
+  frozen_at: "2026-08-26T20:38:00Z"
+  eligible_from: "2026-08-26T20:43:00Z"
+  cohort_definition:
+    kind: internal_real_assessments_and_controlled_suites
+    repositories:
+      - agentdoc-dev/adoc
+      - agentdoc-dev/action
+      - agentdoc-dev/cloud
+    run_set:
+      - id: g1a-v3-adoc-001
+        repository: agentdoc-dev/adoc
+        selection_rule: First pull-request workflow attempt using the frozen Action revision whose GitHub Actions run created_at is at or after eligible_from; select by repository, run, and attempt before job scheduling or outcome, and count cancelled, unstarted, missing, invalid, failed, or incomplete evidence as a denominator failure.
+      - id: g1a-v3-action-001
+        repository: agentdoc-dev/action
+        selection_rule: First pull-request workflow attempt using the frozen Action revision whose GitHub Actions run created_at is at or after eligible_from; select by repository, run, and attempt before job scheduling or outcome, and count cancelled, unstarted, missing, invalid, failed, or incomplete evidence as a denominator failure.
+      - id: g1a-v3-cloud-001
+        repository: agentdoc-dev/cloud
+        selection_rule: First pull-request workflow attempt using the frozen Action revision whose GitHub Actions run created_at is at or after eligible_from; select by repository, run, and attempt before job scheduling or outcome, and count cancelled, unstarted, missing, invalid, failed, or incomplete evidence as a denominator failure.
+    action_revision: 17da62659dc164b98ccdf0f4455c7628b58cd154
+    cloud_ingestion_revision: 226a864af9996f1e88ef6f5a01d9fd50faba6051
+    agentdoc_version: v0.3.4
+    material_rule_change: close_cohort_and_increment_version
+  minimum_population:
+    real_internal_assessments: 3
+    repositories: 3
+    metric_denominators:
+      digest_match_rate: 3
+      duplicate_governance_event_count: 5
+      stale_overwrite_count: 1
+      isolation_rejection_rate: 2
+  minimum_duration: PT0S
+  metrics:
+    - id: digest_match_rate
+      source: real_internal_runs
+      value_kind: rate
+      numerator: Eligible assessments whose Action-emitted assessment and receipt digests both equal the Cloud-stored byte digests.
+      denominator: All precommitted eligible internal assessment attempts, including cancelled, unstarted, missing, invalid, failed, or incomplete deliveries.
+    - id: duplicate_governance_event_count
+      source: controlled_suite
+      value_kind: count
+      numerator: Governance events appended by repeated deliveries after the first accepted delivery.
+      denominator: Five exact redeliveries of one already accepted delivery.
+    - id: stale_overwrite_count
+      source: controlled_suite
+      value_kind: count
+      numerator: Older-head deliveries that replace the repository latest-assessment pointer.
+      denominator: Completed older-head-after-newer-head ordering attempts.
+    - id: isolation_rejection_rate
+      source: controlled_suite
+      value_kind: rate
+      numerator: Cross-Workspace submission attempts rejected before observation storage.
+      denominator: All precommitted cross-Workspace submission attempts.
+  numerator_denominator_rules:
+    - metric_id: digest_match_rate
+      denominator_floor: 3
+      missing_or_invalid_attempt: count_in_denominator_as_failure
+      below_floor: descriptive_insufficient_evidence_no_promotion
+    - metric_id: duplicate_governance_event_count
+      denominator_floor: 5
+      missing_or_invalid_attempt: count_in_denominator_as_failure
+      below_floor: descriptive_insufficient_evidence_no_promotion
+    - metric_id: stale_overwrite_count
+      denominator_floor: 1
+      missing_or_invalid_attempt: count_in_denominator_as_failure
+      below_floor: descriptive_insufficient_evidence_no_promotion
+    - metric_id: isolation_rejection_rate
+      denominator_floor: 2
+      missing_or_invalid_attempt: count_in_denominator_as_failure
+      below_floor: descriptive_insufficient_evidence_no_promotion
+  exclusions:
+    - id: fixture_or_synthetic_assessment
+      rule: Fixtures and synthetic assessment documents never count as real internal assessments.
+    - id: before_eligibility
+      rule: Observations before eligible_from are excluded and may not be reclassified later.
+    - id: unpinned_runtime
+      rule: Runs not using the frozen AgentDoc, Action, and Cloud ingestion revisions are excluded.
+    - id: changed_contract
+      rule: Observations under materially changed rules belong to a new contract version and cohort.
+  thresholds:
+    - metric_id: digest_match_rate
+      operator: equal
+      value: 1
+    - metric_id: duplicate_governance_event_count
+      operator: equal
+      value: 0
+    - metric_id: stale_overwrite_count
+      operator: equal
+      value: 0
+    - metric_id: isolation_rejection_rate
+      operator: equal
+      value: 1
+  stop_ship_conditions:
+    - id: suite_failure
+      rule: Any contract, idempotency, digest, stale-ordering, or isolation suite is not green.
+    - id: accepted_digest_mismatch
+      rule: Cloud accepts any assessment or receipt whose claimed digest differs from its exact bytes.
+    - id: duplicate_governance_event
+      rule: Exact delivery replay appends any duplicate governance event.
+    - id: stale_overwrite
+      rule: An older head replaces newer repository assessment state.
+    - id: cross_workspace_disclosure
+      rule: Any cross-Workspace attempt reads or stores another Workspace's assessment data.
+    - id: false_success
+      rule: A required processing failure is represented as success.
+    - id: material_contract_rewrite
+      rule: Criteria are materially edited after eligible evidence exists without closing this cohort version.
+  approved_by:
+    - principal: alex-bako
+      roles:
+        - product_owner
+        - engineering_owner
+        - security_owner

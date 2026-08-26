@@ -1,22 +1,39 @@
 use std::collections::HashSet;
+use std::fmt::Write;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v2.yaml";
+const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v3.yaml";
 const FROZEN_CONTRACTS: &[(&str, &str)] = &[
     (
         "docs/pilots/g1a/evidence-contract-v1.yaml",
-        "0a254fa4f160f61f8bf0551acf8588211aab6503",
+        "ab438c85bbfc5e8842a7bb4f547cce05235fa79160517f6f334a207ece6fc60c",
     ),
-    (ACTIVE_CONTRACT, "26d8108508945f0db58f4fea911f8517cbba931e"),
+    (
+        "docs/pilots/g1a/evidence-contract-v2.yaml",
+        "bb58ff8dbc7c5ea1e0dce6398579d2af83b4ccb6bc246725cccf48040f54b79a",
+    ),
+    (
+        ACTIVE_CONTRACT,
+        "e3d70e6a16609bd595a14aa5246437307281090ecc8ab5aa116b50084fa00822",
+    ),
 ];
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut output = String::with_capacity(64);
+    for byte in digest {
+        let _ = write!(output, "{byte:02x}");
+    }
+    output
+}
 
 fn contract(path: &str) -> Value {
     serde_saphyr::from_str(
@@ -39,7 +56,7 @@ fn g1a_contract_validates_against_the_single_evidence_contract_schema() {
     )
     .expect("evidence contract schema is JSON");
     let validator = jsonschema::validator_for(&schema).expect("evidence contract schema compiles");
-    for path in ["docs/pilots/g1a/evidence-contract-v1.yaml", ACTIVE_CONTRACT] {
+    for (path, _) in FROZEN_CONTRACTS {
         let errors = validator
             .iter_errors(&contract(path))
             .map(|error| error.to_string())
@@ -170,8 +187,10 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
     assert_eq!(run_ids.len(), runs.len(), "run ids must be unique");
     assert!(runs.iter().all(|run| {
         let rule = run["selection_rule"].as_str().expect("selection rule");
-        rule.contains("select by repository, run, and attempt before outcome")
-            && rule.contains("failed, or incomplete evidence as a denominator failure")
+        rule.contains("created_at is at or after eligible_from")
+            && rule.contains("before job scheduling or outcome")
+            && rule.contains("unstarted")
+            && rule.contains("incomplete evidence as a denominator failure")
     }));
     assert_eq!(
         runs.len() as u64,
@@ -188,7 +207,7 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
 }
 
 #[test]
-fn every_frozen_contract_matches_its_immutable_git_anchor() {
+fn every_frozen_contract_matches_its_sha256_seal() {
     let repository = root();
     let contracts = fs::read_dir(repository.join("docs/pilots/g1a"))
         .expect("G1A pilot directory is readable")
@@ -206,19 +225,13 @@ fn every_frozen_contract_matches_its_immutable_git_anchor() {
             .iter()
             .map(|(path, _)| (*path).to_owned())
             .collect(),
-        "every published contract version must have an immutable Git anchor"
+        "every published contract version must have an immutable digest seal"
     );
 
-    for (path, frozen_at_commit) in FROZEN_CONTRACTS {
-        let frozen = Command::new("git")
-            .args(["show", &format!("{frozen_at_commit}:{path}")])
-            .current_dir(&repository)
-            .output()
-            .expect("git show runs");
-        assert!(frozen.status.success(), "git show failed for {path}");
+    for (path, expected_sha256) in FROZEN_CONTRACTS {
         assert_eq!(
-            fs::read(repository.join(path)).expect("frozen contract bytes"),
-            frozen.stdout,
+            sha256_hex(&fs::read(repository.join(path)).expect("frozen contract bytes")),
+            *expected_sha256,
             "{path} changed; close this cohort and add a new version"
         );
     }

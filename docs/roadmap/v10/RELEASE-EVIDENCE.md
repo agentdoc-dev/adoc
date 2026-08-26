@@ -144,7 +144,7 @@ Separate evidence lines for executor quality, workflow usefulness, gate behavior
 
 Freeze before first eligible internal tracer run. Includes replay/stale-run/digest/idempotency/isolation suites plus a small precommitted set of real internal assessments. Passing G1A allows governance implementation to proceed internally.
 
-G1A contract v2 is frozen in [`docs/pilots/g1a/evidence-contract-v2.yaml`](../../pilots/g1a/evidence-contract-v2.yaml) and validates against the single reusable [`agentdoc.evidence_contract.v0`](../../agent/v0/schema/agentdoc.evidence_contract.v0.schema.json) schema. The flawed v1 cohort is [closed without promotion](../../pilots/g1a/cohort-v1-closure.md), preserving its contract and observation rather than rewriting either. The v2 readout remains a separate pass/fail artifact; publishing the criteria does not claim the gate passed.
+G1A contract v3 is frozen in [`docs/pilots/g1a/evidence-contract-v3.yaml`](../../pilots/g1a/evidence-contract-v3.yaml) and validates against the single reusable [`agentdoc.evidence_contract.v0`](../../agent/v0/schema/agentdoc.evidence_contract.v0.schema.json) schema. The flawed [v1](../../pilots/g1a/cohort-v1-closure.md) and [v2](../../pilots/g1a/cohort-v2-closure.md) cohorts are closed without promotion, preserving their contracts and observations rather than rewriting either. The v3 readout remains a separate pass/fail artifact; publishing the criteria does not claim the gate passed.
 
 ### G1B — external Pilot Candidate admission
 
