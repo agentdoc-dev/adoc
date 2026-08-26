@@ -176,6 +176,11 @@ fn source_record_rejects_unknown_version_with_remediation() {
     let record = build_source_record(input()).expect("source record builds");
     let mut document = serde_json::to_value(record).expect("record serializes");
     document["schema_version"] = serde_json::json!("adoc.source_record.v99");
+    document
+        .as_object_mut()
+        .expect("record is an object")
+        .remove("content_digest");
+    document["future_digest"] = serde_json::json!("future-specific-shape");
 
     let error = validate_source_record(
         serde_json::to_string(&document)

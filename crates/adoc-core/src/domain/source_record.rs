@@ -186,20 +186,25 @@ pub fn validate_source_record(
 ) -> Result<SourceRecord, SourceRecordError> {
     let version: RawEnvelopeVersion = serde_json::from_slice(document)
         .map_err(|error| invalid(format!("invalid JSON or schema version: {error}")))?;
+    if !matches!(
+        version.schema_version.as_str(),
+        SOURCE_RECORD_SCHEMA_VERSION_V0 | SOURCE_RECORD_SCHEMA_VERSION
+    ) {
+        return Err(SourceRecordError::UnsupportedVersion {
+            version: version.schema_version,
+        });
+    }
     let raw: RawSourceRecord =
         serde_json::from_slice(document).map_err(|error| invalid(error.to_string()))?;
-    match version.schema_version.as_str() {
-        SOURCE_RECORD_SCHEMA_VERSION_V0 if raw.source_acl_scope.is_none() => {}
-        SOURCE_RECORD_SCHEMA_VERSION if raw.source_acl_scope.is_some() => {}
-        SOURCE_RECORD_SCHEMA_VERSION_V0 | SOURCE_RECORD_SCHEMA_VERSION => {
+    match (
+        version.schema_version.as_str(),
+        raw.source_acl_scope.is_some(),
+    ) {
+        (SOURCE_RECORD_SCHEMA_VERSION_V0, false) | (SOURCE_RECORD_SCHEMA_VERSION, true) => {}
+        _ => {
             return Err(invalid(
                 "source_acl_scope does not match the schema version",
             ));
-        }
-        _ => {
-            return Err(SourceRecordError::UnsupportedVersion {
-                version: version.schema_version,
-            });
         }
     }
     let observed_at = DateTime::parse_from_rfc3339(&raw.observed_at)
