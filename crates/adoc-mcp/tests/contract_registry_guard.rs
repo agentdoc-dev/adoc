@@ -682,6 +682,8 @@ fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
         .find(|line| line.contains("`agentdoc.cloud.candidate_authority.v0`"))
         .expect("candidate authority contract row");
     assert!(row.contains("authenticated submitting principal"));
+    assert!(row.contains("exact managed candidate version ID and content digest"));
+    assert!(row.contains("strictly later candidate-operation ordinal"));
 
     let conflict = registry
         .lines()
@@ -694,6 +696,23 @@ fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
         .find(|line| line.contains("`agentdoc.cloud.external_promotion_attestation.v0`"))
         .expect("external promotion attestation contract row");
     assert!(attestation.contains("trusted issuer evidence"));
+}
+
+#[test]
+fn connector_authority_policy_receipt_orders_effect_and_exact_matches_authorization() {
+    let registry = registry();
+    let block =
+        support::doc_scan::anchored_block(&registry, REGISTRY, "registry:envelopes-planned");
+    let row = block
+        .lines()
+        .find(|line| line.contains("`agentdoc.cloud.connector_authority_policy_receipt.v0`"))
+        .expect("connector authority policy receipt contract row");
+
+    assert!(row.contains("prior effective policy ID/version"));
+    assert!(row.contains("policy effect ordinal"));
+    assert!(row.contains("strictly later governed-operation ordinal"));
+    assert!(row.contains("`connector.configure` permission"));
+    assert!(row.contains("exact-match the change"));
 }
 
 #[test]
