@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 use serde_json::Value;
 
@@ -8,12 +9,17 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-fn contract() -> Value {
+const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v2.yaml";
+
+fn contract(path: &str) -> Value {
     serde_saphyr::from_str(
-        &fs::read_to_string(root().join("docs/pilots/g1a/evidence-contract-v1.yaml"))
-            .expect("G1A evidence contract is readable"),
+        &fs::read_to_string(root().join(path)).expect("G1A evidence contract is readable"),
     )
     .expect("G1A evidence contract is valid YAML")
+}
+
+fn active_contract() -> Value {
+    contract(ACTIVE_CONTRACT)
 }
 
 #[test]
@@ -25,18 +31,19 @@ fn g1a_contract_validates_against_the_single_evidence_contract_schema() {
         .expect("evidence contract schema is readable"),
     )
     .expect("evidence contract schema is JSON");
-    let instance = contract();
     let validator = jsonschema::validator_for(&schema).expect("evidence contract schema compiles");
-    let errors = validator
-        .iter_errors(&instance)
-        .map(|error| error.to_string())
-        .collect::<Vec<_>>();
-    assert!(errors.is_empty(), "{}", errors.join("\n"));
+    for path in ["docs/pilots/g1a/evidence-contract-v1.yaml", ACTIVE_CONTRACT] {
+        let errors = validator
+            .iter_errors(&contract(path))
+            .map(|error| error.to_string())
+            .collect::<Vec<_>>();
+        assert!(errors.is_empty(), "{path}: {}", errors.join("\n"));
+    }
 }
 
 #[test]
 fn frozen_at_precedes_the_earliest_eligible_observation() {
-    let instance = contract();
+    let instance = active_contract();
     let evidence = &instance["evidence_contract"];
     let frozen_at = evidence["frozen_at"].as_str().expect("frozen_at");
     let earliest_eligible_observation = evidence["eligible_from"].as_str().expect("eligible_from");
@@ -46,7 +53,7 @@ fn frozen_at_precedes_the_earliest_eligible_observation() {
 
 #[test]
 fn every_metric_has_one_named_denominator_floor_and_threshold() {
-    let instance = contract();
+    let instance = active_contract();
     let evidence = &instance["evidence_contract"];
     let metrics = evidence["metrics"].as_array().expect("metrics");
     let ids = metrics
@@ -96,7 +103,7 @@ fn every_metric_has_one_named_denominator_floor_and_threshold() {
 
 #[test]
 fn real_run_set_is_precommitted_at_the_population_floor() {
-    let instance = contract();
+    let instance = active_contract();
     let evidence = &instance["evidence_contract"];
     let runs = evidence["cohort_definition"]["run_set"]
         .as_array()
@@ -111,6 +118,11 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
         .collect::<HashSet<_>>();
 
     assert_eq!(run_ids.len(), runs.len(), "run ids must be unique");
+    assert!(runs.iter().all(|run| {
+        let rule = run["selection_rule"].as_str().expect("selection rule");
+        rule.contains("select by repository, run, and attempt before outcome")
+            && rule.contains("failed, or incomplete evidence as a denominator failure")
+    }));
     assert_eq!(
         runs.len() as u64,
         evidence["minimum_population"]["real_internal_assessments"]
@@ -122,5 +134,41 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
         evidence["minimum_population"]["repositories"]
             .as_u64()
             .expect("repository floor")
+    );
+}
+
+#[test]
+fn frozen_contract_bytes_match_the_commit_that_introduced_this_version() {
+    let repository = root();
+    let log = Command::new("git")
+        .args([
+            "log",
+            "--diff-filter=A",
+            "--format=%H",
+            "--",
+            ACTIVE_CONTRACT,
+        ])
+        .current_dir(&repository)
+        .output()
+        .expect("git log runs");
+    assert!(log.status.success(), "git log failed");
+    let Some(introduced_by) = String::from_utf8(log.stdout)
+        .expect("git log is UTF-8")
+        .lines()
+        .next_back()
+        .map(str::to_owned)
+    else {
+        return; // Pre-commit local check; hosted CI always sees the introducing commit.
+    };
+    let frozen = Command::new("git")
+        .args(["show", &format!("{introduced_by}:{ACTIVE_CONTRACT}")])
+        .current_dir(&repository)
+        .output()
+        .expect("git show runs");
+    assert!(frozen.status.success(), "git show failed");
+    assert_eq!(
+        fs::read(repository.join(ACTIVE_CONTRACT)).expect("active contract bytes"),
+        frozen.stdout,
+        "frozen contract bytes changed; close this cohort and add a new version"
     );
 }
