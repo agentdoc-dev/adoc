@@ -726,6 +726,7 @@ fn connector_authority_policy_receipt_orders_effect_and_exact_matches_authorizat
     assert!(row.contains("policy effective for its exact scope at that operation ordinal"));
     assert!(row.contains("`connector.configure` permission"));
     assert!(row.contains("exact-match the change"));
+    assert!(row.contains("authorization state effective for the policy-change transaction"));
 }
 
 #[test]
