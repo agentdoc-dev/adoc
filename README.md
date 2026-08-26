@@ -196,6 +196,7 @@ Prompts:
 - `adoc_diff`
 - `adoc_review`
 - `adoc_project_status`
+- `adoc_evidence_contract_validate`
 <!-- /adoc:mcp-tools -->
 
 Agents should begin by reading `adoc://agent/v0/usage-contract`, getting the

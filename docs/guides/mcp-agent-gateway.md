@@ -32,6 +32,7 @@ The gateway registers these tools (this list is guard-tested against the
 - `adoc_diff`
 - `adoc_review`
 - `adoc_project_status`
+- `adoc_evidence_contract_validate`
 <!-- /adoc:mcp-tools -->
 
 ## Build The Server
