@@ -723,6 +723,7 @@ fn connector_authority_policy_receipt_orders_effect_and_exact_matches_authorizat
     assert!(row.contains("strictly later governed-operation ordinal"));
     assert!(row.contains("prior committed transaction"));
     assert!(row.contains("distinct governed transaction ID"));
+    assert!(row.contains("policy effective for its exact scope at that operation ordinal"));
     assert!(row.contains("`connector.configure` permission"));
     assert!(row.contains("exact-match the change"));
 }
