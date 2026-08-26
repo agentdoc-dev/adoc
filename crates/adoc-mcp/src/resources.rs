@@ -489,6 +489,16 @@ const RESOURCES: &[AgentResource] = &[
         contents: include_str!("../../../docs/agent/v0/schema/adoc.work_result.v0.schema.json"),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/agentdoc.connector_capabilities.v0.schema.json",
+        name: "schema-agentdoc-connector-capabilities-v0-json",
+        title: "Connector Capability Manifest JSON Schema",
+        description: "JSON Schema for version-exact, per-capability connector maturity manifests.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/agentdoc.connector_capabilities.v0.schema.json"
+        ),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/agentdoc.cloud.approval_command.v0.schema.json",
         name: "schema-agentdoc-cloud-approval-command-v0-json",
         title: "AgentDoc Cloud Approval Command JSON Schema",

@@ -59,6 +59,7 @@ Producer for every row is the `adoc` release train (CLI, MCP server, and local g
 | `adoc.work_result.v0` | shipped | adoc 0.4.x | external workers; Cloud verifier and Action hand-off | exact-match reader and canonical digest builder using recursively ASCII-key-sorted compact UTF-8 JSON; repeats request ID/digest, Workspace/repository/revision and authorized workload identity, then binds runtime name/version, completion nonce, named output digests, and result digest; output names are unique lower-snake-case keys serialized in ascending ASCII order for cross-runtime digest stability; any cross-request/repository/revision/Workspace substitution fails (ADR-0061) |
 | `adoc.validation_receipt.v0` | shipped | adoc 0.4.0 | adoc 0.4.0 (CLI receipt mode, contract-tested; schema `adoc.validation_receipt.v0.schema.json`); checksum-pinned CI harness and Cloud driver consume receipt bytes (E1.7.T2/T3) | exact-match retained receipt; digest-bound AgentDoc Validation Runtime receipt (SEMANTICS §S6) with closed context names `config` / `context_artifact` / `semantic_context`; closed result vocabulary `pass` / `fail`; deterministic explicit evaluation date and validator-only construction; Evidence Anchor reads stay advisory and outside the digest binding |
 | `adoc.validation_receipt.v1` | shipped | adoc 0.4.x | adoc 0.4.x Cloud-bound receipt mode; Cloud canonical store (E4.2) | exact-match successor adding the closed `source_invocation` context name; otherwise preserves v0 semantics and exact runtime/input/context/diagnostics digest binding; the invocation digest binds immutable source namespace/revision/Binding/ACL/config/evaluation-date evidence without making Cloud data domain authority |
+| `agentdoc.connector_capabilities.v0` | shipped | adoc 0.4.x | Action adapter manifests; Cloud capability-policy validation (E4.5) | exact-match reader; binds one claimed publisher and exact adapter version to a non-empty per-capability manifest with closed maturity and processing-mode vocabularies, explicit dependency/contract ranges, limitations, deployment modes, and optional qualification evidence; `ga` structurally requires an evidence reference, while Cloud independently authenticates publisher/qualification authority; overall stage is display-only and never policy input |
 <!-- /registry:envelopes-shipped-adoc -->
 
 ## Envelopes — shipped, owner `action`
@@ -96,6 +97,7 @@ Deliberately invalid version fixtures cited from test modules in `crates/*/src`,
 | `adoc.source_record.v99` | fixture | rejected-version fixture proving Source Records fail with exact-version remediation |
 | `adoc.work_request.v99` | fixture | rejected-version fixture proving external work requests fail with exact-version remediation |
 | `adoc.work_result.v99` | fixture | rejected-version fixture proving external work results fail with exact-version remediation |
+| `agentdoc.connector_capabilities.v1` | fixture | rejected-version fixture proving connector capability manifests fail closed on an unsupported exact successor |
 | `agentdoc.cloud.assessment_submission.v99` | fixture | rejected-version fixture proving `/api/v1` rejects unknown or superseded assessment-submission contracts with registered remediation |
 <!-- /registry:test-fixture-ids -->
 
@@ -113,7 +115,6 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record; extended at E2.4 with AgentDoc group and external-binding provenance |
 | `adoc.migration_request.v0` | adoc | E7.1 | portable exact-revision migration domain contract reserved by E0.3; Cloud's external operation wrapper is `agentdoc.cloud.migration_request.v0` |
 | `adoc.migration_receipt.v0` | adoc | E7.1 | portable migration-receipt domain contract reserved by E0.3; Cloud's external operation wrapper is `agentdoc.cloud.migration_receipt.v0` |
-| `agentdoc.connector_capabilities.v0` | adoc | E4.5 | capability manifest bound to exact adapter version and publisher |
 | `agentdoc.cloud.assessment_submission.v0` | cloud | E4.4 | exact-version `/api/v1` assessment-submission transport; payload semantics and durable ingestion remain E4.6-owned |
 | `agentdoc.cloud.ingestion_result.v0` | cloud | E4.4 | exact-version ingestion-result transport; disposition semantics remain E4.6-owned |
 | `agentdoc.cloud.repository_config.v0` | cloud | E4.4 | exact-version external repository-configuration transport |

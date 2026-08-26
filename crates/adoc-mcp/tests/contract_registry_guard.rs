@@ -468,6 +468,16 @@ fn e4_4_cloud_operation_contracts_are_registered_exactly() {
 }
 
 #[test]
+fn connector_capability_manifest_is_shipped_by_its_contract_owner() {
+    let doc = registry();
+    let shipped = anchored_ids(&doc, "registry:envelopes-shipped-adoc");
+    let planned = anchored_ids(&doc, "registry:envelopes-planned");
+
+    assert!(shipped.contains("agentdoc.connector_capabilities.v0"));
+    assert!(!planned.contains("agentdoc.connector_capabilities.v0"));
+}
+
+#[test]
 fn test_only_use_does_not_split_the_scope() {
     let fixture = r#"
         #[cfg(test)]
