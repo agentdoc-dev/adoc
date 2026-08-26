@@ -113,7 +113,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record; extended at E2.4 with AgentDoc group and external-binding provenance |
 | `adoc.migration_request.v0` | adoc | E7.1 | portable exact-revision migration domain contract reserved by E0.3; Cloud's external operation wrapper is `agentdoc.cloud.migration_request.v0` |
 | `adoc.migration_receipt.v0` | adoc | E7.1 | portable migration-receipt domain contract reserved by E0.3; Cloud's external operation wrapper is `agentdoc.cloud.migration_receipt.v0` |
-| `adoc.connector_manifest.v0` | adoc | E4.5 | capability manifest bound to exact adapter version and publisher |
+| `agentdoc.connector_capabilities.v0` | adoc | E4.5 | capability manifest bound to exact adapter version and publisher |
 | `agentdoc.cloud.assessment_submission.v0` | cloud | E4.4 | exact-version `/api/v1` assessment-submission transport; payload semantics and durable ingestion remain E4.6-owned |
 | `agentdoc.cloud.ingestion_result.v0` | cloud | E4.4 | exact-version ingestion-result transport; disposition semantics remain E4.6-owned |
 | `agentdoc.cloud.repository_config.v0` | cloud | E4.4 | exact-version external repository-configuration transport |
