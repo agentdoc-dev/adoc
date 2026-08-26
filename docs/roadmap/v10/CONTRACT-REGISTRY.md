@@ -112,7 +112,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.migration_request.v0` | adoc | E7.1 | exact-revision standalone-to-Cloud migration request |
 | `adoc.migration_receipt.v0` | adoc | E7.1 | migration receipt with qualification policy outcome |
 | `adoc.connector_manifest.v0` | adoc | E4.5 | capability manifest bound to exact adapter version and publisher |
-| `agentdoc.cloud.validation_invocation.v0` | cloud | E4.2 | closed Cloud invocation manifest whose exact bytes bind an AgentDoc validation receipt to one immutable Workspace/Source Record/Source Binding/ACL snapshot/config tuple |
+| `agentdoc.cloud.validation_invocation.v0` | cloud | E4.2 | closed Cloud invocation manifest whose exact bytes bind an AgentDoc validation receipt to one immutable Workspace/Source Record/Source Binding/ACL snapshot/config/evaluation-date tuple |
 | `adoc.governance_event.v0` | cloud | E4.2 | append-only governance transition record |
 | `adoc.semantic_endpoint_policy.v0` | cloud | E3.4 | immutable declaration binding one generic semantic endpoint id, endpoint class, exact URL, and allowed state; Action rejects a missing or non-matching declaration before invocation; moves to shipped at Cloud's first versioned release |
 | `adoc.proposal.v0` | cloud | E5.1 | canonical proposal record; includes the typed per-finding no-change disposition record (E5.3.T3) |
