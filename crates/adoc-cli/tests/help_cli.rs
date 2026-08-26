@@ -97,6 +97,9 @@ fn check_help_renders_the_semantic_context_example_as_shell_continuations() {
     --semantic-capability-policy $SEMANTIC_POLICY_JSON \
     --semantic-context semantic-context.json"
     ));
+    assert!(stdout.contains("adoc.validation_receipt.v0"));
+    assert!(stdout.contains("adoc.validation_receipt.v1"));
+    assert!(stdout.contains("--source-invocation is supplied"));
 }
 
 #[test]

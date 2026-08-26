@@ -48,10 +48,10 @@ pub(crate) fn check(
 }
 
 /// E1.7: receipt-mode check — the same validation, plus a digest-bound
-/// `adoc.validation_receipt.v0` written byte-for-byte in its canonical
-/// serialization. The runtime binary digest is the harness's attested
-/// input (`scripts/validation-runtime/run.sh` verifies its pin first);
-/// this binary contributes its own release version.
+/// receipt written byte-for-byte in its canonical serialization: v0 normally,
+/// v1 when Cloud source-invocation evidence is bound. The runtime binary digest
+/// is the harness's attested input (`scripts/validation-runtime/run.sh` verifies
+/// its pin first); this binary contributes its own release version.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn check_receipt(
     path: Option<PathBuf>,

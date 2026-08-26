@@ -47,9 +47,10 @@ Examples:
     --semantic-context semantic-context.json
 
 --receipt runs the same validation and writes a digest-bound
-adoc.validation_receipt.v0 envelope (SEMANTICS S6). Receipts are
-deterministic — no wall-clock timestamps — so --receipt requires an
-explicit --as-of and the invoking harness's attested
+adoc.validation_receipt.v0 envelope, or adoc.validation_receipt.v1 when
+--source-invocation is supplied (SEMANTICS S6). Receipts are deterministic —
+no wall-clock timestamps — so --receipt requires an explicit --as-of and the
+invoking harness's attested
 --runtime-binary-digest (a binary cannot hash itself; the harness
 verifies its pin before invoking, see scripts/validation-runtime/).
 When --semantic-context is supplied, receipt mode validates its exact
@@ -480,7 +481,7 @@ pub(crate) enum Commands {
         /// Pin lifecycle evaluation to this UTC calendar date.
         #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_evaluation_date)]
         as_of: Option<chrono::NaiveDate>,
-        /// Write a digest-bound adoc.validation_receipt.v0 to this path.
+        /// Write a digest-bound receipt: v0 normally, v1 with `--source-invocation`.
         /// Receipt mode prints plain diagnostics only: an explicit
         /// `--style` conflicts, and `--format markdown` is refused at
         /// dispatch — never silently ignored.
