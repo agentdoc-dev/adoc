@@ -82,6 +82,10 @@ pub struct ValidationRuntimeInput {
     pub runtime_binary_digest: String,
     /// Discovered project config file, digested as validation context.
     pub config_path: Option<PathBuf>,
+    /// Cloud-supplied immutable source invocation manifest. Its digest binds
+    /// namespace, revision, Source Binding, ACL snapshot, and config evidence
+    /// without teaching the validation runtime Cloud semantics.
+    pub source_invocation: Option<PathBuf>,
     /// Graph artifact to validate against the recompiled source
     /// (E1.7.T4). Consumed exact-match: any `schema_version` other than
     /// `adoc.graph.v6` is rejected with `schema.unsupported_version`, and
@@ -161,8 +165,8 @@ struct DigestEntry {
     digest: String,
 }
 
-/// One named validation-context input (`config`, `context_artifact`, or
-/// `semantic_context`).
+/// One named validation-context input (`config`, `source_invocation`,
+/// `context_artifact`, or `semantic_context`).
 #[derive(Debug, Clone, Serialize)]
 struct NamedDigestEntry {
     name: String,
@@ -239,6 +243,12 @@ fn run_with_provider<P: SourceProvider>(
         context.push(NamedDigestEntry {
             name: "config".to_string(),
             digest: file_digest(config_path)?,
+        });
+    }
+    if let Some(source_invocation) = &input.source_invocation {
+        context.push(NamedDigestEntry {
+            name: "source_invocation".to_string(),
+            digest: file_digest(source_invocation)?,
         });
     }
 
@@ -693,6 +703,7 @@ mod tests {
             runtime_version: "0.4.0".to_string(),
             runtime_binary_digest: TEST_DIGEST.to_string(),
             config_path: None,
+            source_invocation: None,
             context_artifact: None,
             semantic_context: None,
             semantic_context_expectations: None,
@@ -975,6 +986,31 @@ mod tests {
             serde_json::from_str(&outcome.receipt.to_canonical_json()).expect("receipt is json");
         assert_eq!(value["context"][0]["name"], "context_artifact");
         assert_eq!(value["contract_versions"]["graph"], "adoc.graph.v6");
+    }
+
+    #[test]
+    fn source_invocation_manifest_is_digest_bound() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let docs = workspace.path().join("docs");
+        write(&docs.join("index.adoc"), valid_source());
+        let invocation = workspace.path().join("source-invocation.json");
+        write(
+            &invocation,
+            r#"{"source":"agentdoc-dev/adoc","revision":"head-sha"}"#,
+        );
+
+        let mut input = standalone_input(&docs);
+        input.source_invocation = Some(invocation);
+        let outcome = run_validation_runtime(input).expect("validation runs");
+        let receipt: serde_json::Value =
+            serde_json::from_str(&outcome.receipt.to_canonical_json()).expect("receipt json");
+
+        assert_eq!(receipt["context"][0]["name"], "source_invocation");
+        assert_eq!(
+            receipt["context"][0]["digest"],
+            sha256_prefixed(r#"{"source":"agentdoc-dev/adoc","revision":"head-sha"}"#.as_bytes())
+        );
+        assert_receipt_matches_published_schema(&outcome.receipt.to_canonical_json());
     }
 
     #[test]

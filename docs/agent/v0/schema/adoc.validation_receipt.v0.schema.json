@@ -47,14 +47,21 @@
       }
     },
     "context": {
-      "description": "Named validation-context inputs where applicable: config, context_artifact, and semantic_context. Digests bind the exact bytes read once and validated by the runtime.",
+      "description": "Named validation-context inputs where applicable: config, source_invocation, context_artifact, and semantic_context. Digests bind the exact bytes read once and validated by the runtime.",
       "type": "array",
       "items": {
         "type": "object",
         "required": ["name", "digest"],
         "additionalProperties": false,
         "properties": {
-          "name": { "enum": ["config", "context_artifact", "semantic_context"] },
+          "name": {
+            "enum": [
+              "config",
+              "source_invocation",
+              "context_artifact",
+              "semantic_context"
+            ]
+          },
           "digest": { "$ref": "#/$defs/sha256" }
         }
       }

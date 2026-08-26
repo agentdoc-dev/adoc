@@ -673,6 +673,7 @@ where
         runtime_version: input.runtime_version,
         runtime_binary_digest: input.runtime_binary_digest,
         config_path: target.config_path,
+        source_invocation: None,
         context_artifact,
         semantic_context,
         semantic_context_expectations: input.semantic_context_expectations,
