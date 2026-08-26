@@ -3,6 +3,7 @@ use std::fmt::Write;
 use std::fs;
 use std::path::PathBuf;
 
+use adoc_core::{EvidenceContractValidationError, validate_evidence_contract};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -122,74 +123,14 @@ fn frozen_at_precedes_the_earliest_eligible_observation() {
     assert!(frozen_at < earliest_eligible_observation);
 }
 
-fn metric_links_are_exact(evidence: &Value) -> bool {
-    let Some(metrics) = evidence["metrics"].as_array() else {
-        return false;
-    };
-    let Some(metric_ids) = metrics
-        .iter()
-        .map(|metric| metric["id"].as_str())
-        .collect::<Option<Vec<_>>>()
-    else {
-        return false;
-    };
-    if !metrics.iter().all(|metric| {
-        metric["denominator"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty())
-    }) {
-        return false;
-    }
-
-    let Some(rules) = evidence["numerator_denominator_rules"].as_array() else {
-        return false;
-    };
-    let Some(rule_ids) = rules
-        .iter()
-        .map(|rule| rule["metric_id"].as_str())
-        .collect::<Option<Vec<_>>>()
-    else {
-        return false;
-    };
-    let Some(thresholds) = evidence["thresholds"].as_array() else {
-        return false;
-    };
-    let Some(threshold_ids) = thresholds
-        .iter()
-        .map(|threshold| threshold["metric_id"].as_str())
-        .collect::<Option<Vec<_>>>()
-    else {
-        return false;
-    };
-    let Some(floors) = evidence["minimum_population"]["metric_denominators"].as_object() else {
-        return false;
-    };
-
-    let metric_ids = metric_ids.into_iter().collect::<HashSet<_>>();
-    let rule_id_set = rule_ids.iter().copied().collect::<HashSet<_>>();
-    let threshold_id_set = threshold_ids.iter().copied().collect::<HashSet<_>>();
-    let floor_ids = floors.keys().map(String::as_str).collect::<HashSet<_>>();
-
-    metric_ids.len() == metrics.len()
-        && rule_id_set.len() == rules.len()
-        && threshold_id_set.len() == thresholds.len()
-        && metric_ids == rule_id_set
-        && metric_ids == threshold_id_set
-        && metric_ids == floor_ids
-        && rules.iter().all(|rule| {
-            rule["metric_id"]
-                .as_str()
-                .and_then(|id| floors.get(id))
-                .is_some_and(|floor| rule["denominator_floor"] == *floor)
-        })
-}
-
 #[test]
 fn every_contract_has_unique_and_exactly_linked_metric_rules() {
     for (path, _) in FROZEN_CONTRACTS {
+        let validation = validate_evidence_contract(&contract(path));
         assert!(
-            metric_links_are_exact(&contract(path)["evidence_contract"]),
-            "{path} has ambiguous metric links"
+            validation.valid,
+            "{path} has ambiguous metric links: {:?}",
+            validation.errors
         );
     }
 }
@@ -197,16 +138,25 @@ fn every_contract_has_unique_and_exactly_linked_metric_rules() {
 #[test]
 fn semantic_validator_rejects_duplicate_and_orphan_metric_links() {
     let mut duplicate = active_contract();
-    let metric = duplicate["evidence_contract"]["metrics"][0].clone();
+    let mut metric = duplicate["evidence_contract"]["metrics"][0].clone();
+    metric["source"] = json!("different_source");
     duplicate["evidence_contract"]["metrics"]
         .as_array_mut()
         .expect("metrics")
         .push(metric);
-    assert!(!metric_links_are_exact(&duplicate["evidence_contract"]));
+    assert!(
+        validate_evidence_contract(&duplicate)
+            .errors
+            .contains(&EvidenceContractValidationError::MetricIdDuplicate)
+    );
 
     let mut orphan = active_contract();
     orphan["evidence_contract"]["thresholds"][0]["metric_id"] = json!("orphan_metric");
-    assert!(!metric_links_are_exact(&orphan["evidence_contract"]));
+    assert!(
+        validate_evidence_contract(&orphan)
+            .errors
+            .contains(&EvidenceContractValidationError::ThresholdMetricIdsMismatch)
+    );
 }
 
 #[test]

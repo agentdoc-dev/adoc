@@ -60,6 +60,9 @@ pub use application::validation_runtime::{
     ValidationRuntimeOutcome, run_validation_runtime,
 };
 pub use domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
+pub use domain::evidence_contract::{
+    EvidenceContractValidation, EvidenceContractValidationError, validate_evidence_contract,
+};
 pub use domain::executor_qualification::{
     EXECUTOR_QUALIFICATION_SCHEMA_VERSION, ExecutorAuthority, ExecutorConfiguration,
     ExecutorEligibility, ExecutorQualification, ExecutorQualificationError,

@@ -8,7 +8,8 @@ mod support;
 use adoc_local::{PathPolicy, ProjectRootPathPolicy};
 use adoc_mcp::{
     AdocDiffParams, AdocPatchCheckParams, AdocReviewParams, AgentDocMcpServer, BuildParams,
-    InitParams, PatchInput, ProjectStatusParams, SearchParams, WhyParams,
+    EvidenceContractValidateParams, InitParams, PatchInput, ProjectStatusParams, SearchParams,
+    WhyParams,
 };
 use rmcp::ServerHandler;
 use rmcp::model::ResourceContents;
@@ -53,6 +54,32 @@ fn path_policy_rejects_parent_escape() {
         .expect_err("escape rejected");
 
     assert!(error.to_string().contains("path_outside_project"));
+}
+
+#[test]
+fn evidence_contract_validation_is_a_reusable_mcp_path() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let server = AgentDocMcpServer::new(workspace.path().to_path_buf());
+    let mut contract = serde_json::json!({"evidence_contract": {
+        "metrics": [{"id": "rate"}],
+        "numerator_denominator_rules": [{"metric_id": "rate", "denominator_floor": 2}],
+        "thresholds": [{"metric_id": "rate"}],
+        "minimum_population": {"metric_denominators": {"rate": 2}}
+    }});
+
+    let valid = server
+        .run_evidence_contract_validate(EvidenceContractValidateParams {
+            contract: contract.clone(),
+        })
+        .expect("validation runs");
+    assert_eq!(valid["valid"], true);
+
+    contract["evidence_contract"]["thresholds"][0]["metric_id"] = serde_json::json!("orphan");
+    let invalid = server
+        .run_evidence_contract_validate(EvidenceContractValidateParams { contract })
+        .expect("validation runs");
+    assert_eq!(invalid["valid"], false);
+    assert_eq!(invalid["errors"][0], "threshold_metric_ids_mismatch");
 }
 
 #[test]

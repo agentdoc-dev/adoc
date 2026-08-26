@@ -2,6 +2,7 @@
 pub(crate) mod artifact;
 pub(crate) mod ast;
 pub(crate) mod diagnostic;
+pub(crate) mod evidence_contract;
 pub(crate) mod executor_qualification;
 pub(crate) mod external_work;
 pub(crate) mod graph;

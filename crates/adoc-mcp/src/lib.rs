@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use adoc_core::{
     GraphDirection, GraphRelationKind, PatchJsonInput, RetrievalEnvelope, check_patch_json,
-    mcp_patch_apply_disabled_refusal,
+    mcp_patch_apply_disabled_refusal, validate_evidence_contract,
 };
 use adoc_local::{
     BuildInput, CheckInput, ContradictionsInput, DiffInput, GraphInput, ImpactedChangedSet,
@@ -285,6 +285,13 @@ impl AgentDocMcpServer {
         serde_json::to_value(outcome).map_err(Into::into)
     }
 
+    pub fn run_evidence_contract_validate(
+        &self,
+        params: EvidenceContractValidateParams,
+    ) -> McpAdapterResult<serde_json::Value> {
+        serde_json::to_value(validate_evidence_contract(&params.contract)).map_err(Into::into)
+    }
+
     pub fn list_agent_resources(&self) -> Vec<Resource> {
         resources::list()
     }
@@ -502,6 +509,19 @@ impl AgentDocMcpServer {
         Parameters(params): Parameters<ProjectStatusParams>,
     ) -> Result<CallToolResult, ErrorData> {
         self.run_project_status(params)
+            .map(CallToolResult::structured)
+            .map_err(adapter_error)
+    }
+
+    #[tool(
+        name = "adoc_evidence_contract_validate",
+        description = "Validate cross-field metric IDs and denominator floors after an agentdoc.evidence_contract.v0 instance passes JSON Schema validation. This is the reusable semantic validation path for every cohort type."
+    )]
+    pub fn adoc_evidence_contract_validate(
+        &self,
+        Parameters(params): Parameters<EvidenceContractValidateParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_evidence_contract_validate(params)
             .map(CallToolResult::structured)
             .map_err(adapter_error)
     }
@@ -725,6 +745,12 @@ pub struct ProjectStatusParams {
     pub refresh: Option<String>,
     #[serde(default)]
     pub no_embeddings: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceContractValidateParams {
+    pub contract: serde_json::Value,
 }
 
 fn resolve_graph_artifact_for_inline_patch<P>(
