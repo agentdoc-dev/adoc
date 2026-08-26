@@ -691,6 +691,7 @@ fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
     assert!(row.contains("current allow authorization decision"));
     assert!(row.contains("`knowledge.propose` permission"));
     assert!(row.contains("evaluated scope exact-matches the submission"));
+    assert!(row.contains("authorization state effective for the candidate-operation transaction"));
 
     let conflict = registry
         .lines()
