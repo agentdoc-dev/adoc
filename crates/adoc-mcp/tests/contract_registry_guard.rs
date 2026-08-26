@@ -673,6 +673,18 @@ fn planned_rows_name_exactly_one_owner_repo() {
 }
 
 #[test]
+fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
+    let registry = registry();
+    let block =
+        support::doc_scan::anchored_block(&registry, REGISTRY, "registry:envelopes-planned");
+    let row = block
+        .lines()
+        .find(|line| line.contains("`agentdoc.cloud.candidate_authority.v0`"))
+        .expect("candidate authority contract row");
+    assert!(row.contains("authenticated submitting principal"));
+}
+
+#[test]
 fn permission_primitives_match_the_e2_2_registry() {
     let actual = anchored_ids(&registry(), "registry:permission-primitives");
     let expected = [
