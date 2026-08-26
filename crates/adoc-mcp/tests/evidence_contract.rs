@@ -115,12 +115,15 @@ fn shared_schema_accepts_a_non_g1a_cohort_without_g1a_revisions() {
 
 #[test]
 fn frozen_at_precedes_the_earliest_eligible_observation() {
-    let instance = active_contract();
-    let evidence = &instance["evidence_contract"];
-    let frozen_at = evidence["frozen_at"].as_str().expect("frozen_at");
-    let earliest_eligible_observation = evidence["eligible_from"].as_str().expect("eligible_from");
-
-    assert!(frozen_at < earliest_eligible_observation);
+    for (path, _) in FROZEN_CONTRACTS {
+        let validation = validate_evidence_contract(&contract(path));
+        assert!(
+            !validation
+                .errors
+                .contains(&EvidenceContractValidationError::FreezeOrderingInvalid),
+            "{path} is eligible before its freeze"
+        );
+    }
 }
 
 #[test]
@@ -157,6 +160,19 @@ fn semantic_validator_rejects_duplicate_and_orphan_metric_links() {
             .errors
             .contains(&EvidenceContractValidationError::ThresholdMetricIdsMismatch)
     );
+}
+
+#[test]
+fn semantic_validator_rejects_eligibility_at_or_before_freeze() {
+    for eligible_from in ["2026-08-26T21:10:00Z", "2026-08-26T21:09:59Z"] {
+        let mut invalid = active_contract();
+        invalid["evidence_contract"]["eligible_from"] = json!(eligible_from);
+        assert!(
+            validate_evidence_contract(&invalid)
+                .errors
+                .contains(&EvidenceContractValidationError::FreezeOrderingInvalid)
+        );
+    }
 }
 
 #[test]

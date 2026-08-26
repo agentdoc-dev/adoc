@@ -61,6 +61,8 @@ fn evidence_contract_validation_is_a_reusable_mcp_path() {
     let workspace = tempfile::tempdir().expect("workspace");
     let server = AgentDocMcpServer::new(workspace.path().to_path_buf());
     let mut contract = serde_json::json!({"evidence_contract": {
+        "frozen_at": "2026-08-26T20:00:00Z",
+        "eligible_from": "2026-08-26T20:01:00Z",
         "metrics": [{"id": "rate"}],
         "numerator_denominator_rules": [{"metric_id": "rate", "denominator_floor": 2}],
         "thresholds": [{"metric_id": "rate"}],

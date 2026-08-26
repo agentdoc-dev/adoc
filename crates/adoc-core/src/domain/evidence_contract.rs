@@ -7,6 +7,9 @@ use serde_json::Value;
 #[serde(rename_all = "snake_case")]
 pub enum EvidenceContractValidationError {
     EvidenceContractMissing,
+    FrozenAtMissing,
+    EligibleFromMissing,
+    FreezeOrderingInvalid,
     MetricsMissing,
     MetricIdMissing,
     MetricIdDuplicate,
@@ -40,6 +43,21 @@ pub fn validate_evidence_contract(document: &Value) -> EvidenceContractValidatio
         ]);
     };
     let mut errors = Vec::new();
+    match (
+        evidence["frozen_at"].as_str(),
+        evidence["eligible_from"].as_str(),
+    ) {
+        (None, None) => {
+            errors.push(EvidenceContractValidationError::FrozenAtMissing);
+            errors.push(EvidenceContractValidationError::EligibleFromMissing);
+        }
+        (None, Some(_)) => errors.push(EvidenceContractValidationError::FrozenAtMissing),
+        (Some(_), None) => errors.push(EvidenceContractValidationError::EligibleFromMissing),
+        (Some(frozen_at), Some(eligible_from)) if frozen_at >= eligible_from => {
+            errors.push(EvidenceContractValidationError::FreezeOrderingInvalid);
+        }
+        (Some(_), Some(_)) => {}
+    }
     let metric_ids = collect_ids(
         &evidence["metrics"],
         "id",
@@ -145,6 +163,8 @@ mod tests {
 
     fn contract() -> Value {
         json!({"evidence_contract": {
+            "frozen_at": "2026-08-26T20:00:00Z",
+            "eligible_from": "2026-08-26T20:01:00Z",
             "metrics": [{"id": "rate"}],
             "numerator_denominator_rules": [{"metric_id": "rate", "denominator_floor": 2}],
             "thresholds": [{"metric_id": "rate"}],
@@ -175,5 +195,18 @@ mod tests {
             validate_evidence_contract(&orphan).errors,
             vec![EvidenceContractValidationError::ThresholdMetricIdsMismatch]
         );
+    }
+
+    #[test]
+    fn rejects_evidence_eligibility_at_or_before_freeze() {
+        for eligible_from in ["2026-08-26T20:00:00Z", "2026-08-26T19:59:59Z"] {
+            let mut invalid = contract();
+            invalid["evidence_contract"]["eligible_from"] = json!(eligible_from);
+            assert!(
+                validate_evidence_contract(&invalid)
+                    .errors
+                    .contains(&EvidenceContractValidationError::FreezeOrderingInvalid)
+            );
+        }
     }
 }
