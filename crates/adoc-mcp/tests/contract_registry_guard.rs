@@ -682,6 +682,18 @@ fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
         .find(|line| line.contains("`agentdoc.cloud.candidate_authority.v0`"))
         .expect("candidate authority contract row");
     assert!(row.contains("authenticated submitting principal"));
+
+    let conflict = registry
+        .lines()
+        .find(|line| line.contains("`authority.candidate_origin_conflict`"))
+        .expect("candidate replay-conflict code row");
+    assert!(conflict.contains("submitting principal"));
+
+    let attestation = block
+        .lines()
+        .find(|line| line.contains("`agentdoc.cloud.external_promotion_attestation.v0`"))
+        .expect("external promotion attestation contract row");
+    assert!(attestation.contains("trusted issuer evidence"));
 }
 
 #[test]
