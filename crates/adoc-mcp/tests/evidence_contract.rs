@@ -10,7 +10,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v3.yaml";
+const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v4.yaml";
 const FROZEN_CONTRACTS: &[(&str, &str)] = &[
     (
         "docs/pilots/g1a/evidence-contract-v1.yaml",
@@ -21,8 +21,12 @@ const FROZEN_CONTRACTS: &[(&str, &str)] = &[
         "bb58ff8dbc7c5ea1e0dce6398579d2af83b4ccb6bc246725cccf48040f54b79a",
     ),
     (
-        ACTIVE_CONTRACT,
+        "docs/pilots/g1a/evidence-contract-v3.yaml",
         "e3d70e6a16609bd595a14aa5246437307281090ecc8ab5aa116b50084fa00822",
+    ),
+    (
+        ACTIVE_CONTRACT,
+        "04baf920776603a538d66dc8214f27e624769b674527d3573b8bfcb1c75c3b5d",
     ),
 ];
 
@@ -187,7 +191,8 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
     assert_eq!(run_ids.len(), runs.len(), "run ids must be unique");
     assert!(runs.iter().all(|run| {
         let rule = run["selection_rule"].as_str().expect("selection rule");
-        rule.contains("created_at is at or after eligible_from")
+        rule.contains("(created_at, run_id, run_attempt)")
+            && rule.contains("restricted to created_at at or after eligible_from")
             && rule.contains("before job scheduling or outcome")
             && rule.contains("unstarted")
             && rule.contains("incomplete evidence as a denominator failure")

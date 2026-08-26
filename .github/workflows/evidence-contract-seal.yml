@@ -1,0 +1,40 @@
+name: Evidence Contract Seal
+
+on:
+  pull_request:
+    paths:
+      - docs/pilots/g1a/evidence-contract-v*.yaml
+      - .github/workflows/evidence-contract-seal.yml
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+jobs:
+  seal:
+    name: Seal frozen contracts
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Attest frozen contract bytes
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: docs/pilots/g1a/evidence-contract-v*.yaml
+
+      - name: Retain Sigstore bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evidence-contract-seal-${{ github.event.pull_request.head.sha }}
+          path: ${{ steps.attest.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 90
