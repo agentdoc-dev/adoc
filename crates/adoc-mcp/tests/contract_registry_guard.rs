@@ -710,6 +710,7 @@ fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
         .expect("external promotion attestation contract row");
     assert!(attestation.contains("trusted issuer evidence"));
     assert!(attestation.contains("exact managed candidate version ID and content digest"));
+    assert!(attestation.contains("exact effective policy receipt digest"));
 
     let receipt = block
         .lines()
@@ -717,6 +718,7 @@ fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
         .expect("external promotion receipt contract row");
     assert!(receipt.contains("exact attestation digest and Source Assertion"));
     assert!(receipt.contains("exact managed candidate version ID and content digest"));
+    assert!(receipt.contains("exact-matches the attested policy receipt digest"));
     assert!(receipt.contains("policy effect ordinal and transaction ID"));
     assert!(receipt.contains("strictly later promotion-operation ordinal and transaction ID"));
     assert!(receipt.contains("prior committed transaction"));
