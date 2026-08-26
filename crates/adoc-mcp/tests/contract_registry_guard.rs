@@ -688,12 +688,16 @@ fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
     assert!(row.contains("never caller-supplied"));
     assert!(row.contains("connector-origin candidates require"));
     assert!(row.contains("AgentDoc-origin candidates carry no connector Source Assertion"));
+    assert!(row.contains("current allow authorization decision"));
+    assert!(row.contains("`knowledge.propose` permission"));
+    assert!(row.contains("evaluated scope exact-matches the submission"));
 
     let conflict = registry
         .lines()
         .find(|line| line.contains("`authority.candidate_origin_conflict`"))
         .expect("candidate replay-conflict code row");
     assert!(conflict.contains("submitting principal"));
+    assert!(conflict.contains("authorization decision"));
     assert!(conflict.contains("managed candidate version ID and content digest"));
     assert!(conflict.contains("policy receipt, effect ordinal, and effect transaction ID"));
     assert!(conflict.contains("candidate-operation ordinal and transaction ID"));
@@ -704,9 +708,17 @@ fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
         .find(|line| line.contains("`agentdoc.cloud.external_promotion_attestation.v0`"))
         .expect("external promotion attestation contract row");
     assert!(attestation.contains("trusted issuer evidence"));
-    assert!(attestation.contains("policy effect ordinal and transaction ID"));
-    assert!(attestation.contains("strictly later promotion-operation ordinal and transaction ID"));
-    assert!(attestation.contains("prior committed transaction"));
+    assert!(attestation.contains("exact managed candidate version ID and content digest"));
+
+    let receipt = block
+        .lines()
+        .find(|line| line.contains("`agentdoc.cloud.external_promotion_receipt.v0`"))
+        .expect("external promotion receipt contract row");
+    assert!(receipt.contains("exact attestation digest and Source Assertion"));
+    assert!(receipt.contains("exact managed candidate version ID and content digest"));
+    assert!(receipt.contains("policy effect ordinal and transaction ID"));
+    assert!(receipt.contains("strictly later promotion-operation ordinal and transaction ID"));
+    assert!(receipt.contains("prior committed transaction"));
 }
 
 #[test]
