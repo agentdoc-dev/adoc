@@ -684,6 +684,8 @@ fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
     assert!(row.contains("authenticated submitting principal"));
     assert!(row.contains("exact managed candidate version ID and content digest"));
     assert!(row.contains("strictly later candidate-operation ordinal"));
+    assert!(row.contains("server-derived from authenticated ingress"));
+    assert!(row.contains("never caller-supplied"));
     assert!(row.contains("connector-origin candidates require"));
     assert!(row.contains("AgentDoc-origin candidates carry no connector Source Assertion"));
 
