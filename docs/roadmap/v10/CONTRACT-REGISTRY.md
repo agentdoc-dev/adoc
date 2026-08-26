@@ -480,6 +480,11 @@ Operation labels and typed failure codes owned by the private Cloud service. New
 | `api.internal_error` | planned (E4.4) | the external API could not durably complete its transport-level operation; request correlation is returned for support |
 | `api.rate_limited` | planned (E4.4) | a rate limit rejects an external request and carries standard `Retry-After` semantics; quota enforcement remains E8.7-owned |
 | `ingest.envelope_version_unsupported` | planned (E4.4) | assessment submission names an unknown or superseded exact operation/envelope version; remediation names the accepted version |
+| `connector.manifest_invalid` | planned (E4.5) | connector capability manifest fails exact-version decoding or its adapter, connector, or authenticated-publisher binding is invalid |
+| `connector.publisher_unqualified` | planned (E4.5) | the authenticated publisher lacks trusted qualification for a claimed capability maturity; customer publishers cannot self-claim AgentDoc GA |
+| `connector.configuration_ineligible` | planned (E4.5) | a connector configuration cannot activate because its dependency closure, capability maturity, or new-use deprecation policy is unsatisfied; remediation carries eligible alternatives rather than weakening the requested gate |
+| `connector.capability_ineligible` | planned (E4.5) | runtime policy rejects a required capability after applying its current per-capability maturity, any immediate incident demotion/suspension, and a current scoped exception |
+| `connector.exception_invalid` | planned (E4.5) | a maturity exception is missing immutable scope, expiry, current permission approval, or receipt binding, or attempts to authorize after expiry |
 <!-- /registry:cloud-codes -->
 
 ## Attestation codes — planned, owner `cloud`

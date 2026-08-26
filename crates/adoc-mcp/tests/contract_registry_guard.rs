@@ -478,6 +478,20 @@ fn connector_capability_manifest_is_shipped_by_its_contract_owner() {
 }
 
 #[test]
+fn e4_5_cloud_capability_trust_codes_are_registered_exactly() {
+    let registered = anchored_ids(&registry(), "registry:cloud-codes");
+    for code in [
+        "connector.manifest_invalid",
+        "connector.publisher_unqualified",
+        "connector.configuration_ineligible",
+        "connector.capability_ineligible",
+        "connector.exception_invalid",
+    ] {
+        assert!(registered.contains(code), "E4.5 Cloud code missing: {code}");
+    }
+}
+
+#[test]
 fn test_only_use_does_not_split_the_scope() {
     let fixture = r#"
         #[cfg(test)]
