@@ -2,7 +2,7 @@ evidence_contract:
   id: g1a-technical-engineering-admission
   version: 1
   frozen_at: "2026-08-26T19:55:00Z"
-  eligible_from: "2026-08-26T20:30:00Z"
+  eligible_from: "2026-08-26T20:10:00Z"
   cohort_definition:
     kind: internal_real_assessments_and_controlled_suites
     repositories:
