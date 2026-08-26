@@ -496,6 +496,9 @@ pub(crate) enum Commands {
         /// (`sha256:<64 hex>`); recorded verbatim in the receipt.
         #[arg(long, value_name = "DIGEST", requires = "receipt")]
         runtime_binary_digest: Option<String>,
+        /// Source invocation manifest to digest-bind into the receipt.
+        #[arg(long, value_name = "PATH", requires = "receipt")]
+        source_invocation: Option<PathBuf>,
         /// Graph artifact to validate against the recompiled source
         /// (exact-match adoc.graph.v6; drift fails the receipt).
         #[arg(long, value_name = "PATH", requires = "receipt")]
@@ -523,10 +526,10 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
         semantic_subject_revision: Option<adoc_core::ExactRevision>,
         /// Trusted source revision expected in --semantic-context.
-        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
-        semantic_source_revision: Option<adoc_core::ExactRevision>,
+        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_boxed_exact_revision)]
+        semantic_source_revision: Option<Box<adoc_core::ExactRevision>>,
         /// Trusted base revision expected in --semantic-context.
-        // Two boxed revision payloads keep `Commands` under clippy::large_enum_variant.
+        // Boxed revision payloads keep `Commands` under clippy::large_enum_variant.
         #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_boxed_exact_revision)]
         semantic_base_revision: Option<Box<adoc_core::ExactRevision>>,
         /// Trusted head revision expected in --semantic-context.

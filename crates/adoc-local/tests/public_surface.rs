@@ -41,6 +41,7 @@ fn local_public_surface_is_method_oriented() {
         runtime_version: "0.4.0".to_string(),
         runtime_binary_digest:
             "sha256:ca1bf018dc0b72ee1197d9d521d96d227cd3e54cc81528ea5f45776c99d95f4d".to_string(),
+        source_invocation: None,
         context_artifact: None,
         semantic_context: None,
         semantic_context_expectations: None,

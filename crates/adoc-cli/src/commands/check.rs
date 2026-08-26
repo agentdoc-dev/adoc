@@ -52,11 +52,13 @@ pub(crate) fn check(
 /// serialization. The runtime binary digest is the harness's attested
 /// input (`scripts/validation-runtime/run.sh` verifies its pin first);
 /// this binary contributes its own release version.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn check_receipt(
     path: Option<PathBuf>,
     as_of: chrono::NaiveDate,
     receipt_path: PathBuf,
     runtime_binary_digest: String,
+    source_invocation: Option<PathBuf>,
     context_artifact: Option<PathBuf>,
     semantic_context: Option<PathBuf>,
     semantic_context_expectations: Option<adoc_core::SemanticContextExpectedBindings>,
@@ -72,6 +74,7 @@ pub(crate) fn check_receipt(
         as_of,
         runtime_version: env!("CARGO_PKG_VERSION").to_string(),
         runtime_binary_digest,
+        source_invocation,
         context_artifact,
         semantic_context,
         semantic_context_expectations,
