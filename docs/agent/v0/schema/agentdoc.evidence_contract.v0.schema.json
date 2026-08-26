@@ -103,17 +103,9 @@
     "cohort": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "kind",
-        "repositories",
-        "run_set",
-        "action_revision",
-        "cloud_ingestion_revision",
-        "agentdoc_version",
-        "material_rule_change"
-      ],
+      "required": ["kind", "material_rule_change"],
       "properties": {
-        "kind": { "const": "internal_real_assessments_and_controlled_suites" },
+        "kind": { "$ref": "#/$defs/identifier" },
         "repositories": {
           "type": "array",
           "minItems": 1,
@@ -128,17 +120,20 @@
         "action_revision": { "$ref": "#/$defs/git_commit_sha" },
         "cloud_ingestion_revision": { "$ref": "#/$defs/git_commit_sha" },
         "agentdoc_version": { "$ref": "#/$defs/text" },
+        "implementation_revisions": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/identifier" },
+          "additionalProperties": { "$ref": "#/$defs/text" }
+        },
+        "selection_rule": { "$ref": "#/$defs/text" },
         "material_rule_change": { "const": "close_cohort_and_increment_version" }
       }
     },
     "minimum_population": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "real_internal_assessments",
-        "repositories",
-        "metric_denominators"
-      ],
+      "required": ["metric_denominators"],
       "properties": {
         "real_internal_assessments": { "type": "integer", "minimum": 1 },
         "repositories": { "type": "integer", "minimum": 1 },
@@ -156,7 +151,7 @@
       "required": ["id", "source", "value_kind", "numerator", "denominator"],
       "properties": {
         "id": { "$ref": "#/$defs/identifier" },
-        "source": { "enum": ["real_internal_runs", "controlled_suite"] },
+        "source": { "$ref": "#/$defs/identifier" },
         "value_kind": { "enum": ["rate", "count"] },
         "numerator": { "$ref": "#/$defs/text" },
         "denominator": { "$ref": "#/$defs/text" }
