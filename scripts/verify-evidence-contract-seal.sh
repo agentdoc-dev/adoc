@@ -2,8 +2,8 @@
 set -euo pipefail
 export TZ=UTC
 
-signer_digest=0760ac11bb68e46cd649ce82f0a85c7b46d7e9a5
-rekor_timestamp=2026-08-27T01:47:45Z
+signer_digest=59e881f6d709d3e0a526bb4dbd320312fc4a7b27
+rekor_timestamp=2026-08-27T02:55:45Z
 
 for contract in docs/pilots/g1a/evidence-contract-v*.yaml; do
   gh attestation verify "$contract" \
@@ -11,7 +11,7 @@ for contract in docs/pilots/g1a/evidence-contract-v*.yaml; do
     --signer-workflow agentdoc-dev/adoc/.github/workflows/evidence-contract-seal.yml \
     --signer-digest "$signer_digest" \
     --source-digest "$signer_digest" \
-    --source-ref refs/pull/180/merge \
+    --source-ref refs/pull/182/merge \
     --format json |
     jq -e --arg timestamp "$rekor_timestamp" '
       length > 0 and any(.[].verificationResult.verifiedTimestamps;
