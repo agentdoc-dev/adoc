@@ -236,6 +236,7 @@ fn v5_workflow_cannot_assess_before_the_exact_tuple_is_bound() {
     assert!(workflow.contains("types: [labeled]"));
     assert!(workflow.contains("github.event.label.name == 'g1a-v5-run'"));
     assert!(workflow.contains("g1a-binding:v5:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}"));
+    assert!(workflow.contains("gh api --paginate --slurp"));
     assert!(workflow.contains("needs: bind"));
     assert!(
         workflow.contains("uses: agentdoc-dev/action@17da62659dc164b98ccdf0f4455c7628b58cd154")

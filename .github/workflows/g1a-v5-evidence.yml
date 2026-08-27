@@ -51,13 +51,12 @@ jobs:
           set -euo pipefail
           marker="<!-- g1a-binding:v5:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}:${EXPECTED_HEAD} -->"
           for _ in $(seq 1 60); do
-            comments="$(curl --fail-with-body --silent --show-error --location \
+            comments="$(gh api --paginate --slurp \
               --header "Accept: application/vnd.github+json" \
-              --header "Authorization: Bearer $GH_TOKEN" \
               --header "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/$REPOSITORY/issues/$PR_NUMBER/comments?per_page=100")"
+              "repos/$REPOSITORY/issues/$PR_NUMBER/comments?per_page=100")"
             binding_url="$(jq -r --arg marker "$marker" \
-              '[.[] | select(.body == $marker and
+              '[.[][] | select(.body == $marker and
                 (.author_association | IN("OWNER", "MEMBER", "COLLABORATOR")))] |
                last | .html_url // empty' <<< "$comments")"
             if [ -n "$binding_url" ]; then
