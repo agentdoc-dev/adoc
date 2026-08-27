@@ -11,7 +11,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v6.yaml";
+const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v7.yaml";
 const FROZEN_CONTRACTS: &[(&str, &str)] = &[
     (
         "docs/pilots/g1a/evidence-contract-v1.yaml",
@@ -34,8 +34,12 @@ const FROZEN_CONTRACTS: &[(&str, &str)] = &[
         "744aef51606455ee4c9ba77d8352349eacb5802bc945ea4a95fed0c9aea643ce",
     ),
     (
-        ACTIVE_CONTRACT,
+        "docs/pilots/g1a/evidence-contract-v6.yaml",
         "0dadeb22f570a3eca80a3f1da6e0635837251a580c87949204d7cfb29534cb2c",
+    ),
+    (
+        ACTIVE_CONTRACT,
+        "56ef641c69575975c207a46f88f3c69fea40b1e6bb4045df375e42e9a22f8e51",
     ),
 ];
 
@@ -234,12 +238,13 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
 }
 
 #[test]
-fn v6_workflow_cannot_assess_before_review_and_exact_tuple_binding() {
-    let workflow = fs::read_to_string(root().join(".github/workflows/g1a-v6-evidence.yml"))
-        .expect("G1A v6 workflow is readable");
+fn v7_workflow_cannot_assess_before_review_and_exact_tuple_binding() {
+    let workflow = fs::read_to_string(root().join(".github/workflows/g1a-v7-evidence.yml"))
+        .expect("G1A v7 workflow is readable");
     assert!(workflow.contains("types: [opened]"));
-    assert!(workflow.contains("g1a-binding:v6:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}"));
-    assert!(workflow.contains("gh api --paginate --slurp"));
+    assert!(workflow.contains("g1a-binding:v7:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}"));
+    assert!(workflow.contains("split(\"\\n\") | index($marker) != null"));
+    assert!(workflow.contains(".author_association | IN"));
     assert!(workflow.contains("seq 1 180"));
     assert!(workflow.contains("needs: bind"));
     assert!(
