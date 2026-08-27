@@ -11,7 +11,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v5.yaml";
+const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v6.yaml";
 const FROZEN_CONTRACTS: &[(&str, &str)] = &[
     (
         "docs/pilots/g1a/evidence-contract-v1.yaml",
@@ -30,8 +30,12 @@ const FROZEN_CONTRACTS: &[(&str, &str)] = &[
         "04baf920776603a538d66dc8214f27e624769b674527d3573b8bfcb1c75c3b5d",
     ),
     (
-        ACTIVE_CONTRACT,
+        "docs/pilots/g1a/evidence-contract-v5.yaml",
         "744aef51606455ee4c9ba77d8352349eacb5802bc945ea4a95fed0c9aea643ce",
+    ),
+    (
+        ACTIVE_CONTRACT,
+        "0dadeb22f570a3eca80a3f1da6e0635837251a580c87949204d7cfb29534cb2c",
     ),
 ];
 
@@ -210,7 +214,7 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
         let rule = run["selection_rule"].as_str().expect("selection rule");
         rule.contains("(created_at, run_id, run_attempt)")
             && rule.contains("restricted to created_at at or after eligible_from")
-            && rule.contains("g1a-v5-run")
+            && rule.contains("opened activity")
             && rule.contains("before assessment job scheduling or outcome")
             && rule.contains("unstarted")
             && rule.contains("incomplete evidence as a denominator failure")
@@ -230,13 +234,13 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
 }
 
 #[test]
-fn v5_workflow_cannot_assess_before_the_exact_tuple_is_bound() {
-    let workflow = fs::read_to_string(root().join(".github/workflows/g1a-v5-evidence.yml"))
-        .expect("G1A v5 workflow is readable");
-    assert!(workflow.contains("types: [labeled]"));
-    assert!(workflow.contains("github.event.label.name == 'g1a-v5-run'"));
-    assert!(workflow.contains("g1a-binding:v5:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}"));
+fn v6_workflow_cannot_assess_before_review_and_exact_tuple_binding() {
+    let workflow = fs::read_to_string(root().join(".github/workflows/g1a-v6-evidence.yml"))
+        .expect("G1A v6 workflow is readable");
+    assert!(workflow.contains("types: [opened]"));
+    assert!(workflow.contains("g1a-binding:v6:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}"));
     assert!(workflow.contains("gh api --paginate --slurp"));
+    assert!(workflow.contains("seq 1 180"));
     assert!(workflow.contains("needs: bind"));
     assert!(
         workflow.contains("uses: agentdoc-dev/action@17da62659dc164b98ccdf0f4455c7628b58cd154")
