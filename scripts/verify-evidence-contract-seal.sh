@@ -2,8 +2,8 @@
 set -euo pipefail
 export TZ=UTC
 
-signer_digest=59e881f6d709d3e0a526bb4dbd320312fc4a7b27
-rekor_timestamp=2026-08-27T02:55:45Z
+signer_digest=931dec0dd162ba02494b263520aa42a2d26a5727
+rekor_timestamp=2026-08-27T08:41:07+02:00
 
 for contract in docs/pilots/g1a/evidence-contract-v*.yaml; do
   gh attestation verify "$contract" \
