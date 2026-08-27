@@ -11,7 +11,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v7.yaml";
+const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v8.yaml";
 const FROZEN_CONTRACTS: &[(&str, &str)] = &[
     (
         "docs/pilots/g1a/evidence-contract-v1.yaml",
@@ -38,8 +38,12 @@ const FROZEN_CONTRACTS: &[(&str, &str)] = &[
         "0dadeb22f570a3eca80a3f1da6e0635837251a580c87949204d7cfb29534cb2c",
     ),
     (
-        ACTIVE_CONTRACT,
+        "docs/pilots/g1a/evidence-contract-v7.yaml",
         "56ef641c69575975c207a46f88f3c69fea40b1e6bb4045df375e42e9a22f8e51",
+    ),
+    (
+        ACTIVE_CONTRACT,
+        "e20f375d69d3a32bb9ae5f4b52d4863caab2d53deaa040c0992ee7c6083ccbb9",
     ),
 ];
 
@@ -217,7 +221,9 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
     assert!(runs.iter().all(|run| {
         let rule = run["selection_rule"].as_str().expect("selection rule");
         rule.contains("(created_at, run_id, run_attempt)")
-            && rule.contains("restricted to created_at at or after eligible_from")
+            && rule.contains(
+                "both the workflow run and attempt were created at or after eligible_from",
+            )
             && rule.contains("opened activity")
             && rule.contains("before assessment job scheduling or outcome")
             && rule.contains("unstarted")
@@ -238,11 +244,11 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
 }
 
 #[test]
-fn v7_workflow_cannot_assess_before_review_and_exact_tuple_binding() {
+fn v8_workflow_cannot_assess_before_review_and_exact_tuple_binding() {
     let workflow = fs::read_to_string(root().join(".github/workflows/g1a-v7-evidence.yml"))
-        .expect("G1A v7 workflow is readable");
+        .expect("G1A v8 workflow is readable");
     assert!(workflow.contains("types: [opened]"));
-    assert!(workflow.contains("g1a-binding:v7:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}"));
+    assert!(workflow.contains("g1a-binding:v8:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}"));
     assert!(workflow.contains("split(\"\\n\") | index($marker) != null"));
     assert!(workflow.contains(".author_association | IN"));
     assert!(workflow.contains("seq 1 180"));
