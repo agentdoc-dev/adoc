@@ -108,6 +108,7 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 <!-- registry:envelopes-planned -->
 | id | owner | planned by | notes |
 | --- | --- | --- | --- |
+| `adoc.pr_assessment_receipt.v1` | action | E2.5 | exact-match successor adding server-bound GitHub Actions workload identity; v0 remains shipped until the successor is released |
 | `adoc.connector_acl_policy.v0` | adoc | E2.6 | activation-time ACL acquisition, freshness, refresh, revocation, outage, and cache/session invalidation declaration; contract-tested schema `adoc.connector_acl_policy.v0.schema.json` |
 | `adoc.source_acl_snapshot.v0` | adoc | E2.6 | immutable historical ACL provenance only; `source_acl_ceiling.snapshot_id` records the consulted snapshot while the nested `current_authorization` input in `adoc.authorization_decision.v0` independently proves freshness-bounded current access; contract-tested schema `adoc.source_acl_snapshot.v0.schema.json` |
 | `adoc.sensitive_access.v0` | adoc | E6.3 | name held until a final registered successor (RT-08) |
