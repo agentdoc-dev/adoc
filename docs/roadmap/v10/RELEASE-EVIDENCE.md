@@ -140,9 +140,9 @@ Separate evidence lines for executor quality, workflow usefulness, gate behavior
 
 ## R7. G1A / G1B ingestion gates
 
-### G1A — technical engineering admission
+### G1A — deferred technical engineering admission
 
-Freeze before first eligible internal tracer run. Includes replay/stale-run/digest/idempotency/isolation suites plus a small precommitted set of real internal assessments. Passing G1A allows governance implementation to proceed internally.
+The pilot does not require a measured internal G1A cohort. E4.6's deterministic replay/stale-run/digest/idempotency/isolation suites remain required, but no evidence contract, retained run set, or G1A readout gates E4 merges or internal governance implementation. No historical G1A run authorizes promotion. Reconsider the measured cohort only when observed pilot scale or a release decision requires it.
 
 ### G1B — external Pilot Candidate admission
 
@@ -218,7 +218,7 @@ They become feature-complete Beta at Product V1 RC and GA-supported only after P
 Targets do not override evidence:
 
 - **2026-09-30 — internal integrated tracer.** GitHub change → deterministic assessment → one qualified semantic executor → Cloud candidate → native approval → check. Internal/synthetic data acceptable. Not external.
-- **2026-11-30 — V1 Pilot Candidate / Private Alpha.** Selected design partners; source-neutral auth, Cloud canonical flow, provider-neutral semantics, GitHub native approval/checks, egress basics, tenant isolation, backup/restore/monitoring/rollback/incident readiness, G1A/G1B green.
+- **2026-11-30 — V1 Pilot Candidate / Private Alpha.** Selected design partners; source-neutral auth, Cloud canonical flow, provider-neutral semantics, GitHub native approval/checks, egress basics, tenant isolation, backup/restore/monitoring/rollback/incident readiness, G1B green.
 - **2027-02-28 — V1 Feature Complete / RC.** Every locked V1 P0 implemented, including second approval mode, trusted forks, migration, permission-aware retrieval/sensitive audit, privacy workflows, GitLab Preview, connector manifests, managed state/proof model, compatibility/security matrices.
 - **2027-04-30 — earliest credible V1 GA.** Only after real-pilot, qualification, required-gate, review-burden, operations, and critical-defect evidence passes.
 

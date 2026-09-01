@@ -1,10 +1,10 @@
 # V10 / Product V1 Decision Register
 
-**Status:** Founder-approved decisions through 2026-08-13  
+**Status:** Founder-approved decisions through 2026-09-01
 **Product amendment:** [`../../product/PRD-v1.1-amendment.md`](../../product/PRD-v1.1-amendment.md) / ADR-0056  
 **Executable plan:** [`EXECUTION-MAP.md`](EXECUTION-MAP.md)
 
-The 2026-08-12 planning session produced D01–D35. The 2026-08-13 red-team produced D36–D39 and second-order closure requirements. B1–B6 are no longer pending: ADR-0056 accepts them. ADR-0057 accepts D36–D39.
+The 2026-08-12 planning session produced D01–D35. The 2026-08-13 red-team produced D36–D39 and second-order closure requirements. The 2026-09-01 pilot-scope review produced D40. B1–B6 are no longer pending: ADR-0056 accepts them. ADR-0057 accepts D36–D39.
 
 ## Detailed annexes
 
@@ -72,6 +72,10 @@ The 2026-08-12 planning session produced D01–D35. The 2026-08-13 red-team prod
 - **D37:** content versions are immutable; governance/verification/effectivity/freshness/integrity/sync transitions are append-only events over content versions.
 - **D38:** authorization uses one deterministic precedence with source ACL as ceiling, scope specificity, expiry, explicit restrictions, and fail-closed consequential uncertainty.
 - **D39:** human semantic assessment may self-assess only where policy allows; an independent-review obligation requires a distinct eligible principal.
+
+## D40 — pilot evidence scope
+
+- **D40:** the measured internal G1A cohort is deferred and does not gate E4 merges or E5 implementation; E4.6 deterministic invariants remain required, G1B still gates external Pilot Candidate admission, and no historical G1A run promotes anything. This supersedes the G1A portion of D31.
 
 ## Executable decision obligations
 

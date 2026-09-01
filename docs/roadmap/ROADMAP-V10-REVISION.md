@@ -1,6 +1,6 @@
 # ROADMAP-V10 Revision 1 — Product V1 Reconciliation
 
-**Status:** Draft, normative planning revision  
+**Status:** Draft, normative planning revision; G1A scope superseded by D40
 **Date:** 2026-08-12  
 **Supersedes conflicting statements in:** [`ROADMAP-V10.md`](ROADMAP-V10.md)  
 **Locked product boundary:** `docs/product/PRD-v1.0.md` / ADR-0055, as amended by [`../product/PRD-v1.1-amendment.md`](../product/PRD-v1.1-amendment.md) / ADR-0056  
@@ -444,7 +444,7 @@ Only the active primary affects product workflow; shadow output never gates or c
 
 ### 18.2 G1A / G1B split
 
-- **G1A technical admission:** contract/digest/replay/stale/idempotency/isolation suites plus small precommitted internal real-run population. Passing allows internal governance implementation.
+- **G1A technical admission:** measured internal cohort deferred by D40. Deterministic contract/digest/replay/stale/idempotency/isolation suites remain required; G1A does not gate E4 merges or internal governance implementation.
 - **G1B external admission:** stronger real-run ingestion population required before external Pilot Candidate rollout/required Cloud enforcement.
 
 The original V10 hard rule that all V10.4+ governance engineering must stop until a large external-like G1 population exists is superseded.
@@ -491,7 +491,7 @@ The following original-draft consistency issues are explicitly corrected and mus
 
 ### Pilot Candidate
 
-9. G1A and internal dogfood.
+9. E4.6 deterministic acceptance and internal dogfood; no measured G1A cohort.
 10. GitHub connector/source ACL ceiling + production authz decision path.
 11. Native Cloud review/approval and hash-bound invalidation.
 12. Basic egress/retention policy and Cloud validation receipts.
