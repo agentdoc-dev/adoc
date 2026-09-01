@@ -3032,6 +3032,44 @@ fn check_receipt_emits_the_committed_golden_receipt_byte_for_byte() {
 }
 
 #[test]
+fn check_receipt_binds_the_supported_source_invocation_flag() {
+    let out_dir = TestWorkspace::new("check-receipt-source-invocation");
+    let receipt_path = out_dir.root.join("receipt.json");
+    let invocation_path = out_dir.root.join("source-invocation.json");
+    fs::write(&invocation_path, b"{}").expect("source invocation writes");
+
+    let output = adoc_command()
+        .current_dir(validation_runtime_path("fixture"))
+        .args([
+            "check",
+            "--receipt",
+            receipt_path.to_str().expect("utf-8 receipt path"),
+            "--as-of",
+            "2026-01-01",
+            "--runtime-binary-digest",
+            GOLDEN_RUNTIME_DIGEST,
+            "--source-invocation",
+            invocation_path.to_str().expect("utf-8 invocation path"),
+        ])
+        .output()
+        .expect("adoc check runs");
+
+    assert!(output.status.success(), "stderr:\n{}", stderr(&output));
+    let receipt: Value =
+        serde_json::from_slice(&fs::read(&receipt_path).expect("receipt is written"))
+            .expect("receipt is JSON");
+    assert!(
+        receipt["context"]
+            .as_array()
+            .expect("receipt context is an array")
+            .contains(&serde_json::json!({
+                "name": "source_invocation",
+                "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+            }))
+    );
+}
+
+#[test]
 fn check_receipt_emits_the_semantic_context_golden_byte_for_byte() {
     let out_dir = TestWorkspace::new("check-receipt-semantic-context-golden");
     copy_directory(&validation_runtime_path("fixture"), &out_dir.root);

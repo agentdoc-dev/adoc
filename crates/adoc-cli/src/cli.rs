@@ -47,9 +47,10 @@ Examples:
     --semantic-context semantic-context.json
 
 --receipt runs the same validation and writes a digest-bound
-adoc.validation_receipt.v0 envelope (SEMANTICS S6). Receipts are
-deterministic — no wall-clock timestamps — so --receipt requires an
-explicit --as-of and the invoking harness's attested
+adoc.validation_receipt.v0 envelope, or adoc.validation_receipt.v1 when
+--source-invocation is supplied (SEMANTICS S6). Receipts are deterministic —
+no wall-clock timestamps — so --receipt requires an explicit --as-of and the
+invoking harness's attested
 --runtime-binary-digest (a binary cannot hash itself; the harness
 verifies its pin before invoking, see scripts/validation-runtime/).
 When --semantic-context is supplied, receipt mode validates its exact
@@ -480,7 +481,7 @@ pub(crate) enum Commands {
         /// Pin lifecycle evaluation to this UTC calendar date.
         #[arg(long, value_name = "YYYY-MM-DD", value_parser = parse_evaluation_date)]
         as_of: Option<chrono::NaiveDate>,
-        /// Write a digest-bound adoc.validation_receipt.v0 to this path.
+        /// Write a digest-bound receipt: v0 normally, v1 with `--source-invocation`.
         /// Receipt mode prints plain diagnostics only: an explicit
         /// `--style` conflicts, and `--format markdown` is refused at
         /// dispatch — never silently ignored.
@@ -496,6 +497,9 @@ pub(crate) enum Commands {
         /// (`sha256:<64 hex>`); recorded verbatim in the receipt.
         #[arg(long, value_name = "DIGEST", requires = "receipt")]
         runtime_binary_digest: Option<String>,
+        /// Source invocation manifest to digest-bind into the receipt.
+        #[arg(long, value_name = "PATH", requires = "receipt")]
+        source_invocation: Option<PathBuf>,
         /// Graph artifact to validate against the recompiled source
         /// (exact-match adoc.graph.v6; drift fails the receipt).
         #[arg(long, value_name = "PATH", requires = "receipt")]
@@ -523,10 +527,10 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
         semantic_subject_revision: Option<adoc_core::ExactRevision>,
         /// Trusted source revision expected in --semantic-context.
-        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_exact_revision)]
-        semantic_source_revision: Option<adoc_core::ExactRevision>,
+        #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_boxed_exact_revision)]
+        semantic_source_revision: Option<Box<adoc_core::ExactRevision>>,
         /// Trusted base revision expected in --semantic-context.
-        // Two boxed revision payloads keep `Commands` under clippy::large_enum_variant.
+        // Boxed revision payloads keep `Commands` under clippy::large_enum_variant.
         #[arg(long, value_name = "SYSTEM=VALUE", requires = "semantic_context", value_parser = parse_boxed_exact_revision)]
         semantic_base_revision: Option<Box<adoc_core::ExactRevision>>,
         /// Trusted head revision expected in --semantic-context.

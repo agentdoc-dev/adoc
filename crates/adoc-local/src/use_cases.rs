@@ -80,6 +80,8 @@ pub struct CheckReceiptInput {
     pub as_of: chrono::NaiveDate,
     pub runtime_version: String,
     pub runtime_binary_digest: String,
+    /// Exact source namespace/revision/Binding/ACL/config invocation manifest.
+    pub source_invocation: Option<PathBuf>,
     /// Graph artifact validated against the recompiled source (exact-match
     /// version gate + governed-meaning drift check, E1.7.T4).
     pub context_artifact: Option<PathBuf>,
@@ -655,6 +657,11 @@ where
     P: PathPolicy,
 {
     let target = resolve_check_target(context, input.path.as_deref())?;
+    let source_invocation = input
+        .source_invocation
+        .as_deref()
+        .map(|path| context.path_policy().resolve_read_path(path))
+        .transpose()?;
     let context_artifact = input
         .context_artifact
         .as_deref()
@@ -673,6 +680,7 @@ where
         runtime_version: input.runtime_version,
         runtime_binary_digest: input.runtime_binary_digest,
         config_path: target.config_path,
+        source_invocation,
         context_artifact,
         semantic_context,
         semantic_context_expectations: input.semantic_context_expectations,

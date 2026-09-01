@@ -128,7 +128,7 @@ Cloud may preflight:
 
 All AgentDoc-domain validation runs through a pinned released AgentDoc Validation Runtime, initially preferably a checksum-pinned `adoc` binary/container inside an isolated worker.
 
-The runtime returns `adoc.validation_receipt.v0` with exact runtime version/digest, input/context digests, contract versions, result, and diagnostics digest.
+The runtime returns `adoc.validation_receipt.v0`, or v1 when Cloud invocation evidence is bound, with exact runtime version/digest, input/context digests, contract versions, result, and diagnostics digest.
 
 Cloud TypeScript must not duplicate:
 
