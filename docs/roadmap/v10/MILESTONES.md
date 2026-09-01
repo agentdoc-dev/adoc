@@ -411,7 +411,7 @@ Digest-bound semantic context and assessment contracts, executor qualification, 
 **Out of scope:** fallback chain (E3.5), qualification evidence cohorts (E9.1), AgentDoc-hosted executor (P3). External providers remain adapters, never permanent architectural dependencies.
 
 ### E3.5 — Fallback eligibility chain
-**Repos:** `action`, `cloud` · **Depends on:** E3.4
+**Repos:** `action`, `cloud` · **Depends on:** E2.5, E3.4
 **Read first:** [RED-TEAM-CLOSURE.md RT-10](RED-TEAM-CLOSURE.md#rt-10--semantic-fallback-equivalence) · [SEMANTICS.md §S7](SEMANTICS.md#s7-per-repository-git-processing-mode) · [PRD v1.1 §10](../../product/PRD-v1.1-amendment.md#10-provider-neutral-semantic-execution)
 **Tracer bullets:**
 1. `E3.5.T1` — Closed semantic status vocabulary `required|completed|skipped|fell_back|failed` as durable envelope/receipt data; failing tests: unknown status rejected; `completed` reachable only through a validator-accepted envelope (provenance: V10.2.3).
@@ -441,7 +441,7 @@ Digest-bound semantic context and assessment contracts, executor qualification, 
 **Out of scope:** native approval flow (E5.2), gate evaluator (E5.3), separation-of-duties/quorum (P4).
 
 ### E3.7 — External work request/result authenticity
-**Repos:** `adoc`, `cloud`, `action` · **Depends on:** E2.5, E0.3
+**Repos:** `adoc`, `cloud`, `action` · **Depends on:** E2.5, E0.3, E3.5
 **Read first:** [RED-TEAM-CLOSURE.md RT-16](RED-TEAM-CLOSURE.md#rt-16--external-workerresult-authenticity) · [PRD v1.1 §13](../../product/PRD-v1.1-amendment.md#13-git-processing-modes) · [SEMANTICS.md §S7](SEMANTICS.md#s7-per-repository-git-processing-mode)
 **Tracer bullets:**
 1. `E3.7.T1` — Versioned work-request envelope in `adoc`: workspace/repo/source, exact revision/change request, request ID + nonce, request digest, contract/capability requirements, expiry, authorized workload identity/audience; failing test: digest-stable round trip; unknown envelope version rejected with remediation.

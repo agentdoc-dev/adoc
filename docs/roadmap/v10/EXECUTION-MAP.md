@@ -215,7 +215,7 @@ Dates never override stop-ship invariants.
 ## E3.5 — Fallback eligibility chain
 
 **Repos:** `action`, `cloud`  
-**Depends on:** E3.4  
+**Depends on:** E2.5, E3.4  
 **Goal:** one optional fallback only when independently eligible under capability/maturity/risk/egress/residency/retention/org policy.  
 **Exit:** local/zero-egress primary cannot silently fall back to public provider; no eligible fallback → honest failure.
 
@@ -228,7 +228,7 @@ Dates never override stop-ship invariants.
 ## E3.7 — External work request/result authenticity
 
 **Repos:** `adoc`, `cloud`, `action`  
-**Depends on:** E2.5, E0.3  
+**Depends on:** E2.5, E0.3, E3.5  
 **Contracts:** versioned work request/result with repository/workspace/revision, nonce, digest, expiry, workload identity, runtime/capability versions, replay/idempotency state.  
 **Exit:** replay/cross-workspace/cross-revision/cross-request substitution fixtures fail.
 
