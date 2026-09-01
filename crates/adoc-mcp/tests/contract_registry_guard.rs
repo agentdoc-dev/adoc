@@ -105,10 +105,13 @@ const ANCHORS: &[&str] = &[
     "registry:proof-obligation-stages",
 ];
 
-/// True for `adoc.<dotted lowercase path>.v<digits>` — the envelope
+/// True for `adoc.<path>.v<digits>` or `agentdoc.<path>.v<digits>` — the envelope
 /// schema-version id shape and nothing else.
 fn is_envelope_id(candidate: &str) -> bool {
-    let Some(rest) = candidate.strip_prefix("adoc.") else {
+    let Some(rest) = candidate
+        .strip_prefix("adoc.")
+        .or_else(|| candidate.strip_prefix("agentdoc."))
+    else {
         return false;
     };
     let Some((path, version)) = rest.rsplit_once(".v") else {
@@ -396,16 +399,20 @@ fn diagnostic_code_rows_match_the_code_table() {
 
 #[test]
 fn scan_flags_an_unregistered_wire_code_fixture() {
-    let rogue = concat!("adoc.", "unregistered.v0");
-    let fixture = format!(r#"pub const ROGUE_SCHEMA_VERSION: &str = "{rogue}";"#);
-    let emitted = envelope_ids_in(&fixture);
-    let registered = all_registered_ids(&registry());
-    let unregistered: Vec<_> = emitted.difference(&registered).collect();
-    assert_eq!(
-        unregistered,
-        [rogue],
-        "the completeness scan must fail on a fixture emitting one unregistered wire code"
-    );
+    for rogue in [
+        concat!("adoc.", "unregistered.v0"),
+        concat!("agentdoc.cloud.", "unregistered.v0"),
+    ] {
+        let fixture = format!(r#"pub const ROGUE_SCHEMA_VERSION: &str = "{rogue}";"#);
+        let emitted = envelope_ids_in(&fixture);
+        let registered = all_registered_ids(&registry());
+        let unregistered: Vec<_> = emitted.difference(&registered).collect();
+        assert_eq!(
+            unregistered,
+            [rogue],
+            "the completeness scan must fail on an unregistered {rogue} fixture"
+        );
+    }
 }
 
 #[test]
@@ -438,6 +445,26 @@ fn fixture_ids_are_registered_and_disjoint_from_real_rows() {
         "test-fixture ids emitted from production code — the fixture table \
          registers test-scope literals only: {leaked:?}"
     );
+}
+
+#[test]
+fn e4_4_cloud_operation_contracts_are_registered_exactly() {
+    let registered = all_registered_ids(&registry());
+    for id in [
+        "agentdoc.cloud.assessment_submission.v0",
+        "agentdoc.cloud.ingestion_result.v0",
+        "agentdoc.cloud.repository_config.v0",
+        "agentdoc.cloud.work_request.v0",
+        "agentdoc.cloud.work_result.v0",
+        "agentdoc.cloud.gate_decision.v0",
+        "agentdoc.cloud.proposal_command.v0",
+        "agentdoc.cloud.approval_command.v0",
+        "agentdoc.cloud.migration_request.v0",
+        "agentdoc.cloud.migration_receipt.v0",
+        "agentdoc.cloud.egress_policy.v0",
+    ] {
+        assert!(registered.contains(id), "E4.4 contract missing: {id}");
+    }
 }
 
 #[test]
@@ -617,26 +644,26 @@ fn comment_lines_do_not_scan_as_emissions() {
 /// One entry per item in the map's sentence, in its order; the milestone's
 /// T2 planned set adds the remaining reserved names.
 const MUST_INCLUDE_IDS: &[&str] = &[
-    "adoc.semantic_context.v0",       // semantic context
-    "adoc.semantic_assessment.v0",    // semantic assessment
-    "adoc.validation_receipt.v0",     // validation receipt
-    "adoc.lifecycle_mapping.v0",      // lifecycle mapping
-    "adoc.source_record.v0",          // source record
-    "adoc.source_assertion.v0",       // source assertion
-    "adoc.source_acl_snapshot.v0",    // ACL snapshot
-    "adoc.source_binding.v0",         // source binding
-    "adoc.sensitive_access.v0",       // sensitive-access event (RT-08, RT-21)
-    "adoc.egress_policy.v0",          // egress policy (RT-21)
-    "adoc.authorization_decision.v0", // authorization decision
-    "adoc.work_request.v0",           // work request
-    "adoc.work_result.v0",            // work result
-    "adoc.migration_request.v0",      // migration request
-    "adoc.migration_receipt.v0",      // migration receipt
-    "adoc.connector_manifest.v0",     // connector capability manifest
-    "adoc.governance_event.v0",       // governance contract
-    "adoc.proposal.v0",               // proposal contract
-    "adoc.approval.v0",               // approval contract
-    "adoc.gate_result.v0",            // gate contract
+    "adoc.semantic_context.v0",           // semantic context
+    "adoc.semantic_assessment.v0",        // semantic assessment
+    "adoc.validation_receipt.v0",         // validation receipt
+    "adoc.lifecycle_mapping.v0",          // lifecycle mapping
+    "adoc.source_record.v0",              // source record
+    "adoc.source_assertion.v0",           // source assertion
+    "adoc.source_acl_snapshot.v0",        // ACL snapshot
+    "adoc.source_binding.v0",             // source binding
+    "adoc.sensitive_access.v0",           // sensitive-access event (RT-08, RT-21)
+    "adoc.egress_policy.v0",              // egress policy (RT-21)
+    "adoc.authorization_decision.v0",     // authorization decision
+    "adoc.work_request.v0",               // work request
+    "adoc.work_result.v0",                // work result
+    "adoc.migration_request.v0",          // migration request
+    "adoc.migration_receipt.v0",          // migration receipt
+    "agentdoc.connector_capabilities.v0", // connector capability manifest
+    "adoc.governance_event.v0",           // governance contract
+    "adoc.proposal.v0",                   // proposal contract
+    "adoc.approval.v0",                   // approval contract
+    "adoc.gate_result.v0",                // gate contract
 ];
 
 #[test]

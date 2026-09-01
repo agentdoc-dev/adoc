@@ -96,6 +96,7 @@ Deliberately invalid version fixtures cited from test modules in `crates/*/src`,
 | `adoc.source_record.v99` | fixture | rejected-version fixture proving Source Records fail with exact-version remediation |
 | `adoc.work_request.v99` | fixture | rejected-version fixture proving external work requests fail with exact-version remediation |
 | `adoc.work_result.v99` | fixture | rejected-version fixture proving external work results fail with exact-version remediation |
+| `agentdoc.cloud.assessment_submission.v99` | fixture | rejected-version fixture proving `/api/v1` rejects unknown or superseded assessment-submission contracts with registered remediation |
 <!-- /registry:test-fixture-ids -->
 
 ## Envelopes and contracts — planned
@@ -108,11 +109,22 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | `adoc.connector_acl_policy.v0` | adoc | E2.6 | activation-time ACL acquisition, freshness, refresh, revocation, outage, and cache/session invalidation declaration; contract-tested schema `adoc.connector_acl_policy.v0.schema.json` |
 | `adoc.source_acl_snapshot.v0` | adoc | E2.6 | immutable historical ACL provenance only; `source_acl_ceiling.snapshot_id` records the consulted snapshot while the nested `current_authorization` input in `adoc.authorization_decision.v0` independently proves freshness-bounded current access; contract-tested schema `adoc.source_acl_snapshot.v0.schema.json` |
 | `adoc.sensitive_access.v0` | adoc | E6.3 | name held until a final registered successor (RT-08) |
-| `adoc.egress_policy.v0` | adoc | E6.6 | provenance RT-21: absent from the original V10 inventory |
+| `adoc.egress_policy.v0` | adoc | E6.6 | shared AgentDoc egress-policy domain contract reserved by E0.3; the separate `agentdoc.cloud.egress_policy.v0` row owns Cloud's external operation wrapper; provenance RT-21 |
 | `adoc.authorization_decision.v0` | adoc | E2.2 | `allow`/`deny`/`insufficient_context` decision record; extended at E2.4 with AgentDoc group and external-binding provenance |
-| `adoc.migration_request.v0` | adoc | E7.1 | exact-revision standalone-to-Cloud migration request |
-| `adoc.migration_receipt.v0` | adoc | E7.1 | migration receipt with qualification policy outcome |
-| `adoc.connector_manifest.v0` | adoc | E4.5 | capability manifest bound to exact adapter version and publisher |
+| `adoc.migration_request.v0` | adoc | E7.1 | portable exact-revision migration domain contract reserved by E0.3; Cloud's external operation wrapper is `agentdoc.cloud.migration_request.v0` |
+| `adoc.migration_receipt.v0` | adoc | E7.1 | portable migration-receipt domain contract reserved by E0.3; Cloud's external operation wrapper is `agentdoc.cloud.migration_receipt.v0` |
+| `agentdoc.connector_capabilities.v0` | adoc | E4.5 | capability manifest bound to exact adapter version and publisher |
+| `agentdoc.cloud.assessment_submission.v0` | cloud | E4.4 | exact-version `/api/v1` assessment-submission transport; payload semantics and durable ingestion remain E4.6-owned |
+| `agentdoc.cloud.ingestion_result.v0` | cloud | E4.4 | exact-version ingestion-result transport; disposition semantics remain E4.6-owned |
+| `agentdoc.cloud.repository_config.v0` | cloud | E4.4 | exact-version external repository-configuration transport |
+| `agentdoc.cloud.work_request.v0` | cloud | E4.4 | exact-version Cloud operation wrapper for dispatching the shared `adoc.work_request.v0` domain contract |
+| `agentdoc.cloud.work_result.v0` | cloud | E4.4 | exact-version Cloud operation wrapper for receiving the shared `adoc.work_result.v0` domain contract |
+| `agentdoc.cloud.gate_decision.v0` | cloud | E4.4 | exact-version gate-decision transport; gate semantics remain E5.3-owned |
+| `agentdoc.cloud.proposal_command.v0` | cloud | E4.4 | exact-version proposal-command transport; proposal semantics remain E5.1-owned |
+| `agentdoc.cloud.approval_command.v0` | cloud | E4.4 | exact-version approval-command transport; approval semantics remain E5.2-owned |
+| `agentdoc.cloud.migration_request.v0` | cloud | E4.4 | exact-version migration-request transport; migration semantics remain E7.1-owned |
+| `agentdoc.cloud.migration_receipt.v0` | cloud | E4.4 | exact-version migration-receipt transport; qualification and cutover semantics remain E7.1-owned |
+| `agentdoc.cloud.egress_policy.v0` | cloud | E4.4 | exact-version egress-policy transport; the seven-category policy and enforcement remain E6.6-owned; provenance RT-21 |
 | `agentdoc.cloud.validation_invocation.v0` | cloud | E4.2 | closed Cloud invocation manifest whose exact bytes bind an AgentDoc validation receipt to one immutable Workspace/Source Record/Source Binding/ACL snapshot/config/evaluation-date tuple |
 | `agentdoc.cloud.connector_authority_policy_receipt.v0` | cloud | E4.3 | immutable receipted connector-authority policy change binding exact scope, closed authority mode, promotion rule, policy ID/version, prior effective policy ID/version (or explicit none), policy effect ordinal and policy effect transaction ID, authenticated changing principal, and an allow authorization decision whose principal, `connector.configure` permission, and evaluated scope exact-match the change and that was evaluated under authorization state effective for the policy-change transaction; every governed use binds a strictly later governed-operation ordinal and distinct governed transaction ID, accepts only a receipt visible from a prior committed transaction, and exact-matches that receipt to the policy effective for its exact scope at that operation ordinal, so stale authorization, same-transaction change-then-use, and superseded-policy use fail closed |
 | `agentdoc.cloud.candidate_authority.v0` | cloud | E4.3 | immutable candidate provenance binding the exact managed candidate version ID and content digest, authenticated submitting principal, exact policy receipt, policy effect ordinal and transaction ID, strictly later candidate-operation ordinal and transaction ID, authority mode, and proposal origin; AgentDoc-origin candidates additionally bind a current allow authorization decision whose principal, `knowledge.propose` permission, and evaluated scope exact-matches the submission and that was evaluated under authorization state effective for the candidate-operation transaction; proposal origin is server-derived from authenticated ingress and principal class, never caller-supplied; connector-origin candidates require the exact connector Source Assertion, while AgentDoc-origin candidates carry no connector Source Assertion |
@@ -461,6 +473,12 @@ Operation labels and typed failure codes owned by the private Cloud service. New
 | `authority.promotion_rejected` | planned (E4.3) | Cloud governance attempted to promote a candidate origin forbidden by the effective authority mode |
 | `authority.external_active_rejected` | planned (E4.3) | external activation was attempted outside `externally_canonical` authority |
 | `authority.attestation_invalid` | planned (E4.3) | external-promotion attestation digest, immutable Source Assertion, independent trusted issuer evidence, or exact candidate/policy/issuer/type binding is invalid |
+| `api.unauthenticated` | planned (E4.4) | `/api/v1` request lacks a verifiable bearer identity |
+| `api.invalid_request` | planned (E4.4) | `/api/v1` request fails the transport generation's closed structural requirements |
+| `api.idempotency_conflict` | planned (E4.4) | an idempotency key is replayed with different request bytes |
+| `api.internal_error` | planned (E4.4) | the external API could not durably complete its transport-level operation; request correlation is returned for support |
+| `api.rate_limited` | planned (E4.4) | a rate limit rejects an external request and carries standard `Retry-After` semantics; quota enforcement remains E8.7-owned |
+| `ingest.envelope_version_unsupported` | planned (E4.4) | assessment submission names an unknown or superseded exact operation/envelope version; remediation names the accepted version |
 <!-- /registry:cloud-codes -->
 
 ## Attestation codes — planned, owner `cloud`

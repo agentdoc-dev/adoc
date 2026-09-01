@@ -73,6 +73,44 @@ fn schema_accepts(schema_name: &str, instance: &serde_json::Value) -> bool {
         .is_valid(instance)
 }
 
+#[test]
+fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_version() {
+    for id in [
+        "agentdoc.cloud.assessment_submission.v0",
+        "agentdoc.cloud.ingestion_result.v0",
+        "agentdoc.cloud.repository_config.v0",
+        "agentdoc.cloud.work_request.v0",
+        "agentdoc.cloud.work_result.v0",
+        "agentdoc.cloud.gate_decision.v0",
+        "agentdoc.cloud.proposal_command.v0",
+        "agentdoc.cloud.approval_command.v0",
+        "agentdoc.cloud.migration_request.v0",
+        "agentdoc.cloud.migration_receipt.v0",
+        "agentdoc.cloud.egress_policy.v0",
+    ] {
+        let file = format!("{id}.schema.json");
+        let fixture = json!({
+            "schema_version": id,
+            "payload": { "fixture": "round-trip" }
+        });
+        let bytes = serde_json::to_vec(&fixture).expect("fixture serializes");
+        let round_trip: serde_json::Value =
+            serde_json::from_slice(&bytes).expect("fixture deserializes");
+
+        assert_eq!(round_trip, fixture, "{id} changed across JSON round-trip");
+        assert_valid(&file, &round_trip);
+    }
+
+    let unsupported = json!({
+        "schema_version": "agentdoc.cloud.assessment_submission.v99",
+        "payload": { "fixture": "rejected-version" }
+    });
+    assert!(!schema_accepts(
+        "agentdoc.cloud.assessment_submission.v0.schema.json",
+        &unsupported
+    ));
+}
+
 fn project_with_built_graph() -> (tempfile::TempDir, AgentDocMcpServer, String) {
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();
