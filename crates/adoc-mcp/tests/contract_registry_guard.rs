@@ -673,6 +673,81 @@ fn planned_rows_name_exactly_one_owner_repo() {
 }
 
 #[test]
+fn candidate_authority_contract_binds_the_authenticated_submitting_principal() {
+    let registry = registry();
+    let block =
+        support::doc_scan::anchored_block(&registry, REGISTRY, "registry:envelopes-planned");
+    let row = block
+        .lines()
+        .find(|line| line.contains("`agentdoc.cloud.candidate_authority.v0`"))
+        .expect("candidate authority contract row");
+    assert!(row.contains("authenticated submitting principal"));
+    assert!(row.contains("exact managed candidate version ID and content digest"));
+    assert!(row.contains("strictly later candidate-operation ordinal"));
+    assert!(row.contains("server-derived from authenticated ingress"));
+    assert!(row.contains("never caller-supplied"));
+    assert!(row.contains("connector-origin candidates require"));
+    assert!(row.contains("AgentDoc-origin candidates carry no connector Source Assertion"));
+    assert!(row.contains("current allow authorization decision"));
+    assert!(row.contains("`knowledge.propose` permission"));
+    assert!(row.contains("evaluated scope exact-matches the submission"));
+    assert!(row.contains("authorization state effective for the candidate-operation transaction"));
+
+    let conflict = registry
+        .lines()
+        .find(|line| line.contains("`authority.candidate_origin_conflict`"))
+        .expect("candidate replay-conflict code row");
+    assert!(conflict.contains("submitting principal"));
+    assert!(conflict.contains("authorization decision"));
+    assert!(conflict.contains("managed candidate version ID and content digest"));
+    assert!(conflict.contains("policy receipt, effect ordinal, and effect transaction ID"));
+    assert!(conflict.contains("candidate-operation ordinal and transaction ID"));
+    assert!(conflict.contains("authority mode"));
+
+    let attestation = block
+        .lines()
+        .find(|line| line.contains("`agentdoc.cloud.external_promotion_attestation.v0`"))
+        .expect("external promotion attestation contract row");
+    assert!(attestation.contains("trusted issuer evidence"));
+    assert!(attestation.contains("exact managed candidate version ID and content digest"));
+    assert!(attestation.contains("exact effective policy receipt digest"));
+
+    let receipt = block
+        .lines()
+        .find(|line| line.contains("`agentdoc.cloud.external_promotion_receipt.v0`"))
+        .expect("external promotion receipt contract row");
+    assert!(receipt.contains("exact attestation digest and Source Assertion"));
+    assert!(receipt.contains("exact managed candidate version ID and content digest"));
+    assert!(receipt.contains("exact Governance Event sequence and digest"));
+    assert!(receipt.contains("exact-matches the attested policy receipt digest"));
+    assert!(receipt.contains("policy effect ordinal and transaction ID"));
+    assert!(receipt.contains("strictly later promotion-operation ordinal and transaction ID"));
+    assert!(receipt.contains("prior committed transaction"));
+}
+
+#[test]
+fn connector_authority_policy_receipt_orders_effect_and_exact_matches_authorization() {
+    let registry = registry();
+    let block =
+        support::doc_scan::anchored_block(&registry, REGISTRY, "registry:envelopes-planned");
+    let row = block
+        .lines()
+        .find(|line| line.contains("`agentdoc.cloud.connector_authority_policy_receipt.v0`"))
+        .expect("connector authority policy receipt contract row");
+
+    assert!(row.contains("prior effective policy ID/version"));
+    assert!(row.contains("policy effect ordinal"));
+    assert!(row.contains("policy effect transaction ID"));
+    assert!(row.contains("strictly later governed-operation ordinal"));
+    assert!(row.contains("prior committed transaction"));
+    assert!(row.contains("distinct governed transaction ID"));
+    assert!(row.contains("policy effective for its exact scope at that operation ordinal"));
+    assert!(row.contains("`connector.configure` permission"));
+    assert!(row.contains("exact-match the change"));
+    assert!(row.contains("authorization state effective for the policy-change transaction"));
+}
+
+#[test]
 fn permission_primitives_match_the_e2_2_registry() {
     let actual = anchored_ids(&registry(), "registry:permission-primitives");
     let expected = [
