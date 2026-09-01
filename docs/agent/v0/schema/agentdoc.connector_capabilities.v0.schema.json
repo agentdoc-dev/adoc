@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "adoc://agent/v0/schema/agentdoc.connector_capabilities.v0.schema.json",
+  "title": "AgentDoc Connector Capability Manifest v0",
+  "description": "Version-exact connector capabilities. Per-capability maturity is policy authority; overall_stage is display-only. Cloud binds the claimed adapter and publisher to trusted authenticated records.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "adapter",
+    "publisher",
+    "overall_stage",
+    "capabilities"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agentdoc.connector_capabilities.v0"
+    },
+    "adapter": {
+      "$ref": "#/$defs/adapter"
+    },
+    "publisher": {
+      "$ref": "#/$defs/publisher"
+    },
+    "overall_stage": {
+      "enum": [
+        "Alpha",
+        "Private Preview",
+        "Preview",
+        "Beta",
+        "Generally Available",
+        "Deprecated"
+      ]
+    },
+    "capabilities": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/capability"
+      }
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\s\\u0000-\\u001f\\u007f-\\u009f](?:[^\\u0000-\\u001f\\u007f-\\u009f]*[^\\s\\u0000-\\u001f\\u007f-\\u009f])?$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "publisher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/text"
+        },
+        "kind": {
+          "enum": ["agentdoc", "customer"]
+        }
+      }
+    },
+    "capability_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version_range"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version_range": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "contract_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "version_range"],
+      "properties": {
+        "schema": {
+          "$ref": "#/$defs/identifier"
+        },
+        "version_range": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "maturity",
+        "dependencies",
+        "known_limitations",
+        "supported_contract_ranges",
+        "processing_modes",
+        "deployment_modes"
+      ],
+      "properties": {
+        "version": {
+          "$ref": "#/$defs/text"
+        },
+        "maturity": {
+          "enum": [
+            "unsupported",
+            "experimental",
+            "preview",
+            "beta",
+            "ga",
+            "deprecated"
+          ]
+        },
+        "dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/capability_reference"
+          }
+        },
+        "known_limitations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "supported_contract_ranges": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/contract_range"
+          }
+        },
+        "processing_modes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["source_ci", "agentdoc_managed", "customer_worker"]
+          }
+        },
+        "deployment_modes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "qualification_evidence_ref": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "maturity": {
+                "const": "ga"
+              }
+            },
+            "required": ["maturity"]
+          },
+          "then": {
+            "required": ["qualification_evidence_ref"]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -111,6 +111,76 @@ fn cloud_operation_contracts_round_trip_and_reject_the_registered_unknown_versio
     ));
 }
 
+#[test]
+fn connector_capability_manifest_schema_is_closed_and_version_exact() {
+    let manifest = json!({
+        "schema_version": "agentdoc.connector_capabilities.v0",
+        "adapter": { "name": "github-action", "version": "2.0.0-alpha.19" },
+        "publisher": { "id": "agentdoc-dev/action", "kind": "agentdoc" },
+        "overall_stage": "Beta",
+        "capabilities": {
+          "change_request.trusted_assessment": {
+            "version": "1",
+            "maturity": "ga",
+            "dependencies": [{
+                "name": "source.read_exact_revision",
+                "version_range": ">=1 <2"
+            }],
+            "known_limitations": ["GitHub repositories only"],
+            "supported_contract_ranges": [{
+                "schema": "agentdoc.cloud.assessment_submission",
+                "version_range": ">=0 <1"
+            }],
+            "processing_modes": ["source_ci"],
+            "deployment_modes": ["github_action"],
+            "qualification_evidence_ref": "agentdoc:evidence/github-action/trusted-assessment-v1"
+          }
+        }
+    });
+    let name = "agentdoc.connector_capabilities.v0.schema.json";
+
+    assert_eq!(
+        manifest["schema_version"],
+        adoc_core::CONNECTOR_CAPABILITIES_SCHEMA_VERSION
+    );
+    assert_valid(name, &manifest);
+
+    let mut unknown_version = manifest.clone();
+    unknown_version["schema_version"] = json!("agentdoc.connector_capabilities.v1");
+    assert!(!schema_accepts(name, &unknown_version));
+
+    let mut unknown_maturity = manifest.clone();
+    unknown_maturity["capabilities"]["change_request.trusted_assessment"]["maturity"] =
+        json!("stable");
+    assert!(!schema_accepts(name, &unknown_maturity));
+
+    let mut unevidenced_ga = manifest.clone();
+    unevidenced_ga["capabilities"]["change_request.trusted_assessment"]
+        .as_object_mut()
+        .expect("capability is an object")
+        .remove("qualification_evidence_ref");
+    assert!(!schema_accepts(name, &unevidenced_ga));
+
+    let mut duplicate_identity = manifest.clone();
+    let mut conflicting =
+        duplicate_identity["capabilities"]["change_request.trusted_assessment"].clone();
+    conflicting["maturity"] = json!("deprecated");
+    duplicate_identity["capabilities"] = json!([
+        {
+            "name": "change_request.trusted_assessment",
+            "version": "1",
+            "maturity": "ga"
+        },
+        conflicting
+    ]);
+    assert!(!schema_accepts(name, &duplicate_identity));
+
+    let mut unknown_field = manifest;
+    unknown_field["capabilities"]["change_request.trusted_assessment"]["silently_weaken_gate"] =
+        json!(true);
+    assert!(!schema_accepts(name, &unknown_field));
+}
+
 fn project_with_built_graph() -> (tempfile::TempDir, AgentDocMcpServer, String) {
     let workspace = tempfile::tempdir().expect("workspace");
     let root = workspace.path();
@@ -1016,6 +1086,10 @@ fn mcp_serves_schema_resources_byte_equal_to_on_disk_files() {
             "adoc://agent/v0/schema/adoc.work_result.v0.schema.json",
             "adoc.work_result.v0.schema.json",
         ),
+        (
+            "adoc://agent/v0/schema/agentdoc.connector_capabilities.v0.schema.json",
+            "agentdoc.connector_capabilities.v0.schema.json",
+        ),
     ] {
         let result = server
             .read_agent_resource(uri)
@@ -1584,6 +1658,10 @@ fn retrieval_schema_ids_match_their_published_uris() {
         (
             "adoc.work_result.v0.schema.json",
             "adoc://agent/v0/schema/adoc.work_result.v0.schema.json",
+        ),
+        (
+            "agentdoc.connector_capabilities.v0.schema.json",
+            "adoc://agent/v0/schema/agentdoc.connector_capabilities.v0.schema.json",
         ),
     ] {
         assert_eq!(

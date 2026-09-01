@@ -468,6 +468,30 @@ fn e4_4_cloud_operation_contracts_are_registered_exactly() {
 }
 
 #[test]
+fn connector_capability_manifest_is_shipped_by_its_contract_owner() {
+    let doc = registry();
+    let shipped = anchored_ids(&doc, "registry:envelopes-shipped-adoc");
+    let planned = anchored_ids(&doc, "registry:envelopes-planned");
+
+    assert!(shipped.contains("agentdoc.connector_capabilities.v0"));
+    assert!(!planned.contains("agentdoc.connector_capabilities.v0"));
+}
+
+#[test]
+fn e4_5_cloud_capability_trust_codes_are_registered_exactly() {
+    let registered = anchored_ids(&registry(), "registry:cloud-codes");
+    for code in [
+        "connector.manifest_invalid",
+        "connector.publisher_unqualified",
+        "connector.configuration_ineligible",
+        "connector.capability_ineligible",
+        "connector.exception_invalid",
+    ] {
+        assert!(registered.contains(code), "E4.5 Cloud code missing: {code}");
+    }
+}
+
+#[test]
 fn test_only_use_does_not_split_the_scope() {
     let fixture = r#"
         #[cfg(test)]
