@@ -492,6 +492,19 @@ fn e4_5_cloud_capability_trust_codes_are_registered_exactly() {
 }
 
 #[test]
+fn e4_6_ingestion_codes_are_registered_exactly() {
+    let registered = anchored_ids(&registry(), "registry:cloud-codes");
+    for code in [
+        "ingest.duplicate_delivery",
+        "ingest.stale_run",
+        "ingest.digest_mismatch",
+        "connect.permission_exceeds_manifest",
+    ] {
+        assert!(registered.contains(code), "E4.6 Cloud code missing: {code}");
+    }
+}
+
+#[test]
 fn test_only_use_does_not_split_the_scope() {
     let fixture = r#"
         #[cfg(test)]
