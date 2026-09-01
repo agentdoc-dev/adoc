@@ -109,6 +109,9 @@ Reserved ids for the accepted V1 contract set (E0.3.T2). Each row names its owni
 | id | owner | planned by | notes |
 | --- | --- | --- | --- |
 | `adoc.pr_assessment_receipt.v1` | action | E2.5 | exact-match successor adding server-bound GitHub Actions workload identity; v0 remains shipped until the successor is released |
+| `adoc.pr_assessment_receipt.v2` | action | E3.5 | exact-match successor adding validator-bound semantic assessment, closed status `required` / `completed` / `skipped` / `fell_back` / `failed`, and one independently eligible fallback with both provider identities on `fell_back`; v1 remains available if released, otherwise moves to Dispositions as never shipped |
+| `adoc.pr_assessment_receipt.v3` | action | E3.7 | exact-match successor adding the authenticated Cloud work-result hand-off outcome and surfacing the registered `action.cloud_sync_failed` failure code; v2 remains available if released, otherwise moves to Dispositions as never shipped |
+| `adoc.pr_assessment_receipt.v4` | action | E3.8 | exact-match successor adding split untrusted/trusted phase provenance, the registered S8 untrusted-change states, and the fork-safe write-path refusal code `delivery.fork_branch_read_only`; v3 remains available if released, otherwise moves to Dispositions as never shipped |
 | `adoc.connector_acl_policy.v0` | adoc | E2.6 | activation-time ACL acquisition, freshness, refresh, revocation, outage, and cache/session invalidation declaration; contract-tested schema `adoc.connector_acl_policy.v0.schema.json` |
 | `adoc.source_acl_snapshot.v0` | adoc | E2.6 | immutable historical ACL provenance only; `source_acl_ceiling.snapshot_id` records the consulted snapshot while the nested `current_authorization` input in `adoc.authorization_decision.v0` independently proves freshness-bounded current access; contract-tested schema `adoc.source_acl_snapshot.v0.schema.json` |
 | `adoc.sensitive_access.v0` | adoc | E6.3 | name held until a final registered successor (RT-08) |
@@ -350,6 +353,7 @@ Shared row values for shipped rows: producer Action v2.0.0-alpha.19 (workflow an
 | `action.unsupported_event` | shipped | unsupported triggering event |
 | `action.cloud_sync_failed` | shipped | Action v2 E3.7 Cloud hand-off failed; local assessment preserved and annotated, never failed retroactively |
 | `action.attestation_bot_rejected` | planned (E8.1) | Action check wrapper for the canonical Cloud code `attestation.bot_approver_rejected` — one documented mapping, no competing suffix |
+| `delivery.fork_branch_read_only` | planned (E3.8) | Action refuses writes to a fork branch and names the separate base-repository PR alternative |
 <!-- /registry:action-codes -->
 
 ## Gate codes — planned, owner `adoc`
@@ -485,11 +489,15 @@ Operation labels and typed failure codes owned by the private Cloud service. New
 | `ingest.stale_run` | planned (E4.6) | an older observed head is retained in history but cannot replace the repository's newer lineage head |
 | `ingest.digest_mismatch` | planned (E4.6) | a claimed assessment or receipt digest does not match the submitted envelope bytes; the attempt is recorded and the delivery rejected |
 | `connect.permission_exceeds_manifest` | planned (E4.6) | a connector grant exceeds its authenticated capability manifest; the connection becomes unhealthy and ingestion pauses until re-consent |
+| `connect.unknown_config_field` | planned (E7.3) | strict settings parsing rejects an unknown field instead of silently accepting it |
+| `connect.credential_store_violation` | planned (E7.3) | a service identity attempts to read both semantic-provider and source/write credential stores |
 | `connector.manifest_invalid` | planned (E4.5) | connector capability manifest fails exact-version decoding or its adapter, connector, or authenticated-publisher binding is invalid |
 | `connector.publisher_unqualified` | planned (E4.5) | the authenticated publisher lacks trusted qualification for a claimed capability maturity; customer publishers cannot self-claim AgentDoc GA |
 | `connector.configuration_ineligible` | planned (E4.5) | a connector configuration cannot activate because its dependency closure, capability maturity, or new-use deprecation policy is unsatisfied; remediation carries eligible alternatives rather than weakening the requested gate |
 | `connector.capability_ineligible` | planned (E4.5) | runtime policy rejects a required capability after applying its current per-capability maturity, any immediate incident demotion/suspension, and a current scoped exception |
 | `connector.exception_invalid` | planned (E4.5) | a maturity exception is missing immutable scope, expiry, current permission approval, or receipt binding, or attempts to authorize after expiry |
+| `delivery.reference_missing` | planned (E8.2) | Cloud rejects a proposal record whose Action-owned knowledge-PR reference block is absent or incomplete |
+| `delivery.reference_stale` | planned (E8.2) | Cloud rejects a proposal record whose reference block is bound to a superseded assessment head |
 <!-- /registry:cloud-codes -->
 
 ## Attestation codes — planned, owner `cloud`
@@ -504,10 +512,10 @@ The canonical bot-attestation code family root (RT-21, E0.3.T3). The Action neve
 
 ## Dispositions
 
-Codes resolved out of existence (RT-21). A disposition is permanent: the id is never reused with another meaning.
+Codes and contract ids resolved out of existence (RT-21). A disposition is permanent: the id is never reused with another meaning.
 
 <!-- registry:dispositions -->
-| code | disposition |
+| code or id | disposition |
 | --- | --- |
 | `action.semantic_failed` | removed — appeared only in pre-V10 planning text and never shipped (no occurrence in Action v2.0.0-alpha.19 sources); the shipped registered code `action.semantic_review_failed` is the single canonical Action semantic-failure reason code, and any gate-matrix or planning reference resolves there |
 <!-- /registry:dispositions -->

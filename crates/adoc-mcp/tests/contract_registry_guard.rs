@@ -105,6 +105,20 @@ const ANCHORS: &[&str] = &[
     "registry:proof-obligation-stages",
 ];
 
+/// Tables whose ids are section-scoped bare words, not globally unique ids.
+/// Namespaced vocabularies such as `registry:managed-state-dimensions` stay
+/// outside this list and remain subject to the disposition collision check.
+const VOCABULARY_ANCHORS: &[&str] = &[
+    "registry:group-binding-modes",
+    "registry:group-source-kinds",
+    "registry:group-membership-unavailability-states",
+    "registry:untrusted-change-states",
+    "registry:retention-classes",
+    "registry:replay-postures",
+    "registry:proof-obligation-states",
+    "registry:proof-obligation-stages",
+];
+
 /// True for `adoc.<path>.v<digits>` or `agentdoc.<path>.v<digits>` — the envelope
 /// schema-version id shape and nothing else.
 fn is_envelope_id(candidate: &str) -> bool {
@@ -294,6 +308,31 @@ fn all_anchors_present() {
     let registry = registry();
     for anchor in ANCHORS {
         anchored_ids(&registry, anchor); // panics on a missing anchor
+    }
+}
+
+#[test]
+fn vocabulary_anchors_are_declared_anchors() {
+    for anchor in VOCABULARY_ANCHORS {
+        assert!(
+            ANCHORS.contains(anchor),
+            "{anchor:?} is not a declared registry anchor — a stale or typo'd \
+             exclusion would silently weaken the disposition check"
+        );
+    }
+}
+
+#[test]
+fn vocabulary_anchors_hold_bare_words() {
+    let registry = registry();
+    for anchor in VOCABULARY_ANCHORS {
+        for id in anchored_ids(&registry, anchor) {
+            assert!(
+                !id.contains('.'),
+                "{anchor}: {id:?} is namespaced, not a section-scoped bare word — \
+                 a namespaced table belongs in the disposition scan"
+            );
+        }
     }
 }
 
@@ -501,6 +540,35 @@ fn e4_6_ingestion_codes_are_registered_exactly() {
         "connect.permission_exceeds_manifest",
     ] {
         assert!(registered.contains(code), "E4.6 Cloud code missing: {code}");
+    }
+}
+
+#[test]
+fn planned_delivery_and_connect_codes_stay_with_their_owner() {
+    let registry = registry();
+    let action = anchored_ids(&registry, "registry:action-codes");
+    let cloud = anchored_ids(&registry, "registry:cloud-codes");
+
+    let action_owned = "delivery.fork_branch_read_only";
+    assert!(
+        action.contains(action_owned),
+        "E3.8 Action code missing: {action_owned}"
+    );
+    assert!(
+        !cloud.contains(action_owned),
+        "E3.8 Action code owned by Cloud: {action_owned}"
+    );
+    for (slice, code) in [
+        ("E8.2", "delivery.reference_missing"),
+        ("E8.2", "delivery.reference_stale"),
+        ("E7.3", "connect.unknown_config_field"),
+        ("E7.3", "connect.credential_store_violation"),
+    ] {
+        assert!(cloud.contains(code), "{slice} Cloud code missing: {code}");
+        assert!(
+            !action.contains(code),
+            "{slice} Cloud code owned by Action: {code}"
+        );
     }
 }
 
@@ -1514,10 +1582,11 @@ fn group_retention_rules_match_the_e2_4_authority() {
 
 /// Backticked codes cited by the executable planning surface, one
 /// `(document, line, code)` per citation. Covers `gate.*`/`action.*`/
-/// `workspace.*` codes and envelope ids; `attestation.*` siblings are
-/// deliberately outside the net — E8.1.T1 registers them as a registry edit
-/// in that slice. `workspace.*` permission primitives belong under their own
-/// registry anchor, never `registry:cloud-codes`.
+/// `workspace.*`/`delivery.*`/`connect.*` codes and envelope ids. `delivery.*`
+/// intentionally spans the Action and Cloud owner tables. `attestation.*`
+/// siblings are deliberately outside the net — E8.1.T1 registers them as a
+/// registry edit in that slice. `workspace.*` permission primitives belong
+/// under their own registry anchor, never `registry:cloud-codes`.
 fn cited_codes() -> Vec<(String, usize, String)> {
     let dir = repo_root().join("docs/roadmap/v10");
     let mut cited = Vec::new();
@@ -1537,18 +1606,22 @@ fn cited_codes() -> Vec<(String, usize, String)> {
         }
         for (number, line) in support::doc_scan::structural_lines(&content) {
             for span in line.split('`').skip(1).step_by(2) {
-                let is_registered_code = ["gate.", "action.", "workspace."].iter().any(|prefix| {
-                    span.strip_prefix(prefix).is_some_and(|rest| {
-                        !rest.is_empty() && rest.chars().all(|c| c.is_ascii_lowercase() || c == '_')
-                    })
-                });
+                let is_registered_code =
+                    ["gate.", "action.", "workspace.", "delivery.", "connect."]
+                        .iter()
+                        .any(|prefix| {
+                            span.strip_prefix(prefix).is_some_and(|rest| {
+                                !rest.is_empty()
+                                    && rest.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+                            })
+                        });
                 if is_registered_code || is_envelope_id(span) {
                     cited.push((name.clone(), number, span.to_string()));
                 }
             }
         }
     }
-    for prefix in ["gate.", "action.", "workspace."] {
+    for prefix in ["gate.", "action.", "workspace.", "delivery.", "connect."] {
         assert!(
             cited.iter().any(|(_, _, code)| code.starts_with(prefix)),
             "no `{prefix}*` citation found"
@@ -1642,6 +1715,28 @@ fn guard_fires_on_a_duplicated_close_marker() {
 }
 
 #[test]
+fn disposed_ids_are_not_registered_elsewhere() {
+    let registry = registry();
+    let dispositions = anchored_ids(&registry, "registry:dispositions");
+    let still_registered: Vec<_> = ANCHORS
+        .iter()
+        .filter(|anchor| {
+            **anchor != "registry:dispositions" && !VOCABULARY_ANCHORS.contains(*anchor)
+        })
+        .flat_map(|anchor| {
+            anchored_ids(&registry, anchor)
+                .into_iter()
+                .filter(|id| dispositions.contains(id))
+                .map(move |id| format!("{anchor}: {id}"))
+        })
+        .collect();
+    assert!(
+        still_registered.is_empty(),
+        "disposed ids may not remain registered elsewhere: {still_registered:?}"
+    );
+}
+
+#[test]
 fn semantic_failed_has_exactly_one_disposition() {
     let registry = registry();
     let dispositions = anchored_ids(&registry, "registry:dispositions");
@@ -1661,10 +1756,6 @@ fn semantic_failed_has_exactly_one_disposition() {
     assert!(
         action_codes.contains("action.semantic_review_failed"),
         "the surviving code must itself be a registered Action code"
-    );
-    assert!(
-        !action_codes.contains("action.semantic_failed"),
-        "a removed code may never also appear as a registered Action code"
     );
 }
 
