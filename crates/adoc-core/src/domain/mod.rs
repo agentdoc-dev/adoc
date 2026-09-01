@@ -38,6 +38,7 @@ pub(crate) mod semantic_executor;
 pub(crate) mod services;
 pub(crate) mod source;
 pub(crate) mod source_edit;
+pub(crate) mod source_provenance;
 pub(crate) mod source_record;
 pub(crate) mod url_safety;
 pub(crate) mod value_objects;

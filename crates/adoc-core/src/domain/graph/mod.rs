@@ -4,6 +4,8 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) use super::source_provenance::SourceBindingCoordinates as GraphSourceBinding;
+
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::source::LogicalPath;
@@ -399,25 +401,6 @@ pub(crate) struct GraphSourceSpan {
     pub(crate) path: String,
     pub(crate) line: u32,
     pub(crate) column: u32,
-}
-
-/// ADR-0058 §4: the Source Binding — connector, source, revision,
-/// path-or-coordinate, anchor, and source-revision digest — recorded per
-/// Knowledge Object for provenance, writeback, patch safety, and
-/// stale-source detection. For the local filesystem connector the source is
-/// the containing page, the path is the Logical Source Path, the anchor is
-/// the Object ID (typed blocks are located by id, never by line), and the
-/// source-revision digest is the sha256 of the source page bytes; there is
-/// no connector-native revision.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub(crate) struct GraphSourceBinding {
-    pub(crate) connector: String,
-    pub(crate) source: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) revision: Option<String>,
-    pub(crate) path: String,
-    pub(crate) anchor: String,
-    pub(crate) source_revision_digest: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]

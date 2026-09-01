@@ -439,12 +439,38 @@ const RESOURCES: &[AgentResource] = &[
         ),
     },
     AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.source_assertion.v0.schema.json",
+        name: "schema-adoc-source-assertion-v0-json",
+        title: "Source Assertion JSON Schema",
+        description: "JSON Schema for digest-bound immutable atomic source assertions.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!(
+            "../../../docs/agent/v0/schema/adoc.source_assertion.v0.schema.json"
+        ),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.source_binding.v0.schema.json",
+        name: "schema-adoc-source-binding-v0-json",
+        title: "Source Binding JSON Schema",
+        description: "JSON Schema for standalone graph-v6 source placement bindings.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.source_binding.v0.schema.json"),
+    },
+    AgentResource {
         uri: "adoc://agent/v0/schema/adoc.source_record.v0.schema.json",
         name: "schema-adoc-source-record-v0-json",
         title: "Source Record JSON Schema",
         description: "JSON Schema for digest-bound immutable source observations.",
         mime_type: JSON_SCHEMA,
         contents: include_str!("../../../docs/agent/v0/schema/adoc.source_record.v0.schema.json"),
+    },
+    AgentResource {
+        uri: "adoc://agent/v0/schema/adoc.source_record.v1.schema.json",
+        name: "schema-adoc-source-record-v1-json",
+        title: "Source Record v1 JSON Schema",
+        description: "JSON Schema for source observations bound to one exact ACL Snapshot.",
+        mime_type: JSON_SCHEMA,
+        contents: include_str!("../../../docs/agent/v0/schema/adoc.source_record.v1.schema.json"),
     },
     AgentResource {
         uri: "adoc://agent/v0/schema/adoc.work_request.v0.schema.json",
