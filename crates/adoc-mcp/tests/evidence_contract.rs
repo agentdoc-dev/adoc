@@ -11,7 +11,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v9.yaml";
+const ACTIVE_CONTRACT: &str = "docs/pilots/g1a/evidence-contract-v10.yaml";
 const FROZEN_CONTRACTS: &[(&str, &str)] = &[
     (
         "docs/pilots/g1a/evidence-contract-v1.yaml",
@@ -46,8 +46,12 @@ const FROZEN_CONTRACTS: &[(&str, &str)] = &[
         "e20f375d69d3a32bb9ae5f4b52d4863caab2d53deaa040c0992ee7c6083ccbb9",
     ),
     (
-        ACTIVE_CONTRACT,
+        "docs/pilots/g1a/evidence-contract-v9.yaml",
         "78d3ddde08ad93bb5ea4c1bdc223218ff6527a36e8b3337db0ac9d7957bda802",
+    ),
+    (
+        ACTIVE_CONTRACT,
+        "96839e8f34182823057698061de0dc62eda5003f439228ba2c38091a30492988",
     ),
 ];
 
@@ -225,13 +229,16 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
     assert!(runs.iter().all(|run| {
         let rule = run["selection_rule"].as_str().expect("selection rule");
         rule.contains("(created_at, run_id, run_attempt)")
+            && rule.contains("authenticated GitHub Actions REST API")
             && rule.contains(
                 "both the workflow run and attempt were created at or after eligible_from",
             )
+            && rule.contains("including deleted runs")
+            && rule.contains("no deletion-resistant population claim")
             && rule.contains("opened activity")
             && rule.contains("before assessment job scheduling or outcome")
             && rule.contains("unstarted")
-            && rule.contains("incomplete evidence as a denominator failure")
+            && rule.contains("incomplete API-visible evidence as a denominator failure")
     }));
     assert_eq!(
         runs.len() as u64,
@@ -248,11 +255,11 @@ fn real_run_set_is_precommitted_at_the_population_floor() {
 }
 
 #[test]
-fn v9_workflow_cannot_assess_before_review_and_exact_tuple_binding() {
+fn v10_workflow_cannot_assess_before_review_and_exact_tuple_binding() {
     let workflow = fs::read_to_string(root().join(".github/workflows/g1a-v7-evidence.yml"))
-        .expect("G1A v9 workflow is readable");
+        .expect("G1A v10 workflow is readable");
     assert!(workflow.contains("types: [opened]"));
-    assert!(workflow.contains("g1a-binding:v9:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}"));
+    assert!(workflow.contains("g1a-binding:v10:${GITHUB_RUN_ID}:${GITHUB_RUN_ATTEMPT}"));
     assert!(workflow.contains("split(\"\\n\") | index($marker) != null"));
     assert!(workflow.contains(".author_association | IN"));
     assert!(workflow.contains("seq 1 180"));
@@ -260,6 +267,22 @@ fn v9_workflow_cannot_assess_before_review_and_exact_tuple_binding() {
     assert!(
         workflow.contains("uses: agentdoc-dev/action@17da62659dc164b98ccdf0f4455c7628b58cd154")
     );
+}
+
+#[test]
+fn v10_discloses_the_non_enterprise_population_limit() {
+    let instance = active_contract();
+    let exclusions = instance["evidence_contract"]["exclusions"]
+        .as_array()
+        .expect("exclusions");
+    let deletion = exclusions
+        .iter()
+        .find(|row| row["id"] == "deleted_or_provider_unavailable_run")
+        .expect("deleted-run exclusion");
+    let rule = deletion["rule"].as_str().expect("exclusion rule");
+    assert!(rule.contains("GitHub Actions REST API"));
+    assert!(rule.contains("deleted run"));
+    assert!(rule.contains("does not claim deletion-resistant enumeration"));
 }
 
 #[test]
