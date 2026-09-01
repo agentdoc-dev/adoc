@@ -476,7 +476,7 @@ Digest-bound semantic context and assessment contracts, executor qualification, 
 
 ## Milestone E4 — Cloud Source Records, Canonical Store, and API
 
-Stand up the Cloud's immutable source-observation store, the PostgreSQL canonical managed graph, connector-authority policy, the versioned `/api/v1` surface, capability-manifest trust, and GitHub ingestion — everything the governance tracer consumes. **Milestone exit:** E4.7 — G1A evidence contract frozen/published before first eligible internal run; contract/idempotency/digest/stale/isolation tests plus the precommitted small real internal run set pass; only then does the governance tracer proceed. **Release anchor:** feeds Internal Integrated Tracer, 2026-09-30 — via the E4.7 G1A gate, which must be green first.
+Stand up the Cloud's immutable source-observation store, the PostgreSQL canonical managed graph, connector-authority policy, the versioned `/api/v1` surface, capability-manifest trust, and GitHub ingestion — everything the governance tracer consumes. **Milestone exit:** E4.1–E4.6 acceptance is green, including the deterministic contract/idempotency/digest/stale/isolation suites. E4.7 records the decision to defer a measured G1A cohort and is not an E4 merge gate. **Release anchor:** feeds Internal Integrated Tracer, 2026-09-30.
 
 ### E4.1 — Source Record / Assertion / Binding / ACL Snapshot store
 **Repos:** `cloud`, schemas/contracts `adoc` · **Depends on:** E1.2, E2.6
@@ -586,20 +586,18 @@ Stand up the Cloud's immutable source-observation store, the PostgreSQL canonica
 - No ingestion path upgrades a failed/partial outcome to success.
 **Out of scope:** gate evaluation over ingested facts (E5.3); check publication (E5.4); GitLab ingestion (E8.5).
 
-### E4.7 — G1A technical engineering-admission gate
-**Repos:** all implementation repos · **Depends on:** E4.6
-**Read first:** [RELEASE-EVIDENCE.md](RELEASE-EVIDENCE.md) (evidence-contract YAML, G1A/G1B split) · [RED-TEAM-CLOSURE.md](RED-TEAM-CLOSURE.md) (RT-20 frozen cohorts) · provenance: V10.1.7 G1 shape (non-executable)
+### E4.7 — Deferred G1A engineering admission
+**Repos:** `adoc` · **Depends on:** E4.6
+**Read first:** [RELEASE-EVIDENCE.md](RELEASE-EVIDENCE.md) (G1A deferral, G1B external admission) · [DECISION-REGISTER.md](DECISION-REGISTER.md) (D40) · provenance: V10.1.7 G1 shape (non-executable)
 **Tracer bullets:**
-1. `E4.7.T1` — Evidence contract authored as versioned YAML (id, version, frozen_at, eligible_from, cohort_definition, minimum_population, minimum_duration, metrics, numerator_denominator_rules, exclusions, thresholds, stop_ship_conditions, approved_by) + schema validation; lands failing CI check that `frozen_at` precedes the earliest eligible observation. This slice is the single owner of the evidence-contract YAML schema — E7.6.T1/E9.1.T1 freeze contract instances validating against it, never re-land the schema.
-2. `E4.7.T2` — Evidence collection over internal runs: digest-match rate (Action-emitted vs Cloud-stored bytes), duplicate-governance-event count under 5× replay, stale-overwrite count, isolation results — every rate names its denominator; lands failing test: report generator marks any rate with denominator below the frozen floor as descriptive + `insufficient_evidence`, promoting nothing.
-3. `E4.7.T3` — Run the precommitted small real internal run set and publish the G1A readout; a red result is a falsification checkpoint that stops downstream Cloud governance build (local product and standalone Action unaffected — every envelope is locally producible).
+1. `E4.7.T1` — Record that the pilot does not require a measured internal G1A cohort; do not merge the speculative evidence schema, evaluator, collection workflows, or retained run artifacts.
+2. `E4.7.T2` — Keep the product invariants under E4.6's deterministic test suites; local and GitHub-hosted CI may run those tests without an evidence-cohort service.
+3. `E4.7.T3` — Preserve no-promotion: no historical G1A run authorizes enforcement or claims pilot readiness. Revisit measured engineering admission only when observed pilot scale or a release decision requires it.
 **Acceptance:**
-- Contract frozen and published before the first eligible internal run; any material rule change after `eligible_from` closes the cohort version and forks a new one — it never rewrites criteria.
-- Contract/idempotency/digest/stale/isolation suites green (exit gate).
-- Precommitted internal run set passes under the frozen thresholds (exit gate).
-- Adversarial: attempted threshold edit mid-cohort rejected; historical evidence never reinterpreted.
-- Fixture runs are excluded by the contract's exclusion rules and never cited as real use.
-**Out of scope:** G1B external real-run evidence contract (E7.6); shadow/real/required-gate cohorts (E9.2–E9.4).
+- E4.7 is not an E4 merge gate or an E5 implementation gate.
+- E4.6's deterministic contract/idempotency/digest/stale/isolation suites remain green.
+- No G1A cohort, result, or fixture is promoted as release evidence.
+**Out of scope:** G1B external real-run evidence contract (E7.6); qualification/shadow/real/required-gate evidence (E9.1–E9.4).
 
 ## Milestone E5 — Internal Integrated Governance Tracer
 
@@ -679,7 +677,7 @@ Cut the first end-to-end governed flow — proposal, native approval, four-mode 
 ### E5.5 — Internal integrated tracer
 **Repos:** `adoc`, `action`, `cloud` · **Depends on:** E5.1–E5.4
 **Read first:** [EXECUTION-MAP.md](EXECUTION-MAP.md) (Phase E5, stop-ship invariants) · [RELEASE-EVIDENCE.md](RELEASE-EVIDENCE.md) · provenance: V10 Test Matrix + Stage 0/1 rollout (non-executable)
-**Gate note:** Requires E4.6 accepted and the E4.7 G1A readout green before the tracer run — the map's E4.7 exit outranks the Depends-on list.
+**Gate note:** Requires E4.6 accepted. E4.7 records a deferral and adds no tracer gate.
 **Tracer bullets:**
 1. `E5.5.T1` — Thinnest full tracer on one internal repo with synthetic data: GitHub change → deterministic assessment → one qualified semantic executor → proposal → Cloud candidate → native approval → active managed version → check → durable receipt/audit as the terminal step; lands failing E2E test asserting a digest-linked exact trace across every contract in the chain.
 2. `E5.5.T2` — Adversarial injections inside the same tracer run, from the carried E2E checklist: hash stability, replay/out-of-order delivery, tenant-isolation probe, approval invalidation both directions, bot rejection, negative verdict + acceptance, promotion gating; each lands as a failing tracer assertion before wiring.
@@ -893,7 +891,7 @@ Move standalone Git-canonical repos into managed Cloud governance without dual a
 **Repos:** all · **Depends on:** E7.2–E7.5
 **Read first:** [RELEASE-EVIDENCE.md R7](RELEASE-EVIDENCE.md#r7-g1a--g1b-ingestion-gates) · [RELEASE-EVIDENCE.md R8](RELEASE-EVIDENCE.md#r8-versioned-layer-specific-evidence-contracts) · [RED-TEAM-CLOSURE.md RT-20](RED-TEAM-CLOSURE.md#rt-20--evidence-and-release-gate-integrity) · [ADR-0042](../../adr/0042-pilot-readiness-thresholds.md)
 **Tracer bullets:**
-1. `E7.6.T1` — Ratify-or-amend the G1B proposal BEFORE freeze (original: ~≥25 assessments across ≥2 repos, perfect digest integrity, zero duplicate/stale corruption), then freeze the versioned evidence contract as a YAML instance validating against the E4.7.T1 schema (which owns the field set) before the first eligible observation; failing check: schema-validating the frozen contract against E4.7.T1.
+1. `E7.6.T1` — Ratify-or-amend the G1B proposal BEFORE freeze (original: ~≥25 assessments across ≥2 repos, perfect digest integrity, zero duplicate/stale corruption), then define and freeze its versioned evidence contract and schema before the first eligible observation; failing check: the frozen contract validates against that schema.
 2. `E7.6.T2` — Precommit the real-run population across ≥2 repositories; collection harness records per run: digest acceptance, duplicate Governance Events, stale overwrites, isolation/idempotency properties; fixture runs marked ineligible and never cited as real use.
 3. `E7.6.T3` — Evaluation readout: every rate names its denominator; a percentage under the denominator floor is descriptive + insufficient_evidence and cannot promote enforcement or contracts (provenance: original V10 evidence discipline, non-executable); pass/fail recorded as a decision record.
 **Acceptance:**
@@ -910,7 +908,7 @@ Move standalone Git-canonical repos into managed Cloud governance without dual a
 1. `E7.7.T1` — End-to-end design-partner rehearsal of the R2 Pilot Candidate minimum workflow on a partner-like repo: connect → ingest → assess → propose → approve → effective → retrieve → audit, with an exact trace across all contracts; the failing check is the trace-completeness assertion, cross-repo per the E0.4 compatibility table (requires E0.4 accepted).
 2. `E7.7.T2` — Capability/maturity/limitations labeling pass: per-capability manifest authoritative for policy/config validity (overall maturity label is onboarding only); `web` claims audited — no Preview/Beta capability claims GA; Cloud-connected Action features labeled Beta while standalone Action v2 GA stays independent.
 3. `E7.7.T3` — Stop-ship sweep: full security acceptance suite (fork-no-secrets, injection, path-escape/symlink corpus, stale head, oversized/malformed provider JSON, model-creates-authority attempt, checksum mismatch, tenant isolation, replay, credential canary, wire egress) green; any zero-tolerance invariant violation blocks the stage regardless of aggregate metrics.
-4. `E7.7.T4` — Go/no-go decision record citing G1A/G1B results, stop-ship sweep, and disclosures; a missed threshold moves the date — it never shrinks accepted V1 scope or rewrites thresholds.
+4. `E7.7.T4` — Go/no-go decision record citing E4.6 deterministic acceptance, G1B results, stop-ship sweep, and disclosures; a missed threshold moves the date — it never shrinks accepted V1 scope or rewrites thresholds.
 **Acceptance:**
 - R2 workflow completes with full receipt/audit trace for at least one real design-partner-shaped run.
 - Zero stop-ship violations across the full security acceptance suite, including the model-creates-authority and replayed-worker-result attempts.
@@ -1069,7 +1067,7 @@ Convert the frozen layered evidence program into an explicit GA decision: qualif
 **Repos:** `adoc`, `cloud` · **Depends on:** E3.3
 **Read first:** [RELEASE-EVIDENCE R6/R8](RELEASE-EVIDENCE.md#r6-layered-evidence-program) · [SEMANTICS S5](SEMANTICS.md#s5-capability-specific-executor-qualification) · [RED-TEAM-CLOSURE RT-18](RED-TEAM-CLOSURE.md#rt-18--evidence-anti-bias-controls) · provenance: V10.1.7 G2 in [original roadmap](../ROADMAP-V10-2026-08-12-original.md)
 **Tracer bullets:**
-1. `E9.1.T1` — Qualification evidence contracts frozen as YAML instances validating against the E4.7.T1 schema (which owns the schema; E4.7 is outside this slice's Depends-on closure — an explicit out-of-closure dependency, E4.7.T1 must be accepted first) with a failing validation test; frozen-before-first-eligible-observation enforced by the E4.7.T1 check.
+1. `E9.1.T1` — Define and freeze qualification evidence contracts and their schema before the first eligible observation, with a failing validation test; no dependency on the deferred E4.7 cohort machinery.
 2. `E9.1.T2` — Cloud qualification record store binding an executor configuration (model/task/context/tool/runtime digests) to a current qualification result; failing fixture: proposal-style required gate modes stay unavailable without a current record.
 3. `E9.1.T3` — Requalification triggers: material model/task/context/tool/runtime change invalidates the record (one fixture per trigger); a defect closes the cohort version and starts a new one — never rewrites criteria.
 4. `E9.1.T4` — Layer-1 qualification content as an executable suite: protocol conformance, closed citations, exact context, malformed outputs, prompt injection, fallback, no-model-authority, capability benchmarks (provenance: V10.1.7 G2 shape — schema-valid ≥95% over ≥30 runs, 100% invalid outputs visibly fell_back/failed).

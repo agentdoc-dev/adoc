@@ -40,7 +40,7 @@ A repository-specific plan may subdivide a slice but cannot alter its contracts,
 | Stage | Target | Meaning |
 | --- | --- | --- |
 | Internal Integrated Tracer | 2026-09-30 | internal end-to-end product architecture exercised; not external production |
-| V1 Pilot Candidate / Private Alpha | 2026-11-30 | selected design partners; pilot-grade security/operations; G1A/G1B passed |
+| V1 Pilot Candidate / Private Alpha | 2026-11-30 | selected design partners; pilot-grade security/operations; G1B passed |
 | V1 Feature Complete / RC / Beta | 2027-02-28 | all accepted V1 P0 capabilities implemented at declared maturity |
 | Earliest V1 GA | 2027-04-30 | evidence-backed public release; date slips on evidence failure |
 
@@ -285,12 +285,15 @@ Dates never override stop-ship invariants.
 **Goal:** exact-SHA deterministic/semantic/receipt submission to Cloud without duplicate/stale overwrite.  
 **Exit:** duplicate delivery, out-of-order run, head update, partial failure, retry, tenant-isolation fixtures pass.
 
-## E4.7 — G1A technical engineering-admission gate
+## E4.7 — Deferred G1A engineering admission
 
-**Repos:** all implementation repos  
-**Depends on:** E4.6  
-**Goal:** freeze/publish evidence contract before first eligible internal run.  
-**Exit:** contract/idempotency/digest/stale/isolation tests + precommitted small real internal run set pass; only then governance tracer proceeds.
+**Repos:** `adoc`
+
+**Depends on:** E4.6
+
+**Goal:** defer internal G1A measurement infrastructure; E4.6 deterministic tests remain the technical acceptance basis.
+
+**Exit:** deferral recorded; G1A is not an E4 merge or E5 implementation gate, and no evidence cohort is promoted.
 
 ---
 

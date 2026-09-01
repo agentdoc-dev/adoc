@@ -297,7 +297,7 @@ Limits and cost controls cannot silently weaken required governance policy.
 
 Permanent stop-ship invariants remain zero-tolerance for cross-workspace disclosure, unauthorized promotion/approval, model-created authority, restricted-content leakage, stale semantic approval after content change, accepted digest mismatch, required failure represented as success, and ACL uncertainty widening access.
 
-G1A gates engineering admission; G1B gates external Pilot Candidate. Other evidence layers freeze their own versioned contracts before first eligible observation.
+G1A engineering admission is deferred for the pilot and does not gate E4 merges or E5 implementation; E4.6 deterministic invariants remain required. G1B gates external Pilot Candidate. Other evidence layers freeze their own versioned contracts before first eligible observation.
 
 A material measurement defect closes the affected cohort version and starts a new one; it does not retroactively change success criteria.
 
