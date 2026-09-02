@@ -1,3 +1,4 @@
+mod artifact_paths;
 mod assess_changes;
 mod build;
 mod check;

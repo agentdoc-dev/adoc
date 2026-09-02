@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use adoc_core::{ProposalBindings, ProposalPatchInput, build_proposal_record};
 use serde::Deserialize;
 
+use crate::commands::artifact_paths::{ensure_distinct_paths, remove_stale};
+
 /// CLI-private producer input: the bindings plus one entry per patch file.
 /// It carries identifiers and exact-head placement only — never branch names
 /// or titles — so any producer yields the same canonical record bytes.
@@ -26,8 +28,11 @@ struct PatchEntry {
 }
 
 pub(crate) fn proposal_record(input: PathBuf, out: PathBuf) -> i32 {
-    if input == out {
-        return fail("--input and --out must be different paths");
+    if let Err(message) = ensure_distinct_paths(&[&input, &out]) {
+        return fail(&message);
+    }
+    if let Err(message) = remove_stale(&out) {
+        return fail(&message);
     }
     let bytes = match fs::read(&input) {
         Ok(bytes) => bytes,

@@ -157,22 +157,23 @@ fn git_delivered_and_api_submitted_proposals_are_byte_equivalent() {
 }
 
 #[test]
-fn cross_links_survive_branch_rename_and_title_edit() {
+fn cross_links_are_identifiers_and_digests_only() {
     let workspace = TestWorkspace::new("proposal-record-links");
     write_patches(&workspace);
-    // Branch names and titles are not inputs at all: the same change request
-    // identity yields the same record before and after a rename, and a
-    // producer that tries to bind them is rejected instead of silently
-    // dropped.
+    // Branch names and titles are not inputs at all: a producer that tries to
+    // bind them is rejected instead of silently dropped, while an exact
+    // revision change — the only link that legitimately moves — changes the
+    // record.
     workspace.write(
         "before.json",
         &json!({"bindings": bindings_json(), "patches": entries(true)}).to_string(),
     );
-    let mut renamed = bindings_json();
-    renamed["change_request"] = json!({"system": "github_pull_request", "id": "42"});
+    let mut rebased = bindings_json();
+    rebased["head_revision"] =
+        json!({"system": "git", "value": "3333333333333333333333333333333333333333"});
     workspace.write(
-        "after.json",
-        &json!({"bindings": renamed, "patches": entries(true)}).to_string(),
+        "rebased.json",
+        &json!({"bindings": rebased, "patches": entries(true)}).to_string(),
     );
     workspace.write(
         "decoy.json",
@@ -185,14 +186,15 @@ fn cross_links_survive_branch_rename_and_title_edit() {
     );
 
     let before = run(&workspace, "before.json", "before-record.json");
-    let after = run(&workspace, "after.json", "after-record.json");
+    let rebased = run(&workspace, "rebased.json", "rebased-record.json");
     assert_eq!(before.status.code(), Some(0), "{}", stderr(&before));
-    assert_eq!(after.status.code(), Some(0), "{}", stderr(&after));
+    assert_eq!(rebased.status.code(), Some(0), "{}", stderr(&rebased));
     let before_record =
         std::fs::read_to_string(workspace.root.join("before-record.json")).expect("record");
-    let after_record =
-        std::fs::read_to_string(workspace.root.join("after-record.json")).expect("record");
-    assert_eq!(before_record, after_record);
+    let rebased_record =
+        std::fs::read_to_string(workspace.root.join("rebased-record.json")).expect("record");
+    assert_ne!(before_record, rebased_record);
+    assert!(rebased_record.contains("3333333333333333333333333333333333333333"));
     assert!(!before_record.contains("feature/"));
     assert!(!before_record.contains("title"));
 
@@ -219,8 +221,15 @@ fn authority_patches_fail_with_the_registered_code() {
         }]})
         .to_string(),
     );
+    // A stale record from an earlier run never survives a failed rebuild.
+    workspace.write("record.json", "{\"stale\": true}\n");
     let output = run(&workspace, "input.json", "record.json");
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("[proposal_record.authority_rejected]"));
     assert!(!workspace.root.join("record.json").exists());
+
+    // Aliased input/output spellings are refused before any write.
+    let aliased = run(&workspace, "input.json", "./input.json");
+    assert_eq!(aliased.status.code(), Some(2));
+    assert!(stderr(&aliased).contains("must be distinct"));
 }
