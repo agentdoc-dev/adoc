@@ -220,6 +220,16 @@ fn published_schema_rejects_text_the_domain_rejects() {
     let mut unknown_change_member = canonical.clone();
     unknown_change_member["patches"][0]["patch"]["changes"]["admin"] = json!(true);
     assert!(!validator.is_valid(&unknown_change_member));
+
+    let mut malformed_anchor = canonical;
+    let create = malformed_anchor["patches"]
+        .as_array_mut()
+        .expect("patches")
+        .iter_mut()
+        .find(|entry| entry["operation"] == "create_object")
+        .expect("create patch");
+    create["patch"]["changes"]["placement"]["after"] = json!("Billing");
+    assert!(!validator.is_valid(&malformed_anchor));
 }
 
 #[test]

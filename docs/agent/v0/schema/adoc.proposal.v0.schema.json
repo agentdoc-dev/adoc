@@ -62,7 +62,7 @@
     "patches": {
       "type": "array",
       "minItems": 1,
-      "description": "Sorted by patch_digest alone, so identity is placement-blind; patch_digest covers the sorted compact serialization plus one newline. Entry metadata is re-derived from the embedded patch and never trusted by the exact-match reader.",
+      "description": "Sorted by patch_digest alone, so identity is placement-blind; patch_digest covers the sorted compact serialization plus one newline. target, operation, and patch_digest are re-derived from the embedded patch and never trusted; finding_id, placement_path, and (except on a create, where it must equal changes.placement.page_id) page_id are producer-supplied correlation metadata outside the digest (ADR-0062 §2).",
       "items": {
         "type": "object",
         "required": [
@@ -179,8 +179,8 @@
       "type": "object",
       "required": ["page_id"],
       "properties": {
-        "page_id": { "type": "string" },
-        "after": { "type": "string" }
+        "page_id": { "$ref": "#/$defs/object_id" },
+        "after": { "$ref": "#/$defs/object_id" }
       },
       "additionalProperties": false
     },
