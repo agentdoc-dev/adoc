@@ -461,7 +461,6 @@ fn assemble_patch(
     } = parsed;
     for (field, value) in [
         ("finding_id", &input.finding_id),
-        ("page_id", &input.page_id),
         ("reason", &document.reason),
     ] {
         if !is_semantic_context_text(value) {

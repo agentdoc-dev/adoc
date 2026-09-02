@@ -59,8 +59,9 @@ API.
    is visible before submission. A byte-identical revision is not a version
    and fails with `proposal_record.revision_unchanged`.
 6. The create-only floors remain: every patch `target` and entry `page_id` is
-   an Object ID, and every `placement_path` is project-relative and
-   slash-normalized (`proposal_record.patch_invalid` otherwise); operations
+   an Object ID, and every `placement_path` follows the scanner-strict logical
+   page-path grammar (project-relative, slash-normalized, no empty or dot
+   components; `proposal_record.patch_invalid` otherwise); operations
    are closed to `create_object`, `update_fields`, and `replace_body`; creates use the
    ADR-0053 §2 kind/status pairs and their `fields` never duplicate a
    structural member (ADR-0053 §3 — a nested `status` would bypass the
@@ -103,8 +104,9 @@ API.
 8. Every embedded patch passes the graph-independent half of `adoc patch
    --check` before the record exists: draft requirements, field key and shared
    value rules, source-splice-safe body and field text, create-object
-   evidence-reference list syntax, impacts list syntax and repository-relative
-   path validity, placement ID syntax, and required create placement. Graph
+   evidence-reference list syntax, impacts list syntax and source-parser
+   repository-relative path validity (distinct from §6's scanner-strict page
+   paths), placement ID syntax, and required create placement. Graph
    existence, target-kind field and value compatibility, evidence-reference
    syntax and resolution for updates, placement resolution, and post-apply
    source validity remain exact-head

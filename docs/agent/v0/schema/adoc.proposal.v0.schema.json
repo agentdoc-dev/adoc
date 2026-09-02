@@ -131,7 +131,13 @@
                       "fields": {
                         "allOf": [
                           { "$ref": "#/$defs/fields" },
-                          { "minProperties": 1 }
+                          { "minProperties": 1 },
+                          {
+                            "required": ["status"],
+                            "properties": {
+                              "status": { "$ref": "#/$defs/reviewable_status" }
+                            }
+                          }
                         ]
                       }
                     },
@@ -153,6 +159,32 @@
                       "fields": { "$ref": "#/$defs/fields" },
                       "placement": { "$ref": "#/$defs/placement" }
                     },
+                    "oneOf": [
+                      {
+                        "properties": {
+                          "kind": { "const": "claim" },
+                          "status": { "const": "draft" }
+                        }
+                      },
+                      {
+                        "properties": {
+                          "kind": { "const": "decision" },
+                          "status": { "const": "proposed" }
+                        }
+                      },
+                      {
+                        "properties": {
+                          "kind": { "const": "api" },
+                          "status": { "const": "draft" }
+                        }
+                      },
+                      {
+                        "properties": {
+                          "kind": { "const": "task" },
+                          "status": { "const": "open" }
+                        }
+                      }
+                    ],
                     "additionalProperties": false
                   }
                 }
@@ -186,6 +218,9 @@
         "after": { "$ref": "#/$defs/object_id" }
       },
       "additionalProperties": false
+    },
+    "reviewable_status": {
+      "enum": ["draft", "proposed", "open"]
     },
     "revision": {
       "type": "object",

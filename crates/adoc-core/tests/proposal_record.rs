@@ -332,6 +332,39 @@ fn published_schema_matches_each_patch_operation_shape() {
         );
     }
 
+    for status in [None, Some("verified")] {
+        let mut instance = canonical.clone();
+        let update = instance["patches"]
+            .as_array_mut()
+            .expect("patches")
+            .iter_mut()
+            .find(|entry| entry["operation"] == "update_fields")
+            .expect("update patch");
+        match status {
+            Some(status) => update["patch"]["changes"]["fields"]["status"] = json!(status),
+            None => {
+                update["patch"]["changes"]["fields"]
+                    .as_object_mut()
+                    .expect("fields")
+                    .remove("status");
+            }
+        }
+        assert!(
+            !validator.is_valid(&instance),
+            "schema accepted update with status {status:?}"
+        );
+    }
+
+    let mut disallowed_create_floor = canonical.clone();
+    let create = disallowed_create_floor["patches"]
+        .as_array_mut()
+        .expect("patches")
+        .iter_mut()
+        .find(|entry| entry["operation"] == "create_object")
+        .expect("create patch");
+    create["patch"]["changes"]["status"] = json!("proposed");
+    assert!(!validator.is_valid(&disallowed_create_floor));
+
     let text_pattern = published_schema["$defs"]["text"]["pattern"]
         .as_str()
         .expect("text pattern");
