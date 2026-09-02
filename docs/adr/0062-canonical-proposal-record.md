@@ -75,6 +75,10 @@ API.
    whitespace or control characters (`proposal_record.patch_invalid`
    otherwise). This proposal-record floor is stricter than generic patch
    validation, which rejects only blank reasons.
+   An embedded create carries its ADR-0053 §2 status floor verbatim: a status
+   the generic patch reader would normalize by trimming ASCII edges is refused,
+   because the published schema checks the raw bytes and those bytes define the
+   record's identity (`proposal_record.patch_invalid` otherwise).
    An embedded patch contains no explicit JSON `null`: the patch reader treats
    a null optional member as absent, while canonical bytes and identity do not
    (`proposal_record.patch_invalid` otherwise).

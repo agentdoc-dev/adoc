@@ -1260,26 +1260,27 @@ fn intrinsically_invalid_creates_are_rejected() {
 
 #[test]
 fn proposal_record_rejects_normalized_create_status_bytes() {
-    let mut patch = create_patch("billing.proposed");
-    patch["changes"]["status"] = json!(" draft ");
+    for (status, expected_code) in [
+        (" draft ", "proposal_record.patch_invalid"),
+        (" verified ", "proposal_record.authority_rejected"),
+    ] {
+        let mut patch = create_patch("billing.proposed");
+        patch["changes"]["status"] = json!(status);
 
-    let error = build_proposal_record(
-        bindings(),
-        vec![patch_input(
-            "finding-001",
-            "docs/billing.adoc",
-            "billing.kb",
-            &patch,
-        )],
-        None,
-    )
-    .expect_err("record bytes must carry the exact create status floor");
+        let error = build_proposal_record(
+            bindings(),
+            vec![patch_input(
+                "finding-001",
+                "docs/billing.adoc",
+                "billing.kb",
+                &patch,
+            )],
+            None,
+        )
+        .expect_err("record bytes must carry the exact create status floor");
 
-    assert!(matches!(error, ProposalRecordError::PatchInvalid { .. }));
-    assert_eq!(
-        error.diagnostic_code().as_str(),
-        "proposal_record.patch_invalid"
-    );
+        assert_eq!(error.diagnostic_code().as_str(), expected_code, "{status}");
+    }
 }
 
 #[test]

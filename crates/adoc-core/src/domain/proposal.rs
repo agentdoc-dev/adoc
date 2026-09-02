@@ -497,19 +497,6 @@ fn assemble_patch(
         });
     };
     if let PatchIntent::CreateObject {
-        status: Some(status),
-        ..
-    } = &document.intent
-        && patch.pointer("/changes/status").and_then(Value::as_str) != Some(status.as_str())
-    {
-        return Err(ProposalRecordError::PatchInvalid {
-            message: format!(
-                "create_object status for '{}' must not require normalization",
-                document.target
-            ),
-        });
-    }
-    if let PatchIntent::CreateObject {
         placement: Some(placement),
         ..
     } = &document.intent
@@ -539,6 +526,22 @@ fn assemble_patch(
         });
     }
     enforce_floors(&document)?;
+    // The generic patch reader trims ASCII status edges (V6.5.3), but a
+    // proposal's published schema checks the raw floor with `const`. Reject
+    // only after the authority floor has retained its more specific error.
+    if let PatchIntent::CreateObject {
+        status: Some(status),
+        ..
+    } = &document.intent
+        && patch.pointer("/changes/status").and_then(Value::as_str) != Some(status.as_str())
+    {
+        return Err(ProposalRecordError::PatchInvalid {
+            message: format!(
+                "create_object status for '{}' must not require normalization",
+                document.target
+            ),
+        });
+    }
     if let Some(diagnostic) = intrinsic_patch_diagnostics(&document)
         .iter()
         .find(|diagnostic| diagnostic.severity == Severity::Error)
