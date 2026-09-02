@@ -73,7 +73,12 @@ API.
    model-originated submission can only create a proposal record and never
    touches active state. Every create carries placement whose embedded
    `page_id` equals the patch entry's `page_id`; an object created by the same
-   proposal set cannot be its `after` anchor.
+   proposal set cannot be its `after` anchor. `update_fields` only inserts or
+   replaces fields, so an edit whose reviewable prospective state would
+   require removing an existing field is outside the proposal surface. This
+   includes an answered question carrying authority-owned `resolved_by` and
+   an API representation switch between mutually exclusive fields; a trusted
+   source edit must first establish a valid reviewable shape.
 7. A target is created at most once and is never both created and edited in
    one proposal set. An existing object is edited by at most one
    `update_fields` followed by at most one `replace_body` (ADR-0054 §5). Each

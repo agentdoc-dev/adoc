@@ -39,6 +39,23 @@ Update the support runbook.
 ::
 ";
 
+const ANSWERED_QUESTION_PAGE_TEXT: &str = "\
+# Billing
+
+::claim billing.answer
+status: draft
+--
+The answer.
+::
+
+::question billing.question
+status: answered
+resolved_by: billing.answer
+--
+What is the answer?
+::
+";
+
 struct Workspace {
     root: tempfile::TempDir,
 }
@@ -351,6 +368,45 @@ fn apply_refuses_kind_specific_invalid_update_values() {
             result.diagnostics
         );
     }
+}
+
+#[test]
+fn apply_refuses_reviewable_status_that_would_orphan_an_existing_field() {
+    let workspace = Workspace::new(ANSWERED_QUESTION_PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.question");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.question",
+            "base_hash": base_hash,
+            "changes": { "fields": { "status": "open" } },
+            "reason": "E5.1 prospective-state validity boundary"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+    assert!(
+        result.diagnostics[0]
+            .message
+            .contains("fields.resolved_by requires `status: answered`"),
+        "{:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        ANSWERED_QUESTION_PAGE_TEXT,
+        "an unrepresentable valid state writes nothing"
+    );
 }
 
 #[test]
