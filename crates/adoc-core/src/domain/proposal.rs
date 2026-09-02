@@ -44,6 +44,9 @@ const REVIEWABLE_STATUSES: [&str; 3] = ["draft", "proposed", "open"];
 /// ADR-0053 §3: generated fields never duplicate a structural member. A
 /// nested `status` beside the floor-checked top-level one is content the
 /// exact patch discards on apply — and a lifecycle the floors never saw.
+/// `kind` remains structural for the current create floors because
+/// `changes.kind` is their block kind; source creation is outside those floors,
+/// while an existing source's authored `fields.kind` remains updatable.
 /// Keep this list aligned with `PatchChangesDto`'s structural members.
 const STRUCTURAL_FIELDS: [&str; 5] = ["id", "kind", "status", "body", "placement"];
 

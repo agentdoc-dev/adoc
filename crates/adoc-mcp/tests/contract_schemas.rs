@@ -503,6 +503,16 @@ fn patch_input_schema_preflights_object_ids() {
             "schema accepted malformed Object ID at {pointer}"
         );
     }
+
+    let malformed_supersedes = json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "supersede",
+        "target": "billing.ready",
+        "base_hash": "sha256:content",
+        "changes": {"supersedes": ["Billing"]},
+        "reason": "Supersede stale knowledge."
+    });
+    assert!(!schema_accepts("patch-input.json", &malformed_supersedes));
 }
 
 /// V6.1: `adoc_stale` envelopes with all three record categories validate

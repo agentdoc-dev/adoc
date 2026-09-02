@@ -83,7 +83,7 @@
             "supersedes": {
               "type": "array",
               "minItems": 1,
-              "items": { "type": "string" }
+              "items": { "$ref": "#/$defs/object_id" }
             }
           },
           "additionalProperties": false

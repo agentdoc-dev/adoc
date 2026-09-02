@@ -743,7 +743,7 @@ fn apply_reports_structural_update_field_once() {
 }
 
 #[test]
-fn apply_allows_source_evidence_kind_update() {
+fn source_kind_is_an_ordinary_field_other_kinds_reject_it() {
     let workspace = Workspace::new(EXTENDED_KINDS_PAGE_TEXT);
     let artifact = workspace.build();
     let base_hash = workspace.content_hash(&artifact, "billing.source-code");
@@ -780,6 +780,11 @@ fn apply_allows_source_evidence_kind_update() {
     );
     assert!(!result.applied);
     assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
     assert!(
         result.diagnostics[0]
             .message
@@ -803,6 +808,11 @@ fn apply_allows_source_evidence_kind_update() {
     );
     assert!(!result.applied);
     assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaUnknownField
+    );
 }
 
 #[test]

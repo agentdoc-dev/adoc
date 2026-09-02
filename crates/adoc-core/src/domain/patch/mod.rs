@@ -793,6 +793,9 @@ fn is_valid_field_key(key: &str) -> bool {
 }
 
 fn is_update_structural_field(key: &str) -> bool {
+    // These are outside every kind's field schema too; this predicate selects
+    // the more specific structural-field diagnostic. `kind` is ordinary
+    // authored metadata on source objects and is validated graph-aware.
     matches!(key, "id" | "body" | "placement")
 }
 
@@ -840,7 +843,6 @@ fn prospective_draft_diagnostics(
     for (key, value) in changes {
         if key != "status"
             && is_valid_field_key(key)
-            && !is_update_structural_field(key)
             && !is_relation_field(key)
             && is_allowed_field_key(kind, key)
             && !value.trim().is_empty()
