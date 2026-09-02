@@ -98,8 +98,13 @@ API.
   codes `proposal_record.invalid_document`, `proposal_record.binding_invalid`,
   `proposal_record.patch_invalid`, `proposal_record.authority_rejected`, and
   `proposal_record.revision_unchanged` ship.
-- Cloud stores the record bytes verbatim next to `proposal_records` and
-  recomputes the set digest from the embedded patches; approval (E5.2) binds
-  to `proposal_set_digest` and `supersedes` drives invalidation.
+- The record travels as a JSON value inside
+  `agentdoc.cloud.proposal_command.v0`, so transport whitespace and key
+  order carry no meaning: the validator re-derives every digest and the
+  ordering from the parsed value, and Cloud stores the canonical
+  re-serialization (declared field order, pretty, one trailing newline —
+  the bytes `adoc proposal-record` emits) next to `proposal_records` and
+  recomputes the set digest from the embedded patches; approval (E5.2)
+  binds to `proposal_set_digest` and `supersedes` drives invalidation.
 - The E5.3.T3 typed per-finding no-change disposition record joins this
   envelope as an additive field.
