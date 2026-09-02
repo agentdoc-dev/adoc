@@ -40,6 +40,11 @@ const CREATE_FLOORS: [(&str, &str); 4] = [
 /// (ADR-0062 §6) must say so — the record cannot see the current one.
 const REVIEWABLE_STATUSES: [&str; 3] = ["draft", "proposed", "open"];
 /// ADR-0053 §3: fields that mint authority and never come from a proposal.
+/// ADR-0053 §3: generated fields never duplicate a structural member. A
+/// nested `status` beside the floor-checked top-level one is content the
+/// exact patch discards on apply — and a lifecycle the floors never saw.
+const STRUCTURAL_FIELDS: [&str; 5] = ["id", "kind", "status", "body", "placement"];
+
 const AUTHORITY_FIELDS: [&str; 5] = [
     "verified_at",
     "reviewed_by",
@@ -472,6 +477,14 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
             if !CREATE_FLOORS.contains(&(kind.as_str(), status)) {
                 return Err(reject(format!(
                     "create_object {kind}/{status} is outside the create-only floors"
+                )));
+            }
+            if let Some(field) = STRUCTURAL_FIELDS
+                .iter()
+                .find(|field| fields.contains_key(**field))
+            {
+                return Err(reject(format!(
+                    "field '{field}' duplicates a structural member"
                 )));
             }
             fields

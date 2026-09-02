@@ -404,6 +404,43 @@ fn patch_target_must_be_an_object_id() {
     }
 }
 
+// Review round 4 (PR #194): ADR-0053 §3 — generated fields never duplicate a
+// structural member. `fields.status: verified` beside the floor-checked
+// top-level status would otherwise pass, and the apply planner overwrites the
+// nested value, so the record would carry content the exact patch discards.
+#[test]
+fn create_fields_cannot_duplicate_structural_members() {
+    for (field, value) in [
+        ("status", "verified"),
+        ("kind", "policy"),
+        ("id", "billing.other"),
+        ("body", "Another body."),
+        ("placement", "billing.kb"),
+    ] {
+        let mut patch = create_patch("billing.proposed");
+        patch["changes"]["fields"] = json!({field: value});
+        let error = build_proposal_record(
+            bindings(),
+            vec![patch_input(
+                "finding-001",
+                "docs/billing.adoc",
+                "billing.kb",
+                &patch,
+            )],
+            None,
+        )
+        .expect_err("structural members are never generated fields");
+        assert!(
+            matches!(error, ProposalRecordError::AuthorityRejected { .. }),
+            "{field}: {error}"
+        );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "proposal_record.authority_rejected"
+        );
+    }
+}
+
 #[test]
 fn conflicting_content_bindings_for_one_target_are_rejected() {
     let error = build_proposal_record(

@@ -60,8 +60,10 @@ API.
    and fails with `proposal_record.revision_unchanged`.
 6. The create-only floors remain: every patch `target` is an Object ID
    (`proposal_record.patch_invalid` otherwise); operations are closed to
-   `create_object`, `update_fields`, and `replace_body`; creates use the ADR-0053 §2 kind/status
-   pairs; updates leave the object at a reviewable status (ADR-0054 §3) and
+   `create_object`, `update_fields`, and `replace_body`; creates use the
+   ADR-0053 §2 kind/status pairs and their `fields` never duplicate a
+   structural member (ADR-0053 §3 — a nested `status` would bypass the
+   pair); updates leave the object at a reviewable status (ADR-0054 §3) and
    must say so — the record cannot see the object's current lifecycle, so
    every existing-object edit carries an `update_fields` that sets `status`
    to `draft`, `proposed`, or `open` (ADR-0054 §3's explicit
