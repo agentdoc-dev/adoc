@@ -532,15 +532,9 @@ impl PatchValidator<'_> {
         let Some(after) = placement.after.as_ref() else {
             return;
         };
-        let after_id = match ObjectId::new(after.clone()) {
-            Ok(id) => id,
-            Err(_) => {
-                self.diagnostics.push(invalid_object_id_diagnostic(
-                    after,
-                    "placement after target",
-                ));
-                return;
-            }
+        // The mandatory intrinsic pass already reports anchor syntax errors.
+        let Ok(after_id) = ObjectId::new(after.clone()) else {
+            return;
         };
         match self.graph.object_page_id(&after_id) {
             Some(page_id) if page_id == placement.page_id => {}

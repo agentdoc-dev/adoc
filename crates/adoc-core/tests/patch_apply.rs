@@ -317,6 +317,44 @@ fn apply_refuses_invalid_visibility_value_in_update_fields() {
     );
 }
 
+#[test]
+fn apply_reports_invalid_create_anchor_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+        .as_str()
+        .expect("anchor page_id")
+        .to_string();
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.ledger-claim",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Ledger commits settle credits.",
+                "placement": { "page_id": page_id, "after": "not-an-object-id" }
+            },
+            "reason": "E5.1 intrinsic placement validation"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert_eq!(
+        result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.code == DiagnosticCode::IdInvalid)
+            .count(),
+        1,
+        "diagnostics: {:?}",
+        result.diagnostics
+    );
+}
+
 /// E1.1.T3 (ADR-0058): create_object drafts are held to the same closed
 /// per-kind schemas — an unknown field key refuses the create.
 #[test]
