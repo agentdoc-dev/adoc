@@ -459,6 +459,7 @@ fn assemble_patch(
         ("finding_id", &input.finding_id),
         ("placement_path", &input.placement_path),
         ("page_id", &input.page_id),
+        ("reason", &document.reason),
     ] {
         if !is_semantic_context_text(value) {
             return Err(ProposalRecordError::PatchInvalid {
@@ -529,14 +530,17 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
         target: document.target.clone(),
         reason,
     };
+    let reject_governance = || {
+        reject(format!(
+            "operation {} changes governance state",
+            document.intent.operation().as_str()
+        ))
+    };
     if matches!(
         &document.intent,
         PatchIntent::Supersede { .. } | PatchIntent::Revoke { .. }
     ) {
-        return Err(reject(format!(
-            "operation {} changes governance state",
-            document.intent.operation().as_str()
-        )));
+        return Err(reject_governance());
     }
     if document.proposer.as_ref().is_none_or(|proposer| {
         proposer.proposer_type != AGENT_PROPOSER_TYPE || !is_semantic_context_text(&proposer.id)
@@ -587,10 +591,7 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
         }
         PatchIntent::ReplaceBody { .. } => return Ok(()),
         PatchIntent::Supersede { .. } | PatchIntent::Revoke { .. } => {
-            return Err(reject(format!(
-                "operation {} changes governance state",
-                document.intent.operation().as_str()
-            )));
+            return Err(reject_governance());
         }
     };
     if let Some(field) = AUTHORITY_FIELDS

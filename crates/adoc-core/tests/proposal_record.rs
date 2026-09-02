@@ -442,6 +442,24 @@ fn governance_operation_precedes_missing_proposer() {
 }
 
 #[test]
+fn proposal_record_rejects_noncanonical_reason_text() {
+    let mut patch = update_patch("billing.credits", D, "billing");
+    patch["reason"] = json!("assessment finding\n");
+    let error = build_proposal_record(
+        bindings(),
+        vec![patch_input(
+            "finding-009",
+            "docs/billing.adoc",
+            "billing.kb",
+            &patch,
+        )],
+        None,
+    )
+    .expect_err("canonical proposal reason must be semantic text");
+    assert!(error.to_string().contains("reason is missing or invalid"));
+}
+
+#[test]
 fn proposal_record_requires_an_agent_proposer() {
     for proposer in [
         None,
