@@ -453,35 +453,20 @@ fn parse_relation_targets(
 
     let mut targets = Vec::new();
     let mut seen = BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in value[content_start..content_end].match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
+    for (start, end, is_last) in list_segments(value, content_start..content_end) {
         push_relation_segment(
             parsed,
             key,
             value,
-            segment_start,
-            comma_index,
+            start,
+            end,
             value_span,
             &mut seen,
             &mut targets,
             diagnostics,
-            false,
+            is_last,
         );
-        segment_start = comma_index + 1;
     }
-    push_relation_segment(
-        parsed,
-        key,
-        value,
-        segment_start,
-        content_end,
-        value_span,
-        &mut seen,
-        &mut targets,
-        diagnostics,
-        true,
-    );
 
     targets
 }
@@ -918,31 +903,18 @@ pub(super) fn extract_approved_by(
     }
 
     let mut approvers: BTreeSet<String> = BTreeSet::new();
-    let mut segment_start = content_start;
-    for (relative_comma_index, _) in content.match_indices(',') {
-        let comma_index = content_start + relative_comma_index;
+    for (start, end, is_last) in list_segments(&value, content_start..content_end) {
         push_approved_by_segment(
             parsed,
             &value,
-            segment_start,
-            comma_index,
+            start,
+            end,
             &value_span,
             &mut approvers,
             diagnostics,
-            false,
+            is_last,
         );
-        segment_start = comma_index + 1;
     }
-    push_approved_by_segment(
-        parsed,
-        &value,
-        segment_start,
-        content_end,
-        &value_span,
-        &mut approvers,
-        diagnostics,
-        true,
-    );
 
     NonEmpty::from_vec(
         approvers

@@ -802,36 +802,38 @@ fn apply_resolves_each_bracketed_evidence_ref() {
 }
 
 #[test]
-fn apply_reports_unknown_create_kind_before_evidence_ref_syntax() {
-    let workspace = Workspace::new(PAGE_TEXT);
-    let artifact = workspace.build();
-    let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
-        .as_str()
-        .expect("anchor page_id")
-        .to_string();
+fn apply_reports_unknown_create_kind_before_evidence_validation() {
+    for evidence_ref in ["not-an-object-id", "billing.missing-source"] {
+        let workspace = Workspace::new(PAGE_TEXT);
+        let artifact = workspace.build();
+        let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+            .as_str()
+            .expect("anchor page_id")
+            .to_string();
 
-    let result = workspace.apply(
-        &artifact,
-        serde_json::json!({
-            "schema_version": "adoc.patch.v0",
-            "op": "create_object",
-            "target": "billing.unknown-kind",
-            "changes": {
-                "kind": "unknown",
-                "body": "Unknown kinds fail before their field contents.",
-                "fields": { "evidence_ref": "not-an-object-id" },
-                "placement": { "page_id": page_id, "after": "billing.credits" }
-            },
-            "reason": "E5.1 create diagnostic ownership"
-        }),
-    );
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "create_object",
+                "target": "billing.unknown-kind",
+                "changes": {
+                    "kind": "unknown",
+                    "body": "Unknown kinds fail before their field contents.",
+                    "fields": { "evidence_ref": evidence_ref },
+                    "placement": { "page_id": page_id, "after": "billing.credits" }
+                },
+                "reason": "E5.1 create diagnostic ownership"
+            }),
+        );
 
-    assert!(!result.applied);
-    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
-    assert_eq!(
-        result.diagnostics[0].code,
-        DiagnosticCode::PatchValidationFailed
-    );
+        assert!(!result.applied);
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchValidationFailed
+        );
+    }
 }
 
 #[test]
@@ -1175,6 +1177,54 @@ fn apply_refuses_invalid_impacts_on_update_and_create_before_write() {
             result.diagnostics[0].code,
             DiagnosticCode::SchemaImpactsInvalidPath
         );
+        assert_eq!(
+            fs::read_to_string(workspace.page_path()).expect("read"),
+            PAGE_TEXT
+        );
+    }
+}
+
+#[test]
+fn apply_resolves_create_evidence_refs_before_write() {
+    for (target, evidence_ref, code) in [
+        (
+            "billing.missing-evidence",
+            "billing.missing-source",
+            DiagnosticCode::SchemaEvidenceTargetNotFound,
+        ),
+        (
+            "billing.wrong-evidence",
+            "billing.credits",
+            DiagnosticCode::SchemaEvidenceTargetNotASource,
+        ),
+    ] {
+        let workspace = Workspace::new(PAGE_TEXT);
+        let artifact = workspace.build();
+        let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+            .as_str()
+            .expect("page_id")
+            .to_string();
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "create_object",
+                "target": target,
+                "changes": {
+                    "kind": "claim",
+                    "status": "draft",
+                    "body": "Evidence references resolve before source is written.",
+                    "fields": { "evidence_ref": evidence_ref },
+                    "placement": { "page_id": page_id, "after": "billing.credits" }
+                },
+                "reason": "E5.1 create evidence resolution"
+            }),
+        );
+
+        assert!(!result.applied);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(result.diagnostics[0].code, code);
         assert_eq!(
             fs::read_to_string(workspace.page_path()).expect("read"),
             PAGE_TEXT

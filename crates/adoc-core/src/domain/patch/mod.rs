@@ -310,42 +310,8 @@ impl PatchValidator<'_> {
             // supersede path which records affected_relations even when targets
             // are stale, and keeps the diff stream consistent with what other
             // field updates produce.
-            if key == EVIDENCE_REF_FIELD {
-                if !evidence_ref_syntax_diagnostics(target.as_str(), &value).is_empty() {
-                    continue 'fields;
-                }
-                for reference in evidence_ref_segments(&value) {
-                    let Ok(ref_id) = ObjectId::new(reference.to_string()) else {
-                        // The mandatory intrinsic pass owns ID syntax errors.
-                        continue 'fields;
-                    };
-                    match self.graph.object(&ref_id) {
-                        None => {
-                            self.diagnostics.push(
-                                Diagnostic::error(
-                                    DiagnosticCode::SchemaEvidenceTargetNotFound,
-                                    format!(
-                                        "patch for `{target}` references unknown object `{ref_id}` in `evidence_ref`; no object with that id exists in the graph artifact",
-                                    ),
-                                )
-                                .with_object_id(target.as_str()),
-                            );
-                        }
-                        Some(node) if node.kind != "source" => {
-                            let actual_kind = node.kind.clone();
-                            self.diagnostics.push(
-                                Diagnostic::error(
-                                    DiagnosticCode::SchemaEvidenceTargetNotASource,
-                                    format!(
-                                        "patch for `{target}` references `{ref_id}` in `evidence_ref`, but that object is a `{actual_kind}`, not a `source`",
-                                    ),
-                                )
-                                .with_object_id(target.as_str()),
-                            );
-                        }
-                        Some(_) => {} // exists and is a source — OK
-                    }
-                }
+            if key == EVIDENCE_REF_FIELD && !self.validate_evidence_ref_targets(target, &value) {
+                continue 'fields;
             }
             let old = object.fields.get(&key).cloned();
             self.diffs
@@ -387,6 +353,12 @@ impl PatchValidator<'_> {
         for obligation in draft_validation.proof_obligations {
             self.add_proof_obligation(&obligation.object_id, &obligation.reason);
         }
+        if BlockKind::from_fence_word(kind)
+            .is_some_and(|kind| is_allowed_field_key(kind, EVIDENCE_REF_FIELD))
+            && let Some(evidence_ref) = fields.get(EVIDENCE_REF_FIELD)
+        {
+            self.validate_evidence_ref_targets(target, evidence_ref);
+        }
         match placement {
             Some(placement) => self.validate_placement(target, placement),
             None => self.diagnostics.push(
@@ -420,6 +392,45 @@ impl PatchValidator<'_> {
                 "placement": placement_json,
             })),
         });
+    }
+
+    /// Resolve syntactically valid evidence references against the head graph.
+    /// The intrinsic pass owns syntax diagnostics, so `false` tells callers to
+    /// skip graph-dependent work without emitting a duplicate error.
+    fn validate_evidence_ref_targets(&mut self, target: &ObjectId, value: &str) -> bool {
+        if !evidence_ref_syntax_diagnostics(target.as_str(), value).is_empty() {
+            return false;
+        }
+        for reference in evidence_ref_segments(value) {
+            let Ok(ref_id) = ObjectId::new(reference.to_string()) else {
+                return false;
+            };
+            match self.graph.object(&ref_id) {
+                None => self.diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::SchemaEvidenceTargetNotFound,
+                        format!(
+                            "patch for `{target}` references unknown object `{ref_id}` in `evidence_ref`; no object with that id exists in the graph artifact",
+                        ),
+                    )
+                    .with_object_id(target.as_str()),
+                ),
+                Some(node) if node.kind != "source" => {
+                    let actual_kind = node.kind.clone();
+                    self.diagnostics.push(
+                        Diagnostic::error(
+                            DiagnosticCode::SchemaEvidenceTargetNotASource,
+                            format!(
+                                "patch for `{target}` references `{ref_id}` in `evidence_ref`, but that object is a `{actual_kind}`, not a `source`",
+                            ),
+                        )
+                        .with_object_id(target.as_str()),
+                    );
+                }
+                Some(_) => {}
+            }
+        }
+        true
     }
 
     fn validate_supersede(&mut self, target: &ObjectId, base_hash: &str, supersedes: Vec<String>) {
@@ -897,7 +908,8 @@ fn impacts_value_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
                         DiagnosticCode::SchemaImpactsInvalidPath,
                         "impacts contains an empty path segment",
                     )
-                    .with_object_id(object_id),
+                    .with_object_id(object_id)
+                    .with_help(DiagnosticCode::SchemaImpactsInvalidPath.default_help()),
                 );
             }
         } else {
@@ -908,7 +920,8 @@ fn impacts_value_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
                         DiagnosticCode::SchemaImpactsInvalidPath,
                         format!("invalid `impacts` path `{path}`: {error}"),
                     )
-                    .with_object_id(object_id),
+                    .with_object_id(object_id)
+                    .with_help(DiagnosticCode::SchemaImpactsInvalidPath.default_help()),
                 );
             }
         }
@@ -919,7 +932,8 @@ fn impacts_value_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
                 DiagnosticCode::SchemaImpactsEmpty,
                 "impacts requires at least one repository-relative path",
             )
-            .with_object_id(object_id),
+            .with_object_id(object_id)
+            .with_help(DiagnosticCode::SchemaImpactsEmpty.default_help()),
         );
     }
     diagnostics
@@ -1434,5 +1448,19 @@ mod tests {
             report.diffs[0].new,
             Some(serde_json::Value::String("billing-team".to_string()))
         );
+    }
+
+    #[test]
+    fn intrinsic_impacts_diagnostics_include_remediation() {
+        for (value, code) in [
+            ("../outside", DiagnosticCode::SchemaImpactsInvalidPath),
+            ("[]", DiagnosticCode::SchemaImpactsEmpty),
+        ] {
+            let diagnostics = impacts_value_diagnostics("billing.credits", value);
+
+            assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+            assert_eq!(diagnostics[0].code, code);
+            assert_eq!(diagnostics[0].help.as_deref(), Some(code.default_help()));
+        }
     }
 }
