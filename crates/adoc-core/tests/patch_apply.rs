@@ -369,6 +369,32 @@ fn apply_reports_invalid_evidence_ref_once() {
 }
 
 #[test]
+fn apply_reports_invalid_create_page_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.ledger-claim",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Ledger commits settle credits.",
+                "placement": { "page_id": "billing" }
+            },
+            "reason": "E5.1 intrinsic placement validation"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(result.diagnostics[0].code, DiagnosticCode::IdInvalid);
+}
+
+#[test]
 fn apply_reports_invalid_create_anchor_once() {
     let workspace = Workspace::new(PAGE_TEXT);
     let artifact = workspace.build();

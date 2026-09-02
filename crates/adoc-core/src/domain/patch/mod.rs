@@ -508,6 +508,10 @@ impl PatchValidator<'_> {
     }
 
     fn validate_placement(&mut self, target: &ObjectId, placement: &PlacementHint) {
+        // The mandatory intrinsic pass already reports page ID syntax errors.
+        if ObjectId::new(placement.page_id.clone()).is_err() {
+            return;
+        }
         if !self.graph.page_exists(&placement.page_id) {
             self.diagnostics.push(
                 Diagnostic::error(
