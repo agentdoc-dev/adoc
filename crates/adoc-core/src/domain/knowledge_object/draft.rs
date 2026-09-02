@@ -21,6 +21,7 @@ use crate::domain::knowledge_object::question::{
 };
 use crate::domain::knowledge_object::task::{DUE_FIELD, TaskStatus};
 use crate::domain::knowledge_object::{BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error};
+use crate::domain::source_edit::planner::field_value_line_break_diagnostic;
 use crate::domain::value_objects::effective_date::EffectiveDate;
 use crate::domain::value_objects::http_method::HttpMethod;
 use crate::domain::value_objects::sample_size::SampleSize;
@@ -57,6 +58,20 @@ pub(crate) fn validate_draft(draft: KnowledgeObjectDraft<'_>) -> DraftValidation
     validator.validation
 }
 
+/// Revalidate an existing object's prospective state when its kind is part
+/// of the create/update draft surface. Other kinds keep their existing patch
+/// behavior until they gain a draft validator.
+pub(crate) fn validate_draft_if_supported(
+    draft: KnowledgeObjectDraft<'_>,
+) -> Option<DraftValidation> {
+    let mut validator = DraftValidator {
+        draft,
+        validation: DraftValidation::default(),
+    };
+    validator.validate_common();
+    validator.validate_kind().then_some(validator.validation)
+}
+
 struct DraftValidator<'a> {
     draft: KnowledgeObjectDraft<'a>,
     validation: DraftValidation,
@@ -64,11 +79,23 @@ struct DraftValidator<'a> {
 
 impl DraftValidator<'_> {
     fn validate(&mut self) {
+        self.validate_common();
+        if !self.validate_kind() {
+            self.error(format!(
+                "unknown Knowledge Object kind `{}`",
+                self.draft.kind
+            ));
+        }
+    }
+
+    fn validate_common(&mut self) {
         if NonEmptyText::try_new(self.draft.body).is_none() {
             self.error("create_object requires a non-empty body");
         }
         self.validate_fields();
+    }
 
+    fn validate_kind(&mut self) -> bool {
         match self.draft.kind {
             "claim" => self.validate_claim(),
             "decision" => self.validate_decision(),
@@ -78,8 +105,9 @@ impl DraftValidator<'_> {
             "observation" => self.validate_observation(),
             "question" => self.validate_question(),
             "task" => self.validate_task(),
-            kind => self.error(format!("unknown Knowledge Object kind `{kind}`")),
+            _ => return false,
         }
+        true
     }
 
     fn validate_claim(&mut self) {
@@ -298,6 +326,12 @@ impl DraftValidator<'_> {
             }
             if NonEmptyText::try_new(value).is_none() {
                 self.error(format!("field `{key}` requires a non-empty value"));
+                continue;
+            }
+            if let Some(diagnostic) = field_value_line_break_diagnostic(key, value) {
+                self.validation
+                    .diagnostics
+                    .push(diagnostic.with_object_id(self.draft.id.as_str()));
                 continue;
             }
             if let Some(diagnostic) =

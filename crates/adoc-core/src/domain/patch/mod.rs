@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphIndex, GraphKnowledgeObjectNode, GraphRelationKind};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
-use crate::domain::knowledge_object::draft::{KnowledgeObjectDraft, validate_draft};
+use crate::domain::knowledge_object::draft::{
+    KnowledgeObjectDraft, validate_draft, validate_draft_if_supported,
+};
 use crate::domain::knowledge_object::{
     BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error, is_allowed_field_key,
     list_content_range, shared_field_value_error,
@@ -249,31 +251,35 @@ impl PatchValidator<'_> {
         if !self.require_matching_base_hash(&object, base_hash) {
             return;
         }
+        let Some(kind) = BlockKind::from_fence_word(&object.kind) else {
+            self.diagnostics.push(validation_error(
+                target.as_str(),
+                format!(
+                    "target kind `{}` is not a Knowledge Object kind; the artifact is \
+                     corrupt — run adoc build and re-propose",
+                    object.kind
+                ),
+            ));
+            return;
+        };
+        for diagnostic in updated_draft_diagnostics(target, &object, kind, &fields) {
+            if !self.diagnostics.contains(&diagnostic) {
+                self.diagnostics.push(diagnostic);
+            }
+        }
         'fields: for (key, value) in fields {
             if !is_valid_field_key(&key)
                 || is_update_structural_field(&key)
                 || is_relation_field(&key)
                 || !is_allowed_on_any_kind(&key)
                 || value.trim().is_empty()
+                || field_value_line_break_diagnostic(&key, &value).is_some()
             {
                 continue;
             }
             // E1.1.T3 (ADR-0058): the target kind's closed schema binds the
             // patch surface too — an applied patch must never leave the
-            // working tree failing `adoc check`. Artifact kinds are
-            // build-produced, so an unparseable kind is a corrupt artifact
-            // and fails closed.
-            let Some(kind) = BlockKind::from_fence_word(&object.kind) else {
-                self.diagnostics.push(validation_error(
-                    target.as_str(),
-                    format!(
-                        "target kind `{}` is not a Knowledge Object kind; the artifact is \
-                         corrupt — run adoc build and re-propose",
-                        object.kind
-                    ),
-                ));
-                continue;
-            };
+            // working tree failing `adoc check`.
             if let Some(diagnostic) = closed_schema_field_error(kind, &key, &value) {
                 let diagnostic = diagnostic.with_object_id(target.as_str());
                 if !self.diagnostics.contains(&diagnostic) {
@@ -694,18 +700,6 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                         .map(|diagnostic| diagnostic.with_object_id(&patch.target)),
                 );
             }
-            if let Some(kind) = BlockKind::from_fence_word(kind) {
-                diagnostics.extend(fields.iter().filter_map(|(key, value)| {
-                    if is_relation_field(key)
-                        || !is_allowed_field_key(kind, key)
-                        || value.trim().is_empty()
-                    {
-                        return None;
-                    }
-                    field_value_line_break_diagnostic(key, value)
-                        .map(|diagnostic| diagnostic.with_object_id(&patch.target))
-                }));
-            }
             if let Some(value) = fields.get(EVIDENCE_REF_FIELD)
                 && BlockKind::from_fence_word(kind)
                     .is_some_and(|kind| is_allowed_field_key(kind, EVIDENCE_REF_FIELD))
@@ -752,8 +746,62 @@ fn is_allowed_on_any_kind(key: &str) -> bool {
         .any(|kind| is_allowed_field_key(*kind, key))
 }
 
+fn updated_draft_diagnostics(
+    target: &ObjectId,
+    object: &GraphKnowledgeObjectNode,
+    kind: BlockKind,
+    changes: &BTreeMap<String, String>,
+) -> Vec<Diagnostic> {
+    if kind == BlockKind::Glossary {
+        // Glossary `status` is an optional field, not the structural status
+        // slot consumed by the supported typed-draft validators.
+        return Vec::new();
+    }
+    let mut fields = object.fields.clone();
+    if let Some(severity) = &object.severity {
+        fields.insert("severity".to_string(), severity.clone());
+    }
+    if let Some(trust) = &object.trust {
+        fields.insert("trust".to_string(), trust.clone());
+    }
+    for (key, value) in changes {
+        if key != "status"
+            && is_valid_field_key(key)
+            && !is_update_structural_field(key)
+            && !is_relation_field(key)
+            && is_allowed_field_key(kind, key)
+            && !value.trim().is_empty()
+            && field_value_line_break_diagnostic(key, value).is_none()
+        {
+            fields.insert(key.clone(), value.clone());
+        }
+    }
+    let changed_status = |key| {
+        changes.get(key).filter(|value| {
+            !value.trim().is_empty() && field_value_line_break_diagnostic(key, value).is_none()
+        })
+    };
+    let status = if kind == BlockKind::Warning {
+        changed_status("severity")
+            .or(object.severity.as_ref())
+            .map(String::as_str)
+    } else {
+        changed_status("status")
+            .or(object.status.as_ref())
+            .map(String::as_str)
+    };
+    validate_draft_if_supported(KnowledgeObjectDraft {
+        id: target,
+        kind: &object.kind,
+        status,
+        body: &object.body,
+        fields: &fields,
+    })
+    .map_or_else(Vec::new, |validation| validation.diagnostics)
+}
+
 fn evidence_ref_segments(value: &str) -> Vec<&str> {
-    let Some(range) = list_content_range(value) else {
+    let Ok(range) = list_content_range(value) else {
         return Vec::new();
     };
     value[range]
@@ -765,7 +813,7 @@ fn evidence_ref_segments(value: &str) -> Vec<&str> {
 
 fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    let Some(range) = list_content_range(value) else {
+    let Ok(range) = list_content_range(value) else {
         return vec![
             Diagnostic::error(
                 DiagnosticCode::IdInvalid,

@@ -508,10 +508,8 @@ fn relation_content_range(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<(usize, usize)> {
     match list_content_range(value) {
-        Some(range) => Some((range.start, range.end)),
-        None => {
-            let (_, trimmed_start, trimmed_end) =
-                trim_segment(value).expect("a mismatched bracket is non-empty");
+        Ok(range) => Some((range.start, range.end)),
+        Err((trimmed_start, trimmed_end)) => {
             diagnostics.push(
                 Diagnostic::error(
                     DiagnosticCode::IdInvalid,
@@ -532,15 +530,16 @@ fn relation_content_range(
 }
 
 /// Return the scalar or bracket-list content range used by authored list
-/// fields. A mismatched outer bracket is malformed and returns `None`.
-pub(crate) fn list_content_range(value: &str) -> Option<Range<usize>> {
+/// fields. A mismatched outer bracket returns its trimmed bounds so callers
+/// can attach a diagnostic without re-parsing the value.
+pub(crate) fn list_content_range(value: &str) -> Result<Range<usize>, (usize, usize)> {
     let Some((trimmed, trimmed_start, trimmed_end)) = trim_segment(value) else {
-        return Some(0..0);
+        return Ok(0..0);
     };
     match (trimmed.starts_with('['), trimmed.ends_with(']')) {
-        (true, true) => Some(trimmed_start + 1..trimmed_end - 1),
-        (true, false) | (false, true) => None,
-        (false, false) => Some(0..value.len()),
+        (true, true) => Ok(trimmed_start + 1..trimmed_end - 1),
+        (true, false) | (false, true) => Err((trimmed_start, trimmed_end)),
+        (false, false) => Ok(0..value.len()),
     }
 }
 

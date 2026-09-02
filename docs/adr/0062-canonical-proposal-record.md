@@ -93,7 +93,7 @@ API.
    --check` before the record exists: draft requirements, field key and shared
    value rules, source-splice-safe body and field text, evidence-reference
    list syntax, placement ID syntax, and required create placement. Graph
-   existence, target-kind field compatibility,
+   existence, target-kind field and value compatibility,
    placement resolution, and post-apply source validity remain exact-head
    preflight concerns. Intrinsic failures use
    `proposal_record.patch_invalid`.

@@ -27,6 +27,18 @@ Original body line.
 Trailing prose stays byte-identical.
 ";
 
+const TASK_PAGE_TEXT: &str = "\
+# Billing
+
+::task billing.follow-up
+owner: support-ops
+status: open
+due: 2099-01-01
+--
+Update the support runbook.
+::
+";
+
 struct Workspace {
     root: tempfile::TempDir,
 }
@@ -273,6 +285,72 @@ fn apply_refuses_update_fields_outside_the_kind_closed_schema() {
         PAGE_TEXT,
         "refusal writes nothing"
     );
+}
+
+#[test]
+fn apply_reports_multiline_update_visibility_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": { "fields": { "visibility": "public\nprivate" } },
+            "reason": "E5.1 intrinsic multiline-field ownership"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+}
+
+#[test]
+fn apply_refuses_kind_specific_invalid_update_values() {
+    let workspace = Workspace::new(TASK_PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.follow-up");
+
+    for (fields, message) in [
+        (
+            serde_json::json!({ "status": "open", "due": "not-a-date" }),
+            "invalid due",
+        ),
+        (serde_json::json!({ "status": "blocked" }), "invalid status"),
+    ] {
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "update_fields",
+                "target": "billing.follow-up",
+                "base_hash": base_hash,
+                "changes": { "fields": fields },
+                "reason": "E5.1 kind-specific update validation"
+            }),
+        );
+
+        assert!(!result.applied);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchValidationFailed
+        );
+        assert!(
+            result.diagnostics[0].message.contains(message),
+            "{:?}",
+            result.diagnostics
+        );
+    }
 }
 
 #[test]
@@ -576,6 +654,40 @@ fn apply_refuses_create_object_field_outside_the_kind_closed_schema() {
         fs::read_to_string(workspace.page_path()).expect("read"),
         PAGE_TEXT,
         "refusal writes nothing"
+    );
+}
+
+#[test]
+fn apply_reports_multiline_create_visibility_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+        .as_str()
+        .expect("anchor page_id")
+        .to_string();
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.multiline-visibility",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Line breaks in field values cannot be spliced.",
+                "fields": { "visibility": "public\nprivate" },
+                "placement": { "page_id": page_id, "after": "billing.credits" }
+            },
+            "reason": "E5.1 intrinsic multiline-field ownership"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
     );
 }
 
