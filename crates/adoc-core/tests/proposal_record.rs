@@ -312,3 +312,93 @@ fn edit_mints_new_proposal_version() {
         "proposal_record.binding_invalid"
     );
 }
+
+// E5.1.T3 — model-originated submissions can only create reviewable knowledge.
+#[test]
+fn model_path_cannot_touch_active_state() {
+    let authority_patches = [
+        json!({
+            "schema_version": "adoc.patch.v0", "op": "revoke", "target": "billing.credits",
+            "base_hash": D, "changes": {}, "reason": "revoke"
+        }),
+        json!({
+            "schema_version": "adoc.patch.v0", "op": "supersede", "target": "billing.credits",
+            "base_hash": D, "changes": {"supersedes": ["billing.old"]}, "reason": "supersede"
+        }),
+        json!({
+            "schema_version": "adoc.patch.v0", "op": "create_object", "target": "billing.verified",
+            "changes": {"kind": "claim", "status": "verified", "body": "Authority.",
+                        "placement": {"page_id": "billing.kb"}},
+            "reason": "create verified"
+        }),
+        json!({
+            "schema_version": "adoc.patch.v0", "op": "create_object", "target": "billing.policy",
+            "changes": {"kind": "policy", "status": "draft", "body": "Policy.",
+                        "placement": {"page_id": "billing.kb"}},
+            "reason": "create outside floors"
+        }),
+        json!({
+            "schema_version": "adoc.patch.v0", "op": "update_fields", "target": "billing.credits",
+            "base_hash": D, "changes": {"fields": {"approved_by": "model"}}, "reason": "approve"
+        }),
+        json!({
+            "schema_version": "adoc.patch.v0", "op": "update_fields", "target": "billing.credits",
+            "base_hash": D, "changes": {"fields": {"status": "verified"}}, "reason": "promote"
+        }),
+        json!({
+            "schema_version": "adoc.patch.v0", "op": "create_object", "target": "billing.reviewed",
+            "changes": {"kind": "claim", "status": "draft", "body": "Reviewed.",
+                        "fields": {"reviewed_by": "model"},
+                        "placement": {"page_id": "billing.kb"}},
+            "reason": "create with authority field"
+        }),
+    ];
+    for patch in authority_patches {
+        let error = build_proposal_record(
+            bindings(),
+            vec![patch_input(
+                "finding-009",
+                "docs/billing.adoc",
+                "billing.kb",
+                &patch,
+            )],
+            None,
+        )
+        .expect_err("authority is never proposable");
+        assert!(
+            matches!(error, ProposalRecordError::AuthorityRejected { .. }),
+            "{patch}: {error}"
+        );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "proposal_record.authority_rejected"
+        );
+    }
+}
+
+#[test]
+fn conflicting_content_bindings_for_one_target_are_rejected() {
+    let error = build_proposal_record(
+        bindings(),
+        vec![
+            patch_input(
+                "finding-002",
+                "docs/billing.adoc",
+                "billing.kb",
+                &update_patch("billing.credits", D, "billing"),
+            ),
+            patch_input(
+                "finding-003",
+                "docs/billing.adoc",
+                "billing.kb",
+                &update_patch("billing.credits", A, "finance"),
+            ),
+        ],
+        None,
+    )
+    .expect_err("one target binds one content hash");
+    assert_eq!(
+        error.diagnostic_code().as_str(),
+        "proposal_record.patch_invalid"
+    );
+}
