@@ -769,6 +769,44 @@ fn apply_reports_invalid_evidence_refs_once() {
 }
 
 #[test]
+fn apply_reports_multiline_create_evidence_ref_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+        .as_str()
+        .expect("page_id")
+        .to_string();
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "create_object",
+            "target": "billing.multiline-evidence",
+            "changes": {
+                "kind": "claim",
+                "status": "draft",
+                "body": "Multiline evidence metadata is rejected once.",
+                "fields": { "evidence_ref": "source.one\nsource.two" },
+                "placement": { "page_id": page_id, "after": "billing.credits" }
+            },
+            "reason": "E5.1 create evidence diagnostic ownership"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        PAGE_TEXT
+    );
+}
+
+#[test]
 fn apply_resolves_each_bracketed_evidence_ref() {
     let workspace = Workspace::new(PAGE_TEXT);
     let artifact = workspace.build();

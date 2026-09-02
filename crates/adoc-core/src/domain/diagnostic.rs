@@ -497,14 +497,15 @@ diagnostic_codes! {
     /// Object ID grammar, or a create/edit sequence outside ADR-0054 §5.
     ProposalRecordPatchInvalid = "proposal_record.patch_invalid" =>
         "Use intrinsically valid canonical patches with Object ID targets and matching create placement; serialize each as sorted compact JSON with one trailing newline; create a target once or edit it with at most one update_fields then at most one replace_body.";
-    /// E5.1.T3 (ADR-0053 §2–§3, ADR-0054 §3): the proposal would mint
+    /// E5.1.T3 (ADR-0053 §2–§3, §7, ADR-0054 §3): the proposal would mint
     /// authority — a governance-changing operation, a create outside the
     /// non-authoritative kind/status floors, a create whose `fields`
     /// duplicate a structural member, an existing-object edit that sets no
-    /// reviewable status, or an authority field. Proposals only ever create
+    /// reviewable status, an authority field, or a patch without the trusted
+    /// Action's identified `agent` proposer. Proposals only ever create
     /// reviewable knowledge.
     ProposalRecordAuthorityRejected = "proposal_record.authority_rejected" =>
-        "Propose only create_object at the non-authoritative floors, or update_fields/replace_body edits whose update_fields sets status to draft, proposed, or open; keep id, kind, status, body, and placement out of a create's fields; never set verified_at, reviewed_by, approved_by, decided_by, or resolved_by.";
+        "Declare an identified agent proposer on every patch; propose only create_object at the non-authoritative floors, or update_fields/replace_body edits whose update_fields sets status to draft, proposed, or open; keep id, kind, status, body, and placement out of a create's fields; never set verified_at, reviewed_by, approved_by, decided_by, or resolved_by.";
     /// E5.1.T2: a revision was requested with byte-identical patches, so
     /// it would supersede its own proposal-set digest. Unchanged bytes are
     /// not a new version; the prior record stands.

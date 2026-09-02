@@ -195,6 +195,22 @@ fn published_schema_rejects_text_the_domain_rejects() {
             "schema accepted {invalid:?} at {pointer}"
         );
     }
+
+    let mut missing_proposer = canonical.clone();
+    missing_proposer["patches"][0]["patch"]
+        .as_object_mut()
+        .expect("patch is an object")
+        .remove("proposer");
+    assert!(!validator.is_valid(&missing_proposer));
+
+    for proposer in [
+        json!({"type": "human", "id": "maintainer"}),
+        json!({"type": "agent", "id": " "}),
+    ] {
+        let mut instance = canonical.clone();
+        instance["patches"][0]["patch"]["proposer"] = proposer;
+        assert!(!validator.is_valid(&instance));
+    }
 }
 
 #[test]
@@ -374,7 +390,8 @@ fn model_path_cannot_touch_active_state() {
             "reason": "create with authority field"
         }),
     ];
-    for patch in authority_patches {
+    for mut patch in authority_patches {
+        patch["proposer"] = json!({"type": "agent", "id": "agentdoc-action/claude-code@2.1.215"});
         let error = build_proposal_record(
             bindings(),
             vec![patch_input(
@@ -399,7 +416,12 @@ fn model_path_cannot_touch_active_state() {
 
 #[test]
 fn proposal_record_requires_an_agent_proposer() {
-    for proposer in [None, Some(json!({"type": "human", "id": "maintainer"}))] {
+    for proposer in [
+        None,
+        Some(json!({"type": "human", "id": "maintainer"})),
+        Some(json!({"type": "agent", "id": ""})),
+        Some(json!({"type": "agent", "id": "  "})),
+    ] {
         let mut patch = update_patch("billing.credits", D, "billing");
         match proposer {
             Some(proposer) => patch["proposer"] = proposer,
@@ -431,6 +453,52 @@ fn proposal_record_requires_an_agent_proposer() {
             error.diagnostic_code().as_str(),
             "proposal_record.authority_rejected"
         );
+        assert!(error.to_string().contains("agent proposer"), "{error}");
+    }
+}
+
+#[test]
+fn proposal_record_requires_an_agent_proposer_on_replace_body() {
+    for proposer in [
+        None,
+        Some(json!({"type": "human", "id": "maintainer"})),
+        Some(json!({"type": "agent", "id": ""})),
+    ] {
+        let mut body_patch = replace_body_patch("billing.credits", B, "Updated body.");
+        match proposer {
+            Some(proposer) => body_patch["proposer"] = proposer,
+            None => {
+                body_patch
+                    .as_object_mut()
+                    .expect("patch is an object")
+                    .remove("proposer");
+            }
+        }
+
+        let error = build_proposal_record(
+            bindings(),
+            vec![
+                patch_input(
+                    "finding-002",
+                    "docs/billing.adoc",
+                    "billing.kb",
+                    &update_patch("billing.credits", D, "billing"),
+                ),
+                patch_input(
+                    "finding-002",
+                    "docs/billing.adoc",
+                    "billing.kb",
+                    &body_patch,
+                ),
+            ],
+            None,
+        )
+        .expect_err("every canonical proposal patch requires an agent proposer");
+
+        assert!(matches!(
+            error,
+            ProposalRecordError::AuthorityRejected { .. }
+        ));
         assert!(error.to_string().contains("agent proposer"), "{error}");
     }
 }

@@ -529,6 +529,14 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
         target: document.target.clone(),
         reason,
     };
+    if document.proposer.as_ref().is_none_or(|proposer| {
+        proposer.proposer_type != AGENT_PROPOSER_TYPE || !is_semantic_context_text(&proposer.id)
+    }) {
+        return Err(reject(
+            "every proposal patch must declare an agent proposer with a non-empty identifier"
+                .to_string(),
+        ));
+    }
     let fields = match &document.intent {
         PatchIntent::CreateObject {
             kind,
@@ -581,15 +589,6 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
         .find(|field| fields.contains_key(**field))
     {
         return Err(reject(format!("field '{field}' carries authority")));
-    }
-    if document
-        .proposer
-        .as_ref()
-        .is_none_or(|proposer| proposer.proposer_type != AGENT_PROPOSER_TYPE)
-    {
-        return Err(reject(
-            "every proposal patch must declare an agent proposer".to_string(),
-        ));
     }
     Ok(())
 }

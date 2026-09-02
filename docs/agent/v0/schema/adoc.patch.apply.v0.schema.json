@@ -91,7 +91,7 @@
           "enum": ["cli", "mcp"]
         },
         "proposer": {
-          "description": "The patch's proposer metadata — recorded, not enforced (the permission engine is deferred).",
+          "description": "Recorded patch proposer metadata. E5.1 canonical proposal records require an Action-owned agent proposer; this is not general permission enforcement.",
           "type": "object",
           "required": ["kind", "id"],
           "additionalProperties": false,

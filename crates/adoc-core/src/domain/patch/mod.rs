@@ -315,8 +315,8 @@ impl PatchValidator<'_> {
             }
             // V5.8 TB5: when the field being updated is `evidence_ref`, resolve
             // each comma-separated Object ID against the head graph artifact.
-            // On a parse failure the intrinsic pass emits the validation error
-            // and this graph pass skips the diff.
+            // On a parse failure this graph-aware pass emits the validation
+            // error and skips the diff.
             // On a resolution failure (not found / wrong kind) we emit the
             // schema diagnostic AND still record the diff: the patch is a
             // proposal and the diff is part of the record even when the ref is
@@ -372,6 +372,7 @@ impl PatchValidator<'_> {
         }
         if BlockKind::from_fence_word(kind).is_some_and(BlockKind::resolves_evidence_refs)
             && let Some(evidence_ref) = fields.get(EVIDENCE_REF_FIELD)
+            && field_value_line_break_diagnostic(EVIDENCE_REF_FIELD, evidence_ref).is_none()
         {
             self.validate_evidence_ref_targets(target, evidence_ref);
         }

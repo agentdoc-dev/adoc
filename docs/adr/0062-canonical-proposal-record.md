@@ -69,8 +69,9 @@ API.
    to `draft`, `proposed`, or `open` (ADR-0054 §3's explicit
    status-preservation stays an Action delivery option that never forms a
    proposal record); the ADR-0053 §3 authority fields are never proposable.
-   Every embedded patch declares an `agent` proposer constructed by the
-   trusted Action rather than the provider (ADR-0053 §7).
+   Every embedded patch declares an `agent` proposer with a non-empty
+   identifier constructed by the trusted Action rather than the provider
+   (ADR-0053 §7).
    Violations fail with `proposal_record.authority_rejected`, so a
    model-originated submission can only create a proposal record and never
    touches active state. Every create carries placement whose embedded
