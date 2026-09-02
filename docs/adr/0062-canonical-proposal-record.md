@@ -58,9 +58,9 @@ API.
    whose `supersedes` names the prior digest, so the invalidation consequence
    is visible before submission. A byte-identical revision is not a version
    and fails with `proposal_record.revision_unchanged`.
-6. The create-only floors remain: every patch `target` is an Object ID
-   (`proposal_record.patch_invalid` otherwise); operations are closed to
-   `create_object`, `update_fields`, and `replace_body`; creates use the
+6. The create-only floors remain: every patch `target` and entry `page_id` is
+   an Object ID (`proposal_record.patch_invalid` otherwise); operations are
+   closed to `create_object`, `update_fields`, and `replace_body`; creates use the
    ADR-0053 §2 kind/status pairs and their `fields` never duplicate a
    structural member (ADR-0053 §3 — a nested `status` would bypass the
    pair); updates leave the object at a reviewable status (ADR-0054 §3) and
@@ -70,8 +70,12 @@ API.
    status-preservation stays an Action delivery option that never forms a
    proposal record); the ADR-0053 §3 authority fields are never proposable.
    Every embedded patch reason is semantic text: non-empty, without surrounding
-   whitespace or control characters. This proposal-record floor is stricter
-   than generic patch validation, which rejects only blank reasons.
+   whitespace or control characters (`proposal_record.patch_invalid`
+   otherwise). This proposal-record floor is stricter than generic patch
+   validation, which rejects only blank reasons.
+   An embedded patch contains no explicit JSON `null`: the patch reader treats
+   a null optional member as absent, while canonical bytes and identity do not
+   (`proposal_record.patch_invalid` otherwise).
    Every embedded patch declares an `agent` proposer with a non-empty
    identifier constructed by the trusted Action rather than the provider
    (ADR-0053 §7).

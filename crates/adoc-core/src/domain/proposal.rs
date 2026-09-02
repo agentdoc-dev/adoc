@@ -22,7 +22,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use super::diagnostic::{DiagnosticCode, Severity};
-use super::hashing::sha256_prefixed;
+use super::hashing::{canonicalize_object_keys, sha256_prefixed};
 use super::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use super::patch::{
     AGENT_PROPOSER_TYPE, PatchDocument, PatchIntent, PatchOperation, intrinsic_patch_diagnostics,
@@ -467,6 +467,14 @@ fn assemble_patch(
             });
         }
     }
+    if ObjectId::new(input.page_id.clone()).is_err() {
+        return Err(ProposalRecordError::PatchInvalid {
+            message: format!(
+                "patch page_id '{}' is not an Object ID. {OBJECT_ID_GRAMMAR_HELP}",
+                input.page_id
+            ),
+        });
+    }
     // The patch parser takes any string as a target; the record holds it to
     // the Object ID grammar so the published schema and the apply-time
     // checks never see an empty or malformed one.
@@ -488,6 +496,14 @@ fn assemble_patch(
             message: format!(
                 "create_object placement page '{}' does not match proposal page '{}'",
                 placement.page_id, input.page_id
+            ),
+        });
+    }
+    if contains_null(&patch) {
+        return Err(ProposalRecordError::PatchInvalid {
+            message: format!(
+                "patch for '{}' carries a null member; omit the key instead",
+                document.target
             ),
         });
     }
@@ -638,20 +654,12 @@ pub(crate) fn proposal_set_digest(digests: &[&str]) -> Result<String, ProposalRe
     Ok(sha256_prefixed(&bytes))
 }
 
-fn canonicalize_object_keys(value: Value) -> Value {
+fn contains_null(value: &Value) -> bool {
     match value {
-        Value::Object(fields) => Value::Object(
-            fields
-                .into_iter()
-                .map(|(key, value)| (key, canonicalize_object_keys(value)))
-                .collect::<BTreeMap<_, _>>()
-                .into_iter()
-                .collect(),
-        ),
-        Value::Array(values) => {
-            Value::Array(values.into_iter().map(canonicalize_object_keys).collect())
-        }
-        value => value,
+        Value::Null => true,
+        Value::Array(values) => values.iter().any(contains_null),
+        Value::Object(fields) => fields.values().any(contains_null),
+        _ => false,
     }
 }
 

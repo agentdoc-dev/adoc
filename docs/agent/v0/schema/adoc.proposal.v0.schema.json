@@ -62,7 +62,7 @@
     "patches": {
       "type": "array",
       "minItems": 1,
-      "description": "Sorted by patch_digest alone, so identity is placement-blind; patch_digest covers the sorted compact serialization plus one newline.",
+      "description": "Sorted by patch_digest alone, so identity is placement-blind; patch_digest covers the sorted compact serialization plus one newline. Entry metadata is re-derived from the embedded patch and never trusted by the exact-match reader.",
       "items": {
         "type": "object",
         "required": [
@@ -78,7 +78,7 @@
         "properties": {
           "finding_id": { "$ref": "#/$defs/text" },
           "placement_path": { "$ref": "#/$defs/text" },
-          "page_id": { "$ref": "#/$defs/text" },
+          "page_id": { "$ref": "#/$defs/object_id" },
           "target": { "$ref": "#/$defs/object_id" },
           "operation": { "enum": ["create_object", "update_fields", "replace_body"] },
           "patch_digest": { "$ref": "#/$defs/digest" },
@@ -142,7 +142,7 @@
                   "op": { "const": "create_object" },
                   "changes": {
                     "type": "object",
-                    "required": ["kind", "body"],
+                    "required": ["kind", "status", "body", "placement"],
                     "properties": {
                       "kind": { "type": "string" },
                       "status": { "type": "string" },

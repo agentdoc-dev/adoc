@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use adoc_core::{
     ExactRevision, PROPOSAL_SCHEMA_VERSION, ProposalBindings, ProposalChangeRequest,
     ProposalPatchInput, ProposalRecord, ProposalRecordError, build_proposal_record,
-    validate_proposal_record,
+    is_semantic_context_text, validate_proposal_record,
 };
 use serde_json::{Value, json};
 
@@ -187,6 +187,7 @@ fn published_schema_rejects_text_the_domain_rejects() {
         ("/bindings/change_request/id", "ticket\0"),
         ("/patches/0/target", " billing.credits "),
         ("/patches/0/target", "billing"),
+        ("/patches/0/page_id", "billing"),
     ] {
         let mut instance = canonical.clone();
         *instance.pointer_mut(pointer).expect("field exists") = json!(invalid);
@@ -243,7 +244,10 @@ fn published_schema_matches_each_patch_operation_shape() {
         ),
         (
             "create_object",
-            json!({"kind": "claim", "status": "draft", "body": "Claim."}),
+            json!({
+                "kind": "claim", "status": "draft", "body": "Claim.",
+                "placement": {"page_id": "billing.kb"}
+            }),
             None,
             ("supersedes", json!(["billing.old"])),
         ),
@@ -276,15 +280,35 @@ fn published_schema_matches_each_patch_operation_shape() {
         );
     }
 
+    for missing in ["status", "placement"] {
+        let mut instance = canonical.clone();
+        let create = instance["patches"]
+            .as_array_mut()
+            .expect("patches")
+            .iter_mut()
+            .find(|entry| entry["operation"] == "create_object")
+            .expect("create patch");
+        create["patch"]["changes"]
+            .as_object_mut()
+            .expect("changes")
+            .remove(missing);
+        assert!(
+            !validator.is_valid(&instance),
+            "schema accepted create without {missing}"
+        );
+    }
+
     let text_pattern = published_schema["$defs"]["text"]["pattern"]
         .as_str()
         .expect("text pattern");
     assert!(
         !text_pattern.contains("\\s"),
-        "ECMA-262 \\s rejects U+FEFF unlike Rust trim"
+        "ECMA-262 \\s excludes U+FEFF unlike Rust trim; enumerate whitespace instead"
     );
+    let text_with_byte_order_mark = "Assessment finding.\u{feff}";
+    assert!(is_semantic_context_text(text_with_byte_order_mark));
     let mut byte_order_mark = canonical;
-    byte_order_mark["patches"][0]["patch"]["reason"] = json!("Assessment finding.﻿");
+    byte_order_mark["patches"][0]["patch"]["reason"] = json!(text_with_byte_order_mark);
     assert!(validator.is_valid(&byte_order_mark));
 }
 
@@ -644,6 +668,68 @@ fn patch_target_must_be_an_object_id() {
             error.diagnostic_code().as_str(),
             "proposal_record.patch_invalid"
         );
+    }
+}
+
+#[test]
+fn patch_page_must_be_an_object_id() {
+    for patch in [
+        update_patch("billing.credits", D, "billing"),
+        replace_body_patch("billing.credits", B, "Updated body."),
+    ] {
+        let mut inputs = vec![patch_input(
+            "finding-002",
+            "docs/billing.adoc",
+            "billing",
+            &patch,
+        )];
+        if patch["op"] == "replace_body" {
+            inputs.insert(
+                0,
+                patch_input(
+                    "finding-002",
+                    "docs/billing.adoc",
+                    "billing.kb",
+                    &update_patch("billing.credits", D, "billing"),
+                ),
+            );
+        }
+        let error = build_proposal_record(bindings(), inputs, None)
+            .expect_err("page outside the Object ID grammar");
+        assert!(matches!(error, ProposalRecordError::PatchInvalid { .. }));
+        assert!(error.to_string().contains("page_id"), "{error}");
+    }
+}
+
+#[test]
+fn proposal_record_rejects_null_patch_members() {
+    let mut null_base_hash = create_patch("billing.proposed");
+    null_base_hash["base_hash"] = Value::Null;
+    let mut null_status = create_patch("billing.proposed");
+    null_status["changes"]["status"] = Value::Null;
+    let validator = jsonschema::validator_for(&schema()).expect("schema compiles");
+
+    for patch in [null_base_hash, null_status] {
+        let error = build_proposal_record(
+            bindings(),
+            vec![patch_input(
+                "finding-001",
+                "docs/billing.adoc",
+                "billing.kb",
+                &patch,
+            )],
+            None,
+        )
+        .expect_err("null members are digest-visible but semantically absent");
+        assert!(matches!(error, ProposalRecordError::PatchInvalid { .. }));
+        assert!(error.to_string().contains("null member"), "{error}");
+
+        let mut instance: Value =
+            serde_json::from_str(&record().to_canonical_json().expect("serializes"))
+                .expect("record is JSON");
+        instance["patches"][0]["operation"] = json!("create_object");
+        instance["patches"][0]["patch"] = patch;
+        assert!(!validator.is_valid(&instance));
     }
 }
 
