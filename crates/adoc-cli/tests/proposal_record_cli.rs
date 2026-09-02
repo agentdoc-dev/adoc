@@ -232,4 +232,11 @@ fn authority_patches_fail_with_the_registered_code() {
     let aliased = run(&workspace, "input.json", "./input.json");
     assert_eq!(aliased.status.code(), Some(2));
     assert!(stderr(&aliased).contains("must be distinct"));
+
+    // Review round 2: --out naming a patch file is an input alias too, and
+    // is refused before the stale-output clear can destroy the patch.
+    let clobber = run(&workspace, "input.json", "patches/../patches/promote.json");
+    assert_eq!(clobber.status.code(), Some(2));
+    assert!(stderr(&clobber).contains("must be distinct"));
+    assert!(workspace.root.join("patches/promote.json").exists());
 }
