@@ -69,6 +69,8 @@ API.
    to `draft`, `proposed`, or `open` (ADR-0054 §3's explicit
    status-preservation stays an Action delivery option that never forms a
    proposal record); the ADR-0053 §3 authority fields are never proposable.
+   Every embedded patch declares an `agent` proposer constructed by the
+   trusted Action rather than the provider (ADR-0053 §7).
    Violations fail with `proposal_record.authority_rejected`, so a
    model-originated submission can only create a proposal record and never
    touches active state. Every create carries placement whose embedded
@@ -91,11 +93,12 @@ API.
    with `proposal_record.patch_invalid`.
 8. Every embedded patch passes the graph-independent half of `adoc patch
    --check` before the record exists: draft requirements, field key and shared
-   value rules, source-splice-safe body and field text, evidence-reference
-   list syntax, impacts list syntax and repository-relative path validity,
-   placement ID syntax, and required create placement. Graph
-   existence, target-kind field and value compatibility,
-   placement resolution, and post-apply source validity remain exact-head
+   value rules, source-splice-safe body and field text, create-object
+   evidence-reference list syntax, impacts list syntax and repository-relative
+   path validity, placement ID syntax, and required create placement. Graph
+   existence, target-kind field and value compatibility, evidence-reference
+   syntax and resolution for updates, placement resolution, and post-apply
+   source validity remain exact-head
    preflight concerns. Because `update_fields` only inserts or replaces
    fields, exact-head preflight also refuses an edit whose reviewable
    prospective state would require removing an existing field. This includes

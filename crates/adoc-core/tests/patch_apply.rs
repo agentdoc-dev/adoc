@@ -1275,34 +1275,68 @@ fn apply_does_not_resolve_evidence_refs_for_kinds_without_evidence_semantics() {
 }
 
 #[test]
-fn apply_refuses_glossary_metadata_status_as_a_proposal_lifecycle() {
-    let workspace = Workspace::new(GLOSSARY_PAGE_TEXT);
+fn apply_does_not_parse_update_evidence_for_kinds_without_evidence_semantics() {
+    let workspace = Workspace::new(TASK_PAGE_TEXT);
     let artifact = workspace.build();
     let result = workspace.apply(
         &artifact,
         serde_json::json!({
             "schema_version": "adoc.patch.v0",
             "op": "update_fields",
-            "target": "billing.credit-term",
-            "base_hash": workspace.content_hash(&artifact, "billing.credit-term"),
-            "changes": { "fields": { "status": "draft" } },
-            "reason": "E5.1 glossary has no proposal lifecycle",
+            "target": "billing.follow-up",
+            "base_hash": workspace.content_hash(&artifact, "billing.follow-up"),
+            "changes": {
+                "fields": {
+                    "status": "open",
+                    "evidence_ref": "https://example.com/spec"
+                }
+            },
+            "reason": "E5.1 defer evidence syntax until the target kind is known",
             "proposer": { "type": "agent", "id": "agentdoc-action" }
         }),
     );
 
-    assert!(!result.applied);
-    assert!(result.written_files.is_empty());
-    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
-    assert_eq!(
-        result.diagnostics[0].code,
-        DiagnosticCode::PatchValidationFailed
-    );
-    assert!(result.diagnostics[0].message.contains("glossary"));
-    assert_eq!(
-        fs::read_to_string(workspace.page_path()).expect("read"),
-        GLOSSARY_PAGE_TEXT
-    );
+    assert!(result.applied, "{:?}", result.diagnostics);
+    assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+}
+
+#[test]
+fn apply_refuses_glossary_metadata_status_as_a_proposal_lifecycle() {
+    for proposer in [
+        None,
+        Some(serde_json::json!({
+            "type": "agent",
+            "id": "agentdoc-action"
+        })),
+    ] {
+        let workspace = Workspace::new(GLOSSARY_PAGE_TEXT);
+        let artifact = workspace.build();
+        let mut patch = serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credit-term",
+            "base_hash": workspace.content_hash(&artifact, "billing.credit-term"),
+            "changes": { "fields": { "status": "draft" } },
+            "reason": "E5.1 glossary has no proposal lifecycle"
+        });
+        if let Some(proposer) = proposer {
+            patch["proposer"] = proposer;
+        }
+        let result = workspace.apply(&artifact, patch);
+
+        assert!(!result.applied);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchValidationFailed
+        );
+        assert!(result.diagnostics[0].message.contains("glossary"));
+        assert_eq!(
+            fs::read_to_string(workspace.page_path()).expect("read"),
+            GLOSSARY_PAGE_TEXT
+        );
+    }
 }
 
 #[test]

@@ -397,6 +397,44 @@ fn model_path_cannot_touch_active_state() {
     }
 }
 
+#[test]
+fn proposal_record_requires_an_agent_proposer() {
+    for proposer in [None, Some(json!({"type": "human", "id": "maintainer"}))] {
+        let mut patch = update_patch("billing.credits", D, "billing");
+        match proposer {
+            Some(proposer) => patch["proposer"] = proposer,
+            None => {
+                patch
+                    .as_object_mut()
+                    .expect("patch is an object")
+                    .remove("proposer");
+            }
+        }
+
+        let error = build_proposal_record(
+            bindings(),
+            vec![patch_input(
+                "finding-002",
+                "docs/billing.adoc",
+                "billing.kb",
+                &patch,
+            )],
+            None,
+        )
+        .expect_err("canonical proposal patches require an agent proposer");
+
+        assert!(
+            matches!(error, ProposalRecordError::AuthorityRejected { .. }),
+            "{error}"
+        );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "proposal_record.authority_rejected"
+        );
+        assert!(error.to_string().contains("agent proposer"), "{error}");
+    }
+}
+
 // Review round 4 (PR #194): a patch target is an Object ID. An empty or
 // malformed target would otherwise reach the record and break the published
 // schema's `target` (text, minLength 1) as well as every apply-time check.
@@ -875,12 +913,6 @@ fn intrinsically_invalid_edits_are_rejected() {
     structural["changes"]["fields"] = json!({"body": "Replacement", "status": "draft"});
     let mut invalid_visibility = update_patch("billing.credits", D, "billing");
     invalid_visibility["changes"]["fields"] = json!({"status": "draft", "visibility": "secret"});
-    let mut invalid_evidence_ref = update_patch("billing.credits", D, "billing");
-    invalid_evidence_ref["changes"]["fields"] =
-        json!({"status": "draft", "evidence_ref": "not-an-object-id"});
-    let mut empty_evidence_ref = update_patch("billing.credits", D, "billing");
-    empty_evidence_ref["changes"]["fields"] =
-        json!({"status": "draft", "evidence_ref": "source.one,,source.two"});
     let mut multiline_field = update_patch("billing.credits", D, "billing");
     multiline_field["changes"]["fields"] = json!({"status": "draft", "owner": "team\nother"});
 
@@ -892,8 +924,6 @@ fn intrinsically_invalid_edits_are_rejected() {
         vec![blank_value],
         vec![structural],
         vec![invalid_visibility],
-        vec![invalid_evidence_ref],
-        vec![empty_evidence_ref],
         vec![multiline_field],
         vec![status_only, replace_body_patch("billing.credits", D, " ")],
         vec![
@@ -908,6 +938,26 @@ fn intrinsically_invalid_edits_are_rejected() {
         let error = build_proposal_record(bindings(), inputs, None)
             .expect_err("a patch the standard validator rejects is not proposable");
         assert!(matches!(error, ProposalRecordError::PatchInvalid { .. }));
+    }
+}
+
+#[test]
+fn update_evidence_syntax_waits_for_exact_head_kind() {
+    for evidence_ref in ["not-an-object-id", "source.one,,source.two"] {
+        let mut patch = update_patch("billing.credits", D, "billing");
+        patch["changes"]["fields"] = json!({"status": "draft", "evidence_ref": evidence_ref});
+
+        build_proposal_record(
+            bindings(),
+            vec![patch_input(
+                "finding-002",
+                "docs/billing.adoc",
+                "billing.kb",
+                &patch,
+            )],
+            None,
+        )
+        .expect("the graph-independent record cannot know whether the target parses evidence_ref");
     }
 }
 

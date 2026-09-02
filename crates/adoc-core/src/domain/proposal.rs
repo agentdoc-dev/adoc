@@ -24,7 +24,9 @@ use thiserror::Error;
 use super::diagnostic::{DiagnosticCode, Severity};
 use super::hashing::sha256_prefixed;
 use super::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
-use super::patch::{PatchDocument, PatchIntent, PatchOperation, intrinsic_patch_diagnostics};
+use super::patch::{
+    AGENT_PROPOSER_TYPE, PatchDocument, PatchIntent, PatchOperation, intrinsic_patch_diagnostics,
+};
 use super::semantic_context::{ExactRevision, is_semantic_context_text, is_sha256_digest};
 
 pub const PROPOSAL_SCHEMA_VERSION: &str = "adoc.proposal.v0";
@@ -579,6 +581,15 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
         .find(|field| fields.contains_key(**field))
     {
         return Err(reject(format!("field '{field}' carries authority")));
+    }
+    if document
+        .proposer
+        .as_ref()
+        .is_none_or(|proposer| proposer.proposer_type != AGENT_PROPOSER_TYPE)
+    {
+        return Err(reject(
+            "every proposal patch must declare an agent proposer".to_string(),
+        ));
     }
     Ok(())
 }

@@ -105,6 +105,8 @@ pub(crate) struct PatchProposer {
     pub(crate) id: String,
 }
 
+pub(crate) const AGENT_PROPOSER_TYPE: &str = "agent";
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PatchDiff {
     pub field: String,
@@ -279,11 +281,11 @@ impl PatchValidator<'_> {
                 self.diagnostics.push(diagnostic);
             }
         }
-        let agent_proposed = self
+        let agent_proposed_or_unattributed = self
             .patch
             .proposer
             .as_ref()
-            .is_some_and(|proposer| proposer.proposer_type == "agent");
+            .is_none_or(|proposer| proposer.proposer_type == AGENT_PROPOSER_TYPE);
         for (key, value) in fields {
             if !is_valid_field_key(&key)
                 || is_update_structural_field(&key)
@@ -294,7 +296,7 @@ impl PatchValidator<'_> {
             {
                 continue;
             }
-            if agent_proposed && kind == BlockKind::Glossary && key == "status" {
+            if agent_proposed_or_unattributed && kind == BlockKind::Glossary && key == "status" {
                 self.diagnostics.push(validation_error(
                     target.as_str(),
                     "glossary `status` is metadata, not a reviewable lifecycle, and cannot satisfy an existing-object proposal update",
@@ -409,10 +411,17 @@ impl PatchValidator<'_> {
     }
 
     /// Resolve syntactically valid evidence references against the head graph.
-    /// The intrinsic pass owns syntax diagnostics, so `false` tells callers to
-    /// skip graph-dependent work without emitting a duplicate error.
+    /// The intrinsic pass owns create syntax diagnostics. Update patches do
+    /// not carry a kind, so this pass emits their syntax diagnostic once the
+    /// graph supplies the target kind.
     fn validate_evidence_ref_targets(&mut self, target: &ObjectId, value: &str) -> bool {
-        if !evidence_ref_syntax_diagnostics(target.as_str(), value).is_empty() {
+        let syntax_diagnostics = evidence_ref_syntax_diagnostics(target.as_str(), value);
+        if !syntax_diagnostics.is_empty() {
+            for diagnostic in syntax_diagnostics {
+                if !self.diagnostics.contains(&diagnostic) {
+                    self.diagnostics.push(diagnostic);
+                }
+            }
             return false;
         }
         for reference in evidence_ref_segments(value) {
@@ -657,6 +666,8 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
             }
         }
         PatchIntent::UpdateFields { fields, .. } => {
+            // evidence_ref syntax is target-kind-specific. update_fields does
+            // not carry the kind, so the graph-aware pass owns that check.
             for (key, value) in fields {
                 let message = if !is_valid_field_key(key) {
                     Some(format!("field key `{key}` is invalid"))
@@ -688,11 +699,6 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                 };
                 if let Some(message) = message {
                     diagnostics.push(validation_error(&patch.target, message));
-                } else if key == EVIDENCE_REF_FIELD {
-                    // update_fields has no target kind until the graph-aware
-                    // pass, so intrinsic validation must check syntax here;
-                    // resolution is kind-scoped once the graph supplies it.
-                    diagnostics.extend(evidence_ref_syntax_diagnostics(&patch.target, value));
                 } else if key == IMPACTS_FIELD {
                     diagnostics.extend(impacts_value_diagnostics(&patch.target, value));
                 } else if let Some(diagnostic) = shared_field_value_error(key, value) {
