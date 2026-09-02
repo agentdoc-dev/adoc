@@ -131,6 +131,28 @@ impl ContentBinding {
     }
 }
 
+/// Constructible only by [`crate::build_proposal_record`] or
+/// [`crate::validate_proposal_record`]; a record with any binding missing has
+/// no representation:
+///
+/// ```compile_fail
+/// // Private fields (E0451): no literal construction outside adoc-core. All
+/// // six fields are named so only field privacy can fail this.
+/// let record = adoc_core::ProposalRecord {
+///     schema_version: todo!(),
+///     proposal_set_digest: todo!(),
+///     supersedes: todo!(),
+///     bindings: todo!(),
+///     content_bindings: todo!(),
+///     patches: todo!(),
+/// };
+/// ```
+///
+/// ```compile_fail
+/// // No `Deserialize` (E0277): wire bytes never become a record without the
+/// // validator re-deriving every digest.
+/// let record: adoc_core::ProposalRecord = serde_json::from_str("{}").unwrap();
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProposalRecord {
     schema_version: String,

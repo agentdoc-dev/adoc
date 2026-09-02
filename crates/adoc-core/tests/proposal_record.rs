@@ -402,3 +402,83 @@ fn conflicting_content_bindings_for_one_target_are_rejected() {
         "proposal_record.patch_invalid"
     );
 }
+
+// E5.1 acceptance — E1.1 hash twins: a position-only source-placement move
+// leaves the proposal-set digest unchanged; a content change changes it.
+mod support;
+
+#[test]
+fn placement_only_move_keeps_the_proposal_set_digest_and_content_change_changes_it() {
+    use adoc_core::{BuildEmbeddingMode, BuildInput};
+    use support::TestWorkspace;
+
+    let source = |verb: &str, prefix: &str| {
+        format!(
+            concat!(
+                "# Billing @doc(billing.kb)\n",
+                "\n",
+                "{prefix}",
+                "::claim billing.credits\n",
+                "status: draft\n",
+                "--\n",
+                "Credits {verb} after successful payment.\n",
+                "::\n",
+            ),
+            verb = verb,
+            prefix = prefix,
+        )
+    };
+    let content_hash = |file: &str, source: &str| {
+        let workspace = TestWorkspace::new("proposal-hash-twins");
+        let root = workspace.write(file, source);
+        let result = adoc_core::build_workspace(BuildInput {
+            root,
+            embeddings: BuildEmbeddingMode::Skipped,
+            prior_search_artifact_path: None,
+        });
+        assert!(!result.has_errors(), "{:?}", result.diagnostics);
+        let graph: Value = serde_json::from_str(&result.artifacts.expect("artifacts").graph_json)
+            .expect("graph is JSON");
+        graph["nodes"]
+            .as_array()
+            .expect("nodes")
+            .iter()
+            .find(|node| node["id"] == "billing.credits")
+            .and_then(|node| node["content_hash"].as_str())
+            .expect("content_hash")
+            .to_string()
+    };
+    let record_for = |hash: &str| {
+        build_proposal_record(
+            bindings(),
+            vec![patch_input(
+                "finding-002",
+                "docs/billing.adoc",
+                "billing.kb",
+                &update_patch("billing.credits", hash, "billing"),
+            )],
+            None,
+        )
+        .expect("record builds")
+    };
+
+    let original = content_hash("billing.adoc", &source("post", ""));
+    let moved = content_hash(
+        "moved/renamed.adoc",
+        &source("post", "Intro prose shifts lines.\n\n"),
+    );
+    let edited = content_hash("billing.adoc", &source("settle", ""));
+
+    assert_eq!(original, moved);
+    assert_ne!(original, edited);
+    assert_eq!(
+        record_for(&original)
+            .to_canonical_json()
+            .expect("serializes"),
+        record_for(&moved).to_canonical_json().expect("serializes")
+    );
+    assert_ne!(
+        record_for(&original).proposal_set_digest(),
+        record_for(&edited).proposal_set_digest()
+    );
+}

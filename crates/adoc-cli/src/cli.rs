@@ -719,6 +719,17 @@ pub(crate) enum Commands {
         out: PathBuf,
     },
     #[command(
+        name = "proposal-record",
+        about = "Build the canonical adoc.proposal.v0 record from exact patch files and their bindings."
+    )]
+    ProposalRecord {
+        /// Producer input: bindings, optional superseded digest, and one entry per patch file.
+        #[arg(long, value_name = "INPUT_JSON")]
+        input: PathBuf,
+        #[arg(long, value_name = "RECORD_JSON")]
+        out: PathBuf,
+    },
+    #[command(
         name = "semantic-executor",
         about = "Validate one semantic executor response and write its deterministic receipt."
     )]
