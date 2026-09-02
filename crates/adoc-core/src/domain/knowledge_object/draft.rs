@@ -17,6 +17,7 @@ use crate::domain::knowledge_object::observation::{
     OBSERVED_AT_FIELD, ObservationStatus, SAMPLE_SIZE_FIELD,
 };
 use crate::domain::knowledge_object::policy::PolicyStatus;
+use crate::domain::knowledge_object::procedure::body_text_starts_with_ordered_list;
 use crate::domain::knowledge_object::question::{
     ANSWERED_STATUS, QuestionStatus, RESOLVED_BY_FIELD,
 };
@@ -254,6 +255,9 @@ impl DraftValidator<'_> {
             None => self.error("procedure requires status"),
             Some(_) => {}
         }
+        if !body_text_starts_with_ordered_list(self.draft.body) {
+            self.error("procedure body must begin with an ordered list");
+        }
     }
 
     fn validate_example(&mut self) {
@@ -273,6 +277,9 @@ impl DraftValidator<'_> {
             && SandboxName::try_new(value).is_err()
         {
             self.error(format!("example has invalid sandbox `{value}`"));
+        }
+        if !self.draft.fields.contains_key("lang") && !self.draft.fields.contains_key("format") {
+            self.error("example requires fields.lang or fields.format");
         }
         if status.is_ok_and(|status| status.is_some_and(|status| status.is_verified())) {
             if !self.draft.fields.contains_key("checks") {

@@ -39,6 +39,18 @@ Update the support runbook.
 ::
 ";
 
+const API_PAGE_TEXT: &str = "\
+# Billing
+
+::api billing.credits-api
+status: draft
+method: GET
+path: /credits
+--
+Returns billing credits.
+::
+";
+
 const ANSWERED_QUESTION_PAGE_TEXT: &str = "\
 # Billing
 
@@ -478,6 +490,47 @@ fn apply_refuses_reviewable_status_that_would_orphan_an_existing_field() {
 }
 
 #[test]
+fn apply_refuses_api_representation_switch_without_field_removal() {
+    let workspace = Workspace::new(API_PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits-api");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits-api",
+            "base_hash": base_hash,
+            "changes": {
+                "fields": { "status": "draft", "symbol": "billing::credits" }
+            },
+            "reason": "E5.1 insert-only API representation boundary"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
+    );
+    assert!(
+        result.diagnostics[0]
+            .message
+            .contains("api provides both `path` and `symbol`"),
+        "{:?}",
+        result.diagnostics
+    );
+    assert_eq!(
+        fs::read_to_string(workspace.page_path()).expect("read"),
+        API_PAGE_TEXT,
+        "an unrepresentable API switch writes nothing"
+    );
+}
+
+#[test]
 fn apply_refuses_invalid_values_for_every_supported_kind_family() {
     let workspace = Workspace::new(EXTENDED_KINDS_PAGE_TEXT);
     let artifact = workspace.build();
@@ -860,6 +913,68 @@ fn apply_refuses_create_object_field_outside_the_kind_closed_schema() {
         PAGE_TEXT,
         "refusal writes nothing"
     );
+}
+
+#[test]
+fn apply_refuses_invalid_extended_kind_create_invariants() {
+    for (target, changes, message) in [
+        (
+            "billing.missing-example-language",
+            serde_json::json!({
+                "kind": "example",
+                "status": "draft",
+                "body": "fn main() {}"
+            }),
+            "requires fields.lang or fields.format",
+        ),
+        (
+            "billing.unordered-procedure",
+            serde_json::json!({
+                "kind": "procedure",
+                "status": "draft",
+                "body": "Rotate the key without an ordered step."
+            }),
+            "ordered list",
+        ),
+    ] {
+        let workspace = Workspace::new(PAGE_TEXT);
+        let artifact = workspace.build();
+        let page_id = workspace.node(&artifact, "billing.credits")["page_id"]
+            .as_str()
+            .expect("anchor page_id")
+            .to_string();
+        let mut changes = changes;
+        changes["placement"] =
+            serde_json::json!({ "page_id": page_id, "after": "billing.credits" });
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "create_object",
+                "target": target,
+                "changes": changes,
+                "reason": "E5.1 complete create invariant validation"
+            }),
+        );
+
+        assert!(!result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchValidationFailed
+        );
+        assert!(
+            result.diagnostics[0].message.contains(message),
+            "{:?}",
+            result.diagnostics
+        );
+        assert_eq!(
+            fs::read_to_string(workspace.page_path()).expect("read"),
+            PAGE_TEXT,
+            "invalid create writes nothing"
+        );
+    }
 }
 
 #[test]

@@ -326,8 +326,11 @@ fn verified_procedure_dedicated_field_in(
 /// marker (`1. `, `12. `). Operates on the canonical source projection so it
 /// is independent of how the body inlines were produced.
 fn body_starts_with_ordered_list(body: &Body) -> bool {
-    body.to_source()
-        .lines()
+    body_text_starts_with_ordered_list(&body.to_source())
+}
+
+pub(crate) fn body_text_starts_with_ordered_list(body: &str) -> bool {
+    body.lines()
         .map(trim_ascii_edges)
         .find(|line| !line.is_empty())
         .and_then(ordered_step_marker_len)
