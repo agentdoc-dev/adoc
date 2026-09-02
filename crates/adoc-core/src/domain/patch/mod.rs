@@ -7,7 +7,8 @@ use crate::domain::graph::{GraphIndex, GraphKnowledgeObjectNode, GraphRelationKi
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::knowledge_object::draft::{KnowledgeObjectDraft, validate_draft};
 use crate::domain::knowledge_object::{
-    BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error, shared_field_value_error,
+    BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error, is_allowed_field_key,
+    shared_field_value_error,
 };
 use crate::domain::obligation::ProofObligation;
 
@@ -247,7 +248,7 @@ impl PatchValidator<'_> {
         if !self.require_matching_base_hash(&object, base_hash) {
             return;
         }
-        for (key, value) in fields {
+        'fields: for (key, value) in fields {
             if !is_valid_field_key(&key)
                 || is_update_structural_field(&key)
                 || is_relation_field(&key)
@@ -280,8 +281,8 @@ impl PatchValidator<'_> {
             }
             // V5.8 TB5: when the field being updated is `evidence_ref`, resolve
             // each comma-separated Object ID against the head graph artifact.
-            // On a parse failure we emit an existing validation error and skip
-            // the diff (hard error — the value is syntactically invalid).
+            // On a parse failure the intrinsic pass emits the validation error
+            // and this graph pass skips the diff.
             // On a resolution failure (not found / wrong kind) we emit the
             // schema diagnostic AND still record the diff: the patch is a
             // proposal and the diff is part of the record even when the ref is
@@ -290,20 +291,10 @@ impl PatchValidator<'_> {
             // are stale, and keeps the diff stream consistent with what other
             // field updates produce.
             if key == EVIDENCE_REF_FIELD {
-                let mut ref_parse_error = false;
-                for raw_segment in value.split(',') {
-                    let trimmed = raw_segment.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
-                    let ref_id = match ObjectId::new(trimmed.to_string()) {
-                        Ok(id) => id,
-                        Err(_) => {
-                            self.diagnostics
-                                .push(invalid_object_id_diagnostic(trimmed, "evidence_ref target"));
-                            ref_parse_error = true;
-                            continue;
-                        }
+                for reference in evidence_ref_segments(&value) {
+                    let Ok(ref_id) = ObjectId::new(reference.to_string()) else {
+                        // The mandatory intrinsic pass owns ID syntax errors.
+                        continue 'fields;
                     };
                     match self.graph.object(&ref_id) {
                         None => {
@@ -331,12 +322,6 @@ impl PatchValidator<'_> {
                         }
                         Some(_) => {} // exists and is a source — OK
                     }
-                }
-                // Only skip the diff if the value itself was syntactically
-                // invalid (unparseable IDs). Resolution failures still produce
-                // a diff because the proposal is recorded as-is.
-                if ref_parse_error {
-                    continue;
                 }
             }
             let old = object.fields.get(&key).cloned();
@@ -621,6 +606,13 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                     Some(format!(
                         "field `{key}` is a relation field; use a relation operation"
                     ))
+                } else if !BlockKind::ALL
+                    .iter()
+                    .any(|kind| is_allowed_field_key(*kind, key))
+                {
+                    Some(format!(
+                        "field `{key}` is not valid for any Knowledge Object kind"
+                    ))
                 } else if value.trim().is_empty() {
                     Some(format!("field `{key}` requires a non-empty value"))
                 } else {
@@ -628,6 +620,13 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                 };
                 if let Some(message) = message {
                     diagnostics.push(validation_error(&patch.target, message));
+                } else if key == EVIDENCE_REF_FIELD {
+                    for target in evidence_ref_segments(value) {
+                        if ObjectId::new(target.to_string()).is_err() {
+                            diagnostics
+                                .push(invalid_object_id_diagnostic(target, "evidence_ref target"));
+                        }
+                    }
                 } else if let Some(diagnostic) = shared_field_value_error(key, value) {
                     diagnostics.push(diagnostic.with_object_id(&patch.target));
                 }
@@ -699,6 +698,13 @@ fn is_valid_field_key(key: &str) -> bool {
 
 fn is_update_structural_field(key: &str) -> bool {
     matches!(key, "id" | "kind" | "body" | "placement")
+}
+
+fn evidence_ref_segments(value: &str) -> impl Iterator<Item = &str> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
 }
 
 fn is_relation_field(key: &str) -> bool {

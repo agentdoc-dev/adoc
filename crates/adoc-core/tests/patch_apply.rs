@@ -345,6 +345,30 @@ fn apply_reports_structural_update_field_once() {
 }
 
 #[test]
+fn apply_reports_invalid_evidence_ref_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": { "fields": { "evidence_ref": "not-an-object-id" } },
+            "reason": "E5.1 intrinsic evidence-reference validation"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(result.diagnostics[0].code, DiagnosticCode::IdInvalid);
+}
+
+#[test]
 fn apply_reports_invalid_create_anchor_once() {
     let workspace = Workspace::new(PAGE_TEXT);
     let artifact = workspace.build();

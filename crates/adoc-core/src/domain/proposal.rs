@@ -227,22 +227,12 @@ impl ProposalRecord {
                 placement: Some(placement),
                 ..
             } = &patch.document.intent
+                && let Some(after) = &placement.after
+                && created_targets.contains(after.as_str())
             {
-                if created_targets.contains(placement.page_id.as_str()) {
-                    return Err(ProposalRecordError::PatchInvalid {
-                        message: format!(
-                            "proposed object '{}' cannot be a placement page",
-                            placement.page_id
-                        ),
-                    });
-                }
-                if let Some(after) = &placement.after
-                    && created_targets.contains(after.as_str())
-                {
-                    return Err(ProposalRecordError::PatchInvalid {
-                        message: format!("proposed object '{after}' cannot be a placement anchor"),
-                    });
-                }
+                return Err(ProposalRecordError::PatchInvalid {
+                    message: format!("proposed object '{after}' cannot be a placement anchor"),
+                });
             }
         }
         let mut sequences = BTreeMap::new();

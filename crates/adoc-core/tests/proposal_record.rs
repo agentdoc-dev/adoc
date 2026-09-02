@@ -834,6 +834,8 @@ fn intrinsically_invalid_edits_are_rejected() {
     blank_reason["reason"] = json!("  ");
     let mut invalid_key = update_patch("billing.credits", D, "billing");
     invalid_key["changes"]["fields"] = json!({"Bad-Key": "value", "status": "draft"});
+    let mut unknown_field = update_patch("billing.credits", D, "billing");
+    unknown_field["changes"]["fields"] = json!({"status": "draft", "totally_unknown": "x"});
     let mut relation = update_patch("billing.credits", D, "billing");
     relation["changes"]["fields"] = json!({"status": "draft", "depends_on": "billing.other"});
     let mut blank_value = update_patch("billing.credits", D, "billing");
@@ -844,14 +846,19 @@ fn intrinsically_invalid_edits_are_rejected() {
     structural["changes"]["fields"] = json!({"body": "Replacement", "status": "draft"});
     let mut invalid_visibility = update_patch("billing.credits", D, "billing");
     invalid_visibility["changes"]["fields"] = json!({"status": "draft", "visibility": "secret"});
+    let mut invalid_evidence_ref = update_patch("billing.credits", D, "billing");
+    invalid_evidence_ref["changes"]["fields"] =
+        json!({"status": "draft", "evidence_ref": "not-an-object-id"});
 
     for patches in [
         vec![blank_reason],
         vec![invalid_key],
+        vec![unknown_field],
         vec![relation],
         vec![blank_value],
         vec![structural],
         vec![invalid_visibility],
+        vec![invalid_evidence_ref],
         vec![status_only, replace_body_patch("billing.credits", D, " ")],
     ] {
         let inputs = patches
@@ -908,22 +915,14 @@ fn one_target_is_created_at_most_once_and_never_also_edited() {
 }
 
 #[test]
-fn creates_cannot_use_proposed_objects_for_placement() {
+fn creates_cannot_use_proposed_objects_as_placement_anchors() {
     let anchored = |target: &str, after: &str| {
         let mut patch = create_patch(target);
         patch["changes"]["placement"]["after"] = json!(after);
         patch
     };
-    let placed_on = |target: &str, page_id: &str| {
-        let mut patch = create_patch(target);
-        patch["changes"]["placement"]["page_id"] = json!(page_id);
-        patch
-    };
     let input = |finding: &str, patch: &Value| {
         patch_input(finding, "docs/billing.adoc", "billing.kb", patch)
-    };
-    let input_on = |finding: &str, page_id: &str, patch: &Value| {
-        patch_input(finding, "docs/billing.adoc", page_id, patch)
     };
 
     for patches in [
@@ -935,22 +934,28 @@ fn creates_cannot_use_proposed_objects_for_placement() {
             input("finding-001", &anchored("billing.second", "billing.first")),
             input("finding-002", &create_patch("billing.first")),
         ],
-        vec![input_on(
-            "finding-001",
-            "billing.proposed",
-            &placed_on("billing.proposed", "billing.proposed"),
-        )],
-        vec![
-            input_on(
-                "finding-001",
-                "billing.first",
-                &placed_on("billing.second", "billing.first"),
-            ),
-            input("finding-002", &create_patch("billing.first")),
-        ],
     ] {
         let error = build_proposal_record(bindings(), patches, None)
-            .expect_err("a proposed object cannot define another create's placement");
+            .expect_err("a proposed object cannot anchor another create");
         assert!(matches!(error, ProposalRecordError::PatchInvalid { .. }));
     }
+}
+
+#[test]
+fn page_and_object_id_namespaces_are_independent() {
+    let patch = create_patch("billing.kb");
+
+    let record = build_proposal_record(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &patch,
+        )],
+        None,
+    )
+    .expect("an existing page may share a new object's identifier");
+
+    assert_eq!(record.patches()[0].target(), "billing.kb");
 }
