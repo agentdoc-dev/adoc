@@ -56,6 +56,74 @@ What is the answer?
 ::
 ";
 
+const EXTENDED_KINDS_PAGE_TEXT: &str = "\
+# Billing
+
+::claim billing.claim-a
+status: contradicted
+--
+Claim A.
+::
+
+::claim billing.claim-b
+status: contradicted
+--
+Claim B.
+::
+
+::policy billing.retention
+status: active
+owner: security-lead
+approved_by: security-lead
+effective_at: 2026-04-01
+--
+Customer data is retained for no more than 365 days.
+::
+
+::constraint billing.no-local-storage
+severity: critical
+--
+Session tokens must not be stored in localStorage.
+::
+
+::procedure billing.rotate-key
+status: draft
+--
+1. Rotate the key.
+::
+
+::example billing.client-example
+status: draft
+lang: rust
+--
+fn main() {}
+::
+
+::agent_instruction billing.agent-scope
+scope: docs/billing/*
+trust: team
+allowed_actions: [summarize, cite]
+forbidden_actions: [execute_shell]
+--
+Summarize billing docs without executing commands.
+::
+
+::contradiction billing.claim-conflict
+severity: high
+status: unresolved
+claims: [billing.claim-a, billing.claim-b]
+--
+The two claims conflict.
+::
+
+::source billing.source-code
+kind: source_code
+path: src/lib.rs
+--
+The billing implementation.
+::
+";
+
 struct Workspace {
     root: tempfile::TempDir,
 }
@@ -407,6 +475,87 @@ fn apply_refuses_reviewable_status_that_would_orphan_an_existing_field() {
         ANSWERED_QUESTION_PAGE_TEXT,
         "an unrepresentable valid state writes nothing"
     );
+}
+
+#[test]
+fn apply_refuses_invalid_values_for_every_supported_kind_family() {
+    let workspace = Workspace::new(EXTENDED_KINDS_PAGE_TEXT);
+    let artifact = workspace.build();
+    for (target, field, value, message) in [
+        (
+            "billing.retention",
+            "status",
+            "totally-bogus",
+            "invalid status",
+        ),
+        (
+            "billing.no-local-storage",
+            "severity",
+            "catastrophic",
+            "invalid severity",
+        ),
+        (
+            "billing.rotate-key",
+            "status",
+            "totally-bogus",
+            "invalid status",
+        ),
+        (
+            "billing.client-example",
+            "status",
+            "totally-bogus",
+            "invalid status",
+        ),
+        (
+            "billing.agent-scope",
+            "trust",
+            "totally-bogus",
+            "invalid trust",
+        ),
+        (
+            "billing.claim-conflict",
+            "status",
+            "totally-bogus",
+            "invalid status",
+        ),
+        (
+            "billing.source-code",
+            "path",
+            "/absolute/path",
+            "invalid path",
+        ),
+    ] {
+        let base_hash = workspace.content_hash(&artifact, target);
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "update_fields",
+                "target": target,
+                "base_hash": base_hash,
+                "changes": { "fields": { field: value } },
+                "reason": "E5.1 complete target-kind value validation"
+            }),
+        );
+
+        assert!(!result.applied, "diagnostics: {:?}", result.diagnostics);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(
+            result.diagnostics[0].code,
+            DiagnosticCode::PatchValidationFailed
+        );
+        assert!(
+            result.diagnostics[0].message.contains(message),
+            "{:?}",
+            result.diagnostics
+        );
+        assert_eq!(
+            fs::read_to_string(workspace.page_path()).expect("read"),
+            EXTENDED_KINDS_PAGE_TEXT,
+            "invalid target-kind value writes nothing"
+        );
+    }
 }
 
 #[test]

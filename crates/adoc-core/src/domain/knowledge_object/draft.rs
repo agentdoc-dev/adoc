@@ -16,16 +16,33 @@ use crate::domain::knowledge_object::decision::{
 use crate::domain::knowledge_object::observation::{
     OBSERVED_AT_FIELD, ObservationStatus, SAMPLE_SIZE_FIELD,
 };
+use crate::domain::knowledge_object::policy::PolicyStatus;
 use crate::domain::knowledge_object::question::{
     ANSWERED_STATUS, QuestionStatus, RESOLVED_BY_FIELD,
 };
 use crate::domain::knowledge_object::task::{DUE_FIELD, TaskStatus};
-use crate::domain::knowledge_object::{BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error};
+use crate::domain::knowledge_object::{
+    BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error, list_content_range,
+};
 use crate::domain::source_edit::planner::field_value_line_break_diagnostic;
+use crate::domain::value_objects::action::{AllowedAction, ForbiddenAction};
+use crate::domain::value_objects::action_set::DisjointActionSets;
+use crate::domain::value_objects::approved_by::ApprovedBy;
+use crate::domain::value_objects::contradiction_claims::ContradictionClaims;
+use crate::domain::value_objects::contradiction_status::ContradictionStatus;
 use crate::domain::value_objects::effective_date::EffectiveDate;
+use crate::domain::value_objects::evidence_kind::EvidenceKind;
 use crate::domain::value_objects::http_method::HttpMethod;
+use crate::domain::value_objects::lang::Lang;
+use crate::domain::value_objects::lifecycle_status::LifecycleStatus;
+use crate::domain::value_objects::rel_path::RelPath;
+use crate::domain::value_objects::review_interval::ReviewInterval;
 use crate::domain::value_objects::sample_size::SampleSize;
+use crate::domain::value_objects::sandbox::SandboxName;
+use crate::domain::value_objects::scope::Scope;
 use crate::domain::value_objects::severity::Severity;
+use crate::domain::value_objects::trust::Trust;
+use crate::domain::value_objects::url::Url;
 use crate::domain::values::NonEmptyText;
 
 #[derive(Debug, Clone, Copy)]
@@ -53,28 +70,32 @@ pub(crate) fn validate_draft(draft: KnowledgeObjectDraft<'_>) -> DraftValidation
     let mut validator = DraftValidator {
         draft,
         validation: DraftValidation::default(),
+        include_proof_obligations: true,
     };
     validator.validate();
     validator.validation
 }
 
-/// Revalidate an existing object's prospective state when its kind is part
-/// of the create/update draft surface. Other kinds keep their existing patch
-/// behavior until they gain a draft validator.
-pub(crate) fn validate_draft_if_supported(
-    draft: KnowledgeObjectDraft<'_>,
-) -> Option<DraftValidation> {
+/// Revalidate an existing object's prospective field state for every shipped
+/// [`BlockKind`]. Existing-object proof obligations stay with the graph-aware
+/// patch rules; this pass returns diagnostics only. For a two-patch logical
+/// edit it sees the exact-head body, while `replace_body` is guarded and
+/// post-checked independently; add sequence-aware validation before any
+/// future kind rule couples fields to body content.
+pub(crate) fn validate_existing_draft(draft: KnowledgeObjectDraft<'_>) -> Vec<Diagnostic> {
     let mut validator = DraftValidator {
         draft,
         validation: DraftValidation::default(),
+        include_proof_obligations: false,
     };
-    validator.validate_common();
-    validator.validate_kind().then_some(validator.validation)
+    validator.validate();
+    validator.validation.diagnostics
 }
 
 struct DraftValidator<'a> {
     draft: KnowledgeObjectDraft<'a>,
     validation: DraftValidation,
+    include_proof_obligations: bool,
 }
 
 impl DraftValidator<'_> {
@@ -90,22 +111,31 @@ impl DraftValidator<'_> {
 
     fn validate_common(&mut self) {
         if NonEmptyText::try_new(self.draft.body).is_none() {
-            self.error("create_object requires a non-empty body");
+            self.error("knowledge object requires a non-empty body");
         }
         self.validate_fields();
     }
 
     fn validate_kind(&mut self) -> bool {
-        match self.draft.kind {
-            "claim" => self.validate_claim(),
-            "decision" => self.validate_decision(),
-            "glossary" => self.validate_glossary(),
-            "warning" => self.validate_warning(),
-            "api" => self.validate_api(),
-            "observation" => self.validate_observation(),
-            "question" => self.validate_question(),
-            "task" => self.validate_task(),
-            _ => return false,
+        let Some(kind) = BlockKind::from_fence_word(self.draft.kind) else {
+            return false;
+        };
+        match kind {
+            BlockKind::Claim => self.validate_claim(),
+            BlockKind::Decision => self.validate_decision(),
+            BlockKind::Glossary => self.validate_glossary(),
+            BlockKind::Warning => self.validate_warning(),
+            BlockKind::Constraint => self.validate_constraint(),
+            BlockKind::Policy => self.validate_policy(),
+            BlockKind::Procedure => self.validate_procedure(),
+            BlockKind::Example => self.validate_example(),
+            BlockKind::AgentInstruction => self.validate_agent_instruction(),
+            BlockKind::Contradiction => self.validate_contradiction(),
+            BlockKind::Source => self.validate_source(),
+            BlockKind::Api => self.validate_api(),
+            BlockKind::Observation => self.validate_observation(),
+            BlockKind::Question => self.validate_question(),
+            BlockKind::Task => self.validate_task(),
         }
         true
     }
@@ -148,11 +178,227 @@ impl DraftValidator<'_> {
     }
 
     fn validate_warning(&mut self) {
-        if Severity::try_new(self.draft.status.unwrap_or("")).is_err() {
-            match self.draft.status {
+        let severity = self
+            .draft
+            .fields
+            .get("severity")
+            .map(String::as_str)
+            .or(self.draft.status);
+        if Severity::try_new(severity.unwrap_or("")).is_err() {
+            match severity {
                 Some(severity) => self.error(format!("warning has invalid severity `{severity}`")),
                 None => self.error("warning requires severity"),
             }
+        }
+    }
+
+    fn validate_constraint(&mut self) {
+        match self.draft.fields.get("severity") {
+            Some(severity) if Severity::try_new(severity).is_err() => {
+                self.error(format!("constraint has invalid severity `{severity}`"));
+            }
+            None => self.error("constraint requires severity"),
+            Some(_) => {}
+        }
+    }
+
+    fn validate_policy(&mut self) {
+        match self.draft.status {
+            Some(status) if PolicyStatus::try_new(status).is_err() => {
+                self.error(format!("policy has invalid status `{status}`"));
+            }
+            None => self.error("policy requires status"),
+            Some(_) => {}
+        }
+        if self
+            .draft
+            .fields
+            .get(OWNER_FIELD)
+            .and_then(|value| Owner::try_new(value))
+            .is_none()
+        {
+            self.error("policy requires non-empty fields.owner");
+        }
+        if self
+            .draft
+            .fields
+            .get("approved_by")
+            .and_then(|value| list_items(value))
+            .is_none_or(|items| {
+                items
+                    .into_iter()
+                    .all(|item| ApprovedBy::try_new(item).is_none())
+            })
+        {
+            self.error("policy requires non-empty fields.approved_by");
+        }
+        match self.draft.fields.get("effective_at") {
+            Some(value) if EffectiveDate::try_new(value).is_err() => {
+                self.error(format!("policy has invalid effective_at `{value}`"));
+            }
+            None => self.error("policy requires fields.effective_at"),
+            Some(_) => {}
+        }
+        if let Some(value) = self.draft.fields.get("review_interval")
+            && ReviewInterval::try_new(value).is_err()
+        {
+            self.error(format!("policy has invalid review_interval `{value}`"));
+        }
+    }
+
+    fn validate_procedure(&mut self) {
+        match self.draft.status {
+            Some(status) if LifecycleStatus::try_new(status).is_err() => {
+                self.error(format!("procedure has invalid status `{status}`"));
+            }
+            None => self.error("procedure requires status"),
+            Some(_) => {}
+        }
+    }
+
+    fn validate_example(&mut self) {
+        let status = self.draft.status.map(LifecycleStatus::try_new).transpose();
+        if status.is_err() {
+            self.error(format!(
+                "example has invalid status `{}`",
+                self.draft.status.unwrap_or_default()
+            ));
+        }
+        if let Some(value) = self.draft.fields.get("lang")
+            && Lang::try_new(value).is_err()
+        {
+            self.error(format!("example has invalid lang `{value}`"));
+        }
+        if let Some(value) = self.draft.fields.get("sandbox")
+            && SandboxName::try_new(value).is_err()
+        {
+            self.error(format!("example has invalid sandbox `{value}`"));
+        }
+        if status.is_ok_and(|status| status.is_some_and(|status| status.is_verified())) {
+            if !self.draft.fields.contains_key("checks") {
+                self.error("verified example requires fields.checks");
+            }
+            if !self.draft.fields.contains_key("sandbox") {
+                self.error("verified example requires fields.sandbox");
+            }
+        }
+    }
+
+    fn validate_agent_instruction(&mut self) {
+        if self
+            .draft
+            .fields
+            .get("scope")
+            .and_then(|value| Scope::try_new(value))
+            .is_none()
+        {
+            self.error("agent_instruction requires fields.scope");
+        }
+        match self.draft.fields.get("trust") {
+            Some(value) if Trust::try_new(value).is_err() => {
+                self.error(format!("agent_instruction has invalid trust `{value}`"));
+            }
+            None => self.error("agent_instruction requires fields.trust"),
+            Some(_) => {}
+        }
+        let allowed = self
+            .draft
+            .fields
+            .get("allowed_actions")
+            .and_then(|value| list_items(value))
+            .map(|items| {
+                items
+                    .into_iter()
+                    .filter_map(AllowedAction::try_new)
+                    .collect::<Vec<_>>()
+            });
+        let forbidden = self
+            .draft
+            .fields
+            .get("forbidden_actions")
+            .and_then(|value| list_items(value))
+            .map(|items| {
+                items
+                    .into_iter()
+                    .filter_map(ForbiddenAction::try_new)
+                    .collect::<Vec<_>>()
+            });
+        match (allowed, forbidden) {
+            (Some(allowed), Some(forbidden)) if !allowed.is_empty() && !forbidden.is_empty() => {
+                if let Err(error) = DisjointActionSets::try_new(allowed, forbidden) {
+                    self.error(error.to_string());
+                }
+            }
+            (allowed, forbidden) => {
+                if allowed.is_none_or(|items| items.is_empty()) {
+                    self.error("agent_instruction requires fields.allowed_actions");
+                }
+                if forbidden.is_none_or(|items| items.is_empty()) {
+                    self.error("agent_instruction requires fields.forbidden_actions");
+                }
+            }
+        }
+    }
+
+    fn validate_contradiction(&mut self) {
+        match self.draft.fields.get("severity") {
+            Some(value) if Severity::try_new(value).is_err() => {
+                self.error(format!("contradiction has invalid severity `{value}`"));
+            }
+            None => self.error("contradiction requires severity"),
+            Some(_) => {}
+        }
+        match self.draft.status {
+            Some(status) if ContradictionStatus::try_new(status).is_err() => {
+                self.error(format!("contradiction has invalid status `{status}`"));
+            }
+            None => self.error("contradiction requires status"),
+            Some(_) => {}
+        }
+        let claims = self
+            .draft
+            .fields
+            .get("claims")
+            .and_then(|value| list_items(value))
+            .map(|items| {
+                items
+                    .into_iter()
+                    .filter_map(|item| ObjectId::new(item.to_string()).ok())
+                    .collect::<Vec<_>>()
+            });
+        if claims.is_none_or(|claims| ContradictionClaims::try_new(claims).is_err()) {
+            self.error("contradiction requires at least two valid fields.claims IDs");
+        }
+    }
+
+    fn validate_source(&mut self) {
+        let kind = self
+            .draft
+            .fields
+            .get("kind")
+            .and_then(|value| EvidenceKind::try_new(value).ok());
+        if kind.is_none() {
+            self.error("source requires a valid fields.kind");
+        }
+        let path = self.draft.fields.get("path");
+        let url = self.draft.fields.get("url");
+        match (path, url) {
+            (Some(path), None) => {
+                if RelPath::try_new(path).is_err() {
+                    self.error(format!("source has invalid path `{path}`"));
+                } else if kind.is_some_and(|kind| !kind.allows_path()) {
+                    self.error("source kind does not allow fields.path");
+                }
+            }
+            (None, Some(url)) => {
+                if Url::try_new(url).is_err() {
+                    self.error(format!("source has invalid url `{url}`"));
+                } else if kind.is_some_and(|kind| !kind.allows_url()) {
+                    self.error("source kind does not allow fields.url");
+                }
+            }
+            (Some(_), Some(_)) => self.error("source provides both fields.path and fields.url"),
+            (None, None) => self.error("source requires fields.path or fields.url"),
         }
     }
 
@@ -272,6 +518,9 @@ impl DraftValidator<'_> {
     }
 
     fn validate_verified_api_obligation(&mut self) {
+        if !self.include_proof_obligations {
+            return;
+        }
         let owner = self
             .draft
             .fields
@@ -345,6 +594,9 @@ impl DraftValidator<'_> {
     }
 
     fn validate_verified_claim_obligation(&mut self) {
+        if !self.include_proof_obligations {
+            return;
+        }
         let owner = self
             .draft
             .fields
@@ -408,6 +660,22 @@ impl DraftValidator<'_> {
             .diagnostics
             .push(validation_error(self.draft.id.as_str(), message));
     }
+}
+
+fn list_items(value: &str) -> Option<Vec<&str>> {
+    let range = list_content_range(value).ok()?;
+    let mut items = value[range].split(',').map(str::trim).peekable();
+    let mut result = Vec::new();
+    while let Some(item) = items.next() {
+        if item.is_empty() {
+            if items.peek().is_some() {
+                return None;
+            }
+        } else {
+            result.push(item);
+        }
+    }
+    (!result.is_empty()).then_some(result)
 }
 
 fn is_valid_field_key(key: &str) -> bool {

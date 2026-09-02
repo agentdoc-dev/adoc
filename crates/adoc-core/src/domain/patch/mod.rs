@@ -6,7 +6,7 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphIndex, GraphKnowledgeObjectNode, GraphRelationKind};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::knowledge_object::draft::{
-    KnowledgeObjectDraft, validate_draft, validate_draft_if_supported,
+    KnowledgeObjectDraft, validate_draft, validate_existing_draft,
 };
 use crate::domain::knowledge_object::{
     BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error, is_allowed_field_key,
@@ -764,6 +764,16 @@ fn updated_draft_diagnostics(
     if let Some(trust) = &object.trust {
         fields.insert("trust".to_string(), trust.clone());
     }
+    for (key, values) in [
+        ("approved_by", &object.approved_by),
+        ("allowed_actions", &object.allowed_actions),
+        ("forbidden_actions", &object.forbidden_actions),
+        ("claims", &object.contradiction_claims),
+    ] {
+        if !values.is_empty() {
+            fields.insert(key.to_string(), values.join(", "));
+        }
+    }
     for (key, value) in changes {
         if key != "status"
             && is_valid_field_key(key)
@@ -790,14 +800,13 @@ fn updated_draft_diagnostics(
             .or(object.status.as_ref())
             .map(String::as_str)
     };
-    validate_draft_if_supported(KnowledgeObjectDraft {
+    validate_existing_draft(KnowledgeObjectDraft {
         id: target,
         kind: &object.kind,
         status,
         body: &object.body,
         fields: &fields,
     })
-    .map_or_else(Vec::new, |validation| validation.diagnostics)
 }
 
 fn evidence_ref_segments(value: &str) -> Vec<&str> {
