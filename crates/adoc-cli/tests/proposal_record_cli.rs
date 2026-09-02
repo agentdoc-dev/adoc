@@ -15,6 +15,9 @@ const B: &str = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 const C: &str = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const D: &str = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
+/// What `--out` may clear: the ownership check keys on the record header.
+const STALE_RECORD: &str = "{\"schema_version\": \"adoc.proposal.v0\", \"stale\": true}\n";
+
 fn patch_bytes(patch: &Value) -> Vec<u8> {
     let mut bytes = serde_json::to_vec(patch).expect("patch serializes");
     bytes.push(b'\n');
@@ -222,7 +225,7 @@ fn authority_patches_fail_with_the_registered_code() {
         .to_string(),
     );
     // A stale record from an earlier run never survives a failed rebuild.
-    workspace.write("record.json", "{\"stale\": true}\n");
+    workspace.write("record.json", STALE_RECORD);
     let output = run(&workspace, "input.json", "record.json");
     assert_eq!(output.status.code(), Some(2));
     assert!(stderr(&output).contains("[proposal_record.authority_rejected]"));
@@ -233,11 +236,12 @@ fn authority_patches_fail_with_the_registered_code() {
     assert_eq!(aliased.status.code(), Some(2));
     assert!(stderr(&aliased).contains("must be distinct"));
 
-    // Review round 2: --out naming a patch file is an input alias too, and
-    // is refused before the stale-output clear can destroy the patch.
+    // Review rounds 2 and 4: --out naming a patch file is refused before the
+    // stale-output clear can destroy the patch — a patch is not this
+    // command's artifact.
     let clobber = run(&workspace, "input.json", "patches/../patches/promote.json");
     assert_eq!(clobber.status.code(), Some(2));
-    assert!(stderr(&clobber).contains("must be distinct"));
+    assert!(stderr(&clobber).contains("refusing to overwrite"));
     assert!(workspace.root.join("patches/promote.json").exists());
 }
 
@@ -251,7 +255,7 @@ fn stale_output_never_survives_an_unreadable_input() {
     write_patches(&workspace);
     workspace.write("malformed.json", "{\"bindings\": ");
     for input in ["missing.json", "malformed.json"] {
-        workspace.write("record.json", "{\"stale\": true}\n");
+        workspace.write("record.json", STALE_RECORD);
         let output = run(&workspace, input, "record.json");
         assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
         assert!(
@@ -279,4 +283,21 @@ fn duplicate_patch_paths_fail_in_the_domain() {
         stderr(&output)
     );
     assert!(workspace.root.join("patches/update.json").exists());
+}
+
+// Review round 4 (PR #194): --out holds this command's artifact and nothing
+// else. A failure on any path — here a missing --input, before the patch
+// paths are even known — never clears a file that is not a proposal record.
+#[test]
+fn out_never_clears_a_file_that_is_not_a_proposal_record() {
+    let workspace = TestWorkspace::new("proposal-record-ownership");
+    write_patches(&workspace);
+    let output = run(&workspace, "missing.json", "patches/create.json");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        stderr(&output).contains("refusing to overwrite"),
+        "{}",
+        stderr(&output)
+    );
+    assert!(workspace.root.join("patches/create.json").exists());
 }

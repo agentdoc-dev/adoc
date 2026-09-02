@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use adoc_core::{ProposalBindings, ProposalPatchInput, build_proposal_record};
+use adoc_core::{
+    PROPOSAL_SCHEMA_VERSION, ProposalBindings, ProposalPatchInput, build_proposal_record,
+};
 use serde::Deserialize;
 
 use crate::commands::artifact_paths::{ensure_distinct_paths, remove_stale};
@@ -31,49 +33,40 @@ pub(crate) fn proposal_record(input: PathBuf, out: PathBuf) -> i32 {
     if let Err(message) = ensure_distinct_paths(&[&input, &out]) {
         return fail(&message);
     }
-    // Until the input parses, --out is only known to be distinct from
-    // --input; that is enough to clear it, so a failed run never leaves a
-    // previous record behind (the patch paths are not known yet, so nothing
-    // else can be touched).
-    let fail_clearing_out = |message: String| match remove_stale(&out) {
-        Ok(()) => fail(&message),
-        Err(removal) => fail(&format!("{message}; {removal}")),
-    };
+    // --out holds this command's artifact and nothing else: an existing file
+    // that is not a proposal record (a patch file, say) is refused, never
+    // cleared, so a mistyped --out cannot destroy an input on any failure
+    // path — including the ones before the patch paths are known. With
+    // ownership settled, the stale clear is unconditional and a failed run
+    // never leaves a previous record behind.
+    if out.exists() && !is_proposal_record(&out) {
+        return fail(&format!(
+            "{} is not a proposal record; refusing to overwrite it",
+            out.display()
+        ));
+    }
+    if let Err(message) = remove_stale(&out) {
+        return fail(&message);
+    }
     let bytes = match fs::read(&input) {
         Ok(bytes) => bytes,
-        Err(error) => {
-            return fail_clearing_out(format!("could not read {}: {error}", input.display()));
-        }
+        Err(error) => return fail(&format!("could not read {}: {error}", input.display())),
     };
     let parsed: ProposalRecordInput = match serde_json::from_slice(&bytes) {
         Ok(parsed) => parsed,
         Err(error) => {
-            return fail_clearing_out(format!(
+            return fail(&format!(
                 "{} is not a valid proposal-record input: {error}",
                 input.display()
             ));
         }
     };
     let base = input.parent().unwrap_or(Path::new("."));
-    // Every patch file is an input too: check each against --out before
-    // the stale-output clear can destroy one of them. Patch-vs-patch
-    // collisions are left to the domain, which names them
-    // proposal_record.patch_invalid.
-    let patch_paths: Vec<PathBuf> = parsed
-        .patches
-        .iter()
-        .map(|entry| base.join(&entry.patch_path))
-        .collect();
-    for path in &patch_paths {
-        if let Err(message) = ensure_distinct_paths(&[&out, path]) {
-            return fail(&message);
-        }
-    }
-    if let Err(message) = remove_stale(&out) {
-        return fail(&message);
-    }
     let mut patches = Vec::with_capacity(parsed.patches.len());
-    for (entry, path) in parsed.patches.into_iter().zip(patch_paths) {
+    // Patch-vs-patch collisions are left to the domain, which names them
+    // proposal_record.patch_invalid.
+    for entry in parsed.patches {
+        let path = base.join(&entry.patch_path);
         let patch_bytes = match fs::read(&path) {
             Ok(bytes) => bytes,
             Err(error) => return fail(&format!("could not read {}: {error}", path.display())),
@@ -100,6 +93,20 @@ pub(crate) fn proposal_record(input: PathBuf, out: PathBuf) -> i32 {
     }
     print!("{json}");
     0
+}
+
+/// Ownership check for `--out`: only the record header is read, so a record
+/// left by any earlier run — whatever its validity — is this command's to
+/// clear, while nothing else ever is.
+fn is_proposal_record(path: &Path) -> bool {
+    #[derive(Deserialize)]
+    struct Header {
+        schema_version: String,
+    }
+    fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Header>(&bytes).ok())
+        .is_some_and(|header| header.schema_version == PROPOSAL_SCHEMA_VERSION)
 }
 
 fn fail(message: &str) -> i32 {
