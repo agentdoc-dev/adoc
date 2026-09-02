@@ -766,7 +766,12 @@ fn intrinsically_invalid_creates_are_rejected() {
     let mut ownerless_task = create_patch("billing.followup");
     ownerless_task["changes"]["kind"] = json!("task");
     ownerless_task["changes"]["status"] = json!("open");
-    for patch in [blank_body, ownerless_task] {
+    let mut missing_placement = create_patch("billing.unplaced");
+    missing_placement["changes"]
+        .as_object_mut()
+        .expect("changes is an object")
+        .remove("placement");
+    for patch in [blank_body, ownerless_task, missing_placement] {
         let error = build_proposal_record(
             bindings(),
             vec![patch_input(

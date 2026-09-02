@@ -496,6 +496,7 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
             kind,
             status,
             fields,
+            placement,
             ..
         } => {
             let floor = status.as_deref().unwrap_or_default();
@@ -511,6 +512,11 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
                 return Err(reject(format!(
                     "field '{field}' duplicates a structural member"
                 )));
+            }
+            if placement.is_none() {
+                return Err(ProposalRecordError::PatchInvalid {
+                    message: format!("create_object for '{}' requires placement", document.target),
+                });
             }
             fields
         }
