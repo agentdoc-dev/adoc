@@ -177,6 +177,30 @@ fn record_bytes_are_deterministic_and_match_the_published_schema() {
 }
 
 #[test]
+fn published_schema_accepts_a_valid_create_anchor() {
+    let mut patch = create_patch("billing.anchored");
+    patch["changes"]["placement"]["after"] = json!("billing.credits");
+    let record = build_proposal_record(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &patch,
+        )],
+        None,
+    )
+    .expect("existing-object anchor is valid");
+    let instance: Value = serde_json::from_str(&record.to_canonical_json().expect("serializes"))
+        .expect("record is JSON");
+    assert!(
+        jsonschema::validator_for(&schema())
+            .expect("schema compiles")
+            .is_valid(&instance)
+    );
+}
+
+#[test]
 fn published_schema_rejects_text_the_domain_rejects() {
     let validator = jsonschema::validator_for(&schema()).expect("schema compiles");
     let canonical: Value = serde_json::from_str(&record().to_canonical_json().expect("serializes"))

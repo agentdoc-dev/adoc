@@ -475,6 +475,36 @@ fn patch_input_schema_matches_the_public_parser_structural_contract() {
     }
 }
 
+#[test]
+fn patch_input_schema_preflights_object_ids() {
+    let patch = json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "create_object",
+        "target": "billing.created",
+        "changes": {
+            "kind": "claim",
+            "status": "draft",
+            "body": "Created claim.",
+            "placement": {"page_id": "team.billing", "after": "billing.ready"}
+        },
+        "reason": "Create claim."
+    });
+    assert!(schema_accepts("patch-input.json", &patch));
+
+    for pointer in [
+        "/target",
+        "/changes/placement/page_id",
+        "/changes/placement/after",
+    ] {
+        let mut invalid = patch.clone();
+        *invalid.pointer_mut(pointer).expect("field exists") = json!("Billing");
+        assert!(
+            !schema_accepts("patch-input.json", &invalid),
+            "schema accepted malformed Object ID at {pointer}"
+        );
+    }
+}
+
 /// V6.1: `adoc_stale` envelopes with all three record categories validate
 /// against `adoc.stale.v0.schema.json`.
 #[test]

@@ -9,7 +9,7 @@
     "op": {
       "enum": ["replace_body", "update_fields", "create_object", "supersede", "revoke"]
     },
-    "target": { "type": "string" },
+    "target": { "$ref": "#/$defs/object_id" },
     "base_hash": { "type": "string", "pattern": "^sha256:" },
     "changes": { "type": "object" },
     "reason": {
@@ -111,10 +111,14 @@
       "type": "object",
       "required": ["page_id"],
       "properties": {
-        "page_id": { "type": "string" },
-        "after": { "type": "string" }
+        "page_id": { "$ref": "#/$defs/object_id" },
+        "after": { "$ref": "#/$defs/object_id" }
       },
       "additionalProperties": false
+    },
+    "object_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$"
     },
     "proposer": {
       "type": "object",

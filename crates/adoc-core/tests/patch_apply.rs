@@ -743,6 +743,69 @@ fn apply_reports_structural_update_field_once() {
 }
 
 #[test]
+fn apply_allows_source_evidence_kind_update() {
+    let workspace = Workspace::new(EXTENDED_KINDS_PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.source-code");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.source-code",
+            "base_hash": base_hash,
+            "changes": { "fields": { "kind": "test" } },
+            "reason": "Correct the source evidence kind"
+        }),
+    );
+
+    assert!(result.applied, "diagnostics: {:?}", result.diagnostics);
+    assert!(result.diagnostics.is_empty());
+    let updated = fs::read_to_string(workspace.page_path()).expect("read updated source");
+    assert!(updated.contains("::source billing.source-code\nkind: test\npath: src/lib.rs"));
+
+    let incompatible = Workspace::new(EXTENDED_KINDS_PAGE_TEXT);
+    let artifact = incompatible.build();
+    let result = incompatible.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.source-code",
+            "base_hash": incompatible.content_hash(&artifact, "billing.source-code"),
+            "changes": { "fields": { "kind": "external_url" } },
+            "reason": "Exercise source kind target validation"
+        }),
+    );
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert!(
+        result.diagnostics[0]
+            .message
+            .contains("kind does not allow fields.path"),
+        "{:?}",
+        result.diagnostics
+    );
+
+    let claim = Workspace::new(PAGE_TEXT);
+    let artifact = claim.build();
+    let result = claim.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": claim.content_hash(&artifact, "billing.credits"),
+            "changes": { "fields": { "kind": "test" } },
+            "reason": "Object kinds remain immutable"
+        }),
+    );
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+}
+
+#[test]
 fn apply_reports_invalid_evidence_refs_once() {
     let workspace = Workspace::new(PAGE_TEXT);
     let artifact = workspace.build();

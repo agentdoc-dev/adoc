@@ -793,7 +793,7 @@ fn is_valid_field_key(key: &str) -> bool {
 }
 
 fn is_update_structural_field(key: &str) -> bool {
-    matches!(key, "id" | "kind" | "body" | "placement")
+    matches!(key, "id" | "body" | "placement")
 }
 
 fn is_allowed_on_any_kind(key: &str) -> bool {
