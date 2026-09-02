@@ -263,18 +263,42 @@ fn apply_refuses_update_fields_outside_the_kind_closed_schema() {
 
     assert!(!result.applied);
     assert!(result.written_files.is_empty());
-    assert!(
-        result
-            .diagnostics
-            .iter()
-            .any(|d| d.code == DiagnosticCode::SchemaUnknownField),
-        "diagnostics: {:?}",
-        result.diagnostics
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::PatchValidationFailed
     );
     assert_eq!(
         fs::read_to_string(workspace.page_path()).expect("read"),
         PAGE_TEXT,
         "refusal writes nothing"
+    );
+}
+
+#[test]
+fn apply_reports_field_from_another_kind_schema_once() {
+    let workspace = Workspace::new(PAGE_TEXT);
+    let artifact = workspace.build();
+    let base_hash = workspace.content_hash(&artifact, "billing.credits");
+
+    let result = workspace.apply(
+        &artifact,
+        serde_json::json!({
+            "schema_version": "adoc.patch.v0",
+            "op": "update_fields",
+            "target": "billing.credits",
+            "base_hash": base_hash,
+            "changes": { "fields": { "severity": "high" } },
+            "reason": "E5.1 target-kind closed-schema validation"
+        }),
+    );
+
+    assert!(!result.applied);
+    assert!(result.written_files.is_empty());
+    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+    assert_eq!(
+        result.diagnostics[0].code,
+        DiagnosticCode::SchemaUnknownField
     );
 }
 
@@ -345,27 +369,29 @@ fn apply_reports_structural_update_field_once() {
 }
 
 #[test]
-fn apply_reports_invalid_evidence_ref_once() {
+fn apply_reports_invalid_evidence_refs_once() {
     let workspace = Workspace::new(PAGE_TEXT);
     let artifact = workspace.build();
     let base_hash = workspace.content_hash(&artifact, "billing.credits");
 
-    let result = workspace.apply(
-        &artifact,
-        serde_json::json!({
-            "schema_version": "adoc.patch.v0",
-            "op": "update_fields",
-            "target": "billing.credits",
-            "base_hash": base_hash,
-            "changes": { "fields": { "evidence_ref": "not-an-object-id" } },
-            "reason": "E5.1 intrinsic evidence-reference validation"
-        }),
-    );
+    for evidence_ref in ["not-an-object-id", "source.one,,source.two"] {
+        let result = workspace.apply(
+            &artifact,
+            serde_json::json!({
+                "schema_version": "adoc.patch.v0",
+                "op": "update_fields",
+                "target": "billing.credits",
+                "base_hash": base_hash,
+                "changes": { "fields": { "evidence_ref": evidence_ref } },
+                "reason": "E5.1 intrinsic evidence-reference validation"
+            }),
+        );
 
-    assert!(!result.applied);
-    assert!(result.written_files.is_empty());
-    assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
-    assert_eq!(result.diagnostics[0].code, DiagnosticCode::IdInvalid);
+        assert!(!result.applied);
+        assert!(result.written_files.is_empty());
+        assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
+        assert_eq!(result.diagnostics[0].code, DiagnosticCode::IdInvalid);
+    }
 }
 
 #[test]

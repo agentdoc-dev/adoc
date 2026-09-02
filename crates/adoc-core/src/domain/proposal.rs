@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use super::diagnostic::DiagnosticCode;
+use super::diagnostic::{DiagnosticCode, Severity};
 use super::hashing::sha256_prefixed;
 use super::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use super::patch::{PatchDocument, PatchIntent, PatchOperation, intrinsic_patch_diagnostics};
@@ -497,7 +497,10 @@ fn assemble_patch(
         });
     }
     enforce_floors(&document)?;
-    if let Some(diagnostic) = intrinsic_patch_diagnostics(&document).first() {
+    if let Some(diagnostic) = intrinsic_patch_diagnostics(&document)
+        .iter()
+        .find(|diagnostic| diagnostic.severity == Severity::Error)
+    {
         return Err(ProposalRecordError::PatchInvalid {
             message: diagnostic.message.clone(),
         });

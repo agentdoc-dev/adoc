@@ -252,6 +252,7 @@ impl PatchValidator<'_> {
             if !is_valid_field_key(&key)
                 || is_update_structural_field(&key)
                 || is_relation_field(&key)
+                || !is_allowed_on_any_kind(&key)
                 || value.trim().is_empty()
             {
                 continue;
@@ -291,6 +292,9 @@ impl PatchValidator<'_> {
             // are stale, and keeps the diff stream consistent with what other
             // field updates produce.
             if key == EVIDENCE_REF_FIELD {
+                if !evidence_ref_syntax_diagnostics(target.as_str(), &value).is_empty() {
+                    continue 'fields;
+                }
                 for reference in evidence_ref_segments(&value) {
                     let Ok(ref_id) = ObjectId::new(reference.to_string()) else {
                         // The mandatory intrinsic pass owns ID syntax errors.
@@ -610,10 +614,7 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                     Some(format!(
                         "field `{key}` is a relation field; use a relation operation"
                     ))
-                } else if !BlockKind::ALL
-                    .iter()
-                    .any(|kind| is_allowed_field_key(*kind, key))
-                {
+                } else if !is_allowed_on_any_kind(key) {
                     Some(format!(
                         "field `{key}` is not valid for any Knowledge Object kind"
                     ))
@@ -625,12 +626,7 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                 if let Some(message) = message {
                     diagnostics.push(validation_error(&patch.target, message));
                 } else if key == EVIDENCE_REF_FIELD {
-                    for target in evidence_ref_segments(value) {
-                        if ObjectId::new(target.to_string()).is_err() {
-                            diagnostics
-                                .push(invalid_object_id_diagnostic(target, "evidence_ref target"));
-                        }
-                    }
+                    diagnostics.extend(evidence_ref_syntax_diagnostics(&patch.target, value));
                 } else if let Some(diagnostic) = shared_field_value_error(key, value) {
                     diagnostics.push(diagnostic.with_object_id(&patch.target));
                 }
@@ -671,6 +667,9 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                     .diagnostics,
                 );
             }
+            if let Some(value) = fields.get(EVIDENCE_REF_FIELD) {
+                diagnostics.extend(evidence_ref_syntax_diagnostics(&patch.target, value));
+            }
         }
         _ => {}
     }
@@ -704,11 +703,40 @@ fn is_update_structural_field(key: &str) -> bool {
     matches!(key, "id" | "kind" | "body" | "placement")
 }
 
+fn is_allowed_on_any_kind(key: &str) -> bool {
+    BlockKind::ALL
+        .iter()
+        .any(|kind| is_allowed_field_key(*kind, key))
+}
+
 fn evidence_ref_segments(value: &str) -> impl Iterator<Item = &str> {
     value
         .split(',')
         .map(str::trim)
         .filter(|segment| !segment.is_empty())
+}
+
+fn evidence_ref_syntax_diagnostics(object_id: &str, value: &str) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    let mut segments = value.split(',').peekable();
+    while let Some(segment) = segments.next() {
+        let target = segment.trim();
+        if target.is_empty() {
+            if segments.peek().is_some() {
+                diagnostics.push(
+                    Diagnostic::error(
+                        DiagnosticCode::IdInvalid,
+                        "evidence_ref contains an empty Object ID segment",
+                    )
+                    .with_object_id(object_id)
+                    .with_help(OBJECT_ID_GRAMMAR_HELP),
+                );
+            }
+        } else if ObjectId::new(target.to_string()).is_err() {
+            diagnostics.push(invalid_object_id_diagnostic(target, "evidence_ref target"));
+        }
+    }
+    diagnostics
 }
 
 fn is_relation_field(key: &str) -> bool {

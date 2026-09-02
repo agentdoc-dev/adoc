@@ -71,10 +71,14 @@ API.
    proposal record); the ADR-0053 §3 authority fields are never proposable.
    Violations fail with `proposal_record.authority_rejected`, so a
    model-originated submission can only create a proposal record and never
-   touches active state.
-7. An existing object is edited by at most one `update_fields` followed by at
-   most one `replace_body` (ADR-0054 §5). Each patch carries the object's
-   `base_hash` at its point in that sequence, so the body patch binds the
+   touches active state. Every create carries placement whose embedded
+   `page_id` equals the patch entry's `page_id`; an object created by the same
+   proposal set cannot be its `after` anchor.
+7. A target is created at most once and is never both created and edited in
+   one proposal set. An existing object is edited by at most one
+   `update_fields` followed by at most one `replace_body` (ADR-0054 §5). Each
+   patch carries the object's `base_hash` at its point in that sequence, so
+   the body patch binds the
    hash re-derived after the field patch (PRD §51.5). When the field patch
    is only the §6 status write on an object that is already reviewable it
    changes nothing, the object is not re-hashed, and the body patch
@@ -85,6 +89,13 @@ API.
    Application order is fixed by the operations, not by the digest-ordered
    `patches` array. A second patch of one operation for one target fails
    with `proposal_record.patch_invalid`.
+8. Every embedded patch passes the graph-independent half of `adoc patch
+   --check` before the record exists: draft requirements, field key and shared
+   value rules, evidence-reference and placement ID syntax, and required
+   create placement. Graph existence, target-kind field compatibility,
+   placement resolution, and post-apply source validity remain exact-head
+   preflight concerns. Intrinsic failures use
+   `proposal_record.patch_invalid`.
 
 ## Refuted alternatives
 

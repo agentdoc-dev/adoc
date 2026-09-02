@@ -35,10 +35,10 @@ pub(crate) fn write_atomic(path: &Path, contents: &[u8]) -> Result<(), String> {
         .write(true)
         .create_new(true)
         .open(&temp)
-        .map_err(|error| format!("could not write {}: {error}", temp.display()))?;
+        .map_err(|error| format!("could not write {}: {error}", path.display()))?;
     if let Err(error) = file.write_all(contents).and_then(|()| file.sync_all()) {
         let _ = fs::remove_file(&temp);
-        return Err(format!("could not write {}: {error}", temp.display()));
+        return Err(format!("could not write {}: {error}", path.display()));
     }
     drop(file);
     fs::rename(&temp, path).map_err(|error| {
@@ -109,5 +109,26 @@ mod tests {
             1
         );
         fs::remove_dir_all(directory).expect("cleans test directory");
+    }
+
+    #[test]
+    fn atomic_write_error_names_the_requested_path() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock is after epoch")
+            .as_nanos();
+        let path = std::env::temp_dir()
+            .join(format!(
+                "adoc-missing-output-{}-{nonce}",
+                std::process::id()
+            ))
+            .join("proposal.json");
+
+        let error = write_atomic(&path, b"record\n").expect_err("missing parent refuses write");
+
+        assert!(
+            error.starts_with(&format!("could not write {}:", path.display())),
+            "{error}"
+        );
     }
 }

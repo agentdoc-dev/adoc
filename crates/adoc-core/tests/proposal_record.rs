@@ -796,6 +796,8 @@ fn intrinsically_invalid_creates_are_rejected() {
     invalid_page["changes"]["placement"]["page_id"] = json!("billing");
     let mut invalid_after = create_patch("billing.bad-anchor");
     invalid_after["changes"]["placement"]["after"] = json!("not-an-object-id");
+    let mut invalid_evidence_ref = create_patch("billing.bad-evidence");
+    invalid_evidence_ref["changes"]["fields"] = json!({"evidence_ref": "not-an-object-id"});
     let mut mismatched_page = create_patch("billing.wrong-page");
     mismatched_page["changes"]["placement"]["page_id"] = json!("billing.other-page");
     for patch in [
@@ -804,6 +806,7 @@ fn intrinsically_invalid_creates_are_rejected() {
         missing_placement,
         invalid_page,
         invalid_after,
+        invalid_evidence_ref,
         mismatched_page,
     ] {
         let error = build_proposal_record(
@@ -849,6 +852,9 @@ fn intrinsically_invalid_edits_are_rejected() {
     let mut invalid_evidence_ref = update_patch("billing.credits", D, "billing");
     invalid_evidence_ref["changes"]["fields"] =
         json!({"status": "draft", "evidence_ref": "not-an-object-id"});
+    let mut empty_evidence_ref = update_patch("billing.credits", D, "billing");
+    empty_evidence_ref["changes"]["fields"] =
+        json!({"status": "draft", "evidence_ref": "source.one,,source.two"});
 
     for patches in [
         vec![blank_reason],
@@ -859,6 +865,7 @@ fn intrinsically_invalid_edits_are_rejected() {
         vec![structural],
         vec![invalid_visibility],
         vec![invalid_evidence_ref],
+        vec![empty_evidence_ref],
         vec![status_only, replace_body_patch("billing.credits", D, " ")],
     ] {
         let inputs = patches
