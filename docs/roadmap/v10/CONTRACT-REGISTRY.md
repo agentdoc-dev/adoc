@@ -100,6 +100,7 @@ Deliberately invalid version fixtures cited from test modules in `crates/*/src`,
 | `adoc.work_request.v99` | fixture | rejected-version fixture proving external work requests fail with exact-version remediation |
 | `adoc.work_result.v99` | fixture | rejected-version fixture proving external work results fail with exact-version remediation |
 | `agentdoc.connector_capabilities.v1` | fixture | rejected-version fixture proving connector capability manifests fail closed on an unsupported exact successor |
+| `agentdoc.cloud.proposal_command.v99` | fixture | rejected-version fixture proving `/api/v1` rejects unknown or superseded proposal-command contracts with registered remediation (E5.1) |
 | `agentdoc.cloud.assessment_submission.v99` | fixture | rejected-version fixture proving `/api/v1` rejects unknown or superseded assessment-submission contracts with registered remediation |
 <!-- /registry:test-fixture-ids -->
 
