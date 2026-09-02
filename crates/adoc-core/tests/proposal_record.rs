@@ -64,7 +64,7 @@ fn update_patch(target: &str, base_hash: &str, owner: &str) -> Value {
         "op": "update_fields",
         "target": target,
         "base_hash": base_hash,
-        "changes": {"fields": {"owner": owner}},
+        "changes": {"fields": {"owner": owner, "status": "draft"}},
         "reason": format!("AgentDoc assessment {A} finding finding-002."),
         "proposer": {"type": "agent", "id": "agentdoc-action/claude-code@2.1.215/claude-sonnet-5"}
     })
@@ -636,4 +636,43 @@ fn two_patch_logical_update_binds_the_exact_head_hash() {
     )
     .expect_err("a body patch must bind the re-derived hash");
     assert!(error.to_string().contains("re-derived"), "{error}");
+}
+
+// Review round 2 (PR #194): the record cannot see an object's current
+// lifecycle, so every existing-object edit must carry its downgrade — an
+// `update_fields` setting a reviewable status. Otherwise a verified object
+// would keep its authority over model-written content.
+#[test]
+fn existing_object_update_without_a_reviewable_status_is_rejected() {
+    let input =
+        |patch: &Value| patch_input("finding-002", "docs/billing.adoc", "billing.kb", patch);
+    let mut no_status = update_patch("billing.credits", D, "billing");
+    no_status["changes"] = json!({"fields": {"owner": "billing"}});
+    for patches in [
+        vec![input(&no_status)],
+        vec![input(&replace_body_patch(
+            "billing.credits",
+            D,
+            "Body only.",
+        ))],
+        vec![
+            input(&no_status),
+            input(&replace_body_patch(
+                "billing.credits",
+                B,
+                "Fields without status.",
+            )),
+        ],
+    ] {
+        let error = build_proposal_record(bindings(), patches, None)
+            .expect_err("an edit that preserves the current lifecycle is not proposable");
+        assert!(
+            matches!(error, ProposalRecordError::AuthorityRejected { .. }),
+            "{error}"
+        );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "proposal_record.authority_rejected"
+        );
+    }
 }

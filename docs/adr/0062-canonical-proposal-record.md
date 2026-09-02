@@ -53,10 +53,15 @@ API.
    is visible before submission. A byte-identical revision is not a version.
 6. The create-only floors remain: operations are closed to `create_object`,
    `update_fields`, and `replace_body`; creates use the ADR-0053 §2 kind/status
-   pairs; updates leave the object at a reviewable status (ADR-0054 §3); the
-   ADR-0053 §3 authority fields are never proposable. Violations fail with
-   `proposal_record.authority_rejected`, so a model-originated submission can
-   only create a proposal record and never touches active state.
+   pairs; updates leave the object at a reviewable status (ADR-0054 §3) and
+   must say so — the record cannot see the object's current lifecycle, so
+   every existing-object edit carries an `update_fields` that sets `status`
+   to `draft`, `proposed`, or `open` (ADR-0054 §3's explicit
+   status-preservation stays an Action delivery option that never forms a
+   proposal record); the ADR-0053 §3 authority fields are never proposable.
+   Violations fail with `proposal_record.authority_rejected`, so a
+   model-originated submission can only create a proposal record and never
+   touches active state.
 7. An existing object is edited by at most one `update_fields` followed by at
    most one `replace_body` (ADR-0054 §5). Each patch carries the object's
    `base_hash` at its point in that sequence, so the body patch binds the

@@ -500,10 +500,11 @@ diagnostic_codes! {
         "Serialize every patch as sorted compact JSON with one trailing newline; edit each existing object with at most one update_fields then at most one replace_body, the body patch bound to the content hash re-derived after the field patch.";
     /// E5.1.T3 (ADR-0053 §2–§3, ADR-0054 §3): the proposal would mint
     /// authority — a governance-changing operation, a create outside the
-    /// non-authoritative kind/status floors, a non-reviewable status, or an
-    /// authority field. Proposals only ever create reviewable knowledge.
+    /// non-authoritative kind/status floors, an existing-object edit that
+    /// sets no reviewable status, or an authority field. Proposals only ever
+    /// create reviewable knowledge.
     ProposalRecordAuthorityRejected = "proposal_record.authority_rejected" =>
-        "Propose only create_object at the non-authoritative floors or reviewable update_fields/replace_body edits; never set verified_at, reviewed_by, approved_by, decided_by, or resolved_by.";
+        "Propose only create_object at the non-authoritative floors, or update_fields/replace_body edits whose update_fields sets status to draft, proposed, or open; never set verified_at, reviewed_by, approved_by, decided_by, or resolved_by.";
     /// E5.1.T2: a revision was requested with byte-identical patches, so
     /// it would supersede its own proposal-set digest. Unchanged bytes are
     /// not a new version; the prior record stands.

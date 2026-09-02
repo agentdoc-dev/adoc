@@ -39,7 +39,7 @@ fn update_patch() -> Value {
         "op": "update_fields",
         "target": "billing.credits",
         "base_hash": D,
-        "changes": {"fields": {"owner": "billing"}},
+        "changes": {"fields": {"owner": "billing", "status": "draft"}},
         "reason": format!("AgentDoc assessment {A} finding finding-002."),
         "proposer": {"type": "agent", "id": "agentdoc-action/claude-code@2.1.215/claude-sonnet-5"}
     })

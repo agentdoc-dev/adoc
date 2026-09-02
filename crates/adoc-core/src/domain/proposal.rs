@@ -35,7 +35,8 @@ const CREATE_FLOORS: [(&str, &str); 4] = [
     ("api", "draft"),
     ("task", "open"),
 ];
-/// ADR-0054 §3: an update leaves the object at a reviewable lifecycle.
+/// ADR-0054 §3: an update leaves the object at a reviewable lifecycle, and
+/// (ADR-0062 §6) must say so — the record cannot see the current one.
 const REVIEWABLE_STATUSES: [&str; 3] = ["draft", "proposed", "open"];
 /// ADR-0053 §3: fields that mint authority and never come from a proposal.
 const AUTHORITY_FIELDS: [&str; 5] = [
@@ -337,6 +338,10 @@ fn binding_invalid(field: &str) -> ProposalRecordError {
 struct TargetSequence {
     update_fields: Option<String>,
     replace_body: Option<String>,
+    /// The record cannot see the object's current lifecycle, so the edit
+    /// itself must carry the ADR-0054 §3 downgrade: an `update_fields`
+    /// setting a reviewable status.
+    sets_reviewable_status: bool,
 }
 
 impl TargetSequence {
@@ -350,7 +355,11 @@ impl TargetSequence {
             });
         }
         let slot = match intent {
-            PatchIntent::UpdateFields { .. } => &mut self.update_fields,
+            PatchIntent::UpdateFields { fields, .. } => {
+                // enforce_floors already rejected any non-reviewable status.
+                self.sets_reviewable_status |= fields.contains_key("status");
+                &mut self.update_fields
+            }
             PatchIntent::ReplaceBody { .. } => &mut self.replace_body,
             // Governance operations never reach a sequence (enforce_floors).
             _ => return Ok(()),
@@ -368,6 +377,13 @@ impl TargetSequence {
     }
 
     fn head_hash(self, target: &str) -> Result<String, ProposalRecordError> {
+        if !self.sets_reviewable_status {
+            return Err(ProposalRecordError::AuthorityRejected {
+                target: target.to_string(),
+                reason: "an existing-object edit must set a reviewable status in update_fields"
+                    .to_string(),
+            });
+        }
         match (self.update_fields, self.replace_body) {
             (Some(first), Some(second)) if first == second => {
                 Err(ProposalRecordError::PatchInvalid {
