@@ -57,6 +57,14 @@ API.
    ADR-0053 §3 authority fields are never proposable. Violations fail with
    `proposal_record.authority_rejected`, so a model-originated submission can
    only create a proposal record and never touches active state.
+7. An existing object is edited by at most one `update_fields` followed by at
+   most one `replace_body` (ADR-0054 §5). Each patch carries the object's
+   `base_hash` at its point in that sequence, so the body patch binds the
+   hash re-derived after the field patch (PRD §51.5) and never the same
+   `base_hash`; `content_bindings` records the exact-head hash the first
+   patch carries. Application order is fixed by the operations, not by the
+   digest-ordered `patches` array. A second patch of one operation for one
+   target fails with `proposal_record.patch_invalid`.
 
 ## Refuted alternatives
 

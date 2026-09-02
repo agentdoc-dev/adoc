@@ -492,10 +492,12 @@ diagnostic_codes! {
     ProposalRecordBindingInvalid = "proposal_record.binding_invalid" =>
         "Supply every binding: exact base/head revisions, change-request system and id, and sha256-prefixed assessment, semantic-context, and semantic-assessment digests.";
     /// E5.1: a patch in the proposal set is not a canonical `adoc.patch.v0`
-    /// document — unparseable, non-canonical bytes, duplicate, or binding the
-    /// same target to different content hashes.
+    /// document — unparseable, non-canonical bytes, duplicate, or an
+    /// existing-object sequence outside ADR-0054 §5 (more than one
+    /// `update_fields` or `replace_body` per target, or a body patch that
+    /// does not bind the hash re-derived after the field patch).
     ProposalRecordPatchInvalid = "proposal_record.patch_invalid" =>
-        "Serialize every patch as sorted compact JSON with one trailing newline, and bind each edited object to exactly one content hash.";
+        "Serialize every patch as sorted compact JSON with one trailing newline; edit each existing object with at most one update_fields then at most one replace_body, the body patch bound to the content hash re-derived after the field patch.";
     /// E5.1.T3 (ADR-0053 §2–§3, ADR-0054 §3): the proposal would mint
     /// authority — a governance-changing operation, a create outside the
     /// non-authoritative kind/status floors, a non-reviewable status, or an

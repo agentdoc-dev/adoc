@@ -207,10 +207,20 @@ impl ProposalRecord {
                 message: "a proposal record needs at least one patch".to_string(),
             });
         }
-        let mut content_bindings = BTreeMap::new();
+        let mut sequences = BTreeMap::new();
         let mut patches = patches
             .into_iter()
-            .map(|patch| assemble_patch(patch, &mut content_bindings))
+            .map(|patch| assemble_patch(patch, &mut sequences))
+            .collect::<Result<Vec<_>, _>>()?;
+        let content_bindings = sequences
+            .into_iter()
+            .map(|(object_id, sequence)| {
+                let content_hash = sequence.head_hash(&object_id)?;
+                Ok(ContentBinding {
+                    object_id,
+                    content_hash,
+                })
+            })
             .collect::<Result<Vec<_>, _>>()?;
         // Identity is placement-blind (E1.1, MILESTONES §E5.1 acceptance):
         // patches order by their digest alone, so a source-placement move
@@ -243,13 +253,7 @@ impl ProposalRecord {
             proposal_set_digest,
             supersedes,
             bindings,
-            content_bindings: content_bindings
-                .into_iter()
-                .map(|(object_id, content_hash)| ContentBinding {
-                    object_id,
-                    content_hash,
-                })
-                .collect(),
+            content_bindings,
             patches,
         })
     }
@@ -323,9 +327,66 @@ fn binding_invalid(field: &str) -> ProposalRecordError {
     }
 }
 
+/// ADR-0054 §5: one logical update of an existing object is at most one
+/// `update_fields` followed by at most one `replace_body`. Each patch binds
+/// the object's hash at its point in the sequence, so the body patch carries
+/// the hash re-derived after the field patch (PRD §51.5); the record binds
+/// the exact-head hash the first patch carries. Application order is fixed
+/// by the operations, not by the digest-ordered record.
+#[derive(Default)]
+struct TargetSequence {
+    update_fields: Option<String>,
+    replace_body: Option<String>,
+}
+
+impl TargetSequence {
+    fn bind(&mut self, intent: &PatchIntent, target: &str) -> Result<(), ProposalRecordError> {
+        let Some(base_hash) = intent.base_hash() else {
+            return Ok(());
+        };
+        if !is_sha256_digest(base_hash) {
+            return Err(ProposalRecordError::PatchInvalid {
+                message: format!("patch base_hash for '{target}' is not a sha256 digest"),
+            });
+        }
+        let slot = match intent {
+            PatchIntent::UpdateFields { .. } => &mut self.update_fields,
+            PatchIntent::ReplaceBody { .. } => &mut self.replace_body,
+            // Governance operations never reach a sequence (enforce_floors).
+            _ => return Ok(()),
+        };
+        if slot.is_some() {
+            return Err(ProposalRecordError::PatchInvalid {
+                message: format!(
+                    "more than one {} patch for '{target}' in one proposal set",
+                    intent.operation().as_str()
+                ),
+            });
+        }
+        *slot = Some(base_hash.to_string());
+        Ok(())
+    }
+
+    fn head_hash(self, target: &str) -> Result<String, ProposalRecordError> {
+        match (self.update_fields, self.replace_body) {
+            (Some(first), Some(second)) if first == second => {
+                Err(ProposalRecordError::PatchInvalid {
+                    message: format!(
+                        "replace_body for '{target}' must bind the content hash re-derived after update_fields, not the same base_hash"
+                    ),
+                })
+            }
+            (Some(first), _) | (None, Some(first)) => Ok(first),
+            (None, None) => Err(ProposalRecordError::PatchInvalid {
+                message: format!("no content hash bound for '{target}'"),
+            }),
+        }
+    }
+}
+
 fn assemble_patch(
     parsed: ParsedProposalPatch,
-    content_bindings: &mut BTreeMap<String, String>,
+    sequences: &mut BTreeMap<String, TargetSequence>,
 ) -> Result<ProposalPatch, ProposalRecordError> {
     let ParsedProposalPatch {
         input,
@@ -352,28 +413,11 @@ fn assemble_patch(
         });
     }
     enforce_floors(&document)?;
-    if let Some(base_hash) = document.intent.base_hash() {
-        if !is_sha256_digest(base_hash) {
-            return Err(ProposalRecordError::PatchInvalid {
-                message: format!(
-                    "patch base_hash for '{}' is not a sha256 digest",
-                    document.target
-                ),
-            });
-        }
-        match content_bindings.get(&document.target) {
-            Some(existing) if existing != base_hash => {
-                return Err(ProposalRecordError::PatchInvalid {
-                    message: format!(
-                        "patches for '{}' bind different content hashes",
-                        document.target
-                    ),
-                });
-            }
-            _ => {
-                content_bindings.insert(document.target.clone(), base_hash.to_string());
-            }
-        }
+    if document.intent.base_hash().is_some() {
+        sequences
+            .entry(document.target.clone())
+            .or_default()
+            .bind(&document.intent, &document.target)?;
     }
     Ok(ProposalPatch {
         finding_id: input.finding_id,

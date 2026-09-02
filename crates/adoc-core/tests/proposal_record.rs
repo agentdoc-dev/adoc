@@ -571,3 +571,69 @@ fn unchanged_revision_names_its_own_cause() {
         "proposal_record.revision_unchanged"
     );
 }
+
+// Review round 2 (PR #194): ADR-0054 §5 — one logical update is
+// `update_fields` then `replace_body`, the body patch bound to the hash
+// re-derived after the field patch; the record binds the exact-head hash.
+fn replace_body_patch(target: &str, base_hash: &str, body: &str) -> Value {
+    json!({
+        "schema_version": "adoc.patch.v0",
+        "op": "replace_body",
+        "target": target,
+        "base_hash": base_hash,
+        "changes": {"body": body},
+        "reason": format!("AgentDoc assessment {A} finding finding-002."),
+        "proposer": {"type": "agent", "id": "agentdoc-action/claude-code@2.1.215/claude-sonnet-5"}
+    })
+}
+
+#[test]
+fn two_patch_logical_update_binds_the_exact_head_hash() {
+    let input =
+        |patch: &Value| patch_input("finding-002", "docs/billing.adoc", "billing.kb", patch);
+    let record = build_proposal_record(
+        bindings(),
+        vec![
+            input(&replace_body_patch("billing.credits", B, "Re-hashed body.")),
+            input(&update_patch("billing.credits", D, "billing")),
+        ],
+        None,
+    )
+    .expect("a sequential body hash is not a conflict");
+    let bound: Vec<_> = record
+        .content_bindings()
+        .iter()
+        .map(|binding| (binding.object_id(), binding.content_hash()))
+        .collect();
+    assert_eq!(bound, vec![("billing.credits", D)]);
+    validate_proposal_record(record.to_canonical_json().expect("serializes").as_bytes())
+        .expect("round-trips");
+
+    // Two patches of one operation for one target are not a sequence.
+    let error = build_proposal_record(
+        bindings(),
+        vec![
+            input(&replace_body_patch("billing.credits", B, "One.")),
+            input(&replace_body_patch("billing.credits", D, "Two.")),
+        ],
+        None,
+    )
+    .expect_err("one target has at most one replace_body");
+    assert_eq!(
+        error.diagnostic_code().as_str(),
+        "proposal_record.patch_invalid"
+    );
+
+    // PRD §51.5: the body patch never binds the same base_hash as the field
+    // patch — applying the first re-hashes the object.
+    let error = build_proposal_record(
+        bindings(),
+        vec![
+            input(&update_patch("billing.credits", D, "billing")),
+            input(&replace_body_patch("billing.credits", D, "Same hash.")),
+        ],
+        None,
+    )
+    .expect_err("a body patch must bind the re-derived hash");
+    assert!(error.to_string().contains("re-derived"), "{error}");
+}
