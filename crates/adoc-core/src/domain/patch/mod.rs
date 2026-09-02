@@ -279,7 +279,7 @@ impl PatchValidator<'_> {
                 self.diagnostics.push(diagnostic);
             }
         }
-        'fields: for (key, value) in fields {
+        for (key, value) in fields {
             if !is_valid_field_key(&key)
                 || is_update_structural_field(&key)
                 || is_relation_field(&key)
@@ -287,6 +287,13 @@ impl PatchValidator<'_> {
                 || value.trim().is_empty()
                 || field_value_line_break_diagnostic(&key, &value).is_some()
             {
+                continue;
+            }
+            if kind == BlockKind::Glossary && key == "status" {
+                self.diagnostics.push(validation_error(
+                    target.as_str(),
+                    "glossary `status` is metadata, not a reviewable lifecycle, and cannot satisfy an existing-object proposal update",
+                ));
                 continue;
             }
             // E1.1.T3 (ADR-0058): the target kind's closed schema binds the
@@ -310,8 +317,11 @@ impl PatchValidator<'_> {
             // supersede path which records affected_relations even when targets
             // are stale, and keeps the diff stream consistent with what other
             // field updates produce.
-            if key == EVIDENCE_REF_FIELD && !self.validate_evidence_ref_targets(target, &value) {
-                continue 'fields;
+            if key == EVIDENCE_REF_FIELD
+                && kind.resolves_evidence_refs()
+                && !self.validate_evidence_ref_targets(target, &value)
+            {
+                continue;
             }
             let old = object.fields.get(&key).cloned();
             self.diffs
@@ -353,8 +363,7 @@ impl PatchValidator<'_> {
         for obligation in draft_validation.proof_obligations {
             self.add_proof_obligation(&obligation.object_id, &obligation.reason);
         }
-        if BlockKind::from_fence_word(kind)
-            .is_some_and(|kind| is_allowed_field_key(kind, EVIDENCE_REF_FIELD))
+        if BlockKind::from_fence_word(kind).is_some_and(BlockKind::resolves_evidence_refs)
             && let Some(evidence_ref) = fields.get(EVIDENCE_REF_FIELD)
         {
             self.validate_evidence_ref_targets(target, evidence_ref);

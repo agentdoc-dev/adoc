@@ -1051,6 +1051,15 @@ impl BlockKind {
     pub(crate) fn from_fence_word(word: &str) -> Option<Self> {
         Self::ALL.iter().copied().find(|kind| kind.as_str() == word)
     }
+
+    /// Kinds whose typed aggregate exposes `evidence_ref` entries for
+    /// workspace-level target resolution.
+    pub(crate) const fn resolves_evidence_refs(self) -> bool {
+        matches!(
+            self,
+            Self::Claim | Self::Decision | Self::Api | Self::Observation
+        )
+    }
 }
 
 /// Kind name strings for every supported typed block, in `BlockKind::ALL`

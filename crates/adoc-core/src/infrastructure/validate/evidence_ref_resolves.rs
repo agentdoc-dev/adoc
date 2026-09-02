@@ -7,8 +7,8 @@ use crate::domain::knowledge_object::{BlockKind, KnowledgeObject};
 use crate::domain::rules::WorkspaceRule;
 use crate::domain::value_objects::evidence::Evidence;
 
-/// Verify that every `evidence_ref` entry on a `claim` or `decision` resolves
-/// to an existing `source` object in the workspace.
+/// Verify that every `evidence_ref` entry exposed by a claim, decision, API,
+/// or observation resolves to an existing `source` object in the workspace.
 ///
 /// This is a workspace-level rule (not a page rule) because the referenced
 /// source may live on a different page from the referencing object.
