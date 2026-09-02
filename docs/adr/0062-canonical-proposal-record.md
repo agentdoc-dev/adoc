@@ -52,7 +52,8 @@ API.
    shared adapter).
 5. Editing is superseding: any byte change to any patch mints a new record
    whose `supersedes` names the prior digest, so the invalidation consequence
-   is visible before submission. A byte-identical revision is not a version.
+   is visible before submission. A byte-identical revision is not a version
+   and fails with `proposal_record.revision_unchanged`.
 6. The create-only floors remain: operations are closed to `create_object`,
    `update_fields`, and `replace_body`; creates use the ADR-0053 §2 kind/status
    pairs; updates leave the object at a reviewable status (ADR-0054 §3) and
@@ -86,7 +87,8 @@ API.
 
 - Registry: `adoc.proposal.v0` moves to the shipped `adoc` table; diagnostic
   codes `proposal_record.invalid_document`, `proposal_record.binding_invalid`,
-  `proposal_record.patch_invalid`, `proposal_record.authority_rejected` ship.
+  `proposal_record.patch_invalid`, `proposal_record.authority_rejected`, and
+  `proposal_record.revision_unchanged` ship.
 - Cloud stores the record bytes verbatim next to `proposal_records` and
   recomputes the set digest from the embedded patches; approval (E5.2) binds
   to `proposal_set_digest` and `supersedes` drives invalidation.
