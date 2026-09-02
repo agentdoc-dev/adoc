@@ -129,6 +129,10 @@ pub(crate) fn closed_schema_field_error(
             ),
         ));
     }
+    shared_field_value_error(key, value)
+}
+
+pub(crate) fn shared_field_value_error(key: &str, value: &str) -> Option<Diagnostic> {
     let invalid_visibility = match key {
         VISIBILITY_FIELD => Visibility::try_new(value).is_err(),
         FIELD_VISIBILITY_FIELD => parse_field_visibility(value).is_err(),

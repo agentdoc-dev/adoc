@@ -6,7 +6,9 @@ use crate::domain::diagnostic::{Diagnostic, DiagnosticCode, Severity};
 use crate::domain::graph::{GraphIndex, GraphKnowledgeObjectNode, GraphRelationKind};
 use crate::domain::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
 use crate::domain::knowledge_object::draft::{KnowledgeObjectDraft, validate_draft};
-use crate::domain::knowledge_object::{BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error};
+use crate::domain::knowledge_object::{
+    BlockKind, EVIDENCE_REF_FIELD, closed_schema_field_error, shared_field_value_error,
+};
 use crate::domain::obligation::ProofObligation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -626,6 +628,8 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                 };
                 if let Some(message) = message {
                     diagnostics.push(validation_error(&patch.target, message));
+                } else if let Some(diagnostic) = shared_field_value_error(key, value) {
+                    diagnostics.push(diagnostic.with_object_id(&patch.target));
                 }
             }
         }

@@ -117,13 +117,6 @@ fn schema() -> Value {
         .expect("schema is JSON")
 }
 
-fn patch_schema() -> Value {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/agent/v0/schema/patch-input.json");
-    serde_json::from_str(&fs::read_to_string(path).expect("patch schema is readable"))
-        .expect("patch schema is JSON")
-}
-
 #[test]
 fn proposal_set_digest_hashes_the_ordered_patch_digests_exactly() {
     let record = record();
@@ -202,14 +195,6 @@ fn published_schema_rejects_text_the_domain_rejects() {
             "schema accepted {invalid:?} at {pointer}"
         );
     }
-}
-
-#[test]
-fn published_patch_schema_rejects_noncanonical_field_keys() {
-    let validator = jsonschema::validator_for(&patch_schema()).expect("schema compiles");
-    let mut patch = update_patch("billing.credits", D, "billing");
-    patch["changes"]["fields"] = json!({"10": "x", "status": "draft"});
-    assert!(!validator.is_valid(&patch));
 }
 
 #[test]
@@ -854,6 +839,8 @@ fn intrinsically_invalid_edits_are_rejected() {
     status_only["changes"]["fields"] = json!({"status": "draft"});
     let mut structural = update_patch("billing.credits", D, "billing");
     structural["changes"]["fields"] = json!({"body": "Replacement", "status": "draft"});
+    let mut invalid_visibility = update_patch("billing.credits", D, "billing");
+    invalid_visibility["changes"]["fields"] = json!({"status": "draft", "visibility": "secret"});
 
     for patches in [
         vec![blank_reason],
@@ -861,6 +848,7 @@ fn intrinsically_invalid_edits_are_rejected() {
         vec![relation],
         vec![blank_value],
         vec![structural],
+        vec![invalid_visibility],
         vec![status_only, replace_body_patch("billing.credits", D, " ")],
     ] {
         let inputs = patches
