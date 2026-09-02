@@ -240,3 +240,43 @@ fn authority_patches_fail_with_the_registered_code() {
     assert!(stderr(&clobber).contains("must be distinct"));
     assert!(workspace.root.join("patches/promote.json").exists());
 }
+
+// Review round 3 (PR #194): the stale-output clear must not depend on the
+// input parsing — a missing or malformed `--input` still leaves no previous
+// record behind — and two entries naming one patch file are a domain
+// failure with the registered code, not a path-aliasing refusal.
+#[test]
+fn stale_output_never_survives_an_unreadable_input() {
+    let workspace = TestWorkspace::new("proposal-record-stale");
+    write_patches(&workspace);
+    workspace.write("malformed.json", "{\"bindings\": ");
+    for input in ["missing.json", "malformed.json"] {
+        workspace.write("record.json", "{\"stale\": true}\n");
+        let output = run(&workspace, input, "record.json");
+        assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+        assert!(
+            !workspace.root.join("record.json").exists(),
+            "stale record survived a failed {input} read"
+        );
+    }
+}
+
+#[test]
+fn duplicate_patch_paths_fail_in_the_domain() {
+    let workspace = TestWorkspace::new("proposal-record-duplicate-path");
+    write_patches(&workspace);
+    let mut twice = entries(true);
+    twice[0]["patch_path"] = json!("patches/update.json");
+    workspace.write(
+        "input.json",
+        &json!({"bindings": bindings_json(), "patches": twice}).to_string(),
+    );
+    let output = run(&workspace, "input.json", "record.json");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        stderr(&output).contains("[proposal_record.patch_invalid]"),
+        "{}",
+        stderr(&output)
+    );
+    assert!(workspace.root.join("patches/update.json").exists());
+}

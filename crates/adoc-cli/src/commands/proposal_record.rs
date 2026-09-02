@@ -28,31 +28,46 @@ struct PatchEntry {
 }
 
 pub(crate) fn proposal_record(input: PathBuf, out: PathBuf) -> i32 {
+    if let Err(message) = ensure_distinct_paths(&[&input, &out]) {
+        return fail(&message);
+    }
+    // Until the input parses, --out is only known to be distinct from
+    // --input; that is enough to clear it, so a failed run never leaves a
+    // previous record behind (the patch paths are not known yet, so nothing
+    // else can be touched).
+    let fail_clearing_out = |message: String| match remove_stale(&out) {
+        Ok(()) => fail(&message),
+        Err(removal) => fail(&format!("{message}; {removal}")),
+    };
     let bytes = match fs::read(&input) {
         Ok(bytes) => bytes,
-        Err(error) => return fail(&format!("could not read {}: {error}", input.display())),
+        Err(error) => {
+            return fail_clearing_out(format!("could not read {}: {error}", input.display()));
+        }
     };
     let parsed: ProposalRecordInput = match serde_json::from_slice(&bytes) {
         Ok(parsed) => parsed,
         Err(error) => {
-            return fail(&format!(
+            return fail_clearing_out(format!(
                 "{} is not a valid proposal-record input: {error}",
                 input.display()
             ));
         }
     };
     let base = input.parent().unwrap_or(Path::new("."));
-    // Every patch file is an input too: check the whole set before the
-    // stale-output clear can destroy one of them.
+    // Every patch file is an input too: check each against --out before
+    // the stale-output clear can destroy one of them. Patch-vs-patch
+    // collisions are left to the domain, which names them
+    // proposal_record.patch_invalid.
     let patch_paths: Vec<PathBuf> = parsed
         .patches
         .iter()
         .map(|entry| base.join(&entry.patch_path))
         .collect();
-    let mut all: Vec<&Path> = vec![&input, &out];
-    all.extend(patch_paths.iter().map(PathBuf::as_path));
-    if let Err(message) = ensure_distinct_paths(&all) {
-        return fail(&message);
+    for path in &patch_paths {
+        if let Err(message) = ensure_distinct_paths(&[&out, path]) {
+            return fail(&message);
+        }
     }
     if let Err(message) = remove_stale(&out) {
         return fail(&message);
