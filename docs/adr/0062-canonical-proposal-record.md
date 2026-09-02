@@ -33,10 +33,12 @@ API.
    must not mint a version. The digest binds the patch set, not the finding
    correlation or placement metadata; two records with one digest and
    different bytes are a delivery conflict Cloud rejects
-   (`governance.proposal_conflict`), never a merge. Cloud's
-   `private.proposal_set_digest` already computes this value over the ordered
-   bytes; the Action reads `proposals.sha256` from the record once it
-   produces one.
+   (`governance.proposal_conflict`), never a merge. Cloud recomputes this
+   value from the embedded patches in this digest order (an obligation on
+   the E5.1 consumer, checked by its ingestion tests against `adoc`
+   output); the Action reads `proposals.sha256` from the record once it
+   produces one. ADR-0053 §8 carries a superseded-in-part note pointing
+   here.
 3. Bindings are mandatory and closed: exact base and head revisions,
    change-request system and identifier, deterministic assessment digest,
    semantic-context digest, semantic-assessment digest, and the exact
