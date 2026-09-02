@@ -108,9 +108,10 @@ API.
    surface because their closed schemas intentionally have no lifecycle
    `status`; their mandatory status write is refused at exact head with
    `schema.unknown_field`. A glossary likewise has no lifecycle: its legacy
-   metadata field named `status` cannot satisfy the mandatory write, and
-   exact-head preflight refuses it with `patch.validation_failed`. Intrinsic
-   failures use `proposal_record.patch_invalid`.
+   metadata field named `status` cannot satisfy an agent proposal's mandatory
+   write, and exact-head preflight refuses that agent-proposed write with
+   `patch.validation_failed`; trusted non-agent patches may still maintain the
+   metadata. Intrinsic failures use `proposal_record.patch_invalid`.
 
 ## Refuted alternatives
 

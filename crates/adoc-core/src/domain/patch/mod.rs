@@ -279,6 +279,11 @@ impl PatchValidator<'_> {
                 self.diagnostics.push(diagnostic);
             }
         }
+        let agent_proposed = self
+            .patch
+            .proposer
+            .as_ref()
+            .is_some_and(|proposer| proposer.proposer_type == "agent");
         for (key, value) in fields {
             if !is_valid_field_key(&key)
                 || is_update_structural_field(&key)
@@ -289,7 +294,7 @@ impl PatchValidator<'_> {
             {
                 continue;
             }
-            if kind == BlockKind::Glossary && key == "status" {
+            if agent_proposed && kind == BlockKind::Glossary && key == "status" {
                 self.diagnostics.push(validation_error(
                     target.as_str(),
                     "glossary `status` is metadata, not a reviewable lifecycle, and cannot satisfy an existing-object proposal update",
@@ -684,6 +689,9 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                 if let Some(message) = message {
                     diagnostics.push(validation_error(&patch.target, message));
                 } else if key == EVIDENCE_REF_FIELD {
+                    // update_fields has no target kind until the graph-aware
+                    // pass, so intrinsic validation must check syntax here;
+                    // resolution is kind-scoped once the graph supplies it.
                     diagnostics.extend(evidence_ref_syntax_diagnostics(&patch.target, value));
                 } else if key == IMPACTS_FIELD {
                     diagnostics.extend(impacts_value_diagnostics(&patch.target, value));
@@ -735,8 +743,7 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
                 );
             }
             if let Some(value) = fields.get(EVIDENCE_REF_FIELD)
-                && BlockKind::from_fence_word(kind)
-                    .is_some_and(|kind| is_allowed_field_key(kind, EVIDENCE_REF_FIELD))
+                && BlockKind::from_fence_word(kind).is_some_and(BlockKind::resolves_evidence_refs)
                 && field_value_line_break_diagnostic(EVIDENCE_REF_FIELD, value).is_none()
             {
                 diagnostics.extend(evidence_ref_syntax_diagnostics(&patch.target, value));
