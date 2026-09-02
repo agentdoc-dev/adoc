@@ -45,16 +45,21 @@ pub(crate) fn proposal_record(input: PathBuf, out: PathBuf) -> i32 {
             out.display()
         ));
     }
-    if let Err(message) = remove_stale(&out) {
-        return fail(&message);
-    }
     let bytes = match fs::read(&input) {
         Ok(bytes) => bytes,
-        Err(error) => return fail(&format!("could not read {}: {error}", input.display())),
+        Err(error) => {
+            if let Err(message) = remove_stale(&out) {
+                return fail(&message);
+            }
+            return fail(&format!("could not read {}: {error}", input.display()));
+        }
     };
     let parsed: ProposalRecordInput = match serde_json::from_slice(&bytes) {
         Ok(parsed) => parsed,
         Err(error) => {
+            if let Err(message) = remove_stale(&out) {
+                return fail(&message);
+            }
             return fail(&format!(
                 "{} is not a valid proposal-record input: {error}",
                 input.display()
@@ -62,11 +67,23 @@ pub(crate) fn proposal_record(input: PathBuf, out: PathBuf) -> i32 {
         }
     };
     let base = input.parent().unwrap_or(Path::new("."));
+    let patch_paths = parsed
+        .patches
+        .iter()
+        .map(|entry| base.join(&entry.patch_path))
+        .collect::<Vec<_>>();
+    for path in &patch_paths {
+        if let Err(message) = ensure_distinct_paths(&[path, &out]) {
+            return fail(&message);
+        }
+    }
+    if let Err(message) = remove_stale(&out) {
+        return fail(&message);
+    }
     let mut patches = Vec::with_capacity(parsed.patches.len());
     // Patch-vs-patch collisions are left to the domain, which names them
     // proposal_record.patch_invalid.
-    for entry in parsed.patches {
-        let path = base.join(&entry.patch_path);
+    for (entry, path) in parsed.patches.into_iter().zip(patch_paths) {
         let patch_bytes = match fs::read(&path) {
             Ok(bytes) => bytes,
             Err(error) => return fail(&format!("could not read {}: {error}", path.display())),

@@ -301,3 +301,26 @@ fn out_never_clears_a_file_that_is_not_a_proposal_record() {
     );
     assert!(workspace.root.join("patches/create.json").exists());
 }
+
+#[test]
+fn out_never_clears_a_proposal_record_used_as_a_patch_input() {
+    let workspace = TestWorkspace::new("proposal-record-owned-alias");
+    workspace.write("record.json", STALE_RECORD);
+    workspace.write(
+        "input.json",
+        &json!({"bindings": bindings_json(), "patches": [{
+            "finding_id": "finding-001", "placement_path": "docs/billing.adoc",
+            "page_id": "billing.kb", "patch_path": "record.json"
+        }]})
+        .to_string(),
+    );
+
+    let output = run(&workspace, "input.json", "record.json");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(stderr(&output).contains("must be distinct"));
+    assert_eq!(
+        std::fs::read_to_string(workspace.root.join("record.json")).expect("record survives"),
+        STALE_RECORD
+    );
+}
