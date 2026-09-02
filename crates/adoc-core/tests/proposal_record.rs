@@ -253,3 +253,62 @@ fn tampered_digest_fails_validation() {
         "proposal_record.invalid_document"
     );
 }
+
+// E5.1.T2 — edit invalidation.
+#[test]
+fn edit_mints_new_proposal_version() {
+    let original = record();
+    let original_json = original.to_canonical_json().expect("serializes");
+    let revised = original
+        .revise(vec![
+            patch_input(
+                "finding-002",
+                "docs/billing.adoc",
+                "billing.kb",
+                &update_patch("billing.credits", D, "billing-team"),
+            ),
+            patch_input(
+                "finding-001",
+                "docs/billing.adoc",
+                "billing.kb",
+                &create_patch("billing.proposed"),
+            ),
+        ])
+        .expect("revision builds");
+
+    assert_ne!(
+        revised.proposal_set_digest(),
+        original.proposal_set_digest()
+    );
+    // The invalidation consequence is visible on the new record before it is
+    // submitted: it names exactly the digest it replaces.
+    assert_eq!(revised.supersedes(), Some(original.proposal_set_digest()));
+    // The prior version is untouched.
+    assert_eq!(
+        original.to_canonical_json().expect("serializes"),
+        original_json
+    );
+    assert_eq!(original.supersedes(), None);
+
+    // A byte-identical revision is not a new version.
+    let same = original
+        .revise(vec![
+            patch_input(
+                "finding-001",
+                "docs/billing.adoc",
+                "billing.kb",
+                &create_patch("billing.proposed"),
+            ),
+            patch_input(
+                "finding-002",
+                "docs/billing.adoc",
+                "billing.kb",
+                &update_patch("billing.credits", D, "billing"),
+            ),
+        ])
+        .expect_err("unchanged bytes cannot supersede themselves");
+    assert_eq!(
+        same.diagnostic_code().as_str(),
+        "proposal_record.binding_invalid"
+    );
+}

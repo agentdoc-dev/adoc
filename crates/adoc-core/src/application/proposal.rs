@@ -131,3 +131,19 @@ fn parse_patch(
         patch,
     })
 }
+
+impl ProposalRecord {
+    /// Mint the successor of this record from edited patch bytes. The new
+    /// record supersedes this one by digest; byte-identical patches are not a
+    /// new version and fail with `proposal_record.binding_invalid`.
+    pub fn revise(
+        &self,
+        patches: Vec<ProposalPatchInput>,
+    ) -> Result<ProposalRecord, ProposalRecordError> {
+        build_proposal_record(
+            self.bindings().clone(),
+            patches,
+            Some(self.proposal_set_digest().to_string()),
+        )
+    }
+}
