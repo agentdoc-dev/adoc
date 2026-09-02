@@ -6,7 +6,7 @@ use adoc_core::{
 };
 use serde::Deserialize;
 
-use crate::commands::artifact_paths::{ensure_distinct_paths, remove_stale};
+use crate::commands::artifact_paths::{ensure_distinct_paths, remove_stale, write_atomic};
 
 /// CLI-private producer input: the bindings plus one entry per patch file.
 /// It carries identifiers and exact-head placement only — never branch names
@@ -88,8 +88,8 @@ pub(crate) fn proposal_record(input: PathBuf, out: PathBuf) -> i32 {
         Ok(json) => json,
         Err(error) => return fail(&format!("[{}] {error}", error.diagnostic_code().as_str())),
     };
-    if let Err(error) = fs::write(&out, &json) {
-        return fail(&format!("could not write {}: {error}", out.display()));
+    if let Err(message) = write_atomic(&out, json.as_bytes()) {
+        return fail(&message);
     }
     print!("{json}");
     0
