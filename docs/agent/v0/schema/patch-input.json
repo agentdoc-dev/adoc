@@ -12,7 +12,11 @@
     "target": { "type": "string" },
     "base_hash": { "type": "string", "pattern": "^sha256:" },
     "changes": { "type": "object" },
-    "reason": { "type": "string", "minLength": 1 },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A non-blank reason for trusted patches; an E5.1 canonical proposal record additionally requires semantic text with no surrounding whitespace or control characters."
+    },
     "proposer": { "$ref": "#/$defs/proposer" }
   },
   "additionalProperties": false,

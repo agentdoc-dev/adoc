@@ -69,6 +69,9 @@ API.
    to `draft`, `proposed`, or `open` (ADR-0054 §3's explicit
    status-preservation stays an Action delivery option that never forms a
    proposal record); the ADR-0053 §3 authority fields are never proposable.
+   Every embedded patch reason is semantic text: non-empty, without surrounding
+   whitespace or control characters. This proposal-record floor is stricter
+   than generic patch validation, which rejects only blank reasons.
    Every embedded patch declares an `agent` proposer with a non-empty
    identifier constructed by the trusted Action rather than the provider
    (ADR-0053 §7).

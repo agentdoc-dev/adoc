@@ -223,7 +223,8 @@ fn published_schema_rejects_text_the_domain_rejects() {
 
 #[test]
 fn published_schema_matches_each_patch_operation_shape() {
-    let validator = jsonschema::validator_for(&schema()).expect("schema compiles");
+    let published_schema = schema();
+    let validator = jsonschema::validator_for(&published_schema).expect("schema compiles");
     let canonical: Value = serde_json::from_str(&record().to_canonical_json().expect("serializes"))
         .expect("record is JSON");
 
@@ -274,6 +275,17 @@ fn published_schema_matches_each_patch_operation_shape() {
             "schema accepted foreign {operation} change"
         );
     }
+
+    let text_pattern = published_schema["$defs"]["text"]["pattern"]
+        .as_str()
+        .expect("text pattern");
+    assert!(
+        !text_pattern.contains("\\s"),
+        "ECMA-262 \\s rejects U+FEFF unlike Rust trim"
+    );
+    let mut byte_order_mark = canonical;
+    byte_order_mark["patches"][0]["patch"]["reason"] = json!("Assessment finding.﻿");
+    assert!(validator.is_valid(&byte_order_mark));
 }
 
 #[test]
