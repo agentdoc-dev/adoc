@@ -754,3 +754,110 @@ fn existing_object_update_without_a_reviewable_status_is_rejected() {
         );
     }
 }
+
+// Review round 5 (PR #194): a create the standard patch path would refuse in
+// draft validation (`adoc patch --check`) never enters a record — a blank
+// body, or a task with no owner — so a canonical record cannot carry an
+// intrinsically unapplyable create.
+#[test]
+fn intrinsically_invalid_creates_are_rejected() {
+    let mut blank_body = create_patch("billing.proposed");
+    blank_body["changes"]["body"] = json!("   ");
+    let mut ownerless_task = create_patch("billing.followup");
+    ownerless_task["changes"]["kind"] = json!("task");
+    ownerless_task["changes"]["status"] = json!("open");
+    for patch in [blank_body, ownerless_task] {
+        let error = build_proposal_record(
+            bindings(),
+            vec![patch_input(
+                "finding-001",
+                "docs/billing.adoc",
+                "billing.kb",
+                &patch,
+            )],
+            None,
+        )
+        .expect_err("a create the patch path rejects is not proposable");
+        assert!(
+            matches!(error, ProposalRecordError::PatchInvalid { .. }),
+            "{error}"
+        );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "proposal_record.patch_invalid"
+        );
+    }
+}
+
+#[test]
+fn intrinsically_invalid_edits_are_rejected() {
+    let mut blank_reason = update_patch("billing.credits", D, "billing");
+    blank_reason["reason"] = json!("  ");
+    let mut invalid_key = update_patch("billing.credits", D, "billing");
+    invalid_key["changes"]["fields"] = json!({"Bad-Key": "value", "status": "draft"});
+    let mut relation = update_patch("billing.credits", D, "billing");
+    relation["changes"]["fields"] = json!({"status": "draft", "depends_on": "billing.other"});
+    let mut blank_value = update_patch("billing.credits", D, "billing");
+    blank_value["changes"]["fields"] = json!({"owner": " ", "status": "draft"});
+    let mut status_only = update_patch("billing.credits", D, "billing");
+    status_only["changes"]["fields"] = json!({"status": "draft"});
+
+    for patches in [
+        vec![blank_reason],
+        vec![invalid_key],
+        vec![relation],
+        vec![blank_value],
+        vec![status_only, replace_body_patch("billing.credits", D, " ")],
+    ] {
+        let inputs = patches
+            .iter()
+            .map(|patch| patch_input("finding-002", "docs/billing.adoc", "billing.kb", patch))
+            .collect();
+        let error = build_proposal_record(bindings(), inputs, None)
+            .expect_err("a patch the standard validator rejects is not proposable");
+        assert!(matches!(error, ProposalRecordError::PatchInvalid { .. }));
+    }
+}
+
+// Review round 5 (PR #194): creates carry no base_hash, so two creates of one
+// target — or a create beside an edit of the same target — used to bypass the
+// per-target sequence; sequential application would refuse the set.
+#[test]
+fn one_target_is_created_at_most_once_and_never_also_edited() {
+    let input = |finding: &str, patch: &Value| {
+        patch_input(finding, "docs/billing.adoc", "billing.kb", patch)
+    };
+    let mut other_create = create_patch("billing.proposed");
+    other_create["changes"]["body"] = json!("A different proposed claim.");
+    for patches in [
+        vec![
+            input("finding-001", &create_patch("billing.proposed")),
+            input("finding-002", &other_create),
+        ],
+        vec![
+            input("finding-001", &create_patch("billing.proposed")),
+            input(
+                "finding-002",
+                &update_patch("billing.proposed", D, "billing"),
+            ),
+        ],
+        vec![
+            input(
+                "finding-002",
+                &update_patch("billing.proposed", D, "billing"),
+            ),
+            input("finding-001", &create_patch("billing.proposed")),
+        ],
+    ] {
+        let error = build_proposal_record(bindings(), patches, None)
+            .expect_err("one target is created at most once and never also edited");
+        assert!(
+            matches!(error, ProposalRecordError::PatchInvalid { .. }),
+            "{error}"
+        );
+        assert_eq!(
+            error.diagnostic_code().as_str(),
+            "proposal_record.patch_invalid"
+        );
+    }
+}

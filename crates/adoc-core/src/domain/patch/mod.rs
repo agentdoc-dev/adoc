@@ -153,7 +153,8 @@ struct PatchValidator<'a> {
 
 impl PatchValidator<'_> {
     fn validate(&mut self) -> PatchValidationReport {
-        self.validate_reason();
+        self.diagnostics
+            .extend(intrinsic_patch_diagnostics(&self.patch));
 
         let target = match ObjectId::new(self.patch.target.clone()) {
             Ok(target) => target,
@@ -215,18 +216,6 @@ impl PatchValidator<'_> {
         }
     }
 
-    fn validate_reason(&mut self) {
-        if self.patch.reason.trim().is_empty() {
-            self.diagnostics.push(
-                Diagnostic::error(
-                    DiagnosticCode::PatchInvalidDocument,
-                    "patch reason must be a non-empty string",
-                )
-                .with_help("Add a short review reason explaining why this patch is proposed."),
-            );
-        }
-    }
-
     fn validate_replace_body(&mut self, target: &ObjectId, base_hash: &str, body: &str) {
         let Some(object) = self.require_existing_target(target) else {
             return;
@@ -235,10 +224,6 @@ impl PatchValidator<'_> {
             return;
         }
         if body.trim().is_empty() {
-            self.diagnostics.push(validation_error(
-                target.as_str(),
-                "replace_body requires a non-empty changes.body value",
-            ));
             return;
         }
         self.diffs.push(value_diff("body", &object.body, body));
@@ -261,25 +246,7 @@ impl PatchValidator<'_> {
             return;
         }
         for (key, value) in fields {
-            if !is_valid_field_key(&key) {
-                self.diagnostics.push(validation_error(
-                    target.as_str(),
-                    format!("field key `{key}` is invalid"),
-                ));
-                continue;
-            }
-            if is_relation_field(&key) {
-                self.diagnostics.push(validation_error(
-                    target.as_str(),
-                    format!("field `{key}` is a relation field; use a relation operation"),
-                ));
-                continue;
-            }
-            if value.trim().is_empty() {
-                self.diagnostics.push(validation_error(
-                    target.as_str(),
-                    format!("field `{key}` requires a non-empty value"),
-                ));
+            if !is_valid_field_key(&key) || is_relation_field(&key) || value.trim().is_empty() {
                 continue;
             }
             // E1.1.T3 (ADR-0058): the target kind's closed schema binds the
@@ -401,7 +368,6 @@ impl PatchValidator<'_> {
             body,
             fields: &fields,
         });
-        self.diagnostics.extend(draft_validation.diagnostics);
         for obligation in draft_validation.proof_obligations {
             self.add_proof_obligation(&obligation.object_id, &obligation.reason);
         }
@@ -620,6 +586,70 @@ impl PatchValidator<'_> {
         self.required_follow_up
             .push(format!("Resolve proof obligation for `{object_id}`."));
     }
+}
+
+/// Rules that depend only on the patch bytes, shared by graph validation and
+/// proposal-record construction so a recorded patch is never intrinsically
+/// unapplyable.
+pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    if patch.reason.trim().is_empty() {
+        diagnostics.push(
+            Diagnostic::error(
+                DiagnosticCode::PatchInvalidDocument,
+                "patch reason must be a non-empty string",
+            )
+            .with_help("Add a short review reason explaining why this patch is proposed."),
+        );
+    }
+    match &patch.intent {
+        PatchIntent::ReplaceBody { body, .. } if body.trim().is_empty() => {
+            diagnostics.push(validation_error(
+                &patch.target,
+                "replace_body requires a non-empty changes.body value",
+            ));
+        }
+        PatchIntent::UpdateFields { fields, .. } => {
+            for (key, value) in fields {
+                let message = if !is_valid_field_key(key) {
+                    Some(format!("field key `{key}` is invalid"))
+                } else if is_relation_field(key) {
+                    Some(format!(
+                        "field `{key}` is a relation field; use a relation operation"
+                    ))
+                } else if value.trim().is_empty() {
+                    Some(format!("field `{key}` requires a non-empty value"))
+                } else {
+                    None
+                };
+                if let Some(message) = message {
+                    diagnostics.push(validation_error(&patch.target, message));
+                }
+            }
+        }
+        PatchIntent::CreateObject {
+            kind,
+            status,
+            body,
+            fields,
+            ..
+        } => {
+            if let Ok(target) = ObjectId::new(patch.target.clone()) {
+                diagnostics.extend(
+                    validate_draft(KnowledgeObjectDraft {
+                        id: &target,
+                        kind,
+                        status: status.as_deref(),
+                        body,
+                        fields,
+                    })
+                    .diagnostics,
+                );
+            }
+        }
+        _ => {}
+    }
+    diagnostics
 }
 
 fn value_diff(field: impl Into<String>, old: &str, new: &str) -> PatchDiff {

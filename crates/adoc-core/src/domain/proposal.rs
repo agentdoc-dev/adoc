@@ -24,7 +24,7 @@ use thiserror::Error;
 use super::diagnostic::DiagnosticCode;
 use super::hashing::sha256_prefixed;
 use super::identity::{OBJECT_ID_GRAMMAR_HELP, ObjectId};
-use super::patch::{PatchDocument, PatchIntent, PatchOperation};
+use super::patch::{PatchDocument, PatchIntent, PatchOperation, intrinsic_patch_diagnostics};
 use super::semantic_context::{ExactRevision, is_semantic_context_text, is_sha256_digest};
 
 pub const PROPOSAL_SCHEMA_VERSION: &str = "adoc.proposal.v0";
@@ -39,12 +39,13 @@ const CREATE_FLOORS: [(&str, &str); 4] = [
 /// ADR-0054 §3: an update leaves the object at a reviewable lifecycle, and
 /// (ADR-0062 §6) must say so — the record cannot see the current one.
 const REVIEWABLE_STATUSES: [&str; 3] = ["draft", "proposed", "open"];
-/// ADR-0053 §3: fields that mint authority and never come from a proposal.
 /// ADR-0053 §3: generated fields never duplicate a structural member. A
 /// nested `status` beside the floor-checked top-level one is content the
 /// exact patch discards on apply — and a lifecycle the floors never saw.
+/// Keep this list aligned with `PatchChangesDto`'s structural members.
 const STRUCTURAL_FIELDS: [&str; 5] = ["id", "kind", "status", "body", "placement"];
 
+/// ADR-0053 §3: fields that mint authority and never come from a proposal.
 const AUTHORITY_FIELDS: [&str; 5] = [
     "verified_at",
     "reviewed_by",
@@ -219,16 +220,15 @@ impl ProposalRecord {
             .into_iter()
             .map(|patch| assemble_patch(patch, &mut sequences))
             .collect::<Result<Vec<_>, _>>()?;
-        let content_bindings = sequences
-            .into_iter()
-            .map(|(object_id, sequence)| {
-                let content_hash = sequence.head_hash(&object_id)?;
-                Ok(ContentBinding {
+        let mut content_bindings = Vec::new();
+        for (object_id, sequence) in sequences {
+            if let Some(content_hash) = sequence.head_hash(&object_id)? {
+                content_bindings.push(ContentBinding {
                     object_id,
                     content_hash,
-                })
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+                });
+            }
+        }
         // Identity is placement-blind (E1.1, MILESTONES §E5.1 acceptance):
         // patches order by their digest alone, so a source-placement move
         // that would reorder a placement-sorted set cannot mint a version.
@@ -345,6 +345,7 @@ fn binding_invalid(field: &str) -> ProposalRecordError {
 /// fixed by the operations, not by the digest-ordered record.
 #[derive(Default)]
 struct TargetSequence {
+    created: bool,
     update_fields: Option<String>,
     replace_body: Option<String>,
     /// The record cannot see the object's current lifecycle, so the edit
@@ -355,6 +356,24 @@ struct TargetSequence {
 
 impl TargetSequence {
     fn bind(&mut self, intent: &PatchIntent, target: &str) -> Result<(), ProposalRecordError> {
+        if matches!(intent, PatchIntent::CreateObject { .. }) {
+            if self.created || self.update_fields.is_some() || self.replace_body.is_some() {
+                return Err(ProposalRecordError::PatchInvalid {
+                    message: format!(
+                        "target '{target}' is created more than once or both created and edited"
+                    ),
+                });
+            }
+            self.created = true;
+            return Ok(());
+        }
+        if self.created {
+            return Err(ProposalRecordError::PatchInvalid {
+                message: format!(
+                    "target '{target}' is created more than once or both created and edited"
+                ),
+            });
+        }
         let Some(base_hash) = intent.base_hash() else {
             return Ok(());
         };
@@ -385,7 +404,10 @@ impl TargetSequence {
         Ok(())
     }
 
-    fn head_hash(self, target: &str) -> Result<String, ProposalRecordError> {
+    fn head_hash(self, target: &str) -> Result<Option<String>, ProposalRecordError> {
+        if self.created {
+            return Ok(None);
+        }
         if !self.sets_reviewable_status {
             return Err(ProposalRecordError::AuthorityRejected {
                 target: target.to_string(),
@@ -394,7 +416,7 @@ impl TargetSequence {
             });
         }
         match (self.update_fields, self.replace_body) {
-            (Some(first), _) | (None, Some(first)) => Ok(first),
+            (Some(first), _) | (None, Some(first)) => Ok(Some(first)),
             (None, None) => Err(ProposalRecordError::PatchInvalid {
                 message: format!("no content hash bound for '{target}'"),
             }),
@@ -432,7 +454,7 @@ fn assemble_patch(
                 document.target
             ),
         });
-    }
+    };
     if canonical_patch_bytes(&patch)? != input.patch_bytes {
         return Err(ProposalRecordError::PatchInvalid {
             message: format!(
@@ -442,12 +464,15 @@ fn assemble_patch(
         });
     }
     enforce_floors(&document)?;
-    if document.intent.base_hash().is_some() {
-        sequences
-            .entry(document.target.clone())
-            .or_default()
-            .bind(&document.intent, &document.target)?;
+    if let Some(diagnostic) = intrinsic_patch_diagnostics(&document).first() {
+        return Err(ProposalRecordError::PatchInvalid {
+            message: diagnostic.message.clone(),
+        });
     }
+    sequences
+        .entry(document.target.clone())
+        .or_default()
+        .bind(&document.intent, &document.target)?;
     Ok(ProposalPatch {
         finding_id: input.finding_id,
         placement_path: input.placement_path,
@@ -473,10 +498,10 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
             fields,
             ..
         } => {
-            let status = status.as_deref().unwrap_or_default();
-            if !CREATE_FLOORS.contains(&(kind.as_str(), status)) {
+            let floor = status.as_deref().unwrap_or_default();
+            if !CREATE_FLOORS.contains(&(kind.as_str(), floor)) {
                 return Err(reject(format!(
-                    "create_object {kind}/{status} is outside the create-only floors"
+                    "create_object {kind}/{floor} is outside the create-only floors"
                 )));
             }
             if let Some(field) = STRUCTURAL_FIELDS
