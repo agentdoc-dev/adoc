@@ -332,7 +332,13 @@ fn published_schema_matches_each_patch_operation_shape() {
         );
     }
 
-    for status in [None, Some("verified")] {
+    for (status, valid) in [
+        (None, false),
+        (Some("draft"), true),
+        (Some("proposed"), true),
+        (Some("open"), true),
+        (Some("verified"), false),
+    ] {
         let mut instance = canonical.clone();
         let update = instance["patches"]
             .as_array_mut()
@@ -349,21 +355,36 @@ fn published_schema_matches_each_patch_operation_shape() {
                     .remove("status");
             }
         }
-        assert!(
-            !validator.is_valid(&instance),
-            "schema accepted update with status {status:?}"
+        assert_eq!(
+            validator.is_valid(&instance),
+            valid,
+            "schema verdict for update status {status:?}"
         );
     }
 
-    let mut disallowed_create_floor = canonical.clone();
-    let create = disallowed_create_floor["patches"]
-        .as_array_mut()
-        .expect("patches")
-        .iter_mut()
-        .find(|entry| entry["operation"] == "create_object")
-        .expect("create patch");
-    create["patch"]["changes"]["status"] = json!("proposed");
-    assert!(!validator.is_valid(&disallowed_create_floor));
+    for (kind, floor, wrong) in [
+        ("claim", "draft", "proposed"),
+        ("decision", "proposed", "draft"),
+        ("api", "draft", "open"),
+        ("task", "open", "draft"),
+    ] {
+        for (status, valid) in [(floor, true), (wrong, false), ("verified", false)] {
+            let mut instance = canonical.clone();
+            let create = instance["patches"]
+                .as_array_mut()
+                .expect("patches")
+                .iter_mut()
+                .find(|entry| entry["operation"] == "create_object")
+                .expect("create patch");
+            create["patch"]["changes"]["kind"] = json!(kind);
+            create["patch"]["changes"]["status"] = json!(status);
+            assert_eq!(
+                validator.is_valid(&instance),
+                valid,
+                "schema verdict for create floor {kind}/{status}"
+            );
+        }
+    }
 
     let text_pattern = published_schema["$defs"]["text"]["pattern"]
         .as_str()
@@ -1235,6 +1256,30 @@ fn intrinsically_invalid_creates_are_rejected() {
             "proposal_record.patch_invalid"
         );
     }
+}
+
+#[test]
+fn proposal_record_rejects_normalized_create_status_bytes() {
+    let mut patch = create_patch("billing.proposed");
+    patch["changes"]["status"] = json!(" draft ");
+
+    let error = build_proposal_record(
+        bindings(),
+        vec![patch_input(
+            "finding-001",
+            "docs/billing.adoc",
+            "billing.kb",
+            &patch,
+        )],
+        None,
+    )
+    .expect_err("record bytes must carry the exact create status floor");
+
+    assert!(matches!(error, ProposalRecordError::PatchInvalid { .. }));
+    assert_eq!(
+        error.diagnostic_code().as_str(),
+        "proposal_record.patch_invalid"
+    );
 }
 
 #[test]

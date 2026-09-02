@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "adoc://agent/v0/schema/adoc.proposal.v0.schema.json",
   "title": "AgentDoc Canonical Proposal Record",
-  "description": "E5.1 canonical proposal record (ADR-0062). Binds a validated adoc.patch.v0 set to exact source revisions, deterministic assessment, semantic context, semantic assessment, and the exact content_hash of every edited Knowledge Object. Identity is the proposal-set digest over the exact patch bytes ordered by patch digest alone (ADR-0062 §2, superseding ADR-0053 §8 in part); `supersedes` names the prior digest an edit replaces. The record carries no branch names, titles, or wall-clock fields. JSON Schema is transport preflight only; adoc-core re-derives every digest and ordering.",
+  "description": "E5.1 canonical proposal record (ADR-0062). Binds a validated adoc.patch.v0 set to exact source revisions, deterministic assessment, semantic context, semantic assessment, and the exact content_hash of every edited Knowledge Object. Identity is the proposal-set digest over the exact patch bytes ordered by patch digest alone (ADR-0062 §2, superseding ADR-0053 §8 in part); `supersedes` names the prior digest an edit replaces. The record carries no branch names, titles, or wall-clock fields. JSON Schema preflights transport shape and operation floors only; adoc-core remains authoritative for authority, structural, kind/state, graph, digest, and ordering validation.",
   "type": "object",
   "required": [
     "schema_version",

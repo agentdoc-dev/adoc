@@ -497,6 +497,19 @@ fn assemble_patch(
         });
     };
     if let PatchIntent::CreateObject {
+        status: Some(status),
+        ..
+    } = &document.intent
+        && patch.pointer("/changes/status").and_then(Value::as_str) != Some(status.as_str())
+    {
+        return Err(ProposalRecordError::PatchInvalid {
+            message: format!(
+                "create_object status for '{}' must not require normalization",
+                document.target
+            ),
+        });
+    }
+    if let PatchIntent::CreateObject {
         placement: Some(placement),
         ..
     } = &document.intent
