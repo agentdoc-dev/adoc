@@ -30,10 +30,14 @@ API.
    placement-first key ADR-0053 §8 used for Action-private files — because
    identity must be placement-blind (E1.1; MILESTONES §E5.1 acceptance): a
    source-placement move that reorders a placement-sorted multi-patch set
-   must not mint a version. The digest binds the patch set, not the finding
-   correlation or placement metadata; two records with one digest and
-   different bytes are a delivery conflict Cloud rejects
-   (`governance.proposal_conflict`), never a merge. Cloud recomputes this
+   must not mint a version. The digest binds the patch set, not the
+   bindings, finding correlation, or placement metadata, so a same-digest
+   re-delivery that differs only there (a placement move, a new head on the
+   same change request) is a duplicate Cloud acknowledges
+   (`ingest.duplicate_delivery`) while the first-stored record stays
+   authoritative — never a merge; a same-digest delivery whose patch set
+   differs is a conflict Cloud rejects (`governance.proposal_conflict`).
+   Cloud recomputes this
    value from the embedded patches in this digest order (an obligation on
    the E5.1 consumer, checked by its ingestion tests against `adoc`
    output); the Action reads `proposals.sha256` from the record once it
