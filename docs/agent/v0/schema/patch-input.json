@@ -66,7 +66,7 @@
             "kind": { "type": "string" },
             "status": {
               "type": "string",
-              "description": "Optional for trusted creates; an E5.1 canonical proposal record additionally requires an ADR-0053 section 2 create floor: claim/draft, decision/proposed, api/draft, or task/open."
+              "description": "Optional for trusted creates, where surrounding ASCII whitespace is trimmed; an E5.1 canonical proposal record additionally requires the exact untrimmed bytes of an ADR-0053 section 2 create floor: claim/draft, decision/proposed, api/draft, or task/open."
             },
             "body": { "type": "string" },
             "fields": { "$ref": "#/$defs/fields" },

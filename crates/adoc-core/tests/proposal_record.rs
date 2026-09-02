@@ -1260,9 +1260,17 @@ fn intrinsically_invalid_creates_are_rejected() {
 
 #[test]
 fn proposal_record_rejects_normalized_create_status_bytes() {
-    for (status, expected_code) in [
-        (" draft ", "proposal_record.patch_invalid"),
-        (" verified ", "proposal_record.authority_rejected"),
+    for (status, expected_code, expected_message) in [
+        (
+            " draft ",
+            "proposal_record.patch_invalid",
+            "must not require normalization",
+        ),
+        (
+            " verified ",
+            "proposal_record.authority_rejected",
+            "outside the create-only floors",
+        ),
     ] {
         let mut patch = create_patch("billing.proposed");
         patch["changes"]["status"] = json!(status);
@@ -1280,6 +1288,7 @@ fn proposal_record_rejects_normalized_create_status_bytes() {
         .expect_err("record bytes must carry the exact create status floor");
 
         assert_eq!(error.diagnostic_code().as_str(), expected_code, "{status}");
+        assert!(error.to_string().contains(expected_message), "{error}");
     }
 }
 
