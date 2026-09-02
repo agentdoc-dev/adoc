@@ -475,6 +475,19 @@ fn assemble_patch(
             ),
         });
     };
+    if let PatchIntent::CreateObject {
+        placement: Some(placement),
+        ..
+    } = &document.intent
+        && placement.page_id != input.page_id
+    {
+        return Err(ProposalRecordError::PatchInvalid {
+            message: format!(
+                "create_object placement page '{}' does not match proposal page '{}'",
+                placement.page_id, input.page_id
+            ),
+        });
+    }
     if canonical_patch_bytes(&patch)? != input.patch_bytes {
         return Err(ProposalRecordError::PatchInvalid {
             message: format!(

@@ -796,12 +796,15 @@ fn intrinsically_invalid_creates_are_rejected() {
     invalid_page["changes"]["placement"]["page_id"] = json!("billing");
     let mut invalid_after = create_patch("billing.bad-anchor");
     invalid_after["changes"]["placement"]["after"] = json!("not-an-object-id");
+    let mut mismatched_page = create_patch("billing.wrong-page");
+    mismatched_page["changes"]["placement"]["page_id"] = json!("billing.other-page");
     for patch in [
         blank_body,
         ownerless_task,
         missing_placement,
         invalid_page,
         invalid_after,
+        mismatched_page,
     ] {
         let error = build_proposal_record(
             bindings(),
