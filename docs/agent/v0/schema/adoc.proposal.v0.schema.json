@@ -54,7 +54,7 @@
         "required": ["object_id", "content_hash"],
         "additionalProperties": false,
         "properties": {
-          "object_id": { "$ref": "#/$defs/text" },
+          "object_id": { "$ref": "#/$defs/object_id" },
           "content_hash": { "$ref": "#/$defs/digest" }
         }
       }
@@ -79,7 +79,7 @@
           "finding_id": { "$ref": "#/$defs/text" },
           "placement_path": { "$ref": "#/$defs/text" },
           "page_id": { "$ref": "#/$defs/text" },
-          "target": { "$ref": "#/$defs/text" },
+          "target": { "$ref": "#/$defs/object_id" },
           "operation": { "enum": ["create_object", "update_fields", "replace_body"] },
           "patch_digest": { "$ref": "#/$defs/digest" },
           "patch": {
@@ -96,7 +96,15 @@
     }
   },
   "$defs": {
-    "text": { "type": "string", "minLength": 1 },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\s\\u0000-\\u001f\\u007f-\\u009f](?:[^\\u0000-\\u001f\\u007f-\\u009f]*[^\\s\\u0000-\\u001f\\u007f-\\u009f])?$"
+    },
+    "object_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+$"
+    },
     "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "revision": {
       "type": "object",

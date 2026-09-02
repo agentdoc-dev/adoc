@@ -177,6 +177,27 @@ fn record_bytes_are_deterministic_and_match_the_published_schema() {
 }
 
 #[test]
+fn published_schema_rejects_text_the_domain_rejects() {
+    let validator = jsonschema::validator_for(&schema()).expect("schema compiles");
+    let canonical: Value = serde_json::from_str(&record().to_canonical_json().expect("serializes"))
+        .expect("record is JSON");
+
+    for (pointer, invalid) in [
+        ("/bindings/change_request/id", " ticket-1 "),
+        ("/bindings/change_request/id", "ticket\0"),
+        ("/patches/0/target", " billing.credits "),
+        ("/patches/0/target", "billing"),
+    ] {
+        let mut instance = canonical.clone();
+        *instance.pointer_mut(pointer).expect("field exists") = json!(invalid);
+        assert!(
+            !validator.is_valid(&instance),
+            "schema accepted {invalid:?} at {pointer}"
+        );
+    }
+}
+
+#[test]
 fn record_round_trips_through_the_proposal_command_transport() {
     let record = record();
     let json = record.to_canonical_json().expect("serializes");
