@@ -300,11 +300,13 @@ fn apply_refuses_invalid_visibility_value_in_update_fields() {
 
     assert!(!result.applied);
     assert!(result.written_files.is_empty());
-    assert!(
+    assert_eq!(
         result
             .diagnostics
             .iter()
-            .any(|d| d.code == DiagnosticCode::SchemaVisibilityInvalid),
+            .filter(|d| d.code == DiagnosticCode::SchemaVisibilityInvalid)
+            .count(),
+        1,
         "diagnostics: {:?}",
         result.diagnostics
     );

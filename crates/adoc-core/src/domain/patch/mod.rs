@@ -268,8 +268,10 @@ impl PatchValidator<'_> {
                 continue;
             };
             if let Some(diagnostic) = closed_schema_field_error(kind, &key, &value) {
-                self.diagnostics
-                    .push(diagnostic.with_object_id(target.as_str()));
+                let diagnostic = diagnostic.with_object_id(target.as_str());
+                if !self.diagnostics.contains(&diagnostic) {
+                    self.diagnostics.push(diagnostic);
+                }
                 continue;
             }
             // V5.8 TB5: when the field being updated is `evidence_ref`, resolve
