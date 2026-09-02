@@ -135,7 +135,7 @@ fn parse_patch(
 impl ProposalRecord {
     /// Mint the successor of this record from edited patch bytes. The new
     /// record supersedes this one by digest; byte-identical patches are not a
-    /// new version and fail with `proposal_record.binding_invalid`.
+    /// new version and fail with `proposal_record.revision_unchanged`.
     pub fn revise(
         &self,
         patches: Vec<ProposalPatchInput>,
