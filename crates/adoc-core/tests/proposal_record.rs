@@ -211,6 +211,10 @@ fn published_schema_rejects_text_the_domain_rejects() {
         instance["patches"][0]["patch"]["proposer"] = proposer;
         assert!(!validator.is_valid(&instance));
     }
+
+    let mut unknown_patch_member = canonical.clone();
+    unknown_patch_member["patches"][0]["patch"]["admin"] = json!(true);
+    assert!(!validator.is_valid(&unknown_patch_member));
 }
 
 #[test]
@@ -412,6 +416,29 @@ fn model_path_cannot_touch_active_state() {
             "proposal_record.authority_rejected"
         );
     }
+}
+
+#[test]
+fn governance_operation_precedes_missing_proposer() {
+    let patch = json!({
+        "schema_version": "adoc.patch.v0", "op": "revoke", "target": "billing.credits",
+        "base_hash": D, "changes": {}, "reason": "revoke"
+    });
+    let error = build_proposal_record(
+        bindings(),
+        vec![patch_input(
+            "finding-009",
+            "docs/billing.adoc",
+            "billing.kb",
+            &patch,
+        )],
+        None,
+    )
+    .expect_err("governance operation is never proposable");
+    assert!(
+        error.to_string().contains("changes governance state"),
+        "{error}"
+    );
 }
 
 #[test]

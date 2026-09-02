@@ -86,9 +86,14 @@
             "type": "object",
             "description": "The exact adoc.patch.v0 document; patch_digest covers its sorted compact serialization plus one newline.",
             "required": ["schema_version", "op", "target", "changes", "reason", "proposer"],
+            "additionalProperties": false,
             "properties": {
               "schema_version": { "const": "adoc.patch.v0" },
               "op": { "enum": ["create_object", "update_fields", "replace_body"] },
+              "target": { "$ref": "#/$defs/object_id" },
+              "base_hash": { "$ref": "#/$defs/digest" },
+              "changes": { "type": "object" },
+              "reason": { "$ref": "#/$defs/text" },
               "proposer": {
                 "type": "object",
                 "required": ["type", "id"],

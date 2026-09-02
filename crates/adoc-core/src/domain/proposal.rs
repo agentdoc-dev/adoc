@@ -529,6 +529,15 @@ fn enforce_floors(document: &PatchDocument) -> Result<(), ProposalRecordError> {
         target: document.target.clone(),
         reason,
     };
+    if matches!(
+        &document.intent,
+        PatchIntent::Supersede { .. } | PatchIntent::Revoke { .. }
+    ) {
+        return Err(reject(format!(
+            "operation {} changes governance state",
+            document.intent.operation().as_str()
+        )));
+    }
     if document.proposer.as_ref().is_none_or(|proposer| {
         proposer.proposer_type != AGENT_PROPOSER_TYPE || !is_semantic_context_text(&proposer.id)
     }) {

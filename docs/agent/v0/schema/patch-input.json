@@ -114,6 +114,7 @@
     },
     "proposer": {
       "type": "object",
+      "description": "Optional for trusted patches; an E5.1 canonical proposal record additionally requires type 'agent' with a non-empty id.",
       "required": ["type", "id"],
       "properties": {
         "type": { "type": "string" },
