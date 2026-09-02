@@ -24,11 +24,19 @@ API.
    produce the record and Cloud consumes it as the
    `agentdoc.cloud.proposal_command.v0` payload.
 2. Identity is the proposal-set digest of ADR-0053 §8: each patch is hashed
-   over its exact bytes (sorted compact JSON plus one newline), patches are
-   ordered by placement path, page ID, target, and patch digest, and the set
-   digest hashes the compact JSON array of those digests plus one newline.
-   The Action's `proposals.sha256` and Cloud's `private.proposal_set_digest`
-   already compute this value; the record makes it a shared contract.
+   over its exact bytes (sorted compact JSON plus one newline) and the set
+   digest hashes the compact JSON array of the ordered patch digests plus one
+   newline. Patches are ordered by patch digest alone — not by the
+   placement-first key ADR-0053 §8 used for Action-private files — because
+   identity must be placement-blind (E1.1; MILESTONES §E5.1 acceptance): a
+   source-placement move that reorders a placement-sorted multi-patch set
+   must not mint a version. The digest binds the patch set, not the finding
+   correlation or placement metadata; two records with one digest and
+   different bytes are a delivery conflict Cloud rejects
+   (`governance.proposal_conflict`), never a merge. Cloud's
+   `private.proposal_set_digest` already computes this value over the ordered
+   bytes; the Action reads `proposals.sha256` from the record once it
+   produces one.
 3. Bindings are mandatory and closed: exact base and head revisions,
    change-request system and identifier, deterministic assessment digest,
    semantic-context digest, semantic-assessment digest, and the exact
