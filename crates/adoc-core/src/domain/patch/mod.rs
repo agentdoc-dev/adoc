@@ -613,6 +613,8 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
             for (key, value) in fields {
                 let message = if !is_valid_field_key(key) {
                     Some(format!("field key `{key}` is invalid"))
+                } else if matches!(key.as_str(), "id" | "kind" | "body" | "placement") {
+                    Some(format!("field `{key}` is structural"))
                 } else if is_relation_field(key) {
                     Some(format!(
                         "field `{key}` is a relation field; use a relation operation"
@@ -632,8 +634,24 @@ pub(crate) fn intrinsic_patch_diagnostics(patch: &PatchDocument) -> Vec<Diagnost
             status,
             body,
             fields,
-            ..
+            placement,
         } => {
+            if let Some(placement) = placement {
+                if ObjectId::new(placement.page_id.clone()).is_err() {
+                    diagnostics.push(invalid_object_id_diagnostic(
+                        &placement.page_id,
+                        "placement page_id",
+                    ));
+                }
+                if let Some(after) = &placement.after
+                    && ObjectId::new(after.clone()).is_err()
+                {
+                    diagnostics.push(invalid_object_id_diagnostic(
+                        after,
+                        "placement after target",
+                    ));
+                }
+            }
             if let Ok(target) = ObjectId::new(patch.target.clone()) {
                 diagnostics.extend(
                     validate_draft(KnowledgeObjectDraft {

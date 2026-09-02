@@ -792,7 +792,17 @@ fn intrinsically_invalid_creates_are_rejected() {
         .as_object_mut()
         .expect("changes is an object")
         .remove("placement");
-    for patch in [blank_body, ownerless_task, missing_placement] {
+    let mut invalid_page = create_patch("billing.bad-page");
+    invalid_page["changes"]["placement"]["page_id"] = json!("billing");
+    let mut invalid_after = create_patch("billing.bad-anchor");
+    invalid_after["changes"]["placement"]["after"] = json!("not-an-object-id");
+    for patch in [
+        blank_body,
+        ownerless_task,
+        missing_placement,
+        invalid_page,
+        invalid_after,
+    ] {
         let error = build_proposal_record(
             bindings(),
             vec![patch_input(
@@ -827,12 +837,15 @@ fn intrinsically_invalid_edits_are_rejected() {
     blank_value["changes"]["fields"] = json!({"owner": " ", "status": "draft"});
     let mut status_only = update_patch("billing.credits", D, "billing");
     status_only["changes"]["fields"] = json!({"status": "draft"});
+    let mut structural = update_patch("billing.credits", D, "billing");
+    structural["changes"]["fields"] = json!({"body": "Replacement", "status": "draft"});
 
     for patches in [
         vec![blank_reason],
         vec![invalid_key],
         vec![relation],
         vec![blank_value],
+        vec![structural],
         vec![status_only, replace_body_patch("billing.credits", D, " ")],
     ] {
         let inputs = patches
@@ -885,5 +898,32 @@ fn one_target_is_created_at_most_once_and_never_also_edited() {
             error.diagnostic_code().as_str(),
             "proposal_record.patch_invalid"
         );
+    }
+}
+
+#[test]
+fn creates_cannot_use_proposed_objects_as_placement_anchors() {
+    let anchored = |target: &str, after: &str| {
+        let mut patch = create_patch(target);
+        patch["changes"]["placement"]["after"] = json!(after);
+        patch
+    };
+    let input = |finding: &str, patch: &Value| {
+        patch_input(finding, "docs/billing.adoc", "billing.kb", patch)
+    };
+
+    for patches in [
+        vec![input(
+            "finding-001",
+            &anchored("billing.proposed", "billing.proposed"),
+        )],
+        vec![
+            input("finding-001", &anchored("billing.second", "billing.first")),
+            input("finding-002", &create_patch("billing.first")),
+        ],
+    ] {
+        let error = build_proposal_record(bindings(), patches, None)
+            .expect_err("a proposed object cannot anchor another create");
+        assert!(matches!(error, ProposalRecordError::PatchInvalid { .. }));
     }
 }

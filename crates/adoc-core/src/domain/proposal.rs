@@ -215,6 +215,26 @@ impl ProposalRecord {
                 message: "a proposal record needs at least one patch".to_string(),
             });
         }
+        let created_targets: BTreeSet<&str> = patches
+            .iter()
+            .filter_map(|patch| match &patch.document.intent {
+                PatchIntent::CreateObject { .. } => Some(patch.document.target.as_str()),
+                _ => None,
+            })
+            .collect();
+        for patch in &patches {
+            if let PatchIntent::CreateObject {
+                placement: Some(placement),
+                ..
+            } = &patch.document.intent
+                && let Some(after) = &placement.after
+                && created_targets.contains(after.as_str())
+            {
+                return Err(ProposalRecordError::PatchInvalid {
+                    message: format!("proposed object '{after}' cannot be a placement anchor"),
+                });
+            }
+        }
         let mut sequences = BTreeMap::new();
         let mut patches = patches
             .into_iter()
