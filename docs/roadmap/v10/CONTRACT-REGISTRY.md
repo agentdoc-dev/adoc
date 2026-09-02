@@ -237,6 +237,7 @@ Explicit mapping (RT-21, like the attestation family): `audit.persistence_failed
 | `proposal_record.binding_invalid` |
 | `proposal_record.invalid_document` |
 | `proposal_record.patch_invalid` |
+| `proposal_record.revision_unchanged` |
 | `ref.broken` |
 | `retrieval.no_knowledge_objects_consider_migration` |
 | `retrieval.object_not_found` |

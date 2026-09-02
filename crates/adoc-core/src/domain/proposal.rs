@@ -175,6 +175,10 @@ pub enum ProposalRecordError {
     PatchInvalid { message: String },
     #[error("proposal patch for '{target}' would mint authority: {reason}")]
     AuthorityRejected { target: String, reason: String },
+    #[error(
+        "proposal revision changes no patch byte: it would supersede its own digest {proposal_set_digest}"
+    )]
+    RevisionUnchanged { proposal_set_digest: String },
 }
 
 impl ProposalRecordError {
@@ -186,6 +190,7 @@ impl ProposalRecordError {
             Self::BindingInvalid { .. } => DiagnosticCode::ProposalRecordBindingInvalid,
             Self::PatchInvalid { .. } => DiagnosticCode::ProposalRecordPatchInvalid,
             Self::AuthorityRejected { .. } => DiagnosticCode::ProposalRecordAuthorityRejected,
+            Self::RevisionUnchanged { .. } => DiagnosticCode::ProposalRecordRevisionUnchanged,
         }
     }
 }
@@ -207,7 +212,10 @@ impl ProposalRecord {
             .into_iter()
             .map(|patch| assemble_patch(patch, &mut content_bindings))
             .collect::<Result<Vec<_>, _>>()?;
-        patches.sort_by(|left, right| sort_key(left).cmp(&sort_key(right)));
+        // Identity is placement-blind (E1.1, MILESTONES §E5.1 acceptance):
+        // patches order by their digest alone, so a source-placement move
+        // that would reorder a placement-sorted set cannot mint a version.
+        patches.sort_by(|left, right| left.patch_digest.cmp(&right.patch_digest));
         let digests: Vec<&str> = patches
             .iter()
             .map(|patch| patch.patch_digest.as_str())
@@ -218,12 +226,17 @@ impl ProposalRecord {
             });
         }
         let proposal_set_digest = proposal_set_digest(&digests)?;
-        if let Some(prior) = &supersedes
-            && (!is_sha256_digest(prior) || *prior == proposal_set_digest)
-        {
-            return Err(ProposalRecordError::BindingInvalid {
-                field: "supersedes".to_string(),
-            });
+        if let Some(prior) = &supersedes {
+            if !is_sha256_digest(prior) {
+                return Err(ProposalRecordError::BindingInvalid {
+                    field: "supersedes".to_string(),
+                });
+            }
+            if *prior == proposal_set_digest {
+                return Err(ProposalRecordError::RevisionUnchanged {
+                    proposal_set_digest,
+                });
+            }
         }
         Ok(Self {
             schema_version: PROPOSAL_SCHEMA_VERSION.to_string(),
@@ -272,15 +285,6 @@ impl ProposalRecord {
         json.push('\n');
         Ok(json)
     }
-}
-
-fn sort_key(patch: &ProposalPatch) -> (&str, &str, &str, &str) {
-    (
-        &patch.placement_path,
-        &patch.page_id,
-        &patch.target,
-        &patch.patch_digest,
-    )
 }
 
 fn validate_bindings(bindings: &ProposalBindings) -> Result<(), ProposalRecordError> {
@@ -349,6 +353,14 @@ fn assemble_patch(
     }
     enforce_floors(&document)?;
     if let Some(base_hash) = document.intent.base_hash() {
+        if !is_sha256_digest(base_hash) {
+            return Err(ProposalRecordError::PatchInvalid {
+                message: format!(
+                    "patch base_hash for '{}' is not a sha256 digest",
+                    document.target
+                ),
+            });
+        }
         match content_bindings.get(&document.target) {
             Some(existing) if existing != base_hash => {
                 return Err(ProposalRecordError::PatchInvalid {
@@ -370,7 +382,9 @@ fn assemble_patch(
         patch_digest: sha256_prefixed(&input.patch_bytes),
         target: document.target,
         operation: document.intent.operation(),
-        patch,
+        // Explicitly key-sorted so record bytes never depend on the
+        // producer's key order or on serde_json's map implementation.
+        patch: canonicalize_object_keys(patch),
     })
 }
 

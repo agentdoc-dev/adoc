@@ -530,6 +530,7 @@ fn e5_1_proposal_record_is_shipped_by_its_contract_owner() {
         "proposal_record.binding_invalid",
         "proposal_record.patch_invalid",
         "proposal_record.authority_rejected",
+        "proposal_record.revision_unchanged",
     ] {
         assert!(codes.contains(code), "E5.1 diagnostic code missing: {code}");
     }

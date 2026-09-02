@@ -502,6 +502,11 @@ diagnostic_codes! {
     /// authority field. Proposals only ever create reviewable knowledge.
     ProposalRecordAuthorityRejected = "proposal_record.authority_rejected" =>
         "Propose only create_object at the non-authoritative floors or reviewable update_fields/replace_body edits; never set verified_at, reviewed_by, approved_by, decided_by, or resolved_by.";
+    /// E5.1.T2: a revision was requested with byte-identical patches, so
+    /// it would supersede its own proposal-set digest. Unchanged bytes are
+    /// not a new version; the prior record stands.
+    ProposalRecordRevisionUnchanged = "proposal_record.revision_unchanged" =>
+        "Change at least one patch byte before revising; an unchanged proposal set keeps its existing record and digest.";
 }
 
 impl DiagnosticCode {

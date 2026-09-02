@@ -124,8 +124,8 @@ fn proposal_set_digest_hashes_the_ordered_patch_digests_exactly() {
         .expect("record is JSON");
 
     assert_eq!(value["schema_version"], PROPOSAL_SCHEMA_VERSION);
-    // Ordering is (placement_path, page_id, target, patch_digest): the update
-    // of `billing.credits` sorts before the create of `billing.proposed`
+    // Ordering is by patch digest alone (placement-blind): the update of
+    // `billing.credits` sorts before the create of `billing.proposed`
     // regardless of input order.
     let targets: Vec<_> = value["patches"]
         .as_array()
@@ -309,7 +309,7 @@ fn edit_mints_new_proposal_version() {
         .expect_err("unchanged bytes cannot supersede themselves");
     assert_eq!(
         same.diagnostic_code().as_str(),
-        "proposal_record.binding_invalid"
+        "proposal_record.revision_unchanged"
     );
 }
 
@@ -480,5 +480,94 @@ fn placement_only_move_keeps_the_proposal_set_digest_and_content_change_changes_
     assert_ne!(
         record_for(&original).proposal_set_digest(),
         record_for(&edited).proposal_set_digest()
+    );
+}
+
+// Review round 1 (PR #194): a malformed base_hash must never reach
+// content_bindings; a placement-only move of a multi-patch set keeps its
+// identity; an unchanged revision names its own cause.
+#[test]
+fn malformed_base_hash_is_rejected_before_any_record_exists() {
+    let error = build_proposal_record(
+        bindings(),
+        vec![patch_input(
+            "finding-002",
+            "docs/billing.adoc",
+            "billing.kb",
+            &update_patch("billing.credits", "not-a-digest", "billing"),
+        )],
+        None,
+    )
+    .expect_err("a non-sha256 base_hash cannot bind content");
+    assert_eq!(
+        error.diagnostic_code().as_str(),
+        "proposal_record.patch_invalid"
+    );
+}
+
+#[test]
+fn multi_patch_identity_is_placement_blind() {
+    let build = |first_path: &str| {
+        build_proposal_record(
+            bindings(),
+            vec![
+                patch_input(
+                    "finding-002",
+                    first_path,
+                    "billing.kb",
+                    &update_patch("billing.credits", D, "billing"),
+                ),
+                patch_input(
+                    "finding-001",
+                    "docs/billing.adoc",
+                    "billing.kb",
+                    &create_patch("billing.proposed"),
+                ),
+            ],
+            None,
+        )
+        .expect("record builds")
+    };
+    // Renaming the first patch's source page would reorder a placement-sorted
+    // set; the proposal-set digest must not notice.
+    let before = build("docs/a.adoc");
+    let after = build("docs/z.adoc");
+    assert_eq!(before.proposal_set_digest(), after.proposal_set_digest());
+    let digests: Vec<_> = before
+        .patches()
+        .iter()
+        .map(|patch| patch.patch_digest().to_string())
+        .collect();
+    let mut sorted = digests.clone();
+    sorted.sort();
+    assert_eq!(digests, sorted, "patches are ordered by patch digest alone");
+}
+
+#[test]
+fn unchanged_revision_names_its_own_cause() {
+    let original = record();
+    let error = original
+        .revise(vec![
+            patch_input(
+                "finding-002",
+                "docs/billing.adoc",
+                "billing.kb",
+                &update_patch("billing.credits", D, "billing"),
+            ),
+            patch_input(
+                "finding-001",
+                "docs/billing.adoc",
+                "billing.kb",
+                &create_patch("billing.proposed"),
+            ),
+        ])
+        .expect_err("unchanged bytes are not a version");
+    assert!(matches!(
+        error,
+        ProposalRecordError::RevisionUnchanged { .. }
+    ));
+    assert_eq!(
+        error.diagnostic_code().as_str(),
+        "proposal_record.revision_unchanged"
     );
 }

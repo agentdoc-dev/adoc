@@ -62,7 +62,7 @@
     "patches": {
       "type": "array",
       "minItems": 1,
-      "description": "Sorted by placement_path, page_id, target, patch_digest.",
+      "description": "Sorted by patch_digest alone, so identity is placement-blind; patch_digest covers the sorted compact serialization plus one newline.",
       "items": {
         "type": "object",
         "required": [
